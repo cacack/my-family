@@ -3,7 +3,9 @@ package api
 
 import (
 	"fmt"
+	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -23,6 +25,7 @@ type Server struct {
 	personService   *query.PersonService
 	familyService   *query.FamilyService
 	pedigreeService *query.PedigreeService
+	frontendFS      fs.FS
 }
 
 // NewServer creates a new API server with all dependencies.
@@ -30,6 +33,7 @@ func NewServer(
 	cfg *config.Config,
 	eventStore repository.EventStore,
 	readStore repository.ReadModelStore,
+	frontendFS fs.FS,
 ) *Server {
 	e := echo.New()
 	e.HideBanner = true
@@ -70,6 +74,7 @@ func NewServer(
 		personService:   personSvc,
 		familyService:   familySvc,
 		pedigreeService: pedigreeSvc,
+		frontendFS:      frontendFS,
 	}
 
 	// Register routes
@@ -110,6 +115,35 @@ func (s *Server) registerRoutes() {
 	// GEDCOM (placeholder - will be implemented in Phase 5)
 	api.POST("/gedcom/import", s.importGedcom)
 	api.GET("/gedcom/export", s.exportGedcom)
+
+	// Serve frontend if available
+	if s.frontendFS != nil {
+		// Serve static files
+		fileServer := http.FileServer(http.FS(s.frontendFS))
+		s.echo.GET("/*", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Don't serve frontend for API routes
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				http.NotFound(w, r)
+				return
+			}
+
+			// Try to serve the requested file
+			path := r.URL.Path
+			if path == "/" {
+				path = "/index.html"
+			}
+
+			// Check if file exists
+			if _, err := fs.Stat(s.frontendFS, strings.TrimPrefix(path, "/")); err == nil {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			// Fall back to index.html for SPA routing
+			r.URL.Path = "/"
+			fileServer.ServeHTTP(w, r)
+		})))
+	}
 }
 
 // Start starts the HTTP server.

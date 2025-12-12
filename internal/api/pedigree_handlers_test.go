@@ -22,7 +22,7 @@ func setupPedigreeTestServer(t *testing.T) *api.Server {
 	}
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
-	return api.NewServer(cfg, eventStore, readStore)
+	return api.NewServer(cfg, eventStore, readStore, nil)
 }
 
 // GEDCOM with 3 generations of ancestors

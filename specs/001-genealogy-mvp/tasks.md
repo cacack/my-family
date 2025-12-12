@@ -239,11 +239,11 @@ This is a Go web application with embedded Svelte frontend:
 
 **Reference**: [research.md#4](./research.md#4-svelte-5--d3js-integration)
 
-- [ ] T081 [US4] Create API client in web/src/lib/api/client.ts per contracts/openapi.yaml
-- [ ] T082 [US4] Implement PedigreeChart component with D3.js tree layout in web/src/lib/components/PedigreeChart.svelte
-- [ ] T083 [US4] Add pan/zoom navigation with d3.zoom() in web/src/lib/components/PedigreeChart.svelte
-- [ ] T084 [US4] Implement click-to-navigate on ancestor nodes in PedigreeChart.svelte
-- [ ] T085 [US4] Create pedigree page route in web/src/routes/pedigree/[id]/+page.svelte
+- [x] T081 [US4] Create API client in web/src/lib/api/client.ts per contracts/openapi.yaml
+- [x] T082 [US4] Implement PedigreeChart component with D3.js tree layout in web/src/lib/components/PedigreeChart.svelte
+- [x] T083 [US4] Add pan/zoom navigation with d3.zoom() in web/src/lib/components/PedigreeChart.svelte
+- [x] T084 [US4] Implement click-to-navigate on ancestor nodes in PedigreeChart.svelte
+- [x] T085 [US4] Create pedigree page route in web/src/routes/pedigree/[id]/+page.svelte
 - [ ] T086 [P] [US4] Write PedigreeChart component tests in web/src/lib/components/PedigreeChart.test.ts
 
 **Checkpoint**: Pedigree chart displays ancestors, pan/zoom works, clicking ancestor re-centers chart.
@@ -281,8 +281,8 @@ This is a Go web application with embedded Svelte frontend:
 
 ### Frontend for US5
 
-- [ ] T093 [US5] Implement SearchBox component with debounce in web/src/lib/components/SearchBox.svelte
-- [ ] T094 [US5] Add search to header/navigation in web/src/routes/+layout.svelte
+- [x] T093 [US5] Implement SearchBox component with debounce in web/src/lib/components/SearchBox.svelte
+- [x] T094 [US5] Add search to header/navigation in web/src/routes/+layout.svelte
 - [ ] T095 [P] [US5] Write SearchBox component tests in web/src/lib/components/SearchBox.test.ts
 
 **Checkpoint**: Search works via API and UI. Partial names and fuzzy matches return correct results.
@@ -342,21 +342,21 @@ This is a Go web application with embedded Svelte frontend:
 
 ### Core Components
 
-- [ ] T106 [P] Implement PersonCard component in web/src/lib/components/PersonCard.svelte
-- [ ] T107 [P] Implement FamilyCard component in web/src/lib/components/FamilyCard.svelte
+- [x] T106 [P] Implement PersonCard component in web/src/lib/components/PersonCard.svelte
+- [x] T107 [P] Implement FamilyCard component in web/src/lib/components/FamilyCard.svelte
 
 ### Pages
 
-- [ ] T108 Create home/dashboard page in web/src/routes/+page.svelte
-- [ ] T109 Create person list page with pagination in web/src/routes/persons/+page.svelte
-- [ ] T110 Create person detail/edit page in web/src/routes/persons/[id]/+page.svelte
-- [ ] T111 Create family management page in web/src/routes/families/+page.svelte
-- [ ] T112 Create GEDCOM import page with file upload in web/src/routes/import/+page.svelte
+- [x] T108 Create home/dashboard page in web/src/routes/+page.svelte
+- [x] T109 Create person list page with pagination in web/src/routes/persons/+page.svelte
+- [x] T110 Create person detail/edit page in web/src/routes/persons/[id]/+page.svelte
+- [x] T111 Create family management page in web/src/routes/families/+page.svelte
+- [x] T112 Create GEDCOM import page with file upload in web/src/routes/import/+page.svelte
 
 ### Integration
 
-- [ ] T113 Embed frontend build in Go binary via go:embed in cmd/myfamily/main.go
-- [ ] T114 Configure Vite build output for embedding
+- [x] T113 Embed frontend build in Go binary via go:embed in cmd/myfamily/main.go
+- [x] T114 Configure Vite build output for embedding
 
 **Checkpoint**: Full web UI works. Can browse persons, view pedigree, search, import/export via UI.
 

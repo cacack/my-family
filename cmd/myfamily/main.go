@@ -11,6 +11,7 @@ import (
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/repository/memory"
+	"github.com/cacack/my-family/internal/web"
 )
 
 func main() {
@@ -61,15 +62,27 @@ func runServer() {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 
+	// Get frontend filesystem (embedded in production, local in dev)
+	frontendFS, err := web.GetFileSystem()
+	if err != nil {
+		log.Printf("Warning: Frontend not available: %v", err)
+		frontendFS = nil
+	}
+
 	log.Printf("Starting My Family server on port %d", cfg.Port)
 	if cfg.UsePostgreSQL() {
 		log.Printf("Database: PostgreSQL")
 	} else {
 		log.Printf("Database: In-memory (SQLite path configured: %s)", cfg.SQLitePath)
 	}
+	if frontendFS != nil {
+		log.Printf("Frontend: Embedded")
+	} else {
+		log.Printf("Frontend: Not available (API only)")
+	}
 
 	// Create and start server
-	server := api.NewServer(cfg, eventStore, readStore)
+	server := api.NewServer(cfg, eventStore, readStore, frontendFS)
 
 	// Handle graceful shutdown
 	go func() {

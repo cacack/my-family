@@ -4,10 +4,15 @@
 build:
 	go build ./...
 
-# Build the binary
-binary:
-	cd web && npm run build
+# Build the binary with embedded frontend
+binary: frontend
+	rm -rf internal/web/dist/*
+	cp -r web/build/* internal/web/dist/
 	go build -o myfamily ./cmd/myfamily
+
+# Build frontend only
+frontend:
+	cd web && npm run build
 
 # Run all tests
 test:
@@ -33,7 +38,7 @@ generate:
 # Clean build artifacts
 clean:
 	rm -f myfamily coverage.out coverage.html
-	rm -rf web/dist web/build web/.svelte-kit
+	rm -rf web/dist web/build web/.svelte-kit internal/web/dist
 
 # Run the server (development)
 run:
