@@ -40,9 +40,9 @@ func TestPerson_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "empty surname",
+			name:    "empty surname (valid for historical records)",
 			person:  &Person{ID: uuid.New(), GivenName: "John", Surname: ""},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "given name too long",

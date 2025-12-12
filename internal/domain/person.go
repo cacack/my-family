@@ -54,9 +54,7 @@ func (p *Person) Validate() error {
 		errs = append(errs, PersonValidationError{Field: "given_name", Message: "cannot exceed 100 characters"})
 	}
 
-	if p.Surname == "" {
-		errs = append(errs, PersonValidationError{Field: "surname", Message: "cannot be empty"})
-	}
+	// Surname can be empty (historical records, royalty, single-name individuals)
 	if len(p.Surname) > 100 {
 		errs = append(errs, PersonValidationError{Field: "surname", Message: "cannot exceed 100 characters"})
 	}

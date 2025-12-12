@@ -214,9 +214,8 @@ func (exp *Exporter) writeFamily(ctx context.Context, buf *bytes.Buffer, f repos
 }
 
 // formatGedcomName formats a name in GEDCOM format (Given /Surname/).
+// GEDCOM requires surname delimiters even when surname is empty.
 func formatGedcomName(givenName, surname string) string {
-	if surname == "" || surname == "Unknown" {
-		return givenName
-	}
+	// Always include surname delimiters per GEDCOM spec
 	return fmt.Sprintf("%s /%s/", givenName, surname)
 }

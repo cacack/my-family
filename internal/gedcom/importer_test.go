@@ -155,12 +155,12 @@ func TestImportMissingNames(t *testing.T) {
 		t.Fatalf("len(persons) = %d, want 1", len(persons))
 	}
 
-	// Should default to Unknown
+	// Given name should default to Unknown, surname can be empty
 	if persons[0].GivenName != "Unknown" {
 		t.Errorf("GivenName = %s, want 'Unknown'", persons[0].GivenName)
 	}
-	if persons[0].Surname != "Unknown" {
-		t.Errorf("Surname = %s, want 'Unknown'", persons[0].Surname)
+	if persons[0].Surname != "" {
+		t.Errorf("Surname = %s, want empty string", persons[0].Surname)
 	}
 
 	// Should have warnings

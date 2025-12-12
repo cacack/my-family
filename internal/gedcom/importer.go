@@ -114,22 +114,18 @@ func parseIndividual(indi *gedcom.Individual, result *ImportResult) PersonData {
 		person.GivenName = strings.TrimSpace(name.Given)
 		person.Surname = strings.TrimSpace(name.Surname)
 
-		// Handle empty names
+		// Given name is required
 		if person.GivenName == "" {
 			person.GivenName = "Unknown"
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Individual %s: missing given name, using 'Unknown'", indi.XRef))
 		}
-		if person.Surname == "" {
-			person.Surname = "Unknown"
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Individual %s: missing surname, using 'Unknown'", indi.XRef))
-		}
+		// Surname can be empty (historical records, royalty, single-name individuals)
 	} else {
 		person.GivenName = "Unknown"
-		person.Surname = "Unknown"
+		// Leave surname empty - no name record at all
 		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("Individual %s: no name record, using 'Unknown Unknown'", indi.XRef))
+			fmt.Sprintf("Individual %s: no name record, using 'Unknown'", indi.XRef))
 	}
 
 	// Parse sex
