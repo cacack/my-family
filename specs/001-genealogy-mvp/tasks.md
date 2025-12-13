@@ -121,11 +121,11 @@ This is a Go web application with embedded Svelte frontend:
 
 **Reference**: [data-model.md#SQLite-Adaptations](./data-model.md#sqlite-adaptations), [plan.md Phase 2](./plan.md#phase-2-repository-layer)
 
-*Deferred: MVP uses in-memory stores. SQLite will be added in Phase 11.*
+*Implemented: SQLite persistence with FTS5 search (fallback to LIKE when FTS5 not available).*
 
-- [ ] T043 [US2] Implement SQLite EventStore in internal/repository/sqlite/eventstore.go
-- [ ] T044 [US2] Implement SQLite read models (persons table) in internal/repository/sqlite/readmodel.go
-- [ ] T045 [P] [US2] Write SQLite integration tests in internal/repository/sqlite/eventstore_test.go
+- [x] T043 [US2] Implement SQLite EventStore in internal/repository/sqlite/eventstore.go
+- [x] T044 [US2] Implement SQLite read models (persons table) in internal/repository/sqlite/readmodel.go
+- [x] T045 [P] [US2] Write SQLite integration tests in internal/repository/sqlite/eventstore_test.go
 
 ### Entry Point for US2
 
@@ -173,10 +173,10 @@ This is a Go web application with embedded Svelte frontend:
 
 ### SQLite Persistence for US3
 
-*Deferred: MVP uses in-memory stores. SQLite will be added in Phase 11.*
+*Implemented: All tables added to SQLite read model store.*
 
-- [ ] T064 [US3] Add families and family_children tables to internal/repository/sqlite/readmodel.go
-- [ ] T065 [US3] Add pedigree_edges table to internal/repository/sqlite/readmodel.go
+- [x] T064 [US3] Add families and family_children tables to internal/repository/sqlite/readmodel.go
+- [x] T065 [US3] Add pedigree_edges table to internal/repository/sqlite/readmodel.go
 - [x] T066 [US3] Update person projections to include family relationships (done in repository/projection.go)
 
 **Checkpoint**: Family CRUD works via API. Can create family, add children, verify relationships.
@@ -260,17 +260,17 @@ This is a Go web application with embedded Svelte frontend:
 
 ### Query Layer for US5
 
-*Note: Basic search implemented with in-memory store. FTS5 and fuzzy matching deferred to Phase 11 (SQLite).*
+*Implemented: FTS5 search with LIKE fallback when FTS5 not available.*
 
 - [x] T087 [US5] Implement SearchPersonsQuery in internal/query/person_queries.go (basic contains matching for MVP)
-- [ ] T088 [US5] Implement fuzzy matching (deferred to Phase 11 with SQLite FTS5)
+- [x] T088 [US5] Implement fuzzy matching (FTS5 prefix matching with LIKE fallback)
 - [x] T089 [P] [US5] Write search query tests in internal/query/person_queries_test.go
 
 ### Repository Layer for US5
 
-*Deferred: FTS5 will be added in Phase 11 with SQLite.*
+*Implemented: FTS5 virtual table with LIKE fallback for environments without FTS5.*
 
-- [ ] T090 [US5] Add FTS5 virtual table and sync triggers to internal/repository/sqlite/readmodel.go per data-model.md#SQLite-FTS5
+- [x] T090 [US5] Add FTS5 virtual table and sync triggers to internal/repository/sqlite/readmodel.go per data-model.md#SQLite-FTS5
 
 ### API Layer for US5
 
@@ -368,11 +368,13 @@ This is a Go web application with embedded Svelte frontend:
 
 **Reference**: [data-model.md#Event-Store-Schema](./data-model.md#event-store-schema), [research.md#6](./research.md#6-full-text-search)
 
-- [ ] T115 [P] Implement PostgreSQL EventStore in internal/repository/postgres/eventstore.go
-- [ ] T116 [P] Implement PostgreSQL read models with tsvector in internal/repository/postgres/readmodel.go
-- [ ] T117 Add pg_trgm fuzzy search for PostgreSQL in internal/query/person_queries.go
+*Implemented: PostgreSQL support with tsvector full-text search and pg_trgm fuzzy matching.*
+
+- [x] T115 [P] Implement PostgreSQL EventStore in internal/repository/postgres/eventstore.go
+- [x] T116 [P] Implement PostgreSQL read models with tsvector in internal/repository/postgres/readmodel.go
+- [x] T117 Add pg_trgm fuzzy search for PostgreSQL in internal/query/person_queries.go (implemented in readmodel.go)
 - [ ] T118 Write PostgreSQL integration tests with testcontainers in internal/repository/postgres/eventstore_test.go
-- [ ] T119 Add database auto-detection/selection in internal/config/config.go
+- [x] T119 Add database auto-detection/selection in internal/config/config.go (already implemented)
 
 **Checkpoint**: Same API works with both SQLite and PostgreSQL. Tests pass on both.
 
@@ -384,9 +386,11 @@ This is a Go web application with embedded Svelte frontend:
 
 **Reference**: [plan.md Phase 6](./plan.md#phase-6-integration--deployment), [quickstart.md](./quickstart.md)
 
-- [ ] T120 [P] Create Dockerfile with multi-stage build per quickstart.md#Docker-Deployment
-- [ ] T121 [P] Create docker-compose.yml with app and postgres services
-- [ ] T122 Update README.md with setup instructions
+*Implemented: Docker packaging with multi-stage build and comprehensive README.*
+
+- [x] T120 [P] Create Dockerfile with multi-stage build per quickstart.md#Docker-Deployment
+- [x] T121 [P] Create docker-compose.yml with app and postgres services
+- [x] T122 Update README.md with setup instructions
 - [ ] T123 Run full E2E validation per plan.md verification criteria
 - [ ] T124 Performance test: import 5K GEDCOM, search 10K tree, verify timing meets SC criteria
 
