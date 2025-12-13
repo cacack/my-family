@@ -371,4 +371,14 @@ gh pr create
 - Consider dependencies when planning (e.g., sources before evidence/conclusion separation)
 - GPS = Genealogical Proof Standard (BCG best practices)
 - Git-workflow features are a key differentiator - prioritize accordingly
-- See [ETHOS.md](./ETHOS.md) for strategic principles and success factors
+
+---
+
+## Related
+
+- [ETHOS.md](./ETHOS.md) - Strategic principles and success factors
+- [CONVENTIONS.md](./CONVENTIONS.md) - Code standards for implementation
+- [TEMPLATE-feature/](./TEMPLATE-feature/) - Template for feature specs
+- [decisions/](./decisions/) - Architectural decisions
+- [../CONTRIBUTING.md](../CONTRIBUTING.md) - Developer workflow guide
+- [../.claude/prompts/](../.claude/prompts/) - Quality meta-prompts

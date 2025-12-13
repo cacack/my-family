@@ -242,3 +242,13 @@ edge.From("parents", Person.Type).Ref("children"),
 - [ ] No commented-out code
 - [ ] Linter passes (`go vet ./...`)
 - [ ] Build succeeds (`go build ./...`)
+
+---
+
+## Related
+
+- [ETHOS.md](./ETHOS.md) - Principles guiding these conventions
+- [BACKLOG.md](./BACKLOG.md) - Feature backlog and implementation pipeline
+- [decisions/](./decisions/) - Architectural decisions
+- [../CONTRIBUTING.md](../CONTRIBUTING.md) - Full contributor workflow
+- [../CLAUDE.md](../CLAUDE.md) - Claude Code guidance

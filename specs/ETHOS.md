@@ -197,3 +197,13 @@ Genealogy is a scholarly discipline. Build tools worthy of serious researchers.
 - [GEDCOM 7.0 Specification](https://gedcom.io/)
 - [TNG Features](https://www.tngsitebuilding.com/features.php)
 - [Sustainable Open Source - Aaron Stannard](https://aaronstannard.com/sustainable-open-source-software/)
+
+---
+
+## Related
+
+- [BACKLOG.md](./BACKLOG.md) - Prioritized features implementing this vision
+- [CONVENTIONS.md](./CONVENTIONS.md) - Code standards that support these principles
+- [decisions/](./decisions/) - Architectural decisions guided by this ethos
+- [../CONTRIBUTING.md](../CONTRIBUTING.md) - How to contribute
+- [../.claude/prompts/](../.claude/prompts/) - Quality prompts aligned with differentiators
