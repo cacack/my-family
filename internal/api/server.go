@@ -90,6 +90,9 @@ func (s *Server) registerRoutes() {
 	// Health check
 	api.GET("/health", s.healthCheck)
 
+	// API documentation
+	s.registerDocsRoutes(api)
+
 	// Person routes
 	api.GET("/persons", s.listPersons)
 	api.POST("/persons", s.createPerson)

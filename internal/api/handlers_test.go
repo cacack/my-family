@@ -296,3 +296,54 @@ func TestSearchPersons_QueryTooShort(t *testing.T) {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+func TestOpenAPISpec(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/openapi.yaml", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	contentType := rec.Header().Get("Content-Type")
+	if contentType != "application/x-yaml" {
+		t.Errorf("Content-Type = %s, want application/x-yaml", contentType)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "openapi: 3.0.3") {
+		t.Error("Expected OpenAPI 3.0.3 specification")
+	}
+	if !strings.Contains(body, "My Family Genealogy API") {
+		t.Error("Expected API title in spec")
+	}
+}
+
+func TestSwaggerUI(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/docs", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "text/html") {
+		t.Errorf("Content-Type = %s, want text/html", contentType)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "swagger-ui") {
+		t.Error("Expected Swagger UI HTML")
+	}
+	// html/template escapes slashes in URLs, so check for escaped version
+	if !strings.Contains(body, "openapi.yaml") {
+		t.Error("Expected OpenAPI spec URL in Swagger UI")
+	}
+}

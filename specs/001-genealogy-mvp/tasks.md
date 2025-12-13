@@ -244,7 +244,7 @@ This is a Go web application with embedded Svelte frontend:
 - [x] T083 [US4] Add pan/zoom navigation with d3.zoom() in web/src/lib/components/PedigreeChart.svelte
 - [x] T084 [US4] Implement click-to-navigate on ancestor nodes in PedigreeChart.svelte
 - [x] T085 [US4] Create pedigree page route in web/src/routes/pedigree/[id]/+page.svelte
-- [ ] T086 [P] [US4] Write PedigreeChart component tests in web/src/lib/components/PedigreeChart.test.ts
+- [x] T086 [P] [US4] Write PedigreeChart component tests in web/src/lib/components/PedigreeChart.test.ts
 
 **Checkpoint**: Pedigree chart displays ancestors, pan/zoom works, clicking ancestor re-centers chart.
 
@@ -283,7 +283,7 @@ This is a Go web application with embedded Svelte frontend:
 
 - [x] T093 [US5] Implement SearchBox component with debounce in web/src/lib/components/SearchBox.svelte
 - [x] T094 [US5] Add search to header/navigation in web/src/routes/+layout.svelte
-- [ ] T095 [P] [US5] Write SearchBox component tests in web/src/lib/components/SearchBox.test.ts
+- [x] T095 [P] [US5] Write SearchBox component tests in web/src/lib/components/SearchBox.test.ts
 
 **Checkpoint**: Search works via API and UI. Partial names and fuzzy matches return correct results.
 
@@ -326,9 +326,9 @@ This is a Go web application with embedded Svelte frontend:
 
 ### API Documentation for US7
 
-- [ ] T103 [US7] Embed OpenAPI spec and serve at /api/docs in internal/api/openapi.go
-- [ ] T104 [US7] Add Swagger UI or ReDoc for interactive documentation
-- [ ] T105 [P] [US7] Verify all endpoints match OpenAPI spec (contract test coverage)
+- [x] T103 [US7] Embed OpenAPI spec and serve at /api/docs in internal/api/openapi.go
+- [x] T104 [US7] Add Swagger UI or ReDoc for interactive documentation
+- [x] T105 [P] [US7] Verify all endpoints match OpenAPI spec (contract test coverage)
 
 **Checkpoint**: API docs accessible at /api/docs. All operations work via API alone.
 
