@@ -3,7 +3,7 @@ module github.com/cacack/my-family
 go 1.24.3
 
 require (
-	github.com/cacack/gedcom-go v0.1.0
+	github.com/cacack/gedcom-go v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.14.0
 	github.com/lib/pq v1.10.9
@@ -76,4 +76,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/cacack/gedcom-go => /Users/chris/devel/home/gedcom-go
+// For local development, uncomment to use local gedcom-go:
+// replace github.com/cacack/gedcom-go => /Users/chris/devel/home/gedcom-go

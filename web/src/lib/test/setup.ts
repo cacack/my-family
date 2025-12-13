@@ -2,7 +2,7 @@ import '@testing-library/svelte/vitest';
 import { vi } from 'vitest';
 
 // Mock ResizeObserver for D3/chart tests
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
+(globalThis as Record<string, unknown>).ResizeObserver = vi.fn().mockImplementation(() => ({
 	observe: vi.fn(),
 	unobserve: vi.fn(),
 	disconnect: vi.fn()
@@ -10,7 +10,7 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 
 // Mock SVG getBBox for D3 tests
 if (typeof SVGElement !== 'undefined') {
-	SVGElement.prototype.getBBox = vi.fn().mockReturnValue({
+	(SVGElement.prototype as SVGElement & { getBBox: () => DOMRect }).getBBox = vi.fn().mockReturnValue({
 		x: 0,
 		y: 0,
 		width: 100,

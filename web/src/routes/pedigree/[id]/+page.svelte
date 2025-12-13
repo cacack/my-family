@@ -31,7 +31,10 @@
 	function handleGenerationsChange(e: Event) {
 		const select = e.target as HTMLSelectElement;
 		generations = parseInt(select.value, 10);
-		loadPedigree($page.params.id, generations);
+		const personId = $page.params.id;
+		if (personId) {
+			loadPedigree(personId, generations);
+		}
 	}
 
 	$effect(() => {

@@ -57,6 +57,7 @@ export interface PersonSummary {
 	id: string;
 	given_name: string;
 	surname: string;
+	gender?: 'male' | 'female' | 'unknown';
 	birth_date?: GenDate;
 	death_date?: GenDate;
 }
