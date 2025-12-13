@@ -21,24 +21,24 @@ func NewPedigreeService(readStore repository.ReadModelStore) *PedigreeService {
 
 // PedigreeNode represents a person in the pedigree tree.
 type PedigreeNode struct {
-	ID         uuid.UUID        `json:"id"`
-	GivenName  string           `json:"given_name"`
-	Surname    string           `json:"surname"`
-	Gender     string           `json:"gender,omitempty"`
-	BirthDate  *domain.GenDate  `json:"birth_date,omitempty"`
-	BirthPlace *string          `json:"birth_place,omitempty"`
-	DeathDate  *domain.GenDate  `json:"death_date,omitempty"`
-	DeathPlace *string          `json:"death_place,omitempty"`
-	Generation int              `json:"generation"`
-	Father     *PedigreeNode    `json:"father,omitempty"`
-	Mother     *PedigreeNode    `json:"mother,omitempty"`
+	ID         uuid.UUID       `json:"id"`
+	GivenName  string          `json:"given_name"`
+	Surname    string          `json:"surname"`
+	Gender     string          `json:"gender,omitempty"`
+	BirthDate  *domain.GenDate `json:"birth_date,omitempty"`
+	BirthPlace *string         `json:"birth_place,omitempty"`
+	DeathDate  *domain.GenDate `json:"death_date,omitempty"`
+	DeathPlace *string         `json:"death_place,omitempty"`
+	Generation int             `json:"generation"`
+	Father     *PedigreeNode   `json:"father,omitempty"`
+	Mother     *PedigreeNode   `json:"mother,omitempty"`
 }
 
 // PedigreeResult contains the pedigree tree for a person.
 type PedigreeResult struct {
-	Root            *PedigreeNode `json:"root"`
-	TotalAncestors  int           `json:"total_ancestors"`
-	MaxGeneration   int           `json:"max_generation"`
+	Root           *PedigreeNode `json:"root"`
+	TotalAncestors int           `json:"total_ancestors"`
+	MaxGeneration  int           `json:"max_generation"`
 }
 
 // GetPedigreeInput contains options for retrieving a pedigree.

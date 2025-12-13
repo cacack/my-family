@@ -13,10 +13,10 @@ import (
 
 // Common command errors.
 var (
-	ErrPersonNotFound      = errors.New("person not found")
-	ErrVersionMismatch     = errors.New("version mismatch - person was modified")
-	ErrPersonHasFamilies   = errors.New("person is linked to families and cannot be deleted")
-	ErrInvalidInput        = errors.New("invalid input")
+	ErrPersonNotFound    = errors.New("person not found")
+	ErrVersionMismatch   = errors.New("version mismatch - person was modified")
+	ErrPersonHasFamilies = errors.New("person is linked to families and cannot be deleted")
+	ErrInvalidInput      = errors.New("invalid input")
 )
 
 // CreatePersonInput contains the data for creating a new person.

@@ -13,8 +13,8 @@ type Config struct {
 	SQLitePath  string // SQLite database path (default: ./myfamily.db)
 
 	// Server configuration
-	Port     int    // HTTP server port (default: 8080)
-	LogLevel string // Logging level: debug, info, warn, error (default: info)
+	Port      int    // HTTP server port (default: 8080)
+	LogLevel  string // Logging level: debug, info, warn, error (default: info)
 	LogFormat string // Log format: text, json (default: text)
 }
 

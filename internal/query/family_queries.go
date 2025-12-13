@@ -21,16 +21,16 @@ func NewFamilyService(readStore repository.ReadModelStore) *FamilyService {
 
 // Family represents a family in query results.
 type Family struct {
-	ID               uuid.UUID          `json:"id"`
-	Partner1ID       *uuid.UUID         `json:"partner1_id,omitempty"`
-	Partner1Name     *string            `json:"partner1_name,omitempty"`
-	Partner2ID       *uuid.UUID         `json:"partner2_id,omitempty"`
-	Partner2Name     *string            `json:"partner2_name,omitempty"`
-	RelationshipType *string            `json:"relationship_type,omitempty"`
-	MarriageDate     *domain.GenDate    `json:"marriage_date,omitempty"`
-	MarriagePlace    *string            `json:"marriage_place,omitempty"`
-	ChildCount       int                `json:"child_count"`
-	Version          int64              `json:"version"`
+	ID               uuid.UUID       `json:"id"`
+	Partner1ID       *uuid.UUID      `json:"partner1_id,omitempty"`
+	Partner1Name     *string         `json:"partner1_name,omitempty"`
+	Partner2ID       *uuid.UUID      `json:"partner2_id,omitempty"`
+	Partner2Name     *string         `json:"partner2_name,omitempty"`
+	RelationshipType *string         `json:"relationship_type,omitempty"`
+	MarriageDate     *domain.GenDate `json:"marriage_date,omitempty"`
+	MarriagePlace    *string         `json:"marriage_place,omitempty"`
+	ChildCount       int             `json:"child_count"`
+	Version          int64           `json:"version"`
 }
 
 // FamilyDetail includes children information.

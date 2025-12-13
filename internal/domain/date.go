@@ -34,15 +34,15 @@ func (d DateQualifier) IsValid() bool {
 
 // GenDate represents a genealogical date with flexible precision per GEDCOM 5.5 spec.
 type GenDate struct {
-	Raw       string        `json:"raw"`                 // Original input string
-	Qualifier DateQualifier `json:"qualifier"`           // Date qualifier
-	Year      *int          `json:"year,omitempty"`      // Year (nil if unknown)
-	Month     *int          `json:"month,omitempty"`     // Month 1-12 (nil if unknown)
-	Day       *int          `json:"day,omitempty"`       // Day 1-31 (nil if unknown)
-	Year2     *int          `json:"year2,omitempty"`     // End year for ranges
-	Month2    *int          `json:"month2,omitempty"`    // End month for ranges
-	Day2      *int          `json:"day2,omitempty"`      // End day for ranges
-	Calendar  string        `json:"calendar,omitempty"`  // DGREGORIAN (default), DJULIAN, etc.
+	Raw       string        `json:"raw"`                // Original input string
+	Qualifier DateQualifier `json:"qualifier"`          // Date qualifier
+	Year      *int          `json:"year,omitempty"`     // Year (nil if unknown)
+	Month     *int          `json:"month,omitempty"`    // Month 1-12 (nil if unknown)
+	Day       *int          `json:"day,omitempty"`      // Day 1-31 (nil if unknown)
+	Year2     *int          `json:"year2,omitempty"`    // End year for ranges
+	Month2    *int          `json:"month2,omitempty"`   // End month for ranges
+	Day2      *int          `json:"day2,omitempty"`     // End day for ranges
+	Calendar  string        `json:"calendar,omitempty"` // DGREGORIAN (default), DJULIAN, etc.
 }
 
 // GEDCOM month abbreviations

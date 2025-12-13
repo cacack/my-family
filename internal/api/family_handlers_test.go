@@ -392,7 +392,7 @@ func TestAddChildToFamily(t *testing.T) {
 
 	// Add child
 	childBody := map[string]interface{}{
-		"child_id":           child["id"],
+		"child_id":          child["id"],
 		"relationship_type": "biological",
 	}
 	jsonBody, _ = json.Marshal(childBody)

@@ -17,8 +17,8 @@ import (
 
 // ExportResult contains the results of a GEDCOM export operation.
 type ExportResult struct {
-	BytesWritten    int64
-	PersonsExported int
+	BytesWritten     int64
+	PersonsExported  int
 	FamiliesExported int
 }
 

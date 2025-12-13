@@ -387,7 +387,7 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UU
 	var children []repository.FamilyChildReadModel
 	for rows.Next() {
 		var (
-			familyID, personID uuid.UUID
+			familyID, personID  uuid.UUID
 			personName, relType string
 			sequence            sql.NullInt64
 		)
@@ -479,9 +479,9 @@ func (s *ReadModelStore) DeleteFamilyChild(ctx context.Context, familyID, person
 // GetPedigreeEdge returns the pedigree edge for a person.
 func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, personID uuid.UUID) (*repository.PedigreeEdge, error) {
 	var (
-		pID                                          uuid.UUID
-		fatherID, motherID                           sql.NullString
-		fatherName, motherName                       sql.NullString
+		pID                    uuid.UUID
+		fatherID, motherID     sql.NullString
+		fatherName, motherName sql.NullString
 	)
 
 	err := s.db.QueryRowContext(ctx, `
@@ -545,13 +545,13 @@ type rowScanner interface {
 
 func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	var (
-		id                                                               uuid.UUID
-		givenName, surname, fullName                                     string
-		gender, birthDateRaw, birthPlace                                 sql.NullString
-		deathDateRaw, deathPlace, notes                                  sql.NullString
-		birthDateSort, deathDateSort                                     sql.NullTime
-		version                                                          int64
-		updatedAt                                                        time.Time
+		id                               uuid.UUID
+		givenName, surname, fullName     string
+		gender, birthDateRaw, birthPlace sql.NullString
+		deathDateRaw, deathPlace, notes  sql.NullString
+		birthDateSort, deathDateSort     sql.NullTime
+		version                          int64
+		updatedAt                        time.Time
 	)
 
 	err := row.Scan(&id, &givenName, &surname, &fullName, &gender,
@@ -597,14 +597,14 @@ func scanPersonRow(rows *sql.Rows) (*repository.PersonReadModel, error) {
 
 func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	var (
-		id                                                               uuid.UUID
-		partner1ID, partner2ID                                           sql.NullString
-		partner1Name, partner2Name                                       sql.NullString
-		relType, marriageDateRaw, marriagePlace                          sql.NullString
-		marriageDateSort                                                 sql.NullTime
-		childCount                                                       int
-		version                                                          int64
-		updatedAt                                                        time.Time
+		id                                      uuid.UUID
+		partner1ID, partner2ID                  sql.NullString
+		partner1Name, partner2Name              sql.NullString
+		relType, marriageDateRaw, marriagePlace sql.NullString
+		marriageDateSort                        sql.NullTime
+		childCount                              int
+		version                                 int64
+		updatedAt                               time.Time
 	)
 
 	err := row.Scan(&id, &partner1ID, &partner1Name, &partner2ID, &partner2Name,

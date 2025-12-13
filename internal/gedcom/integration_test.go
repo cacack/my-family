@@ -16,11 +16,11 @@ import (
 
 func TestIntegration_ImportExportRoundTrip(t *testing.T) {
 	testFiles := []struct {
-		name            string
-		path            string
-		minPersons      int
-		minFamilies     int
-		checkNames      []string // Names that should survive round-trip
+		name        string
+		path        string
+		minPersons  int
+		minFamilies int
+		checkNames  []string // Names that should survive round-trip
 	}{
 		{
 			name:        "minimal",

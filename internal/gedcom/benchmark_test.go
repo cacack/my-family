@@ -149,9 +149,9 @@ func TestPerformance_SC005_Search10K(t *testing.T) {
 
 	// Test search performance
 	searchQueries := []string{
-		"Person1",       // Common prefix
-		"TestFamily50",  // Surname search
-		"Person5000",    // Specific name
+		"Person1",      // Common prefix
+		"TestFamily50", // Surname search
+		"Person5000",   // Specific name
 	}
 
 	for _, q := range searchQueries {

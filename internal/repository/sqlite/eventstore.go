@@ -194,8 +194,8 @@ func scanEvents(rows *sql.Rows) ([]repository.StoredEvent, error) {
 	for rows.Next() {
 		var (
 			idStr, streamIDStr, streamType, eventType, dataStr, timestampStr string
-			version, position                                                 int64
-			metadataStr                                                       sql.NullString
+			version, position                                                int64
+			metadataStr                                                      sql.NullString
 		)
 		err := rows.Scan(&idStr, &streamIDStr, &streamType, &version, &eventType, &dataStr, &metadataStr, &timestampStr, &position)
 		if err != nil {

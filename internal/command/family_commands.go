@@ -12,12 +12,12 @@ import (
 
 // Family-related errors.
 var (
-	ErrFamilyNotFound      = errors.New("family not found")
-	ErrChildAlreadyLinked  = errors.New("child already linked to a family")
-	ErrChildNotInFamily    = errors.New("child not in this family")
-	ErrCircularAncestry    = errors.New("circular ancestry detected")
-	ErrInvalidFamilyInput  = errors.New("invalid family input")
-	ErrFamilyHasChildren   = errors.New("family has children and cannot be deleted")
+	ErrFamilyNotFound     = errors.New("family not found")
+	ErrChildAlreadyLinked = errors.New("child already linked to a family")
+	ErrChildNotInFamily   = errors.New("child not in this family")
+	ErrCircularAncestry   = errors.New("circular ancestry detected")
+	ErrInvalidFamilyInput = errors.New("invalid family input")
+	ErrFamilyHasChildren  = errors.New("family has children and cannot be deleted")
 )
 
 // CreateFamilyInput contains the data for creating a family.

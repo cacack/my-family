@@ -11,20 +11,20 @@ import (
 
 // PersonReadModel represents a person in the read model.
 type PersonReadModel struct {
-	ID            uuid.UUID      `json:"id"`
-	GivenName     string         `json:"given_name"`
-	Surname       string         `json:"surname"`
-	FullName      string         `json:"full_name"`
-	Gender        domain.Gender  `json:"gender,omitempty"`
-	BirthDateRaw  string         `json:"birth_date_raw,omitempty"`
-	BirthDateSort *time.Time     `json:"birth_date_sort,omitempty"`
-	BirthPlace    string         `json:"birth_place,omitempty"`
-	DeathDateRaw  string         `json:"death_date_raw,omitempty"`
-	DeathDateSort *time.Time     `json:"death_date_sort,omitempty"`
-	DeathPlace    string         `json:"death_place,omitempty"`
-	Notes         string         `json:"notes,omitempty"`
-	Version       int64          `json:"version"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	ID            uuid.UUID     `json:"id"`
+	GivenName     string        `json:"given_name"`
+	Surname       string        `json:"surname"`
+	FullName      string        `json:"full_name"`
+	Gender        domain.Gender `json:"gender,omitempty"`
+	BirthDateRaw  string        `json:"birth_date_raw,omitempty"`
+	BirthDateSort *time.Time    `json:"birth_date_sort,omitempty"`
+	BirthPlace    string        `json:"birth_place,omitempty"`
+	DeathDateRaw  string        `json:"death_date_raw,omitempty"`
+	DeathDateSort *time.Time    `json:"death_date_sort,omitempty"`
+	DeathPlace    string        `json:"death_place,omitempty"`
+	Notes         string        `json:"notes,omitempty"`
+	Version       int64         `json:"version"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }
 
 // FamilyReadModel represents a family in the read model.
@@ -45,11 +45,11 @@ type FamilyReadModel struct {
 
 // FamilyChildReadModel represents a child in a family.
 type FamilyChildReadModel struct {
-	FamilyID         uuid.UUID               `json:"family_id"`
-	PersonID         uuid.UUID               `json:"person_id"`
-	PersonName       string                  `json:"person_name"`
+	FamilyID         uuid.UUID                `json:"family_id"`
+	PersonID         uuid.UUID                `json:"person_id"`
+	PersonName       string                   `json:"person_name"`
 	RelationshipType domain.ChildRelationType `json:"relationship_type"`
-	Sequence         *int                    `json:"sequence,omitempty"`
+	Sequence         *int                     `json:"sequence,omitempty"`
 }
 
 // PedigreeEdge represents a parent-child relationship for pedigree traversal.

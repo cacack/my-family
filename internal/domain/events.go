@@ -71,8 +71,8 @@ func NewPersonCreated(p *Person) PersonCreated {
 // PersonUpdated event is emitted when a person is updated.
 type PersonUpdated struct {
 	BaseEvent
-	PersonID uuid.UUID         `json:"person_id"`
-	Changes  map[string]any    `json:"changes"`
+	PersonID uuid.UUID      `json:"person_id"`
+	Changes  map[string]any `json:"changes"`
 }
 
 func (e PersonUpdated) EventType() string      { return "PersonUpdated" }

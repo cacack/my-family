@@ -85,10 +85,10 @@ func TestParseGenDate(t *testing.T) {
 			wantYear2: intPtr(1860),
 		},
 		{
-			name:      "lowercase input",
-			input:     "abt 1850",
-			wantQual:  DateAbout,
-			wantYear:  intPtr(1850),
+			name:     "lowercase input",
+			input:    "abt 1850",
+			wantQual: DateAbout,
+			wantYear: intPtr(1850),
 		},
 		{
 			name:      "full date with about",
@@ -125,9 +125,9 @@ func TestParseGenDate(t *testing.T) {
 
 func TestGenDate_String(t *testing.T) {
 	tests := []struct {
-		name  string
-		date  GenDate
-		want  string
+		name string
+		date GenDate
+		want string
 	}{
 		{
 			name: "preserves raw string",

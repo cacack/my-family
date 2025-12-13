@@ -469,7 +469,7 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UU
 	for rows.Next() {
 		var (
 			familyIDStr, personIDStr, personName, relType string
-			sequence                                       sql.NullInt64
+			sequence                                      sql.NullInt64
 		)
 		err := rows.Scan(&familyIDStr, &personIDStr, &personName, &relType, &sequence)
 		if err != nil {
@@ -639,11 +639,11 @@ type rowScanner interface {
 
 func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	var (
-		idStr, givenName, surname, fullName                                                  string
-		gender, birthDateRaw, birthDateSort, birthPlace                                      sql.NullString
-		deathDateRaw, deathDateSort, deathPlace, notes                                       sql.NullString
-		version                                                                              int64
-		updatedAt                                                                            string
+		idStr, givenName, surname, fullName             string
+		gender, birthDateRaw, birthDateSort, birthPlace sql.NullString
+		deathDateRaw, deathDateSort, deathPlace, notes  sql.NullString
+		version                                         int64
+		updatedAt                                       string
 	)
 
 	err := row.Scan(&idStr, &givenName, &surname, &fullName, &gender,
@@ -696,12 +696,12 @@ func scanPersonRow(rows *sql.Rows) (*repository.PersonReadModel, error) {
 
 func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	var (
-		idStr                                                                               string
-		partner1ID, partner1Name, partner2ID, partner2Name                                  sql.NullString
-		relType, marriageDateRaw, marriageDateSort, marriagePlace                           sql.NullString
-		childCount                                                                          int
-		version                                                                             int64
-		updatedAt                                                                           string
+		idStr                                                     string
+		partner1ID, partner1Name, partner2ID, partner2Name        sql.NullString
+		relType, marriageDateRaw, marriageDateSort, marriagePlace sql.NullString
+		childCount                                                int
+		version                                                   int64
+		updatedAt                                                 string
 	)
 
 	err := row.Scan(&idStr, &partner1ID, &partner1Name, &partner2ID, &partner2Name,

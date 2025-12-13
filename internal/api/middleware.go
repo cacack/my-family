@@ -20,11 +20,11 @@ type APIError struct {
 
 // Error codes.
 const (
-	CodeBadRequest     = "BAD_REQUEST"
-	CodeNotFound       = "NOT_FOUND"
-	CodeConflict       = "CONFLICT"
-	CodeInternalError  = "INTERNAL_ERROR"
-	CodeValidation     = "VALIDATION_ERROR"
+	CodeBadRequest    = "BAD_REQUEST"
+	CodeNotFound      = "NOT_FOUND"
+	CodeConflict      = "CONFLICT"
+	CodeInternalError = "INTERNAL_ERROR"
+	CodeValidation    = "VALIDATION_ERROR"
 )
 
 // customErrorHandler handles errors and returns consistent JSON responses.
