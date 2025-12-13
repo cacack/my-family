@@ -24,11 +24,10 @@ See [TEMPLATE.md](./TEMPLATE.md) for the ADR structure.
 
 ## Decisions
 
-*None recorded yet.*
-
-<!-- Add links to ADRs as they're created:
-- [001-database-choice.md](./001-database-choice.md) - PostgreSQL as primary database
--->
+- [001-event-sourcing-cqrs.md](./001-event-sourcing-cqrs.md) - Event sourcing with CQRS-lite as the foundation for audit trails and future git-style workflows
+- [002-dual-database-strategy.md](./002-dual-database-strategy.md) - PostgreSQL primary with SQLite fallback for flexible deployment
+- [003-synchronous-projections.md](./003-synchronous-projections.md) - Synchronous projections for MVP simplicity (with migration path)
+- [004-single-binary-deployment.md](./004-single-binary-deployment.md) - Embedded frontend via go:embed for simple self-hosting
 
 ## Feature-Specific Decisions
 
