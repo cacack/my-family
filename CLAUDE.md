@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Self-hosted genealogy software written in Go.
+Self-hosted genealogy software written in Go. A premier self-hosted genealogy platform combining research rigor (GPS-compliant) with engaging storytelling, powered by a git-inspired workflow.
+
+## Strategic Context
+
+- [Project Ethos](./specs/ETHOS.md) - Vision, principles, success factors
+- [Feature Backlog](./specs/BACKLOG.md) - Prioritized feature list
+- [Conventions](./specs/CONVENTIONS.md) - Code patterns and standards
 
 ## Build Commands
 

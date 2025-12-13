@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # Build stage: Backend
-FROM golang:1.22-alpine AS backend-builder
+FROM golang:1.25-alpine AS backend-builder
 
 # Install build dependencies for CGO (required for SQLite)
 RUN apk add --no-cache gcc musl-dev
@@ -18,10 +18,15 @@ WORKDIR /app
 
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
-RUN go mod download
+
+# Remove local replace directive for Docker build (uses published version)
+RUN sed -i '/^replace.*=> \//d' go.mod && go mod download
 
 # Copy source code
 COPY . .
+
+# Remove local replace directive from copied source
+RUN sed -i '/^replace.*=> \//d' go.mod
 
 # Copy built frontend into web/build for embedding
 COPY --from=frontend-builder /app/web/build ./web/build

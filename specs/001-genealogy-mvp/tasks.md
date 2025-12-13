@@ -373,7 +373,7 @@ This is a Go web application with embedded Svelte frontend:
 - [x] T115 [P] Implement PostgreSQL EventStore in internal/repository/postgres/eventstore.go
 - [x] T116 [P] Implement PostgreSQL read models with tsvector in internal/repository/postgres/readmodel.go
 - [x] T117 Add pg_trgm fuzzy search for PostgreSQL in internal/query/person_queries.go (implemented in readmodel.go)
-- [ ] T118 Write PostgreSQL integration tests with testcontainers in internal/repository/postgres/eventstore_test.go
+- [x] T118 Write PostgreSQL integration tests with testcontainers in internal/repository/postgres/eventstore_test.go
 - [x] T119 Add database auto-detection/selection in internal/config/config.go (already implemented)
 
 **Checkpoint**: Same API works with both SQLite and PostgreSQL. Tests pass on both.
@@ -391,8 +391,8 @@ This is a Go web application with embedded Svelte frontend:
 - [x] T120 [P] Create Dockerfile with multi-stage build per quickstart.md#Docker-Deployment
 - [x] T121 [P] Create docker-compose.yml with app and postgres services
 - [x] T122 Update README.md with setup instructions
-- [ ] T123 Run full E2E validation per plan.md verification criteria
-- [ ] T124 Performance test: import 5K GEDCOM, search 10K tree, verify timing meets SC criteria
+- [x] T123 Run full E2E validation per plan.md verification criteria
+- [x] T124 Performance test: import 5K GEDCOM, search 10K tree, verify timing meets SC criteria
 
 **Checkpoint**: `docker compose up` runs full stack. All success criteria validated.
 
