@@ -30,11 +30,11 @@ func TestIntegration_ImportExportRoundTrip(t *testing.T) {
 			checkNames:  []string{"John", "Doe"},
 		},
 		{
-			name:        "555SAMPLE",
-			path:        "../../testdata/gedcom-5.5/555SAMPLE.GED",
-			minPersons:  3,
-			minFamilies: 2,
-			checkNames:  []string{"Joe", "Williams", "Robert", "Mary"},
+			name:        "comprehensive",
+			path:        "../../testdata/gedcom-5.5/comprehensive.ged",
+			minPersons:  13,
+			minFamilies: 4,
+			checkNames:  []string{"John", "Smith", "Mary", "Johnson", "Robert", "Emily", "Adopted"},
 		},
 	}
 

@@ -1,0 +1,169 @@
+0 HEAD
+1 SOUR TestSystem
+2 NAME My Family Test Suite
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Smith/
+2 GIVN John
+2 SURN Smith
+1 SEX M
+1 BIRT
+2 DATE 15 MAR 1920
+2 PLAC Boston, Massachusetts, USA
+1 DEAT
+2 DATE 10 JUN 1995
+2 PLAC Miami, Florida, USA
+1 FAMS @F1@
+0 @I2@ INDI
+1 NAME Mary /Johnson/
+2 GIVN Mary
+2 SURN Johnson
+1 SEX F
+1 BIRT
+2 DATE ABT 1922
+2 PLAC New York, New York, USA
+1 DEAT
+2 DATE BEF 2000
+1 FAMS @F1@
+0 @I3@ INDI
+1 NAME Robert /Smith/
+2 GIVN Robert
+2 SURN Smith
+1 SEX M
+1 BIRT
+2 DATE 5 JUL 1945
+2 PLAC Chicago, Illinois, USA
+1 FAMC @F1@
+1 FAMS @F2@
+0 @I4@ INDI
+1 NAME Susan /Williams/
+2 GIVN Susan
+2 SURN Williams
+1 SEX F
+1 BIRT
+2 DATE 12 NOV 1948
+2 PLAC Los Angeles, California, USA
+1 FAMS @F2@
+0 @I5@ INDI
+1 NAME Elizabeth /Smith/
+2 GIVN Elizabeth
+2 SURN Smith
+1 SEX F
+1 BIRT
+2 DATE 20 FEB 1950
+2 PLAC Chicago, Illinois, USA
+1 FAMC @F1@
+0 @I6@ INDI
+1 NAME Michael /Smith/
+2 GIVN Michael
+2 SURN Smith
+1 SEX M
+1 BIRT
+2 DATE 8 SEP 1970
+2 PLAC Denver, Colorado, USA
+1 FAMC @F2@
+1 FAMS @F3@
+0 @I7@ INDI
+1 NAME Jennifer /Brown/
+2 GIVN Jennifer
+2 SURN Brown
+1 SEX F
+1 BIRT
+2 DATE 25 DEC 1972
+2 PLAC Seattle, Washington, USA
+1 FAMS @F3@
+0 @I8@ INDI
+1 NAME Emily /Smith/
+2 GIVN Emily
+2 SURN Smith
+1 SEX F
+1 BIRT
+2 DATE 3 APR 1998
+2 PLAC Portland, Oregon, USA
+1 FAMC @F3@
+0 @I9@ INDI
+1 NAME David /Smith/
+2 GIVN David
+2 SURN Smith
+1 SEX M
+1 BIRT
+2 DATE 17 AUG 2001
+2 PLAC Portland, Oregon, USA
+1 FAMC @F3@
+0 @I10@ INDI
+1 NAME Sarah /Smith/
+2 GIVN Sarah
+2 SURN Smith
+1 SEX F
+1 BIRT
+2 DATE BET 1952 AND 1954
+2 PLAC Chicago, Illinois, USA
+1 FAMC @F1@
+0 @I11@ INDI
+1 NAME William /Smith/
+2 GIVN William
+2 NICK Bill
+2 SURN Smith
+1 SEX M
+1 BIRT
+2 DATE FROM 1890 TO 1892
+2 PLAC Unknown
+1 DEAT
+2 DATE CAL 1960
+1 FAMS @F4@
+0 @I12@ INDI
+1 NAME Anna /Mueller/
+2 GIVN Anna
+2 SURN Mueller
+1 SEX F
+1 BIRT
+2 DATE EST 1895
+2 PLAC Hamburg, Germany
+1 FAMS @F4@
+0 @I13@ INDI
+1 NAME Adopted /Child/
+2 GIVN Adopted
+2 SURN Child
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1975
+1 ADOP
+2 DATE 15 MAR 1976
+2 FAMC @F2@
+3 ADOP BOTH
+1 FAMC @F2@
+2 PEDI adopted
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 10 JUN 1942
+2 PLAC City Hall, Boston, Massachusetts, USA
+1 CHIL @I3@
+1 CHIL @I5@
+1 CHIL @I10@
+0 @F2@ FAM
+1 HUSB @I3@
+1 WIFE @I4@
+1 MARR
+2 DATE 22 AUG 1968
+2 PLAC First Baptist Church, Chicago, Illinois, USA
+1 CHIL @I6@
+1 CHIL @I13@
+0 @F3@ FAM
+1 HUSB @I6@
+1 WIFE @I7@
+1 MARR
+2 DATE 14 FEB 1995
+2 PLAC Las Vegas, Nevada, USA
+1 CHIL @I8@
+1 CHIL @I9@
+0 @F4@ FAM
+1 HUSB @I11@
+1 WIFE @I12@
+1 MARR
+2 DATE ABT 1918
+1 CHIL @I1@
+0 TRLR

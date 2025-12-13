@@ -14,8 +14,13 @@ binary: frontend
 frontend:
 	cd web && npm run build
 
-# Run all tests
+# Run all tests (Go + frontend)
 test:
+	go test ./...
+	cd web && npm test -- --run
+
+# Run only Go tests
+test-go:
 	go test ./...
 
 # Run tests with coverage
@@ -57,5 +62,10 @@ deps:
 lint:
 	golangci-lint run ./...
 
-# All checks
-check: fmt vet lint test
+# All checks (CI validation)
+check: fmt vet test
+	cd web && npm run check
+
+# Full CI check including lint (requires golangci-lint)
+check-full: fmt vet lint test
+	cd web && npm run check

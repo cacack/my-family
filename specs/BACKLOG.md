@@ -30,6 +30,16 @@ See [ETHOS.md](./ETHOS.md) for the guiding philosophy and strategic vision.
 - [ ] API-first architecture (REST/GraphQL)
 - [ ] Data integrity guarantees (ACID, referential integrity)
 
+### Testing & Quality
+- [ ] Playwright E2E tests (full browser testing of critical paths)
+- [ ] OpenAPI contract tests (validate API matches spec)
+- [ ] Property-based testing / fuzzing for GEDCOM parser
+- [ ] Coverage gates in CI (reject PRs that decrease coverage)
+- [ ] Dependabot for automated dependency updates
+- [ ] Improve command package coverage (currently 52%)
+- [ ] Test GEDCOM edge cases (divorced/remarried, multiple marriages, unknown gender)
+- [ ] Concurrent modification / optimistic locking tests
+
 ### User Experience Foundation
 - [ ] Onboarding wizard (guided first-time setup)
 - [ ] Demo/sandbox mode (try without data commitment)

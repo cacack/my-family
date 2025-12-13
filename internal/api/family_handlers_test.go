@@ -177,6 +177,98 @@ func TestGetFamily(t *testing.T) {
 	}
 }
 
+func TestGetFamily_WithChildren_ResponseFormat(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	// Create parents and children
+	parent1 := createTestPerson(t, server, "John", "Doe")
+	parent2 := createTestPerson(t, server, "Jane", "Doe")
+	child1 := createTestPerson(t, server, "Alice", "Doe")
+	child2 := createTestPerson(t, server, "Bob", "Doe")
+
+	// Create family
+	body := map[string]interface{}{
+		"partner1_id":       parent1["id"],
+		"partner2_id":       parent2["id"],
+		"relationship_type": "marriage",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	var family map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &family)
+	familyID := family["id"].(string)
+
+	// Add children
+	for _, child := range []map[string]interface{}{child1, child2} {
+		childBody := map[string]interface{}{
+			"child_id":          child["id"],
+			"relationship_type": "biological",
+		}
+		jsonBody, _ = json.Marshal(childBody)
+
+		req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+familyID+"/children", bytes.NewReader(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec = httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("Failed to add child: %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	// Get family with children
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID, nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &result)
+
+	// Verify children array exists and has correct structure
+	children, ok := result["children"].([]interface{})
+	if !ok {
+		t.Fatal("Expected 'children' array in response")
+	}
+	if len(children) != 2 {
+		t.Errorf("Expected 2 children, got %d", len(children))
+	}
+
+	// Verify each child has required fields: id, name, relationship_type
+	for i, c := range children {
+		child := c.(map[string]interface{})
+
+		if _, ok := child["id"]; !ok {
+			t.Errorf("Child %d missing 'id' field", i)
+		}
+		if _, ok := child["name"]; !ok {
+			t.Errorf("Child %d missing 'name' field", i)
+		}
+		if _, ok := child["relationship_type"]; !ok {
+			t.Errorf("Child %d missing 'relationship_type' field", i)
+		}
+
+		// Verify name is formatted correctly (not empty)
+		name := child["name"].(string)
+		if name == "" {
+			t.Errorf("Child %d has empty name", i)
+		}
+	}
+
+	// Verify child_count matches
+	if result["child_count"].(float64) != 2 {
+		t.Errorf("Expected child_count 2, got %v", result["child_count"])
+	}
+}
+
 func TestGetFamily_NotFound(t *testing.T) {
 	server := setupFamilyTestServer(t)
 

@@ -1,0 +1,346 @@
+<script lang="ts">
+	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
+	import { api, type FamilyDetail, formatGenDate, formatPersonName } from '$lib/api/client';
+
+	let family: FamilyDetail | null = $state(null);
+	let loading = $state(true);
+	let error: string | null = $state(null);
+
+	async function loadFamily(id: string) {
+		loading = true;
+		error = null;
+		try {
+			family = await api.getFamily(id);
+		} catch (e) {
+			error = (e as { message?: string }).message || 'Failed to load family';
+			family = null;
+		} finally {
+			loading = false;
+		}
+	}
+
+	async function deleteFamily() {
+		if (!family) return;
+		if (!confirm('Delete this family? This cannot be undone.')) return;
+
+		try {
+			await api.deleteFamily(family.id);
+			goto('/families');
+		} catch (e) {
+			error = (e as { message?: string }).message || 'Failed to delete';
+		}
+	}
+
+	function getPartnerDisplay(): string {
+		if (!family) return '';
+		const p1 = family.partner1 ? formatPersonName(family.partner1) : family.partner1_name || 'Unknown';
+		const p2 = family.partner2 ? formatPersonName(family.partner2) : family.partner2_name;
+		return p2 ? `${p1} & ${p2}` : p1;
+	}
+
+	$effect(() => {
+		const id = $page.params.id;
+		if (id) {
+			loadFamily(id);
+		}
+	});
+</script>
+
+<svelte:head>
+	<title>{family ? getPartnerDisplay() : 'Family'} | My Family</title>
+</svelte:head>
+
+<div class="family-page">
+	<header class="page-header">
+		<a href="/families" class="back-link">&larr; Families</a>
+		{#if family}
+			<div class="actions">
+				<button class="btn btn-danger" onclick={deleteFamily}>Delete</button>
+			</div>
+		{/if}
+	</header>
+
+	{#if loading}
+		<div class="loading">Loading...</div>
+	{:else if error}
+		<div class="error">{error}</div>
+	{:else if family}
+		<div class="family-detail">
+			<div class="family-header">
+				<h1>{getPartnerDisplay()}</h1>
+				{#if family.relationship_type}
+					<span class="relationship-badge">{family.relationship_type}</span>
+				{/if}
+			</div>
+
+			<div class="partners-section">
+				<h2>Partners</h2>
+				<div class="partners-grid">
+					{#if family.partner1}
+						<a href="/persons/{family.partner1.id}" class="partner-card">
+							<div class="partner-name">{formatPersonName(family.partner1)}</div>
+						</a>
+					{:else if family.partner1_name}
+						<div class="partner-card">
+							<div class="partner-name">{family.partner1_name}</div>
+						</div>
+					{/if}
+
+					{#if family.partner2}
+						<a href="/persons/{family.partner2.id}" class="partner-card">
+							<div class="partner-name">{formatPersonName(family.partner2)}</div>
+						</a>
+					{:else if family.partner2_name}
+						<div class="partner-card">
+							<div class="partner-name">{family.partner2_name}</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+
+			{#if family.marriage_date || family.marriage_place}
+				<div class="info-section">
+					<h2>Marriage</h2>
+					<dl>
+						{#if family.marriage_date}
+							<dt>Date</dt>
+							<dd>{formatGenDate(family.marriage_date)}</dd>
+						{/if}
+						{#if family.marriage_place}
+							<dt>Place</dt>
+							<dd>{family.marriage_place}</dd>
+						{/if}
+					</dl>
+				</div>
+			{/if}
+
+			{#if family.children && family.children.length > 0}
+				<div class="info-section">
+					<h2>Children ({family.children.length})</h2>
+					<ul class="children-list">
+						{#each family.children as child}
+							<li>
+								<a href="/persons/{child.id}">
+									{child.name}
+								</a>
+								{#if child.relationship_type && child.relationship_type !== 'biological'}
+									<span class="child-type">({child.relationship_type})</span>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{:else}
+				<div class="info-section">
+					<h2>Children</h2>
+					<p class="empty-message">No children recorded</p>
+				</div>
+			{/if}
+		</div>
+	{/if}
+</div>
+
+<style>
+	.family-page {
+		max-width: 800px;
+		margin: 0 auto;
+		padding: 1.5rem;
+	}
+
+	.page-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+	}
+
+	.back-link {
+		color: #64748b;
+		text-decoration: none;
+		font-size: 0.875rem;
+	}
+
+	.back-link:hover {
+		color: #3b82f6;
+	}
+
+	.actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.btn {
+		padding: 0.5rem 1rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 6px;
+		background: white;
+		font-size: 0.875rem;
+		cursor: pointer;
+		text-decoration: none;
+		color: #475569;
+	}
+
+	.btn:hover {
+		background: #f1f5f9;
+	}
+
+	.btn-danger {
+		color: #dc2626;
+		border-color: #fecaca;
+	}
+
+	.btn-danger:hover {
+		background: #fef2f2;
+	}
+
+	.loading,
+	.error {
+		text-align: center;
+		padding: 3rem;
+		color: #64748b;
+	}
+
+	.error {
+		color: #dc2626;
+	}
+
+	.family-detail {
+		background: white;
+		border-radius: 12px;
+		border: 1px solid #e2e8f0;
+		padding: 1.5rem;
+	}
+
+	.family-header {
+		margin-bottom: 1.5rem;
+		padding-bottom: 1.5rem;
+		border-bottom: 1px solid #e2e8f0;
+	}
+
+	.family-header h1 {
+		margin: 0 0 0.5rem;
+		font-size: 1.5rem;
+		color: #1e293b;
+	}
+
+	.relationship-badge {
+		display: inline-block;
+		padding: 0.25rem 0.75rem;
+		background: #f1f5f9;
+		border-radius: 4px;
+		font-size: 0.875rem;
+		color: #64748b;
+		text-transform: capitalize;
+	}
+
+	.partners-section {
+		margin-bottom: 1.5rem;
+	}
+
+	.partners-section h2 {
+		margin: 0 0 0.75rem;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.partners-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+
+	.partner-card {
+		display: block;
+		padding: 1rem;
+		background: #f8fafc;
+		border-radius: 8px;
+		text-decoration: none;
+		border: 1px solid #e2e8f0;
+		transition: border-color 0.2s;
+	}
+
+	a.partner-card:hover {
+		border-color: #3b82f6;
+	}
+
+	.partner-name {
+		font-weight: 500;
+		color: #1e293b;
+	}
+
+	.info-section {
+		margin-bottom: 1.5rem;
+	}
+
+	.info-section:last-child {
+		margin-bottom: 0;
+	}
+
+	.info-section h2 {
+		margin: 0 0 0.75rem;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.info-section dl {
+		margin: 0;
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 0.25rem 1rem;
+	}
+
+	.info-section dt {
+		color: #94a3b8;
+		font-size: 0.8125rem;
+	}
+
+	.info-section dd {
+		margin: 0;
+		color: #1e293b;
+		font-size: 0.875rem;
+	}
+
+	.children-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.children-list li {
+		padding: 0.5rem 0;
+		border-bottom: 1px solid #f1f5f9;
+	}
+
+	.children-list li:last-child {
+		border-bottom: none;
+	}
+
+	.children-list a {
+		color: #1e293b;
+		text-decoration: none;
+	}
+
+	.children-list a:hover {
+		color: #3b82f6;
+	}
+
+	.child-type {
+		color: #94a3b8;
+		font-size: 0.75rem;
+		margin-left: 0.5rem;
+	}
+
+	.empty-message {
+		margin: 0;
+		color: #94a3b8;
+		font-size: 0.875rem;
+		font-style: italic;
+	}
+</style>
