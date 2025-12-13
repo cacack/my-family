@@ -92,6 +92,10 @@ go fmt ./...
 go vet ./...
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the feature development workflow and code standards.
+
 ## License
 
 MIT
