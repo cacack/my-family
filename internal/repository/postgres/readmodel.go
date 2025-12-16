@@ -152,6 +152,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		orderDir = "DESC"
 	}
 
+	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place,
