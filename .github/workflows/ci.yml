@@ -128,6 +128,9 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 
+      - name: Install Go dependencies
+        run: go mod download
+
       - name: Install frontend dependencies
         run: cd web && npm ci
 
