@@ -1,5 +1,11 @@
 # My Family
 
+[![CI](https://github.com/cacack/my-family/actions/workflows/ci.yml/badge.svg)](https://github.com/cacack/my-family/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/cacack/my-family/graph/badge.svg)](https://codecov.io/gh/cacack/my-family)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cacack/my-family)](https://goreportcard.com/report/github.com/cacack/my-family)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/cacack/my-family)](https://github.com/cacack/my-family)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
+
 Self-hosted genealogy software written in Go with an embedded Svelte frontend.
 
 ## Features
