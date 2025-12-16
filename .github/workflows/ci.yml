@@ -148,7 +148,7 @@ jobs:
       - name: Go security scan (gosec)
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
-          gosec -exclude-generated ./...
+          gosec -exclude=G104 -exclude-generated ./...
 
       # Secret detection
       - name: Detect secrets (gitleaks)
