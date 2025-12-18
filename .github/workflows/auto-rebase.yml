@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Rebase open PRs
-        uses: peter-evans/rebase@v3
+        uses: peter-evans/rebase@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           exclude: dependabot/**
