@@ -2,11 +2,13 @@ import '@testing-library/svelte/vitest';
 import { vi } from 'vitest';
 
 // Mock ResizeObserver for D3/chart tests
-(globalThis as Record<string, unknown>).ResizeObserver = vi.fn().mockImplementation(() => ({
-	observe: vi.fn(),
-	unobserve: vi.fn(),
-	disconnect: vi.fn()
-}));
+// Using a class-based mock to avoid flaky "is not a constructor" errors
+class MockResizeObserver {
+	observe = vi.fn();
+	unobserve = vi.fn();
+	disconnect = vi.fn();
+}
+globalThis.ResizeObserver = MockResizeObserver;
 
 // Mock SVG getBBox for D3 tests
 if (typeof SVGElement !== 'undefined') {
