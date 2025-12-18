@@ -5,15 +5,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    rebase-strategy: "auto"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    rebase-strategy: "auto"
 
   # npm (Svelte frontend)
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
       interval: "weekly"
+    rebase-strategy: "auto"
