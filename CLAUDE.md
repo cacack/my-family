@@ -9,13 +9,13 @@ Self-hosted genealogy software written in Go. A premier self-hosted genealogy pl
 ## Strategic Context
 
 - [Project Ethos](./specs/ETHOS.md) - Vision, principles, success factors
-- [Feature Backlog](./specs/BACKLOG.md) - Prioritized feature list
+- [GitHub Issues](https://github.com/cacack/my-family/issues) - Planned features and work
 - [Conventions](./specs/CONVENTIONS.md) - Code patterns and standards
 - [Contributing Guide](./CONTRIBUTING.md) - Feature development workflow
 
 ## Feature Implementation Workflow
 
-When implementing a new feature from the backlog:
+When implementing a new feature from GitHub Issues:
 
 1. **Branch**: `git checkout -b NNN-feature-name`
 2. **Template**: `cp -r specs/TEMPLATE-feature/* specs/NNN-feature-name/`

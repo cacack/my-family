@@ -16,7 +16,7 @@ Follow the patterns documented in [specs/CONVENTIONS.md](./specs/CONVENTIONS.md)
 
 ## Feature Development Workflow
 
-When implementing a backlog item from [BACKLOG.md](./specs/BACKLOG.md):
+When implementing a feature from [GitHub Issues](https://github.com/cacack/my-family/issues):
 
 ### 1. Create Feature Branch
 

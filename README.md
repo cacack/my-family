@@ -10,12 +10,18 @@ Self-hosted genealogy software written in Go with an embedded Svelte frontend.
 
 ## Features
 
-- GEDCOM 5.5 import/export with full round-trip fidelity
-- Person and family management via REST API
-- Interactive pedigree chart visualization
-- Full-text search with fuzzy matching
-- Single binary deployment with embedded web UI
-- Supports both SQLite (default) and PostgreSQL
+A genealogy platform designed for research rigor and data ownership.
+
+- **GEDCOM 5.5 import/export** - Full round-trip fidelity with your existing data
+- **Flexible date handling** - Supports exact, approximate, ranges, and "before/after"
+- **Family relationships** - Biological, adopted, step, and foster qualifiers
+- **Interactive pedigree chart** - D3.js visualization with pan/zoom navigation
+- **Full-text search** - Fast fuzzy matching across your tree
+- **API-first design** - Complete REST API with OpenAPI documentation
+- **Event sourcing** - Full audit trail of all changes
+- **Easy deployment** - Single binary or Docker, SQLite or PostgreSQL
+
+See [FEATURES.md](./FEATURES.md) for the complete list.
 
 ## Quick Start
 
