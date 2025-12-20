@@ -86,7 +86,7 @@ Environment variables:
 - `POST /api/v1/gedcom/import` - Import GEDCOM file
 - `GET /api/v1/gedcom/export` - Export as GEDCOM
 
-API documentation: http://localhost:8080/api/docs
+API documentation: http://localhost:8080/api/v1/docs
 
 ## Development
 
@@ -110,4 +110,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the feature development workflow an
 
 ## License
 
-MIT
+AGPL-3.0
