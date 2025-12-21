@@ -14,6 +14,13 @@ import (
 	"github.com/cacack/my-family/internal/web"
 )
 
+// Build-time variables injected by goreleaser.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -24,7 +31,7 @@ func main() {
 	case "serve":
 		runServer()
 	case "version":
-		fmt.Println("my-family v0.1.0")
+		fmt.Printf("my-family %s (commit: %s, built: %s)\n", version, commit, date)
 	case "help", "-h", "--help":
 		printUsage()
 	default:
