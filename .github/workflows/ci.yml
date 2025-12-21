@@ -7,6 +7,31 @@ on:
     branches: [main]
 
 jobs:
+  # PR title validation - must NOT use conventional commit format
+  pr-title:
+    name: PR Title Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check PR title is not conventional commit format
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+
+          # Exempt release-please PRs
+          if echo "$TITLE" | grep -qE "^chore\(main\): release [0-9]"; then
+            echo "✅ Release-please PR exempt"
+            exit 0
+          fi
+
+          PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?:"
+          if echo "$TITLE" | grep -qE "$PATTERN"; then
+            echo "::error::PR title should NOT use conventional commit format."
+            echo "::error::Use a descriptive title instead (e.g., 'Add date support' not 'feat: add date support')"
+            echo "::error::Conventional commit format is for commit messages only."
+            exit 1
+          fi
+          echo "✅ PR title format is valid"
+
   # Go backend tests and checks
   backend:
     runs-on: ubuntu-latest
@@ -78,6 +103,13 @@ jobs:
         with:
           files: coverage.out
           fail_ci_if_error: false
+
+      - name: Check per-package coverage thresholds
+        uses: vladopajic/go-test-coverage@v2
+        with:
+          profile: coverage.out
+          threshold-package: 85
+          threshold-total: 85
 
       - name: Build
         run: go build ./...
@@ -204,3 +236,22 @@ jobs:
         run: |
           ./myfamily --help || true
           echo "Binary built successfully"
+
+  # CI gate job for simplified branch protection
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, security, integration]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "❌ Some jobs failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "❌ Some jobs were cancelled"
+            exit 1
+          fi
+          echo "✅ All CI jobs passed"

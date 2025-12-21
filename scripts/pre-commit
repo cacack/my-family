@@ -1,0 +1,108 @@
+#!/bin/bash
+# Pre-commit hook for my-family
+#
+# Installation:
+#   ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+#
+# Or manually:
+#   cp scripts/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# --- Tool Discovery: Find golangci-lint in multiple locations ---
+if command -v golangci-lint &> /dev/null; then
+  GOLANGCI_LINT="golangci-lint"
+elif [ -x "$HOME/go/bin/golangci-lint" ]; then
+  GOLANGCI_LINT="$HOME/go/bin/golangci-lint"
+elif [ -x "$(go env GOPATH)/bin/golangci-lint" ]; then
+  GOLANGCI_LINT="$(go env GOPATH)/bin/golangci-lint"
+else
+  echo "Error: golangci-lint not found in PATH, ~/go/bin, or GOPATH/bin"
+  echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
+  exit 1
+fi
+
+# --- Format Check ---
+echo "→ Checking code formatting..."
+UNFORMATTED=$(gofmt -l . | grep -v '^vendor/' || true)
+if [ -n "$UNFORMATTED" ]; then
+  echo "  ✗ The following files need formatting:"
+  echo "$UNFORMATTED" | sed 's/^/    /'
+  echo "  Run: go fmt ./..."
+  exit 1
+fi
+echo "  ✓ Code formatting OK"
+
+# --- Linting ---
+echo "→ Running golangci-lint..."
+if ! "$GOLANGCI_LINT" run --timeout=5m; then
+  echo "  ✗ Linting failed"
+  exit 1
+fi
+echo "  ✓ Linting passed"
+
+# --- Vet ---
+echo "→ Running go vet..."
+if ! go vet ./...; then
+  echo "  ✗ go vet failed"
+  exit 1
+fi
+echo "  ✓ go vet passed"
+
+# --- Tests ---
+echo "→ Running tests..."
+if ! go test ./...; then
+  echo "  ✗ Tests failed"
+  exit 1
+fi
+echo "  ✓ Tests passed"
+
+# --- Per-Package Coverage Enforcement ---
+echo "→ Checking per-package test coverage (minimum 85%)..."
+FAILED=0
+
+# Get list of packages dynamically (excluding cmd)
+PACKAGES=$(go list ./... | grep -v '/cmd/' | sed 's|github.com/cacack/my-family/||')
+
+for pkg in $PACKAGES; do
+  # Run coverage test for this package
+  COV=$(go test -cover "./$pkg" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+%' | head -1)
+
+  if [ -z "$COV" ]; then
+    echo "  ⚠ ./$pkg: No coverage data (no tests?)"
+    continue
+  fi
+
+  # Extract percentage number
+  PCT=$(echo "$COV" | sed 's/%//')
+
+  # Check if below threshold (using bc for float comparison)
+  if command -v bc &> /dev/null; then
+    if (( $(echo "$PCT < 85.0" | bc -l) )); then
+      echo "  ✗ ./$pkg: $COV (below 85%)"
+      FAILED=1
+    else
+      echo "  ✓ ./$pkg: $COV"
+    fi
+  else
+    # Fallback to awk if bc not available
+    if awk -v pct="$PCT" 'BEGIN { exit !(pct < 85.0) }'; then
+      echo "  ✗ ./$pkg: $COV (below 85%)"
+      FAILED=1
+    else
+      echo "  ✓ ./$pkg: $COV"
+    fi
+  fi
+done
+
+if [ $FAILED -eq 1 ]; then
+  echo ""
+  echo "Coverage enforcement failed. Please add tests to bring packages above 85%."
+  exit 1
+fi
+
+echo ""
+echo "✓ All pre-commit checks passed"

@@ -6,6 +6,28 @@ Thank you for your interest in contributing to the my-family genealogy platform.
 
 See [README.md](./README.md) for prerequisites and quick start.
 
+### Pre-commit Hook (Recommended)
+
+Install the pre-commit hook to catch issues before committing:
+
+```bash
+ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+```
+
+The hook checks:
+- Code formatting (`go fmt`)
+- Linting (`golangci-lint`)
+- Static analysis (`go vet`)
+- Tests pass
+- Per-package coverage (minimum 85% per package)
+
+**Tool discovery**: The hook automatically finds `golangci-lint` in PATH, `~/go/bin`, or `$(go env GOPATH)/bin`.
+
+Install golangci-lint if needed:
+```bash
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+```
+
 ## Code Standards
 
 Follow the patterns documented in [specs/CONVENTIONS.md](./specs/CONVENTIONS.md):
@@ -13,6 +35,42 @@ Follow the patterns documented in [specs/CONVENTIONS.md](./specs/CONVENTIONS.md)
 - Git: conventional commits, feature branches
 - API: OpenAPI-first design
 - Frontend: Svelte 5 patterns, Tailwind CSS
+
+### Commit Conventions
+
+We use conventional commits to maintain clear project history and automate changelog generation.
+
+#### Commit Types
+
+| Type | Use for | Appears in Changelog? |
+|------|---------|----------------------|
+| `feat` | Library/app capabilities | Yes |
+| `fix` | Bug fixes in library/app | Yes |
+| `perf` | Performance improvements | Yes |
+| `refactor` | Code restructuring | No |
+| `test` | Test changes | No |
+| `docs` | Documentation | No |
+| `ci` | Dev infrastructure, deps, tooling | No |
+| `chore` | Miscellaneous maintenance | No |
+
+**Key rule**: `feat` and `fix` are reserved for user-facing changes, not development tooling.
+
+Examples:
+- `feat(source): add citation confidence levels` ✅ (user-facing feature)
+- `fix(gedcom): handle malformed DATE tags` ✅ (user-facing bug fix)
+- `ci(deps): update golangci-lint to v1.55` ✅ (tooling, won't appear in changelog)
+- `feat(ci): add coverage gate` ❌ (should be `ci(coverage): add threshold check`)
+
+#### Commit Messages vs PR Titles
+
+To avoid duplicate changelog entries, use different formats:
+
+| Where | Format | Example |
+|-------|--------|---------|
+| Commit messages | `type(scope): description` | `feat(parser): add date support` |
+| PR titles | Descriptive (NOT conventional commit) | `Add date support` |
+
+**Why?** Release-please uses merge commits for semi-linear history. Using conventional commit format in both PR titles and commit messages creates duplicate changelog entries.
 
 ## Feature Development Workflow
 
