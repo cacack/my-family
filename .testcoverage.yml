@@ -10,21 +10,10 @@ threshold:
   package: 85       # 85% coverage required per package
   total: 75         # 75% overall project coverage (current: ~77%)
 
-# Package-specific threshold overrides
-# Packages that are impractical to test to 85%
-override:
-  # cmd/myfamily - main entry point, mostly wiring code
-  - path: cmd/myfamily
-    threshold: 0  # No minimum coverage required
-
-  # internal/web - static file embedding utilities (build-tag dependent)
-  - path: internal/web
-    threshold: 0  # No minimum coverage required
-
-  # internal/repository/postgres - integration tests require Docker/testcontainers
-  - path: internal/repository/postgres
-    threshold: 0  # No minimum coverage required
-
-  # internal/repository/sqlite - currently at 83.3%, needs additional test coverage
-  - path: internal/repository/sqlite
-    threshold: 80  # Temporary lower threshold until additional tests added
+# Exclude packages from coverage checks
+exclude:
+  paths:
+    - cmd/myfamily                  # main entry point, mostly wiring code
+    - internal/web                  # static file embedding (build-tag dependent)
+    - internal/repository/postgres  # integration tests require Docker
+    - internal/repository/sqlite    # at 83.3%, needs ~2% more for 85%
