@@ -105,12 +105,9 @@ jobs:
           fail_ci_if_error: false
 
       - name: Check per-package coverage thresholds
-        continue-on-error: true  # Non-blocking until test coverage improved (see issue)
         uses: vladopajic/go-test-coverage@v2
         with:
-          profile: coverage.out
-          threshold-package: 85
-          threshold-total: 85
+          config: .testcoverage.yml
 
       - name: Build
         run: go build ./...

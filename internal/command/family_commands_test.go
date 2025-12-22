@@ -404,3 +404,535 @@ func TestCircularAncestryDetection(t *testing.T) {
 		t.Errorf("Expected ErrCircularAncestry, got %v", err)
 	}
 }
+
+func TestUpdateFamily_NotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	newPlace := "New York"
+	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            uuid.New(),
+		MarriagePlace: &newPlace,
+		Version:       1,
+	})
+
+	if err != command.ErrFamilyNotFound {
+		t.Errorf("Expected ErrFamilyNotFound, got %v", err)
+	}
+}
+
+func TestUpdateFamily_NoChanges(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create family
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+
+	// Update with no changes
+	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:      createResult.ID,
+		Version: createResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateFamily failed: %v", err)
+	}
+
+	// Version should remain the same
+	if updateResult.Version != createResult.Version {
+		t.Errorf("Version = %d, want %d (no changes)", updateResult.Version, createResult.Version)
+	}
+}
+
+func TestUpdateFamily_ClearMarriageDate(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create family with marriage date
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID:    &p1.ID,
+		MarriageDate:  "1 JAN 2000",
+		MarriagePlace: "Boston",
+	})
+
+	// Clear marriage date
+	emptyDate := ""
+	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:           createResult.ID,
+		MarriageDate: &emptyDate,
+		Version:      createResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateFamily failed: %v", err)
+	}
+
+	if updateResult.Version != 2 {
+		t.Errorf("Version = %d, want 2", updateResult.Version)
+	}
+}
+
+func TestUpdateFamily_AllFields(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create persons and family
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	p3, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Jack",
+		Surname:   "Smith",
+	})
+
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+
+	// Update all fields
+	newRelType := "marriage"
+	newMarriageDate := "15 JUN 2000"
+	newMarriagePlace := "Chicago"
+
+	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:               createResult.ID,
+		Partner2ID:       &p3.ID,
+		RelationshipType: &newRelType,
+		MarriageDate:     &newMarriageDate,
+		MarriagePlace:    &newMarriagePlace,
+		Version:          createResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateFamily failed: %v", err)
+	}
+
+	if updateResult.Version != 2 {
+		t.Errorf("Version = %d, want 2", updateResult.Version)
+	}
+}
+
+func TestDeleteFamily_NotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	err := handler.DeleteFamily(ctx, command.DeleteFamilyInput{
+		ID:      uuid.New(),
+		Version: 1,
+	})
+
+	if err != command.ErrFamilyNotFound {
+		t.Errorf("Expected ErrFamilyNotFound, got %v", err)
+	}
+}
+
+func TestCreateFamily_Partner1NotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	nonExistentID := uuid.New()
+	_, err := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &nonExistentID,
+	})
+
+	if err == nil {
+		t.Error("Expected error when partner1 not found")
+	}
+}
+
+func TestCreateFamily_Partner2NotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create one partner
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	nonExistentID := uuid.New()
+	_, err := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+		Partner2ID: &nonExistentID,
+	})
+
+	if err == nil {
+		t.Error("Expected error when partner2 not found")
+	}
+}
+
+func TestCircularAncestryDetection_WithPartner2(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent and child
+	parent1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent1",
+		Surname:   "Doe",
+	})
+	parent2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent2",
+		Surname:   "Doe",
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	// Create parent family and link child
+	pFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent1.ID,
+		Partner2ID: &parent2.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: pFamily.ID,
+		ChildID:  child.ID,
+	})
+
+	// Try to make child a parent of parent2 (circular via Partner2)
+	cFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &child.ID,
+	})
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: cFamily.ID,
+		ChildID:  parent2.ID,
+	})
+
+	if err != command.ErrCircularAncestry {
+		t.Errorf("Expected ErrCircularAncestry for partner2, got %v", err)
+	}
+}
+
+func TestLinkChild_FamilyNotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create child
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	// Try to link to non-existent family
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: uuid.New(),
+		ChildID:  child.ID,
+	})
+
+	if err != command.ErrFamilyNotFound {
+		t.Errorf("Expected ErrFamilyNotFound, got %v", err)
+	}
+}
+
+func TestLinkChild_ChildNotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent and family
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+
+	// Try to link non-existent child
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  uuid.New(),
+	})
+
+	if err != command.ErrPersonNotFound {
+		t.Errorf("Expected ErrPersonNotFound, got %v", err)
+	}
+}
+
+func TestUnlinkChild_FamilyNotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create child
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	// Try to unlink from non-existent family
+	err := handler.UnlinkChild(ctx, command.UnlinkChildInput{
+		FamilyID: uuid.New(),
+		ChildID:  child.ID,
+	})
+
+	if err != command.ErrFamilyNotFound {
+		t.Errorf("Expected ErrFamilyNotFound, got %v", err)
+	}
+}
+
+func TestDeleteFamily_ConcurrencyConflict(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create family
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+
+	// Try to delete with wrong version
+	err := handler.DeleteFamily(ctx, command.DeleteFamilyInput{
+		ID:      family.ID,
+		Version: 999, // Wrong version
+	})
+
+	if err == nil {
+		t.Error("Expected concurrency conflict error")
+	}
+}
+
+func TestUpdateFamily_ConcurrencyConflict(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create family
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+
+	newPlace := "New York"
+	// Try to update with wrong version
+	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            family.ID,
+		MarriagePlace: &newPlace,
+		Version:       999, // Wrong version
+	})
+
+	if err == nil {
+		t.Error("Expected concurrency conflict error")
+	}
+}
+
+func TestLinkChild_WithRelationType(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent, family, and child
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	// Link child with adopted relationship type
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID:     family.ID,
+		ChildID:      child.ID,
+		RelationType: "adopted",
+	})
+
+	if err != nil {
+		t.Fatalf("LinkChild with adopted relation type failed: %v", err)
+	}
+}
+
+func TestIsAncestor_DirectParent(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent and child
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	// Create family and link child
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child.ID,
+	})
+
+	// Try to make parent a child of child (direct circular ancestry)
+	childFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &child.ID,
+	})
+
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: childFamily.ID,
+		ChildID:  parent.ID,
+	})
+
+	if err != command.ErrCircularAncestry {
+		t.Errorf("Expected ErrCircularAncestry, got %v", err)
+	}
+}
+
+func TestUnlinkChild_ChildInDifferentFamily(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create two families
+	parent1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent1",
+		Surname:   "Doe",
+	})
+	parent2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent2",
+		Surname:   "Smith",
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	family1, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent1.ID,
+	})
+	family2, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent2.ID,
+	})
+
+	// Link child to family1
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family1.ID,
+		ChildID:  child.ID,
+	})
+
+	// Try to unlink from family2 (child is not in this family)
+	err := handler.UnlinkChild(ctx, command.UnlinkChildInput{
+		FamilyID: family2.ID,
+		ChildID:  child.ID,
+	})
+
+	if err != command.ErrChildNotInFamily {
+		t.Errorf("Expected ErrChildNotInFamily, got %v", err)
+	}
+}
+
+func TestUnlinkChild_ChildNotLinkedToAny(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent, family, and child
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	// Try to unlink child that was never linked
+	err := handler.UnlinkChild(ctx, command.UnlinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child.ID,
+	})
+
+	if err != command.ErrChildNotInFamily {
+		t.Errorf("Expected ErrChildNotInFamily when child not linked, got %v", err)
+	}
+}
+
+func TestLinkChild_DefaultRelationType(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent, family, and child
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Doe",
+	})
+
+	// Link child without specifying relation type (should default to biological)
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child.ID,
+	})
+
+	if err != nil {
+		t.Fatalf("LinkChild failed: %v", err)
+	}
+
+	// Verify child is linked
+	childFamily, _ := readStore.GetChildFamily(ctx, child.ID)
+	if childFamily == nil {
+		t.Fatal("Child should be linked to family")
+	}
+	if childFamily.ID != family.ID {
+		t.Error("Child linked to wrong family")
+	}
+}

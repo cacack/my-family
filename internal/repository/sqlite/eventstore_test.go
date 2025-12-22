@@ -344,3 +344,76 @@ func TestEventStore_MultipleEventsInBatch(t *testing.T) {
 		}
 	}
 }
+
+func TestEventStore_ReadStream_Empty(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	nonExistentStreamID := uuid.New()
+
+	// Read non-existent stream
+	events, err := store.ReadStream(ctx, nonExistentStreamID)
+	if err != nil {
+		t.Fatalf("read empty stream: %v", err)
+	}
+
+	if len(events) != 0 {
+		t.Errorf("expected 0 events for non-existent stream, got %d", len(events))
+	}
+}
+
+func TestEventStore_ReadAll_Pagination(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create 5 events across different streams
+	for i := 0; i < 5; i++ {
+		streamID := uuid.New()
+		event := domain.PersonCreated{
+			BaseEvent: domain.BaseEvent{
+				ID:        uuid.New(),
+				Timestamp: time.Now(),
+			},
+			PersonID:  streamID,
+			GivenName: "Person",
+			Surname:   "Test",
+		}
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+		if err != nil {
+			t.Fatalf("append event %d: %v", i, err)
+		}
+	}
+
+	// Read first 2 events
+	events, err := store.ReadAll(ctx, 0, 2)
+	if err != nil {
+		t.Fatalf("read all (first page): %v", err)
+	}
+
+	if len(events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(events))
+	}
+
+	// Read next 2 events
+	events, err = store.ReadAll(ctx, 2, 2)
+	if err != nil {
+		t.Fatalf("read all (second page): %v", err)
+	}
+
+	if len(events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(events))
+	}
+
+	// Read beyond available events
+	events, err = store.ReadAll(ctx, 10, 10)
+	if err != nil {
+		t.Fatalf("read all (beyond): %v", err)
+	}
+
+	if len(events) != 0 {
+		t.Errorf("expected 0 events beyond range, got %d", len(events))
+	}
+}

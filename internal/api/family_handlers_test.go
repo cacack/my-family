@@ -544,6 +544,292 @@ func TestRemoveChildFromFamily_NotInFamily(t *testing.T) {
 	}
 }
 
+func TestCreateFamily_InvalidJSON(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader([]byte(`{invalid json`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateFamily_InvalidPartner1UUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	body := map[string]interface{}{
+		"partner1_id": "not-a-uuid",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateFamily_InvalidPartner2UUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	person1 := createTestPerson(t, server, "John", "Doe")
+
+	body := map[string]interface{}{
+		"partner1_id": person1["id"],
+		"partner2_id": "not-a-uuid",
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestGetFamily_InvalidUUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateFamily_InvalidUUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	body := map[string]interface{}{
+		"version": 1,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/families/not-a-uuid", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateFamily_InvalidJSON(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	person1 := createTestPerson(t, server, "John", "Doe")
+	person2 := createTestPerson(t, server, "Jane", "Smith")
+
+	body := map[string]interface{}{
+		"partner1_id": person1["id"],
+		"partner2_id": person2["id"],
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	var created map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &created)
+
+	// Update with invalid JSON
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/families/"+created["id"].(string), bytes.NewReader([]byte(`{invalid`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateFamily_NotFound(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	body := map[string]interface{}{
+		"version": 1,
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/families/00000000-0000-0000-0000-000000000001", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("Expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestDeleteFamily_InvalidUUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/not-a-uuid?version=1", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestDeleteFamily_NotFound(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/00000000-0000-0000-0000-000000000001?version=1", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("Expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestAddChildToFamily_InvalidFamilyUUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	child := createTestPerson(t, server, "Junior", "Doe")
+
+	childBody := map[string]interface{}{
+		"child_id": child["id"],
+	}
+	jsonBody, _ := json.Marshal(childBody)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families/not-a-uuid/children", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestAddChildToFamily_InvalidJSON(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	parent1 := createTestPerson(t, server, "John", "Doe")
+	parent2 := createTestPerson(t, server, "Jane", "Smith")
+
+	body := map[string]interface{}{
+		"partner1_id": parent1["id"],
+		"partner2_id": parent2["id"],
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	var family map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &family)
+
+	// Add child with invalid JSON
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+family["id"].(string)+"/children", bytes.NewReader([]byte(`{invalid`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestAddChildToFamily_InvalidChildUUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	parent1 := createTestPerson(t, server, "John", "Doe")
+	parent2 := createTestPerson(t, server, "Jane", "Smith")
+
+	body := map[string]interface{}{
+		"partner1_id": parent1["id"],
+		"partner2_id": parent2["id"],
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	var family map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &family)
+
+	// Add child with invalid UUID
+	childBody := map[string]interface{}{
+		"child_id": "not-a-uuid",
+	}
+	jsonBody, _ = json.Marshal(childBody)
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+family["id"].(string)+"/children", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestRemoveChildFromFamily_InvalidFamilyUUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	child := createTestPerson(t, server, "Junior", "Doe")
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/not-a-uuid/children/"+child["id"].(string)+"?version=1", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestRemoveChildFromFamily_InvalidChildUUID(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	parent1 := createTestPerson(t, server, "John", "Doe")
+	parent2 := createTestPerson(t, server, "Jane", "Smith")
+
+	body := map[string]interface{}{
+		"partner1_id": parent1["id"],
+		"partner2_id": parent2["id"],
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	var family map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &family)
+
+	// Remove child with invalid UUID
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/families/"+family["id"].(string)+"/children/not-a-uuid?version=1", nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d", rec.Code)
+	}
+}
+
 // Helper function
 func createTestPerson(t *testing.T, server *api.Server, givenName, surname string) map[string]interface{} {
 	t.Helper()
