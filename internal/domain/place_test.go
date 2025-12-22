@@ -37,9 +37,9 @@ func TestNewPlace(t *testing.T) {
 
 func TestPlace_String(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		place Place
-		want string
+		want  string
 	}{
 		{
 			name:  "non-empty place",

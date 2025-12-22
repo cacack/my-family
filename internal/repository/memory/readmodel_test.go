@@ -238,7 +238,7 @@ func TestReadModelStore_ListPersons(t *testing.T) {
 			wantCount:  4,
 			wantTotal:  4,
 			wantFirst:  "Anderson", // Alice Anderson
-			wantSecond: "Brown",     // Bob Brown
+			wantSecond: "Brown",    // Bob Brown
 		},
 		{
 			name: "sort by updated_at desc",
@@ -250,8 +250,8 @@ func TestReadModelStore_ListPersons(t *testing.T) {
 			},
 			wantCount:  4,
 			wantTotal:  4,
-			wantFirst:  "Brown",   // David Brown (most recent)
-			wantSecond: "Clark",   // Charlie Clark
+			wantFirst:  "Brown", // David Brown (most recent)
+			wantSecond: "Clark", // Charlie Clark
 		},
 		{
 			name: "pagination first page",

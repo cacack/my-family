@@ -858,10 +858,10 @@ func TestReadModelStore_SearchPersons_SpecialCharacters(t *testing.T) {
 	// Search with special FTS5 characters that might cause errors
 	// This should trigger FTS5 error and fallback to LIKE
 	testQueries := []string{
-		`Mary-Ann`,     // Hyphen
-		`O'Brien`,      // Apostrophe
-		`"Mary-Ann"`,   // Quotes
-		`(Mary)`,       // Parentheses
+		`Mary-Ann`,   // Hyphen
+		`O'Brien`,    // Apostrophe
+		`"Mary-Ann"`, // Quotes
+		`(Mary)`,     // Parentheses
 	}
 
 	for _, query := range testQueries {
