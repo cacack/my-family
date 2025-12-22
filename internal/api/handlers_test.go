@@ -347,3 +347,207 @@ func TestSwaggerUI(t *testing.T) {
 		t.Error("Expected OpenAPI spec URL in Swagger UI")
 	}
 }
+
+func TestCreatePerson_InvalidJSON(t *testing.T) {
+	server := setupTestServer()
+	body := `{"given_name":"John",invalid json`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetPerson_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/not-a-uuid", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdatePerson_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+	body := `{"given_name":"Jane","version":1}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/persons/not-a-uuid", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdatePerson_InvalidJSON(t *testing.T) {
+	server := setupTestServer()
+
+	// Create a person first
+	body := `{"given_name":"John","surname":"Doe"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(body))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(createRec, createReq)
+
+	var createResp map[string]any
+	json.Unmarshal(createRec.Body.Bytes(), &createResp)
+	personID := createResp["id"].(string)
+
+	// Update with invalid JSON
+	updateBody := `{"given_name":"Jane",invalid`
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/persons/"+personID, strings.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(updateRec, updateReq)
+
+	if updateRec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", updateRec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdatePerson_NotFound(t *testing.T) {
+	server := setupTestServer()
+	body := `{"given_name":"Jane","version":1}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/persons/00000000-0000-0000-0000-000000000001", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestDeletePerson_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/not-a-uuid?version=1", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDeletePerson_NotFound(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/00000000-0000-0000-0000-000000000001?version=1", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestSearchPersons_EmptyQuery(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetPerson_WithFamilies(t *testing.T) {
+	server := setupTestServer()
+
+	// Create three persons
+	person1Body := `{"given_name":"Parent1","surname":"Smith"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(person1Body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var person1 map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &person1)
+
+	person2Body := `{"given_name":"Parent2","surname":"Doe"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(person2Body))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var person2 map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &person2)
+
+	childBody := `{"given_name":"Child","surname":"Smith"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(childBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var child map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &child)
+
+	// Create family with both parents
+	familyBody := `{"partner1_id":"` + person1["id"].(string) + `","partner2_id":"` + person2["id"].(string) + `","relationship_type":"marriage"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/families", strings.NewReader(familyBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var family map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &family)
+
+	// Add child to family
+	addChildBody := `{"child_id":"` + child["id"].(string) + `"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+family["id"].(string)+"/children", strings.NewReader(addChildBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// Get child person - should show family_as_child
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+child["id"].(string), nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var childResp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &childResp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Verify family_as_child is present
+	if childResp["family_as_child"] == nil {
+		t.Error("Expected family_as_child field")
+	}
+
+	// Get parent person - should show families_as_partner
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+person1["id"].(string), nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var parentResp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &parentResp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Verify families_as_partner is present
+	if parentResp["families_as_partner"] == nil {
+		t.Error("Expected families_as_partner field")
+	}
+
+	families := parentResp["families_as_partner"].([]any)
+	if len(families) != 1 {
+		t.Errorf("Expected 1 family, got %d", len(families))
+	}
+}

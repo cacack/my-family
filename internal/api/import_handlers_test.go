@@ -314,3 +314,16 @@ func TestImportGedcom_GedExtension(t *testing.T) {
 		t.Fatalf("Expected status 200 for .GED extension, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestImportGedcom_NoContentType(t *testing.T) {
+	server := setupImportTestServer(t)
+
+	// Request without content-type header
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", bytes.NewReader([]byte{}))
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

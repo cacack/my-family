@@ -233,6 +233,143 @@ func TestGenDate_Before(t *testing.T) {
 	}
 }
 
+func TestGenDate_After(t *testing.T) {
+	date1 := GenDate{Year: intPtr(1850), Month: intPtr(1), Day: intPtr(1)}
+	date2 := GenDate{Year: intPtr(1860), Month: intPtr(1), Day: intPtr(1)}
+
+	if !date2.After(date1) {
+		t.Error("1860 should be after 1850")
+	}
+	if date1.After(date2) {
+		t.Error("1850 should not be after 1860")
+	}
+}
+
+func TestGenDate_Format(t *testing.T) {
+	tests := []struct {
+		name string
+		date GenDate
+		want string
+	}{
+		{
+			name: "exact date with day month year",
+			date: GenDate{Qualifier: DateExact, Year: intPtr(1850), Month: intPtr(1), Day: intPtr(1)},
+			want: "1 JAN 1850",
+		},
+		{
+			name: "about date",
+			date: GenDate{Qualifier: DateAbout, Year: intPtr(1850)},
+			want: "ABT 1850",
+		},
+		{
+			name: "before date",
+			date: GenDate{Qualifier: DateBef, Year: intPtr(1850)},
+			want: "BEF 1850",
+		},
+		{
+			name: "after date",
+			date: GenDate{Qualifier: DateAft, Year: intPtr(1850)},
+			want: "AFT 1850",
+		},
+		{
+			name: "between dates",
+			date: GenDate{Qualifier: DateBet, Year: intPtr(1850), Year2: intPtr(1860)},
+			want: "BET 1850 AND 1860",
+		},
+		{
+			name: "from to dates",
+			date: GenDate{Qualifier: DateFrom, Year: intPtr(1850), Year2: intPtr(1860)},
+			want: "FROM 1850 TO 1860",
+		},
+		{
+			name: "empty date",
+			date: GenDate{},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.date.Format()
+			if got != tt.want {
+				t.Errorf("Format() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGenDate_SortDate(t *testing.T) {
+	date := GenDate{Year: intPtr(1850), Month: intPtr(1), Day: intPtr(1)}
+	sortDate := date.SortDate()
+	expected := date.ToTime()
+
+	if !sortDate.Equal(expected) {
+		t.Errorf("SortDate() = %v, want %v", sortDate, expected)
+	}
+}
+
+func TestDateQualifier_IsValid(t *testing.T) {
+	tests := []struct {
+		name      string
+		qualifier DateQualifier
+		want      bool
+	}{
+		{
+			name:      "exact is valid",
+			qualifier: DateExact,
+			want:      true,
+		},
+		{
+			name:      "about is valid",
+			qualifier: DateAbout,
+			want:      true,
+		},
+		{
+			name:      "calculated is valid",
+			qualifier: DateCalc,
+			want:      true,
+		},
+		{
+			name:      "estimated is valid",
+			qualifier: DateEst,
+			want:      true,
+		},
+		{
+			name:      "before is valid",
+			qualifier: DateBef,
+			want:      true,
+		},
+		{
+			name:      "after is valid",
+			qualifier: DateAft,
+			want:      true,
+		},
+		{
+			name:      "between is valid",
+			qualifier: DateBet,
+			want:      true,
+		},
+		{
+			name:      "from is valid",
+			qualifier: DateFrom,
+			want:      true,
+		},
+		{
+			name:      "invalid qualifier",
+			qualifier: "invalid",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.qualifier.IsValid(); got != tt.want {
+				t.Errorf("DateQualifier(%q).IsValid() = %v, want %v", tt.qualifier, got, tt.want)
+			}
+		})
+	}
+}
+
 // Helper functions
 func intPtr(i int) *int {
 	return &i

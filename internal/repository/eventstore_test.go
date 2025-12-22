@@ -201,3 +201,272 @@ func TestStoredEvent_DecodeEvent(t *testing.T) {
 		t.Errorf("Gender = %s, want male", pc.Gender)
 	}
 }
+
+func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	tests := []struct {
+		name      string
+		event     domain.Event
+		eventType string
+		validate  func(t *testing.T, decoded domain.Event)
+	}{
+		{
+			name:      "PersonCreated",
+			event:     domain.NewPersonCreated(domain.NewPerson("John", "Doe")),
+			eventType: "PersonCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.PersonCreated)
+				if !ok {
+					t.Fatalf("Expected PersonCreated, got %T", decoded)
+				}
+				if e.GivenName != "John" {
+					t.Errorf("GivenName = %s, want John", e.GivenName)
+				}
+			},
+		},
+		{
+			name:      "PersonUpdated",
+			event:     domain.NewPersonUpdated(uuid.New(), map[string]any{"given_name": "Jane"}),
+			eventType: "PersonUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.PersonUpdated)
+				if !ok {
+					t.Fatalf("Expected PersonUpdated, got %T", decoded)
+				}
+				if e.Changes["given_name"] != "Jane" {
+					t.Errorf("Changes[given_name] = %v, want Jane", e.Changes["given_name"])
+				}
+			},
+		},
+		{
+			name:      "PersonDeleted",
+			event:     domain.NewPersonDeleted(uuid.New(), "test reason"),
+			eventType: "PersonDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.PersonDeleted)
+				if !ok {
+					t.Fatalf("Expected PersonDeleted, got %T", decoded)
+				}
+				if e.Reason != "test reason" {
+					t.Errorf("Reason = %s, want test reason", e.Reason)
+				}
+			},
+		},
+		{
+			name:      "FamilyCreated",
+			event:     domain.NewFamilyCreated(domain.NewFamily()),
+			eventType: "FamilyCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				_, ok := decoded.(domain.FamilyCreated)
+				if !ok {
+					t.Fatalf("Expected FamilyCreated, got %T", decoded)
+				}
+			},
+		},
+		{
+			name:      "FamilyUpdated",
+			event:     domain.NewFamilyUpdated(uuid.New(), map[string]any{"marriage_place": "Springfield"}),
+			eventType: "FamilyUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.FamilyUpdated)
+				if !ok {
+					t.Fatalf("Expected FamilyUpdated, got %T", decoded)
+				}
+				if e.Changes["marriage_place"] != "Springfield" {
+					t.Errorf("Changes[marriage_place] = %v, want Springfield", e.Changes["marriage_place"])
+				}
+			},
+		},
+		{
+			name:      "ChildLinkedToFamily",
+			event:     domain.NewChildLinkedToFamily(domain.NewFamilyChild(uuid.New(), uuid.New(), domain.ChildBiological)),
+			eventType: "ChildLinkedToFamily",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.ChildLinkedToFamily)
+				if !ok {
+					t.Fatalf("Expected ChildLinkedToFamily, got %T", decoded)
+				}
+				if e.RelationshipType != domain.ChildBiological {
+					t.Errorf("RelationshipType = %v, want biological", e.RelationshipType)
+				}
+			},
+		},
+		{
+			name:      "ChildUnlinkedFromFamily",
+			event:     domain.NewChildUnlinkedFromFamily(uuid.New(), uuid.New()),
+			eventType: "ChildUnlinkedFromFamily",
+			validate: func(t *testing.T, decoded domain.Event) {
+				_, ok := decoded.(domain.ChildUnlinkedFromFamily)
+				if !ok {
+					t.Fatalf("Expected ChildUnlinkedFromFamily, got %T", decoded)
+				}
+			},
+		},
+		{
+			name:      "FamilyDeleted",
+			event:     domain.NewFamilyDeleted(uuid.New(), "test reason"),
+			eventType: "FamilyDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.FamilyDeleted)
+				if !ok {
+					t.Fatalf("Expected FamilyDeleted, got %T", decoded)
+				}
+				if e.Reason != "test reason" {
+					t.Errorf("Reason = %s, want test reason", e.Reason)
+				}
+			},
+		},
+		{
+			name:      "GedcomImported",
+			event:     domain.NewGedcomImported("test.ged", 100, 10, 5, nil, nil),
+			eventType: "GedcomImported",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.GedcomImported)
+				if !ok {
+					t.Fatalf("Expected GedcomImported, got %T", decoded)
+				}
+				if e.Filename != "test.ged" {
+					t.Errorf("Filename = %s, want test.ged", e.Filename)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			streamID := uuid.New()
+			err := store.Append(ctx, streamID, "Test", []domain.Event{tt.event}, -1)
+			if err != nil {
+				t.Fatalf("Append failed: %v", err)
+			}
+
+			events, err := store.ReadStream(ctx, streamID)
+			if err != nil {
+				t.Fatalf("ReadStream failed: %v", err)
+			}
+
+			if len(events) != 1 {
+				t.Fatalf("Expected 1 event, got %d", len(events))
+			}
+
+			if events[0].EventType != tt.eventType {
+				t.Errorf("EventType = %s, want %s", events[0].EventType, tt.eventType)
+			}
+
+			decoded, err := events[0].DecodeEvent()
+			if err != nil {
+				t.Fatalf("DecodeEvent failed: %v", err)
+			}
+
+			tt.validate(t, decoded)
+		})
+	}
+}
+
+func TestStoredEvent_DecodeEvent_UnknownType(t *testing.T) {
+	// Create a StoredEvent with unknown event type
+	stored := repository.StoredEvent{
+		ID:         uuid.New(),
+		StreamID:   uuid.New(),
+		StreamType: "Test",
+		EventType:  "UnknownEventType",
+		Data:       []byte(`{}`),
+		Version:    1,
+		Position:   1,
+	}
+
+	_, err := stored.DecodeEvent()
+	if err == nil {
+		t.Fatal("Expected error for unknown event type, got nil")
+	}
+	if err.Error() != "unknown event type: UnknownEventType" {
+		t.Errorf("Error message = %s, want 'unknown event type: UnknownEventType'", err.Error())
+	}
+}
+
+func TestStoredEvent_DecodeEvent_InvalidJSON(t *testing.T) {
+	stored := repository.StoredEvent{
+		ID:         uuid.New(),
+		StreamID:   uuid.New(),
+		StreamType: "Person",
+		EventType:  "PersonCreated",
+		Data:       []byte(`{invalid json`),
+		Version:    1,
+		Position:   1,
+	}
+
+	_, err := stored.DecodeEvent()
+	if err == nil {
+		t.Fatal("Expected error for invalid JSON, got nil")
+	}
+}
+
+func TestEncodeEvent(t *testing.T) {
+	streamID := uuid.New()
+	person := domain.NewPerson("John", "Doe")
+	person.Gender = domain.GenderMale
+	event := domain.NewPersonCreated(person)
+
+	stored, err := repository.EncodeEvent(streamID, "Person", event, 1, 1)
+	if err != nil {
+		t.Fatalf("EncodeEvent failed: %v", err)
+	}
+
+	if stored.StreamID != streamID {
+		t.Errorf("StreamID = %v, want %v", stored.StreamID, streamID)
+	}
+	if stored.StreamType != "Person" {
+		t.Errorf("StreamType = %s, want Person", stored.StreamType)
+	}
+	if stored.EventType != "PersonCreated" {
+		t.Errorf("EventType = %s, want PersonCreated", stored.EventType)
+	}
+	if stored.Version != 1 {
+		t.Errorf("Version = %d, want 1", stored.Version)
+	}
+	if stored.Position != 1 {
+		t.Errorf("Position = %d, want 1", stored.Position)
+	}
+	if stored.Timestamp != event.OccurredAt() {
+		t.Errorf("Timestamp = %v, want %v", stored.Timestamp, event.OccurredAt())
+	}
+
+	// Verify data can be decoded
+	decoded, err := stored.DecodeEvent()
+	if err != nil {
+		t.Fatalf("DecodeEvent failed: %v", err)
+	}
+	pc, ok := decoded.(domain.PersonCreated)
+	if !ok {
+		t.Fatalf("Expected PersonCreated, got %T", decoded)
+	}
+	if pc.GivenName != "John" {
+		t.Errorf("GivenName = %s, want John", pc.GivenName)
+	}
+}
+
+func TestErrorTypes(t *testing.T) {
+	// Test that error types are properly defined
+	if repository.ErrStreamNotFound == nil {
+		t.Error("ErrStreamNotFound should not be nil")
+	}
+	if repository.ErrConcurrencyConflict == nil {
+		t.Error("ErrConcurrencyConflict should not be nil")
+	}
+	if repository.ErrEventNotFound == nil {
+		t.Error("ErrEventNotFound should not be nil")
+	}
+
+	// Test error messages
+	if repository.ErrStreamNotFound.Error() != "stream not found" {
+		t.Errorf("ErrStreamNotFound message = %s, want 'stream not found'", repository.ErrStreamNotFound.Error())
+	}
+	if repository.ErrConcurrencyConflict.Error() != "concurrency conflict: expected version mismatch" {
+		t.Errorf("ErrConcurrencyConflict message = %s", repository.ErrConcurrencyConflict.Error())
+	}
+	if repository.ErrEventNotFound.Error() != "event not found" {
+		t.Errorf("ErrEventNotFound message = %s, want 'event not found'", repository.ErrEventNotFound.Error())
+	}
+}

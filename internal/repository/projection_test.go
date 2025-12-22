@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
@@ -254,6 +256,34 @@ func TestProjector_ChildUnlinked(t *testing.T) {
 	}
 }
 
+func TestProjector_Apply(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	person := domain.NewPerson("John", "Doe")
+	event := domain.NewPersonCreated(person)
+
+	// Use Apply instead of Project
+	err := projector.Apply(ctx, event)
+	if err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	// Verify person was created
+	rm, err := readStore.GetPerson(ctx, person.ID)
+	if err != nil {
+		t.Fatalf("GetPerson failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Person not found in read model")
+	}
+	if rm.GivenName != "John" {
+		t.Errorf("GivenName = %s, want John", rm.GivenName)
+	}
+}
+
 func TestProjector_UnknownEventIgnored(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	projector := repository.NewProjector(readStore)
@@ -272,6 +302,355 @@ func TestProjector_UnknownEventIgnored(t *testing.T) {
 	err := projector.Project(ctx, event, 1)
 	if err != nil {
 		t.Fatalf("Project should not error on GedcomImported: %v", err)
+	}
+}
+
+func TestProjector_FamilyUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a family first
+	family := domain.NewFamily()
+	family.RelationshipType = domain.RelationMarriage
+	family.SetMarriageDate("1 JAN 1870")
+	family.MarriagePlace = "New York"
+
+	createEvent := domain.NewFamilyCreated(family)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Test updating various fields
+	tests := []struct {
+		name     string
+		changes  map[string]any
+		validate func(t *testing.T, rm *repository.FamilyReadModel)
+	}{
+		{
+			name: "update relationship type",
+			changes: map[string]any{
+				"relationship_type": "partnership",
+			},
+			validate: func(t *testing.T, rm *repository.FamilyReadModel) {
+				if rm.RelationshipType != domain.RelationPartnership {
+					t.Errorf("RelationshipType = %s, want partnership", rm.RelationshipType)
+				}
+			},
+		},
+		{
+			name: "update marriage date",
+			changes: map[string]any{
+				"marriage_date": "15 JUN 1875",
+			},
+			validate: func(t *testing.T, rm *repository.FamilyReadModel) {
+				if rm.MarriageDateRaw != "15 JUN 1875" {
+					t.Errorf("MarriageDateRaw = %s, want '15 JUN 1875'", rm.MarriageDateRaw)
+				}
+				if rm.MarriageDateSort == nil {
+					t.Error("MarriageDateSort should not be nil")
+				}
+			},
+		},
+		{
+			name: "update marriage place",
+			changes: map[string]any{
+				"marriage_place": "Boston, MA",
+			},
+			validate: func(t *testing.T, rm *repository.FamilyReadModel) {
+				if rm.MarriagePlace != "Boston, MA" {
+					t.Errorf("MarriagePlace = %s, want 'Boston, MA'", rm.MarriagePlace)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateEvent := domain.NewFamilyUpdated(family.ID, tt.changes)
+			err := projector.Project(ctx, updateEvent, 2)
+			if err != nil {
+				t.Fatalf("Project update failed: %v", err)
+			}
+
+			rm, err := readStore.GetFamily(ctx, family.ID)
+			if err != nil {
+				t.Fatalf("GetFamily failed: %v", err)
+			}
+			if rm == nil {
+				t.Fatal("Family not found")
+			}
+
+			tt.validate(t, rm)
+
+			if rm.Version != 2 {
+				t.Errorf("Version = %d, want 2", rm.Version)
+			}
+		})
+	}
+}
+
+func TestProjector_FamilyUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to update a non-existent family (should not error, just skip)
+	updateEvent := domain.NewFamilyUpdated(uuid.New(), map[string]any{"marriage_place": "Test"})
+	err := projector.Project(ctx, updateEvent, 1)
+	if err != nil {
+		t.Fatalf("Project update should not fail for non-existent family: %v", err)
+	}
+}
+
+func TestProjector_FamilyDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create family with children
+	father := domain.NewPerson("John", "Doe")
+	father.Gender = domain.GenderMale
+	mother := domain.NewPerson("Jane", "Doe")
+	mother.Gender = domain.GenderFemale
+	child1 := domain.NewPerson("Jimmy", "Doe")
+	child2 := domain.NewPerson("Jenny", "Doe")
+
+	// Create persons
+	projector.Project(ctx, domain.NewPersonCreated(father), 1)
+	projector.Project(ctx, domain.NewPersonCreated(mother), 1)
+	projector.Project(ctx, domain.NewPersonCreated(child1), 1)
+	projector.Project(ctx, domain.NewPersonCreated(child2), 1)
+
+	// Create family
+	family := domain.NewFamilyWithPartners(&father.ID, &mother.ID)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Link children
+	fc1 := domain.NewFamilyChild(family.ID, child1.ID, domain.ChildBiological)
+	fc2 := domain.NewFamilyChild(family.ID, child2.ID, domain.ChildBiological)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc1), 2)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc2), 3)
+
+	// Verify children are linked
+	children, _ := readStore.GetFamilyChildren(ctx, family.ID)
+	if len(children) != 2 {
+		t.Errorf("Expected 2 children before deletion, got %d", len(children))
+	}
+
+	// Verify pedigree edges exist
+	edge1, _ := readStore.GetPedigreeEdge(ctx, child1.ID)
+	edge2, _ := readStore.GetPedigreeEdge(ctx, child2.ID)
+	if edge1 == nil || edge2 == nil {
+		t.Error("Pedigree edges should exist before deletion")
+	}
+
+	// Delete family
+	deleteEvent := domain.NewFamilyDeleted(family.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 4)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify family is deleted
+	rm, _ := readStore.GetFamily(ctx, family.ID)
+	if rm != nil {
+		t.Error("Family should be deleted")
+	}
+
+	// Verify children are unlinked
+	children, _ = readStore.GetFamilyChildren(ctx, family.ID)
+	if len(children) != 0 {
+		t.Errorf("Expected 0 children after deletion, got %d", len(children))
+	}
+
+	// Verify pedigree edges are removed
+	edge1, _ = readStore.GetPedigreeEdge(ctx, child1.ID)
+	edge2, _ = readStore.GetPedigreeEdge(ctx, child2.ID)
+	if edge1 != nil || edge2 != nil {
+		t.Error("Pedigree edges should be removed after family deletion")
+	}
+}
+
+func TestProjector_PersonUpdated_AllFields(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create person
+	person := domain.NewPerson("John", "Doe")
+	person.Gender = domain.GenderMale
+	createEvent := domain.NewPersonCreated(person)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Test updating all possible fields
+	tests := []struct {
+		name     string
+		changes  map[string]any
+		validate func(t *testing.T, rm *repository.PersonReadModel)
+	}{
+		{
+			name:    "update given_name",
+			changes: map[string]any{"given_name": "Jane"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.GivenName != "Jane" {
+					t.Errorf("GivenName = %s, want Jane", rm.GivenName)
+				}
+				if rm.FullName != "Jane Doe" {
+					t.Errorf("FullName = %s, want Jane Doe", rm.FullName)
+				}
+			},
+		},
+		{
+			name:    "update surname",
+			changes: map[string]any{"surname": "Smith"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.Surname != "Smith" {
+					t.Errorf("Surname = %s, want Smith", rm.Surname)
+				}
+				if rm.FullName != "Jane Smith" {
+					t.Errorf("FullName = %s, want Jane Smith", rm.FullName)
+				}
+			},
+		},
+		{
+			name:    "update gender",
+			changes: map[string]any{"gender": "female"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.Gender != domain.GenderFemale {
+					t.Errorf("Gender = %s, want female", rm.Gender)
+				}
+			},
+		},
+		{
+			name:    "update birth_date",
+			changes: map[string]any{"birth_date": "1 JAN 1850"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.BirthDateRaw != "1 JAN 1850" {
+					t.Errorf("BirthDateRaw = %s, want '1 JAN 1850'", rm.BirthDateRaw)
+				}
+				if rm.BirthDateSort == nil {
+					t.Error("BirthDateSort should not be nil")
+				}
+			},
+		},
+		{
+			name:    "update birth_place",
+			changes: map[string]any{"birth_place": "Springfield, IL"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.BirthPlace != "Springfield, IL" {
+					t.Errorf("BirthPlace = %s, want 'Springfield, IL'", rm.BirthPlace)
+				}
+			},
+		},
+		{
+			name:    "update death_date",
+			changes: map[string]any{"death_date": "15 DEC 1900"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.DeathDateRaw != "15 DEC 1900" {
+					t.Errorf("DeathDateRaw = %s, want '15 DEC 1900'", rm.DeathDateRaw)
+				}
+				if rm.DeathDateSort == nil {
+					t.Error("DeathDateSort should not be nil")
+				}
+			},
+		},
+		{
+			name:    "update death_place",
+			changes: map[string]any{"death_place": "Chicago, IL"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.DeathPlace != "Chicago, IL" {
+					t.Errorf("DeathPlace = %s, want 'Chicago, IL'", rm.DeathPlace)
+				}
+			},
+		},
+		{
+			name:    "update notes",
+			changes: map[string]any{"notes": "Test notes"},
+			validate: func(t *testing.T, rm *repository.PersonReadModel) {
+				if rm.Notes != "Test notes" {
+					t.Errorf("Notes = %s, want 'Test notes'", rm.Notes)
+				}
+			},
+		},
+	}
+
+	version := int64(1)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			version++
+			updateEvent := domain.NewPersonUpdated(person.ID, tt.changes)
+			err := projector.Project(ctx, updateEvent, version)
+			if err != nil {
+				t.Fatalf("Project update failed: %v", err)
+			}
+
+			rm, err := readStore.GetPerson(ctx, person.ID)
+			if err != nil {
+				t.Fatalf("GetPerson failed: %v", err)
+			}
+			if rm == nil {
+				t.Fatal("Person not found")
+			}
+
+			tt.validate(t, rm)
+
+			if rm.Version != version {
+				t.Errorf("Version = %d, want %d", rm.Version, version)
+			}
+		})
+	}
+}
+
+func TestProjector_PersonCreated_WithDates(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Test with birth date but no death date
+	person := domain.NewPerson("John", "Doe")
+	person.SetBirthDate("1 JAN 1850")
+	person.BirthPlace = "New York"
+
+	event := domain.NewPersonCreated(person)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project failed: %v", err)
+	}
+
+	rm, _ := readStore.GetPerson(ctx, person.ID)
+	if rm.BirthDateRaw != "1 JAN 1850" {
+		t.Errorf("BirthDateRaw = %s, want '1 JAN 1850'", rm.BirthDateRaw)
+	}
+	if rm.BirthDateSort == nil {
+		t.Error("BirthDateSort should not be nil for valid date")
+	}
+	if rm.DeathDateRaw != "" {
+		t.Errorf("DeathDateRaw should be empty, got %s", rm.DeathDateRaw)
+	}
+	if rm.DeathDateSort != nil {
+		t.Error("DeathDateSort should be nil when no death date")
+	}
+
+	// Test with death date
+	person2 := domain.NewPerson("Jane", "Doe")
+	person2.SetDeathDate("15 DEC 1900")
+	person2.DeathPlace = "Boston"
+
+	event2 := domain.NewPersonCreated(person2)
+	err = projector.Project(ctx, event2, 1)
+	if err != nil {
+		t.Fatalf("Project failed: %v", err)
+	}
+
+	rm2, _ := readStore.GetPerson(ctx, person2.ID)
+	if rm2.DeathDateRaw != "15 DEC 1900" {
+		t.Errorf("DeathDateRaw = %s, want '15 DEC 1900'", rm2.DeathDateRaw)
+	}
+	if rm2.DeathDateSort == nil {
+		t.Error("DeathDateSort should not be nil for valid date")
 	}
 }
 
