@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/domain"
 )
 
@@ -41,6 +43,18 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectChildUnlinked(ctx, e)
 	case domain.FamilyDeleted:
 		return p.projectFamilyDeleted(ctx, e)
+	case domain.SourceCreated:
+		return p.projectSourceCreated(ctx, e, version)
+	case domain.SourceUpdated:
+		return p.projectSourceUpdated(ctx, e, version)
+	case domain.SourceDeleted:
+		return p.projectSourceDeleted(ctx, e)
+	case domain.CitationCreated:
+		return p.projectCitationCreated(ctx, e, version)
+	case domain.CitationUpdated:
+		return p.projectCitationUpdated(ctx, e, version)
+	case domain.CitationDeleted:
+		return p.projectCitationDeleted(ctx, e)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
@@ -358,4 +372,263 @@ func (p *Projector) projectFamilyDeleted(ctx context.Context, e domain.FamilyDel
 	}
 
 	return p.readStore.DeleteFamily(ctx, e.FamilyID)
+}
+
+func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCreated, version int64) error {
+	var publishDateSort *time.Time
+	var publishDateRaw string
+
+	if e.PublishDate != nil {
+		publishDateRaw = e.PublishDate.Raw
+		t := e.PublishDate.ToTime()
+		if !t.IsZero() {
+			publishDateSort = &t
+		}
+	}
+
+	source := &SourceReadModel{
+		ID:              e.SourceID,
+		SourceType:      e.SourceType,
+		Title:           e.Title,
+		Author:          e.Author,
+		Publisher:       e.Publisher,
+		PublishDateRaw:  publishDateRaw,
+		PublishDateSort: publishDateSort,
+		URL:             e.URL,
+		RepositoryName:  e.RepositoryName,
+		CollectionName:  e.CollectionName,
+		CallNumber:      e.CallNumber,
+		Notes:           e.Notes,
+		GedcomXref:      e.GedcomXref,
+		CitationCount:   0,
+		Version:         version,
+		UpdatedAt:       e.OccurredAt(),
+	}
+
+	return p.readStore.SaveSource(ctx, source)
+}
+
+func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpdated, version int64) error {
+	source, err := p.readStore.GetSource(ctx, e.SourceID)
+	if err != nil {
+		return err
+	}
+	if source == nil {
+		return nil // Source doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		switch key {
+		case "source_type":
+			if v, ok := value.(string); ok {
+				source.SourceType = domain.SourceType(v)
+			}
+		case "title":
+			if v, ok := value.(string); ok {
+				source.Title = v
+			}
+		case "author":
+			if v, ok := value.(string); ok {
+				source.Author = v
+			}
+		case "publisher":
+			if v, ok := value.(string); ok {
+				source.Publisher = v
+			}
+		case "publish_date":
+			if v, ok := value.(string); ok {
+				source.PublishDateRaw = v
+				gd := domain.ParseGenDate(v)
+				t := gd.ToTime()
+				if !t.IsZero() {
+					source.PublishDateSort = &t
+				} else {
+					source.PublishDateSort = nil
+				}
+			}
+		case "url":
+			if v, ok := value.(string); ok {
+				source.URL = v
+			}
+		case "repository_name":
+			if v, ok := value.(string); ok {
+				source.RepositoryName = v
+			}
+		case "collection_name":
+			if v, ok := value.(string); ok {
+				source.CollectionName = v
+			}
+		case "call_number":
+			if v, ok := value.(string); ok {
+				source.CallNumber = v
+			}
+		case "notes":
+			if v, ok := value.(string); ok {
+				source.Notes = v
+			}
+		}
+	}
+
+	source.Version = version
+	source.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveSource(ctx, source)
+}
+
+func (p *Projector) projectSourceDeleted(ctx context.Context, e domain.SourceDeleted) error {
+	return p.readStore.DeleteSource(ctx, e.SourceID)
+}
+
+func (p *Projector) projectCitationCreated(ctx context.Context, e domain.CitationCreated, version int64) error {
+	// Get source title for denormalization
+	var sourceTitle string
+	if source, _ := p.readStore.GetSource(ctx, e.SourceID); source != nil {
+		sourceTitle = source.Title
+	}
+
+	citation := &CitationReadModel{
+		ID:            e.CitationID,
+		SourceID:      e.SourceID,
+		SourceTitle:   sourceTitle,
+		FactType:      e.FactType,
+		FactOwnerID:   e.FactOwnerID,
+		Page:          e.Page,
+		Volume:        e.Volume,
+		SourceQuality: e.SourceQuality,
+		InformantType: e.InformantType,
+		EvidenceType:  e.EvidenceType,
+		QuotedText:    e.QuotedText,
+		Analysis:      e.Analysis,
+		TemplateID:    e.TemplateID,
+		GedcomXref:    e.GedcomXref,
+		Version:       version,
+		CreatedAt:     e.OccurredAt(),
+	}
+
+	if err := p.readStore.SaveCitation(ctx, citation); err != nil {
+		return err
+	}
+
+	// Increment citation count on source
+	source, err := p.readStore.GetSource(ctx, e.SourceID)
+	if err != nil {
+		return err
+	}
+	if source != nil {
+		source.CitationCount++
+		source.UpdatedAt = e.OccurredAt()
+		return p.readStore.SaveSource(ctx, source)
+	}
+
+	return nil
+}
+
+func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.CitationUpdated, version int64) error {
+	citation, err := p.readStore.GetCitation(ctx, e.CitationID)
+	if err != nil {
+		return err
+	}
+	if citation == nil {
+		return nil // Citation doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		switch key {
+		case "source_id":
+			if v, ok := value.(string); ok {
+				if newSourceID, err := uuid.Parse(v); err == nil {
+					// Update source citation counts
+					if citation.SourceID != newSourceID {
+						// Decrement old source
+						if oldSource, _ := p.readStore.GetSource(ctx, citation.SourceID); oldSource != nil {
+							if oldSource.CitationCount > 0 {
+								oldSource.CitationCount--
+							}
+							p.readStore.SaveSource(ctx, oldSource)
+						}
+						// Increment new source
+						if newSource, _ := p.readStore.GetSource(ctx, newSourceID); newSource != nil {
+							newSource.CitationCount++
+							citation.SourceTitle = newSource.Title
+							p.readStore.SaveSource(ctx, newSource)
+						}
+						citation.SourceID = newSourceID
+					}
+				}
+			}
+		case "fact_type":
+			if v, ok := value.(string); ok {
+				citation.FactType = domain.FactType(v)
+			}
+		case "fact_owner_id":
+			if v, ok := value.(string); ok {
+				if id, err := uuid.Parse(v); err == nil {
+					citation.FactOwnerID = id
+				}
+			}
+		case "page":
+			if v, ok := value.(string); ok {
+				citation.Page = v
+			}
+		case "volume":
+			if v, ok := value.(string); ok {
+				citation.Volume = v
+			}
+		case "source_quality":
+			if v, ok := value.(string); ok {
+				citation.SourceQuality = domain.SourceQuality(v)
+			}
+		case "informant_type":
+			if v, ok := value.(string); ok {
+				citation.InformantType = domain.InformantType(v)
+			}
+		case "evidence_type":
+			if v, ok := value.(string); ok {
+				citation.EvidenceType = domain.EvidenceType(v)
+			}
+		case "quoted_text":
+			if v, ok := value.(string); ok {
+				citation.QuotedText = v
+			}
+		case "analysis":
+			if v, ok := value.(string); ok {
+				citation.Analysis = v
+			}
+		case "template_id":
+			if v, ok := value.(string); ok {
+				citation.TemplateID = v
+			}
+		}
+	}
+
+	citation.Version = version
+	return p.readStore.SaveCitation(ctx, citation)
+}
+
+func (p *Projector) projectCitationDeleted(ctx context.Context, e domain.CitationDeleted) error {
+	// Get citation first to update source citation count
+	citation, err := p.readStore.GetCitation(ctx, e.CitationID)
+	if err != nil {
+		return err
+	}
+	if citation != nil {
+		// Decrement source citation count
+		source, err := p.readStore.GetSource(ctx, citation.SourceID)
+		if err != nil {
+			return err
+		}
+		if source != nil {
+			if source.CitationCount > 0 {
+				source.CitationCount--
+			}
+			source.UpdatedAt = e.OccurredAt()
+			if err := p.readStore.SaveSource(ctx, source); err != nil {
+				return err
+			}
+		}
+	}
+
+	return p.readStore.DeleteCitation(ctx, e.CitationID)
 }

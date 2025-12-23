@@ -377,7 +377,7 @@ func TestImportFamily_ErrorPaths(t *testing.T) {
 	mockStore.appendError = nil
 	reader := strings.NewReader(minimalGedcom)
 	importer := gedcom.NewImporter()
-	_, persons, families, _ := importer.Import(ctx, reader)
+	_, persons, families, _, _, _ := importer.Import(ctx, reader)
 
 	// Import persons manually first
 	for _, p := range persons {

@@ -91,6 +91,24 @@ func customErrorHandler(err error, c echo.Context) {
 			Code:    CodeConflict,
 			Message: "Circular ancestry detected - this would create an impossible family tree",
 		}
+	case errors.Is(err, command.ErrSourceNotFound):
+		code = http.StatusNotFound
+		apiErr = APIError{
+			Code:    CodeNotFound,
+			Message: "Source not found",
+		}
+	case errors.Is(err, command.ErrSourceHasCitations):
+		code = http.StatusConflict
+		apiErr = APIError{
+			Code:    CodeConflict,
+			Message: "Source has citations and cannot be deleted",
+		}
+	case errors.Is(err, command.ErrCitationNotFound):
+		code = http.StatusNotFound
+		apiErr = APIError{
+			Code:    CodeNotFound,
+			Message: "Citation not found",
+		}
 	case errors.Is(err, command.ErrInvalidInput):
 		code = http.StatusBadRequest
 		apiErr = APIError{

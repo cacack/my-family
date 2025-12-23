@@ -20,11 +20,13 @@ type ImportGedcomInput struct {
 
 // ImportGedcomResult contains the result of a GEDCOM import.
 type ImportGedcomResult struct {
-	ImportID         uuid.UUID
-	PersonsImported  int
-	FamiliesImported int
-	Warnings         []string
-	Errors           []string
+	ImportID          uuid.UUID
+	PersonsImported   int
+	FamiliesImported  int
+	SourcesImported   int
+	CitationsImported int
+	Warnings          []string
+	Errors            []string
 }
 
 // ImportGedcom imports persons and families from a GEDCOM file.
@@ -32,7 +34,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	importer := gedcom.NewImporter()
 
 	// Parse the GEDCOM file
-	importResult, persons, families, err := importer.Import(ctx, input.Reader)
+	importResult, persons, families, sources, citations, err := importer.Import(ctx, input.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GEDCOM file: %w", err)
 	}
@@ -46,6 +48,17 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 		ImportID: uuid.New(),
 		Warnings: importResult.Warnings,
 		Errors:   importResult.Errors,
+	}
+
+	// Import sources first (before citations that reference them)
+	for _, s := range sources {
+		err := h.importSource(ctx, s)
+		if err != nil {
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("Failed to import source %s (%s): %v", s.GedcomXref, s.Title, err))
+			continue
+		}
+		result.SourcesImported++
 	}
 
 	// Import persons
@@ -81,6 +94,31 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 					fmt.Sprintf("Failed to link child to family %s: %v", f.GedcomXref, err))
 			}
 		}
+	}
+
+	// Import citations (after persons, families, and sources exist)
+	// Build source lookup map from XRef to ID
+	sourceXrefToID := make(map[string]uuid.UUID)
+	for _, s := range sources {
+		sourceXrefToID[s.GedcomXref] = s.ID
+	}
+
+	for _, c := range citations {
+		// Resolve source XRef to ID
+		sourceID, ok := sourceXrefToID[c.SourceXref]
+		if !ok {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Citation references unknown source %s", c.SourceXref))
+			continue
+		}
+
+		err := h.importCitation(ctx, c, sourceID)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Failed to import citation: %v", err))
+			continue
+		}
+		result.CitationsImported++
 	}
 
 	// Record the import event
@@ -165,6 +203,98 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importSource creates a source from GEDCOM data.
+func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
+	// Parse source type - default to "other" if not specified or invalid
+	sourceType := domain.SourceType(s.SourceType)
+	if !sourceType.IsValid() {
+		sourceType = domain.SourceOther
+	}
+
+	// Create source entity
+	source := &domain.Source{
+		ID:             s.ID,
+		SourceType:     sourceType,
+		Title:          s.Title,
+		Author:         s.Author,
+		Publisher:      s.Publisher,
+		RepositoryName: s.RepositoryName,
+		Notes:          s.Notes,
+		GedcomXref:     s.GedcomXref,
+		Version:        1,
+	}
+
+	// Parse publish date if provided
+	if s.PublishDate != "" {
+		pd := domain.ParseGenDate(s.PublishDate)
+		source.PublishDate = &pd
+	}
+
+	// Create event
+	event := domain.NewSourceCreated(source)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importCitation creates a citation from GEDCOM data.
+func (h *Handler) importCitation(ctx context.Context, c gedcom.CitationData, sourceID uuid.UUID) error {
+	// Parse fact type
+	factType := domain.FactType(c.FactType)
+	if !factType.IsValid() {
+		return fmt.Errorf("invalid fact type: %s", c.FactType)
+	}
+
+	// Map quality string to GPS terms
+	// The quality string from GEDCOM importer is already in GPS format:
+	// "direct", "indirect", "secondary", "negative"
+	var evidenceType domain.EvidenceType
+	var informantType domain.InformantType
+	switch c.Quality {
+	case "direct":
+		evidenceType = domain.EvidenceDirect
+		informantType = domain.InformantPrimary
+	case "secondary":
+		informantType = domain.InformantSecondary
+	case "indirect":
+		evidenceType = domain.EvidenceIndirect
+	case "negative":
+		evidenceType = domain.EvidenceNegative
+	}
+
+	// Create citation entity
+	citation := &domain.Citation{
+		ID:            c.ID,
+		SourceID:      sourceID,
+		FactType:      factType,
+		FactOwnerID:   c.FactOwnerID,
+		Page:          c.Page,
+		InformantType: informantType,
+		EvidenceType:  evidenceType,
+		QuotedText:    c.QuotedText,
+		GedcomXref:    c.GedcomXref,
+		Version:       1,
+	}
+
+	// Create event
+	event := domain.NewCitationCreated(citation)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, citation.ID, "citation", []domain.Event{event}, -1)
 	if err != nil {
 		return err
 	}
