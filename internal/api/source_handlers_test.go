@@ -519,3 +519,187 @@ func TestDeleteSource_WithCitations(t *testing.T) {
 		t.Errorf("Status = %d, want %d", deleteRec.Code, http.StatusConflict)
 	}
 }
+
+func TestGetCitationsForSource(t *testing.T) {
+	server := setupTestServer()
+
+	// Create source
+	sourceBody := `{"source_type":"book","title":"Test Source"}`
+	sourceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(sourceBody))
+	sourceReq.Header.Set("Content-Type", "application/json")
+	sourceRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(sourceRec, sourceReq)
+
+	var sourceResp map[string]any
+	json.Unmarshal(sourceRec.Body.Bytes(), &sourceResp)
+	sourceID := sourceResp["id"].(string)
+
+	// Create person
+	personBody := `{"given_name":"John","surname":"Doe"}`
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	personReq.Header.Set("Content-Type", "application/json")
+	personRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(personRec, personReq)
+
+	var personResp map[string]any
+	json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	// Create two citations for the source
+	citation1Body := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `"}`
+	citation1Req := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citation1Body))
+	citation1Req.Header.Set("Content-Type", "application/json")
+	citation1Rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(citation1Rec, citation1Req)
+
+	citation2Body := `{"source_id":"` + sourceID + `","fact_type":"person_death","fact_owner_id":"` + personID + `"}`
+	citation2Req := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citation2Body))
+	citation2Req.Header.Set("Content-Type", "application/json")
+	citation2Rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(citation2Rec, citation2Req)
+
+	// Get citations for source
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID+"/citations", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	citations := resp["citations"].([]any)
+	if len(citations) != 2 {
+		t.Errorf("len(citations) = %d, want 2", len(citations))
+	}
+}
+
+func TestUpdateCitation(t *testing.T) {
+	server := setupTestServer()
+
+	// Create source and person
+	sourceBody := `{"source_type":"book","title":"Test Source"}`
+	sourceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(sourceBody))
+	sourceReq.Header.Set("Content-Type", "application/json")
+	sourceRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(sourceRec, sourceReq)
+
+	var sourceResp map[string]any
+	json.Unmarshal(sourceRec.Body.Bytes(), &sourceResp)
+	sourceID := sourceResp["id"].(string)
+
+	personBody := `{"given_name":"John","surname":"Doe"}`
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	personReq.Header.Set("Content-Type", "application/json")
+	personRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(personRec, personReq)
+
+	var personResp map[string]any
+	json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	// Create citation
+	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `","page":"100"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(createRec, createReq)
+
+	var createResp map[string]any
+	json.Unmarshal(createRec.Body.Bytes(), &createResp)
+	citationID := createResp["id"].(string)
+	version := int64(createResp["version"].(float64))
+
+	// Update citation
+	updateBody := fmt.Sprintf(`{"page":"200","version":%d}`, version)
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/citations/"+citationID, strings.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(updateRec, updateReq)
+
+	if updateRec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d. Body: %s", updateRec.Code, http.StatusOK, updateRec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(updateRec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if resp["page"] != "200" {
+		t.Errorf("page = %v, want 200", resp["page"])
+	}
+}
+
+func TestUpdateCitation_VersionConflict(t *testing.T) {
+	server := setupTestServer()
+
+	// Create source and person
+	sourceBody := `{"source_type":"book","title":"Test Source"}`
+	sourceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(sourceBody))
+	sourceReq.Header.Set("Content-Type", "application/json")
+	sourceRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(sourceRec, sourceReq)
+
+	var sourceResp map[string]any
+	json.Unmarshal(sourceRec.Body.Bytes(), &sourceResp)
+	sourceID := sourceResp["id"].(string)
+
+	personBody := `{"given_name":"John","surname":"Doe"}`
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	personReq.Header.Set("Content-Type", "application/json")
+	personRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(personRec, personReq)
+
+	var personResp map[string]any
+	json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	// Create citation
+	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(createRec, createReq)
+
+	var createResp map[string]any
+	json.Unmarshal(createRec.Body.Bytes(), &createResp)
+	citationID := createResp["id"].(string)
+
+	// Update with wrong version
+	updateBody := `{"page":"200","version":999}`
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/citations/"+citationID, strings.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(updateRec, updateReq)
+
+	if updateRec.Code != http.StatusConflict {
+		t.Errorf("Status = %d, want %d", updateRec.Code, http.StatusConflict)
+	}
+}
+
+func TestSearchSources_EmptyResults(t *testing.T) {
+	server := setupTestServer()
+
+	// Search with no matching sources
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=NonexistentSource", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	sources := resp["sources"].([]any)
+	if len(sources) != 0 {
+		t.Errorf("len(sources) = %d, want 0", len(sources))
+	}
+}

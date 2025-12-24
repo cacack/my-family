@@ -728,3 +728,447 @@ func TestProjector_Integration(t *testing.T) {
 		t.Error("Father's father (grandfather) incorrect")
 	}
 }
+
+// Source/Citation projection tests
+
+func TestProjector_SourceCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	source := domain.NewSource("Test Book", domain.SourceBook)
+	source.Author = "John Smith"
+	source.Publisher = "Test Press"
+	gd := domain.ParseGenDate("1995")
+	source.PublishDate = &gd
+
+	event := domain.NewSourceCreated(source)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project failed: %v", err)
+	}
+
+	// Verify source in read model
+	rm, err := readStore.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("GetSource failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Source not found in read model")
+	}
+	if rm.Title != "Test Book" {
+		t.Errorf("Title = %s, want Test Book", rm.Title)
+	}
+	if rm.SourceType != domain.SourceBook {
+		t.Errorf("SourceType = %s, want book", rm.SourceType)
+	}
+	if rm.Author != "John Smith" {
+		t.Errorf("Author = %s, want John Smith", rm.Author)
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+}
+
+func TestProjector_SourceUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source first
+	source := domain.NewSource("Original Title", domain.SourceBook)
+	createEvent := domain.NewSourceCreated(source)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Update source
+	changes := map[string]any{
+		"title":     "Updated Title",
+		"author":    "Jane Doe",
+		"publisher": "New Publisher",
+	}
+	updateEvent := domain.NewSourceUpdated(source.ID, changes)
+
+	err := projector.Project(ctx, updateEvent, 2)
+	if err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	// Verify updates
+	rm, _ := readStore.GetSource(ctx, source.ID)
+	if rm.Title != "Updated Title" {
+		t.Errorf("Title = %s, want Updated Title", rm.Title)
+	}
+	if rm.Author != "Jane Doe" {
+		t.Errorf("Author = %s, want Jane Doe", rm.Author)
+	}
+	if rm.Publisher != "New Publisher" {
+		t.Errorf("Publisher = %s, want New Publisher", rm.Publisher)
+	}
+	if rm.Version != 2 {
+		t.Errorf("Version = %d, want 2", rm.Version)
+	}
+}
+
+func TestProjector_SourceUpdated_AllFields(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	createEvent := domain.NewSourceCreated(source)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Test updating each field individually
+	tests := []struct {
+		name     string
+		changes  map[string]any
+		validate func(t *testing.T, rm *repository.SourceReadModel)
+	}{
+		{
+			name:    "update source_type",
+			changes: map[string]any{"source_type": "census"},
+			validate: func(t *testing.T, rm *repository.SourceReadModel) {
+				if rm.SourceType != domain.SourceCensus {
+					t.Errorf("SourceType = %s, want census", rm.SourceType)
+				}
+			},
+		},
+		{
+			name:    "update publish_date",
+			changes: map[string]any{"publish_date": "1 JAN 1995"},
+			validate: func(t *testing.T, rm *repository.SourceReadModel) {
+				if rm.PublishDateRaw != "1 JAN 1995" {
+					t.Errorf("PublishDateRaw = %s, want '1 JAN 1995'", rm.PublishDateRaw)
+				}
+				if rm.PublishDateSort == nil {
+					t.Error("PublishDateSort should not be nil")
+				}
+			},
+		},
+		{
+			name:    "update url",
+			changes: map[string]any{"url": "https://example.com"},
+			validate: func(t *testing.T, rm *repository.SourceReadModel) {
+				if rm.URL != "https://example.com" {
+					t.Errorf("URL = %s, want https://example.com", rm.URL)
+				}
+			},
+		},
+		{
+			name:    "update repository_name",
+			changes: map[string]any{"repository_name": "National Archives"},
+			validate: func(t *testing.T, rm *repository.SourceReadModel) {
+				if rm.RepositoryName != "National Archives" {
+					t.Errorf("RepositoryName = %s, want National Archives", rm.RepositoryName)
+				}
+			},
+		},
+		{
+			name:    "update collection_name",
+			changes: map[string]any{"collection_name": "Birth Records"},
+			validate: func(t *testing.T, rm *repository.SourceReadModel) {
+				if rm.CollectionName != "Birth Records" {
+					t.Errorf("CollectionName = %s, want Birth Records", rm.CollectionName)
+				}
+			},
+		},
+		{
+			name:    "update call_number",
+			changes: map[string]any{"call_number": "BR-1850-1900"},
+			validate: func(t *testing.T, rm *repository.SourceReadModel) {
+				if rm.CallNumber != "BR-1850-1900" {
+					t.Errorf("CallNumber = %s, want BR-1850-1900", rm.CallNumber)
+				}
+			},
+		},
+		{
+			name:    "update notes",
+			changes: map[string]any{"notes": "Test notes"},
+			validate: func(t *testing.T, rm *repository.SourceReadModel) {
+				if rm.Notes != "Test notes" {
+					t.Errorf("Notes = %s, want Test notes", rm.Notes)
+				}
+			},
+		},
+	}
+
+	version := int64(1)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			version++
+			updateEvent := domain.NewSourceUpdated(source.ID, tt.changes)
+			err := projector.Project(ctx, updateEvent, version)
+			if err != nil {
+				t.Fatalf("Project update failed: %v", err)
+			}
+
+			rm, err := readStore.GetSource(ctx, source.ID)
+			if err != nil {
+				t.Fatalf("GetSource failed: %v", err)
+			}
+			if rm == nil {
+				t.Fatal("Source not found")
+			}
+
+			tt.validate(t, rm)
+
+			if rm.Version != version {
+				t.Errorf("Version = %d, want %d", rm.Version, version)
+			}
+		})
+	}
+}
+
+func TestProjector_SourceDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source first
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	createEvent := domain.NewSourceCreated(source)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Delete source
+	deleteEvent := domain.NewSourceDeleted(source.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify deletion
+	rm, _ := readStore.GetSource(ctx, source.ID)
+	if rm != nil {
+		t.Error("Source should be deleted")
+	}
+}
+
+func TestProjector_CitationCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source first
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+
+	// Create citation
+	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, uuid.New())
+	citation.Page = "123"
+	citation.SourceQuality = domain.SourceOriginal
+	citation.InformantType = domain.InformantPrimary
+	citation.EvidenceType = domain.EvidenceDirect
+
+	event := domain.NewCitationCreated(citation)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project failed: %v", err)
+	}
+
+	// Verify citation in read model
+	rm, err := readStore.GetCitation(ctx, citation.ID)
+	if err != nil {
+		t.Fatalf("GetCitation failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Citation not found in read model")
+	}
+	if rm.SourceID != source.ID {
+		t.Errorf("SourceID = %v, want %v", rm.SourceID, source.ID)
+	}
+	if rm.FactType != domain.FactPersonBirth {
+		t.Errorf("FactType = %s, want person_birth", rm.FactType)
+	}
+	if rm.Page != "123" {
+		t.Errorf("Page = %s, want 123", rm.Page)
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+
+	// Verify source citation count updated
+	sourceRM, _ := readStore.GetSource(ctx, source.ID)
+	if sourceRM.CitationCount != 1 {
+		t.Errorf("Source CitationCount = %d, want 1", sourceRM.CitationCount)
+	}
+}
+
+func TestProjector_CitationUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source and citation first
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+
+	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, uuid.New())
+	citation.Page = "100"
+	createEvent := domain.NewCitationCreated(citation)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Update citation - test all fields
+	tests := []struct {
+		name     string
+		changes  map[string]any
+		validate func(t *testing.T, rm *repository.CitationReadModel)
+	}{
+		{
+			name: "update GPS fields",
+			changes: map[string]any{
+				"source_quality": "derivative",
+				"informant_type": "secondary",
+				"evidence_type":  "indirect",
+			},
+			validate: func(t *testing.T, rm *repository.CitationReadModel) {
+				if rm.SourceQuality != domain.SourceDerivative {
+					t.Errorf("SourceQuality = %s, want derivative", rm.SourceQuality)
+				}
+				if rm.InformantType != domain.InformantSecondary {
+					t.Errorf("InformantType = %s, want secondary", rm.InformantType)
+				}
+				if rm.EvidenceType != domain.EvidenceIndirect {
+					t.Errorf("EvidenceType = %s, want indirect", rm.EvidenceType)
+				}
+			},
+		},
+		{
+			name: "update page and volume",
+			changes: map[string]any{
+				"page":   "200",
+				"volume": "Vol 2",
+			},
+			validate: func(t *testing.T, rm *repository.CitationReadModel) {
+				if rm.Page != "200" {
+					t.Errorf("Page = %s, want 200", rm.Page)
+				}
+				if rm.Volume != "Vol 2" {
+					t.Errorf("Volume = %s, want Vol 2", rm.Volume)
+				}
+			},
+		},
+		{
+			name: "update text fields",
+			changes: map[string]any{
+				"quoted_text": "Born on this date",
+				"analysis":    "Primary evidence",
+			},
+			validate: func(t *testing.T, rm *repository.CitationReadModel) {
+				if rm.QuotedText != "Born on this date" {
+					t.Errorf("QuotedText = %s, want 'Born on this date'", rm.QuotedText)
+				}
+				if rm.Analysis != "Primary evidence" {
+					t.Errorf("Analysis = %s, want 'Primary evidence'", rm.Analysis)
+				}
+			},
+		},
+		{
+			name: "update template_id",
+			changes: map[string]any{
+				"template_id": "template-123",
+			},
+			validate: func(t *testing.T, rm *repository.CitationReadModel) {
+				if rm.TemplateID != "template-123" {
+					t.Errorf("TemplateID = %s, want 'template-123'", rm.TemplateID)
+				}
+			},
+		},
+	}
+
+	version := int64(1)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			version++
+			updateEvent := domain.NewCitationUpdated(citation.ID, tt.changes)
+			err := projector.Project(ctx, updateEvent, version)
+			if err != nil {
+				t.Fatalf("Project update failed: %v", err)
+			}
+
+			rm, _ := readStore.GetCitation(ctx, citation.ID)
+			tt.validate(t, rm)
+
+			if rm.Version != version {
+				t.Errorf("Version = %d, want %d", rm.Version, version)
+			}
+		})
+	}
+}
+
+func TestProjector_CitationDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source and citation first
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+
+	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, uuid.New())
+	createEvent := domain.NewCitationCreated(citation)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Verify citation count is 1
+	sourceRM, _ := readStore.GetSource(ctx, source.ID)
+	if sourceRM.CitationCount != 1 {
+		t.Errorf("Initial CitationCount = %d, want 1", sourceRM.CitationCount)
+	}
+
+	// Delete citation
+	deleteEvent := domain.NewCitationDeleted(citation.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify deletion
+	rm, _ := readStore.GetCitation(ctx, citation.ID)
+	if rm != nil {
+		t.Error("Citation should be deleted")
+	}
+
+	// Verify source citation count updated
+	sourceRM, _ = readStore.GetSource(ctx, source.ID)
+	if sourceRM.CitationCount != 0 {
+		t.Errorf("CitationCount after delete = %d, want 0", sourceRM.CitationCount)
+	}
+}
+
+func TestProjector_SourceUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to update a non-existent source (should not error, just skip)
+	updateEvent := domain.NewSourceUpdated(uuid.New(), map[string]any{"title": "Test"})
+	err := projector.Project(ctx, updateEvent, 1)
+	if err != nil {
+		t.Fatalf("Project update should not fail for non-existent source: %v", err)
+	}
+}
+
+func TestProjector_CitationUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to update a non-existent citation (should not error, just skip)
+	updateEvent := domain.NewCitationUpdated(uuid.New(), map[string]any{"page": "100"})
+	err := projector.Project(ctx, updateEvent, 1)
+	if err != nil {
+		t.Fatalf("Project update should not fail for non-existent citation: %v", err)
+	}
+}
