@@ -34,6 +34,22 @@ go fmt ./...            # Format code
 go vet ./...            # Static analysis
 ```
 
+## Commit Conventions
+
+Use conventional commits with these types only:
+
+| Type | Use for |
+|------|---------|
+| `feat` | New user-facing features |
+| `fix` | Bug fixes |
+| `perf` | Performance improvements |
+| `docs` | Documentation only |
+| `refactor` | Code restructuring |
+| `ci` | CI/CD and tooling |
+| `chore` | Maintenance, formatting, deps |
+
+PR titles use descriptive format (not conventional commits). See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+
 ## Architecture
 
 *To be documented as the codebase develops.*

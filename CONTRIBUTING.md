@@ -44,16 +44,15 @@ We use conventional commits to maintain clear project history and automate chang
 
 | Type | Use for | Appears in Changelog? |
 |------|---------|----------------------|
-| `feat` | Library/app capabilities | Yes |
-| `fix` | Bug fixes in library/app | Yes |
+| `feat` | New user-facing features | Yes |
+| `fix` | Bug fixes | Yes |
 | `perf` | Performance improvements | Yes |
-| `refactor` | Code restructuring | No |
-| `test` | Test changes | No |
-| `docs` | Documentation | No |
-| `ci` | Dev infrastructure, deps, tooling | No |
-| `chore` | Miscellaneous maintenance | No |
+| `docs` | Documentation only | No |
+| `refactor` | Code restructuring (no behavior change) | No |
+| `ci` | CI/CD, dev infrastructure, tooling | No |
+| `chore` | Maintenance, formatting, dependencies | No |
 
-**Key rule**: `feat` and `fix` are reserved for user-facing changes, not development tooling.
+**Note**: Only these 7 types are used. `feat` and `fix` are reserved for user-facing changes.
 
 Examples:
 - `feat(source): add citation confidence levels` ✅ (user-facing feature)
