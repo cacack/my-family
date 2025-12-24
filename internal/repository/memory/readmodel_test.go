@@ -1223,3 +1223,481 @@ func TestReadModelStore_Reset(t *testing.T) {
 		t.Errorf("GetPedigreeEdge() after reset = %v, want nil", retrievedEdge)
 	}
 }
+
+// Source CRUD operations
+
+func TestReadModelStore_SaveAndGetSource(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	source := &repository.SourceReadModel{
+		ID:         uuid.New(),
+		SourceType: domain.SourceBook,
+		Title:      "Census of 1900",
+		Author:     "US Census Bureau",
+		Publisher:  "NARA",
+		Version:    1,
+		UpdatedAt:  time.Now(),
+	}
+
+	// Save source
+	err := store.SaveSource(ctx, source)
+	if err != nil {
+		t.Fatalf("SaveSource() failed: %v", err)
+	}
+
+	// Get source
+	retrieved, err := store.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("GetSource() failed: %v", err)
+	}
+
+	if retrieved == nil {
+		t.Fatal("GetSource() returned nil")
+	}
+
+	// Verify fields
+	if retrieved.ID != source.ID {
+		t.Errorf("ID = %v, want %v", retrieved.ID, source.ID)
+	}
+	if retrieved.Title != source.Title {
+		t.Errorf("Title = %s, want %s", retrieved.Title, source.Title)
+	}
+	if retrieved.SourceType != source.SourceType {
+		t.Errorf("SourceType = %s, want %s", retrieved.SourceType, source.SourceType)
+	}
+}
+
+func TestReadModelStore_GetSourceNonExistent(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	nonExistentID := uuid.New()
+
+	retrieved, err := store.GetSource(ctx, nonExistentID)
+	if err != nil {
+		t.Fatalf("GetSource() failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetSource() for non-existent ID = %v, want nil", retrieved)
+	}
+}
+
+func TestReadModelStore_ListSources(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create test sources
+	sources := []*repository.SourceReadModel{
+		{
+			ID:         uuid.New(),
+			SourceType: domain.SourceBook,
+			Title:      "Book A",
+			UpdatedAt:  time.Now().Add(-3 * time.Hour),
+		},
+		{
+			ID:         uuid.New(),
+			SourceType: domain.SourceCensus,
+			Title:      "Census 1900",
+			UpdatedAt:  time.Now().Add(-2 * time.Hour),
+		},
+		{
+			ID:         uuid.New(),
+			SourceType: domain.SourceBook,
+			Title:      "Book B",
+			UpdatedAt:  time.Now().Add(-1 * time.Hour),
+		},
+	}
+
+	for _, s := range sources {
+		err := store.SaveSource(ctx, s)
+		if err != nil {
+			t.Fatalf("SaveSource() failed: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name      string
+		opts      repository.ListOptions
+		wantCount int
+		wantTotal int
+	}{
+		{
+			name: "list all",
+			opts: repository.ListOptions{
+				Limit:  10,
+				Offset: 0,
+				Sort:   "title",
+				Order:  "asc",
+			},
+			wantCount: 3,
+			wantTotal: 3,
+		},
+		{
+			name: "pagination first page",
+			opts: repository.ListOptions{
+				Limit:  2,
+				Offset: 0,
+				Sort:   "title",
+				Order:  "asc",
+			},
+			wantCount: 2,
+			wantTotal: 3,
+		},
+		{
+			name: "pagination second page",
+			opts: repository.ListOptions{
+				Limit:  2,
+				Offset: 2,
+				Sort:   "title",
+				Order:  "asc",
+			},
+			wantCount: 1,
+			wantTotal: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, total, err := store.ListSources(ctx, tt.opts)
+			if err != nil {
+				t.Fatalf("ListSources() failed: %v", err)
+			}
+
+			if len(results) != tt.wantCount {
+				t.Errorf("len(results) = %d, want %d", len(results), tt.wantCount)
+			}
+
+			if total != tt.wantTotal {
+				t.Errorf("total = %d, want %d", total, tt.wantTotal)
+			}
+		})
+	}
+}
+
+func TestReadModelStore_SearchSources(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create test sources
+	sources := []*repository.SourceReadModel{
+		{
+			ID:         uuid.New(),
+			SourceType: domain.SourceBook,
+			Title:      "Census of 1900",
+			Author:     "US Census Bureau",
+			UpdatedAt:  time.Now(),
+		},
+		{
+			ID:         uuid.New(),
+			SourceType: domain.SourceBook,
+			Title:      "History of Springfield",
+			Author:     "John Smith",
+			UpdatedAt:  time.Now(),
+		},
+		{
+			ID:         uuid.New(),
+			SourceType: domain.SourceCensus,
+			Title:      "Census of 1910",
+			UpdatedAt:  time.Now(),
+		},
+	}
+
+	for _, s := range sources {
+		err := store.SaveSource(ctx, s)
+		if err != nil {
+			t.Fatalf("SaveSource() failed: %v", err)
+		}
+	}
+
+	tests := []struct {
+		name      string
+		query     string
+		limit     int
+		wantCount int
+	}{
+		{
+			name:      "search by title",
+			query:     "Census",
+			limit:     10,
+			wantCount: 2,
+		},
+		{
+			name:      "search by author",
+			query:     "Smith",
+			limit:     10,
+			wantCount: 1,
+		},
+		{
+			name:      "search case insensitive",
+			query:     "CENSUS",
+			limit:     10,
+			wantCount: 2,
+		},
+		{
+			name:      "search with limit",
+			query:     "Census",
+			limit:     1,
+			wantCount: 1,
+		},
+		{
+			name:      "search no results",
+			query:     "Nonexistent",
+			limit:     10,
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			results, err := store.SearchSources(ctx, tt.query, tt.limit)
+			if err != nil {
+				t.Fatalf("SearchSources() failed: %v", err)
+			}
+
+			if len(results) != tt.wantCount {
+				t.Errorf("len(results) = %d, want %d", len(results), tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestReadModelStore_DeleteSource(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	source := &repository.SourceReadModel{
+		ID:         uuid.New(),
+		SourceType: domain.SourceBook,
+		Title:      "Test Source",
+		UpdatedAt:  time.Now(),
+	}
+
+	// Save source
+	err := store.SaveSource(ctx, source)
+	if err != nil {
+		t.Fatalf("SaveSource() failed: %v", err)
+	}
+
+	// Delete source
+	err = store.DeleteSource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("DeleteSource() failed: %v", err)
+	}
+
+	// Verify deleted
+	retrieved, err := store.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("GetSource() after delete failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetSource() after delete = %v, want nil", retrieved)
+	}
+}
+
+// Citation CRUD operations
+
+func TestReadModelStore_SaveAndGetCitation(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	factOwnerID := uuid.New()
+
+	citation := &repository.CitationReadModel{
+		ID:            uuid.New(),
+		SourceID:      sourceID,
+		FactType:      domain.FactPersonBirth,
+		FactOwnerID:   factOwnerID,
+		Page:          "123",
+		SourceQuality: domain.SourceOriginal,
+		Version:       1,
+	}
+
+	// Save citation
+	err := store.SaveCitation(ctx, citation)
+	if err != nil {
+		t.Fatalf("SaveCitation() failed: %v", err)
+	}
+
+	// Get citation
+	retrieved, err := store.GetCitation(ctx, citation.ID)
+	if err != nil {
+		t.Fatalf("GetCitation() failed: %v", err)
+	}
+
+	if retrieved == nil {
+		t.Fatal("GetCitation() returned nil")
+	}
+
+	// Verify fields
+	if retrieved.ID != citation.ID {
+		t.Errorf("ID = %v, want %v", retrieved.ID, citation.ID)
+	}
+	if retrieved.SourceID != sourceID {
+		t.Errorf("SourceID = %v, want %v", retrieved.SourceID, sourceID)
+	}
+	if retrieved.FactType != domain.FactPersonBirth {
+		t.Errorf("FactType = %s, want %s", retrieved.FactType, domain.FactPersonBirth)
+	}
+}
+
+func TestReadModelStore_GetCitationNonExistent(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	nonExistentID := uuid.New()
+
+	retrieved, err := store.GetCitation(ctx, nonExistentID)
+	if err != nil {
+		t.Fatalf("GetCitation() failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetCitation() for non-existent ID = %v, want nil", retrieved)
+	}
+}
+
+func TestReadModelStore_GetCitationsForSource(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	otherSourceID := uuid.New()
+	factOwnerID := uuid.New()
+
+	// Create citations for source
+	citation1 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: factOwnerID,
+	}
+	citation2 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonDeath,
+		FactOwnerID: factOwnerID,
+	}
+	citation3 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    otherSourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: factOwnerID,
+	}
+
+	store.SaveCitation(ctx, citation1)
+	store.SaveCitation(ctx, citation2)
+	store.SaveCitation(ctx, citation3)
+
+	// Get citations for source
+	citations, err := store.GetCitationsForSource(ctx, sourceID)
+	if err != nil {
+		t.Fatalf("GetCitationsForSource() failed: %v", err)
+	}
+
+	if len(citations) != 2 {
+		t.Errorf("len(citations) = %d, want 2", len(citations))
+	}
+
+	// Verify correct citations returned
+	foundIDs := make(map[uuid.UUID]bool)
+	for _, c := range citations {
+		foundIDs[c.ID] = true
+	}
+
+	if !foundIDs[citation1.ID] {
+		t.Error("expected to find citation1")
+	}
+	if !foundIDs[citation2.ID] {
+		t.Error("expected to find citation2")
+	}
+	if foundIDs[citation3.ID] {
+		t.Error("did not expect to find citation3")
+	}
+}
+
+func TestReadModelStore_GetCitationsForPerson(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	personID := uuid.New()
+	otherPersonID := uuid.New()
+
+	// Create citations for person
+	citation1 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: personID,
+	}
+	citation2 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonDeath,
+		FactOwnerID: personID,
+	}
+	citation3 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: otherPersonID,
+	}
+
+	store.SaveCitation(ctx, citation1)
+	store.SaveCitation(ctx, citation2)
+	store.SaveCitation(ctx, citation3)
+
+	// Get citations for person
+	citations, err := store.GetCitationsForPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("GetCitationsForPerson() failed: %v", err)
+	}
+
+	if len(citations) != 2 {
+		t.Errorf("len(citations) = %d, want 2", len(citations))
+	}
+}
+
+func TestReadModelStore_GetCitationsForFact(t *testing.T) {
+	// Note: CitationReadModel does not have a FactID field
+	// This test is skipped as the field doesn't exist in the current model
+	t.Skip("CitationReadModel does not have FactID field in current implementation")
+}
+
+func TestReadModelStore_DeleteCitation(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	citation := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    uuid.New(),
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: uuid.New(),
+	}
+
+	// Save citation
+	err := store.SaveCitation(ctx, citation)
+	if err != nil {
+		t.Fatalf("SaveCitation() failed: %v", err)
+	}
+
+	// Delete citation
+	err = store.DeleteCitation(ctx, citation.ID)
+	if err != nil {
+		t.Fatalf("DeleteCitation() failed: %v", err)
+	}
+
+	// Verify deleted
+	retrieved, err := store.GetCitation(ctx, citation.ID)
+	if err != nil {
+		t.Fatalf("GetCitation() after delete failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetCitation() after delete = %v, want nil", retrieved)
+	}
+}

@@ -102,6 +102,54 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_pedigree_father ON pedigree_edges(father_id);
 		CREATE INDEX IF NOT EXISTS idx_pedigree_mother ON pedigree_edges(mother_id);
+
+		-- Sources table
+		CREATE TABLE IF NOT EXISTS sources (
+			id TEXT PRIMARY KEY,
+			source_type TEXT NOT NULL,
+			title TEXT NOT NULL,
+			author TEXT,
+			publisher TEXT,
+			publish_date_raw TEXT,
+			publish_date_sort TEXT,
+			url TEXT,
+			repository_name TEXT,
+			collection_name TEXT,
+			call_number TEXT,
+			notes TEXT,
+			gedcom_xref TEXT,
+			citation_count INTEGER NOT NULL DEFAULT 0,
+			version INTEGER NOT NULL DEFAULT 1,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_sources_title ON sources(title);
+		CREATE INDEX IF NOT EXISTS idx_sources_type ON sources(source_type);
+
+		-- Citations table
+		CREATE TABLE IF NOT EXISTS citations (
+			id TEXT PRIMARY KEY,
+			source_id TEXT NOT NULL,
+			source_title TEXT,
+			fact_type TEXT NOT NULL,
+			fact_owner_id TEXT NOT NULL,
+			page TEXT,
+			volume TEXT,
+			source_quality TEXT,
+			informant_type TEXT,
+			evidence_type TEXT,
+			quoted_text TEXT,
+			analysis TEXT,
+			template_id TEXT,
+			gedcom_xref TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (source_id) REFERENCES sources(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_citations_source ON citations(source_id);
+		CREATE INDEX IF NOT EXISTS idx_citations_fact ON citations(fact_type, fact_owner_id);
+		CREATE INDEX IF NOT EXISTS idx_citations_owner ON citations(fact_owner_id);
 	`)
 	if err != nil {
 		return err
@@ -761,4 +809,357 @@ func escapeFTS5Query(query string) string {
 		result = strings.ReplaceAll(result, char, "\""+char+"\"")
 	}
 	return result
+}
+
+// GetSource retrieves a source by ID.
+func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
+			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   citation_count, version, updated_at
+		FROM sources WHERE id = ?
+	`, id.String())
+
+	return scanSource(row)
+}
+
+// ListSources returns a paginated list of sources.
+func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sources").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count sources: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
+			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   citation_count, version, updated_at
+		FROM sources
+		ORDER BY title ASC
+		LIMIT ? OFFSET ?
+	`, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query sources: %w", err)
+	}
+	defer rows.Close()
+
+	var sources []repository.SourceReadModel
+	for rows.Next() {
+		src, err := scanSourceRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		sources = append(sources, *src)
+	}
+
+	return sources, total, rows.Err()
+}
+
+// SearchSources searches for sources by title or author.
+func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit int) ([]repository.SourceReadModel, error) {
+	likeQuery := "%" + strings.ToLower(query) + "%"
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
+			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   citation_count, version, updated_at
+		FROM sources
+		WHERE LOWER(title) LIKE ? OR LOWER(author) LIKE ?
+		LIMIT ?
+	`, likeQuery, likeQuery, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search sources: %w", err)
+	}
+	defer rows.Close()
+
+	var sources []repository.SourceReadModel
+	for rows.Next() {
+		src, err := scanSourceRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, *src)
+	}
+
+	return sources, rows.Err()
+}
+
+// SaveSource saves or updates a source.
+func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.SourceReadModel) error {
+	var publishDateSort sql.NullString
+	if source.PublishDateSort != nil {
+		publishDateSort = sql.NullString{String: source.PublishDateSort.Format("2006-01-02"), Valid: true}
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO sources (id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
+							 url, repository_name, collection_name, call_number, notes, gedcom_xref,
+							 citation_count, version, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			source_type = excluded.source_type,
+			title = excluded.title,
+			author = excluded.author,
+			publisher = excluded.publisher,
+			publish_date_raw = excluded.publish_date_raw,
+			publish_date_sort = excluded.publish_date_sort,
+			url = excluded.url,
+			repository_name = excluded.repository_name,
+			collection_name = excluded.collection_name,
+			call_number = excluded.call_number,
+			notes = excluded.notes,
+			gedcom_xref = excluded.gedcom_xref,
+			citation_count = excluded.citation_count,
+			version = excluded.version,
+			updated_at = excluded.updated_at
+	`, source.ID.String(), string(source.SourceType), source.Title, source.Author, source.Publisher,
+		source.PublishDateRaw, publishDateSort, source.URL, source.RepositoryName, source.CollectionName,
+		source.CallNumber, source.Notes, source.GedcomXref, source.CitationCount, source.Version,
+		formatTimestamp(source.UpdatedAt))
+
+	return err
+}
+
+// DeleteSource removes a source.
+func (s *ReadModelStore) DeleteSource(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM sources WHERE id = ?", id.String())
+	return err
+}
+
+// GetCitation retrieves a citation by ID.
+func (s *ReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*repository.CitationReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+			   source_quality, informant_type, evidence_type, quoted_text, analysis,
+			   template_id, gedcom_xref, version, created_at
+		FROM citations WHERE id = ?
+	`, id.String())
+
+	return scanCitation(row)
+}
+
+// GetCitationsForSource returns all citations for a source.
+func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+			   source_quality, informant_type, evidence_type, quoted_text, analysis,
+			   template_id, gedcom_xref, version, created_at
+		FROM citations
+		WHERE source_id = ?
+	`, sourceID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query citations for source: %w", err)
+	}
+	defer rows.Close()
+
+	var citations []repository.CitationReadModel
+	for rows.Next() {
+		cit, err := scanCitationRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		citations = append(citations, *cit)
+	}
+
+	return citations, rows.Err()
+}
+
+// GetCitationsForPerson returns all citations for a person.
+func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.CitationReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+			   source_quality, informant_type, evidence_type, quoted_text, analysis,
+			   template_id, gedcom_xref, version, created_at
+		FROM citations
+		WHERE fact_owner_id = ? AND fact_type LIKE 'person_%'
+	`, personID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query citations for person: %w", err)
+	}
+	defer rows.Close()
+
+	var citations []repository.CitationReadModel
+	for rows.Next() {
+		cit, err := scanCitationRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		citations = append(citations, *cit)
+	}
+
+	return citations, rows.Err()
+}
+
+// GetCitationsForFact returns all citations for a specific fact.
+func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+			   source_quality, informant_type, evidence_type, quoted_text, analysis,
+			   template_id, gedcom_xref, version, created_at
+		FROM citations
+		WHERE fact_type = ? AND fact_owner_id = ?
+	`, string(factType), factOwnerID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query citations for fact: %w", err)
+	}
+	defer rows.Close()
+
+	var citations []repository.CitationReadModel
+	for rows.Next() {
+		cit, err := scanCitationRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		citations = append(citations, *cit)
+	}
+
+	return citations, rows.Err()
+}
+
+// SaveCitation saves or updates a citation.
+func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.CitationReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO citations (id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+							   source_quality, informant_type, evidence_type, quoted_text, analysis,
+							   template_id, gedcom_xref, version, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			source_id = excluded.source_id,
+			source_title = excluded.source_title,
+			fact_type = excluded.fact_type,
+			fact_owner_id = excluded.fact_owner_id,
+			page = excluded.page,
+			volume = excluded.volume,
+			source_quality = excluded.source_quality,
+			informant_type = excluded.informant_type,
+			evidence_type = excluded.evidence_type,
+			quoted_text = excluded.quoted_text,
+			analysis = excluded.analysis,
+			template_id = excluded.template_id,
+			gedcom_xref = excluded.gedcom_xref,
+			version = excluded.version
+	`, citation.ID.String(), citation.SourceID.String(), citation.SourceTitle,
+		string(citation.FactType), citation.FactOwnerID.String(), citation.Page, citation.Volume,
+		string(citation.SourceQuality), string(citation.InformantType), string(citation.EvidenceType),
+		citation.QuotedText, citation.Analysis, citation.TemplateID, citation.GedcomXref,
+		citation.Version, formatTimestamp(citation.CreatedAt))
+
+	return err
+}
+
+// DeleteCitation removes a citation.
+func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM citations WHERE id = ?", id.String())
+	return err
+}
+
+// Scanning functions for sources and citations
+
+func scanSource(row rowScanner) (*repository.SourceReadModel, error) {
+	var (
+		idStr, sourceType, title                            string
+		author, publisher, publishDateRaw, publishDateSort  sql.NullString
+		url, repoName, collName, callNum, notes, gedcomXref sql.NullString
+		citationCount                                       int
+		version                                             int64
+		updatedAt                                           string
+	)
+
+	err := row.Scan(&idStr, &sourceType, &title, &author, &publisher, &publishDateRaw, &publishDateSort,
+		&url, &repoName, &collName, &callNum, &notes, &gedcomXref,
+		&citationCount, &version, &updatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan source: %w", err)
+	}
+
+	id, _ := uuid.Parse(idStr)
+	src := &repository.SourceReadModel{
+		ID:             id,
+		SourceType:     domain.SourceType(sourceType),
+		Title:          title,
+		Author:         author.String,
+		Publisher:      publisher.String,
+		PublishDateRaw: publishDateRaw.String,
+		URL:            url.String,
+		RepositoryName: repoName.String,
+		CollectionName: collName.String,
+		CallNumber:     callNum.String,
+		Notes:          notes.String,
+		GedcomXref:     gedcomXref.String,
+		CitationCount:  citationCount,
+		Version:        version,
+	}
+
+	if publishDateSort.Valid {
+		if t, err := time.Parse("2006-01-02", publishDateSort.String); err == nil {
+			src.PublishDateSort = &t
+		}
+	}
+	if t, err := parseTimestamp(updatedAt); err == nil {
+		src.UpdatedAt = t
+	}
+
+	return src, nil
+}
+
+func scanSourceRow(rows *sql.Rows) (*repository.SourceReadModel, error) {
+	return scanSource(rows)
+}
+
+func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
+	var (
+		idStr, sourceIDStr, sourceTitle, factType, factOwnerIDStr string
+		page, volume, sourceQuality, informantType, evidenceType  sql.NullString
+		quotedText, analysis, templateID, gedcomXref              sql.NullString
+		version                                                   int64
+		createdAt                                                 string
+	)
+
+	err := row.Scan(&idStr, &sourceIDStr, &sourceTitle, &factType, &factOwnerIDStr,
+		&page, &volume, &sourceQuality, &informantType, &evidenceType,
+		&quotedText, &analysis, &templateID, &gedcomXref, &version, &createdAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan citation: %w", err)
+	}
+
+	id, _ := uuid.Parse(idStr)
+	sourceID, _ := uuid.Parse(sourceIDStr)
+	factOwnerID, _ := uuid.Parse(factOwnerIDStr)
+
+	cit := &repository.CitationReadModel{
+		ID:            id,
+		SourceID:      sourceID,
+		SourceTitle:   sourceTitle,
+		FactType:      domain.FactType(factType),
+		FactOwnerID:   factOwnerID,
+		Page:          page.String,
+		Volume:        volume.String,
+		SourceQuality: domain.SourceQuality(sourceQuality.String),
+		InformantType: domain.InformantType(informantType.String),
+		EvidenceType:  domain.EvidenceType(evidenceType.String),
+		QuotedText:    quotedText.String,
+		Analysis:      analysis.String,
+		TemplateID:    templateID.String,
+		GedcomXref:    gedcomXref.String,
+		Version:       version,
+	}
+
+	if t, err := parseTimestamp(createdAt); err == nil {
+		cit.CreatedAt = t
+	}
+
+	return cit, nil
+}
+
+func scanCitationRow(rows *sql.Rows) (*repository.CitationReadModel, error) {
+	return scanCitation(rows)
 }

@@ -60,49 +60,7 @@ if ! go test ./...; then
 fi
 echo "  ✓ Tests passed"
 
-# --- Per-Package Coverage Enforcement ---
-echo "→ Checking per-package test coverage (minimum 85%)..."
-FAILED=0
-
-# Get list of packages dynamically (excluding cmd)
-PACKAGES=$(go list ./... | grep -v '/cmd/' | sed 's|github.com/cacack/my-family/||')
-
-for pkg in $PACKAGES; do
-  # Run coverage test for this package
-  COV=$(go test -cover "./$pkg" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+%' | head -1)
-
-  if [ -z "$COV" ]; then
-    echo "  ⚠ ./$pkg: No coverage data (no tests?)"
-    continue
-  fi
-
-  # Extract percentage number
-  PCT=$(echo "$COV" | sed 's/%//')
-
-  # Check if below threshold (using bc for float comparison)
-  if command -v bc &> /dev/null; then
-    if (( $(echo "$PCT < 85.0" | bc -l) )); then
-      echo "  ✗ ./$pkg: $COV (below 85%)"
-      FAILED=1
-    else
-      echo "  ✓ ./$pkg: $COV"
-    fi
-  else
-    # Fallback to awk if bc not available
-    if awk -v pct="$PCT" 'BEGIN { exit !(pct < 85.0) }'; then
-      echo "  ✗ ./$pkg: $COV (below 85%)"
-      FAILED=1
-    else
-      echo "  ✓ ./$pkg: $COV"
-    fi
-  fi
-done
-
-if [ $FAILED -eq 1 ]; then
-  echo ""
-  echo "Coverage enforcement failed. Please add tests to bring packages above 85%."
-  exit 1
-fi
+# Note: Coverage threshold checks run in pre-push hook (faster commits)
 
 echo ""
 echo "✓ All pre-commit checks passed"

@@ -1,4 +1,4 @@
-.PHONY: build test fmt vet generate clean run dev
+.PHONY: build test fmt vet generate clean run dev setup check-coverage
 
 # Build all Go packages
 build:
@@ -69,3 +69,16 @@ check: fmt vet test
 # Full CI check including lint (requires golangci-lint)
 check-full: fmt vet lint test
 	cd web && npm run check
+
+# Check coverage thresholds (same as CI)
+check-coverage:
+	go test -coverprofile=coverage.out ./...
+	go-test-coverage --config=.testcoverage.yml --profile=coverage.out
+
+# Setup development environment
+setup: deps
+	go install github.com/vladopajic/go-test-coverage/v2@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+	ln -sf ../../scripts/pre-push .git/hooks/pre-push
+	@echo "✓ Development environment ready"

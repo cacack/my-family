@@ -61,6 +61,46 @@ type PedigreeEdge struct {
 	MotherName string     `json:"mother_name,omitempty"`
 }
 
+// SourceReadModel represents a source in the read model.
+type SourceReadModel struct {
+	ID              uuid.UUID         `json:"id"`
+	SourceType      domain.SourceType `json:"source_type"`
+	Title           string            `json:"title"`
+	Author          string            `json:"author,omitempty"`
+	Publisher       string            `json:"publisher,omitempty"`
+	PublishDateRaw  string            `json:"publish_date_raw,omitempty"`
+	PublishDateSort *time.Time        `json:"publish_date_sort,omitempty"`
+	URL             string            `json:"url,omitempty"`
+	RepositoryName  string            `json:"repository_name,omitempty"`
+	CollectionName  string            `json:"collection_name,omitempty"`
+	CallNumber      string            `json:"call_number,omitempty"`
+	Notes           string            `json:"notes,omitempty"`
+	GedcomXref      string            `json:"gedcom_xref,omitempty"`
+	CitationCount   int               `json:"citation_count"`
+	Version         int64             `json:"version"`
+	UpdatedAt       time.Time         `json:"updated_at"`
+}
+
+// CitationReadModel represents a citation in the read model.
+type CitationReadModel struct {
+	ID            uuid.UUID            `json:"id"`
+	SourceID      uuid.UUID            `json:"source_id"`
+	SourceTitle   string               `json:"source_title"`
+	FactType      domain.FactType      `json:"fact_type"`
+	FactOwnerID   uuid.UUID            `json:"fact_owner_id"`
+	Page          string               `json:"page,omitempty"`
+	Volume        string               `json:"volume,omitempty"`
+	SourceQuality domain.SourceQuality `json:"source_quality,omitempty"`
+	InformantType domain.InformantType `json:"informant_type,omitempty"`
+	EvidenceType  domain.EvidenceType  `json:"evidence_type,omitempty"`
+	QuotedText    string               `json:"quoted_text,omitempty"`
+	Analysis      string               `json:"analysis,omitempty"`
+	TemplateID    string               `json:"template_id,omitempty"`
+	GedcomXref    string               `json:"gedcom_xref,omitempty"`
+	Version       int64                `json:"version"`
+	CreatedAt     time.Time            `json:"created_at"`
+}
+
 // ReadModelStore provides access to denormalized read models.
 type ReadModelStore interface {
 	// Person operations
@@ -88,6 +128,21 @@ type ReadModelStore interface {
 	GetPedigreeEdge(ctx context.Context, personID uuid.UUID) (*PedigreeEdge, error)
 	SavePedigreeEdge(ctx context.Context, edge *PedigreeEdge) error
 	DeletePedigreeEdge(ctx context.Context, personID uuid.UUID) error
+
+	// Source operations
+	GetSource(ctx context.Context, id uuid.UUID) (*SourceReadModel, error)
+	ListSources(ctx context.Context, opts ListOptions) ([]SourceReadModel, int, error)
+	SearchSources(ctx context.Context, query string, limit int) ([]SourceReadModel, error)
+	SaveSource(ctx context.Context, source *SourceReadModel) error
+	DeleteSource(ctx context.Context, id uuid.UUID) error
+
+	// Citation operations
+	GetCitation(ctx context.Context, id uuid.UUID) (*CitationReadModel, error)
+	GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]CitationReadModel, error)
+	GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]CitationReadModel, error)
+	GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
+	SaveCitation(ctx context.Context, citation *CitationReadModel) error
+	DeleteCitation(ctx context.Context, id uuid.UUID) error
 }
 
 // ListOptions contains options for list queries.

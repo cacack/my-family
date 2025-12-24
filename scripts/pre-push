@@ -1,0 +1,43 @@
+#!/bin/bash
+# Pre-push hook for my-family
+#
+# Runs coverage threshold checks before pushing to catch CI failures early.
+# This is separate from pre-commit to keep commits fast.
+#
+# Installation:
+#   ln -sf ../../scripts/pre-push .git/hooks/pre-push
+#   # Or run: make setup
+
+set -e
+
+echo "Running pre-push checks..."
+
+# --- Tool Discovery: Find go-test-coverage ---
+if command -v go-test-coverage &> /dev/null; then
+  GO_TEST_COVERAGE="go-test-coverage"
+elif [ -x "$HOME/go/bin/go-test-coverage" ]; then
+  GO_TEST_COVERAGE="$HOME/go/bin/go-test-coverage"
+elif [ -x "$(go env GOPATH)/bin/go-test-coverage" ]; then
+  GO_TEST_COVERAGE="$(go env GOPATH)/bin/go-test-coverage"
+else
+  echo "Error: go-test-coverage not found"
+  echo "Install with: go install github.com/vladopajic/go-test-coverage/v2@latest"
+  echo "Or run: make setup"
+  exit 1
+fi
+
+# --- Coverage Threshold Check ---
+echo "→ Running tests with coverage..."
+go test -coverprofile=coverage.out ./...
+
+echo "→ Checking coverage thresholds (85% per-package, 75% total)..."
+if ! "$GO_TEST_COVERAGE" --config=.testcoverage.yml --profile=coverage.out; then
+  echo ""
+  echo "  ✗ Coverage thresholds not met"
+  echo "  Run 'make check-coverage' to see details"
+  echo "  Add tests to bring coverage above thresholds"
+  exit 1
+fi
+
+echo ""
+echo "✓ All pre-push checks passed"

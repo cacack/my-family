@@ -49,7 +49,7 @@ func TestImportBasicGedcom(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, families, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
+	result, persons, families, _, _, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestImportApproximateDates(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestImportMissingNames(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestImportSingleParentFamily(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestImportMissingReference(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, families, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, families, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestImportDateRanges(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -282,5 +282,198 @@ func TestValidateImportData(t *testing.T) {
 	err = gedcom.ValidateImportData(persons, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestImportSources(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL 1850 US Census
+1 AUTH US Census Bureau
+1 PUBL Government Printing Office
+1 NOTE This is a test source
+0 @I1@ INDI
+1 NAME John /Doe/
+1 BIRT
+2 DATE 1850
+2 SOUR @S1@
+3 PAGE 123
+3 QUAY 3
+3 DATA
+4 TEXT Born January 1850
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, persons, _, sources, citations, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Verify source import
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("len(sources) = %d, want 1", len(sources))
+	}
+
+	src := sources[0]
+	if src.Title != "1850 US Census" {
+		t.Errorf("Source title = %s, want '1850 US Census'", src.Title)
+	}
+	if src.Author != "US Census Bureau" {
+		t.Errorf("Source author = %s, want 'US Census Bureau'", src.Author)
+	}
+	if src.Publisher != "Government Printing Office" {
+		t.Errorf("Source publisher = %s, want 'Government Printing Office'", src.Publisher)
+	}
+	if src.Notes != "This is a test source" {
+		t.Errorf("Source notes = %s, want 'This is a test source'", src.Notes)
+	}
+
+	// Verify citation import
+	if result.CitationsImported != 1 {
+		t.Errorf("CitationsImported = %d, want 1", result.CitationsImported)
+	}
+	if len(citations) != 1 {
+		t.Fatalf("len(citations) = %d, want 1", len(citations))
+	}
+
+	cit := citations[0]
+	if cit.SourceXref != "@S1@" {
+		t.Errorf("Citation source xref = %s, want '@S1@'", cit.SourceXref)
+	}
+	if cit.FactType != string(domain.FactPersonBirth) {
+		t.Errorf("Citation fact type = %s, want '%s'", cit.FactType, domain.FactPersonBirth)
+	}
+	if cit.FactOwnerID != persons[0].ID {
+		t.Error("Citation should be linked to person")
+	}
+	if cit.Page != "123" {
+		t.Errorf("Citation page = %s, want '123'", cit.Page)
+	}
+	if cit.Quality != "direct" {
+		t.Errorf("Citation quality = %s, want 'direct' (from QUAY 3)", cit.Quality)
+	}
+	if cit.QuotedText != "Born January 1850" {
+		t.Errorf("Citation quoted text = %s, want 'Born January 1850'", cit.QuotedText)
+	}
+}
+
+func TestImportCitationsForMultipleEvents(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Birth Certificate
+0 @S2@ SOUR
+1 TITL Death Certificate
+0 @I1@ INDI
+1 NAME Jane /Smith/
+1 BIRT
+2 DATE 1860
+2 SOUR @S1@
+3 PAGE Birth page
+1 DEAT
+2 DATE 1940
+2 SOUR @S2@
+3 PAGE Death page
+3 QUAY 2
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, sources, citations, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(sources) != 2 {
+		t.Fatalf("len(sources) = %d, want 2", len(sources))
+	}
+	if len(citations) != 2 {
+		t.Fatalf("len(citations) = %d, want 2", len(citations))
+	}
+
+	// Find birth citation
+	var birthCit, deathCit *gedcom.CitationData
+	for i := range citations {
+		if citations[i].FactType == string(domain.FactPersonBirth) {
+			birthCit = &citations[i]
+		} else if citations[i].FactType == string(domain.FactPersonDeath) {
+			deathCit = &citations[i]
+		}
+	}
+
+	if birthCit == nil {
+		t.Fatal("Birth citation not found")
+	}
+	if birthCit.Page != "Birth page" {
+		t.Errorf("Birth citation page = %s, want 'Birth page'", birthCit.Page)
+	}
+
+	if deathCit == nil {
+		t.Fatal("Death citation not found")
+	}
+	if deathCit.Page != "Death page" {
+		t.Errorf("Death citation page = %s, want 'Death page'", deathCit.Page)
+	}
+	if deathCit.Quality != "secondary" {
+		t.Errorf("Death citation quality = %s, want 'secondary' (from QUAY 2)", deathCit.Quality)
+	}
+}
+
+func TestImportFamilyCitations(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Marriage Record
+0 @I1@ INDI
+1 NAME John /Doe/
+0 @I2@ INDI
+1 NAME Jane /Smith/
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 1880
+2 SOUR @S1@
+3 PAGE Marriage register, page 45
+3 QUAY 3
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, families, sources, citations, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(sources) != 1 {
+		t.Fatalf("len(sources) = %d, want 1", len(sources))
+	}
+	if len(citations) != 1 {
+		t.Fatalf("len(citations) = %d, want 1", len(citations))
+	}
+
+	cit := citations[0]
+	if cit.FactType != string(domain.FactFamilyMarriage) {
+		t.Errorf("Citation fact type = %s, want '%s'", cit.FactType, domain.FactFamilyMarriage)
+	}
+	if cit.FactOwnerID != families[0].ID {
+		t.Error("Citation should be linked to family")
+	}
+	if cit.Page != "Marriage register, page 45" {
+		t.Errorf("Citation page = %s, want 'Marriage register, page 45'", cit.Page)
 	}
 }

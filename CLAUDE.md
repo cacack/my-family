@@ -32,7 +32,27 @@ go test ./...           # Run all tests
 go test -v ./... -run TestName  # Run a specific test
 go fmt ./...            # Format code
 go vet ./...            # Static analysis
+make check-coverage     # Verify coverage thresholds (85% per-package)
+make setup              # Install tools and hooks
 ```
+
+**Important**: When adding new code, always run `make check-coverage` before declaring tests complete. CI enforces 85% per-package coverage.
+
+## Commit Conventions
+
+Use conventional commits with these types only:
+
+| Type | Use for |
+|------|---------|
+| `feat` | New user-facing features |
+| `fix` | Bug fixes |
+| `perf` | Performance improvements |
+| `docs` | Documentation only |
+| `refactor` | Code restructuring |
+| `ci` | CI/CD and tooling |
+| `chore` | Maintenance, formatting, deps |
+
+PR titles use descriptive format (not conventional commits). See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 ## Architecture
 

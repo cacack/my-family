@@ -6,26 +6,40 @@ Thank you for your interest in contributing to the my-family genealogy platform.
 
 See [README.md](./README.md) for prerequisites and quick start.
 
-### Pre-commit Hook (Recommended)
-
-Install the pre-commit hook to catch issues before committing:
+### Quick Setup
 
 ```bash
-ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+make setup
 ```
 
-The hook checks:
+This installs tools and git hooks:
+- `golangci-lint` - Linting
+- `go-test-coverage` - Coverage threshold checking
+- Pre-commit hook (fast: format, lint, vet, tests)
+- Pre-push hook (coverage thresholds)
+
+### Git Hooks
+
+**Pre-commit** (runs on every commit):
 - Code formatting (`go fmt`)
 - Linting (`golangci-lint`)
 - Static analysis (`go vet`)
 - Tests pass
-- Per-package coverage (minimum 85% per package)
 
-**Tool discovery**: The hook automatically finds `golangci-lint` in PATH, `~/go/bin`, or `$(go env GOPATH)/bin`.
+**Pre-push** (runs before push):
+- Coverage thresholds (85% per-package, 75% total)
 
-Install golangci-lint if needed:
+This split keeps commits fast while catching coverage issues before CI.
+
+### Manual Tool Installation
+
+If not using `make setup`:
+
 ```bash
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+go install github.com/vladopajic/go-test-coverage/v2@latest
+ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+ln -sf ../../scripts/pre-push .git/hooks/pre-push
 ```
 
 ## Code Standards
@@ -44,16 +58,15 @@ We use conventional commits to maintain clear project history and automate chang
 
 | Type | Use for | Appears in Changelog? |
 |------|---------|----------------------|
-| `feat` | Library/app capabilities | Yes |
-| `fix` | Bug fixes in library/app | Yes |
+| `feat` | New user-facing features | Yes |
+| `fix` | Bug fixes | Yes |
 | `perf` | Performance improvements | Yes |
-| `refactor` | Code restructuring | No |
-| `test` | Test changes | No |
-| `docs` | Documentation | No |
-| `ci` | Dev infrastructure, deps, tooling | No |
-| `chore` | Miscellaneous maintenance | No |
+| `docs` | Documentation only | No |
+| `refactor` | Code restructuring (no behavior change) | No |
+| `ci` | CI/CD, dev infrastructure, tooling | No |
+| `chore` | Maintenance, formatting, dependencies | No |
 
-**Key rule**: `feat` and `fix` are reserved for user-facing changes, not development tooling.
+**Note**: Only these 7 types are used. `feat` and `fix` are reserved for user-facing changes.
 
 Examples:
 - `feat(source): add citation confidence levels` ✅ (user-facing feature)

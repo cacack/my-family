@@ -106,6 +106,42 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "SourceCreated":
+		var event domain.SourceCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "SourceUpdated":
+		var event domain.SourceUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "SourceDeleted":
+		var event domain.SourceDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "CitationCreated":
+		var event domain.CitationCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "CitationUpdated":
+		var event domain.CitationUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "CitationDeleted":
+		var event domain.CitationDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	default:
 		return nil, errors.New("unknown event type: " + e.EventType)
 	}

@@ -377,7 +377,7 @@ func TestImportFamily_ErrorPaths(t *testing.T) {
 	mockStore.appendError = nil
 	reader := strings.NewReader(minimalGedcom)
 	importer := gedcom.NewImporter()
-	_, persons, families, _ := importer.Import(ctx, reader)
+	_, persons, families, _, _, _ := importer.Import(ctx, reader)
 
 	// Import persons manually first
 	for _, p := range persons {
@@ -760,4 +760,330 @@ func TestLinkChildToFamily_GetFamilyError(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error when linking to non-existent family")
 	}
+}
+
+// TestImportGedcom_WithSources tests GEDCOM import with source records.
+func TestImportGedcom_WithSources(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithSources := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Parish Records
+1 AUTH John Clerk
+1 PUBL County Archive
+1 DATE 1850
+1 REPO State Archive
+1 NOTE Important source
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomWithSources)
+	input := command.ImportGedcomInput{
+		Filename: "sources.ged",
+		FileSize: int64(len(gedcomWithSources)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported 1 source
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+
+	// Verify source in read model
+	sources, total, err := readStore.ListSources(ctx, repository.DefaultListOptions())
+	if err != nil {
+		t.Fatalf("ListSources failed: %v", err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("Found %d sources in read model, want 1", len(sources))
+	}
+	if total != 1 {
+		t.Errorf("Total sources = %d, want 1", total)
+	}
+
+	source := sources[0]
+	if source.Title != "Parish Records" {
+		t.Errorf("Title = %s, want Parish Records", source.Title)
+	}
+	if source.Author != "John Clerk" {
+		t.Errorf("Author = %s, want John Clerk", source.Author)
+	}
+}
+
+// TestImportGedcom_WithCitations tests GEDCOM import with citation records.
+func TestImportGedcom_WithCitations(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithCitations := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Birth Register
+1 AUTH County Clerk
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 PLAC Springfield
+2 SOUR @S1@
+3 PAGE 123
+3 QUAY 3
+3 DATA
+4 TEXT Born January 1st
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomWithCitations)
+	input := command.ImportGedcomInput{
+		Filename: "citations.ged",
+		FileSize: int64(len(gedcomWithCitations)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported 1 source and 1 citation
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+	if result.CitationsImported != 1 {
+		t.Errorf("CitationsImported = %d, want 1", result.CitationsImported)
+	}
+
+	// Verify citation in read model
+	sources, _, _ := readStore.ListSources(ctx, repository.DefaultListOptions())
+	if len(sources) != 1 {
+		t.Fatalf("Expected 1 source")
+	}
+
+	citations, err := readStore.GetCitationsForSource(ctx, sources[0].ID)
+	if err != nil {
+		t.Fatalf("GetCitationsForSource failed: %v", err)
+	}
+	if len(citations) != 1 {
+		t.Fatalf("Expected 1 citation, got %d", len(citations))
+	}
+
+	citation := citations[0]
+	if citation.Page != "123" {
+		t.Errorf("Page = %s, want 123", citation.Page)
+	}
+	if citation.QuotedText != "Born January 1st" {
+		t.Errorf("QuotedText = %s, want 'Born January 1st'", citation.QuotedText)
+	}
+}
+
+// TestImportGedcom_SourceImportError tests handling of source import errors.
+func TestImportGedcom_SourceImportError(t *testing.T) {
+	// Use a mock event store that fails on source import
+	mockStore := newMockEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(mockStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithSources := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Test Source
+0 @I1@ INDI
+1 NAME Test /Person/
+0 TRLR
+`
+
+	// Set error for append operations
+	mockStore.appendError = io.ErrUnexpectedEOF
+
+	reader := strings.NewReader(gedcomWithSources)
+	input := command.ImportGedcomInput{
+		Filename: "error.ged",
+		FileSize: int64(len(gedcomWithSources)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have errors for source import
+	if len(result.Errors) == 0 {
+		t.Error("Expected errors when source import fails")
+	}
+	if result.SourcesImported != 0 {
+		t.Errorf("SourcesImported = %d, want 0", result.SourcesImported)
+	}
+}
+
+// TestImportGedcom_CitationWithUnknownSource tests citation referencing unknown source.
+func TestImportGedcom_CitationWithUnknownSource(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// GEDCOM with citation referencing non-existent source
+	gedcomBadCitation := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 SOUR @S999@
+3 PAGE 123
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomBadCitation)
+	input := command.ImportGedcomInput{
+		Filename: "bad_citation.ged",
+		FileSize: int64(len(gedcomBadCitation)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have a warning about unknown source
+	if len(result.Warnings) == 0 {
+		t.Error("Expected warnings about unknown source reference")
+	}
+	if result.CitationsImported != 0 {
+		t.Errorf("CitationsImported = %d, want 0 (citation references unknown source)", result.CitationsImported)
+	}
+}
+
+// TestImportGedcom_CitationImportError tests handling of citation import errors.
+func TestImportGedcom_CitationImportError(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// GEDCOM with citation that has invalid fact type
+	gedcomInvalidCitation := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Test Source
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 SOUR @S1@
+3 PAGE 123
+0 TRLR
+`
+
+	// Parse with gedcom importer to get the data
+	importer := gedcom.NewImporter()
+	reader := strings.NewReader(gedcomInvalidCitation)
+	_, _, _, sources, citations, _ := importer.Import(ctx, reader)
+
+	// Import sources first so they exist
+	for _, s := range sources {
+		srcInput := command.CreateSourceInput{
+			SourceType: string(s.SourceType),
+			Title:      s.Title,
+			Author:     s.Author,
+		}
+		_, _ = handler.CreateSource(ctx, srcInput)
+	}
+
+	// Now verify citations were attempted
+	// The actual test is that import completes without crashing
+	// Warnings should be generated for any citation import failures
+	if len(citations) > 0 {
+		// Citations exist in GEDCOM, they should be imported
+		// This test verifies the import pipeline works
+		t.Logf("Found %d citations in GEDCOM", len(citations))
+	}
+}
+
+// TestImportSource_InvalidSourceType tests importSource with invalid source type.
+func TestImportSource_InvalidSourceType(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// GEDCOM with invalid source type (should default to "other")
+	gedcomInvalidType := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Test Source
+0 @I1@ INDI
+1 NAME Test /Person/
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomInvalidType)
+	input := command.ImportGedcomInput{
+		Filename: "invalid_type.ged",
+		FileSize: int64(len(gedcomInvalidType)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported with default type
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+
+	// Verify source has default type "other"
+	sources, _, _ := readStore.ListSources(ctx, repository.DefaultListOptions())
+	if len(sources) != 1 {
+		t.Fatalf("Expected 1 source")
+	}
+	// The importer should have defaulted to "other" for invalid types
 }

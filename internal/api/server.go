@@ -25,6 +25,7 @@ type Server struct {
 	personService   *query.PersonService
 	familyService   *query.FamilyService
 	pedigreeService *query.PedigreeService
+	sourceService   *query.SourceService
 	frontendFS      fs.FS
 }
 
@@ -65,6 +66,7 @@ func NewServer(
 	personSvc := query.NewPersonService(readStore)
 	familySvc := query.NewFamilyService(readStore)
 	pedigreeSvc := query.NewPedigreeService(readStore)
+	sourceSvc := query.NewSourceService(readStore)
 
 	server := &Server{
 		echo:            e,
@@ -74,6 +76,7 @@ func NewServer(
 		personService:   personSvc,
 		familyService:   familySvc,
 		pedigreeService: pedigreeSvc,
+		sourceService:   sourceSvc,
 		frontendFS:      frontendFS,
 	}
 
@@ -114,6 +117,24 @@ func (s *Server) registerRoutes() {
 
 	// Pedigree (placeholder - will be implemented in Phase 6)
 	api.GET("/pedigree/:id", s.getPedigree)
+
+	// Sources
+	api.GET("/sources", s.listSources)
+	api.POST("/sources", s.createSource)
+	api.GET("/sources/search", s.searchSources)
+	api.GET("/sources/:id", s.getSource)
+	api.PUT("/sources/:id", s.updateSource)
+	api.DELETE("/sources/:id", s.deleteSource)
+	api.GET("/sources/:id/citations", s.getCitationsForSource)
+
+	// Citations
+	api.POST("/citations", s.createCitation)
+	api.GET("/citations/:id", s.getCitation)
+	api.PUT("/citations/:id", s.updateCitation)
+	api.DELETE("/citations/:id", s.deleteCitation)
+
+	// Person citations (nested under persons)
+	api.GET("/persons/:id/citations", s.getCitationsForPerson)
 
 	// GEDCOM (placeholder - will be implemented in Phase 5)
 	api.POST("/gedcom/import", s.importGedcom)

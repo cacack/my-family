@@ -262,3 +262,159 @@ type EventMetadata struct {
 	CausationID   string `json:"causation_id,omitempty"`
 	UserID        string `json:"user_id,omitempty"`
 }
+
+// SourceCreated event is emitted when a new source is created.
+type SourceCreated struct {
+	BaseEvent
+	SourceID       uuid.UUID  `json:"source_id"`
+	SourceType     SourceType `json:"source_type"`
+	Title          string     `json:"title"`
+	Author         string     `json:"author,omitempty"`
+	Publisher      string     `json:"publisher,omitempty"`
+	PublishDate    *GenDate   `json:"publish_date,omitempty"`
+	URL            string     `json:"url,omitempty"`
+	RepositoryName string     `json:"repository_name,omitempty"`
+	CollectionName string     `json:"collection_name,omitempty"`
+	CallNumber     string     `json:"call_number,omitempty"`
+	Notes          string     `json:"notes,omitempty"`
+	GedcomXref     string     `json:"gedcom_xref,omitempty"`
+}
+
+func (e SourceCreated) EventType() string      { return "SourceCreated" }
+func (e SourceCreated) AggregateID() uuid.UUID { return e.SourceID }
+
+// NewSourceCreated creates a SourceCreated event from a Source.
+func NewSourceCreated(s *Source) SourceCreated {
+	return SourceCreated{
+		BaseEvent:      NewBaseEvent(),
+		SourceID:       s.ID,
+		SourceType:     s.SourceType,
+		Title:          s.Title,
+		Author:         s.Author,
+		Publisher:      s.Publisher,
+		PublishDate:    s.PublishDate,
+		URL:            s.URL,
+		RepositoryName: s.RepositoryName,
+		CollectionName: s.CollectionName,
+		CallNumber:     s.CallNumber,
+		Notes:          s.Notes,
+		GedcomXref:     s.GedcomXref,
+	}
+}
+
+// SourceUpdated event is emitted when a source is updated.
+type SourceUpdated struct {
+	BaseEvent
+	SourceID uuid.UUID      `json:"source_id"`
+	Changes  map[string]any `json:"changes"`
+}
+
+func (e SourceUpdated) EventType() string      { return "SourceUpdated" }
+func (e SourceUpdated) AggregateID() uuid.UUID { return e.SourceID }
+
+// NewSourceUpdated creates a SourceUpdated event.
+func NewSourceUpdated(sourceID uuid.UUID, changes map[string]any) SourceUpdated {
+	return SourceUpdated{
+		BaseEvent: NewBaseEvent(),
+		SourceID:  sourceID,
+		Changes:   changes,
+	}
+}
+
+// SourceDeleted event is emitted when a source is deleted.
+type SourceDeleted struct {
+	BaseEvent
+	SourceID uuid.UUID `json:"source_id"`
+	Reason   string    `json:"reason,omitempty"`
+}
+
+func (e SourceDeleted) EventType() string      { return "SourceDeleted" }
+func (e SourceDeleted) AggregateID() uuid.UUID { return e.SourceID }
+
+// NewSourceDeleted creates a SourceDeleted event.
+func NewSourceDeleted(sourceID uuid.UUID, reason string) SourceDeleted {
+	return SourceDeleted{
+		BaseEvent: NewBaseEvent(),
+		SourceID:  sourceID,
+		Reason:    reason,
+	}
+}
+
+// CitationCreated event is emitted when a new citation is created.
+type CitationCreated struct {
+	BaseEvent
+	CitationID    uuid.UUID     `json:"citation_id"`
+	SourceID      uuid.UUID     `json:"source_id"`
+	FactType      FactType      `json:"fact_type"`
+	FactOwnerID   uuid.UUID     `json:"fact_owner_id"`
+	Page          string        `json:"page,omitempty"`
+	Volume        string        `json:"volume,omitempty"`
+	SourceQuality SourceQuality `json:"source_quality,omitempty"`
+	InformantType InformantType `json:"informant_type,omitempty"`
+	EvidenceType  EvidenceType  `json:"evidence_type,omitempty"`
+	QuotedText    string        `json:"quoted_text,omitempty"`
+	Analysis      string        `json:"analysis,omitempty"`
+	TemplateID    string        `json:"template_id,omitempty"`
+	GedcomXref    string        `json:"gedcom_xref,omitempty"`
+}
+
+func (e CitationCreated) EventType() string      { return "CitationCreated" }
+func (e CitationCreated) AggregateID() uuid.UUID { return e.CitationID }
+
+// NewCitationCreated creates a CitationCreated event from a Citation.
+func NewCitationCreated(c *Citation) CitationCreated {
+	return CitationCreated{
+		BaseEvent:     NewBaseEvent(),
+		CitationID:    c.ID,
+		SourceID:      c.SourceID,
+		FactType:      c.FactType,
+		FactOwnerID:   c.FactOwnerID,
+		Page:          c.Page,
+		Volume:        c.Volume,
+		SourceQuality: c.SourceQuality,
+		InformantType: c.InformantType,
+		EvidenceType:  c.EvidenceType,
+		QuotedText:    c.QuotedText,
+		Analysis:      c.Analysis,
+		TemplateID:    c.TemplateID,
+		GedcomXref:    c.GedcomXref,
+	}
+}
+
+// CitationUpdated event is emitted when a citation is updated.
+type CitationUpdated struct {
+	BaseEvent
+	CitationID uuid.UUID      `json:"citation_id"`
+	Changes    map[string]any `json:"changes"`
+}
+
+func (e CitationUpdated) EventType() string      { return "CitationUpdated" }
+func (e CitationUpdated) AggregateID() uuid.UUID { return e.CitationID }
+
+// NewCitationUpdated creates a CitationUpdated event.
+func NewCitationUpdated(citationID uuid.UUID, changes map[string]any) CitationUpdated {
+	return CitationUpdated{
+		BaseEvent:  NewBaseEvent(),
+		CitationID: citationID,
+		Changes:    changes,
+	}
+}
+
+// CitationDeleted event is emitted when a citation is deleted.
+type CitationDeleted struct {
+	BaseEvent
+	CitationID uuid.UUID `json:"citation_id"`
+	Reason     string    `json:"reason,omitempty"`
+}
+
+func (e CitationDeleted) EventType() string      { return "CitationDeleted" }
+func (e CitationDeleted) AggregateID() uuid.UUID { return e.CitationID }
+
+// NewCitationDeleted creates a CitationDeleted event.
+func NewCitationDeleted(citationID uuid.UUID, reason string) CitationDeleted {
+	return CitationDeleted{
+		BaseEvent:  NewBaseEvent(),
+		CitationID: citationID,
+		Reason:     reason,
+	}
+}

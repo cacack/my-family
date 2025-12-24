@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -18,6 +19,8 @@ type ReadModelStore struct {
 	families       map[uuid.UUID]*repository.FamilyReadModel
 	familyChildren map[uuid.UUID][]repository.FamilyChildReadModel // keyed by family ID
 	pedigreeEdges  map[uuid.UUID]*repository.PedigreeEdge          // keyed by person ID
+	sources        map[uuid.UUID]*repository.SourceReadModel
+	citations      map[uuid.UUID]*repository.CitationReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -27,6 +30,8 @@ func NewReadModelStore() *ReadModelStore {
 		families:       make(map[uuid.UUID]*repository.FamilyReadModel),
 		familyChildren: make(map[uuid.UUID][]repository.FamilyChildReadModel),
 		pedigreeEdges:  make(map[uuid.UUID]*repository.PedigreeEdge),
+		sources:        make(map[uuid.UUID]*repository.SourceReadModel),
+		citations:      make(map[uuid.UUID]*repository.CitationReadModel),
 	}
 }
 
@@ -347,4 +352,169 @@ func (s *ReadModelStore) Reset() {
 	s.families = make(map[uuid.UUID]*repository.FamilyReadModel)
 	s.familyChildren = make(map[uuid.UUID][]repository.FamilyChildReadModel)
 	s.pedigreeEdges = make(map[uuid.UUID]*repository.PedigreeEdge)
+	s.sources = make(map[uuid.UUID]*repository.SourceReadModel)
+	s.citations = make(map[uuid.UUID]*repository.CitationReadModel)
+}
+
+// GetSource retrieves a source by ID.
+func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	src, exists := s.sources[id]
+	if !exists {
+		return nil, nil
+	}
+	copy := *src
+	return &copy, nil
+}
+
+// ListSources returns a paginated list of sources.
+func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sources := make([]repository.SourceReadModel, 0, len(s.sources))
+	for _, src := range s.sources {
+		sources = append(sources, *src)
+	}
+
+	// Sort by title
+	sort.Slice(sources, func(i, j int) bool {
+		cmp := strings.Compare(sources[i].Title, sources[j].Title)
+		if opts.Order == "desc" {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+
+	total := len(sources)
+
+	// Paginate
+	start := opts.Offset
+	if start > len(sources) {
+		start = len(sources)
+	}
+	end := start + opts.Limit
+	if end > len(sources) {
+		end = len(sources)
+	}
+
+	return sources[start:end], total, nil
+}
+
+// SearchSources searches for sources by title.
+func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit int) ([]repository.SourceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	query = strings.ToLower(query)
+	var results []repository.SourceReadModel
+
+	for _, src := range s.sources {
+		title := strings.ToLower(src.Title)
+		author := strings.ToLower(src.Author)
+
+		if strings.Contains(title, query) || strings.Contains(author, query) {
+			results = append(results, *src)
+			if len(results) >= limit {
+				break
+			}
+		}
+	}
+
+	return results, nil
+}
+
+// SaveSource saves or updates a source.
+func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.SourceReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	copy := *source
+	s.sources[source.ID] = &copy
+	return nil
+}
+
+// DeleteSource removes a source.
+func (s *ReadModelStore) DeleteSource(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.sources, id)
+	return nil
+}
+
+// GetCitation retrieves a citation by ID.
+func (s *ReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cit, exists := s.citations[id]
+	if !exists {
+		return nil, nil
+	}
+	copy := *cit
+	return &copy, nil
+}
+
+// GetCitationsForSource returns all citations for a source.
+func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.CitationReadModel
+	for _, cit := range s.citations {
+		if cit.SourceID == sourceID {
+			results = append(results, *cit)
+		}
+	}
+	return results, nil
+}
+
+// GetCitationsForPerson returns all citations for a person.
+func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.CitationReadModel
+	for _, cit := range s.citations {
+		if cit.FactOwnerID == personID && strings.HasPrefix(string(cit.FactType), "person_") {
+			results = append(results, *cit)
+		}
+	}
+	return results, nil
+}
+
+// GetCitationsForFact returns all citations for a specific fact.
+func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.CitationReadModel
+	for _, cit := range s.citations {
+		if cit.FactType == factType && cit.FactOwnerID == factOwnerID {
+			results = append(results, *cit)
+		}
+	}
+	return results, nil
+}
+
+// SaveCitation saves or updates a citation.
+func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.CitationReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	copy := *citation
+	s.citations[citation.ID] = &copy
+	return nil
+}
+
+// DeleteCitation removes a citation.
+func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.citations, id)
+	return nil
 }
