@@ -353,3 +353,494 @@ func TestExport_SingleParentFamily(t *testing.T) {
 		t.Error("Family should have CHIL")
 	}
 }
+
+func TestExport_WithSources(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a source
+	sourceID := uuid.New()
+	source := &repository.SourceReadModel{
+		ID:             sourceID,
+		SourceType:     "book",
+		Title:          "Parish Records",
+		Author:         "John Clerk",
+		Publisher:      "County Archive",
+		PublishDateRaw: "1850",
+		RepositoryName: "State Archive",
+		Notes:          "Important source",
+	}
+	if err := readStore.SaveSource(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify source was exported
+	if result.SourcesExported != 1 {
+		t.Errorf("SourcesExported = %d, want 1", result.SourcesExported)
+	}
+
+	output := buf.String()
+
+	// Check source record
+	if !strings.Contains(output, "SOUR\n") {
+		t.Error("Output should contain SOUR record")
+	}
+	if !strings.Contains(output, "1 TITL Parish Records\n") {
+		t.Error("Output should contain source title")
+	}
+	if !strings.Contains(output, "1 AUTH John Clerk\n") {
+		t.Error("Output should contain source author")
+	}
+	if !strings.Contains(output, "1 PUBL County Archive\n") {
+		t.Error("Output should contain source publisher")
+	}
+	if !strings.Contains(output, "1 REPO\n") {
+		t.Error("Output should contain REPO tag")
+	}
+	if !strings.Contains(output, "2 NAME State Archive\n") {
+		t.Error("Output should contain repository name")
+	}
+	if !strings.Contains(output, "1 NOTE Important source\n") {
+		t.Error("Output should contain source notes")
+	}
+}
+
+func TestExport_SourceWithXref(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a source with GedcomXref
+	sourceID := uuid.New()
+	source := &repository.SourceReadModel{
+		ID:         sourceID,
+		SourceType: "book",
+		Title:      "Test Source",
+		GedcomXref: "@S100@",
+	}
+	if err := readStore.SaveSource(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Should preserve the original XREF
+	if !strings.Contains(output, "0 @S100@ SOUR\n") {
+		t.Error("Output should preserve original GEDCOM XREF for source")
+	}
+}
+
+func TestExport_WithCitations(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a source
+	sourceID := uuid.New()
+	source := &repository.SourceReadModel{
+		ID:         sourceID,
+		SourceType: "book",
+		Title:      "Birth Register",
+	}
+	readStore.SaveSource(ctx, source)
+
+	// Create a person
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "John",
+		Surname:      "Doe",
+		FullName:     "John Doe",
+		BirthDateRaw: "1 JAN 1850",
+		BirthPlace:   "Springfield",
+	}
+	readStore.SavePerson(ctx, person)
+
+	// Create a citation for birth event
+	citationID := uuid.New()
+	citation := &repository.CitationReadModel{
+		ID:            citationID,
+		SourceID:      sourceID,
+		FactType:      domain.FactPersonBirth,
+		FactOwnerID:   personID,
+		Page:          "123",
+		SourceQuality: "original",
+		InformantType: "primary",
+		EvidenceType:  "direct",
+		QuotedText:    "Born January 1st",
+	}
+	readStore.SaveCitation(ctx, citation)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify citation was exported
+	if result.CitationsExported != 1 {
+		t.Errorf("CitationsExported = %d, want 1", result.CitationsExported)
+	}
+
+	output := buf.String()
+
+	// Check citation in birth event
+	if !strings.Contains(output, "1 BIRT\n") {
+		t.Error("Output should contain BIRT event")
+	}
+	if !strings.Contains(output, "2 SOUR @S") {
+		t.Error("Output should contain source reference in BIRT")
+	}
+	if !strings.Contains(output, "3 PAGE 123\n") {
+		t.Error("Output should contain citation page")
+	}
+	if !strings.Contains(output, "3 QUAY 3\n") {
+		t.Error("Output should contain QUAY 3 for direct/primary evidence")
+	}
+	if !strings.Contains(output, "3 DATA\n") {
+		t.Error("Output should contain DATA tag")
+	}
+	if !strings.Contains(output, "4 TEXT Born January 1st\n") {
+		t.Error("Output should contain quoted text")
+	}
+}
+
+func TestExport_FamilyCitations(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a source
+	sourceID := uuid.New()
+	source := &repository.SourceReadModel{
+		ID:         sourceID,
+		SourceType: "archive",
+		Title:      "Marriage Records",
+	}
+	readStore.SaveSource(ctx, source)
+
+	// Create persons
+	husbandID := uuid.New()
+	wifeID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        husbandID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        wifeID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+	})
+
+	// Create family with marriage
+	familyID := uuid.New()
+	family := &repository.FamilyReadModel{
+		ID:               familyID,
+		Partner1ID:       &husbandID,
+		Partner2ID:       &wifeID,
+		RelationshipType: domain.RelationMarriage,
+		MarriageDateRaw:  "10 JUN 1875",
+		MarriagePlace:    "Chicago",
+	}
+	readStore.SaveFamily(ctx, family)
+
+	// Create citation for marriage
+	citation := &repository.CitationReadModel{
+		ID:            uuid.New(),
+		SourceID:      sourceID,
+		FactType:      domain.FactFamilyMarriage,
+		FactOwnerID:   familyID,
+		Page:          "456",
+		InformantType: "secondary",
+		QuotedText:    "Married on June 10th",
+	}
+	readStore.SaveCitation(ctx, citation)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.CitationsExported != 1 {
+		t.Errorf("CitationsExported = %d, want 1", result.CitationsExported)
+	}
+
+	output := buf.String()
+
+	// Check citation in marriage event
+	if !strings.Contains(output, "1 MARR\n") {
+		t.Error("Output should contain MARR event")
+	}
+	if !strings.Contains(output, "2 SOUR @S") {
+		t.Error("Output should contain source reference in MARR")
+	}
+	if !strings.Contains(output, "3 PAGE 456\n") {
+		t.Error("Output should contain citation page")
+	}
+	if !strings.Contains(output, "3 QUAY 2\n") {
+		t.Error("Output should contain QUAY 2 for secondary informant")
+	}
+}
+
+func TestExport_MultipleCitations(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create sources
+	source1ID := uuid.New()
+	source2ID := uuid.New()
+	readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:         source1ID,
+		SourceType: "book",
+		Title:      "Source 1",
+	})
+	readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:         source2ID,
+		SourceType: "book",
+		Title:      "Source 2",
+	})
+
+	// Create person
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "John",
+		Surname:      "Doe",
+		FullName:     "John Doe",
+		BirthDateRaw: "1850",
+	}
+	readStore.SavePerson(ctx, person)
+
+	// Create two citations for birth
+	readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    source1ID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: personID,
+		Page:        "10",
+	})
+	readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    source2ID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: personID,
+		Page:        "20",
+	})
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have exported both citations
+	if result.CitationsExported != 2 {
+		t.Errorf("CitationsExported = %d, want 2", result.CitationsExported)
+	}
+
+	output := buf.String()
+
+	// Should have both page numbers
+	if !strings.Contains(output, "3 PAGE 10\n") {
+		t.Error("Output should contain first citation page")
+	}
+	if !strings.Contains(output, "3 PAGE 20\n") {
+		t.Error("Output should contain second citation page")
+	}
+}
+
+func TestExport_CitationQualityMapping(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:         sourceID,
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "Test",
+		Surname:      "Person",
+		FullName:     "Test Person",
+		BirthDateRaw: "1850",
+		DeathDateRaw: "1920",
+	})
+
+	tests := []struct {
+		name          string
+		evidenceType  domain.EvidenceType
+		informantType domain.InformantType
+		wantQuality   string
+		factType      domain.FactType
+	}{
+		{
+			name:          "direct and primary",
+			evidenceType:  domain.EvidenceDirect,
+			informantType: domain.InformantPrimary,
+			wantQuality:   "3 QUAY 3",
+			factType:      domain.FactPersonBirth,
+		},
+		{
+			name:          "secondary informant",
+			informantType: domain.InformantSecondary,
+			wantQuality:   "3 QUAY 2",
+			factType:      domain.FactPersonDeath,
+		},
+		{
+			name:         "indirect evidence",
+			evidenceType: domain.EvidenceIndirect,
+			wantQuality:  "3 QUAY 1",
+			factType:     domain.FactPersonBirth,
+		},
+		{
+			name:         "negative evidence",
+			evidenceType: domain.EvidenceNegative,
+			wantQuality:  "3 QUAY 0",
+			factType:     domain.FactPersonDeath,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear previous citations
+			readStore := memory.NewReadModelStore()
+			readStore.SaveSource(ctx, &repository.SourceReadModel{
+				ID:         sourceID,
+				SourceType: "book",
+				Title:      "Test Source",
+			})
+			readStore.SavePerson(ctx, &repository.PersonReadModel{
+				ID:           personID,
+				GivenName:    "Test",
+				Surname:      "Person",
+				FullName:     "Test Person",
+				BirthDateRaw: "1850",
+				DeathDateRaw: "1920",
+			})
+
+			citation := &repository.CitationReadModel{
+				ID:            uuid.New(),
+				SourceID:      sourceID,
+				FactType:      tt.factType,
+				FactOwnerID:   personID,
+				EvidenceType:  tt.evidenceType,
+				InformantType: tt.informantType,
+			}
+			readStore.SaveCitation(ctx, citation)
+
+			exporter := gedcom.NewExporter(readStore)
+			buf := &bytes.Buffer{}
+			_, err := exporter.Export(ctx, buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			output := buf.String()
+			if !strings.Contains(output, tt.wantQuality) {
+				t.Errorf("Output should contain %s, got:\n%s", tt.wantQuality, output)
+			}
+		})
+	}
+}
+
+func TestExport_SourceWithMultilineNotes(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	source := &repository.SourceReadModel{
+		ID:         uuid.New(),
+		SourceType: "book",
+		Title:      "Test Source",
+		Notes:      "First line\nSecond line\nThird line",
+	}
+	readStore.SaveSource(ctx, source)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Should have NOTE with CONT
+	if !strings.Contains(output, "1 NOTE First line\n") {
+		t.Error("Output should contain first line of notes")
+	}
+	if !strings.Contains(output, "2 CONT Second line\n") {
+		t.Error("Output should contain CONT for second line")
+	}
+	if !strings.Contains(output, "2 CONT Third line\n") {
+		t.Error("Output should contain CONT for third line")
+	}
+}
+
+func TestExport_CitationWithMultilineText(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:         sourceID,
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "Test",
+		Surname:      "Person",
+		FullName:     "Test Person",
+		BirthDateRaw: "1850",
+	})
+
+	citation := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: personID,
+		QuotedText:  "First line of quote\nSecond line of quote",
+	}
+	readStore.SaveCitation(ctx, citation)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Should have TEXT with CONT
+	if !strings.Contains(output, "4 TEXT First line of quote\n") {
+		t.Error("Output should contain first line of quoted text")
+	}
+	if !strings.Contains(output, "5 CONT Second line of quote\n") {
+		t.Error("Output should contain CONT for second line of quoted text")
+	}
+}

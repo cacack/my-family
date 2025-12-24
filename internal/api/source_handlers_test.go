@@ -703,3 +703,253 @@ func TestSearchSources_EmptyResults(t *testing.T) {
 		t.Errorf("len(sources) = %d, want 0", len(sources))
 	}
 }
+
+func TestUpdateSource_NotFound(t *testing.T) {
+	server := setupTestServer()
+
+	// Try to update non-existent source
+	updateBody := `{"title":"Updated Title","version":1}`
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/sources/00000000-0000-0000-0000-000000000001", strings.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(updateRec, updateReq)
+
+	if updateRec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", updateRec.Code, http.StatusNotFound)
+	}
+}
+
+func TestDeleteCitation_NotFound(t *testing.T) {
+	server := setupTestServer()
+
+	// Try to delete non-existent citation
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/00000000-0000-0000-0000-000000000001", nil)
+	deleteRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(deleteRec, deleteReq)
+
+	if deleteRec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", deleteRec.Code, http.StatusNotFound)
+	}
+}
+
+func TestGetSource_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/invalid-uuid", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateSource_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	updateBody := `{"title":"Updated Title","version":1}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/sources/invalid-uuid", strings.NewReader(updateBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDeleteSource_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/invalid-uuid", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetCitationsForSource_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/invalid-uuid/citations", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetCitationsForPerson_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/invalid-uuid/citations", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetCitation_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/invalid-uuid", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateCitation_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	updateBody := `{"page":"200","version":1}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/citations/invalid-uuid", strings.NewReader(updateBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDeleteCitation_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/invalid-uuid", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCreateCitation_InvalidSourceID(t *testing.T) {
+	server := setupTestServer()
+
+	citationBody := `{"source_id":"invalid-uuid","fact_type":"person_birth","fact_owner_id":"00000000-0000-0000-0000-000000000001"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCreateCitation_InvalidFactOwnerID(t *testing.T) {
+	server := setupTestServer()
+
+	citationBody := `{"source_id":"00000000-0000-0000-0000-000000000001","fact_type":"person_birth","fact_owner_id":"invalid-uuid"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestSearchSources_QueryTooShort(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=a", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCreateSource_InvalidBody(t *testing.T) {
+	server := setupTestServer()
+
+	body := `{invalid json`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateSource_InvalidBody(t *testing.T) {
+	server := setupTestServer()
+
+	body := `{invalid json`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/sources/00000000-0000-0000-0000-000000000001", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCreateCitation_InvalidBody(t *testing.T) {
+	server := setupTestServer()
+
+	body := `{invalid json`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateCitation_InvalidBody(t *testing.T) {
+	server := setupTestServer()
+
+	body := `{invalid json`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/citations/00000000-0000-0000-0000-000000000001", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetCitation_NotFound(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/00000000-0000-0000-0000-000000000001", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestUpdateCitation_NotFound(t *testing.T) {
+	server := setupTestServer()
+
+	updateBody := `{"page":"200","version":1}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/citations/00000000-0000-0000-0000-000000000001", strings.NewReader(updateBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}

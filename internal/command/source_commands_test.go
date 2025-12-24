@@ -510,6 +510,391 @@ func TestDeleteCitation(t *testing.T) {
 	}
 }
 
+// TestDeleteCitation_NotFound tests deleting a non-existent citation.
+func TestDeleteCitation_NotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Try to delete non-existent citation
+	err := handler.DeleteCitation(ctx, uuid.New(), 1, "Should fail")
+	if err != command.ErrCitationNotFound {
+		t.Errorf("DeleteCitation should fail with ErrCitationNotFound, got: %v", err)
+	}
+}
+
+// TestDeleteCitation_WrongVersion tests optimistic locking on citation delete.
+func TestDeleteCitation_WrongVersion(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create source and person
+	sourceResult, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation
+	createResult, _ := handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:    sourceResult.ID,
+		FactType:    "person_birth",
+		FactOwnerID: personResult.ID,
+	})
+
+	// Try to delete with wrong version
+	err := handler.DeleteCitation(ctx, createResult.ID, 999, "Should fail")
+	if err != repository.ErrConcurrencyConflict {
+		t.Errorf("DeleteCitation should fail with ErrConcurrencyConflict, got: %v", err)
+	}
+}
+
+// TestUpdateSource_AllFields tests updating all source fields.
+func TestUpdateSource_AllFields(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create source
+	createResult, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Original Title",
+	})
+
+	// Update all fields
+	result, err := handler.UpdateSource(ctx, command.UpdateSourceInput{
+		ID:             createResult.ID,
+		SourceType:     strPtr("archive"),
+		Title:          strPtr("Updated Title"),
+		Author:         strPtr("New Author"),
+		Publisher:      strPtr("New Publisher"),
+		PublishDate:    strPtr("2024"),
+		URL:            strPtr("http://example.com"),
+		RepositoryName: strPtr("National Archives"),
+		CollectionName: strPtr("Census Records"),
+		CallNumber:     strPtr("ABC-123"),
+		Notes:          strPtr("Updated notes"),
+		Version:        createResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSource failed: %v", err)
+	}
+
+	if result.Version <= createResult.Version {
+		t.Errorf("Version not incremented: got %d, want > %d", result.Version, createResult.Version)
+	}
+
+	// Verify changes in read model
+	source, _ := readStore.GetSource(ctx, createResult.ID)
+	if source.Title != "Updated Title" {
+		t.Errorf("Title = %s, want Updated Title", source.Title)
+	}
+	if source.Author != "New Author" {
+		t.Errorf("Author = %s, want New Author", source.Author)
+	}
+	if source.SourceType != "archive" {
+		t.Errorf("SourceType = %s, want archive", source.SourceType)
+	}
+}
+
+// TestUpdateSource_NotFound tests updating a non-existent source.
+func TestUpdateSource_NotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Try to update non-existent source
+	_, err := handler.UpdateSource(ctx, command.UpdateSourceInput{
+		ID:      uuid.New(),
+		Title:   strPtr("Should Fail"),
+		Version: 1,
+	})
+	if err != command.ErrSourceNotFound {
+		t.Errorf("UpdateSource should fail with ErrSourceNotFound, got: %v", err)
+	}
+}
+
+// TestUpdateCitation_SourceIDChange tests changing the source of a citation.
+func TestUpdateCitation_SourceIDChange(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create two sources
+	source1, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Source 1",
+	})
+	source2, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Source 2",
+	})
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation with source1
+	createResult, _ := handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:    source1.ID,
+		FactType:    "person_birth",
+		FactOwnerID: personResult.ID,
+	})
+
+	// Update to source2
+	result, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID:       createResult.ID,
+		SourceID: &source2.ID,
+		Version:  createResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateCitation failed: %v", err)
+	}
+
+	if result.Version <= createResult.Version {
+		t.Errorf("Version not incremented")
+	}
+
+	// Verify change in read model
+	citation, _ := readStore.GetCitation(ctx, createResult.ID)
+	if citation.SourceID != source2.ID {
+		t.Errorf("SourceID = %v, want %v", citation.SourceID, source2.ID)
+	}
+}
+
+// TestUpdateCitation_InvalidSourceID tests changing to a non-existent source.
+func TestUpdateCitation_InvalidSourceID(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create source and person
+	sourceResult, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation
+	createResult, _ := handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:    sourceResult.ID,
+		FactType:    "person_birth",
+		FactOwnerID: personResult.ID,
+	})
+
+	// Try to update to non-existent source
+	nonExistentSourceID := uuid.New()
+	_, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID:       createResult.ID,
+		SourceID: &nonExistentSourceID,
+		Version:  createResult.Version,
+	})
+	if err == nil {
+		t.Error("UpdateCitation should fail when changing to non-existent source")
+	}
+}
+
+// TestUpdateCitation_NotFound tests updating a non-existent citation.
+func TestUpdateCitation_NotFound(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Try to update non-existent citation
+	_, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID:      uuid.New(),
+		Page:    strPtr("Should Fail"),
+		Version: 1,
+	})
+	if err != command.ErrCitationNotFound {
+		t.Errorf("UpdateCitation should fail with ErrCitationNotFound, got: %v", err)
+	}
+}
+
+// TestUpdateCitation_NoChanges tests updating citation with no changes.
+func TestUpdateCitation_NoChanges(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create source and person
+	sourceResult, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation
+	createResult, _ := handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:    sourceResult.ID,
+		FactType:    "person_birth",
+		FactOwnerID: personResult.ID,
+	})
+
+	// Update with no changes
+	result, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID:      createResult.ID,
+		Version: createResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateCitation failed: %v", err)
+	}
+
+	if result.Version != createResult.Version {
+		t.Errorf("Version changed without updates: got %d, want %d", result.Version, createResult.Version)
+	}
+}
+
+// TestUpdateCitation_AllFields tests updating all citation fields.
+func TestUpdateCitation_AllFields(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create source and person
+	sourceResult, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation
+	createResult, _ := handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:    sourceResult.ID,
+		FactType:    "person_birth",
+		FactOwnerID: personResult.ID,
+	})
+
+	// Update all fields
+	result, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID:            createResult.ID,
+		Page:          strPtr("123"),
+		Volume:        strPtr("Vol 1"),
+		SourceQuality: strPtr("original"),
+		InformantType: strPtr("primary"),
+		EvidenceType:  strPtr("direct"),
+		QuotedText:    strPtr("John Doe was born..."),
+		Analysis:      strPtr("This is a strong source"),
+		TemplateID:    strPtr("template-123"),
+		Version:       createResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("UpdateCitation failed: %v", err)
+	}
+
+	if result.Version <= createResult.Version {
+		t.Errorf("Version not incremented")
+	}
+
+	// Verify changes in read model
+	citation, _ := readStore.GetCitation(ctx, createResult.ID)
+	if citation.Page != "123" {
+		t.Errorf("Page = %s, want 123", citation.Page)
+	}
+	if citation.Volume != "Vol 1" {
+		t.Errorf("Volume = %s, want Vol 1", citation.Volume)
+	}
+}
+
+// TestUpdateCitation_InvalidInformantType tests updating with invalid informant type.
+func TestUpdateCitation_InvalidInformantType(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create source and person
+	sourceResult, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation
+	createResult, _ := handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:    sourceResult.ID,
+		FactType:    "person_birth",
+		FactOwnerID: personResult.ID,
+	})
+
+	// Try to update with invalid informant type
+	_, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID:            createResult.ID,
+		InformantType: strPtr("invalid_type"),
+		Version:       createResult.Version,
+	})
+	if err == nil {
+		t.Error("UpdateCitation should fail with invalid informant type")
+	}
+}
+
+// TestUpdateCitation_InvalidSourceQuality tests updating with invalid source quality.
+func TestUpdateCitation_InvalidSourceQuality(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create source and person
+	sourceResult, _ := handler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	personResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation
+	createResult, _ := handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:    sourceResult.ID,
+		FactType:    "person_birth",
+		FactOwnerID: personResult.ID,
+	})
+
+	// Try to update with invalid source quality
+	_, err := handler.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID:            createResult.ID,
+		SourceQuality: strPtr("invalid_quality"),
+		Version:       createResult.Version,
+	})
+	if err == nil {
+		t.Error("UpdateCitation should fail with invalid source quality")
+	}
+}
+
 // Helper function for string pointers
 func strPtr(s string) *string {
 	return &s

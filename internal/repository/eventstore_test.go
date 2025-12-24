@@ -332,6 +332,99 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:      "SourceCreated",
+			event:     domain.NewSourceCreated(domain.NewSource("Test Source", domain.SourceBook)),
+			eventType: "SourceCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.SourceCreated)
+				if !ok {
+					t.Fatalf("Expected SourceCreated, got %T", decoded)
+				}
+				if e.Title != "Test Source" {
+					t.Errorf("Title = %s, want Test Source", e.Title)
+				}
+				if e.SourceType != domain.SourceBook {
+					t.Errorf("SourceType = %v, want book", e.SourceType)
+				}
+			},
+		},
+		{
+			name:      "SourceUpdated",
+			event:     domain.NewSourceUpdated(uuid.New(), map[string]any{"title": "Updated Title", "author": "New Author"}),
+			eventType: "SourceUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.SourceUpdated)
+				if !ok {
+					t.Fatalf("Expected SourceUpdated, got %T", decoded)
+				}
+				if e.Changes["title"] != "Updated Title" {
+					t.Errorf("Changes[title] = %v, want Updated Title", e.Changes["title"])
+				}
+				if e.Changes["author"] != "New Author" {
+					t.Errorf("Changes[author] = %v, want New Author", e.Changes["author"])
+				}
+			},
+		},
+		{
+			name:      "SourceDeleted",
+			event:     domain.NewSourceDeleted(uuid.New(), "no longer needed"),
+			eventType: "SourceDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.SourceDeleted)
+				if !ok {
+					t.Fatalf("Expected SourceDeleted, got %T", decoded)
+				}
+				if e.Reason != "no longer needed" {
+					t.Errorf("Reason = %s, want no longer needed", e.Reason)
+				}
+			},
+		},
+		{
+			name:      "CitationCreated",
+			event:     domain.NewCitationCreated(domain.NewCitation(uuid.New(), domain.FactPersonBirth, uuid.New())),
+			eventType: "CitationCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.CitationCreated)
+				if !ok {
+					t.Fatalf("Expected CitationCreated, got %T", decoded)
+				}
+				if e.FactType != domain.FactPersonBirth {
+					t.Errorf("FactType = %v, want person_birth", e.FactType)
+				}
+			},
+		},
+		{
+			name:      "CitationUpdated",
+			event:     domain.NewCitationUpdated(uuid.New(), map[string]any{"page": "123", "evidence_type": "direct"}),
+			eventType: "CitationUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.CitationUpdated)
+				if !ok {
+					t.Fatalf("Expected CitationUpdated, got %T", decoded)
+				}
+				if e.Changes["page"] != "123" {
+					t.Errorf("Changes[page] = %v, want 123", e.Changes["page"])
+				}
+				if e.Changes["evidence_type"] != "direct" {
+					t.Errorf("Changes[evidence_type] = %v, want direct", e.Changes["evidence_type"])
+				}
+			},
+		},
+		{
+			name:      "CitationDeleted",
+			event:     domain.NewCitationDeleted(uuid.New(), "duplicate"),
+			eventType: "CitationDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.CitationDeleted)
+				if !ok {
+					t.Fatalf("Expected CitationDeleted, got %T", decoded)
+				}
+				if e.Reason != "duplicate" {
+					t.Errorf("Reason = %s, want duplicate", e.Reason)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -400,6 +493,38 @@ func TestStoredEvent_DecodeEvent_InvalidJSON(t *testing.T) {
 	_, err := stored.DecodeEvent()
 	if err == nil {
 		t.Fatal("Expected error for invalid JSON, got nil")
+	}
+}
+
+func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
+	invalidJSON := []byte(`{invalid json`)
+
+	eventTypes := []string{
+		"PersonCreated", "PersonUpdated", "PersonDeleted",
+		"FamilyCreated", "FamilyUpdated", "FamilyDeleted",
+		"ChildLinkedToFamily", "ChildUnlinkedFromFamily",
+		"GedcomImported",
+		"SourceCreated", "SourceUpdated", "SourceDeleted",
+		"CitationCreated", "CitationUpdated", "CitationDeleted",
+	}
+
+	for _, eventType := range eventTypes {
+		t.Run(eventType, func(t *testing.T) {
+			stored := repository.StoredEvent{
+				ID:         uuid.New(),
+				StreamID:   uuid.New(),
+				StreamType: "Test",
+				EventType:  eventType,
+				Data:       invalidJSON,
+				Version:    1,
+				Position:   1,
+			}
+
+			_, err := stored.DecodeEvent()
+			if err == nil {
+				t.Fatalf("Expected error for invalid JSON in %s, got nil", eventType)
+			}
+		})
 	}
 }
 
