@@ -22,39 +22,39 @@ func NewSourceService(readStore repository.ReadModelStore) *SourceService {
 
 // Source represents a source in query results.
 type Source struct {
-	ID             uuid.UUID  `json:"id"`
-	SourceType     string     `json:"source_type"`
-	Title          string     `json:"title"`
-	Author         *string    `json:"author,omitempty"`
-	Publisher      *string    `json:"publisher,omitempty"`
-	PublishDate    *string    `json:"publish_date,omitempty"`
-	URL            *string    `json:"url,omitempty"`
-	RepositoryName *string    `json:"repository_name,omitempty"`
-	CollectionName *string    `json:"collection_name,omitempty"`
-	CallNumber     *string    `json:"call_number,omitempty"`
-	Notes          *string    `json:"notes,omitempty"`
-	CitationCount  int        `json:"citation_count"`
-	Version        int64      `json:"version"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID             uuid.UUID `json:"id"`
+	SourceType     string    `json:"source_type"`
+	Title          string    `json:"title"`
+	Author         *string   `json:"author,omitempty"`
+	Publisher      *string   `json:"publisher,omitempty"`
+	PublishDate    *string   `json:"publish_date,omitempty"`
+	URL            *string   `json:"url,omitempty"`
+	RepositoryName *string   `json:"repository_name,omitempty"`
+	CollectionName *string   `json:"collection_name,omitempty"`
+	CallNumber     *string   `json:"call_number,omitempty"`
+	Notes          *string   `json:"notes,omitempty"`
+	CitationCount  int       `json:"citation_count"`
+	Version        int64     `json:"version"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // Citation represents a citation in query results.
 type Citation struct {
-	ID            uuid.UUID  `json:"id"`
-	SourceID      uuid.UUID  `json:"source_id"`
-	SourceTitle   string     `json:"source_title"`
-	FactType      string     `json:"fact_type"`
-	FactOwnerID   uuid.UUID  `json:"fact_owner_id"`
-	Page          *string    `json:"page,omitempty"`
-	Volume        *string    `json:"volume,omitempty"`
-	SourceQuality *string    `json:"source_quality,omitempty"`
-	InformantType *string    `json:"informant_type,omitempty"`
-	EvidenceType  *string    `json:"evidence_type,omitempty"`
-	QuotedText    *string    `json:"quoted_text,omitempty"`
-	Analysis      *string    `json:"analysis,omitempty"`
-	TemplateID    *string    `json:"template_id,omitempty"`
-	Version       int64      `json:"version"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID            uuid.UUID `json:"id"`
+	SourceID      uuid.UUID `json:"source_id"`
+	SourceTitle   string    `json:"source_title"`
+	FactType      string    `json:"fact_type"`
+	FactOwnerID   uuid.UUID `json:"fact_owner_id"`
+	Page          *string   `json:"page,omitempty"`
+	Volume        *string   `json:"volume,omitempty"`
+	SourceQuality *string   `json:"source_quality,omitempty"`
+	InformantType *string   `json:"informant_type,omitempty"`
+	EvidenceType  *string   `json:"evidence_type,omitempty"`
+	QuotedText    *string   `json:"quoted_text,omitempty"`
+	Analysis      *string   `json:"analysis,omitempty"`
+	TemplateID    *string   `json:"template_id,omitempty"`
+	Version       int64     `json:"version"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // SourceDetail includes citations attached to this source.

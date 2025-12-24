@@ -13,9 +13,9 @@ import (
 
 // Common source/citation command errors.
 var (
-	ErrSourceNotFound      = errors.New("source not found")
-	ErrSourceHasCitations  = errors.New("source has citations and cannot be deleted")
-	ErrCitationNotFound    = errors.New("citation not found")
+	ErrSourceNotFound     = errors.New("source not found")
+	ErrSourceHasCitations = errors.New("source has citations and cannot be deleted")
+	ErrCitationNotFound   = errors.New("citation not found")
 )
 
 // CreateSourceInput contains the data for creating a new source.

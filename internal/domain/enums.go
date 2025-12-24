@@ -148,12 +148,12 @@ func (e EvidenceType) IsValid() bool {
 type FactType string
 
 const (
-	FactPersonBirth     FactType = "person_birth"
-	FactPersonDeath     FactType = "person_death"
-	FactPersonName      FactType = "person_name"
-	FactPersonGender    FactType = "person_gender"
-	FactFamilyMarriage  FactType = "family_marriage"
-	FactFamilyDivorce   FactType = "family_divorce"
+	FactPersonBirth    FactType = "person_birth"
+	FactPersonDeath    FactType = "person_death"
+	FactPersonName     FactType = "person_name"
+	FactPersonGender   FactType = "person_gender"
+	FactFamilyMarriage FactType = "family_marriage"
+	FactFamilyDivorce  FactType = "family_divorce"
 )
 
 // IsValid checks if the fact type value is valid.

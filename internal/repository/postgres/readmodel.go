@@ -978,15 +978,15 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error
 
 func scanSourceRow(row rowScanner) (*repository.SourceReadModel, error) {
 	var (
-		id                                      uuid.UUID
-		sourceType, title                       string
-		author, publisher, publishDateRaw       sql.NullString
-		url, repoName, collName, callNum        sql.NullString
-		notes, gedcomXref                       sql.NullString
-		publishDateSort                         sql.NullTime
-		citationCount                           int
-		version                                 int64
-		updatedAt                               time.Time
+		id                                uuid.UUID
+		sourceType, title                 string
+		author, publisher, publishDateRaw sql.NullString
+		url, repoName, collName, callNum  sql.NullString
+		notes, gedcomXref                 sql.NullString
+		publishDateSort                   sql.NullTime
+		citationCount                     int
+		version                           int64
+		updatedAt                         time.Time
 	)
 
 	err := row.Scan(&id, &sourceType, &title, &author, &publisher, &publishDateRaw, &publishDateSort,
@@ -1031,14 +1031,14 @@ func scanSourceRows(rows *sql.Rows) (*repository.SourceReadModel, error) {
 
 func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 	var (
-		id, sourceID, factOwnerID               uuid.UUID
-		sourceTitle, factType                   string
-		page, volume, sourceQuality             sql.NullString
-		informantType, evidenceType             sql.NullString
-		quotedText, analysis, templateID        sql.NullString
-		gedcomXref                              sql.NullString
-		version                                 int64
-		createdAt                               time.Time
+		id, sourceID, factOwnerID        uuid.UUID
+		sourceTitle, factType            string
+		page, volume, sourceQuality      sql.NullString
+		informantType, evidenceType      sql.NullString
+		quotedText, analysis, templateID sql.NullString
+		gedcomXref                       sql.NullString
+		version                          int64
+		createdAt                        time.Time
 	)
 
 	err := row.Scan(&id, &sourceID, &sourceTitle, &factType, &factOwnerID,

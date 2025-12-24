@@ -318,7 +318,7 @@ func TestEvidenceType_IsValid(t *testing.T) {
 		{
 			name:         "empty string is valid",
 			evidenceType: "",
-			want:          true,
+			want:         true,
 		},
 		{
 			name:         "invalid value",

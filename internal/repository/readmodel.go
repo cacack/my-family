@@ -63,22 +63,22 @@ type PedigreeEdge struct {
 
 // SourceReadModel represents a source in the read model.
 type SourceReadModel struct {
-	ID             uuid.UUID     `json:"id"`
-	SourceType     domain.SourceType `json:"source_type"`
-	Title          string        `json:"title"`
-	Author         string        `json:"author,omitempty"`
-	Publisher      string        `json:"publisher,omitempty"`
-	PublishDateRaw string        `json:"publish_date_raw,omitempty"`
-	PublishDateSort *time.Time   `json:"publish_date_sort,omitempty"`
-	URL            string        `json:"url,omitempty"`
-	RepositoryName string        `json:"repository_name,omitempty"`
-	CollectionName string        `json:"collection_name,omitempty"`
-	CallNumber     string        `json:"call_number,omitempty"`
-	Notes          string        `json:"notes,omitempty"`
-	GedcomXref     string        `json:"gedcom_xref,omitempty"`
-	CitationCount  int           `json:"citation_count"`
-	Version        int64         `json:"version"`
-	UpdatedAt      time.Time     `json:"updated_at"`
+	ID              uuid.UUID         `json:"id"`
+	SourceType      domain.SourceType `json:"source_type"`
+	Title           string            `json:"title"`
+	Author          string            `json:"author,omitempty"`
+	Publisher       string            `json:"publisher,omitempty"`
+	PublishDateRaw  string            `json:"publish_date_raw,omitempty"`
+	PublishDateSort *time.Time        `json:"publish_date_sort,omitempty"`
+	URL             string            `json:"url,omitempty"`
+	RepositoryName  string            `json:"repository_name,omitempty"`
+	CollectionName  string            `json:"collection_name,omitempty"`
+	CallNumber      string            `json:"call_number,omitempty"`
+	Notes           string            `json:"notes,omitempty"`
+	GedcomXref      string            `json:"gedcom_xref,omitempty"`
+	CitationCount   int               `json:"citation_count"`
+	Version         int64             `json:"version"`
+	UpdatedAt       time.Time         `json:"updated_at"`
 }
 
 // CitationReadModel represents a citation in the read model.

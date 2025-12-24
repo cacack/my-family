@@ -72,14 +72,14 @@ type SourceData struct {
 
 // CitationData contains parsed citation data ready for creation.
 type CitationData struct {
-	ID           uuid.UUID
-	SourceXref   string
-	FactType     string
-	FactOwnerID  uuid.UUID
-	Page         string
-	Quality      string
-	QuotedText   string
-	GedcomXref   string
+	ID          uuid.UUID
+	SourceXref  string
+	FactType    string
+	FactOwnerID uuid.UUID
+	Page        string
+	Quality     string
+	QuotedText  string
+	GedcomXref  string
 }
 
 // Importer handles GEDCOM file parsing and conversion to domain events.

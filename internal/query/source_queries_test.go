@@ -32,10 +32,10 @@ func TestListSources(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		input      query.ListSourcesInput
-		wantCount  int
-		wantTotal  int
+		name      string
+		input     query.ListSourcesInput
+		wantCount int
+		wantTotal int
 	}{
 		{
 			name: "list all",

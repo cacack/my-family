@@ -1058,12 +1058,12 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error
 
 func scanSource(row rowScanner) (*repository.SourceReadModel, error) {
 	var (
-		idStr, sourceType, title                                  string
-		author, publisher, publishDateRaw, publishDateSort        sql.NullString
-		url, repoName, collName, callNum, notes, gedcomXref       sql.NullString
-		citationCount                                             int
-		version                                                   int64
-		updatedAt                                                 string
+		idStr, sourceType, title                            string
+		author, publisher, publishDateRaw, publishDateSort  sql.NullString
+		url, repoName, collName, callNum, notes, gedcomXref sql.NullString
+		citationCount                                       int
+		version                                             int64
+		updatedAt                                           string
 	)
 
 	err := row.Scan(&idStr, &sourceType, &title, &author, &publisher, &publishDateRaw, &publishDateSort,
