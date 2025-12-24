@@ -6,26 +6,40 @@ Thank you for your interest in contributing to the my-family genealogy platform.
 
 See [README.md](./README.md) for prerequisites and quick start.
 
-### Pre-commit Hook (Recommended)
-
-Install the pre-commit hook to catch issues before committing:
+### Quick Setup
 
 ```bash
-ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+make setup
 ```
 
-The hook checks:
+This installs tools and git hooks:
+- `golangci-lint` - Linting
+- `go-test-coverage` - Coverage threshold checking
+- Pre-commit hook (fast: format, lint, vet, tests)
+- Pre-push hook (coverage thresholds)
+
+### Git Hooks
+
+**Pre-commit** (runs on every commit):
 - Code formatting (`go fmt`)
 - Linting (`golangci-lint`)
 - Static analysis (`go vet`)
 - Tests pass
-- Per-package coverage (minimum 85% per package)
 
-**Tool discovery**: The hook automatically finds `golangci-lint` in PATH, `~/go/bin`, or `$(go env GOPATH)/bin`.
+**Pre-push** (runs before push):
+- Coverage thresholds (85% per-package, 75% total)
 
-Install golangci-lint if needed:
+This split keeps commits fast while catching coverage issues before CI.
+
+### Manual Tool Installation
+
+If not using `make setup`:
+
 ```bash
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+go install github.com/vladopajic/go-test-coverage/v2@latest
+ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+ln -sf ../../scripts/pre-push .git/hooks/pre-push
 ```
 
 ## Code Standards

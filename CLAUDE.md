@@ -32,7 +32,11 @@ go test ./...           # Run all tests
 go test -v ./... -run TestName  # Run a specific test
 go fmt ./...            # Format code
 go vet ./...            # Static analysis
+make check-coverage     # Verify coverage thresholds (85% per-package)
+make setup              # Install tools and hooks
 ```
+
+**Important**: When adding new code, always run `make check-coverage` before declaring tests complete. CI enforces 85% per-package coverage.
 
 ## Commit Conventions
 
