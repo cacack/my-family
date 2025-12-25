@@ -23,6 +23,12 @@ jobs:
             exit 0
           fi
 
+          # Exempt Dependabot PRs
+          if echo "$TITLE" | grep -qE "^chore\(deps(-dev)?\): [Bb]ump "; then
+            echo "✅ Dependabot PR exempt"
+            exit 0
+          fi
+
           PATTERN="^(feat|fix|perf|docs|refactor|ci|chore)(\(.+\))?!?:"
           if echo "$TITLE" | grep -qE "$PATTERN"; then
             echo "::error::PR title should NOT use conventional commit format."
