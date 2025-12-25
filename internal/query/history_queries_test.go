@@ -16,7 +16,7 @@ import (
 
 // mockEventStore implements repository.EventStore for testing.
 type mockEventStore struct {
-	readByStreamFunc    func(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error)
+	readByStreamFunc     func(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error)
 	readGlobalByTimeFunc func(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error)
 }
 

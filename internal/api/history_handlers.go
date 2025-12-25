@@ -13,14 +13,14 @@ import (
 
 // ChangeEntryResponse represents a single change entry in the API response.
 type ChangeEntryResponse struct {
-	ID         string                    `json:"id"`
-	Timestamp  string                    `json:"timestamp"`
-	EntityType string                    `json:"entity_type"`
-	EntityID   string                    `json:"entity_id"`
-	EntityName string                    `json:"entity_name"`
-	Action     string                    `json:"action"`
-	Changes    map[string]FieldChange    `json:"changes,omitempty"`
-	UserID     *string                   `json:"user_id,omitempty"`
+	ID         string                 `json:"id"`
+	Timestamp  string                 `json:"timestamp"`
+	EntityType string                 `json:"entity_type"`
+	EntityID   string                 `json:"entity_id"`
+	EntityName string                 `json:"entity_name"`
+	Action     string                 `json:"action"`
+	Changes    map[string]FieldChange `json:"changes,omitempty"`
+	UserID     *string                `json:"user_id,omitempty"`
 }
 
 // FieldChange represents a field-level change.
@@ -49,7 +49,7 @@ func (s *Server) getGlobalHistory(c echo.Context) error {
 
 	// Parse time filters
 	// Default to a wide time range if not specified
-	fromTime := time.Time{} // Zero value (year 1)
+	fromTime := time.Time{}                  // Zero value (year 1)
 	toTime := time.Now().Add(24 * time.Hour) // Tomorrow
 	var err error
 

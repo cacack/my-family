@@ -361,6 +361,7 @@ func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time
 	args = append(args, limit, offset)
 
 	// Query with window function for total count
+	// #nosec G201 -- whereClause contains only hardcoded SQL fragments; user values are parameterized in args
 	query := fmt.Sprintf(`
 		SELECT
 			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
