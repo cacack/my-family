@@ -1,84 +1,99 @@
-.PHONY: build test fmt vet generate clean run dev setup check-coverage
+.PHONY: help build test fmt vet generate clean run dev setup check-coverage lint check check-full
+
+# Default target
+.DEFAULT_GOAL := help
+
+# Tool versions - update these when upgrading
+GOLANGCI_LINT_VERSION := v2.7.2
+GO_TEST_COVERAGE_VERSION := latest
+
+help: ## Display this help message
+	@echo "my-family Makefile"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make <target>"
+	@echo ""
+	@echo "Targets:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 # Build all Go packages
-build:
+build: ## Build all Go packages
 	go build ./...
 
-# Build the binary with embedded frontend
-binary: frontend
+binary: frontend ## Build binary with embedded frontend
 	rm -rf internal/web/dist/*
 	cp -r web/build/* internal/web/dist/
 	go build -o myfamily ./cmd/myfamily
 
-# Build frontend only
-frontend:
+frontend: ## Build frontend only
 	cd web && npm run build
 
-# Run all tests (Go + frontend)
-test:
+test: ## Run all tests (Go + frontend)
 	go test ./...
 	cd web && npm test -- --run
 
-# Run only Go tests
-test-go:
+test-go: ## Run only Go tests
 	go test ./...
 
-# Run tests with coverage
-test-coverage:
+test-coverage: ## Run tests with HTML coverage report
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
-# Format code
-fmt:
+fmt: ## Format Go code
 	go fmt ./...
 
-# Static analysis
-vet:
+vet: ## Run go vet
 	go vet ./...
 
-# Generate code (OpenAPI, etc.)
-generate:
+generate: ## Generate code (OpenAPI, etc.)
 	go generate ./...
 
-# Clean build artifacts
-clean:
+clean: ## Clean build artifacts
 	rm -f myfamily coverage.out coverage.html
 	rm -rf web/dist web/build web/.svelte-kit internal/web/dist
 
-# Run the server (development)
-run:
+run: ## Run the server (development)
 	go run ./cmd/myfamily serve
 
-# Run frontend dev server
-dev-frontend:
+dev-frontend: ## Run frontend dev server
 	cd web && npm run dev
 
-# Install dependencies
-deps:
+deps: ## Install dependencies
 	go mod download
 	cd web && npm install
 
-# Lint (requires golangci-lint)
-lint:
-	golangci-lint run ./...
+lint: ## Run golangci-lint
+	@GOLANGCI_LINT=$$(command -v golangci-lint || echo "$$HOME/go/bin/golangci-lint"); \
+	if [ ! -x "$$GOLANGCI_LINT" ]; then \
+		GOLANGCI_LINT="$$(go env GOPATH)/bin/golangci-lint"; \
+	fi; \
+	$$GOLANGCI_LINT run ./...
 
-# All checks (CI validation)
-check: fmt vet test
+check: fmt vet test ## Run all checks (CI validation)
 	cd web && npm run check
 
-# Full CI check including lint (requires golangci-lint)
-check-full: fmt vet lint test
+check-full: fmt vet lint test ## Full CI check including lint
 	cd web && npm run check
 
-# Check coverage thresholds (same as CI)
-check-coverage:
+check-coverage: ## Check coverage thresholds (same as CI)
 	go test -coverprofile=coverage.out ./...
-	go-test-coverage --config=.testcoverage.yml --profile=coverage.out
+	@GO_TEST_COVERAGE=$$(command -v go-test-coverage || echo "$$HOME/go/bin/go-test-coverage"); \
+	if [ ! -x "$$GO_TEST_COVERAGE" ]; then \
+		GO_TEST_COVERAGE="$$(go env GOPATH)/bin/go-test-coverage"; \
+	fi; \
+	$$GO_TEST_COVERAGE --config=.testcoverage.yml --profile=coverage.out
 
-# Setup development environment
-setup: deps
-	go install github.com/vladopajic/go-test-coverage/v2@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+setup: deps ## Set up development environment
+	@echo "Installing development tools..."
+	go install github.com/vladopajic/go-test-coverage/v2@$(GO_TEST_COVERAGE_VERSION)
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 	ln -sf ../../scripts/pre-push .git/hooks/pre-push
+	@echo ""
 	@echo "✓ Development environment ready"
+	@echo ""
+	@echo "  Git hooks installed:"
+	@echo "    pre-commit: gofmt, go vet, golangci-lint, tests"
+	@echo "    pre-push:   coverage threshold checks (85%)"
+	@echo ""
+	@echo "  Run 'make help' to see available commands"
