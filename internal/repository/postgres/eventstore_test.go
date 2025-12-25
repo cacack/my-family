@@ -433,3 +433,490 @@ func TestEventStore_MultipleEventsInBatch(t *testing.T) {
 		}
 	}
 }
+
+func TestEventStore_ReadByStream_EmptyResults(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+	streamID := uuid.New()
+
+	// Query non-existent stream
+	page, err := store.ReadByStream(ctx, streamID, 10, 0)
+	if err != nil {
+		t.Fatalf("read by stream: %v", err)
+	}
+
+	if page.TotalCount != 0 {
+		t.Errorf("expected total count 0, got %d", page.TotalCount)
+	}
+	if len(page.Events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("expected HasMore false for empty results")
+	}
+}
+
+func TestEventStore_ReadByStream_SinglePage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+	streamID := uuid.New()
+
+	// Create 3 events
+	for i := 0; i < 3; i++ {
+		event := domain.PersonUpdated{
+			BaseEvent: domain.BaseEvent{
+				ID:        uuid.New(),
+				Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			},
+			PersonID: streamID,
+			Changes:  map[string]any{"update": i},
+		}
+		expectedVersion := int64(i)
+		if i == 0 {
+			expectedVersion = -1 // First event
+		}
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, expectedVersion)
+		if err != nil {
+			t.Fatalf("append event %d: %v", i, err)
+		}
+		time.Sleep(10 * time.Millisecond) // Ensure different timestamps
+	}
+
+	// Read all events in one page
+	page, err := store.ReadByStream(ctx, streamID, 10, 0)
+	if err != nil {
+		t.Fatalf("read by stream: %v", err)
+	}
+
+	if page.TotalCount != 3 {
+		t.Errorf("expected total count 3, got %d", page.TotalCount)
+	}
+	if len(page.Events) != 3 {
+		t.Errorf("expected 3 events, got %d", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("expected HasMore false")
+	}
+
+	// Verify events are ordered by version ASC
+	for i, event := range page.Events {
+		expectedVersion := int64(i + 1)
+		if event.Version != expectedVersion {
+			t.Errorf("event %d: expected version %d, got %d", i, expectedVersion, event.Version)
+		}
+	}
+}
+
+func TestEventStore_ReadByStream_Pagination(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+	streamID := uuid.New()
+
+	// Create 5 events
+	for i := 0; i < 5; i++ {
+		event := domain.PersonUpdated{
+			BaseEvent: domain.BaseEvent{
+				ID:        uuid.New(),
+				Timestamp: time.Now().Add(time.Duration(i) * time.Second),
+			},
+			PersonID: streamID,
+			Changes:  map[string]any{"update": i},
+		}
+		expectedVersion := int64(i)
+		if i == 0 {
+			expectedVersion = -1
+		}
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, expectedVersion)
+		if err != nil {
+			t.Fatalf("append event %d: %v", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// First page (limit 2, offset 0)
+	page1, err := store.ReadByStream(ctx, streamID, 2, 0)
+	if err != nil {
+		t.Fatalf("read page 1: %v", err)
+	}
+	if page1.TotalCount != 5 {
+		t.Errorf("page 1: expected total count 5, got %d", page1.TotalCount)
+	}
+	if len(page1.Events) != 2 {
+		t.Errorf("page 1: expected 2 events, got %d", len(page1.Events))
+	}
+	if !page1.HasMore {
+		t.Errorf("page 1: expected HasMore true")
+	}
+	if page1.Events[0].Version != 1 {
+		t.Errorf("page 1: expected first event version 1, got %d", page1.Events[0].Version)
+	}
+
+	// Second page (limit 2, offset 2)
+	page2, err := store.ReadByStream(ctx, streamID, 2, 2)
+	if err != nil {
+		t.Fatalf("read page 2: %v", err)
+	}
+	if page2.TotalCount != 5 {
+		t.Errorf("page 2: expected total count 5, got %d", page2.TotalCount)
+	}
+	if len(page2.Events) != 2 {
+		t.Errorf("page 2: expected 2 events, got %d", len(page2.Events))
+	}
+	if !page2.HasMore {
+		t.Errorf("page 2: expected HasMore true")
+	}
+	if page2.Events[0].Version != 3 {
+		t.Errorf("page 2: expected first event version 3, got %d", page2.Events[0].Version)
+	}
+
+	// Third page (limit 2, offset 4)
+	page3, err := store.ReadByStream(ctx, streamID, 2, 4)
+	if err != nil {
+		t.Fatalf("read page 3: %v", err)
+	}
+	if page3.TotalCount != 5 {
+		t.Errorf("page 3: expected total count 5, got %d", page3.TotalCount)
+	}
+	if len(page3.Events) != 1 {
+		t.Errorf("page 3: expected 1 event, got %d", len(page3.Events))
+	}
+	if page3.HasMore {
+		t.Errorf("page 3: expected HasMore false")
+	}
+	if page3.Events[0].Version != 5 {
+		t.Errorf("page 3: expected first event version 5, got %d", page3.Events[0].Version)
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_EmptyResults(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+	fromTime := time.Now()
+	toTime := fromTime.Add(1 * time.Hour)
+
+	// Query empty time range
+	page, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 10, 0)
+	if err != nil {
+		t.Fatalf("read global by time: %v", err)
+	}
+
+	if page.TotalCount != 0 {
+		t.Errorf("expected total count 0, got %d", page.TotalCount)
+	}
+	if len(page.Events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("expected HasMore false")
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_TimeFiltering(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+	baseTime := time.Now()
+
+	// Create events across different times and streams
+	events := []struct {
+		streamID  uuid.UUID
+		eventType string
+		offset    time.Duration
+	}{
+		{uuid.New(), "PersonCreated", 0},
+		{uuid.New(), "FamilyCreated", 1 * time.Hour},
+		{uuid.New(), "PersonUpdated", 2 * time.Hour},
+		{uuid.New(), "FamilyUpdated", 3 * time.Hour},
+		{uuid.New(), "PersonDeleted", 4 * time.Hour},
+	}
+
+	for i, e := range events {
+		var event domain.Event
+		timestamp := baseTime.Add(e.offset)
+		switch e.eventType {
+		case "PersonCreated":
+			event = domain.PersonCreated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				PersonID:  e.streamID,
+				GivenName: "Person",
+				Surname:   "Test",
+			}
+		case "FamilyCreated":
+			event = domain.FamilyCreated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				FamilyID:  e.streamID,
+			}
+		case "PersonUpdated":
+			event = domain.PersonUpdated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				PersonID:  e.streamID,
+				Changes:   map[string]any{"update": i},
+			}
+		case "FamilyUpdated":
+			event = domain.FamilyUpdated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				FamilyID:  e.streamID,
+				Changes:   map[string]any{"update": i},
+			}
+		case "PersonDeleted":
+			event = domain.PersonDeleted{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				PersonID:  e.streamID,
+			}
+		}
+		err := store.Append(ctx, e.streamID, "Person", []domain.Event{event}, -1)
+		if err != nil {
+			t.Fatalf("append event %d: %v", i, err)
+		}
+	}
+
+	// Query middle time range (1-3 hours)
+	fromTime := baseTime.Add(1 * time.Hour)
+	toTime := baseTime.Add(3 * time.Hour)
+	page, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 10, 0)
+	if err != nil {
+		t.Fatalf("read global by time: %v", err)
+	}
+
+	if page.TotalCount != 3 {
+		t.Errorf("expected total count 3, got %d", page.TotalCount)
+	}
+	if len(page.Events) != 3 {
+		t.Errorf("expected 3 events, got %d", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("expected HasMore false")
+	}
+
+	// Verify events are in time order
+	expectedTypes := []string{"FamilyCreated", "PersonUpdated", "FamilyUpdated"}
+	for i, event := range page.Events {
+		if event.EventType != expectedTypes[i] {
+			t.Errorf("event %d: expected type %s, got %s", i, expectedTypes[i], event.EventType)
+		}
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_EventTypeFiltering(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+	baseTime := time.Now()
+
+	// Create mixed event types
+	events := []struct {
+		streamID  uuid.UUID
+		eventType string
+		offset    time.Duration
+	}{
+		{uuid.New(), "PersonCreated", 0},
+		{uuid.New(), "FamilyCreated", 1 * time.Second},
+		{uuid.New(), "PersonUpdated", 2 * time.Second},
+		{uuid.New(), "FamilyUpdated", 3 * time.Second},
+		{uuid.New(), "PersonCreated", 4 * time.Second},
+	}
+
+	for i, e := range events {
+		var event domain.Event
+		timestamp := baseTime.Add(e.offset)
+		switch e.eventType {
+		case "PersonCreated":
+			event = domain.PersonCreated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				PersonID:  e.streamID,
+				GivenName: "Person",
+				Surname:   "Test",
+			}
+		case "FamilyCreated":
+			event = domain.FamilyCreated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				FamilyID:  e.streamID,
+			}
+		case "PersonUpdated":
+			event = domain.PersonUpdated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				PersonID:  e.streamID,
+				Changes:   map[string]any{"update": i},
+			}
+		case "FamilyUpdated":
+			event = domain.FamilyUpdated{
+				BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: timestamp},
+				FamilyID:  e.streamID,
+				Changes:   map[string]any{"update": i},
+			}
+		}
+		err := store.Append(ctx, e.streamID, "Person", []domain.Event{event}, -1)
+		if err != nil {
+			t.Fatalf("append event %d: %v", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Query only PersonCreated events
+	fromTime := baseTime.Add(-1 * time.Second)
+	toTime := baseTime.Add(5 * time.Second)
+	page, err := store.ReadGlobalByTime(ctx, fromTime, toTime, []string{"PersonCreated"}, 10, 0)
+	if err != nil {
+		t.Fatalf("read global by time: %v", err)
+	}
+
+	if page.TotalCount != 2 {
+		t.Errorf("expected total count 2, got %d", page.TotalCount)
+	}
+	if len(page.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(page.Events))
+	}
+	for i, event := range page.Events {
+		if event.EventType != "PersonCreated" {
+			t.Errorf("event %d: expected PersonCreated, got %s", i, event.EventType)
+		}
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_Pagination(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+	baseTime := time.Now()
+
+	// Create 5 events
+	for i := 0; i < 5; i++ {
+		streamID := uuid.New()
+		event := domain.PersonCreated{
+			BaseEvent: domain.BaseEvent{
+				ID:        uuid.New(),
+				Timestamp: baseTime.Add(time.Duration(i) * time.Second),
+			},
+			PersonID:  streamID,
+			GivenName: "Person",
+			Surname:   "Test",
+		}
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+		if err != nil {
+			t.Fatalf("append event %d: %v", i, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	fromTime := baseTime.Add(-1 * time.Second)
+	toTime := baseTime.Add(10 * time.Second)
+
+	// First page
+	page1, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 2, 0)
+	if err != nil {
+		t.Fatalf("read page 1: %v", err)
+	}
+	if page1.TotalCount != 5 {
+		t.Errorf("page 1: expected total count 5, got %d", page1.TotalCount)
+	}
+	if len(page1.Events) != 2 {
+		t.Errorf("page 1: expected 2 events, got %d", len(page1.Events))
+	}
+	if !page1.HasMore {
+		t.Errorf("page 1: expected HasMore true")
+	}
+
+	// Second page
+	page2, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 2, 2)
+	if err != nil {
+		t.Fatalf("read page 2: %v", err)
+	}
+	if page2.TotalCount != 5 {
+		t.Errorf("page 2: expected total count 5, got %d", page2.TotalCount)
+	}
+	if len(page2.Events) != 2 {
+		t.Errorf("page 2: expected 2 events, got %d", len(page2.Events))
+	}
+	if !page2.HasMore {
+		t.Errorf("page 2: expected HasMore true")
+	}
+
+	// Third page
+	page3, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 2, 4)
+	if err != nil {
+		t.Fatalf("read page 3: %v", err)
+	}
+	if page3.TotalCount != 5 {
+		t.Errorf("page 3: expected total count 5, got %d", page3.TotalCount)
+	}
+	if len(page3.Events) != 1 {
+		t.Errorf("page 3: expected 1 event, got %d", len(page3.Events))
+	}
+	if page3.HasMore {
+		t.Errorf("page 3: expected HasMore false")
+	}
+}

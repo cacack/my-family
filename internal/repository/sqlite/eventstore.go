@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -233,6 +234,209 @@ func scanEvents(rows *sql.Rows) ([]repository.StoredEvent, error) {
 	}
 
 	return events, nil
+}
+
+// ReadByStream returns paginated events for a specific stream (entity).
+// Results are ordered by version ascending.
+func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+	// Query with window function for total count
+	query := `
+		SELECT
+			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			COUNT(*) OVER() as total_count
+		FROM events
+		WHERE stream_id = ?
+		ORDER BY version ASC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, streamID.String(), limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("query events by stream: %w", err)
+	}
+	defer rows.Close()
+
+	var events []repository.StoredEvent
+	var totalCount int
+
+	for rows.Next() {
+		var (
+			idStr, streamIDStr, streamType, eventType, dataStr, timestampStr string
+			version, position                                                int64
+			metadataStr                                                      sql.NullString
+		)
+		err := rows.Scan(&idStr, &streamIDStr, &streamType, &version, &eventType, &dataStr, &metadataStr, &timestampStr, &position, &totalCount)
+		if err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+
+		id, _ := uuid.Parse(idStr)
+		sid, _ := uuid.Parse(streamIDStr)
+
+		event := repository.StoredEvent{
+			ID:         id,
+			StreamID:   sid,
+			StreamType: streamType,
+			EventType:  eventType,
+			Data:       []byte(dataStr),
+			Version:    version,
+			Position:   position,
+		}
+
+		if metadataStr.Valid {
+			event.Metadata = []byte(metadataStr.String)
+		}
+
+		// Parse timestamp
+		ts, err := parseTimestamp(timestampStr)
+		if err == nil {
+			event.Timestamp = ts
+		}
+
+		events = append(events, event)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+
+	// Return empty page if no results
+	if len(events) == 0 {
+		return &repository.HistoryPage{
+			Events:     []repository.StoredEvent{},
+			TotalCount: 0,
+			HasMore:    false,
+		}, nil
+	}
+
+	hasMore := offset+len(events) < totalCount
+
+	return &repository.HistoryPage{
+		Events:     events,
+		TotalCount: totalCount,
+		HasMore:    hasMore,
+	}, nil
+}
+
+// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
+// Results are ordered by timestamp ascending.
+func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
+	// Build WHERE clause dynamically
+	var whereClauses []string
+	var args []any
+
+	// Handle time boundaries
+	if !fromTime.IsZero() {
+		whereClauses = append(whereClauses, "timestamp >= ?")
+		args = append(args, formatTimestamp(fromTime))
+	}
+
+	if !toTime.IsZero() {
+		whereClauses = append(whereClauses, "timestamp <= ?")
+		args = append(args, formatTimestamp(toTime))
+	}
+
+	// Handle event type filter
+	if len(eventTypes) > 0 {
+		placeholders := ""
+		for i, et := range eventTypes {
+			if i > 0 {
+				placeholders += ", "
+			}
+			placeholders += "?"
+			args = append(args, et)
+		}
+		whereClauses = append(whereClauses, fmt.Sprintf("event_type IN (%s)", placeholders))
+	}
+
+	whereClause := ""
+	if len(whereClauses) > 0 {
+		whereClause = "WHERE " + whereClauses[0]
+		for i := 1; i < len(whereClauses); i++ {
+			whereClause += " AND " + whereClauses[i]
+		}
+	}
+
+	// Add limit and offset to args
+	args = append(args, limit, offset)
+
+	// Query with window function for total count
+	query := fmt.Sprintf(`
+		SELECT
+			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			COUNT(*) OVER() as total_count
+		FROM events
+		%s
+		ORDER BY timestamp ASC
+		LIMIT ? OFFSET ?
+	`, whereClause)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query events by time: %w", err)
+	}
+	defer rows.Close()
+
+	var events []repository.StoredEvent
+	var totalCount int
+
+	for rows.Next() {
+		var (
+			idStr, streamIDStr, streamType, eventType, dataStr, timestampStr string
+			version, position                                                int64
+			metadataStr                                                      sql.NullString
+		)
+		err := rows.Scan(&idStr, &streamIDStr, &streamType, &version, &eventType, &dataStr, &metadataStr, &timestampStr, &position, &totalCount)
+		if err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+
+		id, _ := uuid.Parse(idStr)
+		sid, _ := uuid.Parse(streamIDStr)
+
+		event := repository.StoredEvent{
+			ID:         id,
+			StreamID:   sid,
+			StreamType: streamType,
+			EventType:  eventType,
+			Data:       []byte(dataStr),
+			Version:    version,
+			Position:   position,
+		}
+
+		if metadataStr.Valid {
+			event.Metadata = []byte(metadataStr.String)
+		}
+
+		// Parse timestamp
+		ts, err := parseTimestamp(timestampStr)
+		if err == nil {
+			event.Timestamp = ts
+		}
+
+		events = append(events, event)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+
+	// Return empty page if no results
+	if len(events) == 0 {
+		return &repository.HistoryPage{
+			Events:     []repository.StoredEvent{},
+			TotalCount: 0,
+			HasMore:    false,
+		}, nil
+	}
+
+	hasMore := offset+len(events) < totalCount
+
+	return &repository.HistoryPage{
+		Events:     events,
+		TotalCount: totalCount,
+		HasMore:    hasMore,
+	}, nil
 }
 
 // Close closes the database connection.

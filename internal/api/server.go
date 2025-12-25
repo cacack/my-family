@@ -26,6 +26,7 @@ type Server struct {
 	familyService   *query.FamilyService
 	pedigreeService *query.PedigreeService
 	sourceService   *query.SourceService
+	historyService  *query.HistoryService
 	frontendFS      fs.FS
 }
 
@@ -67,6 +68,7 @@ func NewServer(
 	familySvc := query.NewFamilyService(readStore)
 	pedigreeSvc := query.NewPedigreeService(readStore)
 	sourceSvc := query.NewSourceService(readStore)
+	historySvc := query.NewHistoryService(eventStore, readStore)
 
 	server := &Server{
 		echo:            e,
@@ -77,6 +79,7 @@ func NewServer(
 		familyService:   familySvc,
 		pedigreeService: pedigreeSvc,
 		sourceService:   sourceSvc,
+		historyService:  historySvc,
 		frontendFS:      frontendFS,
 	}
 
@@ -139,6 +142,12 @@ func (s *Server) registerRoutes() {
 	// GEDCOM (placeholder - will be implemented in Phase 5)
 	api.POST("/gedcom/import", s.importGedcom)
 	api.GET("/gedcom/export", s.exportGedcom)
+
+	// History
+	api.GET("/history", s.getGlobalHistory)
+	api.GET("/persons/:id/history", s.getPersonHistory)
+	api.GET("/families/:id/history", s.getFamilyHistory)
+	api.GET("/sources/:id/history", s.getSourceHistory)
 
 	// Serve frontend if available
 	if s.frontendFS != nil {

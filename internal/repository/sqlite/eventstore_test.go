@@ -417,3 +417,316 @@ func TestEventStore_ReadAll_Pagination(t *testing.T) {
 		t.Errorf("expected 0 events beyond range, got %d", len(events))
 	}
 }
+
+func TestEventStore_ReadByStream(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	streamID := uuid.New()
+
+	// Create multiple events for the stream
+	baseTime := time.Now()
+	events := []domain.Event{
+		domain.PersonCreated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime},
+			PersonID:  streamID,
+			GivenName: "John",
+			Surname:   "Doe",
+		},
+		domain.PersonUpdated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(time.Minute)},
+			PersonID:  streamID,
+			Changes:   map[string]any{"notes": "Update 1"},
+		},
+		domain.PersonUpdated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(2 * time.Minute)},
+			PersonID:  streamID,
+			Changes:   map[string]any{"notes": "Update 2"},
+		},
+	}
+
+	err := store.Append(ctx, streamID, "Person", events, -1)
+	if err != nil {
+		t.Fatalf("append events: %v", err)
+	}
+
+	// Read first page
+	page, err := store.ReadByStream(ctx, streamID, 2, 0)
+	if err != nil {
+		t.Fatalf("read by stream (first page): %v", err)
+	}
+
+	if len(page.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(page.Events))
+	}
+	if page.TotalCount != 3 {
+		t.Errorf("expected total count 3, got %d", page.TotalCount)
+	}
+	if !page.HasMore {
+		t.Error("expected HasMore to be true")
+	}
+
+	// Verify events are ordered by version ascending
+	if page.Events[0].Version != 1 {
+		t.Errorf("expected first event version 1, got %d", page.Events[0].Version)
+	}
+	if page.Events[1].Version != 2 {
+		t.Errorf("expected second event version 2, got %d", page.Events[1].Version)
+	}
+
+	// Read second page
+	page, err = store.ReadByStream(ctx, streamID, 2, 2)
+	if err != nil {
+		t.Fatalf("read by stream (second page): %v", err)
+	}
+
+	if len(page.Events) != 1 {
+		t.Errorf("expected 1 event, got %d", len(page.Events))
+	}
+	if page.TotalCount != 3 {
+		t.Errorf("expected total count 3, got %d", page.TotalCount)
+	}
+	if page.HasMore {
+		t.Error("expected HasMore to be false")
+	}
+	if page.Events[0].Version != 3 {
+		t.Errorf("expected event version 3, got %d", page.Events[0].Version)
+	}
+}
+
+func TestEventStore_ReadByStream_Empty(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	nonExistentStreamID := uuid.New()
+
+	// Read non-existent stream
+	page, err := store.ReadByStream(ctx, nonExistentStreamID, 10, 0)
+	if err != nil {
+		t.Fatalf("read by stream (empty): %v", err)
+	}
+
+	if len(page.Events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(page.Events))
+	}
+	if page.TotalCount != 0 {
+		t.Errorf("expected total count 0, got %d", page.TotalCount)
+	}
+	if page.HasMore {
+		t.Error("expected HasMore to be false")
+	}
+}
+
+func TestEventStore_ReadGlobalByTime(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create events at different times
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Person 1 events
+	streamID1 := uuid.New()
+	events1 := []domain.Event{
+		domain.PersonCreated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime},
+			PersonID:  streamID1,
+			GivenName: "John",
+			Surname:   "Doe",
+		},
+	}
+	err := store.Append(ctx, streamID1, "Person", events1, -1)
+	if err != nil {
+		t.Fatalf("append person 1: %v", err)
+	}
+
+	// Family event
+	streamID2 := uuid.New()
+	events2 := []domain.Event{
+		domain.FamilyCreated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(time.Hour)},
+			FamilyID:  streamID2,
+		},
+	}
+	err = store.Append(ctx, streamID2, "Family", events2, -1)
+	if err != nil {
+		t.Fatalf("append family: %v", err)
+	}
+
+	// Person 2 events
+	streamID3 := uuid.New()
+	events3 := []domain.Event{
+		domain.PersonCreated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(2 * time.Hour)},
+			PersonID:  streamID3,
+			GivenName: "Jane",
+			Surname:   "Smith",
+		},
+	}
+	err = store.Append(ctx, streamID3, "Person", events3, -1)
+	if err != nil {
+		t.Fatalf("append person 2: %v", err)
+	}
+
+	// Test 1: Read all events (no filter)
+	page, err := store.ReadGlobalByTime(ctx, time.Time{}, time.Time{}, nil, 10, 0)
+	if err != nil {
+		t.Fatalf("read global (all): %v", err)
+	}
+	if len(page.Events) != 3 {
+		t.Errorf("expected 3 events, got %d", len(page.Events))
+	}
+	if page.TotalCount != 3 {
+		t.Errorf("expected total count 3, got %d", page.TotalCount)
+	}
+
+	// Verify events are ordered by timestamp ascending
+	if !page.Events[0].Timestamp.Equal(baseTime) {
+		t.Errorf("expected first event at baseTime, got %v", page.Events[0].Timestamp)
+	}
+	if !page.Events[1].Timestamp.Equal(baseTime.Add(time.Hour)) {
+		t.Errorf("expected second event at baseTime+1h, got %v", page.Events[1].Timestamp)
+	}
+	if !page.Events[2].Timestamp.Equal(baseTime.Add(2 * time.Hour)) {
+		t.Errorf("expected third event at baseTime+2h, got %v", page.Events[2].Timestamp)
+	}
+
+	// Test 2: Filter by time range
+	fromTime := baseTime.Add(30 * time.Minute)
+	toTime := baseTime.Add(90 * time.Minute)
+	page, err = store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 10, 0)
+	if err != nil {
+		t.Fatalf("read global (time range): %v", err)
+	}
+	if len(page.Events) != 1 {
+		t.Errorf("expected 1 event in time range, got %d", len(page.Events))
+	}
+	if page.Events[0].EventType != "FamilyCreated" {
+		t.Errorf("expected FamilyCreated, got %s", page.Events[0].EventType)
+	}
+
+	// Test 3: Filter by event types
+	page, err = store.ReadGlobalByTime(ctx, time.Time{}, time.Time{}, []string{"PersonCreated"}, 10, 0)
+	if err != nil {
+		t.Fatalf("read global (event types): %v", err)
+	}
+	if len(page.Events) != 2 {
+		t.Errorf("expected 2 PersonCreated events, got %d", len(page.Events))
+	}
+	for _, e := range page.Events {
+		if e.EventType != "PersonCreated" {
+			t.Errorf("expected PersonCreated, got %s", e.EventType)
+		}
+	}
+
+	// Test 4: Pagination
+	page, err = store.ReadGlobalByTime(ctx, time.Time{}, time.Time{}, nil, 2, 0)
+	if err != nil {
+		t.Fatalf("read global (page 1): %v", err)
+	}
+	if len(page.Events) != 2 {
+		t.Errorf("expected 2 events on page 1, got %d", len(page.Events))
+	}
+	if !page.HasMore {
+		t.Error("expected HasMore to be true")
+	}
+
+	page, err = store.ReadGlobalByTime(ctx, time.Time{}, time.Time{}, nil, 2, 2)
+	if err != nil {
+		t.Fatalf("read global (page 2): %v", err)
+	}
+	if len(page.Events) != 1 {
+		t.Errorf("expected 1 event on page 2, got %d", len(page.Events))
+	}
+	if page.HasMore {
+		t.Error("expected HasMore to be false")
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_Empty(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Query with no events
+	page, err := store.ReadGlobalByTime(ctx, time.Time{}, time.Time{}, nil, 10, 0)
+	if err != nil {
+		t.Fatalf("read global (empty): %v", err)
+	}
+
+	if len(page.Events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(page.Events))
+	}
+	if page.TotalCount != 0 {
+		t.Errorf("expected total count 0, got %d", page.TotalCount)
+	}
+	if page.HasMore {
+		t.Error("expected HasMore to be false")
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	baseTime := time.Now()
+
+	// Create different event types
+	streamID1 := uuid.New()
+	err := store.Append(ctx, streamID1, "Person", []domain.Event{
+		domain.PersonCreated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime},
+			PersonID:  streamID1,
+		},
+	}, -1)
+	if err != nil {
+		t.Fatalf("append PersonCreated: %v", err)
+	}
+
+	streamID2 := uuid.New()
+	err = store.Append(ctx, streamID2, "Family", []domain.Event{
+		domain.FamilyCreated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(time.Minute)},
+			FamilyID:  streamID2,
+		},
+	}, -1)
+	if err != nil {
+		t.Fatalf("append FamilyCreated: %v", err)
+	}
+
+	streamID3 := uuid.New()
+	err = store.Append(ctx, streamID3, "Source", []domain.Event{
+		domain.SourceCreated{
+			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(2 * time.Minute)},
+			SourceID:  streamID3,
+		},
+	}, -1)
+	if err != nil {
+		t.Fatalf("append SourceCreated: %v", err)
+	}
+
+	// Filter by multiple event types
+	page, err := store.ReadGlobalByTime(ctx, time.Time{}, time.Time{}, []string{"PersonCreated", "FamilyCreated"}, 10, 0)
+	if err != nil {
+		t.Fatalf("read global (multiple types): %v", err)
+	}
+
+	if len(page.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(page.Events))
+	}
+	if page.TotalCount != 2 {
+		t.Errorf("expected total count 2, got %d", page.TotalCount)
+	}
+
+	// Verify only PersonCreated and FamilyCreated are returned
+	for _, e := range page.Events {
+		if e.EventType != "PersonCreated" && e.EventType != "FamilyCreated" {
+			t.Errorf("unexpected event type: %s", e.EventType)
+		}
+	}
+}

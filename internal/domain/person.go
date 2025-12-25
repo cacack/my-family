@@ -78,7 +78,7 @@ func (p *Person) Validate() error {
 
 	// Death date must be after or equal to birth date
 	if p.BirthDate != nil && p.DeathDate != nil && !p.BirthDate.IsEmpty() && !p.DeathDate.IsEmpty() {
-		if p.DeathDate.Before(*p.BirthDate) {
+		if p.DeathDate.Before(p.BirthDate) {
 			errs = append(errs, PersonValidationError{Field: "death_date", Message: "cannot be before birth_date"})
 		}
 	}
