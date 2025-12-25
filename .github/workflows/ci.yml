@@ -109,6 +109,29 @@ jobs:
         with:
           config: .testcoverage.yml
 
+      - name: Per-package coverage report
+        run: |
+          echo "## Per-Package Coverage Report"
+          echo ""
+          echo "| Package | Coverage | Status |"
+          echo "|---------|----------|--------|"
+          for pkg in api command config domain gedcom query repository repository/memory; do
+            COV=$(go tool cover -func=coverage.out | grep "github.com/cacack/my-family/internal/$pkg" | tail -1 | awk '{print $3}')
+            if [ -z "$COV" ]; then
+              echo "| internal/$pkg | N/A | - |"
+              continue
+            fi
+            PCT=$(echo "$COV" | sed 's/%//')
+            if (( $(echo "$PCT >= 85.0" | bc -l) )); then
+              echo "| internal/$pkg | $COV | :white_check_mark: |"
+            else
+              echo "| internal/$pkg | $COV | :warning: |"
+            fi
+          done
+          echo ""
+          TOTAL=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+          echo "**Total: $TOTAL**"
+
       - name: Build
         run: go build ./...
 

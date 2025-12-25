@@ -1,0 +1,79 @@
+# golangci-lint v2 config
+# Run: golangci-lint run ./...
+version: "2"
+
+run:
+  modules-download-mode: readonly
+  tests: true
+
+linters:
+  enable:
+    - gocritic      # Opinionated style checks
+    - gocyclo       # Cyclomatic complexity
+    - gosec         # Security issues
+    - misspell      # Spelling mistakes
+    - revive        # Replacement for golint
+    - unconvert     # Unnecessary type conversions
+    - unparam       # Unused function parameters
+
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    gocyclo:
+      min-complexity: 15
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+          arguments:
+            - checkPrivateReceivers
+            - sayRepetitiveInsteadOfStutters
+          severity: warning
+          disabled: false
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Relax rules for test files
+      - linters:
+          - errcheck
+          - gocyclo
+          - gosec
+        path: _test\.go
+      # Ignore nil pointer checks in tests
+      - path: _test\.go
+        text: SA5011
+      # Relax for cmd (main packages)
+      - linters:
+          - gocyclo
+        path: cmd/
+      # Event interface methods must use value receivers for interface compatibility
+      - linters:
+          - gocritic
+        path: internal/domain/events\.go
+        text: hugeParam
+
+    paths:
+      - third_party$
+      - builtin$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
