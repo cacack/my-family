@@ -565,3 +565,326 @@ func TestEventStore_FamilyEvents(t *testing.T) {
 		t.Fatalf("decoded event type = %T, want domain.FamilyCreated", decoded)
 	}
 }
+
+func TestEventStore_ReadByStream_EmptyStream(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	streamID := uuid.New()
+
+	page, err := store.ReadByStream(ctx, streamID, 10, 0)
+	if err != nil {
+		t.Fatalf("ReadByStream() failed: %v", err)
+	}
+
+	if page.TotalCount != 0 {
+		t.Errorf("TotalCount = %d, want 0", page.TotalCount)
+	}
+	if len(page.Events) != 0 {
+		t.Errorf("len(Events) = %d, want 0", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("HasMore = %v, want false", page.HasMore)
+	}
+}
+
+func TestEventStore_ReadByStream_SinglePage(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	streamID := uuid.New()
+	person := domain.NewPerson("John", "Doe")
+
+	// Add 3 events
+	events := []domain.Event{
+		domain.NewPersonCreated(person),
+		domain.NewPersonUpdated(person.ID, map[string]any{"notes": "Update 1"}),
+		domain.NewPersonUpdated(person.ID, map[string]any{"notes": "Update 2"}),
+	}
+	err := store.Append(ctx, streamID, "Person", events, -1)
+	if err != nil {
+		t.Fatalf("Append() failed: %v", err)
+	}
+
+	page, err := store.ReadByStream(ctx, streamID, 10, 0)
+	if err != nil {
+		t.Fatalf("ReadByStream() failed: %v", err)
+	}
+
+	if page.TotalCount != 3 {
+		t.Errorf("TotalCount = %d, want 3", page.TotalCount)
+	}
+	if len(page.Events) != 3 {
+		t.Errorf("len(Events) = %d, want 3", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("HasMore = %v, want false", page.HasMore)
+	}
+
+	// Verify events are in correct order
+	for i, event := range page.Events {
+		if event.Version != int64(i+1) {
+			t.Errorf("Events[%d].Version = %d, want %d", i, event.Version, i+1)
+		}
+	}
+}
+
+func TestEventStore_ReadByStream_Pagination(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	streamID := uuid.New()
+	person := domain.NewPerson("John", "Doe")
+
+	// Add 5 events
+	events := []domain.Event{
+		domain.NewPersonCreated(person),
+		domain.NewPersonUpdated(person.ID, map[string]any{"notes": "Update 1"}),
+		domain.NewPersonUpdated(person.ID, map[string]any{"notes": "Update 2"}),
+		domain.NewPersonUpdated(person.ID, map[string]any{"notes": "Update 3"}),
+		domain.NewPersonUpdated(person.ID, map[string]any{"notes": "Update 4"}),
+	}
+	err := store.Append(ctx, streamID, "Person", events, -1)
+	if err != nil {
+		t.Fatalf("Append() failed: %v", err)
+	}
+
+	// First page
+	page1, err := store.ReadByStream(ctx, streamID, 2, 0)
+	if err != nil {
+		t.Fatalf("ReadByStream() page 1 failed: %v", err)
+	}
+	if page1.TotalCount != 5 {
+		t.Errorf("page1.TotalCount = %d, want 5", page1.TotalCount)
+	}
+	if len(page1.Events) != 2 {
+		t.Errorf("len(page1.Events) = %d, want 2", len(page1.Events))
+	}
+	if !page1.HasMore {
+		t.Errorf("page1.HasMore = %v, want true", page1.HasMore)
+	}
+	if page1.Events[0].Version != 1 {
+		t.Errorf("page1.Events[0].Version = %d, want 1", page1.Events[0].Version)
+	}
+
+	// Second page
+	page2, err := store.ReadByStream(ctx, streamID, 2, 2)
+	if err != nil {
+		t.Fatalf("ReadByStream() page 2 failed: %v", err)
+	}
+	if page2.TotalCount != 5 {
+		t.Errorf("page2.TotalCount = %d, want 5", page2.TotalCount)
+	}
+	if len(page2.Events) != 2 {
+		t.Errorf("len(page2.Events) = %d, want 2", len(page2.Events))
+	}
+	if !page2.HasMore {
+		t.Errorf("page2.HasMore = %v, want true", page2.HasMore)
+	}
+	if page2.Events[0].Version != 3 {
+		t.Errorf("page2.Events[0].Version = %d, want 3", page2.Events[0].Version)
+	}
+
+	// Third page (partial)
+	page3, err := store.ReadByStream(ctx, streamID, 2, 4)
+	if err != nil {
+		t.Fatalf("ReadByStream() page 3 failed: %v", err)
+	}
+	if page3.TotalCount != 5 {
+		t.Errorf("page3.TotalCount = %d, want 5", page3.TotalCount)
+	}
+	if len(page3.Events) != 1 {
+		t.Errorf("len(page3.Events) = %d, want 1", len(page3.Events))
+	}
+	if page3.HasMore {
+		t.Errorf("page3.HasMore = %v, want false", page3.HasMore)
+	}
+	if page3.Events[0].Version != 5 {
+		t.Errorf("page3.Events[0].Version = %d, want 5", page3.Events[0].Version)
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_EmptyResults(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	fromTime := time.Now()
+	toTime := fromTime.Add(1 * time.Hour)
+
+	page, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 10, 0)
+	if err != nil {
+		t.Fatalf("ReadGlobalByTime() failed: %v", err)
+	}
+
+	if page.TotalCount != 0 {
+		t.Errorf("TotalCount = %d, want 0", page.TotalCount)
+	}
+	if len(page.Events) != 0 {
+		t.Errorf("len(Events) = %d, want 0", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("HasMore = %v, want false", page.HasMore)
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_TimeFiltering(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	baseTime := time.Now()
+
+	// Create events at different times
+	for i := 0; i < 5; i++ {
+		streamID := uuid.New()
+		person := domain.NewPerson("Person", "Test")
+		event := domain.NewPersonCreated(person)
+		// Manually set timestamp for testing
+		event.Timestamp = baseTime.Add(time.Duration(i) * time.Hour)
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+		if err != nil {
+			t.Fatalf("Append() event %d failed: %v", i, err)
+		}
+	}
+
+	// Query middle range (hours 1-3)
+	fromTime := baseTime.Add(1 * time.Hour)
+	toTime := baseTime.Add(3 * time.Hour)
+
+	page, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 10, 0)
+	if err != nil {
+		t.Fatalf("ReadGlobalByTime() failed: %v", err)
+	}
+
+	if page.TotalCount != 3 {
+		t.Errorf("TotalCount = %d, want 3", page.TotalCount)
+	}
+	if len(page.Events) != 3 {
+		t.Errorf("len(Events) = %d, want 3", len(page.Events))
+	}
+	if page.HasMore {
+		t.Errorf("HasMore = %v, want false", page.HasMore)
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_EventTypeFiltering(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	baseTime := time.Now()
+
+	// Create mixed event types
+	streamID1 := uuid.New()
+	person := domain.NewPerson("Person", "Test")
+	event1 := domain.NewPersonCreated(person)
+	event1.Timestamp = baseTime
+	err := store.Append(ctx, streamID1, "Person", []domain.Event{event1}, -1)
+	if err != nil {
+		t.Fatalf("Append() PersonCreated failed: %v", err)
+	}
+
+	streamID2 := uuid.New()
+	family := domain.NewFamily()
+	event2 := domain.NewFamilyCreated(family)
+	event2.Timestamp = baseTime.Add(1 * time.Second)
+	err = store.Append(ctx, streamID2, "Family", []domain.Event{event2}, -1)
+	if err != nil {
+		t.Fatalf("Append() FamilyCreated failed: %v", err)
+	}
+
+	streamID3 := uuid.New()
+	person2 := domain.NewPerson("Person2", "Test")
+	event3 := domain.NewPersonCreated(person2)
+	event3.Timestamp = baseTime.Add(2 * time.Second)
+	err = store.Append(ctx, streamID3, "Person", []domain.Event{event3}, -1)
+	if err != nil {
+		t.Fatalf("Append() PersonCreated2 failed: %v", err)
+	}
+
+	// Query only PersonCreated events
+	fromTime := baseTime.Add(-1 * time.Second)
+	toTime := baseTime.Add(3 * time.Second)
+
+	page, err := store.ReadGlobalByTime(ctx, fromTime, toTime, []string{"PersonCreated"}, 10, 0)
+	if err != nil {
+		t.Fatalf("ReadGlobalByTime() failed: %v", err)
+	}
+
+	if page.TotalCount != 2 {
+		t.Errorf("TotalCount = %d, want 2", page.TotalCount)
+	}
+	if len(page.Events) != 2 {
+		t.Errorf("len(Events) = %d, want 2", len(page.Events))
+	}
+	for i, event := range page.Events {
+		if event.EventType != "PersonCreated" {
+			t.Errorf("Events[%d].EventType = %s, want PersonCreated", i, event.EventType)
+		}
+	}
+}
+
+func TestEventStore_ReadGlobalByTime_Pagination(t *testing.T) {
+	store := memory.NewEventStore()
+	ctx := context.Background()
+
+	baseTime := time.Now()
+
+	// Create 5 events
+	for i := 0; i < 5; i++ {
+		streamID := uuid.New()
+		person := domain.NewPerson("Person", "Test")
+		event := domain.NewPersonCreated(person)
+		event.Timestamp = baseTime.Add(time.Duration(i) * time.Second)
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+		if err != nil {
+			t.Fatalf("Append() event %d failed: %v", i, err)
+		}
+	}
+
+	fromTime := baseTime.Add(-1 * time.Second)
+	toTime := baseTime.Add(10 * time.Second)
+
+	// First page
+	page1, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 2, 0)
+	if err != nil {
+		t.Fatalf("ReadGlobalByTime() page 1 failed: %v", err)
+	}
+	if page1.TotalCount != 5 {
+		t.Errorf("page1.TotalCount = %d, want 5", page1.TotalCount)
+	}
+	if len(page1.Events) != 2 {
+		t.Errorf("len(page1.Events) = %d, want 2", len(page1.Events))
+	}
+	if !page1.HasMore {
+		t.Errorf("page1.HasMore = %v, want true", page1.HasMore)
+	}
+
+	// Second page
+	page2, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 2, 2)
+	if err != nil {
+		t.Fatalf("ReadGlobalByTime() page 2 failed: %v", err)
+	}
+	if page2.TotalCount != 5 {
+		t.Errorf("page2.TotalCount = %d, want 5", page2.TotalCount)
+	}
+	if len(page2.Events) != 2 {
+		t.Errorf("len(page2.Events) = %d, want 2", len(page2.Events))
+	}
+	if !page2.HasMore {
+		t.Errorf("page2.HasMore = %v, want true", page2.HasMore)
+	}
+
+	// Third page (partial)
+	page3, err := store.ReadGlobalByTime(ctx, fromTime, toTime, nil, 2, 4)
+	if err != nil {
+		t.Fatalf("ReadGlobalByTime() page 3 failed: %v", err)
+	}
+	if page3.TotalCount != 5 {
+		t.Errorf("page3.TotalCount = %d, want 5", page3.TotalCount)
+	}
+	if len(page3.Events) != 1 {
+		t.Errorf("len(page3.Events) = %d, want 1", len(page3.Events))
+	}
+	if page3.HasMore {
+		t.Errorf("page3.HasMore = %v, want false", page3.HasMore)
+	}
+}

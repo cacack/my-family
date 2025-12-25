@@ -2,7 +2,6 @@ package domain
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +55,23 @@ var reverseMonthMap = map[int]string{
 	7: "JUL", 8: "AUG", 9: "SEP", 10: "OCT", 11: "NOV", 12: "DEC",
 }
 
+// qualifierPrefixes maps GEDCOM date prefixes to their qualifiers.
+var qualifierPrefixes = []struct {
+	prefix    string
+	qualifier DateQualifier
+}{
+	{"ABT ", DateAbout},
+	{"ABOUT ", DateAbout},
+	{"CAL ", DateCalc},
+	{"EST ", DateEst},
+	{"BEF ", DateBef},
+	{"BEFORE ", DateBef},
+	{"AFT ", DateAft},
+	{"AFTER ", DateAft},
+	{"BET ", DateBet},
+	{"FROM ", DateFrom},
+}
+
 // ParseGenDate parses a GEDCOM-format date string into a GenDate.
 func ParseGenDate(s string) GenDate {
 	s = strings.TrimSpace(s)
@@ -71,54 +87,28 @@ func ParseGenDate(s string) GenDate {
 
 	upper := strings.ToUpper(s)
 
-	// Check for qualifiers
-	switch {
-	case strings.HasPrefix(upper, "ABT "):
-		gd.Qualifier = DateAbout
-		s = strings.TrimPrefix(upper, "ABT ")
-	case strings.HasPrefix(upper, "ABOUT "):
-		gd.Qualifier = DateAbout
-		s = strings.TrimPrefix(upper, "ABOUT ")
-	case strings.HasPrefix(upper, "CAL "):
-		gd.Qualifier = DateCalc
-		s = strings.TrimPrefix(upper, "CAL ")
-	case strings.HasPrefix(upper, "EST "):
-		gd.Qualifier = DateEst
-		s = strings.TrimPrefix(upper, "EST ")
-	case strings.HasPrefix(upper, "BEF "):
-		gd.Qualifier = DateBef
-		s = strings.TrimPrefix(upper, "BEF ")
-	case strings.HasPrefix(upper, "BEFORE "):
-		gd.Qualifier = DateBef
-		s = strings.TrimPrefix(upper, "BEFORE ")
-	case strings.HasPrefix(upper, "AFT "):
-		gd.Qualifier = DateAft
-		s = strings.TrimPrefix(upper, "AFT ")
-	case strings.HasPrefix(upper, "AFTER "):
-		gd.Qualifier = DateAft
-		s = strings.TrimPrefix(upper, "AFTER ")
-	case strings.HasPrefix(upper, "BET "):
-		gd.Qualifier = DateBet
-		s = strings.TrimPrefix(upper, "BET ")
-	case strings.HasPrefix(upper, "FROM "):
-		gd.Qualifier = DateFrom
-		s = strings.TrimPrefix(upper, "FROM ")
-	default:
+	// Check for qualifiers using table-driven lookup
+	for _, qp := range qualifierPrefixes {
+		if strings.HasPrefix(upper, qp.prefix) {
+			gd.Qualifier = qp.qualifier
+			s = strings.TrimPrefix(upper, qp.prefix)
+			break
+		}
+	}
+	if gd.Qualifier == DateExact {
 		s = upper
 	}
 
 	// Handle ranges (BET ... AND ..., FROM ... TO ...)
 	if gd.Qualifier == DateBet {
-		parts := strings.SplitN(s, " AND ", 2)
-		if len(parts) == 2 {
+		if parts := strings.SplitN(s, " AND ", 2); len(parts) == 2 {
 			parseSimpleDate(strings.TrimSpace(parts[0]), &gd.Year, &gd.Month, &gd.Day)
 			parseSimpleDate(strings.TrimSpace(parts[1]), &gd.Year2, &gd.Month2, &gd.Day2)
 			return gd
 		}
 	}
 	if gd.Qualifier == DateFrom {
-		parts := strings.SplitN(s, " TO ", 2)
-		if len(parts) == 2 {
+		if parts := strings.SplitN(s, " TO ", 2); len(parts) == 2 {
 			parseSimpleDate(strings.TrimSpace(parts[0]), &gd.Year, &gd.Month, &gd.Day)
 			parseSimpleDate(strings.TrimSpace(parts[1]), &gd.Year2, &gd.Month2, &gd.Day2)
 			return gd
@@ -164,7 +154,7 @@ func parseSimpleDate(s string, year, month, day **int) {
 }
 
 // String returns the GEDCOM-format string representation.
-func (g GenDate) String() string {
+func (g *GenDate) String() string {
 	if g.Raw != "" {
 		return g.Raw
 	}
@@ -172,7 +162,7 @@ func (g GenDate) String() string {
 }
 
 // Format generates a GEDCOM-format date string from the parsed components.
-func (g GenDate) Format() string {
+func (g *GenDate) Format() string {
 	if g.Year == nil {
 		return ""
 	}
@@ -214,13 +204,13 @@ func formatSimpleDate(year, month, day *int) string {
 }
 
 // IsEmpty returns true if the date has no meaningful data.
-func (g GenDate) IsEmpty() bool {
+func (g *GenDate) IsEmpty() bool {
 	return g.Year == nil && g.Month == nil && g.Day == nil
 }
 
 // ToTime converts the GenDate to a time.Time for sorting purposes.
 // Returns the earliest possible date based on the qualifier.
-func (g GenDate) ToTime() time.Time {
+func (g *GenDate) ToTime() time.Time {
 	if g.Year == nil {
 		return time.Time{}
 	}
@@ -240,12 +230,12 @@ func (g GenDate) ToTime() time.Time {
 // For "before" dates, returns the date itself.
 // For "after" dates, returns the date itself.
 // For ranges, returns the start date.
-func (g GenDate) SortDate() time.Time {
+func (g *GenDate) SortDate() time.Time {
 	return g.ToTime()
 }
 
 // Validate checks if the date components are valid.
-func (g GenDate) Validate() error {
+func (g *GenDate) Validate() error {
 	if g.Month != nil && (*g.Month < 1 || *g.Month > 12) {
 		return fmt.Errorf("invalid month: %d", *g.Month)
 	}
@@ -262,14 +252,11 @@ func (g GenDate) Validate() error {
 }
 
 // Before returns true if this date is before the other date.
-func (g GenDate) Before(other GenDate) bool {
+func (g *GenDate) Before(other *GenDate) bool {
 	return g.ToTime().Before(other.ToTime())
 }
 
 // After returns true if this date is after the other date.
-func (g GenDate) After(other GenDate) bool {
+func (g *GenDate) After(other *GenDate) bool {
 	return g.ToTime().After(other.ToTime())
 }
-
-// Compile regex at package init time for performance.
-var yearOnlyRegex = regexp.MustCompile(`^\d{4}$`)

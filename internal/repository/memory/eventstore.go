@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -128,4 +129,89 @@ func (s *EventStore) EventCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.events)
+}
+
+// ReadByStream returns paginated events for a specific stream (entity).
+func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	stream, exists := s.streams[streamID]
+	if !exists {
+		return &repository.HistoryPage{
+			Events:     []repository.StoredEvent{},
+			TotalCount: 0,
+			HasMore:    false,
+		}, nil
+	}
+
+	totalCount := len(stream)
+
+	// Apply offset and limit
+	start := offset
+	if start > totalCount {
+		start = totalCount
+	}
+	end := start + limit
+	if end > totalCount {
+		end = totalCount
+	}
+
+	// Copy the slice to prevent mutation
+	result := make([]repository.StoredEvent, end-start)
+	copy(result, stream[start:end])
+
+	return &repository.HistoryPage{
+		Events:     result,
+		TotalCount: totalCount,
+		HasMore:    end < totalCount,
+	}, nil
+}
+
+// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
+func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Build a set of event types for fast lookup
+	typeFilter := make(map[string]bool)
+	for _, t := range eventTypes {
+		typeFilter[t] = true
+	}
+	filterByType := len(eventTypes) > 0
+
+	// Filter events by time and optionally by type
+	var filtered []repository.StoredEvent
+	for _, event := range s.events {
+		if event.Timestamp.Before(fromTime) || event.Timestamp.After(toTime) {
+			continue
+		}
+		if filterByType && !typeFilter[event.EventType] {
+			continue
+		}
+		filtered = append(filtered, event)
+	}
+
+	totalCount := len(filtered)
+
+	// Apply offset and limit
+	start := offset
+	if start > totalCount {
+		start = totalCount
+	}
+	end := start + limit
+	if end > totalCount {
+		end = totalCount
+	}
+
+	result := filtered[start:end]
+	if result == nil {
+		result = []repository.StoredEvent{}
+	}
+
+	return &repository.HistoryPage{
+		Events:     result,
+		TotalCount: totalCount,
+		HasMore:    end < totalCount,
+	}, nil
 }

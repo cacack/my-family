@@ -23,6 +23,8 @@ tags:
     description: Person search
   - name: gedcom
     description: GEDCOM import/export
+  - name: history
+    description: Change history and audit trail
 
 paths:
   /persons:
@@ -376,6 +378,110 @@ paths:
               schema:
                 type: string
                 example: attachment; filename="export.ged"
+
+  /history:
+    get:
+      operationId: listHistory
+      summary: List global change history
+      tags: [history]
+      parameters:
+        - name: entity_type
+          in: query
+          description: Filter by entity type
+          schema:
+            type: string
+            enum: [person, family, source, citation]
+        - name: from
+          in: query
+          description: Start date/time for history (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: End date/time for history (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: Change history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /persons/{id}/history:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: getPersonHistory
+      summary: Get change history for a person
+      tags: [history]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: Person change history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeHistoryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /families/{id}/history:
+    parameters:
+      - $ref: '#/components/parameters/familyId'
+
+    get:
+      operationId: getFamilyHistory
+      summary: Get change history for a family
+      tags: [history]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: Family change history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeHistoryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sources/{id}/history:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getSourceHistory
+      summary: Get change history for a source
+      tags: [history]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: Source change history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangeHistoryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
 components:
   parameters:
@@ -845,3 +951,59 @@ components:
           type: string
         message:
           type: string
+
+    ChangeEntry:
+      type: object
+      required: [id, timestamp, entity_type, entity_id, action]
+      properties:
+        id:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        entity_type:
+          type: string
+          enum: [person, family, source, citation]
+        entity_id:
+          type: string
+          format: uuid
+        entity_name:
+          type: string
+          description: Human-readable name of the entity
+        action:
+          type: string
+          enum: [created, updated, deleted]
+        changes:
+          type: object
+          description: Field-level changes for updates
+          additionalProperties:
+            $ref: '#/components/schemas/FieldChange'
+        user_id:
+          type: string
+          description: ID of user who made the change (null if single-user)
+
+    FieldChange:
+      type: object
+      properties:
+        old_value:
+          description: Previous value (null for new fields)
+        new_value:
+          description: New value (null for removed fields)
+
+    ChangeHistoryResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeEntry'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_more:
+          type: boolean

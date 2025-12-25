@@ -225,10 +225,10 @@ func TestGenDate_Before(t *testing.T) {
 	date1 := GenDate{Year: intPtr(1850), Month: intPtr(1), Day: intPtr(1)}
 	date2 := GenDate{Year: intPtr(1860), Month: intPtr(1), Day: intPtr(1)}
 
-	if !date1.Before(date2) {
+	if !date1.Before(&date2) {
 		t.Error("1850 should be before 1860")
 	}
-	if date2.Before(date1) {
+	if date2.Before(&date1) {
 		t.Error("1860 should not be before 1850")
 	}
 }
@@ -237,10 +237,10 @@ func TestGenDate_After(t *testing.T) {
 	date1 := GenDate{Year: intPtr(1850), Month: intPtr(1), Day: intPtr(1)}
 	date2 := GenDate{Year: intPtr(1860), Month: intPtr(1), Day: intPtr(1)}
 
-	if !date2.After(date1) {
+	if !date2.After(&date1) {
 		t.Error("1860 should be after 1850")
 	}
-	if date1.After(date2) {
+	if date1.After(&date2) {
 		t.Error("1850 should not be after 1860")
 	}
 }

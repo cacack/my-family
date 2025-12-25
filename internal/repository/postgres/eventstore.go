@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
@@ -218,6 +218,116 @@ func scanEvents(rows *sql.Rows) ([]repository.StoredEvent, error) {
 	}
 
 	return events, nil
+}
+
+// ReadByStream returns paginated events for a specific stream (entity).
+func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+	query := `
+		SELECT
+			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			COUNT(*) OVER() as total_count
+		FROM events
+		WHERE stream_id = $1
+		ORDER BY version ASC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, streamID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("query events by stream: %w", err)
+	}
+	defer rows.Close()
+
+	return scanHistoryPage(rows, limit, offset)
+}
+
+// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
+func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
+	// Build query with conditional filters
+	query := `
+		SELECT
+			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			COUNT(*) OVER() as total_count
+		FROM events
+		WHERE timestamp >= $1 AND timestamp <= $2
+	`
+
+	args := []interface{}{fromTime, toTime}
+
+	// Add optional event type filter
+	if len(eventTypes) > 0 {
+		query += ` AND event_type = ANY($3)`
+		args = append(args, pq.Array(eventTypes))
+		query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+		args = append(args, limit, offset)
+	} else {
+		query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+		args = append(args, limit, offset)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query events by time: %w", err)
+	}
+	defer rows.Close()
+
+	return scanHistoryPage(rows, limit, offset)
+}
+
+// scanHistoryPage scans rows into a HistoryPage with pagination info.
+func scanHistoryPage(rows *sql.Rows, limit, offset int) (*repository.HistoryPage, error) {
+	var events []repository.StoredEvent
+	var totalCount int
+
+	for rows.Next() {
+		var (
+			id, streamID          uuid.UUID
+			streamType, eventType string
+			version, position     int64
+			data                  []byte
+			metadata              sql.NullString
+			timestamp             time.Time
+		)
+		err := rows.Scan(&id, &streamID, &streamType, &version, &eventType, &data, &metadata, &timestamp, &position, &totalCount)
+		if err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+
+		event := repository.StoredEvent{
+			ID:         id,
+			StreamID:   streamID,
+			StreamType: streamType,
+			EventType:  eventType,
+			Data:       json.RawMessage(data),
+			Version:    version,
+			Position:   position,
+			Timestamp:  timestamp,
+		}
+
+		if metadata.Valid {
+			event.Metadata = json.RawMessage(metadata.String)
+		}
+
+		events = append(events, event)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate events: %w", err)
+	}
+
+	// Return empty page if no results
+	if events == nil {
+		events = []repository.StoredEvent{}
+		totalCount = 0
+	}
+
+	hasMore := offset+len(events) < totalCount
+
+	return &repository.HistoryPage{
+		Events:     events,
+		TotalCount: totalCount,
+		HasMore:    hasMore,
+	}, nil
 }
 
 // Close closes the database connection.
