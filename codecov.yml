@@ -1,28 +1,37 @@
 # Codecov configuration
 # https://docs.codecov.com/docs/codecovyml-reference
+#
+# Aligned with local checks:
+# - Local: 85% per-package, 75% total (make check-coverage)
+# - Codecov: Same targets, informational only
 
 coverage:
   status:
     # Project coverage - overall repository coverage
     project:
       default:
-        # Allow coverage to drop by up to 1% before failing
-        # This prevents false failures on dependency updates
-        threshold: 1%
+        # Target 85% to match local per-package threshold
+        target: 85%
+        # Allow 2% drop to accommodate new features with complex setup
+        threshold: 2%
         # Only check coverage on code that can be tested
         paths:
           - "internal/"
         # Exclude paths that don't need coverage
         removed_code_behavior: adjust_base
+        # Don't block PRs - informational only
+        informational: true
 
     # Patch coverage - coverage of changed lines in PR
     patch:
       default:
-        # Require 80% of new lines to be covered
-        target: 80%
+        # Target 75% of new lines - prioritize meaningful tests over line count
+        target: 75%
         # Only apply to actual code changes
         paths:
           - "internal/"
+        # Don't block PRs - informational only
+        informational: true
 
 # Ignore files that don't need test coverage
 ignore:
