@@ -1701,3 +1701,273 @@ func TestReadModelStore_DeleteCitation(t *testing.T) {
 		t.Errorf("GetCitation() after delete = %v, want nil", retrieved)
 	}
 }
+
+// Media CRUD operations
+
+func TestReadModelStore_SaveAndGetMedia(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	entityID := uuid.New()
+	media := &repository.MediaReadModel{
+		ID:            uuid.New(),
+		EntityType:    "person",
+		EntityID:      entityID,
+		Title:         "Test Photo",
+		Description:   "A test photo",
+		MimeType:      "image/jpeg",
+		MediaType:     domain.MediaPhoto,
+		Filename:      "test.jpg",
+		FileSize:      1024,
+		FileData:      []byte("fake image data"),
+		ThumbnailData: []byte("fake thumbnail"),
+		Version:       1,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	// Save media
+	err := store.SaveMedia(ctx, media)
+	if err != nil {
+		t.Fatalf("SaveMedia() failed: %v", err)
+	}
+
+	// Get media (metadata only)
+	retrieved, err := store.GetMedia(ctx, media.ID)
+	if err != nil {
+		t.Fatalf("GetMedia() failed: %v", err)
+	}
+
+	if retrieved == nil {
+		t.Fatal("GetMedia() returned nil")
+	}
+
+	if retrieved.Title != media.Title {
+		t.Errorf("Title = %s, want %s", retrieved.Title, media.Title)
+	}
+
+	// GetMedia should NOT include binary data
+	if len(retrieved.FileData) > 0 {
+		t.Error("GetMedia() should not include FileData")
+	}
+	if len(retrieved.ThumbnailData) > 0 {
+		t.Error("GetMedia() should not include ThumbnailData")
+	}
+}
+
+func TestReadModelStore_GetMediaWithData(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	entityID := uuid.New()
+	media := &repository.MediaReadModel{
+		ID:            uuid.New(),
+		EntityType:    "person",
+		EntityID:      entityID,
+		Title:         "Test Photo",
+		MimeType:      "image/jpeg",
+		FileData:      []byte("fake image data"),
+		ThumbnailData: []byte("fake thumbnail"),
+		Version:       1,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	// Save media
+	err := store.SaveMedia(ctx, media)
+	if err != nil {
+		t.Fatalf("SaveMedia() failed: %v", err)
+	}
+
+	// Get media with data
+	retrieved, err := store.GetMediaWithData(ctx, media.ID)
+	if err != nil {
+		t.Fatalf("GetMediaWithData() failed: %v", err)
+	}
+
+	if retrieved == nil {
+		t.Fatal("GetMediaWithData() returned nil")
+	}
+
+	// Should include binary data
+	if len(retrieved.FileData) == 0 {
+		t.Error("GetMediaWithData() should include FileData")
+	}
+	if len(retrieved.ThumbnailData) == 0 {
+		t.Error("GetMediaWithData() should include ThumbnailData")
+	}
+}
+
+func TestReadModelStore_GetMediaThumbnail(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	entityID := uuid.New()
+	thumbnailData := []byte("fake thumbnail data")
+	media := &repository.MediaReadModel{
+		ID:            uuid.New(),
+		EntityType:    "person",
+		EntityID:      entityID,
+		Title:         "Test Photo",
+		ThumbnailData: thumbnailData,
+		Version:       1,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+
+	// Save media
+	err := store.SaveMedia(ctx, media)
+	if err != nil {
+		t.Fatalf("SaveMedia() failed: %v", err)
+	}
+
+	// Get thumbnail
+	retrieved, err := store.GetMediaThumbnail(ctx, media.ID)
+	if err != nil {
+		t.Fatalf("GetMediaThumbnail() failed: %v", err)
+	}
+
+	if string(retrieved) != string(thumbnailData) {
+		t.Errorf("GetMediaThumbnail() = %s, want %s", retrieved, thumbnailData)
+	}
+
+	// Non-existent media
+	retrieved, err = store.GetMediaThumbnail(ctx, uuid.New())
+	if err != nil {
+		t.Fatalf("GetMediaThumbnail() for non-existent failed: %v", err)
+	}
+	if retrieved != nil {
+		t.Error("GetMediaThumbnail() for non-existent should return nil")
+	}
+}
+
+func TestReadModelStore_ListMediaForEntity(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	entityID := uuid.New()
+	otherEntityID := uuid.New()
+
+	// Create media for entity
+	for i := 0; i < 5; i++ {
+		media := &repository.MediaReadModel{
+			ID:         uuid.New(),
+			EntityType: "person",
+			EntityID:   entityID,
+			Title:      "Photo " + string(rune('A'+i)),
+			Version:    1,
+			CreatedAt:  time.Now().Add(time.Duration(i) * time.Hour),
+			UpdatedAt:  time.Now(),
+		}
+		_ = store.SaveMedia(ctx, media)
+	}
+
+	// Create media for different entity
+	otherMedia := &repository.MediaReadModel{
+		ID:         uuid.New(),
+		EntityType: "person",
+		EntityID:   otherEntityID,
+		Title:      "Other Photo",
+		Version:    1,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_ = store.SaveMedia(ctx, otherMedia)
+
+	// List all for entity
+	results, total, err := store.ListMediaForEntity(ctx, "person", entityID, repository.ListOptions{})
+	if err != nil {
+		t.Fatalf("ListMediaForEntity() failed: %v", err)
+	}
+
+	if total != 5 {
+		t.Errorf("total = %d, want 5", total)
+	}
+
+	if len(results) != 5 {
+		t.Errorf("len(results) = %d, want 5", len(results))
+	}
+
+	// Results should not include binary data
+	for _, r := range results {
+		if len(r.FileData) > 0 {
+			t.Error("ListMediaForEntity() should not include FileData")
+		}
+	}
+
+	// List with pagination
+	results, total, err = store.ListMediaForEntity(ctx, "person", entityID, repository.ListOptions{Limit: 2, Offset: 1})
+	if err != nil {
+		t.Fatalf("ListMediaForEntity() with pagination failed: %v", err)
+	}
+
+	if total != 5 {
+		t.Errorf("total with pagination = %d, want 5", total)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("len(results) with limit = %d, want 2", len(results))
+	}
+}
+
+func TestReadModelStore_DeleteMedia(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	media := &repository.MediaReadModel{
+		ID:         uuid.New(),
+		EntityType: "person",
+		EntityID:   uuid.New(),
+		Title:      "To Delete",
+		Version:    1,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+
+	// Save media
+	err := store.SaveMedia(ctx, media)
+	if err != nil {
+		t.Fatalf("SaveMedia() failed: %v", err)
+	}
+
+	// Delete media
+	err = store.DeleteMedia(ctx, media.ID)
+	if err != nil {
+		t.Fatalf("DeleteMedia() failed: %v", err)
+	}
+
+	// Verify deleted
+	retrieved, err := store.GetMedia(ctx, media.ID)
+	if err != nil {
+		t.Fatalf("GetMedia() after delete failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetMedia() after delete = %v, want nil", retrieved)
+	}
+}
+
+func TestReadModelStore_GetMedia_NotFound(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Get non-existent media
+	retrieved, err := store.GetMedia(ctx, uuid.New())
+	if err != nil {
+		t.Fatalf("GetMedia() for non-existent failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Error("GetMedia() for non-existent should return nil")
+	}
+
+	// GetMediaWithData for non-existent
+	retrieved, err = store.GetMediaWithData(ctx, uuid.New())
+	if err != nil {
+		t.Fatalf("GetMediaWithData() for non-existent failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Error("GetMediaWithData() for non-existent should return nil")
+	}
+}

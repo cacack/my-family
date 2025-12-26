@@ -101,6 +101,29 @@ type CitationReadModel struct {
 	CreatedAt     time.Time            `json:"created_at"`
 }
 
+// MediaReadModel represents a media file in the read model.
+type MediaReadModel struct {
+	ID            uuid.UUID        `json:"id"`
+	EntityType    string           `json:"entity_type"`
+	EntityID      uuid.UUID        `json:"entity_id"`
+	Title         string           `json:"title"`
+	Description   string           `json:"description,omitempty"`
+	MimeType      string           `json:"mime_type"`
+	MediaType     domain.MediaType `json:"media_type"`
+	Filename      string           `json:"filename"`
+	FileSize      int64            `json:"file_size"`
+	FileData      []byte           `json:"-"` // Excluded from JSON by default
+	ThumbnailData []byte           `json:"-"` // Excluded from JSON by default
+	CropLeft      *int             `json:"crop_left,omitempty"`
+	CropTop       *int             `json:"crop_top,omitempty"`
+	CropWidth     *int             `json:"crop_width,omitempty"`
+	CropHeight    *int             `json:"crop_height,omitempty"`
+	GedcomXref    string           `json:"gedcom_xref,omitempty"`
+	Version       int64            `json:"version"`
+	CreatedAt     time.Time        `json:"created_at"`
+	UpdatedAt     time.Time        `json:"updated_at"`
+}
+
 // ReadModelStore provides access to denormalized read models.
 type ReadModelStore interface {
 	// Person operations
@@ -143,6 +166,14 @@ type ReadModelStore interface {
 	GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
 	SaveCitation(ctx context.Context, citation *CitationReadModel) error
 	DeleteCitation(ctx context.Context, id uuid.UUID) error
+
+	// Media operations
+	GetMedia(ctx context.Context, id uuid.UUID) (*MediaReadModel, error)
+	GetMediaWithData(ctx context.Context, id uuid.UUID) (*MediaReadModel, error) // Includes FileData
+	GetMediaThumbnail(ctx context.Context, id uuid.UUID) ([]byte, error)
+	ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts ListOptions) ([]MediaReadModel, int, error)
+	SaveMedia(ctx context.Context, media *MediaReadModel) error
+	DeleteMedia(ctx context.Context, id uuid.UUID) error
 }
 
 // ListOptions contains options for list queries.

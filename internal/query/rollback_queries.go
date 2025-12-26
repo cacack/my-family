@@ -471,6 +471,45 @@ func (s *RollbackService) applyEventToState(evt repository.StoredEvent, state ma
 	case domain.CitationDeleted:
 		return true, nil
 
+	// Media events
+	case domain.MediaCreated:
+		state["id"] = e.MediaID.String()
+		state["entity_type"] = e.EntityType
+		state["entity_id"] = e.EntityID.String()
+		state["title"] = e.Title
+		if e.Description != "" {
+			state["description"] = e.Description
+		}
+		if e.MimeType != "" {
+			state["mime_type"] = e.MimeType
+		}
+		if e.MediaType != "" {
+			state["media_type"] = string(e.MediaType)
+		}
+		if e.Filename != "" {
+			state["filename"] = e.Filename
+		}
+		if e.FileSize > 0 {
+			state["file_size"] = e.FileSize
+		}
+		if e.GedcomXref != "" {
+			state["gedcom_xref"] = e.GedcomXref
+		}
+		return false, nil
+
+	case domain.MediaUpdated:
+		for field, value := range e.Changes {
+			if value == nil {
+				delete(state, field)
+			} else {
+				state[field] = normalizeValue(value)
+			}
+		}
+		return false, nil
+
+	case domain.MediaDeleted:
+		return true, nil
+
 	default:
 		// Unknown event type, skip
 		return false, nil

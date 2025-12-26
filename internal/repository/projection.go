@@ -55,6 +55,12 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectCitationUpdated(ctx, e, version)
 	case domain.CitationDeleted:
 		return p.projectCitationDeleted(ctx, e)
+	case domain.MediaCreated:
+		return p.projectMediaCreated(ctx, e, version)
+	case domain.MediaUpdated:
+		return p.projectMediaUpdated(ctx, e, version)
+	case domain.MediaDeleted:
+		return p.projectMediaDeleted(ctx, e)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
@@ -631,4 +637,79 @@ func (p *Projector) projectCitationDeleted(ctx context.Context, e domain.Citatio
 	}
 
 	return p.readStore.DeleteCitation(ctx, e.CitationID)
+}
+
+func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreated, version int64) error {
+	media := &MediaReadModel{
+		ID:            e.MediaID,
+		EntityType:    e.EntityType,
+		EntityID:      e.EntityID,
+		Title:         e.Title,
+		Description:   e.Description,
+		MimeType:      e.MimeType,
+		MediaType:     e.MediaType,
+		Filename:      e.Filename,
+		FileSize:      e.FileSize,
+		FileData:      e.FileData,
+		ThumbnailData: e.ThumbnailData,
+		GedcomXref:    e.GedcomXref,
+		Version:       version,
+		CreatedAt:     e.OccurredAt(),
+		UpdatedAt:     e.OccurredAt(),
+	}
+
+	return p.readStore.SaveMedia(ctx, media)
+}
+
+func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdated, version int64) error {
+	media, err := p.readStore.GetMediaWithData(ctx, e.MediaID)
+	if err != nil {
+		return err
+	}
+	if media == nil {
+		return nil // Media doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		switch key {
+		case "title":
+			if v, ok := value.(string); ok {
+				media.Title = v
+			}
+		case "description":
+			if v, ok := value.(string); ok {
+				media.Description = v
+			}
+		case "media_type":
+			if v, ok := value.(string); ok {
+				media.MediaType = domain.MediaType(v)
+			}
+		case "crop_left":
+			if v, ok := value.(int); ok {
+				media.CropLeft = &v
+			}
+		case "crop_top":
+			if v, ok := value.(int); ok {
+				media.CropTop = &v
+			}
+		case "crop_width":
+			if v, ok := value.(int); ok {
+				media.CropWidth = &v
+			}
+		case "crop_height":
+			if v, ok := value.(int); ok {
+				media.CropHeight = &v
+			}
+		}
+	}
+
+	media.Version = version
+	media.UpdatedAt = time.Now()
+
+	return p.readStore.SaveMedia(ctx, media)
+}
+
+func (p *Projector) projectMediaDeleted(ctx context.Context, e domain.MediaDeleted) error {
+	return p.readStore.DeleteMedia(ctx, e.MediaID)
 }

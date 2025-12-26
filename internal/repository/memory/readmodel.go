@@ -21,6 +21,7 @@ type ReadModelStore struct {
 	pedigreeEdges  map[uuid.UUID]*repository.PedigreeEdge          // keyed by person ID
 	sources        map[uuid.UUID]*repository.SourceReadModel
 	citations      map[uuid.UUID]*repository.CitationReadModel
+	media          map[uuid.UUID]*repository.MediaReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -32,6 +33,7 @@ func NewReadModelStore() *ReadModelStore {
 		pedigreeEdges:  make(map[uuid.UUID]*repository.PedigreeEdge),
 		sources:        make(map[uuid.UUID]*repository.SourceReadModel),
 		citations:      make(map[uuid.UUID]*repository.CitationReadModel),
+		media:          make(map[uuid.UUID]*repository.MediaReadModel),
 	}
 }
 
@@ -516,5 +518,103 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error
 	defer s.mu.Unlock()
 
 	delete(s.citations, id)
+	return nil
+}
+
+// GetMedia retrieves media metadata by ID (excludes FileData and ThumbnailData).
+func (s *ReadModelStore) GetMedia(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	m, exists := s.media[id]
+	if !exists {
+		return nil, nil
+	}
+	// Return copy without binary data
+	copy := *m
+	copy.FileData = nil
+	copy.ThumbnailData = nil
+	return &copy, nil
+}
+
+// GetMediaWithData retrieves full media record including FileData and ThumbnailData.
+func (s *ReadModelStore) GetMediaWithData(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	m, exists := s.media[id]
+	if !exists {
+		return nil, nil
+	}
+	copy := *m
+	return &copy, nil
+}
+
+// GetMediaThumbnail retrieves just the thumbnail bytes.
+func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, id uuid.UUID) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	m, exists := s.media[id]
+	if !exists {
+		return nil, nil
+	}
+	return m.ThumbnailData, nil
+}
+
+// ListMediaForEntity returns a paginated list of media for an entity.
+func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.MediaReadModel
+	for _, m := range s.media {
+		if m.EntityType == entityType && m.EntityID == entityID {
+			copy := *m
+			copy.FileData = nil
+			copy.ThumbnailData = nil
+			results = append(results, copy)
+		}
+	}
+
+	total := len(results)
+
+	// Sort by created_at DESC
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CreatedAt.After(results[j].CreatedAt)
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 {
+		if opts.Offset >= len(results) {
+			results = nil
+		} else {
+			results = results[opts.Offset:]
+		}
+	}
+
+	if opts.Limit > 0 && len(results) > opts.Limit {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveMedia saves or updates a media record.
+func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	copy := *media
+	s.media[media.ID] = &copy
+	return nil
+}
+
+// DeleteMedia removes a media record.
+func (s *ReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.media, id)
 	return nil
 }

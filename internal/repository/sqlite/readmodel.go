@@ -150,6 +150,32 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_citations_source ON citations(source_id);
 		CREATE INDEX IF NOT EXISTS idx_citations_fact ON citations(fact_type, fact_owner_id);
 		CREATE INDEX IF NOT EXISTS idx_citations_owner ON citations(fact_owner_id);
+
+		-- Media table
+		CREATE TABLE IF NOT EXISTS media (
+			id TEXT PRIMARY KEY,
+			entity_type TEXT NOT NULL,
+			entity_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			description TEXT,
+			mime_type TEXT NOT NULL,
+			media_type TEXT NOT NULL,
+			filename TEXT NOT NULL,
+			file_size INTEGER NOT NULL,
+			file_data BLOB NOT NULL,
+			thumbnail_data BLOB,
+			crop_left INTEGER,
+			crop_top INTEGER,
+			crop_width INTEGER,
+			crop_height INTEGER,
+			gedcom_xref TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_media_entity ON media(entity_type, entity_id);
+		CREATE INDEX IF NOT EXISTS idx_media_type ON media(media_type);
 	`)
 	if err != nil {
 		return err
@@ -1162,4 +1188,268 @@ func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
 
 func scanCitationRow(rows *sql.Rows) (*repository.CitationReadModel, error) {
 	return scanCitation(rows)
+}
+
+// GetMedia retrieves media metadata by ID (excludes FileData and ThumbnailData).
+func (s *ReadModelStore) GetMedia(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
+			   filename, file_size, crop_left, crop_top, crop_width, crop_height,
+			   gedcom_xref, version, created_at, updated_at
+		FROM media WHERE id = ?
+	`, id.String())
+
+	return scanMediaMetadata(row)
+}
+
+// GetMediaWithData retrieves full media record including FileData and ThumbnailData.
+func (s *ReadModelStore) GetMediaWithData(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
+			   filename, file_size, file_data, thumbnail_data,
+			   crop_left, crop_top, crop_width, crop_height,
+			   gedcom_xref, version, created_at, updated_at
+		FROM media WHERE id = ?
+	`, id.String())
+
+	return scanMediaFull(row)
+}
+
+// GetMediaThumbnail retrieves just the thumbnail bytes for efficient serving.
+func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, id uuid.UUID) ([]byte, error) {
+	var thumbnail []byte
+	err := s.db.QueryRowContext(ctx, `
+		SELECT thumbnail_data FROM media WHERE id = ?
+	`, id.String()).Scan(&thumbnail)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return thumbnail, err
+}
+
+// ListMediaForEntity returns a paginated list of media for an entity.
+func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM media WHERE entity_type = ? AND entity_id = ?",
+		entityType, entityID.String()).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count media: %w", err)
+	}
+
+	// Query with pagination (metadata only, ordered by created_at DESC)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
+			   filename, file_size, crop_left, crop_top, crop_width, crop_height,
+			   gedcom_xref, version, created_at, updated_at
+		FROM media
+		WHERE entity_type = ? AND entity_id = ?
+		ORDER BY created_at DESC
+		LIMIT ? OFFSET ?
+	`, entityType, entityID.String(), opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query media: %w", err)
+	}
+	defer rows.Close()
+
+	var items []repository.MediaReadModel
+	for rows.Next() {
+		m, err := scanMediaMetadataRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		items = append(items, *m)
+	}
+
+	return items, total, rows.Err()
+}
+
+// SaveMedia saves or updates a media record.
+func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO media (id, entity_type, entity_id, title, description, mime_type, media_type,
+						  filename, file_size, file_data, thumbnail_data,
+						  crop_left, crop_top, crop_width, crop_height,
+						  gedcom_xref, version, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			entity_type = excluded.entity_type,
+			entity_id = excluded.entity_id,
+			title = excluded.title,
+			description = excluded.description,
+			mime_type = excluded.mime_type,
+			media_type = excluded.media_type,
+			filename = excluded.filename,
+			file_size = excluded.file_size,
+			file_data = excluded.file_data,
+			thumbnail_data = excluded.thumbnail_data,
+			crop_left = excluded.crop_left,
+			crop_top = excluded.crop_top,
+			crop_width = excluded.crop_width,
+			crop_height = excluded.crop_height,
+			gedcom_xref = excluded.gedcom_xref,
+			version = excluded.version,
+			updated_at = excluded.updated_at
+	`, media.ID.String(), media.EntityType, media.EntityID.String(), media.Title,
+		nullableString(media.Description), media.MimeType, string(media.MediaType),
+		media.Filename, media.FileSize, media.FileData, media.ThumbnailData,
+		nullableInt(media.CropLeft), nullableInt(media.CropTop),
+		nullableInt(media.CropWidth), nullableInt(media.CropHeight),
+		nullableString(media.GedcomXref), media.Version,
+		formatTimestamp(media.CreatedAt), formatTimestamp(media.UpdatedAt))
+
+	return err
+}
+
+// DeleteMedia removes a media record.
+func (s *ReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM media WHERE id = ?", id.String())
+	return err
+}
+
+// Media scanner helpers
+
+func scanMediaMetadata(row rowScanner) (*repository.MediaReadModel, error) {
+	var (
+		idStr, entityType, entityIDStr string
+		title, mimeType, mediaType     string
+		filename                       string
+		description, gedcomXref        sql.NullString
+		fileSize, version              int64
+		cropLeft, cropTop              sql.NullInt64
+		cropWidth, cropHeight          sql.NullInt64
+		createdAt, updatedAt           string
+	)
+
+	err := row.Scan(&idStr, &entityType, &entityIDStr, &title, &description,
+		&mimeType, &mediaType, &filename, &fileSize,
+		&cropLeft, &cropTop, &cropWidth, &cropHeight,
+		&gedcomXref, &version, &createdAt, &updatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan media metadata: %w", err)
+	}
+
+	id, _ := uuid.Parse(idStr)
+	entityID, _ := uuid.Parse(entityIDStr)
+
+	m := &repository.MediaReadModel{
+		ID:          id,
+		EntityType:  entityType,
+		EntityID:    entityID,
+		Title:       title,
+		Description: description.String,
+		MimeType:    mimeType,
+		MediaType:   domain.MediaType(mediaType),
+		Filename:    filename,
+		FileSize:    fileSize,
+		GedcomXref:  gedcomXref.String,
+		Version:     version,
+	}
+
+	if cropLeft.Valid {
+		v := int(cropLeft.Int64)
+		m.CropLeft = &v
+	}
+	if cropTop.Valid {
+		v := int(cropTop.Int64)
+		m.CropTop = &v
+	}
+	if cropWidth.Valid {
+		v := int(cropWidth.Int64)
+		m.CropWidth = &v
+	}
+	if cropHeight.Valid {
+		v := int(cropHeight.Int64)
+		m.CropHeight = &v
+	}
+
+	if t, err := parseTimestamp(createdAt); err == nil {
+		m.CreatedAt = t
+	}
+	if t, err := parseTimestamp(updatedAt); err == nil {
+		m.UpdatedAt = t
+	}
+
+	return m, nil
+}
+
+func scanMediaMetadataRow(rows *sql.Rows) (*repository.MediaReadModel, error) {
+	return scanMediaMetadata(rows)
+}
+
+func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
+	var (
+		idStr, entityType, entityIDStr string
+		title, mimeType, mediaType     string
+		filename                       string
+		description, gedcomXref        sql.NullString
+		fileSize, version              int64
+		fileData, thumbnailData        []byte
+		cropLeft, cropTop              sql.NullInt64
+		cropWidth, cropHeight          sql.NullInt64
+		createdAt, updatedAt           string
+	)
+
+	err := row.Scan(&idStr, &entityType, &entityIDStr, &title, &description,
+		&mimeType, &mediaType, &filename, &fileSize, &fileData, &thumbnailData,
+		&cropLeft, &cropTop, &cropWidth, &cropHeight,
+		&gedcomXref, &version, &createdAt, &updatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan media full: %w", err)
+	}
+
+	id, _ := uuid.Parse(idStr)
+	entityID, _ := uuid.Parse(entityIDStr)
+
+	m := &repository.MediaReadModel{
+		ID:            id,
+		EntityType:    entityType,
+		EntityID:      entityID,
+		Title:         title,
+		Description:   description.String,
+		MimeType:      mimeType,
+		MediaType:     domain.MediaType(mediaType),
+		Filename:      filename,
+		FileSize:      fileSize,
+		FileData:      fileData,
+		ThumbnailData: thumbnailData,
+		GedcomXref:    gedcomXref.String,
+		Version:       version,
+	}
+
+	if cropLeft.Valid {
+		v := int(cropLeft.Int64)
+		m.CropLeft = &v
+	}
+	if cropTop.Valid {
+		v := int(cropTop.Int64)
+		m.CropTop = &v
+	}
+	if cropWidth.Valid {
+		v := int(cropWidth.Int64)
+		m.CropWidth = &v
+	}
+	if cropHeight.Valid {
+		v := int(cropHeight.Int64)
+		m.CropHeight = &v
+	}
+
+	if t, err := parseTimestamp(createdAt); err == nil {
+		m.CreatedAt = t
+	}
+	if t, err := parseTimestamp(updatedAt); err == nil {
+		m.UpdatedAt = t
+	}
+
+	return m, nil
 }

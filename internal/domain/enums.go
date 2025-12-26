@@ -144,6 +144,27 @@ func (e EvidenceType) IsValid() bool {
 	}
 }
 
+// MediaType represents the type of media file.
+type MediaType string
+
+const (
+	MediaPhoto       MediaType = "photo"
+	MediaDocument    MediaType = "document"
+	MediaAudio       MediaType = "audio"
+	MediaVideo       MediaType = "video"
+	MediaCertificate MediaType = "certificate"
+)
+
+// IsValid checks if the media type value is valid.
+func (m MediaType) IsValid() bool {
+	switch m {
+	case MediaPhoto, MediaDocument, MediaAudio, MediaVideo, MediaCertificate, "":
+		return true
+	default:
+		return false
+	}
+}
+
 // FactType represents the type of fact that a citation can attach to.
 type FactType string
 

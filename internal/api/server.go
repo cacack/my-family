@@ -162,6 +162,15 @@ func (s *Server) registerRoutes() {
 	api.GET("/citations/:id/restore-points", s.getCitationRestorePoints)
 	api.POST("/citations/:id/rollback", s.rollbackCitation)
 
+	// Media
+	api.GET("/persons/:id/media", s.listPersonMedia)
+	api.POST("/persons/:id/media", s.uploadPersonMedia)
+	api.GET("/media/:id", s.getMedia)
+	api.PUT("/media/:id", s.updateMedia)
+	api.DELETE("/media/:id", s.deleteMedia)
+	api.GET("/media/:id/content", s.downloadMedia)
+	api.GET("/media/:id/thumbnail", s.getMediaThumbnail)
+
 	// Serve frontend if available
 	if s.frontendFS != nil {
 		// Serve static files

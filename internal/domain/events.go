@@ -418,3 +418,80 @@ func NewCitationDeleted(citationID uuid.UUID, reason string) CitationDeleted {
 		Reason:     reason,
 	}
 }
+
+// MediaCreated event is emitted when a new media is created.
+type MediaCreated struct {
+	BaseEvent
+	MediaID       uuid.UUID `json:"media_id"`
+	EntityType    string    `json:"entity_type"`
+	EntityID      uuid.UUID `json:"entity_id"`
+	Title         string    `json:"title"`
+	Description   string    `json:"description,omitempty"`
+	MimeType      string    `json:"mime_type"`
+	MediaType     MediaType `json:"media_type"`
+	Filename      string    `json:"filename"`
+	FileSize      int64     `json:"file_size"`
+	FileData      []byte    `json:"file_data"`
+	ThumbnailData []byte    `json:"thumbnail_data,omitempty"`
+	GedcomXref    string    `json:"gedcom_xref,omitempty"`
+}
+
+func (e MediaCreated) EventType() string      { return "MediaCreated" }
+func (e MediaCreated) AggregateID() uuid.UUID { return e.MediaID }
+
+// NewMediaCreated creates a MediaCreated event from a Media.
+func NewMediaCreated(m *Media) MediaCreated {
+	return MediaCreated{
+		BaseEvent:     NewBaseEvent(),
+		MediaID:       m.ID,
+		EntityType:    m.EntityType,
+		EntityID:      m.EntityID,
+		Title:         m.Title,
+		Description:   m.Description,
+		MimeType:      m.MimeType,
+		MediaType:     m.MediaType,
+		Filename:      m.Filename,
+		FileSize:      m.FileSize,
+		FileData:      m.FileData,
+		ThumbnailData: m.ThumbnailData,
+		GedcomXref:    m.GedcomXref,
+	}
+}
+
+// MediaUpdated event is emitted when a media is updated.
+type MediaUpdated struct {
+	BaseEvent
+	MediaID uuid.UUID      `json:"media_id"`
+	Changes map[string]any `json:"changes"`
+}
+
+func (e MediaUpdated) EventType() string      { return "MediaUpdated" }
+func (e MediaUpdated) AggregateID() uuid.UUID { return e.MediaID }
+
+// NewMediaUpdated creates a MediaUpdated event.
+func NewMediaUpdated(mediaID uuid.UUID, changes map[string]any) MediaUpdated {
+	return MediaUpdated{
+		BaseEvent: NewBaseEvent(),
+		MediaID:   mediaID,
+		Changes:   changes,
+	}
+}
+
+// MediaDeleted event is emitted when a media is deleted.
+type MediaDeleted struct {
+	BaseEvent
+	MediaID uuid.UUID `json:"media_id"`
+	Reason  string    `json:"reason,omitempty"`
+}
+
+func (e MediaDeleted) EventType() string      { return "MediaDeleted" }
+func (e MediaDeleted) AggregateID() uuid.UUID { return e.MediaID }
+
+// NewMediaDeleted creates a MediaDeleted event.
+func NewMediaDeleted(mediaID uuid.UUID, reason string) MediaDeleted {
+	return MediaDeleted{
+		BaseEvent: NewBaseEvent(),
+		MediaID:   mediaID,
+		Reason:    reason,
+	}
+}

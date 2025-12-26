@@ -27,6 +27,8 @@ tags:
     description: Change history and audit trail
   - name: rollback
     description: Rollback and restore point management
+  - name: media
+    description: Media file management (photos, documents)
 
 paths:
   /persons:
@@ -753,6 +755,203 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Media endpoints
+  /persons/{id}/media:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: listPersonMedia
+      summary: List media attached to a person
+      tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of media
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      operationId: uploadPersonMedia
+      summary: Upload media to a person
+      tags: [media]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - title
+                - file
+              properties:
+                title:
+                  type: string
+                  description: Display title for the media
+                  maxLength: 500
+                description:
+                  type: string
+                  description: Optional description
+                media_type:
+                  type: string
+                  enum: [photo, document, audio, video, certificate]
+                  description: Category of media
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload (max 10MB)
+      responses:
+        '201':
+          description: Media uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: File too large (max 10MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /media/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Media ID
+
+    get:
+      operationId: getMedia
+      summary: Get media metadata
+      tags: [media]
+      responses:
+        '200':
+          description: Media metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateMedia
+      summary: Update media metadata
+      tags: [media]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MediaUpdate'
+      responses:
+        '200':
+          description: Media updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteMedia
+      summary: Delete media
+      tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Media deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /media/{id}/content:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Media ID
+
+    get:
+      operationId: downloadMedia
+      summary: Download media file
+      tags: [media]
+      responses:
+        '200':
+          description: Media file content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/gif:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /media/{id}/thumbnail:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: Media ID
+
+    get:
+      operationId: getMediaThumbnail
+      summary: Get media thumbnail
+      tags: [media]
+      responses:
+        '200':
+          description: Thumbnail image (JPEG)
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   parameters:
     personId:
@@ -1352,3 +1551,92 @@ components:
           type: string
           description: Success message
           example: "Person rolled back successfully"
+
+    # Media schemas
+    Media:
+      type: object
+      required: [id, entity_type, entity_id, title, mime_type, filename, file_size, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        entity_type:
+          type: string
+          enum: [person, family, source]
+        entity_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+        mime_type:
+          type: string
+          example: "image/jpeg"
+        media_type:
+          type: string
+          enum: [photo, document, audio, video, certificate]
+        filename:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+          description: File size in bytes
+        has_thumbnail:
+          type: boolean
+          description: Whether a thumbnail is available
+        crop_left:
+          type: integer
+        crop_top:
+          type: integer
+        crop_width:
+          type: integer
+        crop_height:
+          type: integer
+        version:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    MediaList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Media'
+        total:
+          type: integer
+          description: Total number of media items
+
+    MediaUpdate:
+      type: object
+      required: [version]
+      properties:
+        title:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+        media_type:
+          type: string
+          enum: [photo, document, audio, video, certificate]
+        crop_left:
+          type: integer
+        crop_top:
+          type: integer
+        crop_width:
+          type: integer
+        crop_height:
+          type: integer
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking

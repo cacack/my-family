@@ -1172,3 +1172,143 @@ func TestProjector_CitationUpdated_NonExistent(t *testing.T) {
 		t.Fatalf("Project update should not fail for non-existent citation: %v", err)
 	}
 }
+
+// Media Projection Tests
+
+func TestProjector_MediaCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	entityID := uuid.New()
+	media := domain.NewMedia("Family Photo", "person", entityID)
+	media.Description = "A photo from 1950"
+	media.MimeType = "image/jpeg"
+	media.MediaType = domain.MediaPhoto
+	media.Filename = "family.jpg"
+	media.FileSize = 1024
+	media.FileData = []byte("fake data")
+	media.ThumbnailData = []byte("fake thumbnail")
+	media.GedcomXref = "@M1@"
+
+	event := domain.NewMediaCreated(media)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project MediaCreated failed: %v", err)
+	}
+
+	// Verify media was created
+	retrieved, err := readStore.GetMediaWithData(ctx, media.ID)
+	if err != nil {
+		t.Fatalf("GetMediaWithData failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("Media not found after projection")
+	}
+	if retrieved.Title != "Family Photo" {
+		t.Errorf("Title = %s, want Family Photo", retrieved.Title)
+	}
+	if retrieved.EntityType != "person" {
+		t.Errorf("EntityType = %s, want person", retrieved.EntityType)
+	}
+	if retrieved.Version != 1 {
+		t.Errorf("Version = %d, want 1", retrieved.Version)
+	}
+	if len(retrieved.FileData) == 0 {
+		t.Error("FileData should be present")
+	}
+	if len(retrieved.ThumbnailData) == 0 {
+		t.Error("ThumbnailData should be present")
+	}
+}
+
+func TestProjector_MediaUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// First create the media
+	entityID := uuid.New()
+	media := domain.NewMedia("Original Title", "person", entityID)
+	media.MimeType = "image/jpeg"
+	media.FileSize = 1024
+	media.FileData = []byte("fake data")
+
+	createEvent := domain.NewMediaCreated(media)
+	_ = projector.Project(ctx, createEvent, 1)
+
+	// Update media
+	changes := map[string]any{
+		"title":       "Updated Title",
+		"description": "New description",
+		"media_type":  "document",
+		"crop_left":   10,
+		"crop_top":    20,
+		"crop_width":  100,
+		"crop_height": 150,
+	}
+	updateEvent := domain.NewMediaUpdated(media.ID, changes)
+	err := projector.Project(ctx, updateEvent, 2)
+	if err != nil {
+		t.Fatalf("Project MediaUpdated failed: %v", err)
+	}
+
+	// Verify changes
+	retrieved, _ := readStore.GetMedia(ctx, media.ID)
+	if retrieved == nil {
+		t.Fatal("Media not found after update")
+	}
+	if retrieved.Title != "Updated Title" {
+		t.Errorf("Title = %s, want Updated Title", retrieved.Title)
+	}
+	if retrieved.Description != "New description" {
+		t.Errorf("Description = %s, want New description", retrieved.Description)
+	}
+	if retrieved.MediaType != domain.MediaDocument {
+		t.Errorf("MediaType = %s, want document", retrieved.MediaType)
+	}
+	if retrieved.Version != 2 {
+		t.Errorf("Version = %d, want 2", retrieved.Version)
+	}
+	if retrieved.CropLeft == nil || *retrieved.CropLeft != 10 {
+		t.Error("CropLeft not set correctly")
+	}
+}
+
+func TestProjector_MediaDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// First create the media
+	entityID := uuid.New()
+	media := domain.NewMedia("To Delete", "person", entityID)
+	createEvent := domain.NewMediaCreated(media)
+	_ = projector.Project(ctx, createEvent, 1)
+
+	// Delete media
+	deleteEvent := domain.NewMediaDeleted(media.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project MediaDeleted failed: %v", err)
+	}
+
+	// Verify deletion
+	retrieved, _ := readStore.GetMedia(ctx, media.ID)
+	if retrieved != nil {
+		t.Error("Media should be deleted")
+	}
+}
+
+func TestProjector_MediaUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to update a non-existent media (should not error, just skip)
+	updateEvent := domain.NewMediaUpdated(uuid.New(), map[string]any{"title": "Test"})
+	err := projector.Project(ctx, updateEvent, 1)
+	if err != nil {
+		t.Fatalf("Project update should not fail for non-existent media: %v", err)
+	}
+}
