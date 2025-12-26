@@ -516,3 +516,180 @@ func TestDeleteMedia(t *testing.T) {
 		t.Errorf("Status after delete = %d, want %d", getRec.Code, http.StatusNotFound)
 	}
 }
+
+func TestDeleteMedia_InvalidID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/media/invalid-uuid?version=1", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDeleteMedia_MissingVersion(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/media/00000000-0000-0000-0000-000000000001", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateMedia_InvalidID(t *testing.T) {
+	server := setupTestServer()
+
+	updateBody := `{"title":"Test","version":1}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/media/invalid-uuid", bytes.NewReader([]byte(updateBody)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateMedia_InvalidJSON(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/media/00000000-0000-0000-0000-000000000001", bytes.NewReader([]byte("not json")))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDownloadMedia_InvalidID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid/content", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDownloadMedia_NotFound(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001/content", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestGetMediaThumbnail_InvalidID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid/thumbnail", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetMediaThumbnail_NotFound(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001/thumbnail", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestListPersonMedia_InvalidID(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/invalid-uuid/media", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestListPersonMedia_PersonNotFound(t *testing.T) {
+	server := setupTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001/media", nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestListPersonMedia_LimitCapping(t *testing.T) {
+	server := setupTestServer()
+
+	// Create a person
+	personBody := `{"given_name":"Limit","surname":"Test","gender":"male"}`
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", bytes.NewReader([]byte(personBody)))
+	personReq.Header.Set("Content-Type", "application/json")
+	personRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(personRec, personReq)
+
+	var personResp map[string]any
+	_ = json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	// Request with limit > 100 (should be capped)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media?limit=500", personID), nil)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+func TestUploadPersonMedia_MissingFile(t *testing.T) {
+	server := setupTestServer()
+
+	// Create a person
+	personBody := `{"given_name":"NoFile","surname":"Test","gender":"female"}`
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", bytes.NewReader([]byte(personBody)))
+	personReq.Header.Set("Content-Type", "application/json")
+	personRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(personRec, personReq)
+
+	var personResp map[string]any
+	_ = json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	// Create request without file
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	_ = writer.WriteField("title", "Test Title")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/persons/%s/media", personID), &buf)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
