@@ -21,6 +21,7 @@ type ImportResult struct {
 	FamiliesImported  int
 	SourcesImported   int
 	CitationsImported int
+	MediaImported     int
 	Warnings          []string
 	Errors            []string
 
@@ -28,6 +29,7 @@ type ImportResult struct {
 	PersonXrefToID map[string]uuid.UUID
 	FamilyXrefToID map[string]uuid.UUID
 	SourceXrefToID map[string]uuid.UUID
+	MediaXrefToID  map[string]uuid.UUID
 }
 
 // PersonData contains parsed person data ready for creation.
@@ -82,6 +84,19 @@ type CitationData struct {
 	GedcomXref  string
 }
 
+// MediaData contains parsed media data ready for creation.
+type MediaData struct {
+	ID          uuid.UUID
+	GedcomXref  string
+	EntityType  string // "person", "family", "source"
+	EntityID    uuid.UUID
+	Title       string
+	MimeType    string
+	MediaType   domain.MediaType
+	FileRef     string // GEDCOM file reference (path or URL)
+	Description string
+}
+
 // Importer handles GEDCOM file parsing and conversion to domain events.
 type Importer struct{}
 
@@ -96,6 +111,7 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		PersonXrefToID: make(map[string]uuid.UUID),
 		FamilyXrefToID: make(map[string]uuid.UUID),
 		SourceXrefToID: make(map[string]uuid.UUID),
+		MediaXrefToID:  make(map[string]uuid.UUID),
 	}
 
 	// Parse GEDCOM using cacack/gedcom-go decoder

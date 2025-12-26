@@ -194,6 +194,8 @@ func (h *Handler) rollbackEntity(ctx context.Context, entityType string, entityI
 		event = domain.NewSourceUpdated(entityID, changes.Changes)
 	case "Citation":
 		event = domain.NewCitationUpdated(entityID, changes.Changes)
+	case "Media":
+		event = domain.NewMediaUpdated(entityID, changes.Changes)
 	default:
 		return nil, errors.New("unsupported entity type for rollback: " + entityType)
 	}

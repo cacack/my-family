@@ -65,3 +65,19 @@ func nullableUUID(id *[16]byte) sql.NullString {
 		Valid:  true,
 	}
 }
+
+// nullableString converts an empty string to sql.NullString.
+func nullableString(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
+}
+
+// nullableInt converts a *int to sql.NullInt64.
+func nullableInt(i *int) sql.NullInt64 {
+	if i == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*i), Valid: true}
+}

@@ -425,6 +425,52 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "MediaCreated",
+			event: func() domain.Event {
+				m := domain.NewMedia("Test Photo", "person", uuid.New())
+				m.MimeType = "image/jpeg"
+				return domain.NewMediaCreated(m)
+			}(),
+			eventType: "MediaCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.MediaCreated)
+				if !ok {
+					t.Fatalf("Expected MediaCreated, got %T", decoded)
+				}
+				if e.Title != "Test Photo" {
+					t.Errorf("Title = %s, want Test Photo", e.Title)
+				}
+			},
+		},
+		{
+			name:      "MediaUpdated",
+			event:     domain.NewMediaUpdated(uuid.New(), map[string]any{"title": "New Title"}),
+			eventType: "MediaUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.MediaUpdated)
+				if !ok {
+					t.Fatalf("Expected MediaUpdated, got %T", decoded)
+				}
+				if e.Changes["title"] != "New Title" {
+					t.Errorf("Changes[title] = %v, want New Title", e.Changes["title"])
+				}
+			},
+		},
+		{
+			name:      "MediaDeleted",
+			event:     domain.NewMediaDeleted(uuid.New(), "user request"),
+			eventType: "MediaDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.MediaDeleted)
+				if !ok {
+					t.Fatalf("Expected MediaDeleted, got %T", decoded)
+				}
+				if e.Reason != "user request" {
+					t.Errorf("Reason = %s, want user request", e.Reason)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
