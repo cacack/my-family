@@ -27,6 +27,7 @@ type Server struct {
 	pedigreeService *query.PedigreeService
 	sourceService   *query.SourceService
 	historyService  *query.HistoryService
+	rollbackService *query.RollbackService
 	frontendFS      fs.FS
 }
 
@@ -69,6 +70,7 @@ func NewServer(
 	pedigreeSvc := query.NewPedigreeService(readStore)
 	sourceSvc := query.NewSourceService(readStore)
 	historySvc := query.NewHistoryService(eventStore, readStore)
+	rollbackSvc := query.NewRollbackService(eventStore, readStore)
 
 	server := &Server{
 		echo:            e,
@@ -80,6 +82,7 @@ func NewServer(
 		pedigreeService: pedigreeSvc,
 		sourceService:   sourceSvc,
 		historyService:  historySvc,
+		rollbackService: rollbackSvc,
 		frontendFS:      frontendFS,
 	}
 
@@ -148,6 +151,16 @@ func (s *Server) registerRoutes() {
 	api.GET("/persons/:id/history", s.getPersonHistory)
 	api.GET("/families/:id/history", s.getFamilyHistory)
 	api.GET("/sources/:id/history", s.getSourceHistory)
+
+	// Rollback
+	api.GET("/persons/:id/restore-points", s.getPersonRestorePoints)
+	api.POST("/persons/:id/rollback", s.rollbackPerson)
+	api.GET("/families/:id/restore-points", s.getFamilyRestorePoints)
+	api.POST("/families/:id/rollback", s.rollbackFamily)
+	api.GET("/sources/:id/restore-points", s.getSourceRestorePoints)
+	api.POST("/sources/:id/rollback", s.rollbackSource)
+	api.GET("/citations/:id/restore-points", s.getCitationRestorePoints)
+	api.POST("/citations/:id/rollback", s.rollbackCitation)
 
 	// Serve frontend if available
 	if s.frontendFS != nil {

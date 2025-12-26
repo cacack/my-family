@@ -58,3 +58,6 @@ coverage.out
 
 # Generated code (regenerate with go generate)
 internal/api/openapi_gen.go
+
+# Claude Code prompts (ephemeral, not committed)
+prompts/

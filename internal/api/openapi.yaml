@@ -25,6 +25,8 @@ tags:
     description: GEDCOM import/export
   - name: history
     description: Change history and audit trail
+  - name: rollback
+    description: Rollback and restore point management
 
 paths:
   /persons:
@@ -482,6 +484,274 @@ paths:
                 $ref: '#/components/schemas/ChangeHistoryResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  # Rollback endpoints
+
+  /persons/{id}/restore-points:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: getPersonRestorePoints
+      summary: Get restore points for a person
+      description: Returns a list of versions to which the person can be rolled back
+      tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of restore points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestorePointsResponse'
+              example:
+                items:
+                  - version: 3
+                    timestamp: "2024-01-15T14:30:00Z"
+                    action: updated
+                    summary: "updated given_name, surname"
+                  - version: 2
+                    timestamp: "2024-01-15T10:00:00Z"
+                    action: updated
+                    summary: "updated birth_date"
+                  - version: 1
+                    timestamp: "2024-01-14T09:00:00Z"
+                    action: created
+                    summary: "created John Smith"
+                total: 3
+                has_more: false
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /persons/{id}/rollback:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    post:
+      operationId: rollbackPerson
+      summary: Rollback a person to a previous version
+      description: Restores the person's data to match the state at the specified version
+      tags: [rollback]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+            example:
+              target_version: 2
+      responses:
+        '200':
+          description: Rollback successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RollbackResponse'
+              example:
+                entity_id: "123e4567-e89b-12d3-a456-426614174000"
+                entity_type: "Person"
+                new_version: 4
+                changes:
+                  given_name: "John"
+                  surname: "Doe"
+                message: "Person rolled back successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot rollback deleted entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /families/{id}/restore-points:
+    parameters:
+      - $ref: '#/components/parameters/familyId'
+
+    get:
+      operationId: getFamilyRestorePoints
+      summary: Get restore points for a family
+      description: Returns a list of versions to which the family can be rolled back
+      tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of restore points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestorePointsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /families/{id}/rollback:
+    parameters:
+      - $ref: '#/components/parameters/familyId'
+
+    post:
+      operationId: rollbackFamily
+      summary: Rollback a family to a previous version
+      description: Restores the family's data to match the state at the specified version
+      tags: [rollback]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+      responses:
+        '200':
+          description: Rollback successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RollbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot rollback deleted entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sources/{id}/restore-points:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getSourceRestorePoints
+      summary: Get restore points for a source
+      description: Returns a list of versions to which the source can be rolled back
+      tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of restore points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestorePointsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sources/{id}/rollback:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: rollbackSource
+      summary: Rollback a source to a previous version
+      description: Restores the source's data to match the state at the specified version
+      tags: [rollback]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+      responses:
+        '200':
+          description: Rollback successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RollbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot rollback deleted entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /citations/{id}/restore-points:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getCitationRestorePoints
+      summary: Get restore points for a citation
+      description: Returns a list of versions to which the citation can be rolled back
+      tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of restore points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestorePointsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /citations/{id}/rollback:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: rollbackCitation
+      summary: Rollback a citation to a previous version
+      description: Restores the citation's data to match the state at the specified version
+      tags: [rollback]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+      responses:
+        '200':
+          description: Rollback successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RollbackResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot rollback deleted entity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   parameters:
@@ -1007,3 +1277,78 @@ components:
           type: integer
         has_more:
           type: boolean
+
+    RestorePoint:
+      type: object
+      required: [version, timestamp, action, summary]
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: The version number of this restore point
+          example: 2
+        timestamp:
+          type: string
+          format: date-time
+          description: When this version was created
+          example: "2024-01-15T10:30:00Z"
+        action:
+          type: string
+          enum: [created, updated, deleted, linked, unlinked]
+          description: The action that created this version
+          example: "updated"
+        summary:
+          type: string
+          description: Human-readable summary of the changes
+          example: "updated given_name, birth_date"
+
+    RestorePointsResponse:
+      type: object
+      required: [items, total, has_more]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RestorePoint'
+        total:
+          type: integer
+          description: Total number of restore points available
+        has_more:
+          type: boolean
+          description: Whether there are more restore points beyond the current page
+
+    RollbackRequest:
+      type: object
+      required: [target_version]
+      properties:
+        target_version:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The version number to rollback to
+          example: 2
+
+    RollbackResponse:
+      type: object
+      required: [entity_id, entity_type, new_version, changes, message]
+      properties:
+        entity_id:
+          type: string
+          format: uuid
+          description: ID of the entity that was rolled back
+        entity_type:
+          type: string
+          enum: [Person, Family, Source, Citation]
+          description: Type of entity that was rolled back
+        new_version:
+          type: integer
+          format: int64
+          description: The new version number after the rollback
+        changes:
+          type: object
+          additionalProperties: true
+          description: Map of field names to their restored values
+        message:
+          type: string
+          description: Success message
+          example: "Person rolled back successfully"
