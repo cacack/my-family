@@ -250,7 +250,7 @@
 				{#if person.family_as_child}
 					<div class="info-section">
 						<h2>Parents</h2>
-						<a href="/families/{person.family_as_child.id}">
+						<a href="/families/{person.family_as_child.id}" class="parent-link">
 							{person.family_as_child.partner1_name || 'Unknown'}
 							{#if person.family_as_child.partner2_name} &amp; {person.family_as_child.partner2_name}{/if}
 						</a>
@@ -455,6 +455,15 @@
 	}
 
 	.family-list a:hover {
+		color: #3b82f6;
+	}
+
+	.parent-link {
+		color: #1e293b;
+		text-decoration: none;
+	}
+
+	.parent-link:hover {
 		color: #3b82f6;
 	}
 
