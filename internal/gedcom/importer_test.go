@@ -49,7 +49,7 @@ func TestImportBasicGedcom(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, families, _, _, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
+	result, persons, families, _, _, _, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestImportApproximateDates(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestImportMissingNames(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestImportSingleParentFamily(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestImportMissingReference(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, families, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, families, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestImportDateRanges(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestImportSources(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, sources, citations, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, sources, citations, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestImportCitationsForMultipleEvents(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, _, sources, citations, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, _, sources, citations, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestImportFamilyCitations(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, sources, citations, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, sources, citations, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -475,5 +475,192 @@ func TestImportFamilyCitations(t *testing.T) {
 	}
 	if cit.Page != "Marriage register, page 45" {
 		t.Errorf("Citation page = %s, want 'Marriage register, page 45'", cit.Page)
+	}
+}
+
+func TestImportNameComponents(t *testing.T) {
+	// Test GEDCOM with full name components
+	gedcomData := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Dr. John Fitzgerald /von Doe/ Jr.
+2 NPFX Dr.
+2 GIVN John Fitzgerald
+2 SPFX von
+2 SURN Doe
+2 NSFX Jr.
+2 NICK Jack
+2 TYPE birth
+1 SEX M
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	p := persons[0]
+	if p.GivenName != "John Fitzgerald" {
+		t.Errorf("GivenName = %q, want %q", p.GivenName, "John Fitzgerald")
+	}
+	if p.Surname != "Doe" {
+		t.Errorf("Surname = %q, want %q", p.Surname, "Doe")
+	}
+	if p.NamePrefix != "Dr." {
+		t.Errorf("NamePrefix = %q, want %q", p.NamePrefix, "Dr.")
+	}
+	if p.NameSuffix != "Jr." {
+		t.Errorf("NameSuffix = %q, want %q", p.NameSuffix, "Jr.")
+	}
+	if p.SurnamePrefix != "von" {
+		t.Errorf("SurnamePrefix = %q, want %q", p.SurnamePrefix, "von")
+	}
+	if p.Nickname != "Jack" {
+		t.Errorf("Nickname = %q, want %q", p.Nickname, "Jack")
+	}
+	if p.NameType != domain.NameTypeBirth {
+		t.Errorf("NameType = %q, want %q", p.NameType, domain.NameTypeBirth)
+	}
+}
+
+func TestImportPedigreeTypes(t *testing.T) {
+	// Test GEDCOM with PEDI in FAMC links
+	gedcomData := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @I3@ INDI
+1 NAME Bio /Doe/
+1 SEX M
+1 FAMC @F1@
+2 PEDI birth
+0 @I4@ INDI
+1 NAME Adopted /Doe/
+1 SEX F
+1 FAMC @F1@
+2 PEDI adopted
+0 @I5@ INDI
+1 NAME Foster /Doe/
+1 SEX M
+1 FAMC @F1@
+2 PEDI foster
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 CHIL @I3@
+1 CHIL @I4@
+1 CHIL @I5@
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, families, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(families) != 1 {
+		t.Fatalf("len(families) = %d, want 1", len(families))
+	}
+
+	fam := families[0]
+	if len(fam.ChildIDs) != 3 {
+		t.Fatalf("len(ChildIDs) = %d, want 3", len(fam.ChildIDs))
+	}
+	if len(fam.ChildRelTypes) != 3 {
+		t.Fatalf("len(ChildRelTypes) = %d, want 3", len(fam.ChildRelTypes))
+	}
+
+	// Verify the relationship types
+	if fam.ChildRelTypes[0] != domain.ChildBiological {
+		t.Errorf("First child rel type = %q, want %q", fam.ChildRelTypes[0], domain.ChildBiological)
+	}
+	if fam.ChildRelTypes[1] != domain.ChildAdopted {
+		t.Errorf("Second child rel type = %q, want %q", fam.ChildRelTypes[1], domain.ChildAdopted)
+	}
+	if fam.ChildRelTypes[2] != domain.ChildFoster {
+		t.Errorf("Third child rel type = %q, want %q", fam.ChildRelTypes[2], domain.ChildFoster)
+	}
+}
+
+func TestImportRepositories(t *testing.T) {
+	// Test GEDCOM with repository
+	gedcomData := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME Family History Library
+1 ADDR 35 N West Temple St
+2 CITY Salt Lake City
+2 STAE UT
+2 POST 84150
+2 CTRY USA
+0 @S1@ SOUR
+1 TITL Birth Certificate
+1 REPO @R1@
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, sources, _, repositories, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if result.RepositoriesImported != 1 {
+		t.Errorf("RepositoriesImported = %d, want 1", result.RepositoriesImported)
+	}
+
+	if len(repositories) != 1 {
+		t.Fatalf("len(repositories) = %d, want 1", len(repositories))
+	}
+
+	repo := repositories[0]
+	if repo.Name != "Family History Library" {
+		t.Errorf("Repository name = %q, want %q", repo.Name, "Family History Library")
+	}
+	if repo.GedcomXref != "@R1@" {
+		t.Errorf("Repository xref = %q, want %q", repo.GedcomXref, "@R1@")
+	}
+	if repo.City != "Salt Lake City" {
+		t.Errorf("Repository city = %q, want %q", repo.City, "Salt Lake City")
+	}
+	if repo.State != "UT" {
+		t.Errorf("Repository state = %q, want %q", repo.State, "UT")
+	}
+
+	// Verify source is linked to repository
+	if len(sources) != 1 {
+		t.Fatalf("len(sources) = %d, want 1", len(sources))
+	}
+	src := sources[0]
+	if src.RepositoryID == nil {
+		t.Error("Source should be linked to repository")
+	} else if *src.RepositoryID != repo.ID {
+		t.Errorf("Source repository ID = %v, want %v", *src.RepositoryID, repo.ID)
 	}
 }

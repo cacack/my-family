@@ -9,17 +9,22 @@ import (
 
 // Person represents an individual in the family tree.
 type Person struct {
-	ID         uuid.UUID `json:"id"`
-	GivenName  string    `json:"given_name"`
-	Surname    string    `json:"surname"`
-	Gender     Gender    `json:"gender,omitempty"`
-	BirthDate  *GenDate  `json:"birth_date,omitempty"`
-	BirthPlace string    `json:"birth_place,omitempty"`
-	DeathDate  *GenDate  `json:"death_date,omitempty"`
-	DeathPlace string    `json:"death_place,omitempty"`
-	Notes      string    `json:"notes,omitempty"`
-	GedcomXref string    `json:"gedcom_xref,omitempty"` // Original GEDCOM @XREF@ for round-trip
-	Version    int64     `json:"version"`               // Optimistic locking version
+	ID            uuid.UUID `json:"id"`
+	GivenName     string    `json:"given_name"`
+	Surname       string    `json:"surname"`
+	NamePrefix    string    `json:"name_prefix,omitempty"`    // Dr., Rev., Sir (NPFX)
+	NameSuffix    string    `json:"name_suffix,omitempty"`    // Jr., III, PhD (NSFX)
+	SurnamePrefix string    `json:"surname_prefix,omitempty"` // von, de, van (SPFX)
+	Nickname      string    `json:"nickname,omitempty"`       // Informal name (NICK)
+	NameType      NameType  `json:"name_type,omitempty"`      // birth, married, aka (TYPE)
+	Gender        Gender    `json:"gender,omitempty"`
+	BirthDate     *GenDate  `json:"birth_date,omitempty"`
+	BirthPlace    string    `json:"birth_place,omitempty"`
+	DeathDate     *GenDate  `json:"death_date,omitempty"`
+	DeathPlace    string    `json:"death_place,omitempty"`
+	Notes         string    `json:"notes,omitempty"`
+	GedcomXref    string    `json:"gedcom_xref,omitempty"` // Original GEDCOM @XREF@ for round-trip
+	Version       int64     `json:"version"`               // Optimistic locking version
 }
 
 // PersonValidationError represents a validation error for a Person.

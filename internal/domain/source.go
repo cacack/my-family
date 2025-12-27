@@ -16,7 +16,8 @@ type Source struct {
 	Publisher      string     `json:"publisher,omitempty"`
 	PublishDate    *GenDate   `json:"publish_date,omitempty"`
 	URL            string     `json:"url,omitempty"`
-	RepositoryName string     `json:"repository_name,omitempty"`
+	RepositoryID   *uuid.UUID `json:"repository_id,omitempty"`   // Link to Repository entity
+	RepositoryName string     `json:"repository_name,omitempty"` // Fallback for unlinked repositories
 	CollectionName string     `json:"collection_name,omitempty"`
 	CallNumber     string     `json:"call_number,omitempty"`
 	Notes          string     `json:"notes,omitempty"`

@@ -20,13 +20,14 @@ type ImportGedcomInput struct {
 
 // ImportGedcomResult contains the result of a GEDCOM import.
 type ImportGedcomResult struct {
-	ImportID          uuid.UUID
-	PersonsImported   int
-	FamiliesImported  int
-	SourcesImported   int
-	CitationsImported int
-	Warnings          []string
-	Errors            []string
+	ImportID             uuid.UUID
+	PersonsImported      int
+	FamiliesImported     int
+	SourcesImported      int
+	CitationsImported    int
+	RepositoriesImported int
+	Warnings             []string
+	Errors               []string
 }
 
 // ImportGedcom imports persons and families from a GEDCOM file.
@@ -34,7 +35,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	importer := gedcom.NewImporter()
 
 	// Parse the GEDCOM file
-	importResult, persons, families, sources, citations, err := importer.Import(ctx, input.Reader)
+	importResult, persons, families, sources, citations, repositories, err := importer.Import(ctx, input.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GEDCOM file: %w", err)
 	}
@@ -50,7 +51,18 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 		Errors:   importResult.Errors,
 	}
 
-	// Import sources first (before citations that reference them)
+	// Import repositories first (before sources that reference them)
+	for _, r := range repositories {
+		err := h.importRepository(ctx, r)
+		if err != nil {
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("Failed to import repository %s (%s): %v", r.GedcomXref, r.Name, err))
+			continue
+		}
+		result.RepositoriesImported++
+	}
+
+	// Import sources (after repositories so we can link them)
 	for _, s := range sources {
 		err := h.importSource(ctx, s)
 		if err != nil {
@@ -139,17 +151,22 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 
 // importPerson creates a person from GEDCOM data.
 func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
-	// Create person entity
+	// Create person entity with all name components
 	person := &domain.Person{
-		ID:         p.ID,
-		GivenName:  p.GivenName,
-		Surname:    p.Surname,
-		Gender:     p.Gender,
-		BirthPlace: p.BirthPlace,
-		DeathPlace: p.DeathPlace,
-		Notes:      p.Notes,
-		GedcomXref: p.GedcomXref,
-		Version:    1,
+		ID:            p.ID,
+		GivenName:     p.GivenName,
+		Surname:       p.Surname,
+		NamePrefix:    p.NamePrefix,
+		NameSuffix:    p.NameSuffix,
+		SurnamePrefix: p.SurnamePrefix,
+		Nickname:      p.Nickname,
+		NameType:      p.NameType,
+		Gender:        p.Gender,
+		BirthPlace:    p.BirthPlace,
+		DeathPlace:    p.DeathPlace,
+		Notes:         p.Notes,
+		GedcomXref:    p.GedcomXref,
+		Version:       1,
 	}
 
 	if p.BirthDate != "" {
@@ -226,7 +243,9 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 		Title:          s.Title,
 		Author:         s.Author,
 		Publisher:      s.Publisher,
+		RepositoryID:   s.RepositoryID,
 		RepositoryName: s.RepositoryName,
+		CallNumber:     s.CallNumber,
 		Notes:          s.Notes,
 		GedcomXref:     s.GedcomXref,
 		Version:        1,
@@ -243,6 +262,38 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importRepository creates a repository from GEDCOM data.
+func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData) error {
+	// Create repository entity
+	repo := &domain.Repository{
+		ID:         r.ID,
+		Name:       r.Name,
+		Address:    r.Address,
+		City:       r.City,
+		State:      r.State,
+		PostalCode: r.PostalCode,
+		Country:    r.Country,
+		Phone:      r.Phone,
+		Email:      r.Email,
+		Website:    r.Website,
+		Notes:      r.Notes,
+		GedcomXref: r.GedcomXref,
+		Version:    1,
+	}
+
+	// Create event
+	event := domain.NewRepositoryCreated(repo)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, repo.ID, "repository", []domain.Event{event}, -1)
 	if err != nil {
 		return err
 	}

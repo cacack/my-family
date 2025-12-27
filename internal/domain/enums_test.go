@@ -392,3 +392,45 @@ func TestFactType_IsValid(t *testing.T) {
 		})
 	}
 }
+
+func TestNameType_IsValid(t *testing.T) {
+	tests := []struct {
+		name     string
+		nameType NameType
+		want     bool
+	}{
+		{
+			name:     "birth is valid",
+			nameType: NameTypeBirth,
+			want:     true,
+		},
+		{
+			name:     "married is valid",
+			nameType: NameTypeMarried,
+			want:     true,
+		},
+		{
+			name:     "aka is valid",
+			nameType: NameTypeAKA,
+			want:     true,
+		},
+		{
+			name:     "empty string is valid",
+			nameType: "",
+			want:     true,
+		},
+		{
+			name:     "invalid value",
+			nameType: "invalid",
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.nameType.IsValid(); got != tt.want {
+				t.Errorf("NameType(%q).IsValid() = %v, want %v", tt.nameType, got, tt.want)
+			}
+		})
+	}
+}

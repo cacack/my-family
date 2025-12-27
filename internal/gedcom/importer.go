@@ -10,6 +10,7 @@ import (
 
 	"github.com/cacack/gedcom-go/decoder"
 	"github.com/cacack/gedcom-go/gedcom"
+	"github.com/cacack/gedcom-go/validator"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -17,33 +18,40 @@ import (
 
 // ImportResult contains the results of a GEDCOM import operation.
 type ImportResult struct {
-	PersonsImported   int
-	FamiliesImported  int
-	SourcesImported   int
-	CitationsImported int
-	MediaImported     int
-	Warnings          []string
-	Errors            []string
+	PersonsImported      int
+	FamiliesImported     int
+	SourcesImported      int
+	CitationsImported    int
+	MediaImported        int
+	RepositoriesImported int
+	Warnings             []string
+	Errors               []string
 
 	// Mappings from GEDCOM XREFs to internal UUIDs
-	PersonXrefToID map[string]uuid.UUID
-	FamilyXrefToID map[string]uuid.UUID
-	SourceXrefToID map[string]uuid.UUID
-	MediaXrefToID  map[string]uuid.UUID
+	PersonXrefToID     map[string]uuid.UUID
+	FamilyXrefToID     map[string]uuid.UUID
+	SourceXrefToID     map[string]uuid.UUID
+	MediaXrefToID      map[string]uuid.UUID
+	RepositoryXrefToID map[string]uuid.UUID
 }
 
 // PersonData contains parsed person data ready for creation.
 type PersonData struct {
-	ID         uuid.UUID
-	GedcomXref string
-	GivenName  string
-	Surname    string
-	Gender     domain.Gender
-	BirthDate  string
-	BirthPlace string
-	DeathDate  string
-	DeathPlace string
-	Notes      string
+	ID            uuid.UUID
+	GedcomXref    string
+	GivenName     string
+	Surname       string
+	NamePrefix    string          // Dr., Rev., Sir (NPFX)
+	NameSuffix    string          // Jr., III, PhD (NSFX)
+	SurnamePrefix string          // von, de, van (SPFX)
+	Nickname      string          // Informal name (NICK)
+	NameType      domain.NameType // birth, married, aka (TYPE)
+	Gender        domain.Gender
+	BirthDate     string
+	BirthPlace    string
+	DeathDate     string
+	DeathPlace    string
+	Notes         string
 }
 
 // FamilyData contains parsed family data ready for creation.
@@ -68,8 +76,26 @@ type SourceData struct {
 	Author         string
 	Publisher      string
 	PublishDate    string
-	RepositoryName string
+	RepositoryID   *uuid.UUID // Link to Repository entity
+	RepositoryName string     // Fallback for unlinked repositories
+	CallNumber     string     // CALN - location within repository
 	Notes          string
+}
+
+// RepositoryData contains parsed repository data ready for creation.
+type RepositoryData struct {
+	ID         uuid.UUID
+	GedcomXref string
+	Name       string
+	Address    string
+	City       string
+	State      string
+	PostalCode string
+	Country    string
+	Phone      string
+	Email      string
+	Website    string
+	Notes      string
 }
 
 // CitationData contains parsed citation data ready for creation.
@@ -106,12 +132,13 @@ func NewImporter() *Importer {
 }
 
 // Import parses a GEDCOM file and returns structured data for import.
-func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, error) {
+func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, []RepositoryData, error) {
 	result := &ImportResult{
-		PersonXrefToID: make(map[string]uuid.UUID),
-		FamilyXrefToID: make(map[string]uuid.UUID),
-		SourceXrefToID: make(map[string]uuid.UUID),
-		MediaXrefToID:  make(map[string]uuid.UUID),
+		PersonXrefToID:     make(map[string]uuid.UUID),
+		FamilyXrefToID:     make(map[string]uuid.UUID),
+		SourceXrefToID:     make(map[string]uuid.UUID),
+		MediaXrefToID:      make(map[string]uuid.UUID),
+		RepositoryXrefToID: make(map[string]uuid.UUID),
 	}
 
 	// Parse GEDCOM using cacack/gedcom-go decoder
@@ -121,10 +148,26 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 
 	doc, err := decoder.DecodeWithOptions(reader, opts)
 	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
+		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
 	}
 
-	// First pass: create source mappings
+	// Run gedcom-go validation to catch structural issues
+	v := validator.New()
+	validationErrors := v.Validate(doc)
+	for _, verr := range validationErrors {
+		// Add validation errors as warnings (don't fail import)
+		result.Warnings = append(result.Warnings, verr.Error())
+	}
+
+	// First pass: create repository mappings (before sources)
+	var repositories []RepositoryData
+	for _, repo := range doc.Repositories() {
+		repository := parseRepository(repo, result)
+		repositories = append(repositories, repository)
+		result.RepositoryXrefToID[repo.XRef] = repository.ID
+	}
+
+	// Second pass: create source mappings (links to repositories)
 	var sources []SourceData
 	for _, src := range doc.Sources() {
 		source := parseSource(src, result)
@@ -132,11 +175,11 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		result.SourceXrefToID[src.XRef] = source.ID
 	}
 
-	// Second pass: create person mappings
+	// Third pass: create person mappings
 	var persons []PersonData
 	var citations []CitationData
 	for _, indi := range doc.Individuals() {
-		person := parseIndividual(indi, result)
+		person := parseIndividual(indi, doc, result)
 		persons = append(persons, person)
 		result.PersonXrefToID[indi.XRef] = person.ID
 
@@ -145,10 +188,10 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		citations = append(citations, personCitations...)
 	}
 
-	// Third pass: create family mappings and resolve person references
+	// Fourth pass: create family mappings and resolve person references
 	var families []FamilyData
 	for _, fam := range doc.Families() {
-		family := parseFamily(fam, result)
+		family := parseFamily(fam, doc, result)
 		families = append(families, family)
 		result.FamilyXrefToID[fam.XRef] = family.ID
 
@@ -161,22 +204,38 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 	result.FamiliesImported = len(families)
 	result.SourcesImported = len(sources)
 	result.CitationsImported = len(citations)
+	result.RepositoriesImported = len(repositories)
 
-	return result, persons, families, sources, citations, nil
+	return result, persons, families, sources, citations, repositories, nil
 }
 
 // parseIndividual converts a GEDCOM individual record to PersonData.
-func parseIndividual(indi *gedcom.Individual, result *ImportResult) PersonData {
+// The doc parameter provides access to other records for PEDI lookup.
+func parseIndividual(indi *gedcom.Individual, doc *gedcom.Document, result *ImportResult) PersonData {
 	person := PersonData{
 		ID:         uuid.New(),
 		GedcomXref: indi.XRef,
 	}
 
-	// Parse name
+	// Parse name with all components
 	if len(indi.Names) > 0 {
 		name := indi.Names[0]
 		person.GivenName = strings.TrimSpace(name.Given)
 		person.Surname = strings.TrimSpace(name.Surname)
+		person.NamePrefix = strings.TrimSpace(name.Prefix)
+		person.NameSuffix = strings.TrimSpace(name.Suffix)
+		person.SurnamePrefix = strings.TrimSpace(name.SurnamePrefix)
+		person.Nickname = strings.TrimSpace(name.Nickname)
+
+		// Map name type
+		switch strings.ToLower(name.Type) {
+		case "birth":
+			person.NameType = domain.NameTypeBirth
+		case "married":
+			person.NameType = domain.NameTypeMarried
+		case "aka":
+			person.NameType = domain.NameTypeAKA
+		}
 
 		// Given name is required
 		if person.GivenName == "" {
@@ -202,15 +261,29 @@ func parseIndividual(indi *gedcom.Individual, result *ImportResult) PersonData {
 		person.Gender = domain.GenderUnknown
 	}
 
-	// Parse events for birth and death
+	// Parse events for birth and death with date validation
 	for _, event := range indi.Events {
 		switch event.Type {
 		case gedcom.EventBirth:
 			person.BirthDate = event.Date
 			person.BirthPlace = event.Place
+			// Validate the date if parsed
+			if event.ParsedDate != nil {
+				if err := event.ParsedDate.Validate(); err != nil {
+					result.Warnings = append(result.Warnings,
+						fmt.Sprintf("Individual %s: invalid birth date '%s': %v", indi.XRef, event.Date, err))
+				}
+			}
 		case gedcom.EventDeath:
 			person.DeathDate = event.Date
 			person.DeathPlace = event.Place
+			// Validate the date if parsed
+			if event.ParsedDate != nil {
+				if err := event.ParsedDate.Validate(); err != nil {
+					result.Warnings = append(result.Warnings,
+						fmt.Sprintf("Individual %s: invalid death date '%s': %v", indi.XRef, event.Date, err))
+				}
+			}
 		}
 	}
 
@@ -231,7 +304,8 @@ func parseIndividual(indi *gedcom.Individual, result *ImportResult) PersonData {
 }
 
 // parseFamily converts a GEDCOM family record to FamilyData.
-func parseFamily(fam *gedcom.Family, result *ImportResult) FamilyData {
+// The doc parameter provides access to individual records for PEDI lookup.
+func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult) FamilyData {
 	family := FamilyData{
 		ID:               uuid.New(),
 		GedcomXref:       fam.XRef,
@@ -257,24 +331,33 @@ func parseFamily(fam *gedcom.Family, result *ImportResult) FamilyData {
 		}
 	}
 
-	// Parse events for marriage
+	// Parse events for marriage with date validation
 	for _, event := range fam.Events {
 		switch event.Type {
 		case gedcom.EventMarriage:
 			family.RelationshipType = domain.RelationMarriage
 			family.MarriageDate = event.Date
 			family.MarriagePlace = event.Place
+			// Validate the date if parsed
+			if event.ParsedDate != nil {
+				if err := event.ParsedDate.Validate(); err != nil {
+					result.Warnings = append(result.Warnings,
+						fmt.Sprintf("Family %s: invalid marriage date '%s': %v", fam.XRef, event.Date, err))
+				}
+			}
 		case gedcom.EventDivorce:
 			// Divorce event - we note it but keep as marriage type
 		}
 	}
 
-	// Link children - in cacack/gedcom-go, Children is []string of XRefs
+	// Link children - look up PEDI from individual's FAMC links
 	for _, childXRef := range fam.Children {
 		if id, ok := result.PersonXrefToID[childXRef]; ok {
 			family.ChildIDs = append(family.ChildIDs, id)
-			// Default to biological, could be refined by checking ADOP events
-			family.ChildRelTypes = append(family.ChildRelTypes, domain.ChildBiological)
+
+			// Look up the child's PEDI for this family
+			relType := getPedigreeType(childXRef, fam.XRef, doc)
+			family.ChildRelTypes = append(family.ChildRelTypes, relType)
 		} else {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("Family %s: child %s not found", fam.XRef, childXRef))
@@ -282,6 +365,38 @@ func parseFamily(fam *gedcom.Family, result *ImportResult) FamilyData {
 	}
 
 	return family
+}
+
+// getPedigreeType looks up the pedigree linkage type for a child in a family.
+// Returns the appropriate ChildRelationType based on GEDCOM PEDI tag.
+func getPedigreeType(childXRef, familyXRef string, doc *gedcom.Document) domain.ChildRelationType {
+	// Look up the individual
+	indi := doc.GetIndividual(childXRef)
+	if indi == nil {
+		return domain.ChildBiological // Default if not found
+	}
+
+	// Find the FAMC link for this family and check its Pedigree
+	for _, famLink := range indi.ChildInFamilies {
+		if famLink.FamilyXRef == familyXRef {
+			switch strings.ToLower(famLink.Pedigree) {
+			case "adopted", "adop":
+				return domain.ChildAdopted
+			case "foster":
+				return domain.ChildFoster
+			case "birth", "":
+				return domain.ChildBiological
+			case "sealing":
+				// LDS sealing - treat as biological for now
+				return domain.ChildBiological
+			default:
+				// Unknown pedigree type, default to biological
+				return domain.ChildBiological
+			}
+		}
+	}
+
+	return domain.ChildBiological // Default if no FAMC link found
 }
 
 // parseSource converts a GEDCOM source record to SourceData.
@@ -294,12 +409,19 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 		Publisher:  src.Publication,
 	}
 
-	// Extract repository name if available
+	// Link to repository if available
 	if src.RepositoryRef != "" {
-		// This is just a reference - we could look it up in the document if needed
-		// For now, store the XRef as repository name
-		source.RepositoryName = src.RepositoryRef
+		if repoID, ok := result.RepositoryXrefToID[src.RepositoryRef]; ok {
+			source.RepositoryID = &repoID
+		} else {
+			// Repository not found, store the XRef as fallback name
+			source.RepositoryName = src.RepositoryRef
+		}
 	}
+
+	// Note: Call number (CALN) extraction requires parsing nested REPO tags
+	// which is not currently supported in the flat tag structure.
+	// This can be added when gedcom-go provides structured REPO references.
 
 	// Collect notes
 	var notes []string
@@ -316,6 +438,52 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 	source.SourceType = string(domain.SourceOther)
 
 	return source
+}
+
+// parseRepository converts a GEDCOM repository record to RepositoryData.
+func parseRepository(repo *gedcom.Repository, result *ImportResult) RepositoryData {
+	repository := RepositoryData{
+		ID:         uuid.New(),
+		GedcomXref: repo.XRef,
+		Name:       repo.Name,
+	}
+
+	// Extract address components if available
+	if repo.Address != nil {
+		addr := repo.Address
+		// Combine address lines
+		addrParts := []string{}
+		if addr.Line1 != "" {
+			addrParts = append(addrParts, addr.Line1)
+		}
+		if addr.Line2 != "" {
+			addrParts = append(addrParts, addr.Line2)
+		}
+		if addr.Line3 != "" {
+			addrParts = append(addrParts, addr.Line3)
+		}
+		repository.Address = strings.Join(addrParts, ", ")
+		repository.City = addr.City
+		repository.State = addr.State
+		repository.PostalCode = addr.PostalCode
+		repository.Country = addr.Country
+		repository.Phone = addr.Phone
+		repository.Email = addr.Email
+		repository.Website = addr.Website
+	}
+
+	// Collect notes
+	var notes []string
+	for _, tag := range repo.Tags {
+		if tag.Tag == "NOTE" && tag.Value != "" {
+			notes = append(notes, tag.Value)
+		}
+	}
+	if len(notes) > 0 {
+		repository.Notes = strings.Join(notes, "\n\n")
+	}
+
+	return repository
 }
 
 // extractCitationsFromIndividual extracts all citations from individual events.
