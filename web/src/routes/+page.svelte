@@ -102,7 +102,7 @@
 					</svg>
 					Import GEDCOM
 				</a>
-				<a href="/persons" class="action-btn">
+				<a href="/persons/add" class="action-btn">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
 						<circle cx="9" cy="7" r="4" />
@@ -111,7 +111,7 @@
 					</svg>
 					Add Person
 				</a>
-				<a href="/families" class="action-btn">
+				<a href="/families/add" class="action-btn">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
 						<circle cx="9" cy="7" r="4" />
