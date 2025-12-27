@@ -6,17 +6,70 @@
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	let editing = $state(false);
+	let saving = $state(false);
+
+	// Form state
+	let formData = $state({
+		relationship_type: '' as 'marriage' | 'partnership' | 'unknown' | '',
+		marriage_date: '',
+		marriage_place: ''
+	});
 
 	async function loadFamily(id: string) {
 		loading = true;
 		error = null;
 		try {
 			family = await api.getFamily(id);
+			resetForm();
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to load family';
 			family = null;
 		} finally {
 			loading = false;
+		}
+	}
+
+	function resetForm() {
+		if (family) {
+			formData = {
+				relationship_type: family.relationship_type || '',
+				marriage_date: family.marriage_date?.raw || '',
+				marriage_place: family.marriage_place || ''
+			};
+		}
+	}
+
+	function startEdit() {
+		resetForm();
+		editing = true;
+	}
+
+	function cancelEdit() {
+		resetForm();
+		editing = false;
+	}
+
+	async function saveFamily() {
+		if (!family) return;
+		saving = true;
+		try {
+			await api.updateFamily(family.id, {
+				relationship_type: (formData.relationship_type || undefined) as
+					| 'marriage'
+					| 'partnership'
+					| 'unknown'
+					| undefined,
+				marriage_date: formData.marriage_date || undefined,
+				marriage_place: formData.marriage_place || undefined,
+				version: family.version
+			});
+			await loadFamily(family.id);
+			editing = false;
+		} catch (e) {
+			error = (e as { message?: string }).message || 'Failed to save';
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -54,8 +107,9 @@
 <div class="family-page">
 	<header class="page-header">
 		<a href="/families" class="back-link">&larr; Families</a>
-		{#if family}
+		{#if family && !editing}
 			<div class="actions">
+				<button class="btn" onclick={startEdit}>Edit</button>
 				<button class="btn btn-danger" onclick={deleteFamily}>Delete</button>
 			</div>
 		{/if}
@@ -66,78 +120,113 @@
 	{:else if error}
 		<div class="error">{error}</div>
 	{:else if family}
-		<div class="family-detail">
-			<div class="family-header">
-				<h1>{getPartnerDisplay()}</h1>
-				{#if family.relationship_type}
-					<span class="relationship-badge">{family.relationship_type}</span>
+		{#if editing}
+			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveFamily(); }}>
+				<h2 class="edit-title">{getPartnerDisplay()}</h2>
+
+				<div class="form-row">
+					<label>
+						Relationship Type
+						<select bind:value={formData.relationship_type}>
+							<option value="">Unknown</option>
+							<option value="marriage">Marriage</option>
+							<option value="partnership">Partnership</option>
+						</select>
+					</label>
+				</div>
+
+				<div class="form-row">
+					<label>
+						Marriage Date
+						<input type="text" bind:value={formData.marriage_date} placeholder="e.g., 1 JAN 1850 or ABT 1850" />
+					</label>
+					<label>
+						Marriage Place
+						<input type="text" bind:value={formData.marriage_place} />
+					</label>
+				</div>
+
+				<div class="form-actions">
+					<button type="button" class="btn" onclick={cancelEdit} disabled={saving}>Cancel</button>
+					<button type="submit" class="btn btn-primary" disabled={saving}>
+						{saving ? 'Saving...' : 'Save Changes'}
+					</button>
+				</div>
+			</form>
+		{:else}
+			<div class="family-detail">
+				<div class="family-header">
+					<h1>{getPartnerDisplay()}</h1>
+					{#if family.relationship_type}
+						<span class="relationship-badge">{family.relationship_type}</span>
+					{/if}
+				</div>
+
+				<div class="partners-section">
+					<h2>Partners</h2>
+					<div class="partners-grid">
+						{#if family.partner1}
+							<a href="/persons/{family.partner1.id}" class="partner-card">
+								<div class="partner-name">{formatPersonName(family.partner1)}</div>
+							</a>
+						{:else if family.partner1_name}
+							<div class="partner-card">
+								<div class="partner-name">{family.partner1_name}</div>
+							</div>
+						{/if}
+
+						{#if family.partner2}
+							<a href="/persons/{family.partner2.id}" class="partner-card">
+								<div class="partner-name">{formatPersonName(family.partner2)}</div>
+							</a>
+						{:else if family.partner2_name}
+							<div class="partner-card">
+								<div class="partner-name">{family.partner2_name}</div>
+							</div>
+						{/if}
+					</div>
+				</div>
+
+				{#if family.marriage_date || family.marriage_place}
+					<div class="info-section">
+						<h2>Marriage</h2>
+						<dl>
+							{#if family.marriage_date}
+								<dt>Date</dt>
+								<dd>{formatGenDate(family.marriage_date)}</dd>
+							{/if}
+							{#if family.marriage_place}
+								<dt>Place</dt>
+								<dd>{family.marriage_place}</dd>
+							{/if}
+						</dl>
+					</div>
+				{/if}
+
+				{#if family.children && family.children.length > 0}
+					<div class="info-section">
+						<h2>Children ({family.children.length})</h2>
+						<ul class="children-list">
+							{#each family.children as child}
+								<li>
+									<a href="/persons/{child.id}">
+										{child.name}
+									</a>
+									{#if child.relationship_type && child.relationship_type !== 'biological'}
+										<span class="child-type">({child.relationship_type})</span>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{:else}
+					<div class="info-section">
+						<h2>Children</h2>
+						<p class="empty-message">No children recorded</p>
+					</div>
 				{/if}
 			</div>
-
-			<div class="partners-section">
-				<h2>Partners</h2>
-				<div class="partners-grid">
-					{#if family.partner1}
-						<a href="/persons/{family.partner1.id}" class="partner-card">
-							<div class="partner-name">{formatPersonName(family.partner1)}</div>
-						</a>
-					{:else if family.partner1_name}
-						<div class="partner-card">
-							<div class="partner-name">{family.partner1_name}</div>
-						</div>
-					{/if}
-
-					{#if family.partner2}
-						<a href="/persons/{family.partner2.id}" class="partner-card">
-							<div class="partner-name">{formatPersonName(family.partner2)}</div>
-						</a>
-					{:else if family.partner2_name}
-						<div class="partner-card">
-							<div class="partner-name">{family.partner2_name}</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-
-			{#if family.marriage_date || family.marriage_place}
-				<div class="info-section">
-					<h2>Marriage</h2>
-					<dl>
-						{#if family.marriage_date}
-							<dt>Date</dt>
-							<dd>{formatGenDate(family.marriage_date)}</dd>
-						{/if}
-						{#if family.marriage_place}
-							<dt>Place</dt>
-							<dd>{family.marriage_place}</dd>
-						{/if}
-					</dl>
-				</div>
-			{/if}
-
-			{#if family.children && family.children.length > 0}
-				<div class="info-section">
-					<h2>Children ({family.children.length})</h2>
-					<ul class="children-list">
-						{#each family.children as child}
-							<li>
-								<a href="/persons/{child.id}">
-									{child.name}
-								</a>
-								{#if child.relationship_type && child.relationship_type !== 'biological'}
-									<span class="child-type">({child.relationship_type})</span>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{:else}
-				<div class="info-section">
-					<h2>Children</h2>
-					<p class="empty-message">No children recorded</p>
-				</div>
-			{/if}
-		</div>
+		{/if}
 	{/if}
 </div>
 
@@ -342,5 +431,68 @@
 		color: #94a3b8;
 		font-size: 0.875rem;
 		font-style: italic;
+	}
+
+	/* Edit form styles */
+	.edit-form {
+		background: white;
+		border-radius: 12px;
+		border: 1px solid #e2e8f0;
+		padding: 1.5rem;
+	}
+
+	.edit-title {
+		margin: 0 0 1.5rem;
+		font-size: 1.25rem;
+		color: #1e293b;
+	}
+
+	.form-row {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		font-size: 0.875rem;
+		color: #475569;
+	}
+
+	input,
+	select {
+		padding: 0.625rem 0.75rem;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+		font-size: 0.875rem;
+	}
+
+	input:focus,
+	select:focus {
+		outline: none;
+		border-color: #3b82f6;
+		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+	}
+
+	.form-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.75rem;
+		margin-top: 1.5rem;
+		padding-top: 1rem;
+		border-top: 1px solid #e2e8f0;
+	}
+
+	.btn-primary {
+		background: #3b82f6;
+		border-color: #3b82f6;
+		color: white;
+	}
+
+	.btn-primary:hover {
+		background: #2563eb;
 	}
 </style>
