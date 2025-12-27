@@ -356,9 +356,14 @@
 		border-color: #3b82f6;
 	}
 
+	a.partner-card:hover .partner-name {
+		color: #3b82f6;
+	}
+
 	.partner-name {
 		font-weight: 500;
 		color: #1e293b;
+		transition: color 0.2s;
 	}
 
 	.info-section {
