@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/cacack/my-family/compare/v0.1.0...v0.2.0) (2025-12-27)
+
+
+### Features
+
+* **api:** add change history and audit trail ([a14cdcb](https://github.com/cacack/my-family/commit/a14cdcb8c74ede1c322789a2c05038ac624f113f))
+* **api:** add rollback capability for entities ([2b475d3](https://github.com/cacack/my-family/commit/2b475d3b2288a9fbe2021dbe90ed21a3e50aa6f5))
+* **media:** add media management foundation ([bb2af7a](https://github.com/cacack/my-family/commit/bb2af7a2749a4d92402b1f08aa62c7ab00d14eb8))
+* **sources:** implement GPS-compliant sources and citations foundation ([ec1ac45](https://github.com/cacack/my-family/commit/ec1ac4550cd333d6fa45ed6766758a6150e434f5))
+
+
+### Bug Fixes
+
+* **ci:** add workflow_dispatch trigger for manual releases ([f323f68](https://github.com/cacack/my-family/commit/f323f68c8722dbe6f842f8af8c97f4b75bdd4ed0))
+* **ci:** chain goreleaser directly in release-please workflow ([bd3ba14](https://github.com/cacack/my-family/commit/bd3ba14f868542caa041de7407dffcffb583d8c5))
+* **ci:** use exclude paths instead of override for coverage config ([b195788](https://github.com/cacack/my-family/commit/b1957887e9c116247df274d466f9ce3fe4b58c05))
+* **ci:** use Go 1.24 in release workflow ([daec3a7](https://github.com/cacack/my-family/commit/daec3a7ad7ddd613f94ea842bcb8bf9b04e2e885))
+* format code and add nosec annotation for gosec ([ec9f77e](https://github.com/cacack/my-family/commit/ec9f77e8e17310e150aa17802b50f6aab9f3a16b))
+* **web:** add person and family creation forms ([965ad20](https://github.com/cacack/my-family/commit/965ad20d6fc4897435f1fee956e0fd3b41f7a7a8))
+
 ## [0.1.0](https://github.com/cacack/my-family/compare/v0.0.1...v0.1.0) (2025-12-21)
 
 
