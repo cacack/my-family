@@ -165,6 +165,25 @@ func (m MediaType) IsValid() bool {
 	}
 }
 
+// NameType represents the type of name for a person.
+type NameType string
+
+const (
+	NameTypeBirth   NameType = "birth"   // Name at birth
+	NameTypeMarried NameType = "married" // Married name
+	NameTypeAKA     NameType = "aka"     // Also known as
+)
+
+// IsValid checks if the name type value is valid.
+func (n NameType) IsValid() bool {
+	switch n {
+	case NameTypeBirth, NameTypeMarried, NameTypeAKA, "":
+		return true
+	default:
+		return false
+	}
+}
+
 // FactType represents the type of fact that a citation can attach to.
 type FactType string
 

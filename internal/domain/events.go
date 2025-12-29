@@ -36,16 +36,21 @@ func NewBaseEvent() BaseEvent {
 // PersonCreated event is emitted when a new person is created.
 type PersonCreated struct {
 	BaseEvent
-	PersonID   uuid.UUID `json:"person_id"`
-	GivenName  string    `json:"given_name"`
-	Surname    string    `json:"surname"`
-	Gender     Gender    `json:"gender,omitempty"`
-	BirthDate  *GenDate  `json:"birth_date,omitempty"`
-	BirthPlace string    `json:"birth_place,omitempty"`
-	DeathDate  *GenDate  `json:"death_date,omitempty"`
-	DeathPlace string    `json:"death_place,omitempty"`
-	Notes      string    `json:"notes,omitempty"`
-	GedcomXref string    `json:"gedcom_xref,omitempty"`
+	PersonID      uuid.UUID `json:"person_id"`
+	GivenName     string    `json:"given_name"`
+	Surname       string    `json:"surname"`
+	NamePrefix    string    `json:"name_prefix,omitempty"`
+	NameSuffix    string    `json:"name_suffix,omitempty"`
+	SurnamePrefix string    `json:"surname_prefix,omitempty"`
+	Nickname      string    `json:"nickname,omitempty"`
+	NameType      NameType  `json:"name_type,omitempty"`
+	Gender        Gender    `json:"gender,omitempty"`
+	BirthDate     *GenDate  `json:"birth_date,omitempty"`
+	BirthPlace    string    `json:"birth_place,omitempty"`
+	DeathDate     *GenDate  `json:"death_date,omitempty"`
+	DeathPlace    string    `json:"death_place,omitempty"`
+	Notes         string    `json:"notes,omitempty"`
+	GedcomXref    string    `json:"gedcom_xref,omitempty"`
 }
 
 func (e PersonCreated) EventType() string      { return "PersonCreated" }
@@ -54,17 +59,22 @@ func (e PersonCreated) AggregateID() uuid.UUID { return e.PersonID }
 // NewPersonCreated creates a PersonCreated event from a Person.
 func NewPersonCreated(p *Person) PersonCreated {
 	return PersonCreated{
-		BaseEvent:  NewBaseEvent(),
-		PersonID:   p.ID,
-		GivenName:  p.GivenName,
-		Surname:    p.Surname,
-		Gender:     p.Gender,
-		BirthDate:  p.BirthDate,
-		BirthPlace: p.BirthPlace,
-		DeathDate:  p.DeathDate,
-		DeathPlace: p.DeathPlace,
-		Notes:      p.Notes,
-		GedcomXref: p.GedcomXref,
+		BaseEvent:     NewBaseEvent(),
+		PersonID:      p.ID,
+		GivenName:     p.GivenName,
+		Surname:       p.Surname,
+		NamePrefix:    p.NamePrefix,
+		NameSuffix:    p.NameSuffix,
+		SurnamePrefix: p.SurnamePrefix,
+		Nickname:      p.Nickname,
+		NameType:      p.NameType,
+		Gender:        p.Gender,
+		BirthDate:     p.BirthDate,
+		BirthPlace:    p.BirthPlace,
+		DeathDate:     p.DeathDate,
+		DeathPlace:    p.DeathPlace,
+		Notes:         p.Notes,
+		GedcomXref:    p.GedcomXref,
 	}
 }
 
@@ -273,6 +283,7 @@ type SourceCreated struct {
 	Publisher      string     `json:"publisher,omitempty"`
 	PublishDate    *GenDate   `json:"publish_date,omitempty"`
 	URL            string     `json:"url,omitempty"`
+	RepositoryID   *uuid.UUID `json:"repository_id,omitempty"`
 	RepositoryName string     `json:"repository_name,omitempty"`
 	CollectionName string     `json:"collection_name,omitempty"`
 	CallNumber     string     `json:"call_number,omitempty"`
@@ -294,6 +305,7 @@ func NewSourceCreated(s *Source) SourceCreated {
 		Publisher:      s.Publisher,
 		PublishDate:    s.PublishDate,
 		URL:            s.URL,
+		RepositoryID:   s.RepositoryID,
 		RepositoryName: s.RepositoryName,
 		CollectionName: s.CollectionName,
 		CallNumber:     s.CallNumber,
@@ -493,5 +505,82 @@ func NewMediaDeleted(mediaID uuid.UUID, reason string) MediaDeleted {
 		BaseEvent: NewBaseEvent(),
 		MediaID:   mediaID,
 		Reason:    reason,
+	}
+}
+
+// RepositoryCreated event is emitted when a new repository is created.
+type RepositoryCreated struct {
+	BaseEvent
+	RepositoryID uuid.UUID `json:"repository_id"`
+	Name         string    `json:"name"`
+	Address      string    `json:"address,omitempty"`
+	City         string    `json:"city,omitempty"`
+	State        string    `json:"state,omitempty"`
+	PostalCode   string    `json:"postal_code,omitempty"`
+	Country      string    `json:"country,omitempty"`
+	Phone        string    `json:"phone,omitempty"`
+	Email        string    `json:"email,omitempty"`
+	Website      string    `json:"website,omitempty"`
+	Notes        string    `json:"notes,omitempty"`
+	GedcomXref   string    `json:"gedcom_xref,omitempty"`
+}
+
+func (e RepositoryCreated) EventType() string      { return "RepositoryCreated" }
+func (e RepositoryCreated) AggregateID() uuid.UUID { return e.RepositoryID }
+
+// NewRepositoryCreated creates a RepositoryCreated event from a Repository.
+func NewRepositoryCreated(r *Repository) RepositoryCreated {
+	return RepositoryCreated{
+		BaseEvent:    NewBaseEvent(),
+		RepositoryID: r.ID,
+		Name:         r.Name,
+		Address:      r.Address,
+		City:         r.City,
+		State:        r.State,
+		PostalCode:   r.PostalCode,
+		Country:      r.Country,
+		Phone:        r.Phone,
+		Email:        r.Email,
+		Website:      r.Website,
+		Notes:        r.Notes,
+		GedcomXref:   r.GedcomXref,
+	}
+}
+
+// RepositoryUpdated event is emitted when a repository is updated.
+type RepositoryUpdated struct {
+	BaseEvent
+	RepositoryID uuid.UUID      `json:"repository_id"`
+	Changes      map[string]any `json:"changes"`
+}
+
+func (e RepositoryUpdated) EventType() string      { return "RepositoryUpdated" }
+func (e RepositoryUpdated) AggregateID() uuid.UUID { return e.RepositoryID }
+
+// NewRepositoryUpdated creates a RepositoryUpdated event.
+func NewRepositoryUpdated(repositoryID uuid.UUID, changes map[string]any) RepositoryUpdated {
+	return RepositoryUpdated{
+		BaseEvent:    NewBaseEvent(),
+		RepositoryID: repositoryID,
+		Changes:      changes,
+	}
+}
+
+// RepositoryDeleted event is emitted when a repository is deleted.
+type RepositoryDeleted struct {
+	BaseEvent
+	RepositoryID uuid.UUID `json:"repository_id"`
+	Reason       string    `json:"reason,omitempty"`
+}
+
+func (e RepositoryDeleted) EventType() string      { return "RepositoryDeleted" }
+func (e RepositoryDeleted) AggregateID() uuid.UUID { return e.RepositoryID }
+
+// NewRepositoryDeleted creates a RepositoryDeleted event.
+func NewRepositoryDeleted(repositoryID uuid.UUID, reason string) RepositoryDeleted {
+	return RepositoryDeleted{
+		BaseEvent:    NewBaseEvent(),
+		RepositoryID: repositoryID,
+		Reason:       reason,
 	}
 }

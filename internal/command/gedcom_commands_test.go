@@ -377,7 +377,7 @@ func TestImportFamily_ErrorPaths(t *testing.T) {
 	mockStore.appendError = nil
 	reader := strings.NewReader(minimalGedcom)
 	importer := gedcom.NewImporter()
-	_, persons, families, _, _, _ := importer.Import(ctx, reader)
+	_, persons, families, _, _, _, _ := importer.Import(ctx, reader)
 
 	// Import persons manually first
 	for _, p := range persons {
@@ -1021,7 +1021,7 @@ func TestImportGedcom_CitationImportError(t *testing.T) {
 	// Parse with gedcom importer to get the data
 	importer := gedcom.NewImporter()
 	reader := strings.NewReader(gedcomInvalidCitation)
-	_, _, _, sources, citations, _ := importer.Import(ctx, reader)
+	_, _, _, sources, citations, _, _ := importer.Import(ctx, reader)
 
 	// Import sources first so they exist
 	for _, s := range sources {
@@ -1086,4 +1086,320 @@ func TestImportSource_InvalidSourceType(t *testing.T) {
 		t.Fatalf("Expected 1 source")
 	}
 	// The importer should have defaulted to "other" for invalid types
+}
+
+// TestImportGedcom_WithRepositories tests GEDCOM import with repository records.
+func TestImportGedcom_WithRepositories(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithRepos := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME Family History Library
+1 ADDR 35 N West Temple St
+2 CONT Salt Lake City
+2 CONT UT 84150
+2 CONT USA
+1 PHON 801-240-2584
+1 EMAIL info@familysearch.org
+1 WWW https://www.familysearch.org
+1 NOTE Main genealogy library
+0 @S1@ SOUR
+1 TITL Census Records
+1 REPO @R1@
+0 @I1@ INDI
+1 NAME Test /Person/
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomWithRepos)
+	input := command.ImportGedcomInput{
+		Filename: "repositories.ged",
+		FileSize: int64(len(gedcomWithRepos)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported 1 repository
+	if result.RepositoriesImported != 1 {
+		t.Errorf("RepositoriesImported = %d, want 1", result.RepositoriesImported)
+	}
+
+	// Should have imported source that references the repository
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+}
+
+// TestImportGedcom_RepositoryImportError tests handling of repository import errors.
+func TestImportGedcom_RepositoryImportError(t *testing.T) {
+	mockStore := newMockEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(mockStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithRepos := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME Test Repository
+0 @I1@ INDI
+1 NAME Test /Person/
+0 TRLR
+`
+
+	// Set error for append operations
+	mockStore.appendError = io.ErrUnexpectedEOF
+
+	reader := strings.NewReader(gedcomWithRepos)
+	input := command.ImportGedcomInput{
+		Filename: "error.ged",
+		FileSize: int64(len(gedcomWithRepos)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have errors for repository import
+	if len(result.Errors) == 0 {
+		t.Error("Expected errors when repository import fails")
+	}
+	if result.RepositoriesImported != 0 {
+		t.Errorf("RepositoriesImported = %d, want 0", result.RepositoriesImported)
+	}
+}
+
+// TestImportCitation_QualityMappings tests different quality mappings in importCitation.
+func TestImportCitation_QualityMappings(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// GEDCOM with different QUAY (quality) values
+	// QUAY 0 = Unreliable, 1 = Questionable, 2 = Secondary, 3 = Primary/Direct
+	gedcomQualities := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Birth Records
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 SOUR @S1@
+3 PAGE 1
+3 QUAY 3
+0 @I2@ INDI
+1 NAME Jane /Doe/
+2 GIVN Jane
+2 SURN Doe
+1 SEX F
+1 BIRT
+2 DATE 1 JAN 1855
+2 SOUR @S1@
+3 PAGE 2
+3 QUAY 2
+0 @I3@ INDI
+1 NAME Jim /Doe/
+2 GIVN Jim
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1860
+2 SOUR @S1@
+3 PAGE 3
+3 QUAY 1
+0 @I4@ INDI
+1 NAME Joe /Doe/
+2 GIVN Joe
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1865
+2 SOUR @S1@
+3 PAGE 4
+3 QUAY 0
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomQualities)
+	input := command.ImportGedcomInput{
+		Filename: "qualities.ged",
+		FileSize: int64(len(gedcomQualities)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported persons and citations
+	if result.PersonsImported != 4 {
+		t.Errorf("PersonsImported = %d, want 4", result.PersonsImported)
+	}
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+	// Citations should be imported with different quality mappings
+	if result.CitationsImported != 4 {
+		t.Errorf("CitationsImported = %d, want 4", result.CitationsImported)
+	}
+}
+
+// TestImportGedcom_ChildLinkingWarning tests warning generation during child linking failures.
+func TestImportGedcom_ChildLinkingWarning(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// GEDCOM where child is already linked to a family
+	// Then a second family tries to link the same child
+	gedcomMultiFamily := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Parent /One/
+1 SEX M
+0 @I2@ INDI
+1 NAME Parent /Two/
+1 SEX F
+0 @I3@ INDI
+1 NAME Parent /Three/
+1 SEX M
+0 @I4@ INDI
+1 NAME Shared /Child/
+1 SEX M
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 CHIL @I4@
+0 @F2@ FAM
+1 HUSB @I3@
+1 CHIL @I4@
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomMultiFamily)
+	input := command.ImportGedcomInput{
+		Filename: "multi_family.ged",
+		FileSize: int64(len(gedcomMultiFamily)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported both families
+	if result.FamiliesImported != 2 {
+		t.Errorf("FamiliesImported = %d, want 2", result.FamiliesImported)
+	}
+
+	// The second family's child linking should be skipped (child already linked)
+	// This is correct behavior - child can only be in one family
+	families, _, _ := readStore.ListFamilies(ctx, repository.DefaultListOptions())
+	if len(families) != 2 {
+		t.Errorf("Expected 2 families in read model, got %d", len(families))
+	}
+}
+
+// TestImportGedcom_PedigreeTypes tests import of PEDI (pedigree) linkage types.
+func TestImportGedcom_PedigreeTypes(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// GEDCOM with different pedigree types
+	gedcomPedigree := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Parent /One/
+1 SEX M
+0 @I2@ INDI
+1 NAME Parent /Two/
+1 SEX F
+0 @I3@ INDI
+1 NAME Bio /Child/
+1 SEX M
+1 FAMC @F1@
+2 PEDI birth
+0 @I4@ INDI
+1 NAME Adopted /Child/
+1 SEX F
+1 FAMC @F1@
+2 PEDI adopted
+0 @I5@ INDI
+1 NAME Foster /Child/
+1 SEX M
+1 FAMC @F1@
+2 PEDI foster
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 CHIL @I3@
+1 CHIL @I4@
+1 CHIL @I5@
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomPedigree)
+	input := command.ImportGedcomInput{
+		Filename: "pedigree.ged",
+		FileSize: int64(len(gedcomPedigree)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported family with children
+	if result.FamiliesImported != 1 {
+		t.Errorf("FamiliesImported = %d, want 1", result.FamiliesImported)
+	}
+	if result.PersonsImported != 5 {
+		t.Errorf("PersonsImported = %d, want 5", result.PersonsImported)
+	}
+
+	// Verify children were linked
+	families, _, _ := readStore.ListFamilies(ctx, repository.DefaultListOptions())
+	if len(families) != 1 {
+		t.Fatalf("Expected 1 family")
+	}
+
+	children, _ := readStore.GetChildrenOfFamily(ctx, families[0].ID)
+	if len(children) != 3 {
+		t.Errorf("Expected 3 children in family, got %d", len(children))
+	}
 }
