@@ -18,11 +18,13 @@ import (
 
 // ExportResult contains the results of a GEDCOM export operation.
 type ExportResult struct {
-	BytesWritten      int64
-	PersonsExported   int
-	FamiliesExported  int
-	SourcesExported   int
-	CitationsExported int
+	BytesWritten       int64
+	PersonsExported    int
+	FamiliesExported   int
+	SourcesExported    int
+	CitationsExported  int
+	EventsExported     int
+	AttributesExported int
 }
 
 // Exporter handles GEDCOM file generation from repository data.
@@ -128,7 +130,13 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 		allCitations := append(birthCitations, deathCitations...)
 		result.CitationsExported += len(allCitations)
 
-		tags := toGedcomIndividualTags(p, sourceXrefs, birthCitations, deathCitations)
+		// Fetch events and attributes for this person
+		events, _ := exp.readStore.ListEventsForPerson(ctx, p.ID)
+		attributes, _ := exp.readStore.ListAttributesForPerson(ctx, p.ID)
+		result.EventsExported += len(events)
+		result.AttributesExported += len(attributes)
+
+		tags := toGedcomIndividualTags(p, sourceXrefs, birthCitations, deathCitations, events, attributes, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef: xref,
 			Type: gedcom.RecordTypeIndividual,
@@ -144,7 +152,11 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, f.ID)
 		result.CitationsExported += len(marriageCitations)
 
-		tags := toGedcomFamilyTags(f, personXrefs, sourceXrefs, children, marriageCitations)
+		// Fetch events for this family
+		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, f.ID)
+		result.EventsExported += len(familyEvents)
+
+		tags := toGedcomFamilyTags(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef: xref,
 			Type: gedcom.RecordTypeFamily,
@@ -219,7 +231,7 @@ func toGedcomSourceTags(s repository.SourceReadModel) []*gedcom.Tag {
 }
 
 // toGedcomIndividualTags converts a repository PersonReadModel to gedcom.Tag slice.
-func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel) []*gedcom.Tag {
+func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.Tag {
 	var tags []*gedcom.Tag
 
 	// Name
@@ -262,6 +274,12 @@ func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.U
 		tags = append(tags, citationsToTags(deathCitations, sourceXrefs, 2)...)
 	}
 
+	// Additional life events (burial, baptism, emigration, etc.)
+	tags = append(tags, eventsToTags(events, sourceXrefs, 1, readStore, ctx)...)
+
+	// Attributes (occupation, residence, education, etc.)
+	tags = append(tags, attributesToTags(attributes, sourceXrefs, 1)...)
+
 	// Notes with CONT for multiline
 	if p.Notes != "" {
 		tags = append(tags, notesToTags(p.Notes, 1)...)
@@ -271,7 +289,7 @@ func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.U
 }
 
 // toGedcomFamilyTags converts a repository FamilyReadModel to gedcom.Tag slice.
-func toGedcomFamilyTags(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel) []*gedcom.Tag {
+func toGedcomFamilyTags(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel, events []repository.EventReadModel, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.Tag {
 	var tags []*gedcom.Tag
 
 	// Husband (Partner1)
@@ -300,6 +318,9 @@ func toGedcomFamilyTags(f repository.FamilyReadModel, personXrefs, sourceXrefs m
 		// Citations for marriage
 		tags = append(tags, citationsToTags(marriageCitations, sourceXrefs, 2)...)
 	}
+
+	// Additional family events (divorce, annulment, engagement, etc.)
+	tags = append(tags, eventsToTags(events, sourceXrefs, 1, readStore, ctx)...)
 
 	// Children
 	for _, c := range children {
@@ -390,4 +411,134 @@ func mapGPSToGedcomQuality(sourceQuality domain.SourceQuality, informantType dom
 func formatGedcomName(givenName, surname string) string {
 	// Always include surname delimiters per GEDCOM spec
 	return fmt.Sprintf("%s /%s/", givenName, surname)
+}
+
+// mapFactTypeToGedcomTag maps a FactType to its corresponding GEDCOM tag string.
+// Returns an empty string for unknown or unmappable types.
+func mapFactTypeToGedcomTag(factType domain.FactType) string {
+	switch factType {
+	// Person events
+	case domain.FactPersonBirth:
+		return "BIRT"
+	case domain.FactPersonDeath:
+		return "DEAT"
+	case domain.FactPersonBurial:
+		return "BURI"
+	case domain.FactPersonCremation:
+		return "CREM"
+	case domain.FactPersonBaptism:
+		return "BAPM"
+	case domain.FactPersonChristening:
+		return "CHR"
+	case domain.FactPersonEmigration:
+		return "EMIG"
+	case domain.FactPersonImmigration:
+		return "IMMI"
+	case domain.FactPersonNaturalization:
+		return "NATU"
+	case domain.FactPersonCensus:
+		return "CENS"
+	case domain.FactPersonGenericEvent:
+		return "EVEN"
+	// Person attributes
+	case domain.FactPersonOccupation:
+		return "OCCU"
+	case domain.FactPersonResidence:
+		return "RESI"
+	case domain.FactPersonEducation:
+		return "EDUC"
+	case domain.FactPersonReligion:
+		return "RELI"
+	case domain.FactPersonTitle:
+		return "TITL"
+	// Family events
+	case domain.FactFamilyMarriage:
+		return "MARR"
+	case domain.FactFamilyDivorce:
+		return "DIV"
+	case domain.FactFamilyMarriageBann:
+		return "MARB"
+	case domain.FactFamilyMarriageContract:
+		return "MARC"
+	case domain.FactFamilyMarriageLicense:
+		return "MARL"
+	case domain.FactFamilyMarriageSettlement:
+		return "MARS"
+	case domain.FactFamilyAnnulment:
+		return "ANUL"
+	case domain.FactFamilyEngagement:
+		return "ENGA"
+	default:
+		return ""
+	}
+}
+
+// eventsToTags converts a slice of EventReadModel to gedcom.Tag slice.
+func eventsToTags(events []repository.EventReadModel, sourceXrefs map[uuid.UUID]string, level int, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.Tag {
+	var tags []*gedcom.Tag
+
+	for _, event := range events {
+		tagName := mapFactTypeToGedcomTag(event.FactType)
+		if tagName == "" {
+			continue // Skip unknown event types
+		}
+
+		// Add event tag
+		tags = append(tags, &gedcom.Tag{Level: level, Tag: tagName})
+
+		// Add DATE subordinate if present
+		if event.DateRaw != "" {
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "DATE", Value: event.DateRaw})
+		}
+
+		// Add PLAC subordinate if present
+		if event.Place != "" {
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "PLAC", Value: event.Place})
+		}
+
+		// Add CAUS subordinate if present (for death/burial events)
+		if event.Cause != "" {
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "CAUS", Value: event.Cause})
+		}
+
+		// Add AGE subordinate if present
+		if event.Age != "" {
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "AGE", Value: event.Age})
+		}
+
+		// Fetch and add citations for this event
+		if readStore != nil {
+			citations, _ := readStore.GetCitationsForFact(ctx, event.FactType, event.OwnerID)
+			tags = append(tags, citationsToTags(citations, sourceXrefs, level+1)...)
+		}
+	}
+
+	return tags
+}
+
+// attributesToTags converts a slice of AttributeReadModel to gedcom.Tag slice.
+func attributesToTags(attributes []repository.AttributeReadModel, sourceXrefs map[uuid.UUID]string, level int) []*gedcom.Tag {
+	var tags []*gedcom.Tag
+
+	for _, attr := range attributes {
+		tagName := mapFactTypeToGedcomTag(attr.FactType)
+		if tagName == "" {
+			continue // Skip unknown attribute types
+		}
+
+		// Add attribute tag with value
+		tags = append(tags, &gedcom.Tag{Level: level, Tag: tagName, Value: attr.Value})
+
+		// Add DATE subordinate if present
+		if attr.DateRaw != "" {
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "DATE", Value: attr.DateRaw})
+		}
+
+		// Add PLAC subordinate if present
+		if attr.Place != "" {
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "PLAC", Value: attr.Place})
+		}
+	}
+
+	return tags
 }

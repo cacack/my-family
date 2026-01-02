@@ -484,3 +484,725 @@ func TestCitationDeleted_RoundTrip(t *testing.T) {
 		t.Errorf("Reason = %v, want No longer relevant", decoded.Reason)
 	}
 }
+
+func TestLifeEventCreatedFromModel_RoundTrip(t *testing.T) {
+	personID := uuid.New()
+	le := NewLifeEvent(personID, FactPersonBaptism)
+	le.SetDate("1 JAN 1850")
+	le.Place = "Springfield, IL"
+	le.Description = "Baptized at First Church"
+	le.Cause = ""
+	le.Age = "0"
+	le.GedcomXref = "@E1@"
+
+	event := NewLifeEventCreatedFromModel(le)
+
+	// Verify event type
+	if event.EventType() != "LifeEventCreated" {
+		t.Errorf("EventType() = %v, want LifeEventCreated", event.EventType())
+	}
+
+	// Verify aggregate ID
+	if event.AggregateID() != le.ID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), le.ID)
+	}
+
+	// JSON round-trip
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded LifeEventCreated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.EventID != le.ID {
+		t.Errorf("EventID = %v, want %v", decoded.EventID, le.ID)
+	}
+	if decoded.PersonID == nil || *decoded.PersonID != personID {
+		t.Error("PersonID not preserved")
+	}
+	if decoded.FamilyID != nil {
+		t.Error("FamilyID should be nil for person events")
+	}
+	if decoded.FactType != FactPersonBaptism {
+		t.Errorf("FactType = %v, want %v", decoded.FactType, FactPersonBaptism)
+	}
+	if decoded.Place != "Springfield, IL" {
+		t.Errorf("Place = %v, want Springfield, IL", decoded.Place)
+	}
+	if decoded.GedcomXref != "@E1@" {
+		t.Errorf("GedcomXref = %v, want @E1@", decoded.GedcomXref)
+	}
+}
+
+func TestLifeEventCreatedFromModel_FamilyEvent(t *testing.T) {
+	familyID := uuid.New()
+	le := NewFamilyLifeEvent(familyID, FactFamilyEngagement)
+	le.SetDate("15 FEB 1870")
+	le.Place = "Boston, MA"
+
+	event := NewLifeEventCreatedFromModel(le)
+
+	if event.PersonID != nil {
+		t.Error("PersonID should be nil for family events")
+	}
+	if event.FamilyID == nil || *event.FamilyID != familyID {
+		t.Error("FamilyID not preserved")
+	}
+}
+
+func TestLifeEventUpdated_RoundTrip(t *testing.T) {
+	eventID := uuid.New()
+	changes := map[string]any{
+		"place":       "New Location",
+		"description": "Updated description",
+	}
+
+	event := NewLifeEventUpdated(eventID, changes)
+
+	if event.EventType() != "LifeEventUpdated" {
+		t.Errorf("EventType() = %v, want LifeEventUpdated", event.EventType())
+	}
+
+	if event.AggregateID() != eventID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), eventID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded LifeEventUpdated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.EventID != eventID {
+		t.Errorf("EventID = %v, want %v", decoded.EventID, eventID)
+	}
+	if decoded.Changes["place"] != "New Location" {
+		t.Errorf("Changes[place] = %v, want New Location", decoded.Changes["place"])
+	}
+}
+
+func TestLifeEventDeleted_RoundTrip(t *testing.T) {
+	eventID := uuid.New()
+	event := NewLifeEventDeleted(eventID, "Duplicate entry")
+
+	if event.EventType() != "LifeEventDeleted" {
+		t.Errorf("EventType() = %v, want LifeEventDeleted", event.EventType())
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded LifeEventDeleted
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.EventID != eventID {
+		t.Errorf("EventID = %v, want %v", decoded.EventID, eventID)
+	}
+	if decoded.Reason != "Duplicate entry" {
+		t.Errorf("Reason = %v, want Duplicate entry", decoded.Reason)
+	}
+}
+
+func TestAttributeCreatedFromModel_RoundTrip(t *testing.T) {
+	personID := uuid.New()
+	attr := NewAttribute(personID, FactPersonOccupation, "Blacksmith")
+	attr.SetDate("FROM 1850 TO 1875")
+	attr.Place = "Springfield, IL"
+	attr.GedcomXref = "@A1@"
+
+	event := NewAttributeCreatedFromModel(attr)
+
+	// Verify event type
+	if event.EventType() != "AttributeCreated" {
+		t.Errorf("EventType() = %v, want AttributeCreated", event.EventType())
+	}
+
+	// Verify aggregate ID
+	if event.AggregateID() != attr.ID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), attr.ID)
+	}
+
+	// JSON round-trip
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded AttributeCreated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.AttributeID != attr.ID {
+		t.Errorf("AttributeID = %v, want %v", decoded.AttributeID, attr.ID)
+	}
+	if decoded.PersonID != personID {
+		t.Errorf("PersonID = %v, want %v", decoded.PersonID, personID)
+	}
+	if decoded.FactType != FactPersonOccupation {
+		t.Errorf("FactType = %v, want %v", decoded.FactType, FactPersonOccupation)
+	}
+	if decoded.Value != "Blacksmith" {
+		t.Errorf("Value = %v, want Blacksmith", decoded.Value)
+	}
+	if decoded.Place != "Springfield, IL" {
+		t.Errorf("Place = %v, want Springfield, IL", decoded.Place)
+	}
+	if decoded.GedcomXref != "@A1@" {
+		t.Errorf("GedcomXref = %v, want @A1@", decoded.GedcomXref)
+	}
+}
+
+func TestAttributeUpdated_RoundTrip(t *testing.T) {
+	attributeID := uuid.New()
+	changes := map[string]any{
+		"value": "Farmer",
+		"place": "New Location",
+	}
+
+	event := NewAttributeUpdated(attributeID, changes)
+
+	if event.EventType() != "AttributeUpdated" {
+		t.Errorf("EventType() = %v, want AttributeUpdated", event.EventType())
+	}
+
+	if event.AggregateID() != attributeID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), attributeID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded AttributeUpdated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.AttributeID != attributeID {
+		t.Errorf("AttributeID = %v, want %v", decoded.AttributeID, attributeID)
+	}
+	if decoded.Changes["value"] != "Farmer" {
+		t.Errorf("Changes[value] = %v, want Farmer", decoded.Changes["value"])
+	}
+}
+
+func TestAttributeDeleted_RoundTrip(t *testing.T) {
+	attributeID := uuid.New()
+	event := NewAttributeDeleted(attributeID, "No longer valid")
+
+	if event.EventType() != "AttributeDeleted" {
+		t.Errorf("EventType() = %v, want AttributeDeleted", event.EventType())
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded AttributeDeleted
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.AttributeID != attributeID {
+		t.Errorf("AttributeID = %v, want %v", decoded.AttributeID, attributeID)
+	}
+	if decoded.Reason != "No longer valid" {
+		t.Errorf("Reason = %v, want No longer valid", decoded.Reason)
+	}
+}
+
+func TestBaseEvent_OccurredAt(t *testing.T) {
+	event := NewBaseEvent()
+
+	occurredAt := event.OccurredAt()
+	if occurredAt.IsZero() {
+		t.Error("OccurredAt() returned zero time")
+	}
+	if occurredAt != event.Timestamp {
+		t.Errorf("OccurredAt() = %v, want %v", occurredAt, event.Timestamp)
+	}
+}
+
+func TestFamilyUpdated_RoundTrip(t *testing.T) {
+	familyID := uuid.New()
+	changes := map[string]any{
+		"relationship_type": "marriage",
+		"marriage_place":    "New York, NY",
+	}
+
+	event := NewFamilyUpdated(familyID, changes)
+
+	if event.EventType() != "FamilyUpdated" {
+		t.Errorf("EventType() = %v, want FamilyUpdated", event.EventType())
+	}
+
+	if event.AggregateID() != familyID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), familyID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded FamilyUpdated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.FamilyID != familyID {
+		t.Errorf("FamilyID = %v, want %v", decoded.FamilyID, familyID)
+	}
+	if decoded.Changes["relationship_type"] != "marriage" {
+		t.Errorf("Changes[relationship_type] = %v, want marriage", decoded.Changes["relationship_type"])
+	}
+	if decoded.Changes["marriage_place"] != "New York, NY" {
+		t.Errorf("Changes[marriage_place] = %v, want New York, NY", decoded.Changes["marriage_place"])
+	}
+}
+
+func TestFamilyDeleted_RoundTrip(t *testing.T) {
+	familyID := uuid.New()
+	event := NewFamilyDeleted(familyID, "Family dissolved")
+
+	if event.EventType() != "FamilyDeleted" {
+		t.Errorf("EventType() = %v, want FamilyDeleted", event.EventType())
+	}
+
+	if event.AggregateID() != familyID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), familyID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded FamilyDeleted
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.FamilyID != familyID {
+		t.Errorf("FamilyID = %v, want %v", decoded.FamilyID, familyID)
+	}
+	if decoded.Reason != "Family dissolved" {
+		t.Errorf("Reason = %v, want Family dissolved", decoded.Reason)
+	}
+}
+
+func TestMediaCreated_RoundTrip(t *testing.T) {
+	entityID := uuid.New()
+	m := NewMedia("Family Photo 1920", "person", entityID)
+	m.Description = "Family gathering at homestead"
+	m.MimeType = "image/jpeg"
+	m.MediaType = MediaPhoto
+	m.Filename = "family_1920.jpg"
+	m.FileSize = 1024000
+	m.FileData = []byte{0x01, 0x02, 0x03}
+	m.ThumbnailData = []byte{0x04, 0x05}
+	m.GedcomXref = "@M1@"
+
+	event := NewMediaCreated(m)
+
+	if event.EventType() != "MediaCreated" {
+		t.Errorf("EventType() = %v, want MediaCreated", event.EventType())
+	}
+
+	if event.AggregateID() != m.ID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), m.ID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded MediaCreated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.MediaID != m.ID {
+		t.Errorf("MediaID = %v, want %v", decoded.MediaID, m.ID)
+	}
+	if decoded.EntityType != "person" {
+		t.Errorf("EntityType = %v, want person", decoded.EntityType)
+	}
+	if decoded.EntityID != entityID {
+		t.Errorf("EntityID = %v, want %v", decoded.EntityID, entityID)
+	}
+	if decoded.Title != "Family Photo 1920" {
+		t.Errorf("Title = %v, want Family Photo 1920", decoded.Title)
+	}
+	if decoded.Description != "Family gathering at homestead" {
+		t.Errorf("Description = %v, want Family gathering at homestead", decoded.Description)
+	}
+	if decoded.MimeType != "image/jpeg" {
+		t.Errorf("MimeType = %v, want image/jpeg", decoded.MimeType)
+	}
+	if decoded.MediaType != MediaPhoto {
+		t.Errorf("MediaType = %v, want %v", decoded.MediaType, MediaPhoto)
+	}
+	if decoded.Filename != "family_1920.jpg" {
+		t.Errorf("Filename = %v, want family_1920.jpg", decoded.Filename)
+	}
+	if decoded.FileSize != 1024000 {
+		t.Errorf("FileSize = %v, want 1024000", decoded.FileSize)
+	}
+	if decoded.GedcomXref != "@M1@" {
+		t.Errorf("GedcomXref = %v, want @M1@", decoded.GedcomXref)
+	}
+}
+
+func TestMediaUpdated_RoundTrip(t *testing.T) {
+	mediaID := uuid.New()
+	changes := map[string]any{
+		"title":       "Updated Title",
+		"description": "New description",
+	}
+
+	event := NewMediaUpdated(mediaID, changes)
+
+	if event.EventType() != "MediaUpdated" {
+		t.Errorf("EventType() = %v, want MediaUpdated", event.EventType())
+	}
+
+	if event.AggregateID() != mediaID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), mediaID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded MediaUpdated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.MediaID != mediaID {
+		t.Errorf("MediaID = %v, want %v", decoded.MediaID, mediaID)
+	}
+	if decoded.Changes["title"] != "Updated Title" {
+		t.Errorf("Changes[title] = %v, want Updated Title", decoded.Changes["title"])
+	}
+	if decoded.Changes["description"] != "New description" {
+		t.Errorf("Changes[description] = %v, want New description", decoded.Changes["description"])
+	}
+}
+
+func TestMediaDeleted_RoundTrip(t *testing.T) {
+	mediaID := uuid.New()
+	event := NewMediaDeleted(mediaID, "Duplicate file")
+
+	if event.EventType() != "MediaDeleted" {
+		t.Errorf("EventType() = %v, want MediaDeleted", event.EventType())
+	}
+
+	if event.AggregateID() != mediaID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), mediaID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded MediaDeleted
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.MediaID != mediaID {
+		t.Errorf("MediaID = %v, want %v", decoded.MediaID, mediaID)
+	}
+	if decoded.Reason != "Duplicate file" {
+		t.Errorf("Reason = %v, want Duplicate file", decoded.Reason)
+	}
+}
+
+func TestRepositoryCreated_RoundTrip(t *testing.T) {
+	r := NewRepository("National Archives")
+	r.Address = "700 Pennsylvania Avenue NW"
+	r.City = "Washington"
+	r.State = "DC"
+	r.PostalCode = "20408"
+	r.Country = "USA"
+	r.Phone = "202-357-5000"
+	r.Email = "inquire@nara.gov"
+	r.Website = "https://www.archives.gov"
+	r.Notes = "Primary federal archives"
+	r.GedcomXref = "@R1@"
+
+	event := NewRepositoryCreated(r)
+
+	if event.EventType() != "RepositoryCreated" {
+		t.Errorf("EventType() = %v, want RepositoryCreated", event.EventType())
+	}
+
+	if event.AggregateID() != r.ID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), r.ID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded RepositoryCreated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.RepositoryID != r.ID {
+		t.Errorf("RepositoryID = %v, want %v", decoded.RepositoryID, r.ID)
+	}
+	if decoded.Name != "National Archives" {
+		t.Errorf("Name = %v, want National Archives", decoded.Name)
+	}
+	if decoded.Address != "700 Pennsylvania Avenue NW" {
+		t.Errorf("Address = %v, want 700 Pennsylvania Avenue NW", decoded.Address)
+	}
+	if decoded.City != "Washington" {
+		t.Errorf("City = %v, want Washington", decoded.City)
+	}
+	if decoded.State != "DC" {
+		t.Errorf("State = %v, want DC", decoded.State)
+	}
+	if decoded.PostalCode != "20408" {
+		t.Errorf("PostalCode = %v, want 20408", decoded.PostalCode)
+	}
+	if decoded.Country != "USA" {
+		t.Errorf("Country = %v, want USA", decoded.Country)
+	}
+	if decoded.Phone != "202-357-5000" {
+		t.Errorf("Phone = %v, want 202-357-5000", decoded.Phone)
+	}
+	if decoded.Email != "inquire@nara.gov" {
+		t.Errorf("Email = %v, want inquire@nara.gov", decoded.Email)
+	}
+	if decoded.Website != "https://www.archives.gov" {
+		t.Errorf("Website = %v, want https://www.archives.gov", decoded.Website)
+	}
+	if decoded.Notes != "Primary federal archives" {
+		t.Errorf("Notes = %v, want Primary federal archives", decoded.Notes)
+	}
+	if decoded.GedcomXref != "@R1@" {
+		t.Errorf("GedcomXref = %v, want @R1@", decoded.GedcomXref)
+	}
+}
+
+func TestRepositoryUpdated_RoundTrip(t *testing.T) {
+	repositoryID := uuid.New()
+	changes := map[string]any{
+		"name":    "Updated Repository Name",
+		"address": "New Address",
+		"phone":   "555-1234",
+	}
+
+	event := NewRepositoryUpdated(repositoryID, changes)
+
+	if event.EventType() != "RepositoryUpdated" {
+		t.Errorf("EventType() = %v, want RepositoryUpdated", event.EventType())
+	}
+
+	if event.AggregateID() != repositoryID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), repositoryID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded RepositoryUpdated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.RepositoryID != repositoryID {
+		t.Errorf("RepositoryID = %v, want %v", decoded.RepositoryID, repositoryID)
+	}
+	if decoded.Changes["name"] != "Updated Repository Name" {
+		t.Errorf("Changes[name] = %v, want Updated Repository Name", decoded.Changes["name"])
+	}
+	if decoded.Changes["address"] != "New Address" {
+		t.Errorf("Changes[address] = %v, want New Address", decoded.Changes["address"])
+	}
+	if decoded.Changes["phone"] != "555-1234" {
+		t.Errorf("Changes[phone] = %v, want 555-1234", decoded.Changes["phone"])
+	}
+}
+
+func TestRepositoryDeleted_RoundTrip(t *testing.T) {
+	repositoryID := uuid.New()
+	event := NewRepositoryDeleted(repositoryID, "Repository closed")
+
+	if event.EventType() != "RepositoryDeleted" {
+		t.Errorf("EventType() = %v, want RepositoryDeleted", event.EventType())
+	}
+
+	if event.AggregateID() != repositoryID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), repositoryID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded RepositoryDeleted
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.RepositoryID != repositoryID {
+		t.Errorf("RepositoryID = %v, want %v", decoded.RepositoryID, repositoryID)
+	}
+	if decoded.Reason != "Repository closed" {
+		t.Errorf("Reason = %v, want Repository closed", decoded.Reason)
+	}
+}
+
+// Tests for AggregateID methods that were previously uncovered
+func TestEventAggregateIDs(t *testing.T) {
+	tests := []struct {
+		name      string
+		eventFunc func() (Event, uuid.UUID)
+		wantType  string
+	}{
+		{
+			name: "PersonUpdated",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewPersonUpdated(id, nil), id
+			},
+			wantType: "PersonUpdated",
+		},
+		{
+			name: "PersonDeleted",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewPersonDeleted(id, "test"), id
+			},
+			wantType: "PersonDeleted",
+		},
+		{
+			name: "FamilyCreated",
+			eventFunc: func() (Event, uuid.UUID) {
+				p1 := uuid.New()
+				f := NewFamilyWithPartners(&p1, nil)
+				return NewFamilyCreated(f), f.ID
+			},
+			wantType: "FamilyCreated",
+		},
+		{
+			name: "ChildLinkedToFamily",
+			eventFunc: func() (Event, uuid.UUID) {
+				familyID := uuid.New()
+				fc := &FamilyChild{FamilyID: familyID, PersonID: uuid.New()}
+				return NewChildLinkedToFamily(fc), familyID
+			},
+			wantType: "ChildLinkedToFamily",
+		},
+		{
+			name: "ChildUnlinkedFromFamily",
+			eventFunc: func() (Event, uuid.UUID) {
+				familyID := uuid.New()
+				return NewChildUnlinkedFromFamily(familyID, uuid.New()), familyID
+			},
+			wantType: "ChildUnlinkedFromFamily",
+		},
+		{
+			name: "GedcomImported",
+			eventFunc: func() (Event, uuid.UUID) {
+				event := NewGedcomImported("test.ged", 100, 10, 5, nil, nil)
+				return event, event.ImportID
+			},
+			wantType: "GedcomImported",
+		},
+		{
+			name: "SourceUpdated",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewSourceUpdated(id, nil), id
+			},
+			wantType: "SourceUpdated",
+		},
+		{
+			name: "SourceDeleted",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewSourceDeleted(id, "test"), id
+			},
+			wantType: "SourceDeleted",
+		},
+		{
+			name: "CitationUpdated",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewCitationUpdated(id, nil), id
+			},
+			wantType: "CitationUpdated",
+		},
+		{
+			name: "CitationDeleted",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewCitationDeleted(id, "test"), id
+			},
+			wantType: "CitationDeleted",
+		},
+		{
+			name: "LifeEventDeleted",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewLifeEventDeleted(id, "test"), id
+			},
+			wantType: "LifeEventDeleted",
+		},
+		{
+			name: "AttributeDeleted",
+			eventFunc: func() (Event, uuid.UUID) {
+				id := uuid.New()
+				return NewAttributeDeleted(id, "test"), id
+			},
+			wantType: "AttributeDeleted",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event, expectedID := tt.eventFunc()
+
+			if event.EventType() != tt.wantType {
+				t.Errorf("EventType() = %v, want %v", event.EventType(), tt.wantType)
+			}
+
+			if event.AggregateID() != expectedID {
+				t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), expectedID)
+			}
+
+			if event.OccurredAt().IsZero() {
+				t.Error("OccurredAt() returned zero time")
+			}
+		})
+	}
+}

@@ -936,3 +936,481 @@ func TestLinkChild_DefaultRelationType(t *testing.T) {
 		t.Error("Child linked to wrong family")
 	}
 }
+
+func TestLinkChild_ConcurrencyConflict(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent and family
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	child1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child1",
+		Surname:   "Doe",
+	})
+	child2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child2",
+		Surname:   "Doe",
+	})
+
+	// Link first child
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child1.ID,
+	})
+	if err != nil {
+		t.Fatalf("First LinkChild failed: %v", err)
+	}
+
+	// Link second child (should succeed since it uses current version)
+	_, err = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child2.ID,
+	})
+	if err != nil {
+		t.Fatalf("Second LinkChild failed: %v", err)
+	}
+
+	// Verify both children are linked
+	children, _ := readStore.GetChildrenOfFamily(ctx, family.ID)
+	if len(children) != 2 {
+		t.Errorf("Expected 2 children, got %d", len(children))
+	}
+}
+
+func TestUnlinkChild_ConcurrencyConflict(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent, family, and children
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	child1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child1",
+		Surname:   "Doe",
+	})
+	child2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child2",
+		Surname:   "Doe",
+	})
+
+	// Link both children
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child1.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child2.ID,
+	})
+
+	// Unlink first child
+	err := handler.UnlinkChild(ctx, command.UnlinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child1.ID,
+	})
+	if err != nil {
+		t.Fatalf("First UnlinkChild failed: %v", err)
+	}
+
+	// Verify only one child remains
+	children, _ := readStore.GetChildrenOfFamily(ctx, family.ID)
+	if len(children) != 1 {
+		t.Errorf("Expected 1 child after unlink, got %d", len(children))
+	}
+}
+
+func TestCreateFamily_WithRelationshipType(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create persons
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Partner1",
+		Surname:   "Test",
+	})
+	p2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Partner2",
+		Surname:   "Test",
+	})
+
+	// Create family with partnership relationship type
+	result, err := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID:       &p1.ID,
+		Partner2ID:       &p2.ID,
+		RelationshipType: "partnership",
+		MarriageDate:     "ABT 2000",
+		MarriagePlace:    "Somewhere",
+	})
+
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	if result.ID == uuid.Nil {
+		t.Error("Expected non-nil ID")
+	}
+
+	// Verify family in read model
+	family, _ := readStore.GetFamily(ctx, result.ID)
+	if family == nil {
+		t.Fatal("Family not found")
+	}
+}
+
+func TestUpdateFamily_Partner1And2(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create persons
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Partner1",
+		Surname:   "Test",
+	})
+	p2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Partner2",
+		Surname:   "Test",
+	})
+	p3, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Partner3",
+		Surname:   "New",
+	})
+
+	// Create family with one partner
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+
+	// Update to add partner2 and change partner1
+	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:         createResult.ID,
+		Partner1ID: &p3.ID,
+		Partner2ID: &p2.ID,
+		Version:    createResult.Version,
+	})
+
+	if err != nil {
+		t.Fatalf("UpdateFamily failed: %v", err)
+	}
+	if updateResult.Version != 2 {
+		t.Errorf("Version = %d, want 2", updateResult.Version)
+	}
+}
+
+func TestIsAncestor_Partner2Path(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create grandparent, parent1, parent2, and child
+	grandparent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Grandparent",
+		Surname:   "Test",
+	})
+	parent1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent1",
+		Surname:   "Test",
+	})
+	parent2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent2",
+		Surname:   "Other",
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Test",
+	})
+
+	// Create grandparent family with parent2 as partner2
+	gpFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &grandparent.ID,
+		Partner2ID: &parent2.ID,
+	})
+	// Link parent1 as child of grandparent family
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: gpFamily.ID,
+		ChildID:  parent1.ID,
+	})
+
+	// Create parent family
+	parentFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent1.ID,
+	})
+	// Link child
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: parentFamily.ID,
+		ChildID:  child.ID,
+	})
+
+	// Now try to make child a parent of grandparent (circular through partner2 path)
+	childFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &child.ID,
+	})
+	// This should fail - child can't be parent of grandparent
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: childFamily.ID,
+		ChildID:  grandparent.ID,
+	})
+
+	if err != command.ErrCircularAncestry {
+		t.Errorf("Expected ErrCircularAncestry, got %v", err)
+	}
+}
+
+func TestIsAncestor_SamePersonCheck(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create a person
+	person, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Self",
+		Surname:   "Test",
+	})
+
+	// Create a family with this person as a partner
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &person.ID,
+	})
+
+	// Try to link the person as their own child (should fail)
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  person.ID,
+	})
+
+	// This should fail because person == person (same ID check in isAncestor)
+	if err != command.ErrCircularAncestry {
+		t.Errorf("Expected ErrCircularAncestry when linking person as own child, got %v", err)
+	}
+}
+
+func TestIsAncestor_NoParentFamily(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create two persons with no parent families
+	person1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Person1",
+		Surname:   "Test",
+	})
+	person2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Person2",
+		Surname:   "Test",
+	})
+
+	// Create a family with person1 as partner
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &person1.ID,
+	})
+
+	// Link person2 as child (should succeed - no ancestry to check)
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  person2.ID,
+	})
+
+	if err != nil {
+		t.Fatalf("LinkChild failed: %v", err)
+	}
+}
+
+func TestIsAncestor_DeepAncestryCheck(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create a deep ancestry chain: ggp -> gp -> parent -> child
+	ggp, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "GreatGrandparent",
+		Surname:   "Test",
+	})
+	gp, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Grandparent",
+		Surname:   "Test",
+	})
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Test",
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Test",
+	})
+
+	// ggp -> gp
+	ggpFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &ggp.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: ggpFamily.ID,
+		ChildID:  gp.ID,
+	})
+
+	// gp -> parent
+	gpFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &gp.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: gpFamily.ID,
+		ChildID:  parent.ID,
+	})
+
+	// parent -> child
+	parentFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: parentFamily.ID,
+		ChildID:  child.ID,
+	})
+
+	// Now try to make child a parent of ggp (circular across 4 generations)
+	childFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &child.ID,
+	})
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: childFamily.ID,
+		ChildID:  ggp.ID,
+	})
+
+	if err != command.ErrCircularAncestry {
+		t.Errorf("Expected ErrCircularAncestry for deep ancestry, got %v", err)
+	}
+}
+
+func TestCircularAncestryDetection_WithBothPartners(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create grandparent, two parents, and a child
+	grandparent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Grandparent",
+		Surname:   "Test",
+	})
+	parent1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent1",
+		Surname:   "Test",
+	})
+	parent2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent2",
+		Surname:   "Test",
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Test",
+	})
+
+	// grandparent -> parent1
+	gpFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &grandparent.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: gpFamily.ID,
+		ChildID:  parent1.ID,
+	})
+
+	// parent1 + parent2 -> child
+	parentFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent1.ID,
+		Partner2ID: &parent2.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: parentFamily.ID,
+		ChildID:  child.ID,
+	})
+
+	// Now try to make child a parent of parent2 (circular via Partner2)
+	childFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &child.ID,
+	})
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: childFamily.ID,
+		ChildID:  parent2.ID,
+	})
+
+	if err != command.ErrCircularAncestry {
+		t.Errorf("Expected ErrCircularAncestry for Partner2 path, got %v", err)
+	}
+}
+
+func TestCircularAncestryDetection_ThroughPartner2Ancestry(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create persons: gp -> parent2, parent1 + parent2 -> child
+	// Then try to make child a parent of gp via the Partner2 ancestry chain
+	gp, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "GP",
+		Surname:   "Test",
+	})
+	parent1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent1",
+		Surname:   "Test",
+	})
+	parent2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent2",
+		Surname:   "Test",
+	})
+	child, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child",
+		Surname:   "Test",
+	})
+
+	// gp -> parent2
+	gpFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &gp.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: gpFamily.ID,
+		ChildID:  parent2.ID,
+	})
+
+	// parent1 + parent2 -> child
+	parentFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent1.ID,
+		Partner2ID: &parent2.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: parentFamily.ID,
+		ChildID:  child.ID,
+	})
+
+	// Now try to make child's family and add gp as child (circular through parent2's ancestry)
+	childFamily, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &child.ID,
+	})
+	_, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: childFamily.ID,
+		ChildID:  gp.ID,
+	})
+
+	if err != command.ErrCircularAncestry {
+		t.Errorf("Expected ErrCircularAncestry through Partner2's ancestry, got %v", err)
+	}
+}

@@ -342,6 +342,7 @@ func TestFactType_IsValid(t *testing.T) {
 		factType FactType
 		want     bool
 	}{
+		// Core person facts
 		{
 			name:     "person_birth is valid",
 			factType: FactPersonBirth,
@@ -362,6 +363,79 @@ func TestFactType_IsValid(t *testing.T) {
 			factType: FactPersonGender,
 			want:     true,
 		},
+		// Individual life events
+		{
+			name:     "person_burial is valid",
+			factType: FactPersonBurial,
+			want:     true,
+		},
+		{
+			name:     "person_cremation is valid",
+			factType: FactPersonCremation,
+			want:     true,
+		},
+		{
+			name:     "person_baptism is valid",
+			factType: FactPersonBaptism,
+			want:     true,
+		},
+		{
+			name:     "person_christening is valid",
+			factType: FactPersonChristening,
+			want:     true,
+		},
+		{
+			name:     "person_emigration is valid",
+			factType: FactPersonEmigration,
+			want:     true,
+		},
+		{
+			name:     "person_immigration is valid",
+			factType: FactPersonImmigration,
+			want:     true,
+		},
+		{
+			name:     "person_naturalization is valid",
+			factType: FactPersonNaturalization,
+			want:     true,
+		},
+		{
+			name:     "person_census is valid",
+			factType: FactPersonCensus,
+			want:     true,
+		},
+		{
+			name:     "person_generic_event is valid",
+			factType: FactPersonGenericEvent,
+			want:     true,
+		},
+		// Individual attributes
+		{
+			name:     "person_occupation is valid",
+			factType: FactPersonOccupation,
+			want:     true,
+		},
+		{
+			name:     "person_residence is valid",
+			factType: FactPersonResidence,
+			want:     true,
+		},
+		{
+			name:     "person_education is valid",
+			factType: FactPersonEducation,
+			want:     true,
+		},
+		{
+			name:     "person_religion is valid",
+			factType: FactPersonReligion,
+			want:     true,
+		},
+		{
+			name:     "person_title is valid",
+			factType: FactPersonTitle,
+			want:     true,
+		},
+		// Core family facts
 		{
 			name:     "family_marriage is valid",
 			factType: FactFamilyMarriage,
@@ -370,6 +444,37 @@ func TestFactType_IsValid(t *testing.T) {
 		{
 			name:     "family_divorce is valid",
 			factType: FactFamilyDivorce,
+			want:     true,
+		},
+		// Family events
+		{
+			name:     "family_marriage_bann is valid",
+			factType: FactFamilyMarriageBann,
+			want:     true,
+		},
+		{
+			name:     "family_marriage_contract is valid",
+			factType: FactFamilyMarriageContract,
+			want:     true,
+		},
+		{
+			name:     "family_marriage_license is valid",
+			factType: FactFamilyMarriageLicense,
+			want:     true,
+		},
+		{
+			name:     "family_marriage_settlement is valid",
+			factType: FactFamilyMarriageSettlement,
+			want:     true,
+		},
+		{
+			name:     "family_annulment is valid",
+			factType: FactFamilyAnnulment,
+			want:     true,
+		},
+		{
+			name:     "family_engagement is valid",
+			factType: FactFamilyEngagement,
 			want:     true,
 		},
 		{

@@ -22,6 +22,8 @@ type ReadModelStore struct {
 	sources        map[uuid.UUID]*repository.SourceReadModel
 	citations      map[uuid.UUID]*repository.CitationReadModel
 	media          map[uuid.UUID]*repository.MediaReadModel
+	events         map[uuid.UUID]*repository.EventReadModel
+	attributes     map[uuid.UUID]*repository.AttributeReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -34,6 +36,8 @@ func NewReadModelStore() *ReadModelStore {
 		sources:        make(map[uuid.UUID]*repository.SourceReadModel),
 		citations:      make(map[uuid.UUID]*repository.CitationReadModel),
 		media:          make(map[uuid.UUID]*repository.MediaReadModel),
+		events:         make(map[uuid.UUID]*repository.EventReadModel),
+		attributes:     make(map[uuid.UUID]*repository.AttributeReadModel),
 	}
 }
 
@@ -356,6 +360,9 @@ func (s *ReadModelStore) Reset() {
 	s.pedigreeEdges = make(map[uuid.UUID]*repository.PedigreeEdge)
 	s.sources = make(map[uuid.UUID]*repository.SourceReadModel)
 	s.citations = make(map[uuid.UUID]*repository.CitationReadModel)
+	s.media = make(map[uuid.UUID]*repository.MediaReadModel)
+	s.events = make(map[uuid.UUID]*repository.EventReadModel)
+	s.attributes = make(map[uuid.UUID]*repository.AttributeReadModel)
 }
 
 // GetSource retrieves a source by ID.
@@ -616,5 +623,111 @@ func (s *ReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) error {
 	defer s.mu.Unlock()
 
 	delete(s.media, id)
+	return nil
+}
+
+// GetEvent retrieves an event by ID.
+func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	e, exists := s.events[id]
+	if !exists {
+		return nil, nil
+	}
+	eventCopy := *e
+	return &eventCopy, nil
+}
+
+// ListEventsForPerson returns all events for a person.
+func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EventReadModel
+	for _, e := range s.events {
+		if e.OwnerType == "person" && e.OwnerID == personID {
+			results = append(results, *e)
+		}
+	}
+	return results, nil
+}
+
+// ListEventsForFamily returns all events for a family.
+func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EventReadModel
+	for _, e := range s.events {
+		if e.OwnerType == "family" && e.OwnerID == familyID {
+			results = append(results, *e)
+		}
+	}
+	return results, nil
+}
+
+// SaveEvent saves or updates an event.
+func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	eventCopy := *event
+	s.events[event.ID] = &eventCopy
+	return nil
+}
+
+// DeleteEvent removes an event.
+func (s *ReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.events, id)
+	return nil
+}
+
+// GetAttribute retrieves an attribute by ID.
+func (s *ReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	a, exists := s.attributes[id]
+	if !exists {
+		return nil, nil
+	}
+	attrCopy := *a
+	return &attrCopy, nil
+}
+
+// ListAttributesForPerson returns all attributes for a person.
+func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.AttributeReadModel
+	for _, a := range s.attributes {
+		if a.PersonID == personID {
+			results = append(results, *a)
+		}
+	}
+	return results, nil
+}
+
+// SaveAttribute saves or updates an attribute.
+func (s *ReadModelStore) SaveAttribute(ctx context.Context, attribute *repository.AttributeReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	attrCopy := *attribute
+	s.attributes[attribute.ID] = &attrCopy
+	return nil
+}
+
+// DeleteAttribute removes an attribute.
+func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.attributes, id)
 	return nil
 }

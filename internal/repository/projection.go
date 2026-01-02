@@ -61,6 +61,14 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectMediaUpdated(ctx, e, version)
 	case domain.MediaDeleted:
 		return p.projectMediaDeleted(ctx, e)
+	case domain.LifeEventCreated:
+		return p.projectLifeEventCreated(ctx, e, version)
+	case domain.LifeEventDeleted:
+		return p.projectLifeEventDeleted(ctx, e)
+	case domain.AttributeCreated:
+		return p.projectAttributeCreated(ctx, e, version)
+	case domain.AttributeDeleted:
+		return p.projectAttributeDeleted(ctx, e)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
@@ -712,4 +720,80 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 
 func (p *Projector) projectMediaDeleted(ctx context.Context, e domain.MediaDeleted) error {
 	return p.readStore.DeleteMedia(ctx, e.MediaID)
+}
+
+func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEventCreated, version int64) error {
+	var dateSort *time.Time
+	var dateRaw string
+
+	if e.Date != nil {
+		dateRaw = e.Date.Raw
+		t := e.Date.ToTime()
+		if !t.IsZero() {
+			dateSort = &t
+		}
+	}
+
+	// Derive owner type and ID from PersonID/FamilyID
+	var ownerType string
+	var ownerID uuid.UUID
+	if e.PersonID != nil {
+		ownerType = "person"
+		ownerID = *e.PersonID
+	} else if e.FamilyID != nil {
+		ownerType = "family"
+		ownerID = *e.FamilyID
+	}
+
+	event := &EventReadModel{
+		ID:          e.EventID,
+		OwnerType:   ownerType,
+		OwnerID:     ownerID,
+		FactType:    e.FactType,
+		DateRaw:     dateRaw,
+		DateSort:    dateSort,
+		Place:       e.Place,
+		Description: e.Description,
+		Cause:       e.Cause,
+		Age:         e.Age,
+		Version:     version,
+		CreatedAt:   e.OccurredAt(),
+	}
+
+	return p.readStore.SaveEvent(ctx, event)
+}
+
+func (p *Projector) projectLifeEventDeleted(ctx context.Context, e domain.LifeEventDeleted) error {
+	return p.readStore.DeleteEvent(ctx, e.EventID)
+}
+
+func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.AttributeCreated, version int64) error {
+	var dateSort *time.Time
+	var dateRaw string
+
+	if e.Date != nil {
+		dateRaw = e.Date.Raw
+		t := e.Date.ToTime()
+		if !t.IsZero() {
+			dateSort = &t
+		}
+	}
+
+	attribute := &AttributeReadModel{
+		ID:        e.AttributeID,
+		PersonID:  e.PersonID,
+		FactType:  e.FactType,
+		Value:     e.Value,
+		DateRaw:   dateRaw,
+		DateSort:  dateSort,
+		Place:     e.Place,
+		Version:   version,
+		CreatedAt: e.OccurredAt(),
+	}
+
+	return p.readStore.SaveAttribute(ctx, attribute)
+}
+
+func (p *Projector) projectAttributeDeleted(ctx context.Context, e domain.AttributeDeleted) error {
+	return p.readStore.DeleteAttribute(ctx, e.AttributeID)
 }

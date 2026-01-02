@@ -56,7 +56,7 @@ func TestIntegration_ImportExportRoundTrip(t *testing.T) {
 
 			// Import
 			importer := gedcom.NewImporter()
-			result, persons, families, _, _, _, err := importer.Import(ctx, bytes.NewReader(data))
+			result, persons, families, _, _, _, _, _, err := importer.Import(ctx, bytes.NewReader(data))
 			if err != nil {
 				t.Fatalf("Import failed: %v", err)
 			}
@@ -156,7 +156,7 @@ func TestIntegration_LargeFile(t *testing.T) {
 
 	ctx := context.Background()
 	importer := gedcom.NewImporter()
-	result, persons, families, _, _, _, err := importer.Import(ctx, bytes.NewReader(data))
+	result, persons, families, _, _, _, _, _, err := importer.Import(ctx, bytes.NewReader(data))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}

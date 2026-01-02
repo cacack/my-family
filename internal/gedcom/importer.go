@@ -24,6 +24,8 @@ type ImportResult struct {
 	CitationsImported    int
 	MediaImported        int
 	RepositoriesImported int
+	EventsImported       int
+	AttributesImported   int
 	Warnings             []string
 	Errors               []string
 
@@ -123,6 +125,29 @@ type MediaData struct {
 	Description string
 }
 
+// EventData contains parsed life event data ready for creation.
+type EventData struct {
+	ID          uuid.UUID
+	OwnerType   string // "person" or "family"
+	OwnerID     uuid.UUID
+	FactType    domain.FactType
+	Date        string
+	Place       string
+	Description string
+	Cause       string // For death/burial events
+	Age         string // Age at event
+}
+
+// AttributeData contains parsed attribute data ready for creation.
+type AttributeData struct {
+	ID       uuid.UUID
+	PersonID uuid.UUID
+	FactType domain.FactType
+	Value    string
+	Date     string
+	Place    string
+}
+
 // Importer handles GEDCOM file parsing and conversion to domain events.
 type Importer struct{}
 
@@ -132,7 +157,7 @@ func NewImporter() *Importer {
 }
 
 // Import parses a GEDCOM file and returns structured data for import.
-func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, []RepositoryData, error) {
+func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, []RepositoryData, []EventData, []AttributeData, error) {
 	result := &ImportResult{
 		PersonXrefToID:     make(map[string]uuid.UUID),
 		FamilyXrefToID:     make(map[string]uuid.UUID),
@@ -148,7 +173,7 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 
 	doc, err := decoder.DecodeWithOptions(reader, opts)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
 	}
 
 	// Run gedcom-go validation to catch structural issues
@@ -178,6 +203,8 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 	// Third pass: create person mappings
 	var persons []PersonData
 	var citations []CitationData
+	var events []EventData
+	var attributes []AttributeData
 	for _, indi := range doc.Individuals() {
 		person := parseIndividual(indi, doc, result)
 		persons = append(persons, person)
@@ -186,6 +213,14 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		// Extract citations from person events
 		personCitations := extractCitationsFromIndividual(indi, person.ID, result)
 		citations = append(citations, personCitations...)
+
+		// Extract life events from individual
+		personEvents := extractEventsFromIndividual(indi, person.ID)
+		events = append(events, personEvents...)
+
+		// Extract attributes from individual
+		personAttributes := extractAttributesFromIndividual(indi, person.ID)
+		attributes = append(attributes, personAttributes...)
 	}
 
 	// Fourth pass: create family mappings and resolve person references
@@ -198,6 +233,10 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		// Extract citations from family events
 		familyCitations := extractCitationsFromFamily(fam, family.ID, result)
 		citations = append(citations, familyCitations...)
+
+		// Extract life events from family
+		familyEvents := extractEventsFromFamily(fam, family.ID)
+		events = append(events, familyEvents...)
 	}
 
 	result.PersonsImported = len(persons)
@@ -205,8 +244,10 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 	result.SourcesImported = len(sources)
 	result.CitationsImported = len(citations)
 	result.RepositoriesImported = len(repositories)
+	result.EventsImported = len(events)
+	result.AttributesImported = len(attributes)
 
-	return result, persons, families, sources, citations, repositories, nil
+	return result, persons, families, sources, citations, repositories, events, attributes, nil
 }
 
 // parseIndividual converts a GEDCOM individual record to PersonData.
@@ -497,8 +538,28 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 			factType = domain.FactPersonBirth
 		case gedcom.EventDeath:
 			factType = domain.FactPersonDeath
+		case gedcom.EventBurial:
+			factType = domain.FactPersonBurial
+		case gedcom.EventCremation:
+			factType = domain.FactPersonCremation
+		case gedcom.EventBaptism:
+			factType = domain.FactPersonBaptism
+		case gedcom.EventChristening:
+			factType = domain.FactPersonChristening
+		case gedcom.EventEmigration:
+			factType = domain.FactPersonEmigration
+		case gedcom.EventImmigration:
+			factType = domain.FactPersonImmigration
+		case gedcom.EventNaturalization:
+			factType = domain.FactPersonNaturalization
+		case gedcom.EventCensus:
+			factType = domain.FactPersonCensus
+		case gedcom.EventOccupation:
+			factType = domain.FactPersonOccupation
+		case gedcom.EventResidence:
+			factType = domain.FactPersonResidence
 		default:
-			continue // Skip events we don't track citations for
+			factType = domain.FactPersonGenericEvent
 		}
 
 		for _, srcCit := range event.SourceCitations {
@@ -538,6 +599,18 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, result *
 			factType = domain.FactFamilyMarriage
 		case gedcom.EventDivorce:
 			factType = domain.FactFamilyDivorce
+		case gedcom.EventMarriageBann:
+			factType = domain.FactFamilyMarriageBann
+		case gedcom.EventMarriageContract:
+			factType = domain.FactFamilyMarriageContract
+		case gedcom.EventMarriageLicense:
+			factType = domain.FactFamilyMarriageLicense
+		case gedcom.EventMarriageSettlement:
+			factType = domain.FactFamilyMarriageSettlement
+		case gedcom.EventAnnulment:
+			factType = domain.FactFamilyAnnulment
+		case gedcom.EventEngagement:
+			factType = domain.FactFamilyEngagement
 		default:
 			continue // Skip events we don't track citations for
 		}
@@ -594,4 +667,169 @@ func ValidateImportData(persons []PersonData, families []FamilyData) error {
 		return errors.New("GEDCOM file contains no individuals or families")
 	}
 	return nil
+}
+
+// extractEventsFromIndividual extracts all life events from an individual.
+// Birth and Death are excluded as they are stored on Person directly.
+func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []EventData {
+	var events []EventData
+
+	for _, event := range indi.Events {
+		var factType domain.FactType
+		switch event.Type {
+		case gedcom.EventBirth, gedcom.EventDeath:
+			// Birth and death are stored on Person entity, skip
+			continue
+		case gedcom.EventBurial:
+			factType = domain.FactPersonBurial
+		case gedcom.EventCremation:
+			factType = domain.FactPersonCremation
+		case gedcom.EventBaptism:
+			factType = domain.FactPersonBaptism
+		case gedcom.EventChristening:
+			factType = domain.FactPersonChristening
+		case gedcom.EventEmigration:
+			factType = domain.FactPersonEmigration
+		case gedcom.EventImmigration:
+			factType = domain.FactPersonImmigration
+		case gedcom.EventNaturalization:
+			factType = domain.FactPersonNaturalization
+		case gedcom.EventCensus:
+			factType = domain.FactPersonCensus
+		default:
+			// Generic event for unrecognized types
+			factType = domain.FactPersonGenericEvent
+		}
+
+		eventData := EventData{
+			ID:          uuid.New(),
+			OwnerType:   "person",
+			OwnerID:     personID,
+			FactType:    factType,
+			Date:        event.Date,
+			Place:       event.Place,
+			Description: event.Description,
+			Cause:       event.Cause,
+			Age:         event.Age,
+		}
+		events = append(events, eventData)
+	}
+
+	return events
+}
+
+// extractAttributesFromIndividual extracts all attributes from an individual.
+func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []AttributeData {
+	var attributes []AttributeData
+
+	for _, event := range indi.Events {
+		var factType domain.FactType
+		var value string
+
+		switch event.Type {
+		case gedcom.EventOccupation:
+			factType = domain.FactPersonOccupation
+			value = event.Description
+		case gedcom.EventResidence:
+			factType = domain.FactPersonResidence
+			value = event.Place // For residence, place is the value
+		default:
+			// Not an attribute type, skip
+			continue
+		}
+
+		attr := AttributeData{
+			ID:       uuid.New(),
+			PersonID: personID,
+			FactType: factType,
+			Value:    value,
+			Date:     event.Date,
+			Place:    event.Place,
+		}
+		attributes = append(attributes, attr)
+	}
+
+	// Also check for attribute-specific tags that might be on individual directly
+	// Note: These are top-level tags that may not have DATE/PLAC subordinates accessible
+	for _, tag := range indi.Tags {
+		var factType domain.FactType
+		var value string
+
+		switch tag.Tag {
+		case "OCCU":
+			factType = domain.FactPersonOccupation
+			value = tag.Value
+		case "EDUC":
+			factType = domain.FactPersonEducation
+			value = tag.Value
+		case "RELI":
+			factType = domain.FactPersonReligion
+			value = tag.Value
+		case "TITL":
+			factType = domain.FactPersonTitle
+			value = tag.Value
+		default:
+			continue
+		}
+
+		if value == "" {
+			continue
+		}
+
+		attr := AttributeData{
+			ID:       uuid.New(),
+			PersonID: personID,
+			FactType: factType,
+			Value:    value,
+		}
+
+		attributes = append(attributes, attr)
+	}
+
+	return attributes
+}
+
+// extractEventsFromFamily extracts all life events from a family.
+// Marriage is excluded as it is stored on Family directly.
+func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData {
+	var events []EventData
+
+	for _, event := range fam.Events {
+		var factType domain.FactType
+		switch event.Type {
+		case gedcom.EventMarriage:
+			// Marriage is stored on Family entity, skip
+			continue
+		case gedcom.EventDivorce:
+			factType = domain.FactFamilyDivorce
+		case gedcom.EventMarriageBann:
+			factType = domain.FactFamilyMarriageBann
+		case gedcom.EventMarriageContract:
+			factType = domain.FactFamilyMarriageContract
+		case gedcom.EventMarriageLicense:
+			factType = domain.FactFamilyMarriageLicense
+		case gedcom.EventMarriageSettlement:
+			factType = domain.FactFamilyMarriageSettlement
+		case gedcom.EventAnnulment:
+			factType = domain.FactFamilyAnnulment
+		case gedcom.EventEngagement:
+			factType = domain.FactFamilyEngagement
+		default:
+			// Skip unrecognized family event types
+			continue
+		}
+
+		eventData := EventData{
+			ID:          uuid.New(),
+			OwnerType:   "family",
+			OwnerID:     familyID,
+			FactType:    factType,
+			Date:        event.Date,
+			Place:       event.Place,
+			Description: event.Description,
+		}
+		events = append(events, eventData)
+	}
+
+	return events
 }

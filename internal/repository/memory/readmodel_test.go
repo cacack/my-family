@@ -1971,3 +1971,644 @@ func TestReadModelStore_GetMedia_NotFound(t *testing.T) {
 		t.Error("GetMediaWithData() for non-existent should return nil")
 	}
 }
+
+// Event CRUD operations
+
+func TestReadModelStore_SaveAndGetEvent(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	event := &repository.EventReadModel{
+		ID:          uuid.New(),
+		OwnerType:   "person",
+		OwnerID:     personID,
+		FactType:    domain.FactPersonBurial,
+		DateRaw:     "15 JAN 1920",
+		Place:       "Springfield Cemetery, IL",
+		Description: "Burial service",
+		Cause:       "Natural causes",
+		Version:     1,
+		CreatedAt:   time.Now(),
+	}
+
+	// Save event
+	err := store.SaveEvent(ctx, event)
+	if err != nil {
+		t.Fatalf("SaveEvent() failed: %v", err)
+	}
+
+	// Get event
+	retrieved, err := store.GetEvent(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("GetEvent() failed: %v", err)
+	}
+
+	if retrieved == nil {
+		t.Fatal("GetEvent() returned nil")
+	}
+
+	// Verify fields
+	if retrieved.ID != event.ID {
+		t.Errorf("ID = %v, want %v", retrieved.ID, event.ID)
+	}
+	if retrieved.OwnerType != "person" {
+		t.Errorf("OwnerType = %s, want person", retrieved.OwnerType)
+	}
+	if retrieved.OwnerID != personID {
+		t.Errorf("OwnerID = %v, want %v", retrieved.OwnerID, personID)
+	}
+	if retrieved.FactType != domain.FactPersonBurial {
+		t.Errorf("FactType = %s, want %s", retrieved.FactType, domain.FactPersonBurial)
+	}
+	if retrieved.DateRaw != "15 JAN 1920" {
+		t.Errorf("DateRaw = %s, want 15 JAN 1920", retrieved.DateRaw)
+	}
+	if retrieved.Place != "Springfield Cemetery, IL" {
+		t.Errorf("Place = %s, want Springfield Cemetery, IL", retrieved.Place)
+	}
+	if retrieved.Cause != "Natural causes" {
+		t.Errorf("Cause = %s, want Natural causes", retrieved.Cause)
+	}
+}
+
+func TestReadModelStore_GetEventNonExistent(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	nonExistentID := uuid.New()
+
+	retrieved, err := store.GetEvent(ctx, nonExistentID)
+	if err != nil {
+		t.Fatalf("GetEvent() failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetEvent() for non-existent ID = %v, want nil", retrieved)
+	}
+}
+
+func TestReadModelStore_ListEventsForPerson(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	otherPersonID := uuid.New()
+
+	// Create events for person
+	events := []*repository.EventReadModel{
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBurial,
+			DateRaw:   "15 JAN 1920",
+			Place:     "Springfield Cemetery",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBaptism,
+			DateRaw:   "1 FEB 1850",
+			Place:     "First Church",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   otherPersonID,
+			FactType:  domain.FactPersonBurial,
+			DateRaw:   "20 MAR 1925",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+	}
+
+	for _, e := range events {
+		err := store.SaveEvent(ctx, e)
+		if err != nil {
+			t.Fatalf("SaveEvent() failed: %v", err)
+		}
+	}
+
+	// List events for person
+	results, err := store.ListEventsForPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("ListEventsForPerson() failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("len(results) = %d, want 2", len(results))
+	}
+
+	// Verify all returned events belong to the person
+	for _, e := range results {
+		if e.OwnerID != personID {
+			t.Errorf("Event OwnerID = %v, want %v", e.OwnerID, personID)
+		}
+	}
+}
+
+func TestReadModelStore_ListEventsForFamily(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	familyID := uuid.New()
+	otherFamilyID := uuid.New()
+
+	// Create events for family
+	events := []*repository.EventReadModel{
+		{
+			ID:        uuid.New(),
+			OwnerType: "family",
+			OwnerID:   familyID,
+			FactType:  domain.FactFamilyMarriageBann,
+			DateRaw:   "1 JUN 1875",
+			Place:     "Springfield Church",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "family",
+			OwnerID:   familyID,
+			FactType:  domain.FactFamilyAnnulment,
+			DateRaw:   "1 JAN 1890",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "family",
+			OwnerID:   otherFamilyID,
+			FactType:  domain.FactFamilyEngagement,
+			DateRaw:   "15 MAR 1880",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+	}
+
+	for _, e := range events {
+		err := store.SaveEvent(ctx, e)
+		if err != nil {
+			t.Fatalf("SaveEvent() failed: %v", err)
+		}
+	}
+
+	// List events for family
+	results, err := store.ListEventsForFamily(ctx, familyID)
+	if err != nil {
+		t.Fatalf("ListEventsForFamily() failed: %v", err)
+	}
+
+	if len(results) != 2 {
+		t.Errorf("len(results) = %d, want 2", len(results))
+	}
+
+	// Verify all returned events belong to the family
+	for _, e := range results {
+		if e.OwnerID != familyID {
+			t.Errorf("Event OwnerID = %v, want %v", e.OwnerID, familyID)
+		}
+	}
+}
+
+func TestReadModelStore_UpdateEvent(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	eventID := uuid.New()
+	event := &repository.EventReadModel{
+		ID:        eventID,
+		OwnerType: "person",
+		OwnerID:   uuid.New(),
+		FactType:  domain.FactPersonBurial,
+		DateRaw:   "15 JAN 1920",
+		Place:     "Old Cemetery",
+		Version:   1,
+		CreatedAt: time.Now(),
+	}
+
+	// Save initial version
+	err := store.SaveEvent(ctx, event)
+	if err != nil {
+		t.Fatalf("SaveEvent() failed: %v", err)
+	}
+
+	// Update event
+	event.Place = "New Cemetery"
+	event.Version = 2
+
+	err = store.SaveEvent(ctx, event)
+	if err != nil {
+		t.Fatalf("SaveEvent() update failed: %v", err)
+	}
+
+	// Retrieve and verify update
+	retrieved, err := store.GetEvent(ctx, eventID)
+	if err != nil {
+		t.Fatalf("GetEvent() failed: %v", err)
+	}
+
+	if retrieved.Place != "New Cemetery" {
+		t.Errorf("Place = %s, want New Cemetery", retrieved.Place)
+	}
+	if retrieved.Version != 2 {
+		t.Errorf("Version = %d, want 2", retrieved.Version)
+	}
+}
+
+func TestReadModelStore_DeleteEvent(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   uuid.New(),
+		FactType:  domain.FactPersonBurial,
+		Version:   1,
+		CreatedAt: time.Now(),
+	}
+
+	// Save event
+	err := store.SaveEvent(ctx, event)
+	if err != nil {
+		t.Fatalf("SaveEvent() failed: %v", err)
+	}
+
+	// Delete event
+	err = store.DeleteEvent(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("DeleteEvent() failed: %v", err)
+	}
+
+	// Verify event is deleted
+	retrieved, err := store.GetEvent(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("GetEvent() after delete failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetEvent() after delete = %v, want nil", retrieved)
+	}
+}
+
+// Attribute CRUD operations
+
+func TestReadModelStore_SaveAndGetAttribute(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	attribute := &repository.AttributeReadModel{
+		ID:        uuid.New(),
+		PersonID:  personID,
+		FactType:  domain.FactPersonOccupation,
+		Value:     "Blacksmith",
+		DateRaw:   "1880",
+		Place:     "Springfield, IL",
+		Version:   1,
+		CreatedAt: time.Now(),
+	}
+
+	// Save attribute
+	err := store.SaveAttribute(ctx, attribute)
+	if err != nil {
+		t.Fatalf("SaveAttribute() failed: %v", err)
+	}
+
+	// Get attribute
+	retrieved, err := store.GetAttribute(ctx, attribute.ID)
+	if err != nil {
+		t.Fatalf("GetAttribute() failed: %v", err)
+	}
+
+	if retrieved == nil {
+		t.Fatal("GetAttribute() returned nil")
+	}
+
+	// Verify fields
+	if retrieved.ID != attribute.ID {
+		t.Errorf("ID = %v, want %v", retrieved.ID, attribute.ID)
+	}
+	if retrieved.PersonID != personID {
+		t.Errorf("PersonID = %v, want %v", retrieved.PersonID, personID)
+	}
+	if retrieved.FactType != domain.FactPersonOccupation {
+		t.Errorf("FactType = %s, want %s", retrieved.FactType, domain.FactPersonOccupation)
+	}
+	if retrieved.Value != "Blacksmith" {
+		t.Errorf("Value = %s, want Blacksmith", retrieved.Value)
+	}
+	if retrieved.DateRaw != "1880" {
+		t.Errorf("DateRaw = %s, want 1880", retrieved.DateRaw)
+	}
+	if retrieved.Place != "Springfield, IL" {
+		t.Errorf("Place = %s, want Springfield, IL", retrieved.Place)
+	}
+}
+
+func TestReadModelStore_GetAttributeNonExistent(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	nonExistentID := uuid.New()
+
+	retrieved, err := store.GetAttribute(ctx, nonExistentID)
+	if err != nil {
+		t.Fatalf("GetAttribute() failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetAttribute() for non-existent ID = %v, want nil", retrieved)
+	}
+}
+
+func TestReadModelStore_ListAttributesForPerson(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	otherPersonID := uuid.New()
+
+	// Create attributes for person
+	attributes := []*repository.AttributeReadModel{
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			FactType:  domain.FactPersonOccupation,
+			Value:     "Blacksmith",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			FactType:  domain.FactPersonResidence,
+			Value:     "123 Main St",
+			DateRaw:   "1880",
+			Place:     "Springfield, IL",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			FactType:  domain.FactPersonEducation,
+			Value:     "Grammar School",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			PersonID:  otherPersonID,
+			FactType:  domain.FactPersonOccupation,
+			Value:     "Farmer",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+	}
+
+	for _, a := range attributes {
+		err := store.SaveAttribute(ctx, a)
+		if err != nil {
+			t.Fatalf("SaveAttribute() failed: %v", err)
+		}
+	}
+
+	// List attributes for person
+	results, err := store.ListAttributesForPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("ListAttributesForPerson() failed: %v", err)
+	}
+
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+
+	// Verify all returned attributes belong to the person
+	for _, a := range results {
+		if a.PersonID != personID {
+			t.Errorf("Attribute PersonID = %v, want %v", a.PersonID, personID)
+		}
+	}
+}
+
+func TestReadModelStore_UpdateAttribute(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	attrID := uuid.New()
+	attribute := &repository.AttributeReadModel{
+		ID:        attrID,
+		PersonID:  uuid.New(),
+		FactType:  domain.FactPersonOccupation,
+		Value:     "Farmer",
+		Version:   1,
+		CreatedAt: time.Now(),
+	}
+
+	// Save initial version
+	err := store.SaveAttribute(ctx, attribute)
+	if err != nil {
+		t.Fatalf("SaveAttribute() failed: %v", err)
+	}
+
+	// Update attribute
+	attribute.Value = "Merchant"
+	attribute.Version = 2
+
+	err = store.SaveAttribute(ctx, attribute)
+	if err != nil {
+		t.Fatalf("SaveAttribute() update failed: %v", err)
+	}
+
+	// Retrieve and verify update
+	retrieved, err := store.GetAttribute(ctx, attrID)
+	if err != nil {
+		t.Fatalf("GetAttribute() failed: %v", err)
+	}
+
+	if retrieved.Value != "Merchant" {
+		t.Errorf("Value = %s, want Merchant", retrieved.Value)
+	}
+	if retrieved.Version != 2 {
+		t.Errorf("Version = %d, want 2", retrieved.Version)
+	}
+}
+
+func TestReadModelStore_DeleteAttribute(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	attribute := &repository.AttributeReadModel{
+		ID:        uuid.New(),
+		PersonID:  uuid.New(),
+		FactType:  domain.FactPersonOccupation,
+		Value:     "Farmer",
+		Version:   1,
+		CreatedAt: time.Now(),
+	}
+
+	// Save attribute
+	err := store.SaveAttribute(ctx, attribute)
+	if err != nil {
+		t.Fatalf("SaveAttribute() failed: %v", err)
+	}
+
+	// Delete attribute
+	err = store.DeleteAttribute(ctx, attribute.ID)
+	if err != nil {
+		t.Fatalf("DeleteAttribute() failed: %v", err)
+	}
+
+	// Verify attribute is deleted
+	retrieved, err := store.GetAttribute(ctx, attribute.ID)
+	if err != nil {
+		t.Fatalf("GetAttribute() after delete failed: %v", err)
+	}
+
+	if retrieved != nil {
+		t.Errorf("GetAttribute() after delete = %v, want nil", retrieved)
+	}
+}
+
+func TestReadModelStore_MultipleAttributeTypes(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+
+	// Test all attribute types
+	attributeTypes := []domain.FactType{
+		domain.FactPersonOccupation,
+		domain.FactPersonResidence,
+		domain.FactPersonEducation,
+		domain.FactPersonReligion,
+		domain.FactPersonTitle,
+	}
+
+	for i, factType := range attributeTypes {
+		attr := &repository.AttributeReadModel{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			FactType:  factType,
+			Value:     "Test Value " + string(rune('A'+i)),
+			Version:   1,
+			CreatedAt: time.Now(),
+		}
+		err := store.SaveAttribute(ctx, attr)
+		if err != nil {
+			t.Fatalf("SaveAttribute() for %s failed: %v", factType, err)
+		}
+	}
+
+	// List all attributes
+	results, err := store.ListAttributesForPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("ListAttributesForPerson() failed: %v", err)
+	}
+
+	if len(results) != len(attributeTypes) {
+		t.Errorf("len(results) = %d, want %d", len(results), len(attributeTypes))
+	}
+
+	// Verify each type is present
+	foundTypes := make(map[domain.FactType]bool)
+	for _, a := range results {
+		foundTypes[a.FactType] = true
+	}
+
+	for _, factType := range attributeTypes {
+		if !foundTypes[factType] {
+			t.Errorf("expected to find attribute with FactType %s", factType)
+		}
+	}
+}
+
+func TestReadModelStore_MultipleEventTypes(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	familyID := uuid.New()
+
+	// Test person event types
+	personEventTypes := []domain.FactType{
+		domain.FactPersonBurial,
+		domain.FactPersonCremation,
+		domain.FactPersonBaptism,
+		domain.FactPersonChristening,
+		domain.FactPersonEmigration,
+		domain.FactPersonImmigration,
+		domain.FactPersonNaturalization,
+		domain.FactPersonCensus,
+	}
+
+	for i, factType := range personEventTypes {
+		event := &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  factType,
+			DateRaw:   "1 JAN 18" + string(rune('5'+i%5)) + "0",
+			Version:   1,
+			CreatedAt: time.Now(),
+		}
+		err := store.SaveEvent(ctx, event)
+		if err != nil {
+			t.Fatalf("SaveEvent() for person %s failed: %v", factType, err)
+		}
+	}
+
+	// Test family event types
+	familyEventTypes := []domain.FactType{
+		domain.FactFamilyMarriageBann,
+		domain.FactFamilyMarriageContract,
+		domain.FactFamilyMarriageLicense,
+		domain.FactFamilyMarriageSettlement,
+		domain.FactFamilyAnnulment,
+		domain.FactFamilyEngagement,
+	}
+
+	for i, factType := range familyEventTypes {
+		event := &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: "family",
+			OwnerID:   familyID,
+			FactType:  factType,
+			DateRaw:   "1 JUN 187" + string(rune('0'+i)),
+			Version:   1,
+			CreatedAt: time.Now(),
+		}
+		err := store.SaveEvent(ctx, event)
+		if err != nil {
+			t.Fatalf("SaveEvent() for family %s failed: %v", factType, err)
+		}
+	}
+
+	// List person events
+	personResults, err := store.ListEventsForPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("ListEventsForPerson() failed: %v", err)
+	}
+
+	if len(personResults) != len(personEventTypes) {
+		t.Errorf("len(personResults) = %d, want %d", len(personResults), len(personEventTypes))
+	}
+
+	// List family events
+	familyResults, err := store.ListEventsForFamily(ctx, familyID)
+	if err != nil {
+		t.Fatalf("ListEventsForFamily() failed: %v", err)
+	}
+
+	if len(familyResults) != len(familyEventTypes) {
+		t.Errorf("len(familyResults) = %d, want %d", len(familyResults), len(familyEventTypes))
+	}
+}

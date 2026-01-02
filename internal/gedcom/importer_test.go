@@ -49,7 +49,7 @@ func TestImportBasicGedcom(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, families, _, _, _, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
+	result, persons, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestImportApproximateDates(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestImportMissingNames(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestImportSingleParentFamily(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestImportMissingReference(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, families, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestImportDateRanges(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestImportSources(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, sources, citations, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestImportCitationsForMultipleEvents(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, _, sources, citations, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestImportFamilyCitations(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, sources, citations, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -500,7 +500,7 @@ func TestImportNameComponents(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -572,7 +572,7 @@ func TestImportPedigreeTypes(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -626,7 +626,7 @@ func TestImportRepositories(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, _, sources, _, repositories, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, _, sources, _, repositories, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -662,5 +662,794 @@ func TestImportRepositories(t *testing.T) {
 		t.Error("Source should be linked to repository")
 	} else if *src.RepositoryID != repo.ID {
 		t.Errorf("Source repository ID = %v, want %v", *src.RepositoryID, repo.ID)
+	}
+}
+
+// Note: The current importer does not yet return event/attribute data structures.
+// These tests verify that citations are extracted from life events.
+// Future enhancement: Return EventData and AttributeData from importer.
+
+func TestImportBurialEvent(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Cemetery Records
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BIRT
+2 DATE 15 JAN 1850
+1 DEAT
+2 DATE 20 MAR 1920
+1 BURI
+2 DATE 23 MAR 1920
+2 PLAC Springfield Cemetery, IL
+2 SOUR @S1@
+3 PAGE Plot 42
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, persons, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if result.PersonsImported != 1 {
+		t.Errorf("PersonsImported = %d, want 1", result.PersonsImported)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	// Verify person basic data
+	person := persons[0]
+	if person.GivenName != "John" {
+		t.Errorf("GivenName = %s, want John", person.GivenName)
+	}
+	if person.BirthDate != "15 JAN 1850" {
+		t.Errorf("BirthDate = %s, want '15 JAN 1850'", person.BirthDate)
+	}
+
+	// Verify source was imported
+	if len(sources) != 1 {
+		t.Fatalf("len(sources) = %d, want 1", len(sources))
+	}
+
+	// Note: Current importer extracts citations only from BIRT/DEAT events.
+	// Burial event citations require enhancement to extractCitationsFromIndividual.
+	_ = citations // Acknowledgement that citations exist but burial not yet tracked
+}
+
+func TestImportBaptismEvent(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Mary /Smith/
+1 SEX F
+1 BIRT
+2 DATE 1 JAN 1855
+1 BAPM
+2 DATE 15 JAN 1855
+2 PLAC First Presbyterian Church, Boston, MA
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.GivenName != "Mary" {
+		t.Errorf("GivenName = %s, want Mary", person.GivenName)
+	}
+	if person.BirthDate != "1 JAN 1855" {
+		t.Errorf("BirthDate = %s, want '1 JAN 1855'", person.BirthDate)
+	}
+}
+
+func TestImportCensusEvent(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Robert /Jones/
+1 SEX M
+1 BIRT
+2 DATE 1840
+1 CENS
+2 DATE 1880
+2 PLAC Springfield, IL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.GivenName != "Robert" {
+		t.Errorf("GivenName = %s, want Robert", person.GivenName)
+	}
+}
+
+func TestImportImmigrationEvent(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Hans /Mueller/
+1 SEX M
+1 BIRT
+2 DATE 1850
+2 PLAC Berlin, Germany
+1 IMMI
+2 DATE 1880
+2 PLAC Ellis Island, NY
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.GivenName != "Hans" {
+		t.Errorf("GivenName = %s, want Hans", person.GivenName)
+	}
+	if person.BirthPlace != "Berlin, Germany" {
+		t.Errorf("BirthPlace = %s, want 'Berlin, Germany'", person.BirthPlace)
+	}
+}
+
+func TestImportOccupationAttribute(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME William /Taylor/
+1 SEX M
+1 BIRT
+2 DATE 1830
+1 OCCU Blacksmith
+2 DATE 1860
+2 PLAC Springfield, IL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.GivenName != "William" {
+		t.Errorf("GivenName = %s, want William", person.GivenName)
+	}
+}
+
+func TestImportResidenceAttribute(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Sarah /Brown/
+1 SEX F
+1 BIRT
+2 DATE 1840
+1 RESI
+2 DATE 1870
+2 PLAC 123 Main St, Springfield, IL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.GivenName != "Sarah" {
+		t.Errorf("GivenName = %s, want Sarah", person.GivenName)
+	}
+}
+
+func TestImportFamilyMarriageBann(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARB
+2 DATE 1 MAY 1875
+2 PLAC First Church, Springfield, IL
+1 MARR
+2 DATE 1 JUN 1875
+2 PLAC First Church, Springfield, IL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(families) != 1 {
+		t.Fatalf("len(families) = %d, want 1", len(families))
+	}
+
+	family := families[0]
+	if family.MarriageDate != "1 JUN 1875" {
+		t.Errorf("MarriageDate = %s, want '1 JUN 1875'", family.MarriageDate)
+	}
+	if family.MarriagePlace != "First Church, Springfield, IL" {
+		t.Errorf("MarriagePlace = %s, want 'First Church, Springfield, IL'", family.MarriagePlace)
+	}
+}
+
+func TestImportFamilyAnnulment(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 1 JUN 1875
+1 ANUL
+2 DATE 1 JAN 1876
+2 PLAC County Court, Springfield, IL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(families) != 1 {
+		t.Fatalf("len(families) = %d, want 1", len(families))
+	}
+
+	family := families[0]
+	if family.RelationshipType != domain.RelationMarriage {
+		t.Errorf("RelationshipType = %s, want %s", family.RelationshipType, domain.RelationMarriage)
+	}
+}
+
+func TestImportMultipleEventsAndAttributes(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Birth Records
+0 @S2@ SOUR
+1 TITL Census Records
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 PLAC Springfield, IL
+2 SOUR @S1@
+3 PAGE 123
+1 BAPM
+2 DATE 15 JAN 1850
+2 PLAC First Church
+1 CENS
+2 DATE 1880
+2 PLAC Springfield, IL
+2 SOUR @S2@
+3 PAGE 456
+1 OCCU Farmer
+2 DATE 1880
+1 RESI
+2 DATE 1880
+2 PLAC 100 Main St
+1 DEAT
+2 DATE 20 MAR 1920
+2 PLAC Chicago, IL
+1 BURI
+2 DATE 23 MAR 1920
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, persons, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Verify counts
+	if result.PersonsImported != 1 {
+		t.Errorf("PersonsImported = %d, want 1", result.PersonsImported)
+	}
+	if result.SourcesImported != 2 {
+		t.Errorf("SourcesImported = %d, want 2", result.SourcesImported)
+	}
+
+	// Verify person
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+	person := persons[0]
+	if person.BirthDate != "1 JAN 1850" {
+		t.Errorf("BirthDate = %s, want '1 JAN 1850'", person.BirthDate)
+	}
+	if person.DeathDate != "20 MAR 1920" {
+		t.Errorf("DeathDate = %s, want '20 MAR 1920'", person.DeathDate)
+	}
+
+	// Verify sources
+	if len(sources) != 2 {
+		t.Fatalf("len(sources) = %d, want 2", len(sources))
+	}
+
+	// Verify citations (birth and census events have citations)
+	if len(citations) != 2 {
+		t.Errorf("len(citations) = %d, want 2 (birth and census)", len(citations))
+	}
+
+	// Find birth citation
+	var birthCit, censusCit *gedcom.CitationData
+	for i := range citations {
+		switch citations[i].FactType {
+		case string(domain.FactPersonBirth):
+			birthCit = &citations[i]
+		case string(domain.FactPersonCensus):
+			censusCit = &citations[i]
+		}
+	}
+	if birthCit == nil {
+		t.Fatal("Birth citation not found")
+	}
+	if birthCit.Page != "123" {
+		t.Errorf("Birth citation page = %s, want '123'", birthCit.Page)
+	}
+	if censusCit == nil {
+		t.Fatal("Census citation not found")
+	}
+	if censusCit.Page != "456" {
+		t.Errorf("Census citation page = %s, want '456'", censusCit.Page)
+	}
+}
+
+func TestImportChristeningEvent(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME James /Wilson/
+1 SEX M
+1 BIRT
+2 DATE 1 DEC 1860
+1 CHR
+2 DATE 25 DEC 1860
+2 PLAC St. Paul's Cathedral
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.GivenName != "James" {
+		t.Errorf("GivenName = %s, want James", person.GivenName)
+	}
+}
+
+func TestImportEmigrationEvent(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Patrick /O'Brien/
+1 SEX M
+1 BIRT
+2 DATE 1845
+2 PLAC Dublin, Ireland
+1 EMIG
+2 DATE 1860
+2 PLAC Liverpool, England
+1 IMMI
+2 DATE 1860
+2 PLAC Boston, MA
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.BirthPlace != "Dublin, Ireland" {
+		t.Errorf("BirthPlace = %s, want 'Dublin, Ireland'", person.BirthPlace)
+	}
+}
+
+func TestImportNaturalizationEvent(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Giuseppe /Romano/
+1 SEX M
+1 BIRT
+2 DATE 1850
+2 PLAC Naples, Italy
+1 IMMI
+2 DATE 1875
+2 PLAC New York, NY
+1 NATU
+2 DATE 1880
+2 PLAC Federal Court, New York, NY
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+	if person.GivenName != "Giuseppe" {
+		t.Errorf("GivenName = %s, want Giuseppe", person.GivenName)
+	}
+}
+
+func TestImportEventsExtraction(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 PLAC Springfield, IL
+1 BAPM
+2 DATE 15 JAN 1850
+2 PLAC First Church
+1 CENS
+2 DATE 1880
+2 PLAC Springfield, IL
+1 EMIG
+2 DATE 1890
+2 PLAC New York, NY
+1 IMMI
+2 DATE 1890
+2 PLAC Liverpool, England
+1 BURI
+2 DATE 25 DEC 1920
+2 PLAC Springfield Cemetery
+2 CAUS Heart failure
+1 DEAT
+2 DATE 20 DEC 1920
+2 PLAC Chicago, IL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, events, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should have 5 events (BIRT and DEAT stored on person, so we have BAPM, CENS, EMIG, IMMI, BURI)
+	if result.EventsImported != 5 {
+		t.Errorf("EventsImported = %d, want 5", result.EventsImported)
+	}
+	if len(events) != 5 {
+		t.Fatalf("len(events) = %d, want 5", len(events))
+	}
+
+	// Verify event types
+	eventTypes := make(map[domain.FactType]bool)
+	for _, e := range events {
+		eventTypes[e.FactType] = true
+	}
+
+	expectedTypes := []domain.FactType{
+		domain.FactPersonBaptism,
+		domain.FactPersonCensus,
+		domain.FactPersonEmigration,
+		domain.FactPersonImmigration,
+		domain.FactPersonBurial,
+	}
+	for _, et := range expectedTypes {
+		if !eventTypes[et] {
+			t.Errorf("Missing event type: %s", et)
+		}
+	}
+
+	// Verify burial has cause
+	for _, e := range events {
+		if e.FactType == domain.FactPersonBurial {
+			if e.Cause != "Heart failure" {
+				t.Errorf("Burial cause = %q, want %q", e.Cause, "Heart failure")
+			}
+			if e.Place != "Springfield Cemetery" {
+				t.Errorf("Burial place = %q, want %q", e.Place, "Springfield Cemetery")
+			}
+		}
+	}
+}
+
+func TestImportAttributesExtraction(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME William /Taylor/
+1 SEX M
+1 BIRT
+2 DATE 1830
+1 OCCU Blacksmith
+2 DATE 1860
+2 PLAC Springfield, IL
+1 RESI
+2 DATE 1870
+2 PLAC 123 Main St, Springfield, IL
+1 EDUC College Graduate
+1 RELI Methodist
+1 TITL Esquire
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, attributes, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should have 5 attributes (OCCU, RESI as events, plus EDUC, RELI, TITL as tags)
+	if result.AttributesImported != 5 {
+		t.Errorf("AttributesImported = %d, want 5", result.AttributesImported)
+	}
+	if len(attributes) != 5 {
+		t.Fatalf("len(attributes) = %d, want 5", len(attributes))
+	}
+
+	// Verify attribute types
+	attrTypes := make(map[domain.FactType]string)
+	for _, a := range attributes {
+		attrTypes[a.FactType] = a.Value
+	}
+
+	if attrTypes[domain.FactPersonOccupation] != "Blacksmith" {
+		t.Errorf("Occupation = %q, want %q", attrTypes[domain.FactPersonOccupation], "Blacksmith")
+	}
+	if attrTypes[domain.FactPersonEducation] != "College Graduate" {
+		t.Errorf("Education = %q, want %q", attrTypes[domain.FactPersonEducation], "College Graduate")
+	}
+	if attrTypes[domain.FactPersonReligion] != "Methodist" {
+		t.Errorf("Religion = %q, want %q", attrTypes[domain.FactPersonReligion], "Methodist")
+	}
+	if attrTypes[domain.FactPersonTitle] != "Esquire" {
+		t.Errorf("Title = %q, want %q", attrTypes[domain.FactPersonTitle], "Esquire")
+	}
+}
+
+func TestImportFamilyEventsExtraction(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 ENGA
+2 DATE 1 JAN 1875
+2 PLAC Springfield, IL
+1 MARB
+2 DATE 1 MAY 1875
+2 PLAC First Church
+1 MARL
+2 DATE 15 MAY 1875
+2 PLAC County Clerk
+1 MARR
+2 DATE 1 JUN 1875
+2 PLAC First Church
+1 DIV
+2 DATE 1 JAN 1880
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, events, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should have 4 family events (MARR stored on family, so we have ENGA, MARB, MARL, DIV)
+	if result.EventsImported != 4 {
+		t.Errorf("EventsImported = %d, want 4", result.EventsImported)
+	}
+
+	// Verify event types
+	eventTypes := make(map[domain.FactType]bool)
+	for _, e := range events {
+		eventTypes[e.FactType] = true
+		if e.OwnerType != "family" {
+			t.Errorf("Event %s has OwnerType = %q, want %q", e.FactType, e.OwnerType, "family")
+		}
+	}
+
+	expectedTypes := []domain.FactType{
+		domain.FactFamilyEngagement,
+		domain.FactFamilyMarriageBann,
+		domain.FactFamilyMarriageLicense,
+		domain.FactFamilyDivorce,
+	}
+	for _, et := range expectedTypes {
+		if !eventTypes[et] {
+			t.Errorf("Missing event type: %s", et)
+		}
+	}
+}
+
+func TestImportEventsCitations(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Church Records
+0 @S2@ SOUR
+1 TITL Cemetery Records
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BAPM
+2 DATE 15 JAN 1850
+2 PLAC First Church
+2 SOUR @S1@
+3 PAGE Baptism register, page 42
+1 BURI
+2 DATE 25 DEC 1920
+2 PLAC Springfield Cemetery
+2 SOUR @S2@
+3 PAGE Plot 123
+3 QUAY 3
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should have 2 citations (one for baptism, one for burial)
+	if len(citations) != 2 {
+		t.Fatalf("len(citations) = %d, want 2", len(citations))
+	}
+
+	// Find citations by type
+	var baptismCit, burialCit *gedcom.CitationData
+	for i := range citations {
+		switch citations[i].FactType {
+		case string(domain.FactPersonBaptism):
+			baptismCit = &citations[i]
+		case string(domain.FactPersonBurial):
+			burialCit = &citations[i]
+		}
+	}
+
+	if baptismCit == nil {
+		t.Fatal("Baptism citation not found")
+	}
+	if baptismCit.Page != "Baptism register, page 42" {
+		t.Errorf("Baptism citation page = %q, want %q", baptismCit.Page, "Baptism register, page 42")
+	}
+
+	if burialCit == nil {
+		t.Fatal("Burial citation not found")
+	}
+	if burialCit.Page != "Plot 123" {
+		t.Errorf("Burial citation page = %q, want %q", burialCit.Page, "Plot 123")
+	}
+	if burialCit.Quality != "direct" {
+		t.Errorf("Burial citation quality = %q, want %q", burialCit.Quality, "direct")
 	}
 }

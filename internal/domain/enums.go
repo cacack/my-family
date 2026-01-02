@@ -188,19 +188,67 @@ func (n NameType) IsValid() bool {
 type FactType string
 
 const (
-	FactPersonBirth    FactType = "person_birth"
-	FactPersonDeath    FactType = "person_death"
-	FactPersonName     FactType = "person_name"
-	FactPersonGender   FactType = "person_gender"
+	// Core person facts
+	FactPersonBirth  FactType = "person_birth"
+	FactPersonDeath  FactType = "person_death"
+	FactPersonName   FactType = "person_name"
+	FactPersonGender FactType = "person_gender"
+
+	// Individual life events (GEDCOM tags in comments)
+	FactPersonBurial         FactType = "person_burial"         // BURI
+	FactPersonCremation      FactType = "person_cremation"      // CREM
+	FactPersonBaptism        FactType = "person_baptism"        // BAPM
+	FactPersonChristening    FactType = "person_christening"    // CHR
+	FactPersonEmigration     FactType = "person_emigration"     // EMIG
+	FactPersonImmigration    FactType = "person_immigration"    // IMMI
+	FactPersonNaturalization FactType = "person_naturalization" // NATU
+	FactPersonCensus         FactType = "person_census"         // CENS
+	FactPersonGenericEvent   FactType = "person_generic_event"  // EVEN
+
+	// Individual attributes
+	FactPersonOccupation FactType = "person_occupation" // OCCU
+	FactPersonResidence  FactType = "person_residence"  // RESI
+	FactPersonEducation  FactType = "person_education"  // EDUC
+	FactPersonReligion   FactType = "person_religion"   // RELI
+	FactPersonTitle      FactType = "person_title"      // TITL
+
+	// Core family facts
 	FactFamilyMarriage FactType = "family_marriage"
 	FactFamilyDivorce  FactType = "family_divorce"
+
+	// Family events (GEDCOM tags in comments)
+	FactFamilyMarriageBann       FactType = "family_marriage_bann"       // MARB
+	FactFamilyMarriageContract   FactType = "family_marriage_contract"   // MARC
+	FactFamilyMarriageLicense    FactType = "family_marriage_license"    // MARL
+	FactFamilyMarriageSettlement FactType = "family_marriage_settlement" // MARS
+	FactFamilyAnnulment          FactType = "family_annulment"           // ANUL
+	FactFamilyEngagement         FactType = "family_engagement"          // ENGA
 )
 
 // IsValid checks if the fact type value is valid.
 func (f FactType) IsValid() bool {
 	switch f {
-	case FactPersonBirth, FactPersonDeath, FactPersonName, FactPersonGender,
-		FactFamilyMarriage, FactFamilyDivorce, "":
+	// Core person facts
+	case FactPersonBirth, FactPersonDeath, FactPersonName, FactPersonGender:
+		return true
+	// Individual life events
+	case FactPersonBurial, FactPersonCremation, FactPersonBaptism, FactPersonChristening,
+		FactPersonEmigration, FactPersonImmigration, FactPersonNaturalization,
+		FactPersonCensus, FactPersonGenericEvent:
+		return true
+	// Individual attributes
+	case FactPersonOccupation, FactPersonResidence, FactPersonEducation,
+		FactPersonReligion, FactPersonTitle:
+		return true
+	// Core family facts
+	case FactFamilyMarriage, FactFamilyDivorce:
+		return true
+	// Family events
+	case FactFamilyMarriageBann, FactFamilyMarriageContract, FactFamilyMarriageLicense,
+		FactFamilyMarriageSettlement, FactFamilyAnnulment, FactFamilyEngagement:
+		return true
+	// Empty is valid (optional field)
+	case "":
 		return true
 	default:
 		return false
