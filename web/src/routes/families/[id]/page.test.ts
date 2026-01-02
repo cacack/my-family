@@ -10,7 +10,8 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		...actual,
 		api: {
 			getFamily: vi.fn(),
-			deleteFamily: vi.fn()
+			deleteFamily: vi.fn(),
+			getFamilyHistory: vi.fn()
 		}
 	};
 });
@@ -73,9 +74,19 @@ const mockFamilyNoChildren: apiModule.FamilyDetail = {
 	children: []
 };
 
+const mockEmptyHistory: apiModule.ChangeHistoryResponse = {
+	items: [],
+	total: 0,
+	limit: 1,
+	offset: 0,
+	has_more: false
+};
+
 describe('Family Detail Page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// Default mock for history - returns empty
+		vi.mocked(apiModule.api.getFamilyHistory).mockResolvedValue(mockEmptyHistory);
 	});
 
 	it('renders loading state initially', () => {
