@@ -23,6 +23,9 @@
 		<nav class="nav">
 			<a href="/persons" class:active={$page.url.pathname.startsWith('/persons')}>People</a>
 			<a href="/families" class:active={$page.url.pathname.startsWith('/families')}>Families</a>
+			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
+			<a href="/history" class:active={$page.url.pathname.startsWith('/history')}>History</a>
+			<a href="/analytics" class:active={$page.url.pathname.startsWith('/analytics')}>Analytics</a>
 			<a href="/import" class:active={$page.url.pathname === '/import'}>Import</a>
 		</nav>
 		<div class="search-wrapper">

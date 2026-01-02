@@ -1,13 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type PersonDetail, formatGenDate, formatPersonName } from '$lib/api/client';
+	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, formatGenDate, formatPersonName } from '$lib/api/client';
+	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
+	import MediaGallery from '$lib/components/MediaGallery.svelte';
+	import CitationSection from '$lib/components/CitationSection.svelte';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
+	let historyExpanded = $state(false);
+	let historyCount: number | null = $state(null);
+	let mediaCount: number | null = $state(null);
 
 	// Form state
 	let formData = $state({
@@ -27,11 +33,27 @@
 		try {
 			person = await api.getPerson(id);
 			resetForm();
+			// Fetch history count for badge
+			const historyResponse = await api.getPersonHistory(id, { limit: 1, offset: 0 });
+			historyCount = historyResponse.total;
+			// Fetch media count for badge
+			const mediaResponse = await api.listPersonMedia(id, { limit: 1, offset: 0 });
+			mediaCount = mediaResponse.total;
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to load person';
 			person = null;
 		} finally {
 			loading = false;
+		}
+	}
+
+	function toggleHistory() {
+		historyExpanded = !historyExpanded;
+	}
+
+	function handleMediaAdded(media: Media) {
+		if (mediaCount !== null) {
+			mediaCount++;
 		}
 	}
 
@@ -256,6 +278,35 @@
 						</a>
 					</div>
 				{/if}
+
+				<div class="info-section media-section">
+					<h2>
+						Media
+						{#if mediaCount !== null && mediaCount > 0}
+							<span class="count-badge">{mediaCount}</span>
+						{/if}
+					</h2>
+					<MediaGallery personId={person.id} onMediaAdded={handleMediaAdded} />
+				</div>
+
+				<CitationSection personId={person.id} />
+
+				<div class="history-section">
+					<button class="history-header" onclick={toggleHistory}>
+						<h2>
+							History
+							{#if historyCount !== null}
+								<span class="count-badge">{historyCount}</span>
+							{/if}
+						</h2>
+						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
+					</button>
+					{#if historyExpanded}
+						<div class="history-content">
+							<ChangeHistory entityType="person" entityId={person.id} />
+						</div>
+					{/if}
+				</div>
 			</div>
 		{/if}
 	{/if}
@@ -476,6 +527,73 @@
 		color: #64748b;
 		margin-left: 0.5rem;
 		text-transform: capitalize;
+	}
+
+	.count-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.25rem;
+		height: 1.25rem;
+		padding: 0 0.375rem;
+		background: #3b82f6;
+		border-radius: 9999px;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: white;
+		margin-left: 0.5rem;
+		vertical-align: middle;
+	}
+
+	.media-section {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid #e2e8f0;
+	}
+
+	.media-section h2 {
+		display: flex;
+		align-items: center;
+	}
+
+	/* History section styles */
+	.history-section {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid #e2e8f0;
+	}
+
+	.history-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0;
+		border: none;
+		background: none;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.history-header h2 {
+		display: flex;
+		align-items: center;
+		margin: 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.expand-icon {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: #64748b;
+	}
+
+	.history-content {
+		margin-top: 1rem;
 	}
 
 	/* Edit form styles */

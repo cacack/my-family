@@ -2,12 +2,15 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, type FamilyDetail, formatGenDate, formatPersonName } from '$lib/api/client';
+	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
+	let historyExpanded = $state(false);
+	let historyCount: number | null = $state(null);
 
 	// Form state
 	let formData = $state({
@@ -22,12 +25,19 @@
 		try {
 			family = await api.getFamily(id);
 			resetForm();
+			// Fetch history count for badge
+			const historyResponse = await api.getFamilyHistory(id, { limit: 1, offset: 0 });
+			historyCount = historyResponse.total;
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to load family';
 			family = null;
 		} finally {
 			loading = false;
 		}
+	}
+
+	function toggleHistory() {
+		historyExpanded = !historyExpanded;
 	}
 
 	function resetForm() {
@@ -225,6 +235,23 @@
 						<p class="empty-message">No children recorded</p>
 					</div>
 				{/if}
+
+				<div class="history-section">
+					<button class="history-header" onclick={toggleHistory}>
+						<h2>
+							History
+							{#if historyCount !== null}
+								<span class="count-badge">{historyCount}</span>
+							{/if}
+						</h2>
+						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
+					</button>
+					{#if historyExpanded}
+						<div class="history-content">
+							<ChangeHistory entityType="family" entityId={family.id} />
+						</div>
+					{/if}
+				</div>
 			</div>
 		{/if}
 	{/if}
@@ -499,5 +526,61 @@
 
 	.btn-primary:hover {
 		background: #2563eb;
+	}
+
+	/* History section styles */
+	.count-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.25rem;
+		height: 1.25rem;
+		padding: 0 0.375rem;
+		background: #3b82f6;
+		border-radius: 9999px;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		color: white;
+		margin-left: 0.5rem;
+		vertical-align: middle;
+	}
+
+	.history-section {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid #e2e8f0;
+	}
+
+	.history-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0;
+		border: none;
+		background: none;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.history-header h2 {
+		display: flex;
+		align-items: center;
+		margin: 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.expand-icon {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: #64748b;
+	}
+
+	.history-content {
+		margin-top: 1rem;
 	}
 </style>
