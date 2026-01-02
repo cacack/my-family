@@ -26,6 +26,8 @@ type ImportGedcomResult struct {
 	SourcesImported      int
 	CitationsImported    int
 	RepositoriesImported int
+	EventsImported       int
+	AttributesImported   int
 	Warnings             []string
 	Errors               []string
 }
@@ -35,7 +37,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	importer := gedcom.NewImporter()
 
 	// Parse the GEDCOM file
-	importResult, persons, families, sources, citations, repositories, err := importer.Import(ctx, input.Reader)
+	importResult, persons, families, sources, citations, repositories, events, attributes, err := importer.Import(ctx, input.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GEDCOM file: %w", err)
 	}
@@ -131,6 +133,28 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 			continue
 		}
 		result.CitationsImported++
+	}
+
+	// Import events (after persons and families exist)
+	for _, e := range events {
+		err := h.importEvent(ctx, e)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Failed to import event (%s): %v", e.FactType, err))
+			continue
+		}
+		result.EventsImported++
+	}
+
+	// Import attributes (after persons exist)
+	for _, a := range attributes {
+		err := h.importAttribute(ctx, a)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Failed to import attribute (%s): %v", a.FactType, err))
+			continue
+		}
+		result.AttributesImported++
 	}
 
 	// Record the import event
@@ -387,4 +411,66 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 
 	// Project to read model
 	return h.projector.Apply(ctx, event)
+}
+
+// importEvent creates a life event from GEDCOM data.
+func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
+	// Create domain model
+	var lifeEvent *domain.LifeEvent
+	if e.OwnerType == "person" {
+		lifeEvent = domain.NewLifeEvent(e.OwnerID, e.FactType)
+	} else {
+		lifeEvent = domain.NewFamilyLifeEvent(e.OwnerID, e.FactType)
+	}
+
+	// Override ID to preserve GEDCOM-assigned ID
+	lifeEvent.ID = e.ID
+	lifeEvent.Place = e.Place
+	lifeEvent.Description = e.Description
+	lifeEvent.Cause = e.Cause
+	lifeEvent.Age = e.Age
+
+	// Set date if provided
+	if e.Date != "" {
+		lifeEvent.SetDate(e.Date)
+	}
+
+	// Create domain event from model
+	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
+
+	// Append to event store using owner's stream
+	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importAttribute creates a person attribute from GEDCOM data.
+func (h *Handler) importAttribute(ctx context.Context, a gedcom.AttributeData) error {
+	// Create domain model
+	attr := domain.NewAttribute(a.PersonID, a.FactType, a.Value)
+
+	// Override ID to preserve GEDCOM-assigned ID
+	attr.ID = a.ID
+	attr.Place = a.Place
+
+	// Set date if provided
+	if a.Date != "" {
+		attr.SetDate(a.Date)
+	}
+
+	// Create domain event from model
+	event := domain.NewAttributeCreatedFromModel(attr)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
 }

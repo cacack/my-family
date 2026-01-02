@@ -844,3 +844,707 @@ func TestExport_CitationWithMultilineText(t *testing.T) {
 		t.Error("Output should contain CONT for second line of quoted text")
 	}
 }
+
+// Event export tests
+
+func TestExport_PersonBurialEvent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "John",
+		Surname:      "Doe",
+		FullName:     "John Doe",
+		DeathDateRaw: "20 MAR 1920",
+		DeathPlace:   "Chicago, IL",
+	})
+
+	// Add burial event
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonBurial,
+		DateRaw:   "23 MAR 1920",
+		Place:     "Springfield Cemetery, IL",
+	}
+	readStore.SaveEvent(ctx, event)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify event was exported
+	if result.EventsExported != 1 {
+		t.Errorf("EventsExported = %d, want 1", result.EventsExported)
+	}
+
+	output := buf.String()
+
+	// Check burial event
+	if !strings.Contains(output, "1 BURI\n") {
+		t.Error("Output should contain BURI event")
+	}
+	if !strings.Contains(output, "2 DATE 23 MAR 1920\n") {
+		t.Error("Output should contain burial date")
+	}
+	if !strings.Contains(output, "2 PLAC Springfield Cemetery, IL\n") {
+		t.Error("Output should contain burial place")
+	}
+}
+
+func TestExport_PersonBaptismEvent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "Mary",
+		Surname:      "Smith",
+		FullName:     "Mary Smith",
+		BirthDateRaw: "1 JAN 1855",
+	})
+
+	// Add baptism event
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonBaptism,
+		DateRaw:   "15 JAN 1855",
+		Place:     "First Presbyterian Church",
+	}
+	readStore.SaveEvent(ctx, event)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.EventsExported != 1 {
+		t.Errorf("EventsExported = %d, want 1", result.EventsExported)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "1 BAPM\n") {
+		t.Error("Output should contain BAPM event")
+	}
+	if !strings.Contains(output, "2 DATE 15 JAN 1855\n") {
+		t.Error("Output should contain baptism date")
+	}
+}
+
+func TestExport_PersonCensusEvent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "Robert",
+		Surname:   "Jones",
+		FullName:  "Robert Jones",
+	})
+
+	// Add census event
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonCensus,
+		DateRaw:   "1880",
+		Place:     "Springfield, IL",
+	}
+	readStore.SaveEvent(ctx, event)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "1 CENS\n") {
+		t.Error("Output should contain CENS event")
+	}
+	if !strings.Contains(output, "2 DATE 1880\n") {
+		t.Error("Output should contain census date")
+	}
+}
+
+func TestExport_PersonImmigrationEvent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "Hans",
+		Surname:   "Mueller",
+		FullName:  "Hans Mueller",
+	})
+
+	// Add immigration event
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonImmigration,
+		DateRaw:   "1880",
+		Place:     "Ellis Island, NY",
+	}
+	readStore.SaveEvent(ctx, event)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "1 IMMI\n") {
+		t.Error("Output should contain IMMI event")
+	}
+	if !strings.Contains(output, "2 PLAC Ellis Island, NY\n") {
+		t.Error("Output should contain immigration place")
+	}
+}
+
+// Attribute export tests
+
+func TestExport_PersonOccupationAttribute(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "William",
+		Surname:   "Taylor",
+		FullName:  "William Taylor",
+	})
+
+	// Add occupation attribute
+	attr := &repository.AttributeReadModel{
+		ID:       uuid.New(),
+		PersonID: personID,
+		FactType: domain.FactPersonOccupation,
+		Value:    "Blacksmith",
+		DateRaw:  "1860",
+		Place:    "Springfield, IL",
+	}
+	readStore.SaveAttribute(ctx, attr)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.AttributesExported != 1 {
+		t.Errorf("AttributesExported = %d, want 1", result.AttributesExported)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "1 OCCU Blacksmith\n") {
+		t.Error("Output should contain OCCU attribute with value")
+	}
+	if !strings.Contains(output, "2 DATE 1860\n") {
+		t.Error("Output should contain occupation date")
+	}
+	if !strings.Contains(output, "2 PLAC Springfield, IL\n") {
+		t.Error("Output should contain occupation place")
+	}
+}
+
+func TestExport_PersonResidenceAttribute(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "Sarah",
+		Surname:   "Brown",
+		FullName:  "Sarah Brown",
+	})
+
+	// Add residence attribute
+	attr := &repository.AttributeReadModel{
+		ID:       uuid.New(),
+		PersonID: personID,
+		FactType: domain.FactPersonResidence,
+		Value:    "123 Main St",
+		DateRaw:  "1870",
+		Place:    "Springfield, IL",
+	}
+	readStore.SaveAttribute(ctx, attr)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "1 RESI 123 Main St\n") {
+		t.Error("Output should contain RESI attribute with value")
+	}
+}
+
+// Family event export tests
+
+func TestExport_FamilyMarriageBann(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	husbandID := uuid.New()
+	wifeID := uuid.New()
+
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        husbandID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        wifeID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+	})
+
+	familyID := uuid.New()
+	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+		ID:               familyID,
+		Partner1ID:       &husbandID,
+		Partner2ID:       &wifeID,
+		RelationshipType: domain.RelationMarriage,
+		MarriageDateRaw:  "1 JUN 1875",
+	})
+
+	// Add marriage bann event
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "family",
+		OwnerID:   familyID,
+		FactType:  domain.FactFamilyMarriageBann,
+		DateRaw:   "1 MAY 1875",
+		Place:     "First Church, Springfield, IL",
+	}
+	readStore.SaveEvent(ctx, event)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.EventsExported != 1 {
+		t.Errorf("EventsExported = %d, want 1", result.EventsExported)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "1 MARB\n") {
+		t.Error("Output should contain MARB event")
+	}
+	if !strings.Contains(output, "2 DATE 1 MAY 1875\n") {
+		t.Error("Output should contain marriage bann date")
+	}
+}
+
+func TestExport_FamilyAnnulment(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	husbandID := uuid.New()
+	wifeID := uuid.New()
+
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        husbandID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        wifeID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+	})
+
+	familyID := uuid.New()
+	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+		ID:               familyID,
+		Partner1ID:       &husbandID,
+		Partner2ID:       &wifeID,
+		RelationshipType: domain.RelationMarriage,
+		MarriageDateRaw:  "1 JUN 1875",
+	})
+
+	// Add annulment event
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "family",
+		OwnerID:   familyID,
+		FactType:  domain.FactFamilyAnnulment,
+		DateRaw:   "1 JAN 1876",
+		Place:     "County Court, Springfield, IL",
+	}
+	readStore.SaveEvent(ctx, event)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "1 ANUL\n") {
+		t.Error("Output should contain ANUL event")
+	}
+	if !strings.Contains(output, "2 DATE 1 JAN 1876\n") {
+		t.Error("Output should contain annulment date")
+	}
+}
+
+func TestExport_MultipleEventsAndAttributes(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "John",
+		Surname:      "Doe",
+		FullName:     "John Doe",
+		BirthDateRaw: "1 JAN 1850",
+		DeathDateRaw: "20 MAR 1920",
+	})
+
+	// Add multiple events
+	events := []*repository.EventReadModel{
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBaptism,
+			DateRaw:   "15 JAN 1850",
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBurial,
+			DateRaw:   "23 MAR 1920",
+			Place:     "Springfield Cemetery",
+		},
+	}
+	for _, e := range events {
+		readStore.SaveEvent(ctx, e)
+	}
+
+	// Add multiple attributes
+	attributes := []*repository.AttributeReadModel{
+		{
+			ID:       uuid.New(),
+			PersonID: personID,
+			FactType: domain.FactPersonOccupation,
+			Value:    "Farmer",
+			DateRaw:  "1880",
+		},
+		{
+			ID:       uuid.New(),
+			PersonID: personID,
+			FactType: domain.FactPersonResidence,
+			Value:    "100 Main St",
+			Place:    "Springfield, IL",
+		},
+	}
+	for _, a := range attributes {
+		readStore.SaveAttribute(ctx, a)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.EventsExported != 2 {
+		t.Errorf("EventsExported = %d, want 2", result.EventsExported)
+	}
+	if result.AttributesExported != 2 {
+		t.Errorf("AttributesExported = %d, want 2", result.AttributesExported)
+	}
+
+	output := buf.String()
+
+	// Verify events
+	if !strings.Contains(output, "1 BAPM\n") {
+		t.Error("Output should contain BAPM event")
+	}
+	if !strings.Contains(output, "1 BURI\n") {
+		t.Error("Output should contain BURI event")
+	}
+
+	// Verify attributes
+	if !strings.Contains(output, "1 OCCU Farmer\n") {
+		t.Error("Output should contain OCCU attribute")
+	}
+	if !strings.Contains(output, "1 RESI 100 Main St\n") {
+		t.Error("Output should contain RESI attribute")
+	}
+}
+
+func TestExport_EventWithCause(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "John",
+		Surname:      "Doe",
+		FullName:     "John Doe",
+		DeathDateRaw: "20 MAR 1920",
+	})
+
+	// Add burial event with cause
+	event := &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonBurial,
+		DateRaw:   "23 MAR 1920",
+		Place:     "Springfield Cemetery",
+		Cause:     "Natural causes",
+	}
+	readStore.SaveEvent(ctx, event)
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	if !strings.Contains(output, "2 CAUS Natural causes\n") {
+		t.Error("Output should contain CAUS tag with cause value")
+	}
+}
+
+func TestExport_AllEventTypes(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "Test",
+		Surname:   "Person",
+		FullName:  "Test Person",
+	})
+
+	// Add all person event types
+	eventTypes := []domain.FactType{
+		domain.FactPersonBurial,
+		domain.FactPersonCremation,
+		domain.FactPersonBaptism,
+		domain.FactPersonChristening,
+		domain.FactPersonEmigration,
+		domain.FactPersonImmigration,
+		domain.FactPersonNaturalization,
+		domain.FactPersonCensus,
+	}
+
+	for i, factType := range eventTypes {
+		event := &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  factType,
+			DateRaw:   "1 JAN 18" + string(rune('5'+i%5)) + "0",
+		}
+		readStore.SaveEvent(ctx, event)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.EventsExported != len(eventTypes) {
+		t.Errorf("EventsExported = %d, want %d", result.EventsExported, len(eventTypes))
+	}
+
+	output := buf.String()
+
+	// Verify each event type is present in output
+	expectedTags := []string{"BURI", "CREM", "BAPM", "CHR", "EMIG", "IMMI", "NATU", "CENS"}
+	for _, tag := range expectedTags {
+		if !strings.Contains(output, "1 "+tag+"\n") {
+			t.Errorf("Output should contain %s event", tag)
+		}
+	}
+}
+
+func TestExport_AllAttributeTypes(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "Test",
+		Surname:   "Person",
+		FullName:  "Test Person",
+	})
+
+	// Add all attribute types
+	attrConfigs := []struct {
+		factType domain.FactType
+		value    string
+	}{
+		{domain.FactPersonOccupation, "Farmer"},
+		{domain.FactPersonResidence, "123 Main St"},
+		{domain.FactPersonEducation, "Grammar School"},
+		{domain.FactPersonReligion, "Protestant"},
+		{domain.FactPersonTitle, "Dr."},
+	}
+
+	for _, cfg := range attrConfigs {
+		attr := &repository.AttributeReadModel{
+			ID:       uuid.New(),
+			PersonID: personID,
+			FactType: cfg.factType,
+			Value:    cfg.value,
+		}
+		readStore.SaveAttribute(ctx, attr)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.AttributesExported != len(attrConfigs) {
+		t.Errorf("AttributesExported = %d, want %d", result.AttributesExported, len(attrConfigs))
+	}
+
+	output := buf.String()
+
+	// Verify each attribute type is present in output
+	expectedTags := []string{
+		"1 OCCU Farmer\n",
+		"1 RESI 123 Main St\n",
+		"1 EDUC Grammar School\n",
+		"1 RELI Protestant\n",
+		"1 TITL Dr.\n",
+	}
+	for _, expected := range expectedTags {
+		if !strings.Contains(output, expected) {
+			t.Errorf("Output should contain %q", expected)
+		}
+	}
+}
+
+func TestExport_AllFamilyEventTypes(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	husbandID := uuid.New()
+	wifeID := uuid.New()
+
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        husbandID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        wifeID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+	})
+
+	familyID := uuid.New()
+	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+		ID:               familyID,
+		Partner1ID:       &husbandID,
+		Partner2ID:       &wifeID,
+		RelationshipType: domain.RelationMarriage,
+		MarriageDateRaw:  "1 JUN 1875",
+	})
+
+	// Add family event types (excluding marriage/divorce which are core)
+	eventTypes := []domain.FactType{
+		domain.FactFamilyMarriageBann,
+		domain.FactFamilyMarriageContract,
+		domain.FactFamilyMarriageLicense,
+		domain.FactFamilyMarriageSettlement,
+		domain.FactFamilyAnnulment,
+		domain.FactFamilyEngagement,
+	}
+
+	for i, factType := range eventTypes {
+		event := &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: "family",
+			OwnerID:   familyID,
+			FactType:  factType,
+			DateRaw:   "1 JUN 187" + string(rune('0'+i)),
+		}
+		readStore.SaveEvent(ctx, event)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.EventsExported != len(eventTypes) {
+		t.Errorf("EventsExported = %d, want %d", result.EventsExported, len(eventTypes))
+	}
+
+	output := buf.String()
+
+	// Verify each family event type is present in output
+	expectedTags := []string{"MARB", "MARC", "MARL", "MARS", "ANUL", "ENGA"}
+	for _, tag := range expectedTags {
+		if !strings.Contains(output, "1 "+tag+"\n") {
+			t.Errorf("Output should contain %s event", tag)
+		}
+	}
+}

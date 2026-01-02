@@ -584,3 +584,143 @@ func NewRepositoryDeleted(repositoryID uuid.UUID, reason string) RepositoryDelet
 		Reason:       reason,
 	}
 }
+
+// LifeEventCreated event is emitted when a new life event is created.
+type LifeEventCreated struct {
+	BaseEvent
+	EventID     uuid.UUID  `json:"event_id"`
+	PersonID    *uuid.UUID `json:"person_id,omitempty"`  // nil for family events
+	FamilyID    *uuid.UUID `json:"family_id,omitempty"`  // nil for person events
+	FactType    FactType   `json:"fact_type"`
+	Date        *GenDate   `json:"date,omitempty"`
+	Place       string     `json:"place,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Cause       string     `json:"cause,omitempty"` // For death/burial events
+	Age         string     `json:"age,omitempty"`   // Age at event
+	GedcomXref  string     `json:"gedcom_xref,omitempty"`
+}
+
+func (e LifeEventCreated) EventType() string      { return "LifeEventCreated" }
+func (e LifeEventCreated) AggregateID() uuid.UUID { return e.EventID }
+
+// NewLifeEventCreatedFromModel creates a LifeEventCreated event from a LifeEvent model.
+func NewLifeEventCreatedFromModel(le *LifeEvent) LifeEventCreated {
+	return LifeEventCreated{
+		BaseEvent:   NewBaseEvent(),
+		EventID:     le.ID,
+		PersonID:    le.PersonID,
+		FamilyID:    le.FamilyID,
+		FactType:    le.FactType,
+		Date:        le.Date,
+		Place:       le.Place,
+		Description: le.Description,
+		Cause:       le.Cause,
+		Age:         le.Age,
+		GedcomXref:  le.GedcomXref,
+	}
+}
+
+// LifeEventUpdated event is emitted when a life event is updated.
+type LifeEventUpdated struct {
+	BaseEvent
+	EventID uuid.UUID      `json:"event_id"`
+	Changes map[string]any `json:"changes"`
+}
+
+func (e LifeEventUpdated) EventType() string      { return "LifeEventUpdated" }
+func (e LifeEventUpdated) AggregateID() uuid.UUID { return e.EventID }
+
+// NewLifeEventUpdated creates a LifeEventUpdated event.
+func NewLifeEventUpdated(eventID uuid.UUID, changes map[string]any) LifeEventUpdated {
+	return LifeEventUpdated{
+		BaseEvent: NewBaseEvent(),
+		EventID:   eventID,
+		Changes:   changes,
+	}
+}
+
+// LifeEventDeleted event is emitted when a life event is deleted.
+type LifeEventDeleted struct {
+	BaseEvent
+	EventID uuid.UUID `json:"event_id"`
+	Reason  string    `json:"reason,omitempty"`
+}
+
+func (e LifeEventDeleted) EventType() string      { return "LifeEventDeleted" }
+func (e LifeEventDeleted) AggregateID() uuid.UUID { return e.EventID }
+
+// NewLifeEventDeleted creates a LifeEventDeleted event.
+func NewLifeEventDeleted(eventID uuid.UUID, reason string) LifeEventDeleted {
+	return LifeEventDeleted{
+		BaseEvent: NewBaseEvent(),
+		EventID:   eventID,
+		Reason:    reason,
+	}
+}
+
+// AttributeCreated event is emitted when a new person attribute is created.
+type AttributeCreated struct {
+	BaseEvent
+	AttributeID uuid.UUID `json:"attribute_id"`
+	PersonID    uuid.UUID `json:"person_id"`
+	FactType    FactType  `json:"fact_type"`
+	Value       string    `json:"value"`
+	Date        *GenDate  `json:"date,omitempty"`
+	Place       string    `json:"place,omitempty"`
+	GedcomXref  string    `json:"gedcom_xref,omitempty"`
+}
+
+func (e AttributeCreated) EventType() string      { return "AttributeCreated" }
+func (e AttributeCreated) AggregateID() uuid.UUID { return e.AttributeID }
+
+// NewAttributeCreatedFromModel creates an AttributeCreated event from an Attribute model.
+func NewAttributeCreatedFromModel(a *Attribute) AttributeCreated {
+	return AttributeCreated{
+		BaseEvent:   NewBaseEvent(),
+		AttributeID: a.ID,
+		PersonID:    a.PersonID,
+		FactType:    a.FactType,
+		Value:       a.Value,
+		Date:        a.Date,
+		Place:       a.Place,
+		GedcomXref:  a.GedcomXref,
+	}
+}
+
+// AttributeUpdated event is emitted when an attribute is updated.
+type AttributeUpdated struct {
+	BaseEvent
+	AttributeID uuid.UUID      `json:"attribute_id"`
+	Changes     map[string]any `json:"changes"`
+}
+
+func (e AttributeUpdated) EventType() string      { return "AttributeUpdated" }
+func (e AttributeUpdated) AggregateID() uuid.UUID { return e.AttributeID }
+
+// NewAttributeUpdated creates an AttributeUpdated event.
+func NewAttributeUpdated(attributeID uuid.UUID, changes map[string]any) AttributeUpdated {
+	return AttributeUpdated{
+		BaseEvent:   NewBaseEvent(),
+		AttributeID: attributeID,
+		Changes:     changes,
+	}
+}
+
+// AttributeDeleted event is emitted when a person attribute is deleted.
+type AttributeDeleted struct {
+	BaseEvent
+	AttributeID uuid.UUID `json:"attribute_id"`
+	Reason      string    `json:"reason,omitempty"`
+}
+
+func (e AttributeDeleted) EventType() string      { return "AttributeDeleted" }
+func (e AttributeDeleted) AggregateID() uuid.UUID { return e.AttributeID }
+
+// NewAttributeDeleted creates an AttributeDeleted event.
+func NewAttributeDeleted(attributeID uuid.UUID, reason string) AttributeDeleted {
+	return AttributeDeleted{
+		BaseEvent:   NewBaseEvent(),
+		AttributeID: attributeID,
+		Reason:      reason,
+	}
+}

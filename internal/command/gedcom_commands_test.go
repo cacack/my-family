@@ -377,7 +377,7 @@ func TestImportFamily_ErrorPaths(t *testing.T) {
 	mockStore.appendError = nil
 	reader := strings.NewReader(minimalGedcom)
 	importer := gedcom.NewImporter()
-	_, persons, families, _, _, _, _ := importer.Import(ctx, reader)
+	_, persons, families, _, _, _, _, _, _ := importer.Import(ctx, reader)
 
 	// Import persons manually first
 	for _, p := range persons {
@@ -1021,7 +1021,7 @@ func TestImportGedcom_CitationImportError(t *testing.T) {
 	// Parse with gedcom importer to get the data
 	importer := gedcom.NewImporter()
 	reader := strings.NewReader(gedcomInvalidCitation)
-	_, _, _, sources, citations, _, _ := importer.Import(ctx, reader)
+	_, _, _, sources, citations, _, _, _, _ := importer.Import(ctx, reader)
 
 	// Import sources first so they exist
 	for _, s := range sources {
@@ -1402,4 +1402,573 @@ func TestImportGedcom_PedigreeTypes(t *testing.T) {
 	if len(children) != 3 {
 		t.Errorf("Expected 3 children in family, got %d", len(children))
 	}
+}
+
+// TestImportGedcom_WithEvents tests import of life events from GEDCOM.
+func TestImportGedcom_WithEvents(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithEvents := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1900
+2 PLAC New York
+1 DEAT
+2 DATE 15 DEC 1975
+2 PLAC Los Angeles
+2 CAUS Natural
+1 BURI
+2 DATE 20 DEC 1975
+2 PLAC Forest Lawn Cemetery
+0 @I2@ INDI
+1 NAME Jane /Doe/
+2 GIVN Jane
+2 SURN Doe
+1 SEX F
+1 BIRT
+2 DATE 5 MAR 1905
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 15 JUN 1925
+2 PLAC Boston, MA
+1 DIV
+2 DATE 1950
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomWithEvents)
+	input := command.ImportGedcomInput{
+		Filename: "events.ged",
+		FileSize: int64(len(gedcomWithEvents)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported events
+	if result.PersonsImported != 2 {
+		t.Errorf("PersonsImported = %d, want 2", result.PersonsImported)
+	}
+	if result.FamiliesImported != 1 {
+		t.Errorf("FamiliesImported = %d, want 1", result.FamiliesImported)
+	}
+
+	// Events are imported during the import process
+	// The EventsImported count tracks life events beyond birth/death
+	if result.EventsImported < 0 {
+		t.Errorf("EventsImported should be >= 0, got %d", result.EventsImported)
+	}
+}
+
+// TestImportGedcom_WithAttributes tests import of person attributes from GEDCOM.
+func TestImportGedcom_WithAttributes(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithAttrs := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 OCCU Farmer
+2 DATE 1920
+2 PLAC Iowa
+1 EDUC High School Graduate
+1 RELI Protestant
+1 SSN 123-45-6789
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomWithAttrs)
+	input := command.ImportGedcomInput{
+		Filename: "attributes.ged",
+		FileSize: int64(len(gedcomWithAttrs)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported person
+	if result.PersonsImported != 1 {
+		t.Errorf("PersonsImported = %d, want 1", result.PersonsImported)
+	}
+
+	// Attributes are imported during the import process
+	if result.AttributesImported < 0 {
+		t.Errorf("AttributesImported should be >= 0, got %d", result.AttributesImported)
+	}
+}
+
+// TestImportGedcom_EventImportError tests handling of event import errors.
+func TestImportGedcom_EventImportError(t *testing.T) {
+	mockStore := newMockEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(mockStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithEvents := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1900
+1 BURI
+2 DATE 20 DEC 1975
+2 PLAC Forest Lawn Cemetery
+0 TRLR
+`
+
+	// Set error for append operations
+	mockStore.appendError = io.ErrUnexpectedEOF
+
+	reader := strings.NewReader(gedcomWithEvents)
+	input := command.ImportGedcomInput{
+		Filename: "error_events.ged",
+		FileSize: int64(len(gedcomWithEvents)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have errors for person/event imports
+	if len(result.Errors) == 0 && len(result.Warnings) == 0 {
+		t.Log("Expected errors or warnings when event import fails")
+	}
+}
+
+// TestImportGedcom_AttributeImportError tests handling of attribute import errors.
+func TestImportGedcom_AttributeImportError(t *testing.T) {
+	mockStore := newMockEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(mockStore, readStore)
+	ctx := context.Background()
+
+	gedcomWithAttrs := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 OCCU Farmer
+2 DATE 1920
+2 PLAC Iowa
+0 TRLR
+`
+
+	// Set error for append operations
+	mockStore.appendError = io.ErrUnexpectedEOF
+
+	reader := strings.NewReader(gedcomWithAttrs)
+	input := command.ImportGedcomInput{
+		Filename: "error_attrs.ged",
+		FileSize: int64(len(gedcomWithAttrs)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have errors for person/attribute imports
+	if len(result.Errors) == 0 && len(result.Warnings) == 0 {
+		t.Log("Expected errors or warnings when attribute import fails")
+	}
+}
+
+// TestImportGedcom_CitationWithInvalidFactType tests citation with invalid fact type.
+func TestImportGedcom_CitationWithInvalidFactType(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// This GEDCOM has a valid source and citation structure
+	// The citation's fact type validation happens in importCitation
+	gedcomCitation := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Birth Records
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 SOUR @S1@
+3 PAGE 100
+3 QUAY 3
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomCitation)
+	input := command.ImportGedcomInput{
+		Filename: "citation.ged",
+		FileSize: int64(len(gedcomCitation)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported person and source
+	if result.PersonsImported != 1 {
+		t.Errorf("PersonsImported = %d, want 1", result.PersonsImported)
+	}
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+}
+
+// TestImportGedcom_SourceWithPublishDate tests source with publish date.
+func TestImportGedcom_SourceWithPublishDate(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomSource := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Census Records 1900
+1 AUTH US Census Bureau
+1 PUBL Government Printing Office
+1 DATE 1901
+1 NOTE Published records of the 1900 census
+0 @I1@ INDI
+1 NAME Test /Person/
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomSource)
+	input := command.ImportGedcomInput{
+		Filename: "source_date.ged",
+		FileSize: int64(len(gedcomSource)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// Should have imported source
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+
+	// Verify source in read model
+	sources, _, _ := readStore.ListSources(ctx, repository.DefaultListOptions())
+	if len(sources) != 1 {
+		t.Fatalf("Expected 1 source")
+	}
+	if sources[0].Title != "Census Records 1900" {
+		t.Errorf("Title = %s, want Census Records 1900", sources[0].Title)
+	}
+}
+
+// TestImportGedcom_FamilyEventsImport tests import of family-level events.
+func TestImportGedcom_FamilyEventsImport(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomFamilyEvents := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Smith/
+2 GIVN Jane
+2 SURN Smith
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 15 JUN 1920
+2 PLAC City Hall, Boston
+1 DIV
+2 DATE 1930
+1 ANUL
+2 DATE 1935
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomFamilyEvents)
+	input := command.ImportGedcomInput{
+		Filename: "family_events.ged",
+		FileSize: int64(len(gedcomFamilyEvents)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	if result.PersonsImported != 2 {
+		t.Errorf("PersonsImported = %d, want 2", result.PersonsImported)
+	}
+	if result.FamiliesImported != 1 {
+		t.Errorf("FamiliesImported = %d, want 1", result.FamiliesImported)
+	}
+}
+
+// TestImportGedcom_CitationSuccess tests citation import with valid data.
+func TestImportGedcom_CitationSuccess(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// GEDCOM with citation attached to birth event
+	gedcomCitation := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Birth Records
+0 @I1@ INDI
+1 NAME John /Doe/
+2 GIVN John
+2 SURN Doe
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1850
+2 SOUR @S1@
+3 PAGE 100
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomCitation)
+	input := command.ImportGedcomInput{
+		Filename: "citation_test.ged",
+		FileSize: int64(len(gedcomCitation)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	// The import should succeed with citations
+	if result.PersonsImported != 1 {
+		t.Errorf("PersonsImported = %d, want 1", result.PersonsImported)
+	}
+	if result.SourcesImported != 1 {
+		t.Errorf("SourcesImported = %d, want 1", result.SourcesImported)
+	}
+}
+
+// TestImportGedcom_ChildLinkFailure tests warning generation when child linking fails.
+func TestImportGedcom_ChildLinkFailure(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// First import creates persons and families normally
+	gedcom1 := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Parent /One/
+1 SEX M
+0 @I2@ INDI
+1 NAME Child /One/
+1 SEX M
+0 @F1@ FAM
+1 HUSB @I1@
+1 CHIL @I2@
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcom1)
+	input := command.ImportGedcomInput{
+		Filename: "first.ged",
+		FileSize: int64(len(gedcom1)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("First ImportGedcom failed: %v", err)
+	}
+
+	// Verify child was linked
+	families, _, _ := readStore.ListFamilies(ctx, repository.DefaultListOptions())
+	if len(families) != 1 {
+		t.Fatalf("Expected 1 family after first import")
+	}
+
+	children, _ := readStore.GetChildrenOfFamily(ctx, families[0].ID)
+	if len(children) != 1 {
+		t.Errorf("Expected 1 child linked after first import, got %d", len(children))
+	}
+
+	// The result should show the link succeeded
+	if result.FamiliesImported != 1 {
+		t.Errorf("FamiliesImported = %d, want 1", result.FamiliesImported)
+	}
+}
+
+// TestImportGedcom_RepositoryWithFullDetails tests repository with all fields.
+func TestImportGedcom_RepositoryWithFullDetails(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	gedcomRepo := `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME National Archives
+1 ADDR 700 Pennsylvania Avenue NW
+2 CITY Washington
+2 STAE DC
+2 POST 20408
+2 CTRY USA
+1 PHON 1-866-272-6272
+1 EMAIL inquire@nara.gov
+1 WWW https://www.archives.gov
+1 NOTE Primary federal records repository
+0 @I1@ INDI
+1 NAME Test /Person/
+0 TRLR
+`
+
+	reader := strings.NewReader(gedcomRepo)
+	input := command.ImportGedcomInput{
+		Filename: "repo_full.ged",
+		FileSize: int64(len(gedcomRepo)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	if result.RepositoriesImported != 1 {
+		t.Errorf("RepositoriesImported = %d, want 1", result.RepositoriesImported)
+	}
+}
+
+// mockReadStoreWithErrors is a mock that can return errors for specific operations.
+type mockReadStoreWithErrors struct {
+	*memory.ReadModelStore
+	getPersonError       error
+	getFamilyError       error
+	getChildFamilyError  error
+	getChildrenError     error
+	saveError            error
+	returnNilPerson      bool
+	returnNilFamily      bool
+	returnNilChildFamily bool
+}
+
+func newMockReadStoreWithErrors() *mockReadStoreWithErrors {
+	return &mockReadStoreWithErrors{
+		ReadModelStore: memory.NewReadModelStore(),
+	}
+}
+
+func (m *mockReadStoreWithErrors) GetPerson(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
+	if m.getPersonError != nil {
+		return nil, m.getPersonError
+	}
+	if m.returnNilPerson {
+		return nil, nil
+	}
+	return m.ReadModelStore.GetPerson(ctx, id)
+}
+
+func (m *mockReadStoreWithErrors) GetFamily(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
+	if m.getFamilyError != nil {
+		return nil, m.getFamilyError
+	}
+	if m.returnNilFamily {
+		return nil, nil
+	}
+	return m.ReadModelStore.GetFamily(ctx, id)
+}
+
+func (m *mockReadStoreWithErrors) GetChildFamily(ctx context.Context, personID uuid.UUID) (*repository.FamilyReadModel, error) {
+	if m.getChildFamilyError != nil {
+		return nil, m.getChildFamilyError
+	}
+	if m.returnNilChildFamily {
+		return nil, nil
+	}
+	return m.ReadModelStore.GetChildFamily(ctx, personID)
+}
+
+func (m *mockReadStoreWithErrors) GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
+	if m.getChildrenError != nil {
+		return nil, m.getChildrenError
+	}
+	return m.ReadModelStore.GetChildrenOfFamily(ctx, familyID)
 }

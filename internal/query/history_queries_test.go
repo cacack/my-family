@@ -183,6 +183,37 @@ func (m *mockReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) erro
 	return nil
 }
 
+// Event stub methods
+func (m *mockReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// Attribute stub methods
+func (m *mockReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) SaveAttribute(ctx context.Context, attribute *repository.AttributeReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
 func TestNewHistoryService(t *testing.T) {
 	eventStore := &mockEventStore{}
 	readStore := &mockReadModelStore{}

@@ -124,6 +124,35 @@ type MediaReadModel struct {
 	UpdatedAt     time.Time        `json:"updated_at"`
 }
 
+// EventReadModel represents a life event in the read model.
+type EventReadModel struct {
+	ID          uuid.UUID       `json:"id"`
+	OwnerType   string          `json:"owner_type"` // "person" or "family"
+	OwnerID     uuid.UUID       `json:"owner_id"`
+	FactType    domain.FactType `json:"fact_type"`
+	DateRaw     string          `json:"date_raw,omitempty"`
+	DateSort    *time.Time      `json:"date_sort,omitempty"`
+	Place       string          `json:"place,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Cause       string          `json:"cause,omitempty"` // For death/burial events
+	Age         string          `json:"age,omitempty"`   // Age at event
+	Version     int64           `json:"version"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+// AttributeReadModel represents a person attribute in the read model.
+type AttributeReadModel struct {
+	ID        uuid.UUID       `json:"id"`
+	PersonID  uuid.UUID       `json:"person_id"`
+	FactType  domain.FactType `json:"fact_type"`
+	Value     string          `json:"value"`
+	DateRaw   string          `json:"date_raw,omitempty"`
+	DateSort  *time.Time      `json:"date_sort,omitempty"`
+	Place     string          `json:"place,omitempty"`
+	Version   int64           `json:"version"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
 // ReadModelStore provides access to denormalized read models.
 type ReadModelStore interface {
 	// Person operations
@@ -174,6 +203,19 @@ type ReadModelStore interface {
 	ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts ListOptions) ([]MediaReadModel, int, error)
 	SaveMedia(ctx context.Context, media *MediaReadModel) error
 	DeleteMedia(ctx context.Context, id uuid.UUID) error
+
+	// Event operations
+	GetEvent(ctx context.Context, id uuid.UUID) (*EventReadModel, error)
+	ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]EventReadModel, error)
+	ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]EventReadModel, error)
+	SaveEvent(ctx context.Context, event *EventReadModel) error
+	DeleteEvent(ctx context.Context, id uuid.UUID) error
+
+	// Attribute operations
+	GetAttribute(ctx context.Context, id uuid.UUID) (*AttributeReadModel, error)
+	ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]AttributeReadModel, error)
+	SaveAttribute(ctx context.Context, attribute *AttributeReadModel) error
+	DeleteAttribute(ctx context.Context, id uuid.UUID) error
 }
 
 // ListOptions contains options for list queries.

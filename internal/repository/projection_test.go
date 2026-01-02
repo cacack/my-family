@@ -1312,3 +1312,956 @@ func TestProjector_MediaUpdated_NonExistent(t *testing.T) {
 		t.Fatalf("Project update should not fail for non-existent media: %v", err)
 	}
 }
+
+// LifeEvent Projection Tests
+
+func TestProjector_LifeEventCreated_ForPerson(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person first
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create a life event for this person
+	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
+	gd := domain.ParseGenDate("1 JAN 1850")
+	lifeEvent.Date = &gd
+	lifeEvent.Place = "Springfield, IL"
+	lifeEvent.Description = "Born at home"
+	lifeEvent.Age = "0"
+
+	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project LifeEventCreated failed: %v", err)
+	}
+
+	// Verify life event was created
+	rm, err := readStore.GetEvent(ctx, lifeEvent.ID)
+	if err != nil {
+		t.Fatalf("GetEvent failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Life event not found in read model")
+	}
+	if rm.OwnerType != "person" {
+		t.Errorf("OwnerType = %s, want person", rm.OwnerType)
+	}
+	if rm.OwnerID != person.ID {
+		t.Errorf("OwnerID = %v, want %v", rm.OwnerID, person.ID)
+	}
+	if rm.FactType != domain.FactPersonBirth {
+		t.Errorf("FactType = %s, want person_birth", rm.FactType)
+	}
+	if rm.DateRaw != "1 JAN 1850" {
+		t.Errorf("DateRaw = %s, want '1 JAN 1850'", rm.DateRaw)
+	}
+	if rm.DateSort == nil {
+		t.Error("DateSort should not be nil for valid date")
+	}
+	if rm.Place != "Springfield, IL" {
+		t.Errorf("Place = %s, want Springfield, IL", rm.Place)
+	}
+	if rm.Description != "Born at home" {
+		t.Errorf("Description = %s, want 'Born at home'", rm.Description)
+	}
+	if rm.Age != "0" {
+		t.Errorf("Age = %s, want '0'", rm.Age)
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+}
+
+func TestProjector_LifeEventCreated_ForFamily(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a family
+	family := domain.NewFamily()
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Create a life event for this family (e.g., marriage)
+	lifeEvent := domain.NewFamilyLifeEvent(family.ID, domain.FactFamilyMarriage)
+	gd := domain.ParseGenDate("15 JUN 1870")
+	lifeEvent.Date = &gd
+	lifeEvent.Place = "New York, NY"
+
+	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project LifeEventCreated for family failed: %v", err)
+	}
+
+	// Verify life event was created
+	rm, err := readStore.GetEvent(ctx, lifeEvent.ID)
+	if err != nil {
+		t.Fatalf("GetEvent failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Life event not found in read model")
+	}
+	if rm.OwnerType != "family" {
+		t.Errorf("OwnerType = %s, want family", rm.OwnerType)
+	}
+	if rm.OwnerID != family.ID {
+		t.Errorf("OwnerID = %v, want %v", rm.OwnerID, family.ID)
+	}
+	if rm.FactType != domain.FactFamilyMarriage {
+		t.Errorf("FactType = %s, want family_marriage", rm.FactType)
+	}
+	if rm.DateRaw != "15 JUN 1870" {
+		t.Errorf("DateRaw = %s, want '15 JUN 1870'", rm.DateRaw)
+	}
+	if rm.Place != "New York, NY" {
+		t.Errorf("Place = %s, want 'New York, NY'", rm.Place)
+	}
+}
+
+func TestProjector_LifeEventCreated_WithCause(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create a death event with cause
+	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonDeath)
+	gd := domain.ParseGenDate("15 DEC 1920")
+	lifeEvent.Date = &gd
+	lifeEvent.Place = "Chicago, IL"
+	lifeEvent.Cause = "Natural causes"
+	lifeEvent.Age = "70"
+
+	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project LifeEventCreated failed: %v", err)
+	}
+
+	// Verify
+	rm, _ := readStore.GetEvent(ctx, lifeEvent.ID)
+	if rm == nil {
+		t.Fatal("Life event not found")
+	}
+	if rm.Cause != "Natural causes" {
+		t.Errorf("Cause = %s, want 'Natural causes'", rm.Cause)
+	}
+	if rm.Age != "70" {
+		t.Errorf("Age = %s, want '70'", rm.Age)
+	}
+}
+
+func TestProjector_LifeEventCreated_WithoutDate(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create a life event without a date
+	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
+	lifeEvent.Place = "Unknown location"
+
+	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project LifeEventCreated failed: %v", err)
+	}
+
+	// Verify
+	rm, _ := readStore.GetEvent(ctx, lifeEvent.ID)
+	if rm == nil {
+		t.Fatal("Life event not found")
+	}
+	if rm.DateRaw != "" {
+		t.Errorf("DateRaw = %s, want empty string", rm.DateRaw)
+	}
+	if rm.DateSort != nil {
+		t.Error("DateSort should be nil when no date provided")
+	}
+}
+
+func TestProjector_LifeEventDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person and life event
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
+	createEvent := domain.NewLifeEventCreatedFromModel(lifeEvent)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Verify event exists
+	rm, _ := readStore.GetEvent(ctx, lifeEvent.ID)
+	if rm == nil {
+		t.Fatal("Life event should exist before deletion")
+	}
+
+	// Delete life event
+	deleteEvent := domain.NewLifeEventDeleted(lifeEvent.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify deletion
+	rm, _ = readStore.GetEvent(ctx, lifeEvent.ID)
+	if rm != nil {
+		t.Error("Life event should be deleted")
+	}
+}
+
+func TestProjector_LifeEventsList(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create multiple life events for this person
+	lifeEvent1 := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
+	gd1 := domain.ParseGenDate("1 JAN 1850")
+	lifeEvent1.Date = &gd1
+
+	lifeEvent2 := domain.NewLifeEvent(person.ID, domain.FactPersonDeath)
+	gd2 := domain.ParseGenDate("15 DEC 1920")
+	lifeEvent2.Date = &gd2
+
+	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent1), 1)
+	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent2), 2)
+
+	// List events for person
+	events, err := readStore.ListEventsForPerson(ctx, person.ID)
+	if err != nil {
+		t.Fatalf("ListEventsForPerson failed: %v", err)
+	}
+	if len(events) != 2 {
+		t.Errorf("Expected 2 events, got %d", len(events))
+	}
+}
+
+// Attribute Projection Tests
+
+func TestProjector_AttributeCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person first
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create an attribute for this person
+	attribute := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Blacksmith")
+	gd := domain.ParseGenDate("1875")
+	attribute.Date = &gd
+	attribute.Place = "Springfield, IL"
+
+	event := domain.NewAttributeCreatedFromModel(attribute)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project AttributeCreated failed: %v", err)
+	}
+
+	// Verify attribute was created
+	rm, err := readStore.GetAttribute(ctx, attribute.ID)
+	if err != nil {
+		t.Fatalf("GetAttribute failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Attribute not found in read model")
+	}
+	if rm.PersonID != person.ID {
+		t.Errorf("PersonID = %v, want %v", rm.PersonID, person.ID)
+	}
+	if rm.FactType != domain.FactPersonOccupation {
+		t.Errorf("FactType = %s, want person_occupation", rm.FactType)
+	}
+	if rm.Value != "Blacksmith" {
+		t.Errorf("Value = %s, want Blacksmith", rm.Value)
+	}
+	if rm.DateRaw != "1875" {
+		t.Errorf("DateRaw = %s, want '1875'", rm.DateRaw)
+	}
+	if rm.DateSort == nil {
+		t.Error("DateSort should not be nil for valid date")
+	}
+	if rm.Place != "Springfield, IL" {
+		t.Errorf("Place = %s, want Springfield, IL", rm.Place)
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+}
+
+func TestProjector_AttributeCreated_WithoutDate(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create an attribute without a date
+	attribute := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Farmer")
+
+	event := domain.NewAttributeCreatedFromModel(attribute)
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project AttributeCreated failed: %v", err)
+	}
+
+	// Verify
+	rm, _ := readStore.GetAttribute(ctx, attribute.ID)
+	if rm == nil {
+		t.Fatal("Attribute not found")
+	}
+	if rm.DateRaw != "" {
+		t.Errorf("DateRaw = %s, want empty string", rm.DateRaw)
+	}
+	if rm.DateSort != nil {
+		t.Error("DateSort should be nil when no date provided")
+	}
+	if rm.Value != "Farmer" {
+		t.Errorf("Value = %s, want Farmer", rm.Value)
+	}
+}
+
+func TestProjector_AttributeDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person and attribute
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	attribute := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Blacksmith")
+	createEvent := domain.NewAttributeCreatedFromModel(attribute)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Verify attribute exists
+	rm, _ := readStore.GetAttribute(ctx, attribute.ID)
+	if rm == nil {
+		t.Fatal("Attribute should exist before deletion")
+	}
+
+	// Delete attribute
+	deleteEvent := domain.NewAttributeDeleted(attribute.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify deletion
+	rm, _ = readStore.GetAttribute(ctx, attribute.ID)
+	if rm != nil {
+		t.Error("Attribute should be deleted")
+	}
+}
+
+func TestProjector_AttributesList(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create multiple attributes for this person
+	attr1 := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Blacksmith")
+	attr2 := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Farmer")
+
+	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr1), 1)
+	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr2), 2)
+
+	// List attributes for person
+	attrs, err := readStore.ListAttributesForPerson(ctx, person.ID)
+	if err != nil {
+		t.Fatalf("ListAttributesForPerson failed: %v", err)
+	}
+	if len(attrs) != 2 {
+		t.Errorf("Expected 2 attributes, got %d", len(attrs))
+	}
+}
+
+// Edge cases and error paths
+
+func TestProjector_PersonUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to update a non-existent person (should not error, just skip)
+	updateEvent := domain.NewPersonUpdated(uuid.New(), map[string]any{"given_name": "Test"})
+	err := projector.Project(ctx, updateEvent, 1)
+	if err != nil {
+		t.Fatalf("Project update should not fail for non-existent person: %v", err)
+	}
+}
+
+func TestProjector_PersonUpdated_DateClearing(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create person with dates
+	person := domain.NewPerson("John", "Doe")
+	person.SetBirthDate("1 JAN 1850")
+	person.SetDeathDate("15 DEC 1920")
+	createEvent := domain.NewPersonCreated(person)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Verify dates are set
+	rm, _ := readStore.GetPerson(ctx, person.ID)
+	if rm.BirthDateSort == nil {
+		t.Fatal("BirthDateSort should be set initially")
+	}
+	if rm.DeathDateSort == nil {
+		t.Fatal("DeathDateSort should be set initially")
+	}
+
+	// Update with invalid dates (should clear sort fields)
+	changes := map[string]any{
+		"birth_date": "UNKNOWN",
+		"death_date": "ABOUT 1920",
+	}
+	updateEvent := domain.NewPersonUpdated(person.ID, changes)
+	err := projector.Project(ctx, updateEvent, 2)
+	if err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	// Verify raw dates updated but sort may be nil for unparseable dates
+	rm, _ = readStore.GetPerson(ctx, person.ID)
+	if rm.BirthDateRaw != "UNKNOWN" {
+		t.Errorf("BirthDateRaw = %s, want UNKNOWN", rm.BirthDateRaw)
+	}
+	// "UNKNOWN" should result in nil DateSort
+	if rm.BirthDateSort != nil {
+		t.Error("BirthDateSort should be nil for unparseable date 'UNKNOWN'")
+	}
+	if rm.DeathDateRaw != "ABOUT 1920" {
+		t.Errorf("DeathDateRaw = %s, want 'ABOUT 1920'", rm.DeathDateRaw)
+	}
+}
+
+func TestProjector_FamilyUpdated_DateClearing(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create family with marriage date
+	family := domain.NewFamily()
+	family.SetMarriageDate("1 JAN 1870")
+	createEvent := domain.NewFamilyCreated(family)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Verify date is set
+	rm, _ := readStore.GetFamily(ctx, family.ID)
+	if rm.MarriageDateSort == nil {
+		t.Fatal("MarriageDateSort should be set initially")
+	}
+
+	// Update with invalid date
+	changes := map[string]any{
+		"marriage_date": "UNKNOWN",
+	}
+	updateEvent := domain.NewFamilyUpdated(family.ID, changes)
+	err := projector.Project(ctx, updateEvent, 2)
+	if err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	// Verify raw date updated but sort is nil for unparseable dates
+	rm, _ = readStore.GetFamily(ctx, family.ID)
+	if rm.MarriageDateRaw != "UNKNOWN" {
+		t.Errorf("MarriageDateRaw = %s, want UNKNOWN", rm.MarriageDateRaw)
+	}
+	if rm.MarriageDateSort != nil {
+		t.Error("MarriageDateSort should be nil for unparseable date 'UNKNOWN'")
+	}
+}
+
+func TestProjector_SourceUpdated_DateClearing(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source with publish date
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	gd := domain.ParseGenDate("1995")
+	source.PublishDate = &gd
+	createEvent := domain.NewSourceCreated(source)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Verify date is set
+	rm, _ := readStore.GetSource(ctx, source.ID)
+	if rm.PublishDateSort == nil {
+		t.Fatal("PublishDateSort should be set initially")
+	}
+
+	// Update with invalid date
+	changes := map[string]any{
+		"publish_date": "UNKNOWN",
+	}
+	updateEvent := domain.NewSourceUpdated(source.ID, changes)
+	err := projector.Project(ctx, updateEvent, 2)
+	if err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	// Verify raw date updated but sort is nil for unparseable dates
+	rm, _ = readStore.GetSource(ctx, source.ID)
+	if rm.PublishDateRaw != "UNKNOWN" {
+		t.Errorf("PublishDateRaw = %s, want UNKNOWN", rm.PublishDateRaw)
+	}
+	if rm.PublishDateSort != nil {
+		t.Error("PublishDateSort should be nil for unparseable date 'UNKNOWN'")
+	}
+}
+
+func TestProjector_CitationUpdated_SourceChange(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create two sources
+	source1 := domain.NewSource("Source 1", domain.SourceBook)
+	source2 := domain.NewSource("Source 2", domain.SourceBook)
+	projector.Project(ctx, domain.NewSourceCreated(source1), 1)
+	projector.Project(ctx, domain.NewSourceCreated(source2), 1)
+
+	// Create citation on source1
+	citation := domain.NewCitation(source1.ID, domain.FactPersonBirth, uuid.New())
+	createEvent := domain.NewCitationCreated(citation)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Verify source1 has citation count of 1
+	s1, _ := readStore.GetSource(ctx, source1.ID)
+	if s1.CitationCount != 1 {
+		t.Errorf("Source1 CitationCount = %d, want 1", s1.CitationCount)
+	}
+
+	// Move citation to source2
+	changes := map[string]any{
+		"source_id": source2.ID.String(),
+	}
+	updateEvent := domain.NewCitationUpdated(citation.ID, changes)
+	err := projector.Project(ctx, updateEvent, 2)
+	if err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	// Verify source1 count decremented and source2 incremented
+	s1, _ = readStore.GetSource(ctx, source1.ID)
+	s2, _ := readStore.GetSource(ctx, source2.ID)
+	if s1.CitationCount != 0 {
+		t.Errorf("Source1 CitationCount after move = %d, want 0", s1.CitationCount)
+	}
+	if s2.CitationCount != 1 {
+		t.Errorf("Source2 CitationCount after move = %d, want 1", s2.CitationCount)
+	}
+
+	// Verify citation has new source title
+	c, _ := readStore.GetCitation(ctx, citation.ID)
+	if c.SourceID != source2.ID {
+		t.Errorf("Citation SourceID = %v, want %v", c.SourceID, source2.ID)
+	}
+	if c.SourceTitle != "Source 2" {
+		t.Errorf("Citation SourceTitle = %s, want 'Source 2'", c.SourceTitle)
+	}
+}
+
+func TestProjector_CitationUpdated_FactOwnerChange(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create source and citation
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+
+	originalOwner := uuid.New()
+	newOwner := uuid.New()
+
+	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, originalOwner)
+	createEvent := domain.NewCitationCreated(citation)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Update fact owner and fact type
+	changes := map[string]any{
+		"fact_type":     "person_death",
+		"fact_owner_id": newOwner.String(),
+	}
+	updateEvent := domain.NewCitationUpdated(citation.ID, changes)
+	err := projector.Project(ctx, updateEvent, 2)
+	if err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	// Verify updates
+	c, _ := readStore.GetCitation(ctx, citation.ID)
+	if c.FactType != domain.FactPersonDeath {
+		t.Errorf("FactType = %s, want person_death", c.FactType)
+	}
+	if c.FactOwnerID != newOwner {
+		t.Errorf("FactOwnerID = %v, want %v", c.FactOwnerID, newOwner)
+	}
+}
+
+func TestProjector_ChildLinked_WithSingleParent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create family with only one parent
+	mother := domain.NewPerson("Jane", "Doe")
+	mother.Gender = domain.GenderFemale
+	child := domain.NewPerson("Jimmy", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(mother), 1)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+
+	family := domain.NewFamilyWithPartners(nil, &mother.ID)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Link child
+	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
+	event := domain.NewChildLinkedToFamily(fc)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project child link failed: %v", err)
+	}
+
+	// Verify pedigree edge has only mother set
+	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	if edge == nil {
+		t.Fatal("Pedigree edge not created")
+	}
+	if edge.FatherID != nil {
+		t.Error("FatherID should be nil when only mother is in family")
+	}
+	if edge.MotherID == nil || *edge.MotherID != mother.ID {
+		t.Error("MotherID not set correctly")
+	}
+	if edge.MotherName != "Jane Doe" {
+		t.Errorf("MotherName = %s, want 'Jane Doe'", edge.MotherName)
+	}
+}
+
+func TestProjector_ChildUnlinked_NonExistentFamily(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to unlink a child from a non-existent family
+	event := domain.NewChildUnlinkedFromFamily(uuid.New(), uuid.New())
+	err := projector.Project(ctx, event, 1)
+	// Should not error, just skip (family doesn't exist in read model)
+	if err != nil {
+		t.Fatalf("Project child unlink should not fail for non-existent family: %v", err)
+	}
+}
+
+func TestProjector_FamilyDeleted_NoChildren(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a family without children
+	father := domain.NewPerson("John", "Doe")
+	father.Gender = domain.GenderMale
+	projector.Project(ctx, domain.NewPersonCreated(father), 1)
+
+	family := domain.NewFamilyWithPartners(&father.ID, nil)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Verify no children
+	children, _ := readStore.GetFamilyChildren(ctx, family.ID)
+	if len(children) != 0 {
+		t.Errorf("Expected 0 children, got %d", len(children))
+	}
+
+	// Delete family without children
+	deleteEvent := domain.NewFamilyDeleted(family.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify family is deleted
+	rm, _ := readStore.GetFamily(ctx, family.ID)
+	if rm != nil {
+		t.Error("Family should be deleted")
+	}
+}
+
+func TestProjector_ChildLinked_NoFamily(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a child but no family
+	child := domain.NewPerson("Jimmy", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+
+	// Link child to non-existent family
+	// (This tests the path where family is nil)
+	fc := domain.NewFamilyChild(uuid.New(), child.ID, domain.ChildBiological)
+	event := domain.NewChildLinkedToFamily(fc)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project child link failed: %v", err)
+	}
+
+	// Should succeed but not create pedigree edge (no family)
+	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	if edge != nil {
+		t.Error("Pedigree edge should not be created when family doesn't exist")
+	}
+}
+
+func TestProjector_ChildLinked_WithTwoMaleParents(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create two male parents (covers the edge case)
+	father1 := domain.NewPerson("John", "Doe")
+	father1.Gender = domain.GenderMale
+	father2 := domain.NewPerson("Bob", "Smith")
+	father2.Gender = domain.GenderMale
+	child := domain.NewPerson("Jimmy", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(father1), 1)
+	projector.Project(ctx, domain.NewPersonCreated(father2), 1)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+
+	family := domain.NewFamilyWithPartners(&father1.ID, &father2.ID)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Link child
+	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
+	event := domain.NewChildLinkedToFamily(fc)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project child link failed: %v", err)
+	}
+
+	// Verify pedigree edge - second male should overwrite first as father
+	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	if edge == nil {
+		t.Fatal("Pedigree edge not created")
+	}
+	// Both are male, so father2 should be the father (last one wins)
+	if edge.FatherID == nil || *edge.FatherID != father2.ID {
+		t.Error("FatherID should be father2")
+	}
+	if edge.MotherID != nil {
+		t.Error("MotherID should be nil (no female parent)")
+	}
+}
+
+func TestProjector_ChildLinked_WithTwoFemaleParents(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create two female parents
+	mother1 := domain.NewPerson("Jane", "Doe")
+	mother1.Gender = domain.GenderFemale
+	mother2 := domain.NewPerson("Mary", "Smith")
+	mother2.Gender = domain.GenderFemale
+	child := domain.NewPerson("Jimmy", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(mother1), 1)
+	projector.Project(ctx, domain.NewPersonCreated(mother2), 1)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+
+	family := domain.NewFamilyWithPartners(&mother1.ID, &mother2.ID)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Link child
+	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
+	event := domain.NewChildLinkedToFamily(fc)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project child link failed: %v", err)
+	}
+
+	// Verify pedigree edge - second female should overwrite first as mother
+	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	if edge == nil {
+		t.Fatal("Pedigree edge not created")
+	}
+	if edge.FatherID != nil {
+		t.Error("FatherID should be nil (no male parent)")
+	}
+	// Both are female, so mother2 should be the mother (last one wins)
+	if edge.MotherID == nil || *edge.MotherID != mother2.ID {
+		t.Error("MotherID should be mother2")
+	}
+}
+
+func TestProjector_CitationCreated_NoSource(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create citation without creating source first
+	citation := domain.NewCitation(uuid.New(), domain.FactPersonBirth, uuid.New())
+	event := domain.NewCitationCreated(citation)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project CitationCreated should succeed even without source: %v", err)
+	}
+
+	// Verify citation was created (without source title)
+	rm, _ := readStore.GetCitation(ctx, citation.ID)
+	if rm == nil {
+		t.Fatal("Citation not found")
+	}
+	if rm.SourceTitle != "" {
+		t.Errorf("SourceTitle = %s, want empty string", rm.SourceTitle)
+	}
+}
+
+func TestProjector_CitationDeleted_NoSource(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create citation without source
+	sourceID := uuid.New()
+	citation := domain.NewCitation(sourceID, domain.FactPersonBirth, uuid.New())
+	createEvent := domain.NewCitationCreated(citation)
+	projector.Project(ctx, createEvent, 1)
+
+	// Delete citation (source doesn't exist, so citation count update should be skipped)
+	deleteEvent := domain.NewCitationDeleted(citation.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete should succeed even without source: %v", err)
+	}
+
+	// Verify citation is deleted
+	rm, _ := readStore.GetCitation(ctx, citation.ID)
+	if rm != nil {
+		t.Error("Citation should be deleted")
+	}
+}
+
+func TestProjector_CitationDeleted_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to delete non-existent citation
+	deleteEvent := domain.NewCitationDeleted(uuid.New(), "test deletion")
+	err := projector.Project(ctx, deleteEvent, 1)
+	if err != nil {
+		t.Fatalf("Project delete should succeed for non-existent citation: %v", err)
+	}
+}
+
+func TestProjector_FamilyCreated_NoPartners(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a family without partners
+	family := domain.NewFamily()
+	event := domain.NewFamilyCreated(family)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project FamilyCreated failed: %v", err)
+	}
+
+	// Verify family was created
+	rm, _ := readStore.GetFamily(ctx, family.ID)
+	if rm == nil {
+		t.Fatal("Family not found")
+	}
+	if rm.Partner1Name != "" {
+		t.Errorf("Partner1Name = %s, want empty string", rm.Partner1Name)
+	}
+	if rm.Partner2Name != "" {
+		t.Errorf("Partner2Name = %s, want empty string", rm.Partner2Name)
+	}
+}
+
+func TestProjector_ChildUnlinked_WithChildCount(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create family with a child
+	father := domain.NewPerson("John", "Doe")
+	father.Gender = domain.GenderMale
+	child := domain.NewPerson("Jimmy", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(father), 1)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+
+	family := domain.NewFamilyWithPartners(&father.ID, nil)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Link child
+	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2)
+
+	// Verify child count is 1
+	rm, _ := readStore.GetFamily(ctx, family.ID)
+	if rm.ChildCount != 1 {
+		t.Errorf("ChildCount = %d, want 1", rm.ChildCount)
+	}
+
+	// Unlink child
+	unlinkEvent := domain.NewChildUnlinkedFromFamily(family.ID, child.ID)
+	err := projector.Project(ctx, unlinkEvent, 3)
+	if err != nil {
+		t.Fatalf("Project unlink failed: %v", err)
+	}
+
+	// Verify child count is 0
+	rm, _ = readStore.GetFamily(ctx, family.ID)
+	if rm.ChildCount != 0 {
+		t.Errorf("ChildCount after unlink = %d, want 0", rm.ChildCount)
+	}
+}
