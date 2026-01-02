@@ -1,14 +1,15 @@
 package gedcom
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
-	"time"
 
+	"github.com/cacack/gedcom-go/encoder"
+	"github.com/cacack/gedcom-go/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -96,256 +97,268 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 		}
 	}
 
-	// Buffer for building GEDCOM
-	buf := &bytes.Buffer{}
+	// Build GEDCOM document
+	doc := &gedcom.Document{
+		Header: &gedcom.Header{
+			Version:      gedcom.Version55,
+			Encoding:     gedcom.EncodingUTF8,
+			SourceSystem: "MyFamily",
+		},
+		Records: make([]*gedcom.Record, 0),
+	}
 
-	// Write header
-	exp.writeHeader(buf)
-
-	// Write sources
+	// Add source records
 	for _, s := range sources {
-		exp.writeSource(buf, s, sourceXrefs)
+		xref := sourceXrefs[s.ID]
+		tags := toGedcomSourceTags(s)
+		doc.Records = append(doc.Records, &gedcom.Record{
+			XRef: xref,
+			Type: gedcom.RecordTypeSource,
+			Tags: tags,
+		})
 		result.SourcesExported++
 	}
 
-	// Write individuals
+	// Add individual records
 	for _, p := range persons {
-		citationCount := exp.writeIndividual(ctx, buf, p, personXrefs, sourceXrefs)
+		xref := personXrefs[p.ID]
+		// Fetch citations for this person's events
+		birthCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactPersonBirth, p.ID)
+		deathCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactPersonDeath, p.ID)
+		allCitations := append(birthCitations, deathCitations...)
+		result.CitationsExported += len(allCitations)
+
+		tags := toGedcomIndividualTags(p, sourceXrefs, birthCitations, deathCitations)
+		doc.Records = append(doc.Records, &gedcom.Record{
+			XRef: xref,
+			Type: gedcom.RecordTypeIndividual,
+			Tags: tags,
+		})
 		result.PersonsExported++
-		result.CitationsExported += citationCount
 	}
 
-	// Write families
+	// Add family records
 	for _, f := range families {
-		citationCount := exp.writeFamily(ctx, buf, f, personXrefs, familyXrefs, sourceXrefs)
+		xref := familyXrefs[f.ID]
+		children, _ := exp.readStore.GetFamilyChildren(ctx, f.ID)
+		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, f.ID)
+		result.CitationsExported += len(marriageCitations)
+
+		tags := toGedcomFamilyTags(f, personXrefs, sourceXrefs, children, marriageCitations)
+		doc.Records = append(doc.Records, &gedcom.Record{
+			XRef: xref,
+			Type: gedcom.RecordTypeFamily,
+			Tags: tags,
+		})
 		result.FamiliesExported++
-		result.CitationsExported += citationCount
 	}
 
-	// Write trailer
-	buf.WriteString("0 TRLR\n")
+	// Use a counting writer to track bytes written
+	cw := &countingWriter{w: w}
 
-	// Write to output
-	n, err := w.Write(buf.Bytes())
-	result.BytesWritten = int64(n)
-	if err != nil {
+	// Encode using gedcom-go encoder with LF line endings
+	opts := &encoder.EncodeOptions{LineEnding: "\n"}
+	if err := encoder.EncodeWithOptions(cw, doc, opts); err != nil {
 		return result, fmt.Errorf("failed to write GEDCOM: %w", err)
 	}
+
+	result.BytesWritten = cw.count
 
 	return result, nil
 }
 
-// writeHeader writes the GEDCOM header.
-func (exp *Exporter) writeHeader(buf *bytes.Buffer) {
-	buf.WriteString("0 HEAD\n")
-	buf.WriteString("1 SOUR MyFamily\n")
-	buf.WriteString("2 VERS 1.0\n")
-	buf.WriteString("2 NAME My Family Genealogy\n")
-	buf.WriteString("1 GEDC\n")
-	buf.WriteString("2 VERS 5.5\n")
-	buf.WriteString("2 FORM LINEAGE-LINKED\n")
-	buf.WriteString("1 CHAR UTF-8\n")
-	buf.WriteString(fmt.Sprintf("1 DATE %s\n", time.Now().Format("2 Jan 2006")))
+// countingWriter wraps an io.Writer and counts bytes written.
+type countingWriter struct {
+	w     io.Writer
+	count int64
 }
 
-// writeIndividual writes an individual (INDI) record and returns citation count.
-func (exp *Exporter) writeIndividual(ctx context.Context, buf *bytes.Buffer, p repository.PersonReadModel, personXrefs, sourceXrefs map[uuid.UUID]string) int {
-	xref := personXrefs[p.ID]
-	buf.WriteString(fmt.Sprintf("0 %s INDI\n", xref))
+func (cw *countingWriter) Write(p []byte) (n int, err error) {
+	n, err = cw.w.Write(p)
+	cw.count += int64(n)
+	return n, err
+}
+
+// toGedcomSourceTags converts a repository SourceReadModel to gedcom.Tag slice.
+func toGedcomSourceTags(s repository.SourceReadModel) []*gedcom.Tag {
+	var tags []*gedcom.Tag
+
+	// Title
+	if s.Title != "" {
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "TITL", Value: s.Title})
+	}
+
+	// Author
+	if s.Author != "" {
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "AUTH", Value: s.Author})
+	}
+
+	// Publisher (as PUBL)
+	if s.Publisher != "" {
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "PUBL", Value: s.Publisher})
+	}
+
+	// Repository
+	if s.RepositoryName != "" {
+		// If it looks like an XREF, use directly
+		if strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@") {
+			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "REPO", Value: s.RepositoryName})
+		} else {
+			// Inline repository with NAME subordinate
+			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "REPO"})
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NAME", Value: s.RepositoryName})
+		}
+	}
+
+	// Notes with CONT for multiline
+	if s.Notes != "" {
+		tags = append(tags, notesToTags(s.Notes, 1)...)
+	}
+
+	return tags
+}
+
+// toGedcomIndividualTags converts a repository PersonReadModel to gedcom.Tag slice.
+func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel) []*gedcom.Tag {
+	var tags []*gedcom.Tag
 
 	// Name
 	name := formatGedcomName(p.GivenName, p.Surname)
-	buf.WriteString(fmt.Sprintf("1 NAME %s\n", name))
+	tags = append(tags, &gedcom.Tag{Level: 1, Tag: "NAME", Value: name})
 
 	// Sex
 	if p.Gender != "" {
 		switch p.Gender {
 		case domain.GenderMale:
-			buf.WriteString("1 SEX M\n")
+			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "SEX", Value: "M"})
 		case domain.GenderFemale:
-			buf.WriteString("1 SEX F\n")
+			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "SEX", Value: "F"})
 		}
 	}
 
-	citationCount := 0
-
 	// Birth event
 	if p.BirthDateRaw != "" || p.BirthPlace != "" {
-		buf.WriteString("1 BIRT\n")
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "BIRT"})
 		if p.BirthDateRaw != "" {
-			buf.WriteString(fmt.Sprintf("2 DATE %s\n", p.BirthDateRaw))
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "DATE", Value: p.BirthDateRaw})
 		}
 		if p.BirthPlace != "" {
-			buf.WriteString(fmt.Sprintf("2 PLAC %s\n", p.BirthPlace))
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: p.BirthPlace})
 		}
-		// Write citations for birth
-		citationCount += exp.writeCitationsForFact(ctx, buf, domain.FactPersonBirth, p.ID, sourceXrefs, 2)
+		// Citations for birth
+		tags = append(tags, citationsToTags(birthCitations, sourceXrefs, 2)...)
 	}
 
 	// Death event
 	if p.DeathDateRaw != "" || p.DeathPlace != "" {
-		buf.WriteString("1 DEAT\n")
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "DEAT"})
 		if p.DeathDateRaw != "" {
-			buf.WriteString(fmt.Sprintf("2 DATE %s\n", p.DeathDateRaw))
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "DATE", Value: p.DeathDateRaw})
 		}
 		if p.DeathPlace != "" {
-			buf.WriteString(fmt.Sprintf("2 PLAC %s\n", p.DeathPlace))
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: p.DeathPlace})
 		}
-		// Write citations for death
-		citationCount += exp.writeCitationsForFact(ctx, buf, domain.FactPersonDeath, p.ID, sourceXrefs, 2)
+		// Citations for death
+		tags = append(tags, citationsToTags(deathCitations, sourceXrefs, 2)...)
 	}
 
-	// Notes
+	// Notes with CONT for multiline
 	if p.Notes != "" {
-		// GEDCOM notes need to handle line breaks
-		lines := strings.Split(p.Notes, "\n")
-		buf.WriteString("1 NOTE ")
-		buf.WriteString(lines[0])
-		buf.WriteString("\n")
-		for _, line := range lines[1:] {
-			buf.WriteString("2 CONT ")
-			buf.WriteString(line)
-			buf.WriteString("\n")
-		}
+		tags = append(tags, notesToTags(p.Notes, 1)...)
 	}
 
-	return citationCount
+	return tags
 }
 
-// writeFamily writes a family (FAM) record and returns citation count.
-func (exp *Exporter) writeFamily(ctx context.Context, buf *bytes.Buffer, f repository.FamilyReadModel, personXrefs, familyXrefs, sourceXrefs map[uuid.UUID]string) int {
-	xref := familyXrefs[f.ID]
-	buf.WriteString(fmt.Sprintf("0 %s FAM\n", xref))
+// toGedcomFamilyTags converts a repository FamilyReadModel to gedcom.Tag slice.
+func toGedcomFamilyTags(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel) []*gedcom.Tag {
+	var tags []*gedcom.Tag
 
 	// Husband (Partner1)
 	if f.Partner1ID != nil {
 		if pXref, ok := personXrefs[*f.Partner1ID]; ok {
-			buf.WriteString(fmt.Sprintf("1 HUSB %s\n", pXref))
+			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "HUSB", Value: pXref})
 		}
 	}
 
 	// Wife (Partner2)
 	if f.Partner2ID != nil {
 		if pXref, ok := personXrefs[*f.Partner2ID]; ok {
-			buf.WriteString(fmt.Sprintf("1 WIFE %s\n", pXref))
+			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "WIFE", Value: pXref})
 		}
 	}
-
-	citationCount := 0
 
 	// Marriage event
 	if f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" {
-		buf.WriteString("1 MARR\n")
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "MARR"})
 		if f.MarriageDateRaw != "" {
-			buf.WriteString(fmt.Sprintf("2 DATE %s\n", f.MarriageDateRaw))
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "DATE", Value: f.MarriageDateRaw})
 		}
 		if f.MarriagePlace != "" {
-			buf.WriteString(fmt.Sprintf("2 PLAC %s\n", f.MarriagePlace))
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: f.MarriagePlace})
 		}
-		// Write citations for marriage
-		citationCount += exp.writeCitationsForFact(ctx, buf, domain.FactFamilyMarriage, f.ID, sourceXrefs, 2)
+		// Citations for marriage
+		tags = append(tags, citationsToTags(marriageCitations, sourceXrefs, 2)...)
 	}
 
 	// Children
-	children, err := exp.readStore.GetFamilyChildren(ctx, f.ID)
-	if err == nil {
-		for _, c := range children {
-			if pXref, ok := personXrefs[c.PersonID]; ok {
-				buf.WriteString(fmt.Sprintf("1 CHIL %s\n", pXref))
-			}
+	for _, c := range children {
+		if pXref, ok := personXrefs[c.PersonID]; ok {
+			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "CHIL", Value: pXref})
 		}
 	}
 
-	return citationCount
+	return tags
 }
 
-// writeSource writes a source (SOUR) record.
-func (exp *Exporter) writeSource(buf *bytes.Buffer, s repository.SourceReadModel, sourceXrefs map[uuid.UUID]string) {
-	xref := sourceXrefs[s.ID]
-	buf.WriteString(fmt.Sprintf("0 %s SOUR\n", xref))
-
-	// Title (required)
-	if s.Title != "" {
-		buf.WriteString(fmt.Sprintf("1 TITL %s\n", s.Title))
-	}
-
-	// Author
-	if s.Author != "" {
-		buf.WriteString(fmt.Sprintf("1 AUTH %s\n", s.Author))
-	}
-
-	// Publisher
-	if s.Publisher != "" {
-		buf.WriteString(fmt.Sprintf("1 PUBL %s\n", s.Publisher))
-	}
-
-	// Repository (as reference or inline)
-	if s.RepositoryName != "" {
-		// If it looks like an XREF, write as reference; otherwise inline
-		if strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@") {
-			buf.WriteString(fmt.Sprintf("1 REPO %s\n", s.RepositoryName))
-		} else {
-			buf.WriteString(fmt.Sprintf("1 REPO\n2 NAME %s\n", s.RepositoryName))
-		}
-	}
-
-	// Notes
-	if s.Notes != "" {
-		lines := strings.Split(s.Notes, "\n")
-		buf.WriteString("1 NOTE ")
-		buf.WriteString(lines[0])
-		buf.WriteString("\n")
-		for _, line := range lines[1:] {
-			buf.WriteString("2 CONT ")
-			buf.WriteString(line)
-			buf.WriteString("\n")
-		}
-	}
-}
-
-// writeCitationsForFact writes citations for a specific fact and returns count.
-func (exp *Exporter) writeCitationsForFact(ctx context.Context, buf *bytes.Buffer, factType domain.FactType, factOwnerID uuid.UUID, sourceXrefs map[uuid.UUID]string, level int) int {
-	citations, err := exp.readStore.GetCitationsForFact(ctx, factType, factOwnerID)
-	if err != nil || len(citations) == 0 {
-		return 0
-	}
-
-	levelStr := fmt.Sprintf("%d", level)
-	subLevelStr := fmt.Sprintf("%d", level+1)
+// citationsToTags converts repository citations to gedcom.Tag slice.
+func citationsToTags(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string, level int) []*gedcom.Tag {
+	var tags []*gedcom.Tag
 
 	for _, cit := range citations {
-		// Get source XREF
 		srcXref, ok := sourceXrefs[cit.SourceID]
 		if !ok {
 			continue
 		}
 
-		// Write SOUR tag with reference
-		buf.WriteString(fmt.Sprintf("%s SOUR %s\n", levelStr, srcXref))
+		// SOUR tag with source XRef
+		tags = append(tags, &gedcom.Tag{Level: level, Tag: "SOUR", Value: srcXref})
 
-		// Write PAGE
+		// PAGE
 		if cit.Page != "" {
-			buf.WriteString(fmt.Sprintf("%s PAGE %s\n", subLevelStr, cit.Page))
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "PAGE", Value: cit.Page})
 		}
 
-		// Write QUAY (quality)
+		// QUAY (quality) - always output if any GPS quality info present
 		if cit.SourceQuality != "" || cit.InformantType != "" || cit.EvidenceType != "" {
 			quay := mapGPSToGedcomQuality(cit.SourceQuality, cit.InformantType, cit.EvidenceType)
-			buf.WriteString(fmt.Sprintf("%s QUAY %d\n", subLevelStr, quay))
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "QUAY", Value: strconv.Itoa(quay)})
 		}
 
-		// Write DATA with TEXT (quoted text)
+		// DATA with TEXT (quoted text)
 		if cit.QuotedText != "" {
-			buf.WriteString(fmt.Sprintf("%s DATA\n", subLevelStr))
+			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "DATA"})
+			// Handle multiline quoted text with CONT
 			lines := strings.Split(cit.QuotedText, "\n")
-			buf.WriteString(fmt.Sprintf("%d TEXT %s\n", level+2, lines[0]))
+			tags = append(tags, &gedcom.Tag{Level: level + 2, Tag: "TEXT", Value: lines[0]})
 			for _, line := range lines[1:] {
-				buf.WriteString(fmt.Sprintf("%d CONT %s\n", level+3, line))
+				tags = append(tags, &gedcom.Tag{Level: level + 3, Tag: "CONT", Value: line})
 			}
 		}
 	}
 
-	return len(citations)
+	return tags
+}
+
+// notesToTags converts notes text to tags with CONT for multiline.
+func notesToTags(notes string, level int) []*gedcom.Tag {
+	var tags []*gedcom.Tag
+	lines := strings.Split(notes, "\n")
+	tags = append(tags, &gedcom.Tag{Level: level, Tag: "NOTE", Value: lines[0]})
+	for _, line := range lines[1:] {
+		tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "CONT", Value: line})
+	}
+	return tags
 }
 
 // mapGPSToGedcomQuality maps GPS quality terms to GEDCOM QUAY values (0-3).
