@@ -45,12 +45,12 @@ Use conventional commits with these types only:
 | Type | Use for |
 |------|---------|
 | `feat` | New user-facing features |
-| `fix` | Bug fixes |
+| `fix` | User-facing bug fixes (not build/tooling) |
 | `perf` | Performance improvements |
 | `docs` | Documentation only |
 | `refactor` | Code restructuring |
 | `ci` | CI/CD and tooling |
-| `chore` | Maintenance, formatting, deps |
+| `chore` | Maintenance, formatting, deps, build fixes |
 
 PR titles use descriptive format (not conventional commits). See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
