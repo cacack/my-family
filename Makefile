@@ -21,6 +21,7 @@ build: ## Build all Go packages
 	go build ./...
 
 binary: frontend ## Build binary with embedded frontend
+	mkdir -p internal/web/dist
 	rm -rf internal/web/dist/*
 	cp -r web/build/* internal/web/dist/
 	go build -o myfamily ./cmd/myfamily
