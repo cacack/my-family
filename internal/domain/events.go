@@ -589,8 +589,8 @@ func NewRepositoryDeleted(repositoryID uuid.UUID, reason string) RepositoryDelet
 type LifeEventCreated struct {
 	BaseEvent
 	EventID     uuid.UUID  `json:"event_id"`
-	PersonID    *uuid.UUID `json:"person_id,omitempty"`  // nil for family events
-	FamilyID    *uuid.UUID `json:"family_id,omitempty"`  // nil for person events
+	PersonID    *uuid.UUID `json:"person_id,omitempty"` // nil for family events
+	FamilyID    *uuid.UUID `json:"family_id,omitempty"` // nil for person events
 	FactType    FactType   `json:"fact_type"`
 	Date        *GenDate   `json:"date,omitempty"`
 	Place       string     `json:"place,omitempty"`

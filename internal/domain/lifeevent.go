@@ -11,8 +11,8 @@ import (
 // Examples include baptism, burial, census, emigration, etc.
 type LifeEvent struct {
 	ID          uuid.UUID  `json:"id"`
-	PersonID    *uuid.UUID `json:"person_id,omitempty"`  // nil for family events
-	FamilyID    *uuid.UUID `json:"family_id,omitempty"`  // nil for person events
+	PersonID    *uuid.UUID `json:"person_id,omitempty"` // nil for family events
+	FamilyID    *uuid.UUID `json:"family_id,omitempty"` // nil for person events
 	FactType    FactType   `json:"fact_type"`
 	Date        *GenDate   `json:"date,omitempty"`        // when it occurred
 	Place       string     `json:"place,omitempty"`       // where it occurred
@@ -151,7 +151,7 @@ func (e *LifeEvent) SetDate(dateStr string) {
 // Examples include occupation, residence, education, religion, title.
 type Attribute struct {
 	ID         uuid.UUID `json:"id"`
-	PersonID   uuid.UUID `json:"person_id"`            // required, attributes are person-only
+	PersonID   uuid.UUID `json:"person_id"` // required, attributes are person-only
 	FactType   FactType  `json:"fact_type"`
 	Value      string    `json:"value"`                 // the attribute value (e.g., "Blacksmith")
 	Date       *GenDate  `json:"date,omitempty"`        // period of applicability

@@ -1084,9 +1084,9 @@ func TestRepositoryDeleted_RoundTrip(t *testing.T) {
 // Tests for AggregateID methods that were previously uncovered
 func TestEventAggregateIDs(t *testing.T) {
 	tests := []struct {
-		name        string
-		eventFunc   func() (Event, uuid.UUID)
-		wantType    string
+		name      string
+		eventFunc func() (Event, uuid.UUID)
+		wantType  string
 	}{
 		{
 			name: "PersonUpdated",
