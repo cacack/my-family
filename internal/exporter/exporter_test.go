@@ -539,18 +539,18 @@ func TestCSVExporter_AllPersonFieldValues(t *testing.T) {
 
 	// Check all values are present
 	row := records[1]
-	assert.Equal(t, person.ID.String(), row[0])      // id
-	assert.Equal(t, "John", row[1])                  // given_name
-	assert.Equal(t, "Doe", row[2])                   // surname
-	assert.Equal(t, "John Doe", row[3])              // full_name
-	assert.Equal(t, "male", row[4])                  // gender
-	assert.Equal(t, "15 JAN 1850", row[5])           // birth_date
-	assert.Equal(t, "Springfield, IL", row[6])       // birth_place
-	assert.Equal(t, "20 MAR 1920", row[7])           // death_date
-	assert.Equal(t, "Chicago, IL", row[8])           // death_place
-	assert.Equal(t, "Test notes", row[9])            // notes
-	assert.Equal(t, "5", row[10])                    // version
-	assert.NotEmpty(t, row[11])                      // updated_at
+	assert.Equal(t, person.ID.String(), row[0]) // id
+	assert.Equal(t, "John", row[1])             // given_name
+	assert.Equal(t, "Doe", row[2])              // surname
+	assert.Equal(t, "John Doe", row[3])         // full_name
+	assert.Equal(t, "male", row[4])             // gender
+	assert.Equal(t, "15 JAN 1850", row[5])      // birth_date
+	assert.Equal(t, "Springfield, IL", row[6])  // birth_place
+	assert.Equal(t, "20 MAR 1920", row[7])      // death_date
+	assert.Equal(t, "Chicago, IL", row[8])      // death_place
+	assert.Equal(t, "Test notes", row[9])       // notes
+	assert.Equal(t, "5", row[10])               // version
+	assert.NotEmpty(t, row[11])                 // updated_at
 }
 
 func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
@@ -623,17 +623,17 @@ func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
 
 	// Check all values are present
 	row := records[1]
-	assert.Equal(t, family.ID.String(), row[0])      // id
-	assert.Equal(t, person1.ID.String(), row[1])     // partner1_id
-	assert.Equal(t, "John Doe", row[2])              // partner1_name
-	assert.Equal(t, person2.ID.String(), row[3])     // partner2_id
-	assert.Equal(t, "Jane Smith", row[4])            // partner2_name
-	assert.Equal(t, "marriage", row[5])              // relationship_type
-	assert.Equal(t, "10 JUN 1875", row[6])           // marriage_date
-	assert.Equal(t, "Springfield, IL", row[7])       // marriage_place
-	assert.Equal(t, "3", row[8])                     // child_count
-	assert.Equal(t, "2", row[9])                     // version
-	assert.NotEmpty(t, row[10])                      // updated_at
+	assert.Equal(t, family.ID.String(), row[0])  // id
+	assert.Equal(t, person1.ID.String(), row[1]) // partner1_id
+	assert.Equal(t, "John Doe", row[2])          // partner1_name
+	assert.Equal(t, person2.ID.String(), row[3]) // partner2_id
+	assert.Equal(t, "Jane Smith", row[4])        // partner2_name
+	assert.Equal(t, "marriage", row[5])          // relationship_type
+	assert.Equal(t, "10 JUN 1875", row[6])       // marriage_date
+	assert.Equal(t, "Springfield, IL", row[7])   // marriage_place
+	assert.Equal(t, "3", row[8])                 // child_count
+	assert.Equal(t, "2", row[9])                 // version
+	assert.NotEmpty(t, row[10])                  // updated_at
 }
 
 func TestCSVExporter_FamilyWithNilPartners(t *testing.T) {
