@@ -23,6 +23,8 @@ tags:
     description: Person search
   - name: gedcom
     description: GEDCOM import/export
+  - name: export
+    description: Data export (JSON/CSV)
 
 paths:
   /persons:
@@ -376,6 +378,143 @@ paths:
               schema:
                 type: string
                 example: attachment; filename="export.ged"
+
+  /export/tree:
+    get:
+      operationId: exportTree
+      summary: Export complete family tree as JSON
+      description: |
+        Exports all persons and families as a single JSON document.
+        Useful for backup tools and data migration.
+      tags: [export]
+      responses:
+        '200':
+          description: Complete tree export
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TreeExport'
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="export-tree.json"
+        '500':
+          description: Export failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /export/persons:
+    get:
+      operationId: exportPersons
+      summary: Export persons in JSON or CSV format
+      description: |
+        Exports all persons in the specified format.
+        For CSV format, optionally specify which fields to include.
+      tags: [export]
+      parameters:
+        - name: format
+          in: query
+          description: Output format
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+        - name: fields
+          in: query
+          description: |
+            Comma-separated list of fields to include (CSV only).
+            Available fields: id, given_name, surname, full_name, gender,
+            birth_date, birth_place, death_date, death_place, notes, version, updated_at
+          schema:
+            type: string
+            example: id,given_name,surname,birth_date
+      responses:
+        '200':
+          description: Persons export
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Person'
+            text/csv:
+              schema:
+                type: string
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="export-persons.json"
+        '400':
+          description: Invalid format or field names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Export failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /export/families:
+    get:
+      operationId: exportFamilies
+      summary: Export families in JSON or CSV format
+      description: |
+        Exports all families in the specified format.
+        For CSV format, optionally specify which fields to include.
+      tags: [export]
+      parameters:
+        - name: format
+          in: query
+          description: Output format
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+        - name: fields
+          in: query
+          description: |
+            Comma-separated list of fields to include (CSV only).
+            Available fields: id, partner1_id, partner1_name, partner2_id, partner2_name,
+            relationship_type, marriage_date, marriage_place, child_count, version, updated_at
+          schema:
+            type: string
+            example: id,partner1_name,partner2_name,marriage_date
+      responses:
+        '200':
+          description: Families export
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Family'
+            text/csv:
+              schema:
+                type: string
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="export-families.json"
+        '400':
+          description: Invalid format or field names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Export failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   parameters:
@@ -845,3 +984,17 @@ components:
           type: string
         message:
           type: string
+
+    TreeExport:
+      type: object
+      required: [persons, families]
+      description: Complete family tree export containing all persons and families
+      properties:
+        persons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Person'
+        families:
+          type: array
+          items:
+            $ref: '#/components/schemas/Family'

@@ -519,6 +519,54 @@ class ApiClient {
 		return response.text();
 	}
 
+	async exportTree(): Promise<string> {
+		const response = await fetch(`${API_BASE}/export/tree`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			throw error;
+		}
+
+		return response.text();
+	}
+
+	async exportPersons(format: 'json' | 'csv', fields?: string[]): Promise<string> {
+		const params = new URLSearchParams({ format });
+		if (fields?.length) params.set('fields', fields.join(','));
+
+		const response = await fetch(`${API_BASE}/export/persons?${params}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			throw error;
+		}
+
+		return response.text();
+	}
+
+	async exportFamilies(format: 'json' | 'csv', fields?: string[]): Promise<string> {
+		const params = new URLSearchParams({ format });
+		if (fields?.length) params.set('fields', fields.join(','));
+
+		const response = await fetch(`${API_BASE}/export/families?${params}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			throw error;
+		}
+
+		return response.text();
+	}
+
 	// Source endpoints
 	async listSources(params?: {
 		limit?: number;

@@ -8,6 +8,79 @@
 	let error: string | null = $state(null);
 	let dragOver = $state(false);
 
+	// Export state
+	type EntityType = 'tree' | 'persons' | 'families';
+	type ExportFormat = 'json' | 'csv';
+
+	let exportEntityType: EntityType = $state('tree');
+	let exportFormat: ExportFormat = $state('json');
+	let exporting = $state(false);
+	let exportError: string | null = $state(null);
+
+	// Available fields for CSV export
+	const personFields = [
+		{ id: 'id', label: 'ID' },
+		{ id: 'given_name', label: 'Given Name' },
+		{ id: 'surname', label: 'Surname' },
+		{ id: 'full_name', label: 'Full Name' },
+		{ id: 'gender', label: 'Gender' },
+		{ id: 'birth_date', label: 'Birth Date' },
+		{ id: 'birth_place', label: 'Birth Place' },
+		{ id: 'death_date', label: 'Death Date' },
+		{ id: 'death_place', label: 'Death Place' },
+		{ id: 'notes', label: 'Notes' }
+	];
+
+	const familyFields = [
+		{ id: 'id', label: 'ID' },
+		{ id: 'partner1_name', label: 'Partner 1 Name' },
+		{ id: 'partner2_name', label: 'Partner 2 Name' },
+		{ id: 'relationship_type', label: 'Relationship Type' },
+		{ id: 'marriage_date', label: 'Marriage Date' },
+		{ id: 'marriage_place', label: 'Marriage Place' },
+		{ id: 'child_count', label: 'Child Count' }
+	];
+
+	// Selected fields (default all selected)
+	let selectedPersonFields: Set<string> = $state(new Set(personFields.map((f) => f.id)));
+	let selectedFamilyFields: Set<string> = $state(new Set(familyFields.map((f) => f.id)));
+
+	function toggleField(fieldId: string, isPersonField: boolean) {
+		if (isPersonField) {
+			const newSet = new Set(selectedPersonFields);
+			if (newSet.has(fieldId)) {
+				newSet.delete(fieldId);
+			} else {
+				newSet.add(fieldId);
+			}
+			selectedPersonFields = newSet;
+		} else {
+			const newSet = new Set(selectedFamilyFields);
+			if (newSet.has(fieldId)) {
+				newSet.delete(fieldId);
+			} else {
+				newSet.add(fieldId);
+			}
+			selectedFamilyFields = newSet;
+		}
+	}
+
+	function selectAllFields(isPersonField: boolean) {
+		if (isPersonField) {
+			selectedPersonFields = new Set(personFields.map((f) => f.id));
+		} else {
+			selectedFamilyFields = new Set(familyFields.map((f) => f.id));
+		}
+	}
+
+	function selectNoFields(isPersonField: boolean) {
+		if (isPersonField) {
+			selectedPersonFields = new Set();
+		} else {
+			selectedFamilyFields = new Set();
+		}
+	}
+
 	function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
 		if (input.files && input.files.length > 0) {
@@ -62,7 +135,7 @@
 		error = null;
 	}
 
-	async function exportData() {
+	async function exportGedcomData() {
 		try {
 			const gedcom = await api.exportGedcom();
 			const blob = new Blob([gedcom], { type: 'text/plain' });
@@ -74,6 +147,47 @@
 			URL.revokeObjectURL(url);
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Export failed';
+		}
+	}
+
+	async function exportData() {
+		exporting = true;
+		exportError = null;
+
+		try {
+			let data: string;
+			let filename: string;
+			let contentType: string;
+
+			if (exportEntityType === 'tree') {
+				data = await api.exportTree();
+				filename = 'family-tree.json';
+				contentType = 'application/json';
+			} else if (exportEntityType === 'persons') {
+				const fields =
+					exportFormat === 'csv' ? Array.from(selectedPersonFields) : undefined;
+				data = await api.exportPersons(exportFormat, fields);
+				filename = `persons.${exportFormat}`;
+				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
+			} else {
+				const fields =
+					exportFormat === 'csv' ? Array.from(selectedFamilyFields) : undefined;
+				data = await api.exportFamilies(exportFormat, fields);
+				filename = `families.${exportFormat}`;
+				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
+			}
+
+			const blob = new Blob([data], { type: contentType });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			exportError = (e as { message?: string }).message || 'Export failed';
+		} finally {
+			exporting = false;
 		}
 	}
 </script>
@@ -201,17 +315,160 @@
 		<section class="export-section">
 			<h2>Export Data</h2>
 			<p class="description">
-				Download all your family tree data as a GEDCOM 5.5 file that can be imported into other
-				genealogy software.
+				Download your family tree data in various formats. GEDCOM files can be imported into other
+				genealogy software, while JSON and CSV formats are useful for data analysis.
 			</p>
-			<button class="btn" onclick={exportData}>
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-					<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-					<polyline points="7 10 12 15 17 10" />
-					<line x1="12" y1="15" x2="12" y2="3" />
-				</svg>
-				Export GEDCOM
-			</button>
+
+			<!-- GEDCOM Export -->
+			<div class="export-option">
+				<h3>GEDCOM Format</h3>
+				<p class="option-description">Standard genealogy format compatible with most software.</p>
+				<button class="btn" onclick={exportGedcomData}>
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+						<polyline points="7 10 12 15 17 10" />
+						<line x1="12" y1="15" x2="12" y2="3" />
+					</svg>
+					Export GEDCOM
+				</button>
+			</div>
+
+			<hr class="divider" />
+
+			<!-- Custom Export -->
+			<div class="export-option">
+				<h3>Custom Export</h3>
+				<p class="option-description">Export specific data types in JSON or CSV format.</p>
+
+				<!-- Entity Type Selector -->
+				<div class="form-group">
+					<label class="form-label">What to export</label>
+					<div class="radio-group">
+						<label class="radio-label">
+							<input
+								type="radio"
+								name="entityType"
+								value="tree"
+								bind:group={exportEntityType}
+							/>
+							<span>Complete Tree</span>
+						</label>
+						<label class="radio-label">
+							<input
+								type="radio"
+								name="entityType"
+								value="persons"
+								bind:group={exportEntityType}
+							/>
+							<span>People</span>
+						</label>
+						<label class="radio-label">
+							<input
+								type="radio"
+								name="entityType"
+								value="families"
+								bind:group={exportEntityType}
+							/>
+							<span>Families</span>
+						</label>
+					</div>
+				</div>
+
+				<!-- Format Selector (only for persons/families) -->
+				{#if exportEntityType !== 'tree'}
+					<div class="form-group">
+						<label class="form-label">Format</label>
+						<div class="radio-group">
+							<label class="radio-label">
+								<input
+									type="radio"
+									name="format"
+									value="json"
+									bind:group={exportFormat}
+								/>
+								<span>JSON</span>
+							</label>
+							<label class="radio-label">
+								<input
+									type="radio"
+									name="format"
+									value="csv"
+									bind:group={exportFormat}
+								/>
+								<span>CSV</span>
+							</label>
+						</div>
+					</div>
+
+					<!-- Field Picker (only for CSV) -->
+					{#if exportFormat === 'csv'}
+						<div class="form-group">
+							<div class="field-picker-header">
+								<label class="form-label">Fields to include</label>
+								<div class="field-picker-actions">
+									<button
+										type="button"
+										class="btn-text"
+										onclick={() => selectAllFields(exportEntityType === 'persons')}
+									>
+										Select All
+									</button>
+									<button
+										type="button"
+										class="btn-text"
+										onclick={() => selectNoFields(exportEntityType === 'persons')}
+									>
+										Select None
+									</button>
+								</div>
+							</div>
+							<div class="field-picker">
+								{#if exportEntityType === 'persons'}
+									{#each personFields as field}
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												checked={selectedPersonFields.has(field.id)}
+												onchange={() => toggleField(field.id, true)}
+											/>
+											<span>{field.label}</span>
+										</label>
+									{/each}
+								{:else}
+									{#each familyFields as field}
+										<label class="checkbox-label">
+											<input
+												type="checkbox"
+												checked={selectedFamilyFields.has(field.id)}
+												onchange={() => toggleField(field.id, false)}
+											/>
+											<span>{field.label}</span>
+										</label>
+									{/each}
+								{/if}
+							</div>
+						</div>
+					{/if}
+				{/if}
+
+				{#if exportError}
+					<p class="error-message">{exportError}</p>
+				{/if}
+
+				<button class="btn btn-primary" onclick={exportData} disabled={exporting}>
+					{#if exporting}
+						<span class="spinner"></span>
+						Exporting...
+					{:else}
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+							<polyline points="7 10 12 15 17 10" />
+							<line x1="12" y1="15" x2="12" y2="3" />
+						</svg>
+						Export {exportEntityType === 'tree' ? 'Tree' : exportEntityType === 'persons' ? 'People' : 'Families'} as {exportEntityType === 'tree' ? 'JSON' : exportFormat.toUpperCase()}
+					{/if}
+				</button>
+			</div>
 		</section>
 	</div>
 </div>
@@ -498,5 +755,121 @@
 
 	.export-section {
 		background: #fafafa;
+	}
+
+	.export-option {
+		margin-bottom: 1.5rem;
+	}
+
+	.export-option:last-child {
+		margin-bottom: 0;
+	}
+
+	.export-option h3 {
+		margin: 0 0 0.25rem;
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #1e293b;
+	}
+
+	.option-description {
+		margin: 0 0 0.75rem;
+		color: #64748b;
+		font-size: 0.8125rem;
+	}
+
+	.divider {
+		border: none;
+		border-top: 1px solid #e2e8f0;
+		margin: 1.5rem 0;
+	}
+
+	.form-group {
+		margin-bottom: 1rem;
+	}
+
+	.form-label {
+		display: block;
+		margin-bottom: 0.5rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: #374151;
+	}
+
+	.radio-group {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem;
+	}
+
+	.radio-label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.875rem;
+		color: #475569;
+	}
+
+	.radio-label input[type='radio'] {
+		width: 1rem;
+		height: 1rem;
+		accent-color: #3b82f6;
+	}
+
+	.field-picker-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.5rem;
+	}
+
+	.field-picker-header .form-label {
+		margin-bottom: 0;
+	}
+
+	.field-picker-actions {
+		display: flex;
+		gap: 0.75rem;
+	}
+
+	.btn-text {
+		background: none;
+		border: none;
+		padding: 0;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: #3b82f6;
+		cursor: pointer;
+	}
+
+	.btn-text:hover {
+		color: #2563eb;
+		text-decoration: underline;
+	}
+
+	.field-picker {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 0.5rem;
+		padding: 1rem;
+		background: white;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.8125rem;
+		color: #475569;
+	}
+
+	.checkbox-label input[type='checkbox'] {
+		width: 0.875rem;
+		height: 0.875rem;
+		accent-color: #3b82f6;
 	}
 </style>

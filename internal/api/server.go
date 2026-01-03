@@ -146,6 +146,11 @@ func (s *Server) registerRoutes() {
 	api.POST("/gedcom/import", s.importGedcom)
 	api.GET("/gedcom/export", s.exportGedcom)
 
+	// Data export endpoints
+	api.GET("/export/tree", s.exportTree)
+	api.GET("/export/persons", s.exportPersons)
+	api.GET("/export/families", s.exportFamilies)
+
 	// History
 	api.GET("/history", s.getGlobalHistory)
 	api.GET("/persons/:id/history", s.getPersonHistory)

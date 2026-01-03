@@ -6,6 +6,7 @@ Completed features in my-family genealogy software.
 
 - **GEDCOM 5.5 Import** - Import existing family trees from any GEDCOM-compatible software
 - **GEDCOM 5.5 Export** - Export your data for backup or use in other tools
+- **JSON/CSV Export** - Export persons and families as JSON or CSV with configurable field selection
 - **Person Management** - Create, edit, and delete individual records with names, dates, places, gender, and notes
 - **Family Management** - Create family units linking partners and children, supporting multiple marriages and single-parent families
 - **Flexible Date Formats** - Support for exact dates, approximate dates (circa), date ranges, and bounded dates (before/after)
