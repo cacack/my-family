@@ -3,7 +3,7 @@ module github.com/cacack/my-family
 go 1.24.3
 
 require (
-	github.com/cacack/gedcom-go v0.5.0
+	github.com/cacack/gedcom-go v0.6.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.14.0

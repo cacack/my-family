@@ -6,10 +6,8 @@ github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 h1:UQHMgLO+TxOEl
 github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/cacack/gedcom-go v0.4.0 h1:Ef4dkuZsK0Q9OAa0FHkJ4Wv3JjFBQRzHhzC0lOzx0Kg=
-github.com/cacack/gedcom-go v0.4.0/go.mod h1:xhs4xI0AFTJkDbBusFy3xabz7fhLMhx6x4TXhgATr30=
-github.com/cacack/gedcom-go v0.5.0 h1:glFgyFCMmV+/RWf3bo23AshW/CtcRLqsnE4WWQbuRjE=
-github.com/cacack/gedcom-go v0.5.0/go.mod h1:5acaE99nIAvPKI36BuL9zJN7yKFvufqU1zDaElGcHKE=
+github.com/cacack/gedcom-go v0.6.0 h1:turen8ihQp4fnIoZqlE7wnKasb7IJeOcdVUjVbKESpo=
+github.com/cacack/gedcom-go v0.6.0/go.mod h1:vJRGC53oCuS6Pwg4rqOJ7ChOgneZfOFaBmFu4iWaduk=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=
