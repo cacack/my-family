@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { render } from '@testing-library/svelte';
 import PedigreeChart from './PedigreeChart.svelte';
 import type { PedigreeNode } from '$lib/api/client';
 

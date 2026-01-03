@@ -85,6 +85,9 @@ Environment variables:
 - `GET /api/v1/search?q=...` - Search persons
 - `POST /api/v1/gedcom/import` - Import GEDCOM file
 - `GET /api/v1/gedcom/export` - Export as GEDCOM
+- `GET /api/v1/export/tree` - Export complete tree as JSON
+- `GET /api/v1/export/persons` - Export persons as JSON or CSV
+- `GET /api/v1/export/families` - Export families as JSON or CSV
 
 API documentation: http://localhost:8080/api/v1/docs
 
