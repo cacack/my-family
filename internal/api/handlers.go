@@ -878,7 +878,7 @@ func (s *Server) exportPersons(c echo.Context) error {
 	}
 
 	c.Logger().Infof("Persons export (%s): %d persons, %d bytes",
-		format, result.PersonsExported, result.BytesWritten)
+		exportFormat, result.PersonsExported, result.BytesWritten)
 
 	return nil
 }
@@ -946,7 +946,7 @@ func (s *Server) exportFamilies(c echo.Context) error {
 	}
 
 	c.Logger().Infof("Families export (%s): %d families, %d bytes",
-		format, result.FamiliesExported, result.BytesWritten)
+		exportFormat, result.FamiliesExported, result.BytesWritten)
 
 	return nil
 }
