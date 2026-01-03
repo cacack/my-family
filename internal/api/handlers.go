@@ -877,8 +877,8 @@ func (s *Server) exportPersons(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to export persons: "+err.Error())
 	}
 
-	c.Logger().Infof("Persons export (%s): %d persons, %d bytes",
-		exportFormat, result.PersonsExported, result.BytesWritten)
+	c.Logger().Infof("Persons export: %d persons, %d bytes",
+		result.PersonsExported, result.BytesWritten)
 
 	return nil
 }
@@ -945,8 +945,8 @@ func (s *Server) exportFamilies(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to export families: "+err.Error())
 	}
 
-	c.Logger().Infof("Families export (%s): %d families, %d bytes",
-		exportFormat, result.FamiliesExported, result.BytesWritten)
+	c.Logger().Infof("Families export: %d families, %d bytes",
+		result.FamiliesExported, result.BytesWritten)
 
 	return nil
 }
