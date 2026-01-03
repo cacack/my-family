@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/exporter"
 	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/query"
 )
@@ -787,6 +788,165 @@ func (s *Server) exportGedcom(c echo.Context) error {
 	// Log export statistics
 	c.Logger().Infof("GEDCOM export: %d persons, %d families, %d bytes",
 		result.PersonsExported, result.FamiliesExported, result.BytesWritten)
+
+	return nil
+}
+
+// exportTree exports the complete family tree as JSON.
+func (s *Server) exportTree(c echo.Context) error {
+	exp := exporter.NewDataExporter(s.readStore)
+
+	opts := exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeAll,
+	}
+
+	c.Response().Header().Set("Content-Type", "application/json")
+	c.Response().Header().Set("Content-Disposition", "attachment; filename=export-tree.json")
+
+	result, err := exp.Export(c.Request().Context(), c.Response().Writer, opts)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to export tree: "+err.Error())
+	}
+
+	c.Logger().Infof("Tree export: %d persons, %d families, %d bytes",
+		result.PersonsExported, result.FamiliesExported, result.BytesWritten)
+
+	return nil
+}
+
+// exportPersons exports persons in JSON or CSV format.
+func (s *Server) exportPersons(c echo.Context) error {
+	format := c.QueryParam("format")
+	if format == "" {
+		format = "json"
+	}
+
+	fieldsParam := c.QueryParam("fields")
+
+	// Validate format
+	var exportFormat exporter.Format
+	switch format {
+	case "json":
+		exportFormat = exporter.FormatJSON
+	case "csv":
+		exportFormat = exporter.FormatCSV
+	default:
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid format: "+format+"; valid formats are 'json' or 'csv'")
+	}
+
+	// Parse fields for CSV
+	var fields []string
+	if fieldsParam != "" && exportFormat == exporter.FormatCSV {
+		fields = strings.Split(fieldsParam, ",")
+		// Trim whitespace from field names
+		for i, f := range fields {
+			fields[i] = strings.TrimSpace(f)
+		}
+		// Validate fields
+		for _, f := range fields {
+			if !exporter.AvailablePersonFields[f] {
+				validFields := make([]string, 0, len(exporter.AvailablePersonFields))
+				for k := range exporter.AvailablePersonFields {
+					validFields = append(validFields, k)
+				}
+				return echo.NewHTTPError(http.StatusBadRequest,
+					"Invalid field '"+f+"'; available fields: "+strings.Join(validFields, ", "))
+			}
+		}
+	}
+
+	exp := exporter.NewDataExporter(s.readStore)
+	opts := exporter.ExportOptions{
+		Format:     exportFormat,
+		EntityType: exporter.EntityTypePersons,
+		Fields:     fields,
+	}
+
+	// Set response headers
+	if exportFormat == exporter.FormatJSON {
+		c.Response().Header().Set("Content-Type", "application/json")
+		c.Response().Header().Set("Content-Disposition", "attachment; filename=export-persons.json")
+	} else {
+		c.Response().Header().Set("Content-Type", "text/csv")
+		c.Response().Header().Set("Content-Disposition", "attachment; filename=export-persons.csv")
+	}
+
+	result, err := exp.Export(c.Request().Context(), c.Response().Writer, opts)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to export persons: "+err.Error())
+	}
+
+	c.Logger().Infof("Persons export (%s): %d persons, %d bytes",
+		format, result.PersonsExported, result.BytesWritten)
+
+	return nil
+}
+
+// exportFamilies exports families in JSON or CSV format.
+func (s *Server) exportFamilies(c echo.Context) error {
+	format := c.QueryParam("format")
+	if format == "" {
+		format = "json"
+	}
+
+	fieldsParam := c.QueryParam("fields")
+
+	// Validate format
+	var exportFormat exporter.Format
+	switch format {
+	case "json":
+		exportFormat = exporter.FormatJSON
+	case "csv":
+		exportFormat = exporter.FormatCSV
+	default:
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid format: "+format+"; valid formats are 'json' or 'csv'")
+	}
+
+	// Parse fields for CSV
+	var fields []string
+	if fieldsParam != "" && exportFormat == exporter.FormatCSV {
+		fields = strings.Split(fieldsParam, ",")
+		// Trim whitespace from field names
+		for i, f := range fields {
+			fields[i] = strings.TrimSpace(f)
+		}
+		// Validate fields
+		for _, f := range fields {
+			if !exporter.AvailableFamilyFields[f] {
+				validFields := make([]string, 0, len(exporter.AvailableFamilyFields))
+				for k := range exporter.AvailableFamilyFields {
+					validFields = append(validFields, k)
+				}
+				return echo.NewHTTPError(http.StatusBadRequest,
+					"Invalid field '"+f+"'; available fields: "+strings.Join(validFields, ", "))
+			}
+		}
+	}
+
+	exp := exporter.NewDataExporter(s.readStore)
+	opts := exporter.ExportOptions{
+		Format:     exportFormat,
+		EntityType: exporter.EntityTypeFamilies,
+		Fields:     fields,
+	}
+
+	// Set response headers
+	if exportFormat == exporter.FormatJSON {
+		c.Response().Header().Set("Content-Type", "application/json")
+		c.Response().Header().Set("Content-Disposition", "attachment; filename=export-families.json")
+	} else {
+		c.Response().Header().Set("Content-Type", "text/csv")
+		c.Response().Header().Set("Content-Disposition", "attachment; filename=export-families.csv")
+	}
+
+	result, err := exp.Export(c.Request().Context(), c.Response().Writer, opts)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to export families: "+err.Error())
+	}
+
+	c.Logger().Infof("Families export (%s): %d families, %d bytes",
+		format, result.FamiliesExported, result.BytesWritten)
 
 	return nil
 }
