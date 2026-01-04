@@ -36,21 +36,22 @@ func NewBaseEvent() BaseEvent {
 // PersonCreated event is emitted when a new person is created.
 type PersonCreated struct {
 	BaseEvent
-	PersonID      uuid.UUID `json:"person_id"`
-	GivenName     string    `json:"given_name"`
-	Surname       string    `json:"surname"`
-	NamePrefix    string    `json:"name_prefix,omitempty"`
-	NameSuffix    string    `json:"name_suffix,omitempty"`
-	SurnamePrefix string    `json:"surname_prefix,omitempty"`
-	Nickname      string    `json:"nickname,omitempty"`
-	NameType      NameType  `json:"name_type,omitempty"`
-	Gender        Gender    `json:"gender,omitempty"`
-	BirthDate     *GenDate  `json:"birth_date,omitempty"`
-	BirthPlace    string    `json:"birth_place,omitempty"`
-	DeathDate     *GenDate  `json:"death_date,omitempty"`
-	DeathPlace    string    `json:"death_place,omitempty"`
-	Notes         string    `json:"notes,omitempty"`
-	GedcomXref    string    `json:"gedcom_xref,omitempty"`
+	PersonID       uuid.UUID      `json:"person_id"`
+	GivenName      string         `json:"given_name"`
+	Surname        string         `json:"surname"`
+	NamePrefix     string         `json:"name_prefix,omitempty"`
+	NameSuffix     string         `json:"name_suffix,omitempty"`
+	SurnamePrefix  string         `json:"surname_prefix,omitempty"`
+	Nickname       string         `json:"nickname,omitempty"`
+	NameType       NameType       `json:"name_type,omitempty"`
+	Gender         Gender         `json:"gender,omitempty"`
+	BirthDate      *GenDate       `json:"birth_date,omitempty"`
+	BirthPlace     string         `json:"birth_place,omitempty"`
+	DeathDate      *GenDate       `json:"death_date,omitempty"`
+	DeathPlace     string         `json:"death_place,omitempty"`
+	Notes          string         `json:"notes,omitempty"`
+	ResearchStatus ResearchStatus `json:"research_status,omitempty"`
+	GedcomXref     string         `json:"gedcom_xref,omitempty"`
 }
 
 func (e PersonCreated) EventType() string      { return "PersonCreated" }
@@ -59,22 +60,23 @@ func (e PersonCreated) AggregateID() uuid.UUID { return e.PersonID }
 // NewPersonCreated creates a PersonCreated event from a Person.
 func NewPersonCreated(p *Person) PersonCreated {
 	return PersonCreated{
-		BaseEvent:     NewBaseEvent(),
-		PersonID:      p.ID,
-		GivenName:     p.GivenName,
-		Surname:       p.Surname,
-		NamePrefix:    p.NamePrefix,
-		NameSuffix:    p.NameSuffix,
-		SurnamePrefix: p.SurnamePrefix,
-		Nickname:      p.Nickname,
-		NameType:      p.NameType,
-		Gender:        p.Gender,
-		BirthDate:     p.BirthDate,
-		BirthPlace:    p.BirthPlace,
-		DeathDate:     p.DeathDate,
-		DeathPlace:    p.DeathPlace,
-		Notes:         p.Notes,
-		GedcomXref:    p.GedcomXref,
+		BaseEvent:      NewBaseEvent(),
+		PersonID:       p.ID,
+		GivenName:      p.GivenName,
+		Surname:        p.Surname,
+		NamePrefix:     p.NamePrefix,
+		NameSuffix:     p.NameSuffix,
+		SurnamePrefix:  p.SurnamePrefix,
+		Nickname:       p.Nickname,
+		NameType:       p.NameType,
+		Gender:         p.Gender,
+		BirthDate:      p.BirthDate,
+		BirthPlace:     p.BirthPlace,
+		DeathDate:      p.DeathDate,
+		DeathPlace:     p.DeathPlace,
+		Notes:          p.Notes,
+		ResearchStatus: p.ResearchStatus,
+		GedcomXref:     p.GedcomXref,
 	}
 }
 

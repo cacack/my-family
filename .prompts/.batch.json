@@ -1,0 +1,7 @@
+{
+  "created": "2026-01-04T12:00:00Z",
+  "strategy": "parallel",
+  "source": "/do #32,29,26 -> meta-prompting -> simple prompts",
+  "prompts": ["031-uncertain-data-markers.md", "032-browse-surname-place.md", "033-family-group-sheet.md"],
+  "completed": ["031-uncertain-data-markers.md", "032-browse-surname-place.md", "033-family-group-sheet.md"]
+}

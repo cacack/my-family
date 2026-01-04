@@ -21,6 +21,8 @@ tags:
     description: Ancestry visualization
   - name: search
     description: Person search
+  - name: browse
+    description: Browse by surname and place
   - name: gedcom
     description: GEDCOM import/export
   - name: history
@@ -277,6 +279,29 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /families/{id}/group-sheet:
+    parameters:
+      - $ref: '#/components/parameters/familyId'
+
+    get:
+      operationId: getFamilyGroupSheet
+      summary: Get family group sheet data
+      description: |
+        Returns a traditional family group sheet view showing a family unit
+        with parents and children, key events (birth, marriage, death),
+        and source citations. This is a standard format used by genealogists
+        worldwide for documenting family units.
+      tags: [families]
+      responses:
+        '200':
+          description: Family group sheet data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyGroupSheet'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /pedigree/{id}:
     parameters:
       - $ref: '#/components/parameters/personId'
@@ -333,6 +358,93 @@ paths:
                 $ref: '#/components/schemas/SearchResults'
         '400':
           $ref: '#/components/responses/BadRequest'
+
+  /browse/surnames:
+    get:
+      operationId: browseSurnames
+      summary: Get surname index with counts
+      description: Returns an alphabetical index of surnames with person counts
+      tags: [browse]
+      parameters:
+        - name: letter
+          in: query
+          description: Filter surnames by starting letter (A-Z)
+          schema:
+            type: string
+            pattern: '^[A-Z]$'
+      responses:
+        '200':
+          description: Surname index or surnames list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurnameIndexResponse'
+
+  /browse/surnames/{surname}/persons:
+    parameters:
+      - name: surname
+        in: path
+        required: true
+        description: The surname to get people for
+        schema:
+          type: string
+    get:
+      operationId: getPersonsBySurname
+      summary: Get persons with a specific surname
+      tags: [browse]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of persons with the surname
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonList'
+
+  /browse/places:
+    get:
+      operationId: browsePlaces
+      summary: Get place hierarchy with counts
+      description: Returns hierarchical place data (Country > State > County > City)
+      tags: [browse]
+      parameters:
+        - name: parent
+          in: query
+          description: Parent place to get children for (empty for top-level)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Place hierarchy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceIndexResponse'
+
+  /browse/places/{place}/persons:
+    parameters:
+      - name: place
+        in: path
+        required: true
+        description: The place to get people for
+        schema:
+          type: string
+    get:
+      operationId: getPersonsByPlace
+      summary: Get persons associated with a place
+      tags: [browse]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of persons associated with the place
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonList'
 
   /gedcom/import:
     post:
@@ -1026,6 +1138,13 @@ components:
           type: object
           additionalProperties: true
 
+    ResearchStatus:
+      type: string
+      description: Confidence level of genealogical data per GPS standards
+      enum: [certain, probable, possible, unknown]
+      default: unknown
+      example: "probable"
+
     GenDate:
       type: object
       description: Genealogical date with flexible precision
@@ -1083,6 +1202,8 @@ components:
           type: string
         notes:
           type: string
+        research_status:
+          $ref: '#/components/schemas/ResearchStatus'
         version:
           type: integer
           format: int64
@@ -1116,6 +1237,8 @@ components:
           type: string
         notes:
           type: string
+        research_status:
+          $ref: '#/components/schemas/ResearchStatus'
 
     PersonUpdate:
       type: object
@@ -1142,6 +1265,8 @@ components:
           type: string
         notes:
           type: string
+        research_status:
+          $ref: '#/components/schemas/ResearchStatus'
         version:
           type: integer
           format: int64
@@ -1323,6 +1448,123 @@ components:
           type: integer
         offset:
           type: integer
+
+    FamilyGroupSheet:
+      type: object
+      description: Traditional family group sheet showing parents, children, and key events
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Family ID
+        husband:
+          $ref: '#/components/schemas/GroupSheetPerson'
+        wife:
+          $ref: '#/components/schemas/GroupSheetPerson'
+        marriage:
+          $ref: '#/components/schemas/GroupSheetEvent'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupSheetChild'
+
+    GroupSheetPerson:
+      type: object
+      description: Person details for group sheet display
+      required: [id, given_name, surname]
+      properties:
+        id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        surname:
+          type: string
+        gender:
+          type: string
+          enum: [male, female, unknown]
+        birth:
+          $ref: '#/components/schemas/GroupSheetEvent'
+        death:
+          $ref: '#/components/schemas/GroupSheetEvent'
+        father_name:
+          type: string
+          description: Name of father (if known)
+        father_id:
+          type: string
+          format: uuid
+        mother_name:
+          type: string
+          description: Name of mother (if known)
+        mother_id:
+          type: string
+          format: uuid
+
+    GroupSheetEvent:
+      type: object
+      description: Event details for group sheet display
+      properties:
+        date:
+          type: string
+          description: Formatted date string
+        place:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupSheetCitation'
+
+    GroupSheetChild:
+      type: object
+      description: Child entry in family group sheet
+      required: [id, given_name, surname]
+      properties:
+        id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        surname:
+          type: string
+        gender:
+          type: string
+          enum: [male, female, unknown]
+        relationship_type:
+          type: string
+          enum: [biological, adopted, foster]
+        sequence:
+          type: integer
+          description: Birth order
+        birth:
+          $ref: '#/components/schemas/GroupSheetEvent'
+        death:
+          $ref: '#/components/schemas/GroupSheetEvent'
+        spouse_name:
+          type: string
+          description: Name of spouse (if married)
+        spouse_id:
+          type: string
+          format: uuid
+
+    GroupSheetCitation:
+      type: object
+      description: Citation reference for group sheet
+      required: [id, source_title]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        source_title:
+          type: string
+        page:
+          type: string
+        detail:
+          type: string
+          description: Combined citation detail (page, volume, etc.)
 
     Pedigree:
       type: object
@@ -1640,3 +1882,76 @@ components:
           type: integer
           format: int64
           description: Current version for optimistic locking
+
+    # Browse schemas
+    SurnameIndexResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SurnameEntry'
+        total:
+          type: integer
+          description: Total number of unique surnames
+        letter_counts:
+          type: array
+          items:
+            $ref: '#/components/schemas/LetterCount'
+          description: Count of surnames by starting letter
+
+    SurnameEntry:
+      type: object
+      required: [surname, count]
+      properties:
+        surname:
+          type: string
+        count:
+          type: integer
+          description: Number of persons with this surname
+
+    LetterCount:
+      type: object
+      required: [letter, count]
+      properties:
+        letter:
+          type: string
+          description: A-Z letter
+        count:
+          type: integer
+          description: Number of surnames starting with this letter
+
+    PlaceIndexResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaceEntry'
+        total:
+          type: integer
+          description: Total number of unique places at this level
+        breadcrumb:
+          type: array
+          items:
+            type: string
+          description: Path from root to current level
+
+    PlaceEntry:
+      type: object
+      required: [name, count]
+      properties:
+        name:
+          type: string
+          description: Place name at this level
+        full_name:
+          type: string
+          description: Full place path
+        count:
+          type: integer
+          description: Number of persons associated with this place
+        has_children:
+          type: boolean
+          description: Whether this place has sub-locations

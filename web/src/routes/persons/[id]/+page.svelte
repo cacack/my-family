@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, formatGenDate, formatPersonName } from '$lib/api/client';
+	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, formatGenDate, formatPersonName } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import MediaGallery from '$lib/components/MediaGallery.svelte';
 	import CitationSection from '$lib/components/CitationSection.svelte';
+	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -24,7 +25,8 @@
 		birth_place: '',
 		death_date: '',
 		death_place: '',
-		notes: ''
+		notes: '',
+		research_status: '' as ResearchStatus | ''
 	});
 
 	async function loadPerson(id: string) {
@@ -67,7 +69,8 @@
 				birth_place: person.birth_place || '',
 				death_date: person.death_date?.raw || '',
 				death_place: person.death_place || '',
-				notes: person.notes || ''
+				notes: person.notes || '',
+				research_status: person.research_status || ''
 			};
 		}
 	}
@@ -95,6 +98,7 @@
 				death_date: formData.death_date || undefined,
 				death_place: formData.death_place || undefined,
 				notes: formData.notes || undefined,
+				research_status: (formData.research_status || undefined) as ResearchStatus | undefined,
 				version: person.version
 			});
 			await loadPerson(person.id);
@@ -169,6 +173,16 @@
 							<option value="female">Female</option>
 						</select>
 					</label>
+					<label>
+						Research Status
+						<select bind:value={formData.research_status}>
+							<option value="">Not assessed</option>
+							<option value="certain">Certain - Confirmed with strong evidence</option>
+							<option value="probable">Probable - Good supporting evidence</option>
+							<option value="possible">Possible - Limited evidence</option>
+							<option value="unknown">Unknown - Not yet assessed</option>
+						</select>
+					</label>
 				</div>
 
 				<div class="form-row">
@@ -214,7 +228,12 @@
 						</svg>
 					</div>
 					<div class="person-title">
-						<h1>{formatPersonName(person)}</h1>
+						<div class="name-row">
+							<h1>{formatPersonName(person)}</h1>
+							{#if person.research_status}
+								<UncertaintyBadge status={person.research_status} showLabel={true} />
+							{/if}
+						</div>
 						{#if person.gender}
 							<span class="gender-badge">{person.gender}</span>
 						{/if}
@@ -430,6 +449,13 @@
 	.person-header:not([data-gender]) .avatar {
 		background: #f1f5f9;
 		color: #64748b;
+	}
+
+	.name-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
 	}
 
 	.person-title h1 {

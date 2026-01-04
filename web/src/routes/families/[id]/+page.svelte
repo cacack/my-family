@@ -119,6 +119,7 @@
 		<a href="/families" class="back-link">&larr; Families</a>
 		{#if family && !editing}
 			<div class="actions">
+				<a href="/families/{family.id}/group-sheet" class="btn">Group Sheet</a>
 				<button class="btn" onclick={startEdit}>Edit</button>
 				<button class="btn btn-danger" onclick={deleteFamily}>Delete</button>
 			</div>

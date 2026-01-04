@@ -10,17 +10,18 @@ import (
 // LifeEvent represents an occurrence in a person's or family's history.
 // Examples include baptism, burial, census, emigration, etc.
 type LifeEvent struct {
-	ID          uuid.UUID  `json:"id"`
-	PersonID    *uuid.UUID `json:"person_id,omitempty"` // nil for family events
-	FamilyID    *uuid.UUID `json:"family_id,omitempty"` // nil for person events
-	FactType    FactType   `json:"fact_type"`
-	Date        *GenDate   `json:"date,omitempty"`        // when it occurred
-	Place       string     `json:"place,omitempty"`       // where it occurred
-	Description string     `json:"description,omitempty"` // additional details
-	Cause       string     `json:"cause,omitempty"`       // cause of event (e.g., death cause)
-	Age         string     `json:"age,omitempty"`         // age at time of event
-	GedcomXref  string     `json:"gedcom_xref,omitempty"` // for round-trip preservation
-	Version     int64      `json:"version"`               // optimistic locking
+	ID             uuid.UUID      `json:"id"`
+	PersonID       *uuid.UUID     `json:"person_id,omitempty"` // nil for family events
+	FamilyID       *uuid.UUID     `json:"family_id,omitempty"` // nil for person events
+	FactType       FactType       `json:"fact_type"`
+	Date           *GenDate       `json:"date,omitempty"`            // when it occurred
+	Place          string         `json:"place,omitempty"`           // where it occurred
+	Description    string         `json:"description,omitempty"`     // additional details
+	Cause          string         `json:"cause,omitempty"`           // cause of event (e.g., death cause)
+	Age            string         `json:"age,omitempty"`             // age at time of event
+	ResearchStatus ResearchStatus `json:"research_status,omitempty"` // Confidence level (GPS-compliant)
+	GedcomXref     string         `json:"gedcom_xref,omitempty"`     // for round-trip preservation
+	Version        int64          `json:"version"`                   // optimistic locking
 }
 
 // LifeEventValidationError represents a validation error for a LifeEvent.
@@ -107,6 +108,14 @@ func (e *LifeEvent) Validate() error {
 		errs = append(errs, LifeEventValidationError{
 			Field:   "description",
 			Message: "cannot exceed 2000 characters",
+		})
+	}
+
+	// Validate research status
+	if !e.ResearchStatus.IsValid() {
+		errs = append(errs, LifeEventValidationError{
+			Field:   "research_status",
+			Message: fmt.Sprintf("invalid value: %s", e.ResearchStatus),
 		})
 	}
 

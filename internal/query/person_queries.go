@@ -27,16 +27,17 @@ func NewPersonService(readStore repository.ReadModelStore) *PersonService {
 
 // Person represents a person in query results.
 type Person struct {
-	ID         uuid.UUID       `json:"id"`
-	GivenName  string          `json:"given_name"`
-	Surname    string          `json:"surname"`
-	Gender     *string         `json:"gender,omitempty"`
-	BirthDate  *domain.GenDate `json:"birth_date,omitempty"`
-	BirthPlace *string         `json:"birth_place,omitempty"`
-	DeathDate  *domain.GenDate `json:"death_date,omitempty"`
-	DeathPlace *string         `json:"death_place,omitempty"`
-	Notes      *string         `json:"notes,omitempty"`
-	Version    int64           `json:"version"`
+	ID             uuid.UUID       `json:"id"`
+	GivenName      string          `json:"given_name"`
+	Surname        string          `json:"surname"`
+	Gender         *string         `json:"gender,omitempty"`
+	BirthDate      *domain.GenDate `json:"birth_date,omitempty"`
+	BirthPlace     *string         `json:"birth_place,omitempty"`
+	DeathDate      *domain.GenDate `json:"death_date,omitempty"`
+	DeathPlace     *string         `json:"death_place,omitempty"`
+	Notes          *string         `json:"notes,omitempty"`
+	ResearchStatus *string         `json:"research_status,omitempty"`
+	Version        int64           `json:"version"`
 }
 
 // PersonDetail includes family relationships.
@@ -225,6 +226,10 @@ func convertReadModelToPerson(rm repository.PersonReadModel) Person {
 	}
 	if rm.Notes != "" {
 		p.Notes = &rm.Notes
+	}
+	if rm.ResearchStatus != "" {
+		rs := string(rm.ResearchStatus)
+		p.ResearchStatus = &rs
 	}
 
 	return p

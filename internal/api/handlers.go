@@ -17,39 +17,42 @@ import (
 // Person request/response types
 
 type CreatePersonRequest struct {
-	GivenName  string  `json:"given_name" validate:"required,min=1,max=100"`
-	Surname    string  `json:"surname" validate:"required,min=1,max=100"`
-	Gender     *string `json:"gender,omitempty"`
-	BirthDate  *string `json:"birth_date,omitempty"`
-	BirthPlace *string `json:"birth_place,omitempty"`
-	DeathDate  *string `json:"death_date,omitempty"`
-	DeathPlace *string `json:"death_place,omitempty"`
-	Notes      *string `json:"notes,omitempty"`
+	GivenName      string  `json:"given_name" validate:"required,min=1,max=100"`
+	Surname        string  `json:"surname" validate:"required,min=1,max=100"`
+	Gender         *string `json:"gender,omitempty"`
+	BirthDate      *string `json:"birth_date,omitempty"`
+	BirthPlace     *string `json:"birth_place,omitempty"`
+	DeathDate      *string `json:"death_date,omitempty"`
+	DeathPlace     *string `json:"death_place,omitempty"`
+	Notes          *string `json:"notes,omitempty"`
+	ResearchStatus *string `json:"research_status,omitempty"`
 }
 
 type UpdatePersonRequest struct {
-	GivenName  *string `json:"given_name,omitempty"`
-	Surname    *string `json:"surname,omitempty"`
-	Gender     *string `json:"gender,omitempty"`
-	BirthDate  *string `json:"birth_date,omitempty"`
-	BirthPlace *string `json:"birth_place,omitempty"`
-	DeathDate  *string `json:"death_date,omitempty"`
-	DeathPlace *string `json:"death_place,omitempty"`
-	Notes      *string `json:"notes,omitempty"`
-	Version    int64   `json:"version" validate:"required"`
+	GivenName      *string `json:"given_name,omitempty"`
+	Surname        *string `json:"surname,omitempty"`
+	Gender         *string `json:"gender,omitempty"`
+	BirthDate      *string `json:"birth_date,omitempty"`
+	BirthPlace     *string `json:"birth_place,omitempty"`
+	DeathDate      *string `json:"death_date,omitempty"`
+	DeathPlace     *string `json:"death_place,omitempty"`
+	Notes          *string `json:"notes,omitempty"`
+	ResearchStatus *string `json:"research_status,omitempty"`
+	Version        int64   `json:"version" validate:"required"`
 }
 
 type PersonResponse struct {
-	ID         string  `json:"id"`
-	GivenName  string  `json:"given_name"`
-	Surname    string  `json:"surname"`
-	Gender     *string `json:"gender,omitempty"`
-	BirthDate  any     `json:"birth_date,omitempty"`
-	BirthPlace *string `json:"birth_place,omitempty"`
-	DeathDate  any     `json:"death_date,omitempty"`
-	DeathPlace *string `json:"death_place,omitempty"`
-	Notes      *string `json:"notes,omitempty"`
-	Version    int64   `json:"version"`
+	ID             string  `json:"id"`
+	GivenName      string  `json:"given_name"`
+	Surname        string  `json:"surname"`
+	Gender         *string `json:"gender,omitempty"`
+	BirthDate      any     `json:"birth_date,omitempty"`
+	BirthPlace     *string `json:"birth_place,omitempty"`
+	DeathDate      any     `json:"death_date,omitempty"`
+	DeathPlace     *string `json:"death_place,omitempty"`
+	Notes          *string `json:"notes,omitempty"`
+	ResearchStatus *string `json:"research_status,omitempty"`
+	Version        int64   `json:"version"`
 }
 
 type PersonDetailResponse struct {
@@ -132,6 +135,9 @@ func (s *Server) createPerson(c echo.Context) error {
 	if req.Notes != nil {
 		input.Notes = *req.Notes
 	}
+	if req.ResearchStatus != nil {
+		input.ResearchStatus = *req.ResearchStatus
+	}
 
 	result, err := s.commandHandler.CreatePerson(c.Request().Context(), input)
 	if err != nil {
@@ -187,16 +193,17 @@ func (s *Server) updatePerson(c echo.Context) error {
 	}
 
 	input := command.UpdatePersonInput{
-		ID:         id,
-		GivenName:  req.GivenName,
-		Surname:    req.Surname,
-		Gender:     req.Gender,
-		BirthDate:  req.BirthDate,
-		BirthPlace: req.BirthPlace,
-		DeathDate:  req.DeathDate,
-		DeathPlace: req.DeathPlace,
-		Notes:      req.Notes,
-		Version:    req.Version,
+		ID:             id,
+		GivenName:      req.GivenName,
+		Surname:        req.Surname,
+		Gender:         req.Gender,
+		BirthDate:      req.BirthDate,
+		BirthPlace:     req.BirthPlace,
+		DeathDate:      req.DeathDate,
+		DeathPlace:     req.DeathPlace,
+		Notes:          req.Notes,
+		ResearchStatus: req.ResearchStatus,
+		Version:        req.Version,
 	}
 
 	_, err = s.commandHandler.UpdatePerson(c.Request().Context(), input)
@@ -310,6 +317,9 @@ func convertPersonToResponse(p query.Person) PersonResponse {
 	}
 	if p.Notes != nil {
 		resp.Notes = p.Notes
+	}
+	if p.ResearchStatus != nil {
+		resp.ResearchStatus = p.ResearchStatus
 	}
 
 	return resp
@@ -592,6 +602,171 @@ func (s *Server) removeChildFromFamily(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusNoContent)
+}
+
+// Group Sheet response types
+
+// GroupSheetEventResponse represents an event in the group sheet.
+type GroupSheetEventResponse struct {
+	Date      string                       `json:"date,omitempty"`
+	Place     string                       `json:"place,omitempty"`
+	Citations []GroupSheetCitationResponse `json:"citations,omitempty"`
+}
+
+// GroupSheetCitationResponse represents a citation in the group sheet.
+type GroupSheetCitationResponse struct {
+	ID          string `json:"id"`
+	SourceID    string `json:"source_id"`
+	SourceTitle string `json:"source_title"`
+	Page        string `json:"page,omitempty"`
+	Detail      string `json:"detail,omitempty"`
+}
+
+// GroupSheetPersonResponse represents a person in the group sheet.
+type GroupSheetPersonResponse struct {
+	ID         string                   `json:"id"`
+	GivenName  string                   `json:"given_name"`
+	Surname    string                   `json:"surname"`
+	Gender     string                   `json:"gender,omitempty"`
+	Birth      *GroupSheetEventResponse `json:"birth,omitempty"`
+	Death      *GroupSheetEventResponse `json:"death,omitempty"`
+	FatherName string                   `json:"father_name,omitempty"`
+	FatherID   *string                  `json:"father_id,omitempty"`
+	MotherName string                   `json:"mother_name,omitempty"`
+	MotherID   *string                  `json:"mother_id,omitempty"`
+}
+
+// GroupSheetChildResponse represents a child in the group sheet.
+type GroupSheetChildResponse struct {
+	ID               string                   `json:"id"`
+	GivenName        string                   `json:"given_name"`
+	Surname          string                   `json:"surname"`
+	Gender           string                   `json:"gender,omitempty"`
+	RelationshipType string                   `json:"relationship_type,omitempty"`
+	Sequence         *int                     `json:"sequence,omitempty"`
+	Birth            *GroupSheetEventResponse `json:"birth,omitempty"`
+	Death            *GroupSheetEventResponse `json:"death,omitempty"`
+	SpouseName       string                   `json:"spouse_name,omitempty"`
+	SpouseID         *string                  `json:"spouse_id,omitempty"`
+}
+
+// GroupSheetResponse represents the full family group sheet.
+type GroupSheetResponse struct {
+	ID       string                    `json:"id"`
+	Husband  *GroupSheetPersonResponse `json:"husband,omitempty"`
+	Wife     *GroupSheetPersonResponse `json:"wife,omitempty"`
+	Marriage *GroupSheetEventResponse  `json:"marriage,omitempty"`
+	Children []GroupSheetChildResponse `json:"children,omitempty"`
+}
+
+// getFamilyGroupSheet handles GET /families/:id/group-sheet
+func (s *Server) getFamilyGroupSheet(c echo.Context) error {
+	familyID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid family ID")
+	}
+
+	gs, err := s.familyService.GetGroupSheet(c.Request().Context(), familyID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, convertGroupSheetToResponse(gs))
+}
+
+// convertGroupSheetToResponse converts the service GroupSheet to API response.
+func convertGroupSheetToResponse(gs *query.GroupSheet) GroupSheetResponse {
+	resp := GroupSheetResponse{
+		ID: gs.ID.String(),
+	}
+
+	if gs.Husband != nil {
+		resp.Husband = convertGroupSheetPersonToResponse(gs.Husband)
+	}
+	if gs.Wife != nil {
+		resp.Wife = convertGroupSheetPersonToResponse(gs.Wife)
+	}
+	if gs.Marriage != nil {
+		resp.Marriage = convertGroupSheetEventToResponse(gs.Marriage)
+	}
+
+	for _, child := range gs.Children {
+		resp.Children = append(resp.Children, convertGroupSheetChildToResponse(&child))
+	}
+
+	return resp
+}
+
+func convertGroupSheetPersonToResponse(p *query.GroupSheetPerson) *GroupSheetPersonResponse {
+	resp := &GroupSheetPersonResponse{
+		ID:         p.ID.String(),
+		GivenName:  p.GivenName,
+		Surname:    p.Surname,
+		Gender:     p.Gender,
+		FatherName: p.FatherName,
+		MotherName: p.MotherName,
+	}
+
+	if p.Birth != nil {
+		resp.Birth = convertGroupSheetEventToResponse(p.Birth)
+	}
+	if p.Death != nil {
+		resp.Death = convertGroupSheetEventToResponse(p.Death)
+	}
+	if p.FatherID != nil {
+		s := p.FatherID.String()
+		resp.FatherID = &s
+	}
+	if p.MotherID != nil {
+		s := p.MotherID.String()
+		resp.MotherID = &s
+	}
+
+	return resp
+}
+
+func convertGroupSheetChildToResponse(c *query.GroupSheetChild) GroupSheetChildResponse {
+	resp := GroupSheetChildResponse{
+		ID:               c.ID.String(),
+		GivenName:        c.GivenName,
+		Surname:          c.Surname,
+		Gender:           c.Gender,
+		RelationshipType: c.RelationshipType,
+		Sequence:         c.Sequence,
+		SpouseName:       c.SpouseName,
+	}
+
+	if c.Birth != nil {
+		resp.Birth = convertGroupSheetEventToResponse(c.Birth)
+	}
+	if c.Death != nil {
+		resp.Death = convertGroupSheetEventToResponse(c.Death)
+	}
+	if c.SpouseID != nil {
+		s := c.SpouseID.String()
+		resp.SpouseID = &s
+	}
+
+	return resp
+}
+
+func convertGroupSheetEventToResponse(e *query.GroupSheetEvent) *GroupSheetEventResponse {
+	resp := &GroupSheetEventResponse{
+		Date:  e.Date,
+		Place: e.Place,
+	}
+
+	for _, cit := range e.Citations {
+		resp.Citations = append(resp.Citations, GroupSheetCitationResponse{
+			ID:          cit.ID.String(),
+			SourceID:    cit.SourceID.String(),
+			SourceTitle: cit.SourceTitle,
+			Page:        cit.Page,
+			Detail:      cit.Detail,
+		})
+	}
+
+	return resp
 }
 
 // Helper function to convert query result to response

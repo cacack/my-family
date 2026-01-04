@@ -28,6 +28,7 @@ type Server struct {
 	sourceService   *query.SourceService
 	historyService  *query.HistoryService
 	rollbackService *query.RollbackService
+	browseService   *query.BrowseService
 	frontendFS      fs.FS
 }
 
@@ -71,6 +72,7 @@ func NewServer(
 	sourceSvc := query.NewSourceService(readStore)
 	historySvc := query.NewHistoryService(eventStore, readStore)
 	rollbackSvc := query.NewRollbackService(eventStore, readStore)
+	browseSvc := query.NewBrowseService(readStore)
 
 	server := &Server{
 		echo:            e,
@@ -83,6 +85,7 @@ func NewServer(
 		sourceService:   sourceSvc,
 		historyService:  historySvc,
 		rollbackService: rollbackSvc,
+		browseService:   browseSvc,
 		frontendFS:      frontendFS,
 	}
 
@@ -112,6 +115,12 @@ func (s *Server) registerRoutes() {
 	// Search
 	api.GET("/search", s.searchPersons)
 
+	// Browse
+	api.GET("/browse/surnames", s.browseSurnames)
+	api.GET("/browse/surnames/:surname/persons", s.getPersonsBySurname)
+	api.GET("/browse/places", s.browsePlaces)
+	api.GET("/browse/places/:place/persons", s.getPersonsByPlace)
+
 	// Families (placeholder - will be implemented in Phase 4)
 	api.GET("/families", s.listFamilies)
 	api.POST("/families", s.createFamily)
@@ -120,6 +129,7 @@ func (s *Server) registerRoutes() {
 	api.DELETE("/families/:id", s.deleteFamily)
 	api.POST("/families/:id/children", s.addChildToFamily)
 	api.DELETE("/families/:id/children/:personId", s.removeChildFromFamily)
+	api.GET("/families/:id/group-sheet", s.getFamilyGroupSheet)
 
 	// Pedigree (placeholder - will be implemented in Phase 6)
 	api.GET("/pedigree/:id", s.getPedigree)

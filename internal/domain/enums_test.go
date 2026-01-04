@@ -539,3 +539,134 @@ func TestNameType_IsValid(t *testing.T) {
 		})
 	}
 }
+
+func TestResearchStatus_IsValid(t *testing.T) {
+	tests := []struct {
+		name           string
+		researchStatus ResearchStatus
+		want           bool
+	}{
+		{
+			name:           "certain is valid",
+			researchStatus: ResearchStatusCertain,
+			want:           true,
+		},
+		{
+			name:           "probable is valid",
+			researchStatus: ResearchStatusProbable,
+			want:           true,
+		},
+		{
+			name:           "possible is valid",
+			researchStatus: ResearchStatusPossible,
+			want:           true,
+		},
+		{
+			name:           "unknown is valid",
+			researchStatus: ResearchStatusUnknown,
+			want:           true,
+		},
+		{
+			name:           "empty string is valid",
+			researchStatus: "",
+			want:           true,
+		},
+		{
+			name:           "invalid value",
+			researchStatus: "invalid",
+			want:           false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.researchStatus.IsValid(); got != tt.want {
+				t.Errorf("ResearchStatus(%q).IsValid() = %v, want %v", tt.researchStatus, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResearchStatus_String(t *testing.T) {
+	tests := []struct {
+		name           string
+		researchStatus ResearchStatus
+		want           string
+	}{
+		{
+			name:           "certain string",
+			researchStatus: ResearchStatusCertain,
+			want:           "certain",
+		},
+		{
+			name:           "probable string",
+			researchStatus: ResearchStatusProbable,
+			want:           "probable",
+		},
+		{
+			name:           "possible string",
+			researchStatus: ResearchStatusPossible,
+			want:           "possible",
+		},
+		{
+			name:           "unknown string",
+			researchStatus: ResearchStatusUnknown,
+			want:           "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.researchStatus.String(); got != tt.want {
+				t.Errorf("ResearchStatus(%q).String() = %v, want %v", tt.researchStatus, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseResearchStatus(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  ResearchStatus
+	}{
+		{
+			name:  "parse certain",
+			input: "certain",
+			want:  ResearchStatusCertain,
+		},
+		{
+			name:  "parse probable",
+			input: "probable",
+			want:  ResearchStatusProbable,
+		},
+		{
+			name:  "parse possible",
+			input: "possible",
+			want:  ResearchStatusPossible,
+		},
+		{
+			name:  "parse unknown",
+			input: "unknown",
+			want:  ResearchStatusUnknown,
+		},
+		{
+			name:  "parse empty string defaults to unknown",
+			input: "",
+			want:  ResearchStatusUnknown,
+		},
+		{
+			name:  "parse invalid defaults to unknown",
+			input: "invalid",
+			want:  ResearchStatusUnknown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ParseResearchStatus(tt.input); got != tt.want {
+				t.Errorf("ParseResearchStatus(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
