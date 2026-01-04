@@ -29,6 +29,10 @@ type ImportResult struct {
 	Warnings             []string
 	Errors               []string
 
+	// Vendor is the detected vendor that created this GEDCOM file (e.g., "ancestry", "familysearch").
+	// Empty string if vendor could not be determined.
+	Vendor string
+
 	// Mappings from GEDCOM XREFs to internal UUIDs
 	PersonXrefToID     map[string]uuid.UUID
 	FamilyXrefToID     map[string]uuid.UUID
@@ -54,6 +58,11 @@ type PersonData struct {
 	DeathDate     string
 	DeathPlace    string
 	Notes         string
+
+	// FamilySearchID is the FamilySearch Family Tree ID from the _FSFTID tag.
+	// This is a vendor extension from FamilySearch.org that uniquely identifies
+	// an individual in their Family Tree database. Format: alphanumeric like "KWCJ-QN7".
+	FamilySearchID string
 }
 
 // FamilyData contains parsed family data ready for creation.
@@ -100,6 +109,20 @@ type RepositoryData struct {
 	Notes      string
 }
 
+// AncestryAPIDData represents an Ancestry Permanent Identifier from the _APID tag.
+// This is a vendor-specific extension used by Ancestry.com to link GEDCOM data
+// to their online databases.
+type AncestryAPIDData struct {
+	// Database is the Ancestry database ID (e.g., "7602")
+	Database string
+
+	// Record is the record ID within the database (e.g., "2771226")
+	Record string
+
+	// RawValue is the original unparsed APID value (e.g., "1,7602::2771226")
+	RawValue string
+}
+
 // CitationData contains parsed citation data ready for creation.
 type CitationData struct {
 	ID          uuid.UUID
@@ -110,6 +133,10 @@ type CitationData struct {
 	Quality     string
 	QuotedText  string
 	GedcomXref  string
+
+	// AncestryAPID is the Ancestry Permanent Identifier from the _APID tag.
+	// This links the citation to a specific record in an Ancestry database.
+	AncestryAPID *AncestryAPIDData
 }
 
 // MediaData contains parsed media data ready for creation.
@@ -183,6 +210,9 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		// Add validation errors as warnings (don't fail import)
 		result.Warnings = append(result.Warnings, verr.Error())
 	}
+
+	// Extract vendor information from the document
+	result.Vendor = string(doc.Vendor)
 
 	// First pass: create repository mappings (before sources)
 	var repositories []RepositoryData
@@ -340,6 +370,9 @@ func parseIndividual(indi *gedcom.Individual, doc *gedcom.Document, result *Impo
 	if len(notes) > 0 {
 		person.Notes = strings.Join(notes, "\n\n")
 	}
+
+	// Extract FamilySearch Family Tree ID (vendor extension)
+	person.FamilySearchID = indi.FamilySearchID
 
 	return person
 }
@@ -581,6 +614,15 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 				citation.QuotedText = srcCit.Data.Text
 			}
 
+			// Extract Ancestry APID if available (vendor extension)
+			if srcCit.AncestryAPID != nil {
+				citation.AncestryAPID = &AncestryAPIDData{
+					Database: srcCit.AncestryAPID.Database,
+					Record:   srcCit.AncestryAPID.Record,
+					RawValue: srcCit.AncestryAPID.Raw,
+				}
+			}
+
 			citations = append(citations, citation)
 		}
 	}
@@ -632,6 +674,15 @@ func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, result *
 			// Extract quoted text if available
 			if srcCit.Data != nil && srcCit.Data.Text != "" {
 				citation.QuotedText = srcCit.Data.Text
+			}
+
+			// Extract Ancestry APID if available (vendor extension)
+			if srcCit.AncestryAPID != nil {
+				citation.AncestryAPID = &AncestryAPIDData{
+					Database: srcCit.AncestryAPID.Database,
+					Record:   srcCit.AncestryAPID.Record,
+					RawValue: srcCit.AncestryAPID.Raw,
+				}
 			}
 
 			citations = append(citations, citation)

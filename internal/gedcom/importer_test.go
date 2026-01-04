@@ -1453,3 +1453,284 @@ func TestImportEventsCitations(t *testing.T) {
 		t.Errorf("Burial citation quality = %q, want %q", burialCit.Quality, "direct")
 	}
 }
+
+func TestImportAncestryVendor(t *testing.T) {
+	// Test GEDCOM file from Ancestry.com with _APID tags
+	gedcomData := `0 HEAD
+1 SOUR Ancestry.com
+2 VERS 1.0
+2 NAME Ancestry.com Family Trees
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Smith/
+1 SEX M
+1 BIRT
+2 DATE 15 MAR 1850
+2 PLAC Springfield, Illinois, USA
+2 SOUR @S1@
+3 PAGE Page 42
+3 _APID 1,7602::2771226
+1 DEAT
+2 DATE 10 JUN 1920
+2 SOUR @S2@
+3 PAGE Entry 103
+3 _APID 1,9024::12345678
+0 @S1@ SOUR
+1 TITL Illinois Deaths
+0 @S2@ SOUR
+1 TITL 1920 Census
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Verify vendor detection
+	if result.Vendor != "ancestry" {
+		t.Errorf("Vendor = %q, want %q", result.Vendor, "ancestry")
+	}
+
+	// Verify citations with AncestryAPID
+	if len(citations) != 2 {
+		t.Fatalf("len(citations) = %d, want 2", len(citations))
+	}
+
+	// Find birth citation
+	var birthCit, deathCit *gedcom.CitationData
+	for i := range citations {
+		switch citations[i].FactType {
+		case string(domain.FactPersonBirth):
+			birthCit = &citations[i]
+		case string(domain.FactPersonDeath):
+			deathCit = &citations[i]
+		}
+	}
+
+	if birthCit == nil {
+		t.Fatal("Birth citation not found")
+	}
+	if birthCit.AncestryAPID == nil {
+		t.Fatal("Birth citation AncestryAPID is nil")
+	}
+	if birthCit.AncestryAPID.Database != "7602" {
+		t.Errorf("Birth AncestryAPID.Database = %q, want %q", birthCit.AncestryAPID.Database, "7602")
+	}
+	if birthCit.AncestryAPID.Record != "2771226" {
+		t.Errorf("Birth AncestryAPID.Record = %q, want %q", birthCit.AncestryAPID.Record, "2771226")
+	}
+	if birthCit.AncestryAPID.RawValue != "1,7602::2771226" {
+		t.Errorf("Birth AncestryAPID.RawValue = %q, want %q", birthCit.AncestryAPID.RawValue, "1,7602::2771226")
+	}
+
+	if deathCit == nil {
+		t.Fatal("Death citation not found")
+	}
+	if deathCit.AncestryAPID == nil {
+		t.Fatal("Death citation AncestryAPID is nil")
+	}
+	if deathCit.AncestryAPID.Database != "9024" {
+		t.Errorf("Death AncestryAPID.Database = %q, want %q", deathCit.AncestryAPID.Database, "9024")
+	}
+	if deathCit.AncestryAPID.Record != "12345678" {
+		t.Errorf("Death AncestryAPID.Record = %q, want %q", deathCit.AncestryAPID.Record, "12345678")
+	}
+}
+
+func TestImportFamilySearchVendor(t *testing.T) {
+	// Test GEDCOM file from FamilySearch with _FSFTID tags
+	gedcomData := `0 HEAD
+1 SOUR FamilySearch
+2 VERS 3.0
+2 NAME FamilySearch Family Tree
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BIRT
+2 DATE 15 JAN 1850
+1 _FSFTID KWCJ-QN7
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+1 _FSFTID ABCD-123
+0 @I3@ INDI
+1 NAME Child /Doe/
+1 SEX M
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Verify vendor detection
+	if result.Vendor != "familysearch" {
+		t.Errorf("Vendor = %q, want %q", result.Vendor, "familysearch")
+	}
+
+	// Verify persons with FamilySearchID
+	if len(persons) != 3 {
+		t.Fatalf("len(persons) = %d, want 3", len(persons))
+	}
+
+	// Find persons by name
+	var john, jane, child *gedcom.PersonData
+	for i := range persons {
+		switch persons[i].GivenName {
+		case "John":
+			john = &persons[i]
+		case "Jane":
+			jane = &persons[i]
+		case "Child":
+			child = &persons[i]
+		}
+	}
+
+	if john == nil {
+		t.Fatal("John not found")
+	}
+	if john.FamilySearchID != "KWCJ-QN7" {
+		t.Errorf("John.FamilySearchID = %q, want %q", john.FamilySearchID, "KWCJ-QN7")
+	}
+
+	if jane == nil {
+		t.Fatal("Jane not found")
+	}
+	if jane.FamilySearchID != "ABCD-123" {
+		t.Errorf("Jane.FamilySearchID = %q, want %q", jane.FamilySearchID, "ABCD-123")
+	}
+
+	if child == nil {
+		t.Fatal("Child not found")
+	}
+	if child.FamilySearchID != "" {
+		t.Errorf("Child.FamilySearchID = %q, want empty string", child.FamilySearchID)
+	}
+}
+
+func TestImportAncestryFamilyCitations(t *testing.T) {
+	// Test Ancestry APID extraction from family events
+	gedcomData := `0 HEAD
+1 SOUR Ancestry.com
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @S1@ SOUR
+1 TITL Marriage Records
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 10 JUN 1875
+2 SOUR @S1@
+3 PAGE Marriage register, page 45
+3 _APID 1,5678::87654321
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should have 1 citation from marriage event
+	if len(citations) != 1 {
+		t.Fatalf("len(citations) = %d, want 1", len(citations))
+	}
+
+	cit := citations[0]
+	if cit.FactType != string(domain.FactFamilyMarriage) {
+		t.Errorf("Citation fact type = %q, want %q", cit.FactType, domain.FactFamilyMarriage)
+	}
+	if cit.AncestryAPID == nil {
+		t.Fatal("Marriage citation AncestryAPID is nil")
+	}
+	if cit.AncestryAPID.Database != "5678" {
+		t.Errorf("AncestryAPID.Database = %q, want %q", cit.AncestryAPID.Database, "5678")
+	}
+	if cit.AncestryAPID.Record != "87654321" {
+		t.Errorf("AncestryAPID.Record = %q, want %q", cit.AncestryAPID.Record, "87654321")
+	}
+}
+
+func TestImportUnknownVendor(t *testing.T) {
+	// Test GEDCOM file from unknown vendor
+	gedcomData := `0 HEAD
+1 SOUR MyGenealogy
+2 VERS 1.0
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Test /Person/
+1 SEX M
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Unknown vendor should return empty string
+	if result.Vendor != "" {
+		t.Errorf("Vendor = %q, want empty string for unknown vendor", result.Vendor)
+	}
+}
+
+func TestImportCitationWithoutAPID(t *testing.T) {
+	// Test that citations without APID have nil AncestryAPID
+	gedcomData := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Test /Person/
+1 SEX M
+1 BIRT
+2 DATE 1850
+2 SOUR @S1@
+3 PAGE Page 1
+0 @S1@ SOUR
+1 TITL Test Source
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(citations) != 1 {
+		t.Fatalf("len(citations) = %d, want 1", len(citations))
+	}
+
+	cit := citations[0]
+	if cit.AncestryAPID != nil {
+		t.Errorf("Citation AncestryAPID should be nil when no _APID tag is present")
+	}
+}
