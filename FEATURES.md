@@ -5,6 +5,8 @@ Completed features in my-family genealogy software.
 ## Data Management
 
 - **GEDCOM 5.5 Import** - Import existing family trees from any GEDCOM-compatible software
+  - Ancestry.com: Preserves `_APID` links to Ancestry records
+  - FamilySearch: Preserves `_FSFTID` Family Tree identifiers
 - **GEDCOM 5.5 Export** - Export your data for backup or use in other tools
 - **JSON/CSV Export** - Export persons and families as JSON or CSV with configurable field selection
 - **Person Management** - Create, edit, and delete individual records with names, dates, places, gender, and notes
