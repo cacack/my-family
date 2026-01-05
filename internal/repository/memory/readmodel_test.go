@@ -1663,9 +1663,83 @@ func TestReadModelStore_GetCitationsForPerson(t *testing.T) {
 }
 
 func TestReadModelStore_GetCitationsForFact(t *testing.T) {
-	// Note: CitationReadModel does not have a FactID field
-	// This test is skipped as the field doesn't exist in the current model
-	t.Skip("CitationReadModel does not have FactID field in current implementation")
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	personID := uuid.New()
+	otherPersonID := uuid.New()
+
+	// Create citations for person's birth fact
+	citation1 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: personID,
+		Page:        "10",
+	}
+	citation2 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: personID,
+		Page:        "11",
+	}
+	// Create citation for same person but different fact
+	citation3 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonDeath,
+		FactOwnerID: personID,
+	}
+	// Create citation for different person's birth
+	citation4 := &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: otherPersonID,
+	}
+
+	store.SaveCitation(ctx, citation1)
+	store.SaveCitation(ctx, citation2)
+	store.SaveCitation(ctx, citation3)
+	store.SaveCitation(ctx, citation4)
+
+	// Get citations for person's birth fact
+	citations, err := store.GetCitationsForFact(ctx, domain.FactPersonBirth, personID)
+	if err != nil {
+		t.Fatalf("GetCitationsForFact() failed: %v", err)
+	}
+
+	if len(citations) != 2 {
+		t.Errorf("len(citations) = %d, want 2", len(citations))
+	}
+
+	// Verify correct citations returned
+	foundIDs := make(map[uuid.UUID]bool)
+	for _, c := range citations {
+		foundIDs[c.ID] = true
+		// All returned citations should match the fact type and owner
+		if c.FactType != domain.FactPersonBirth {
+			t.Errorf("FactType = %s, want %s", c.FactType, domain.FactPersonBirth)
+		}
+		if c.FactOwnerID != personID {
+			t.Errorf("FactOwnerID = %v, want %v", c.FactOwnerID, personID)
+		}
+	}
+
+	if !foundIDs[citation1.ID] {
+		t.Error("expected to find citation1")
+	}
+	if !foundIDs[citation2.ID] {
+		t.Error("expected to find citation2")
+	}
+	if foundIDs[citation3.ID] {
+		t.Error("did not expect to find citation3 (different fact type)")
+	}
+	if foundIDs[citation4.ID] {
+		t.Error("did not expect to find citation4 (different person)")
+	}
 }
 
 func TestReadModelStore_DeleteCitation(t *testing.T) {

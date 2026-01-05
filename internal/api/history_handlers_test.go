@@ -458,6 +458,144 @@ func TestGetSourceHistory_InvalidUUID(t *testing.T) {
 	}
 }
 
+func TestGetGlobalHistory_WithSourceEntityTypeFilter(t *testing.T) {
+	server := setupTestServer()
+
+	// Create a source
+	sourceBody := `{"title":"Test Source","author":"Test Author"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(sourceBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// Create a person too (to verify filtering works)
+	personBody := `{"given_name":"John","surname":"Doe"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// Get history filtered by source
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=source", nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// All entries should be for sources
+	items := resp["items"].([]any)
+	for _, item := range items {
+		entry := item.(map[string]any)
+		if entry["entity_type"] != "source" {
+			t.Errorf("entity_type = %v, want source", entry["entity_type"])
+		}
+	}
+}
+
+func TestGetGlobalHistory_WithCitationEntityTypeFilter(t *testing.T) {
+	server := setupTestServer()
+
+	// Create a source first
+	sourceBody := `{"title":"Test Source"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(sourceBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	var sourceResp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &sourceResp)
+	sourceID := sourceResp["id"].(string)
+
+	// Create a person
+	personBody := `{"given_name":"John","surname":"Doe"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	var personResp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	// Create a citation
+	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// Get history filtered by citation
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=citation", nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// All entries should be for citations
+	items := resp["items"].([]any)
+	for _, item := range items {
+		entry := item.(map[string]any)
+		if entry["entity_type"] != "citation" {
+			t.Errorf("entity_type = %v, want citation", entry["entity_type"])
+		}
+	}
+}
+
+func TestGetGlobalHistory_WithFamilyEntityTypeFilter(t *testing.T) {
+	server := setupTestServer()
+
+	// Create a family
+	familyBody := `{"relationship_type":"marriage"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", strings.NewReader(familyBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// Create a person too (to verify filtering works)
+	personBody := `{"given_name":"John","surname":"Doe"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// Get history filtered by family
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=family", nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// All entries should be for families
+	items := resp["items"].([]any)
+	for _, item := range items {
+		entry := item.(map[string]any)
+		if entry["entity_type"] != "family" {
+			t.Errorf("entity_type = %v, want family", entry["entity_type"])
+		}
+	}
+}
+
 func TestHistoryResponseFormat(t *testing.T) {
 	server := setupTestServer()
 

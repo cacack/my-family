@@ -461,6 +461,81 @@ func TestListSources_Sorting(t *testing.T) {
 	}
 }
 
+// TestGetCitation tests getting a single citation by ID.
+func TestGetCitation(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	cmdHandler := command.NewHandler(eventStore, readStore)
+	queryService := query.NewSourceService(readStore)
+	ctx := context.Background()
+
+	// Create source
+	sourceResult, _ := cmdHandler.CreateSource(ctx, command.CreateSourceInput{
+		SourceType: "book",
+		Title:      "Test Source",
+	})
+
+	// Create person
+	personResult, _ := cmdHandler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+
+	// Create citation
+	citationResult, err := cmdHandler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID:      sourceResult.ID,
+		FactType:      "person_birth",
+		FactOwnerID:   personResult.ID,
+		Page:          "123",
+		Volume:        "Vol 1",
+		SourceQuality: "original",
+	})
+	if err != nil {
+		t.Fatalf("CreateCitation failed: %v", err)
+	}
+
+	// Get the citation
+	citation, err := queryService.GetCitation(ctx, citationResult.ID)
+	if err != nil {
+		t.Fatalf("GetCitation failed: %v", err)
+	}
+
+	// Verify fields
+	if citation.ID != citationResult.ID {
+		t.Errorf("ID = %v, want %v", citation.ID, citationResult.ID)
+	}
+	if citation.SourceID != sourceResult.ID {
+		t.Errorf("SourceID = %v, want %v", citation.SourceID, sourceResult.ID)
+	}
+	if citation.FactType != "person_birth" {
+		t.Errorf("FactType = %s, want person_birth", citation.FactType)
+	}
+	if citation.FactOwnerID != personResult.ID {
+		t.Errorf("FactOwnerID = %v, want %v", citation.FactOwnerID, personResult.ID)
+	}
+	if citation.Page == nil || *citation.Page != "123" {
+		t.Error("Page not set correctly")
+	}
+	if citation.Volume == nil || *citation.Volume != "Vol 1" {
+		t.Error("Volume not set correctly")
+	}
+	if citation.SourceQuality == nil || *citation.SourceQuality != "original" {
+		t.Error("SourceQuality not set correctly")
+	}
+}
+
+// TestGetCitation_NotFound tests getting a non-existent citation.
+func TestGetCitation_NotFound(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	queryService := query.NewSourceService(readStore)
+	ctx := context.Background()
+
+	_, err := queryService.GetCitation(ctx, uuid.New())
+	if err != query.ErrNotFound {
+		t.Errorf("Expected ErrNotFound, got %v", err)
+	}
+}
+
 // TestSearchSources_Limit tests search limit enforcement.
 func TestSearchSources_Limit(t *testing.T) {
 	eventStore := memory.NewEventStore()
