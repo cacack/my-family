@@ -6,6 +6,8 @@
 const API_BASE = '/api/v1';
 
 // Types based on OpenAPI schemas
+export type ResearchStatus = 'certain' | 'probable' | 'possible' | 'unknown';
+
 export interface GenDate {
 	raw?: string;
 	qualifier?: 'exact' | 'abt' | 'cal' | 'est' | 'bef' | 'aft' | 'bet' | 'from';
@@ -27,6 +29,7 @@ export interface Person {
 	death_date?: GenDate;
 	death_place?: string;
 	notes?: string;
+	research_status?: ResearchStatus;
 	version: number;
 }
 
@@ -39,6 +42,7 @@ export interface PersonCreate {
 	death_date?: string;
 	death_place?: string;
 	notes?: string;
+	research_status?: ResearchStatus;
 }
 
 export interface PersonUpdate {
@@ -50,6 +54,7 @@ export interface PersonUpdate {
 	death_date?: string;
 	death_place?: string;
 	notes?: string;
+	research_status?: ResearchStatus;
 	version: number;
 }
 
@@ -134,6 +139,55 @@ export interface AddChild {
 	person_id: string;
 	relationship_type?: 'biological' | 'adopted' | 'foster';
 	sequence?: number;
+}
+
+// Group Sheet types for family group sheet view
+export interface GroupSheetCitation {
+	id: string;
+	source_id: string;
+	source_title: string;
+	page?: string;
+	detail?: string;
+}
+
+export interface GroupSheetEvent {
+	date?: string;
+	place?: string;
+	citations?: GroupSheetCitation[];
+}
+
+export interface GroupSheetPerson {
+	id: string;
+	given_name: string;
+	surname: string;
+	gender?: 'male' | 'female' | 'unknown';
+	birth?: GroupSheetEvent;
+	death?: GroupSheetEvent;
+	father_name?: string;
+	father_id?: string;
+	mother_name?: string;
+	mother_id?: string;
+}
+
+export interface GroupSheetChild {
+	id: string;
+	given_name: string;
+	surname: string;
+	gender?: 'male' | 'female' | 'unknown';
+	relationship_type?: 'biological' | 'adopted' | 'foster';
+	sequence?: number;
+	birth?: GroupSheetEvent;
+	death?: GroupSheetEvent;
+	spouse_name?: string;
+	spouse_id?: string;
+}
+
+export interface FamilyGroupSheet {
+	id: string;
+	husband?: GroupSheetPerson;
+	wife?: GroupSheetPerson;
+	marriage?: GroupSheetEvent;
+	children?: GroupSheetChild[];
 }
 
 export interface PedigreeNode {
@@ -324,6 +378,36 @@ export interface MediaListResponse {
 	total: number;
 }
 
+// Browse types
+export interface SurnameIndexResponse {
+	items: SurnameEntry[];
+	total: number;
+	letter_counts?: LetterCount[];
+}
+
+export interface SurnameEntry {
+	surname: string;
+	count: number;
+}
+
+export interface LetterCount {
+	letter: string;
+	count: number;
+}
+
+export interface PlaceIndexResponse {
+	items: PlaceEntry[];
+	total: number;
+	breadcrumb?: string[];
+}
+
+export interface PlaceEntry {
+	name: string;
+	full_name: string;
+	count: number;
+	has_children: boolean;
+}
+
 export interface MediaUpdate {
 	title?: string;
 	description?: string;
@@ -462,6 +546,10 @@ class ApiClient {
 
 	async removeChildFromFamily(familyId: string, personId: string): Promise<void> {
 		return this.request<void>('DELETE', `/families/${familyId}/children/${personId}`);
+	}
+
+	async getFamilyGroupSheet(id: string): Promise<FamilyGroupSheet> {
+		return this.request<FamilyGroupSheet>('GET', `/families/${id}/group-sheet`);
 	}
 
 	// Pedigree endpoint
@@ -750,6 +838,47 @@ class ApiClient {
 		return this.request<ChangeHistoryResponse>(
 			'GET',
 			`/sources/${sourceId}/history${query ? `?${query}` : ''}`
+		);
+	}
+
+	// Browse endpoints
+	async getSurnameIndex(letter?: string): Promise<SurnameIndexResponse> {
+		const params = letter ? `?letter=${encodeURIComponent(letter)}` : '';
+		return this.request<SurnameIndexResponse>('GET', `/browse/surnames${params}`);
+	}
+
+	async getPersonsBySurname(
+		surname: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<PersonList> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<PersonList>(
+			'GET',
+			`/browse/surnames/${encodeURIComponent(surname)}/persons${query ? `?${query}` : ''}`
+		);
+	}
+
+	async getPlaceHierarchy(parent?: string): Promise<PlaceIndexResponse> {
+		const params = parent ? `?parent=${encodeURIComponent(parent)}` : '';
+		return this.request<PlaceIndexResponse>('GET', `/browse/places${params}`);
+	}
+
+	async getPersonsByPlace(
+		place: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<PersonList> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<PersonList>(
+			'GET',
+			`/browse/places/${encodeURIComponent(place)}/persons${query ? `?${query}` : ''}`
 		);
 	}
 }

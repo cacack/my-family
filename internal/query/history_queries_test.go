@@ -214,6 +214,23 @@ func (m *mockReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) 
 	return nil
 }
 
+// Browse stub methods
+func (m *mockReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	return nil, nil, nil
+}
+func (m *mockReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string) ([]repository.SurnameEntry, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) ([]repository.PlaceEntry, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	return nil, 0, nil
+}
+
 func TestNewHistoryService(t *testing.T) {
 	eventStore := &mockEventStore{}
 	readStore := &mockReadModelStore{}

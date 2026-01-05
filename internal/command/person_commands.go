@@ -21,14 +21,15 @@ var (
 
 // CreatePersonInput contains the data for creating a new person.
 type CreatePersonInput struct {
-	GivenName  string
-	Surname    string
-	Gender     string
-	BirthDate  string
-	BirthPlace string
-	DeathDate  string
-	DeathPlace string
-	Notes      string
+	GivenName      string
+	Surname        string
+	Gender         string
+	BirthDate      string
+	BirthPlace     string
+	DeathDate      string
+	DeathPlace     string
+	Notes          string
+	ResearchStatus string
 }
 
 // CreatePersonResult contains the result of creating a person.
@@ -65,6 +66,9 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	if input.Notes != "" {
 		person.Notes = input.Notes
 	}
+	if input.ResearchStatus != "" {
+		person.ResearchStatus = domain.ParseResearchStatus(input.ResearchStatus)
+	}
 
 	// Validate person
 	if err := person.Validate(); err != nil {
@@ -88,16 +92,17 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 
 // UpdatePersonInput contains the data for updating a person.
 type UpdatePersonInput struct {
-	ID         uuid.UUID
-	GivenName  *string
-	Surname    *string
-	Gender     *string
-	BirthDate  *string
-	BirthPlace *string
-	DeathDate  *string
-	DeathPlace *string
-	Notes      *string
-	Version    int64 // Required for optimistic locking
+	ID             uuid.UUID
+	GivenName      *string
+	Surname        *string
+	Gender         *string
+	BirthDate      *string
+	BirthPlace     *string
+	DeathDate      *string
+	DeathPlace     *string
+	Notes          *string
+	ResearchStatus *string
+	Version        int64 // Required for optimistic locking
 }
 
 // UpdatePersonResult contains the result of updating a person.
@@ -126,13 +131,14 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 
 	// Apply and validate changes
 	testPerson := &domain.Person{
-		ID:         current.ID,
-		GivenName:  current.GivenName,
-		Surname:    current.Surname,
-		Gender:     current.Gender,
-		BirthPlace: current.BirthPlace,
-		DeathPlace: current.DeathPlace,
-		Notes:      current.Notes,
+		ID:             current.ID,
+		GivenName:      current.GivenName,
+		Surname:        current.Surname,
+		Gender:         current.Gender,
+		BirthPlace:     current.BirthPlace,
+		DeathPlace:     current.DeathPlace,
+		Notes:          current.Notes,
+		ResearchStatus: current.ResearchStatus,
 	}
 
 	if current.BirthDateRaw != "" {
@@ -175,6 +181,10 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 	if input.Notes != nil {
 		testPerson.Notes = *input.Notes
 		changes["notes"] = *input.Notes
+	}
+	if input.ResearchStatus != nil {
+		testPerson.ResearchStatus = domain.ParseResearchStatus(*input.ResearchStatus)
+		changes["research_status"] = *input.ResearchStatus
 	}
 
 	// No changes?

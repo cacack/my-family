@@ -95,20 +95,21 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 	}
 
 	person := &PersonReadModel{
-		ID:            e.PersonID,
-		GivenName:     e.GivenName,
-		Surname:       e.Surname,
-		FullName:      e.GivenName + " " + e.Surname,
-		Gender:        e.Gender,
-		BirthDateRaw:  birthDateRaw,
-		BirthDateSort: birthDateSort,
-		BirthPlace:    e.BirthPlace,
-		DeathDateRaw:  deathDateRaw,
-		DeathDateSort: deathDateSort,
-		DeathPlace:    e.DeathPlace,
-		Notes:         e.Notes,
-		Version:       version,
-		UpdatedAt:     e.OccurredAt(),
+		ID:             e.PersonID,
+		GivenName:      e.GivenName,
+		Surname:        e.Surname,
+		FullName:       e.GivenName + " " + e.Surname,
+		Gender:         e.Gender,
+		BirthDateRaw:   birthDateRaw,
+		BirthDateSort:  birthDateSort,
+		BirthPlace:     e.BirthPlace,
+		DeathDateRaw:   deathDateRaw,
+		DeathDateSort:  deathDateSort,
+		DeathPlace:     e.DeathPlace,
+		Notes:          e.Notes,
+		ResearchStatus: e.ResearchStatus,
+		Version:        version,
+		UpdatedAt:      e.OccurredAt(),
 	}
 
 	return p.readStore.SavePerson(ctx, person)
@@ -173,6 +174,10 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 		case "notes":
 			if v, ok := value.(string); ok {
 				person.Notes = v
+			}
+		case "research_status":
+			if v, ok := value.(string); ok {
+				person.ResearchStatus = domain.ParseResearchStatus(v)
 			}
 		}
 	}

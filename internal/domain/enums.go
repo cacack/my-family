@@ -184,6 +184,46 @@ func (n NameType) IsValid() bool {
 	}
 }
 
+// ResearchStatus represents the confidence level of genealogical data per GPS standards.
+type ResearchStatus string
+
+const (
+	ResearchStatusCertain  ResearchStatus = "certain"  // Confirmed with strong evidence
+	ResearchStatusProbable ResearchStatus = "probable" // Likely correct, good supporting evidence
+	ResearchStatusPossible ResearchStatus = "possible" // Speculative, limited evidence
+	ResearchStatusUnknown  ResearchStatus = "unknown"  // Not yet assessed (default)
+)
+
+// String returns the string representation of the research status.
+func (r ResearchStatus) String() string {
+	return string(r)
+}
+
+// IsValid checks if the research status value is valid.
+func (r ResearchStatus) IsValid() bool {
+	switch r {
+	case ResearchStatusCertain, ResearchStatusProbable, ResearchStatusPossible, ResearchStatusUnknown, "":
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseResearchStatus parses a string into a ResearchStatus value.
+// Returns ResearchStatusUnknown if the string is empty or invalid.
+func ParseResearchStatus(s string) ResearchStatus {
+	switch s {
+	case "certain":
+		return ResearchStatusCertain
+	case "probable":
+		return ResearchStatusProbable
+	case "possible":
+		return ResearchStatusPossible
+	default:
+		return ResearchStatusUnknown
+	}
+}
+
 // FactType represents the type of fact that a citation can attach to.
 type FactType string
 

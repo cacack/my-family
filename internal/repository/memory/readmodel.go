@@ -731,3 +731,166 @@ func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) erro
 	delete(s.attributes, id)
 	return nil
 }
+
+// GetSurnameIndex returns a list of unique surnames with counts and letter distribution.
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	surnameCount := make(map[string]int)
+	surnamesByLetter := make(map[string]map[string]bool) // letter -> set of surnames
+
+	for _, p := range s.persons {
+		surname := p.Surname
+		surnameCount[surname]++
+		if len(surname) > 0 {
+			letter := strings.ToUpper(string(surname[0]))
+			if surnamesByLetter[letter] == nil {
+				surnamesByLetter[letter] = make(map[string]bool)
+			}
+			surnamesByLetter[letter][surname] = true
+		}
+	}
+
+	surnames := make([]repository.SurnameEntry, 0, len(surnameCount))
+	for name, count := range surnameCount {
+		surnames = append(surnames, repository.SurnameEntry{Surname: name, Count: count})
+	}
+	sort.Slice(surnames, func(i, j int) bool {
+		return surnames[i].Surname < surnames[j].Surname
+	})
+
+	letters := make([]repository.LetterCount, 0, len(surnamesByLetter))
+	for letter, surnameSet := range surnamesByLetter {
+		letters = append(letters, repository.LetterCount{Letter: letter, Count: len(surnameSet)})
+	}
+	sort.Slice(letters, func(i, j int) bool {
+		return letters[i].Letter < letters[j].Letter
+	})
+
+	return surnames, letters, nil
+}
+
+// GetSurnamesByLetter returns surnames starting with a specific letter.
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string) ([]repository.SurnameEntry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	surnameCount := make(map[string]int)
+	upperLetter := strings.ToUpper(letter)
+
+	for _, p := range s.persons {
+		surname := p.Surname
+		if len(surname) > 0 && strings.ToUpper(string(surname[0])) == upperLetter {
+			surnameCount[surname]++
+		}
+	}
+
+	surnames := make([]repository.SurnameEntry, 0, len(surnameCount))
+	for name, count := range surnameCount {
+		surnames = append(surnames, repository.SurnameEntry{Surname: name, Count: count})
+	}
+	sort.Slice(surnames, func(i, j int) bool {
+		return surnames[i].Surname < surnames[j].Surname
+	})
+
+	return surnames, nil
+}
+
+// GetPersonsBySurname returns persons with a specific surname.
+func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.PersonReadModel
+	for _, p := range s.persons {
+		if strings.EqualFold(p.Surname, surname) {
+			results = append(results, *p)
+		}
+	}
+
+	total := len(results)
+
+	// Sort by GivenName
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].GivenName < results[j].GivenName
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// GetPlaceHierarchy returns places at a given level of hierarchy.
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) ([]repository.PlaceEntry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Simple implementation: extract unique places
+	placeCount := make(map[string]int)
+
+	for _, p := range s.persons {
+		for _, place := range []string{p.BirthPlace, p.DeathPlace} {
+			if place != "" {
+				placeCount[place]++
+			}
+		}
+	}
+
+	entries := make([]repository.PlaceEntry, 0, len(placeCount))
+	for place, count := range placeCount {
+		entries = append(entries, repository.PlaceEntry{
+			Name:     place,
+			FullName: place,
+			Count:    count,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
+
+	return entries, nil
+}
+
+// GetPersonsByPlace returns persons associated with a specific place.
+func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.PersonReadModel
+	for _, p := range s.persons {
+		if strings.Contains(p.BirthPlace, place) || strings.Contains(p.DeathPlace, place) {
+			results = append(results, *p)
+		}
+	}
+
+	total := len(results)
+
+	// Sort by surname
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Surname != results[j].Surname {
+			return results[i].Surname < results[j].Surname
+		}
+		return results[i].GivenName < results[j].GivenName
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}

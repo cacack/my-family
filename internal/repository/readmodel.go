@@ -11,20 +11,21 @@ import (
 
 // PersonReadModel represents a person in the read model.
 type PersonReadModel struct {
-	ID            uuid.UUID     `json:"id"`
-	GivenName     string        `json:"given_name"`
-	Surname       string        `json:"surname"`
-	FullName      string        `json:"full_name"`
-	Gender        domain.Gender `json:"gender,omitempty"`
-	BirthDateRaw  string        `json:"birth_date_raw,omitempty"`
-	BirthDateSort *time.Time    `json:"birth_date_sort,omitempty"`
-	BirthPlace    string        `json:"birth_place,omitempty"`
-	DeathDateRaw  string        `json:"death_date_raw,omitempty"`
-	DeathDateSort *time.Time    `json:"death_date_sort,omitempty"`
-	DeathPlace    string        `json:"death_place,omitempty"`
-	Notes         string        `json:"notes,omitempty"`
-	Version       int64         `json:"version"`
-	UpdatedAt     time.Time     `json:"updated_at"`
+	ID             uuid.UUID             `json:"id"`
+	GivenName      string                `json:"given_name"`
+	Surname        string                `json:"surname"`
+	FullName       string                `json:"full_name"`
+	Gender         domain.Gender         `json:"gender,omitempty"`
+	BirthDateRaw   string                `json:"birth_date_raw,omitempty"`
+	BirthDateSort  *time.Time            `json:"birth_date_sort,omitempty"`
+	BirthPlace     string                `json:"birth_place,omitempty"`
+	DeathDateRaw   string                `json:"death_date_raw,omitempty"`
+	DeathDateSort  *time.Time            `json:"death_date_sort,omitempty"`
+	DeathPlace     string                `json:"death_place,omitempty"`
+	Notes          string                `json:"notes,omitempty"`
+	ResearchStatus domain.ResearchStatus `json:"research_status,omitempty"`
+	Version        int64                 `json:"version"`
+	UpdatedAt      time.Time             `json:"updated_at"`
 }
 
 // FamilyReadModel represents a family in the read model.
@@ -126,18 +127,19 @@ type MediaReadModel struct {
 
 // EventReadModel represents a life event in the read model.
 type EventReadModel struct {
-	ID          uuid.UUID       `json:"id"`
-	OwnerType   string          `json:"owner_type"` // "person" or "family"
-	OwnerID     uuid.UUID       `json:"owner_id"`
-	FactType    domain.FactType `json:"fact_type"`
-	DateRaw     string          `json:"date_raw,omitempty"`
-	DateSort    *time.Time      `json:"date_sort,omitempty"`
-	Place       string          `json:"place,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Cause       string          `json:"cause,omitempty"` // For death/burial events
-	Age         string          `json:"age,omitempty"`   // Age at event
-	Version     int64           `json:"version"`
-	CreatedAt   time.Time       `json:"created_at"`
+	ID             uuid.UUID             `json:"id"`
+	OwnerType      string                `json:"owner_type"` // "person" or "family"
+	OwnerID        uuid.UUID             `json:"owner_id"`
+	FactType       domain.FactType       `json:"fact_type"`
+	DateRaw        string                `json:"date_raw,omitempty"`
+	DateSort       *time.Time            `json:"date_sort,omitempty"`
+	Place          string                `json:"place,omitempty"`
+	Description    string                `json:"description,omitempty"`
+	Cause          string                `json:"cause,omitempty"`           // For death/burial events
+	Age            string                `json:"age,omitempty"`             // Age at event
+	ResearchStatus domain.ResearchStatus `json:"research_status,omitempty"` // Confidence level
+	Version        int64                 `json:"version"`
+	CreatedAt      time.Time             `json:"created_at"`
 }
 
 // AttributeReadModel represents a person attribute in the read model.
@@ -216,6 +218,33 @@ type ReadModelStore interface {
 	ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]AttributeReadModel, error)
 	SaveAttribute(ctx context.Context, attribute *AttributeReadModel) error
 	DeleteAttribute(ctx context.Context, id uuid.UUID) error
+
+	// Browse operations
+	GetSurnameIndex(ctx context.Context) ([]SurnameEntry, []LetterCount, error)
+	GetSurnamesByLetter(ctx context.Context, letter string) ([]SurnameEntry, error)
+	GetPersonsBySurname(ctx context.Context, surname string, opts ListOptions) ([]PersonReadModel, int, error)
+	GetPlaceHierarchy(ctx context.Context, parent string) ([]PlaceEntry, error)
+	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
+}
+
+// SurnameEntry represents a surname with count.
+type SurnameEntry struct {
+	Surname string `json:"surname"`
+	Count   int    `json:"count"`
+}
+
+// LetterCount represents count of surnames by starting letter.
+type LetterCount struct {
+	Letter string `json:"letter"`
+	Count  int    `json:"count"`
+}
+
+// PlaceEntry represents a place with count and hierarchy info.
+type PlaceEntry struct {
+	Name        string `json:"name"`
+	FullName    string `json:"full_name"`
+	Count       int    `json:"count"`
+	HasChildren bool   `json:"has_children"`
 }
 
 // ListOptions contains options for list queries.

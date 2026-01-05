@@ -551,3 +551,128 @@ func TestGetPerson_WithFamilies(t *testing.T) {
 		t.Errorf("Expected 1 family, got %d", len(families))
 	}
 }
+
+func TestGetFamilyGroupSheet(t *testing.T) {
+	server := setupTestServer()
+
+	// Create husband
+	husbandBody := `{"given_name":"John","surname":"Smith","gender":"male","birth_date":"1 JAN 1960","birth_place":"New York"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(husbandBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var husband map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &husband)
+
+	// Create wife
+	wifeBody := `{"given_name":"Jane","surname":"Doe","gender":"female","birth_date":"15 MAR 1965","birth_place":"Boston"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(wifeBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var wife map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &wife)
+
+	// Create child
+	childBody := `{"given_name":"Jimmy","surname":"Smith","gender":"male","birth_date":"20 JUN 1990"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(childBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var child map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &child)
+
+	// Create family
+	familyBody := `{"partner1_id":"` + husband["id"].(string) + `","partner2_id":"` + wife["id"].(string) + `","relationship_type":"marriage","marriage_date":"25 DEC 1985","marriage_place":"Chicago"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/families", strings.NewReader(familyBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	var family map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &family)
+
+	// Add child to family
+	addChildBody := `{"child_id":"` + child["id"].(string) + `"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+family["id"].(string)+"/children", strings.NewReader(addChildBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	// Get group sheet
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+family["id"].(string)+"/group-sheet", nil)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d. Body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var gs map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &gs); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Verify husband
+	if gs["husband"] == nil {
+		t.Error("Expected husband in group sheet")
+	} else {
+		h := gs["husband"].(map[string]any)
+		if h["given_name"] != "John" {
+			t.Errorf("Husband given_name = %v, want John", h["given_name"])
+		}
+	}
+
+	// Verify wife
+	if gs["wife"] == nil {
+		t.Error("Expected wife in group sheet")
+	} else {
+		w := gs["wife"].(map[string]any)
+		if w["given_name"] != "Jane" {
+			t.Errorf("Wife given_name = %v, want Jane", w["given_name"])
+		}
+	}
+
+	// Verify marriage
+	if gs["marriage"] == nil {
+		t.Error("Expected marriage event in group sheet")
+	}
+
+	// Verify children
+	if gs["children"] == nil {
+		t.Error("Expected children in group sheet")
+	} else {
+		children := gs["children"].([]any)
+		if len(children) != 1 {
+			t.Errorf("Children count = %d, want 1", len(children))
+		} else {
+			c := children[0].(map[string]any)
+			if c["given_name"] != "Jimmy" {
+				t.Errorf("Child given_name = %v, want Jimmy", c["given_name"])
+			}
+		}
+	}
+}
+
+func TestGetFamilyGroupSheet_InvalidUUID(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid/group-sheet", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestGetFamilyGroupSheet_NotFound(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001/group-sheet", nil)
+	rec := httptest.NewRecorder()
+
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}

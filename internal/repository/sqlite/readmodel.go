@@ -1453,3 +1453,257 @@ func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
 
 	return m, nil
 }
+
+// GetSurnameIndex returns all unique surnames with counts and letter counts.
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	// Get surname counts
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT surname, COUNT(*) as count
+		FROM persons
+		GROUP BY surname
+		ORDER BY surname ASC
+	`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query surname index: %w", err)
+	}
+	defer rows.Close()
+
+	var surnames []repository.SurnameEntry
+	for rows.Next() {
+		var entry repository.SurnameEntry
+		if err := rows.Scan(&entry.Surname, &entry.Count); err != nil {
+			return nil, nil, fmt.Errorf("scan surname entry: %w", err)
+		}
+		surnames = append(surnames, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// Get letter counts
+	letterRows, err := s.db.QueryContext(ctx, `
+		SELECT UPPER(SUBSTR(surname, 1, 1)) as letter, COUNT(DISTINCT surname) as count
+		FROM persons
+		WHERE surname != ''
+		GROUP BY UPPER(SUBSTR(surname, 1, 1))
+		ORDER BY letter ASC
+	`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query letter counts: %w", err)
+	}
+	defer letterRows.Close()
+
+	var letterCounts []repository.LetterCount
+	for letterRows.Next() {
+		var entry repository.LetterCount
+		if err := letterRows.Scan(&entry.Letter, &entry.Count); err != nil {
+			return nil, nil, fmt.Errorf("scan letter count: %w", err)
+		}
+		letterCounts = append(letterCounts, entry)
+	}
+
+	return surnames, letterCounts, letterRows.Err()
+}
+
+// GetSurnamesByLetter returns surnames starting with a specific letter.
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string) ([]repository.SurnameEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT surname, COUNT(*) as count
+		FROM persons
+		WHERE UPPER(SUBSTR(surname, 1, 1)) = UPPER(?)
+		GROUP BY surname
+		ORDER BY surname ASC
+	`, letter)
+	if err != nil {
+		return nil, fmt.Errorf("query surnames by letter: %w", err)
+	}
+	defer rows.Close()
+
+	var surnames []repository.SurnameEntry
+	for rows.Next() {
+		var entry repository.SurnameEntry
+		if err := rows.Scan(&entry.Surname, &entry.Count); err != nil {
+			return nil, fmt.Errorf("scan surname entry: %w", err)
+		}
+		surnames = append(surnames, entry)
+	}
+
+	return surnames, rows.Err()
+}
+
+// GetPersonsBySurname returns persons with a specific surname.
+func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM persons WHERE LOWER(surname) = LOWER(?)", surname).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count persons by surname: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, given_name, surname, full_name, gender,
+			   birth_date_raw, birth_date_sort, birth_place,
+			   death_date_raw, death_date_sort, death_place,
+			   notes, version, updated_at
+		FROM persons
+		WHERE LOWER(surname) = LOWER(?)
+		ORDER BY given_name ASC
+		LIMIT ? OFFSET ?
+	`, surname, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query persons by surname: %w", err)
+	}
+	defer rows.Close()
+
+	var persons []repository.PersonReadModel
+	for rows.Next() {
+		p, err := scanPersonRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		persons = append(persons, *p)
+	}
+
+	return persons, total, rows.Err()
+}
+
+// GetPlaceHierarchy returns places at a given level in the hierarchy.
+// Places are parsed from comma-separated strings like "City, County, State, Country"
+// working from right to left (Country is top level).
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) ([]repository.PlaceEntry, error) {
+	var rows *sql.Rows
+	var err error
+
+	if parent == "" {
+		// Top-level: get unique countries/top-level places (rightmost part after last comma)
+		rows, err = s.db.QueryContext(ctx, `
+			WITH all_places AS (
+				SELECT DISTINCT birth_place as place FROM persons WHERE birth_place != '' AND birth_place IS NOT NULL
+				UNION
+				SELECT DISTINCT death_place as place FROM persons WHERE death_place != '' AND death_place IS NOT NULL
+			),
+			parsed AS (
+				SELECT
+					place,
+					CASE
+						WHEN INSTR(place, ',') > 0
+						THEN TRIM(SUBSTR(place, LENGTH(place) - LENGTH(REPLACE(SUBSTR(place, INSTR(place, ',')), ',', '')) + 1))
+						ELSE TRIM(place)
+					END as top_level
+				FROM all_places
+			)
+			SELECT
+				top_level as place_name,
+				top_level as full_name,
+				COUNT(DISTINCT place) as count,
+				CASE
+					WHEN COUNT(DISTINCT place) > (SELECT COUNT(*) FROM parsed p2 WHERE p2.top_level = parsed.top_level AND p2.place = p2.top_level)
+					THEN 1
+					ELSE 0
+				END as has_children
+			FROM parsed
+			WHERE top_level != ''
+			GROUP BY top_level
+			ORDER BY top_level ASC
+		`)
+	} else {
+		// Child level: get places that end with parent
+		rows, err = s.db.QueryContext(ctx, `
+			WITH all_places AS (
+				SELECT DISTINCT birth_place as place FROM persons WHERE birth_place LIKE '%' || ? AND birth_place != ''
+				UNION
+				SELECT DISTINCT death_place as place FROM persons WHERE death_place LIKE '%' || ? AND death_place != ''
+			),
+			parsed AS (
+				SELECT
+					place,
+					CASE
+						WHEN place = ? THEN ''
+						ELSE TRIM(REPLACE(place, ', ' || ?, ''))
+					END as remainder
+				FROM all_places
+			),
+			next_level AS (
+				SELECT
+					place,
+					remainder,
+					CASE
+						WHEN remainder = '' THEN ''
+						WHEN INSTR(remainder, ',') > 0
+						THEN TRIM(SUBSTR(remainder, LENGTH(remainder) - LENGTH(REPLACE(SUBSTR(remainder, INSTR(remainder, ',')), ',', '')) + 1))
+						ELSE TRIM(remainder)
+					END as level_name
+				FROM parsed
+			)
+			SELECT
+				level_name as place_name,
+				level_name || ', ' || ? as full_name,
+				COUNT(DISTINCT place) as count,
+				CASE
+					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN remainder = level_name THEN place END)
+					THEN 1
+					ELSE 0
+				END as has_children
+			FROM next_level
+			WHERE level_name != '' AND level_name != ?
+			GROUP BY level_name
+			ORDER BY level_name ASC
+		`, parent, parent, parent, parent, parent, parent)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query place hierarchy: %w", err)
+	}
+	defer rows.Close()
+
+	var places []repository.PlaceEntry
+	for rows.Next() {
+		var entry repository.PlaceEntry
+		var hasChildrenInt int
+		if err := rows.Scan(&entry.Name, &entry.FullName, &entry.Count, &hasChildrenInt); err != nil {
+			return nil, fmt.Errorf("scan place entry: %w", err)
+		}
+		entry.HasChildren = hasChildrenInt == 1
+		places = append(places, entry)
+	}
+
+	return places, rows.Err()
+}
+
+// GetPersonsByPlace returns persons associated with a place.
+func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	// Count total - match place at any position in birth_place or death_place
+	var total int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM persons
+		WHERE birth_place LIKE '%' || ? || '%' OR death_place LIKE '%' || ? || '%'
+	`, place, place).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count persons by place: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, given_name, surname, full_name, gender,
+			   birth_date_raw, birth_date_sort, birth_place,
+			   death_date_raw, death_date_sort, death_place,
+			   notes, version, updated_at
+		FROM persons
+		WHERE birth_place LIKE '%' || ? || '%' OR death_place LIKE '%' || ? || '%'
+		ORDER BY surname ASC, given_name ASC
+		LIMIT ? OFFSET ?
+	`, place, place, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query persons by place: %w", err)
+	}
+	defer rows.Close()
+
+	var persons []repository.PersonReadModel
+	for rows.Next() {
+		p, err := scanPersonRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		persons = append(persons, *p)
+	}
+
+	return persons, total, rows.Err()
+}
