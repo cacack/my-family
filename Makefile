@@ -1,4 +1,4 @@
-.PHONY: help build test fmt vet generate clean run dev setup check-coverage lint check check-full
+.PHONY: help build test fmt vet generate clean run dev setup check-coverage lint security check check-full
 
 # Default target
 .DEFAULT_GOAL := help
@@ -69,6 +69,13 @@ lint: ## Run golangci-lint
 		GOLANGCI_LINT="$$(go env GOPATH)/bin/golangci-lint"; \
 	fi; \
 	$$GOLANGCI_LINT run ./...
+
+security: ## Run security checks (gosec)
+	@GOLANGCI_LINT=$$(command -v golangci-lint || echo "$$HOME/go/bin/golangci-lint"); \
+	if [ ! -x "$$GOLANGCI_LINT" ]; then \
+		GOLANGCI_LINT="$$(go env GOPATH)/bin/golangci-lint"; \
+	fi; \
+	$$GOLANGCI_LINT run --enable-only gosec ./...
 
 check: fmt vet test ## Run all checks (CI validation)
 	cd web && npm run check

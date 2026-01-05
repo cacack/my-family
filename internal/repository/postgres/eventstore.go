@@ -70,7 +70,7 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Get current version
 	var currentVersion int64

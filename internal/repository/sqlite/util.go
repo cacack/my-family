@@ -55,17 +55,6 @@ func formatTimestamp(t time.Time) string {
 	return t.Format("2006-01-02T15:04:05.999999999Z07:00")
 }
 
-// nullableUUID converts a *uuid.UUID to sql.NullString.
-func nullableUUID(id *[16]byte) sql.NullString {
-	if id == nil {
-		return sql.NullString{}
-	}
-	return sql.NullString{
-		String: fmt.Sprintf("%x-%x-%x-%x-%x", id[0:4], id[4:6], id[6:8], id[8:10], id[10:16]),
-		Valid:  true,
-	}
-}
-
 // nullableString converts an empty string to sql.NullString.
 func nullableString(s string) sql.NullString {
 	if s == "" {

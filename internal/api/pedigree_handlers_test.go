@@ -85,7 +85,7 @@ func importPedigreeTestData(t *testing.T, server *api.Server) string {
 	}
 
 	// Get Junior's ID from search
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Junior", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Junior", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -107,7 +107,7 @@ func TestGetPedigree_Success(t *testing.T) {
 	server := setupPedigreeTestServer(t)
 	juniorID := importPedigreeTestData(t, server)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/"+juniorID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/"+juniorID, http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -177,7 +177,7 @@ func TestGetPedigree_Success(t *testing.T) {
 func TestGetPedigree_NotFound(t *testing.T) {
 	server := setupPedigreeTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/00000000-0000-0000-0000-000000000001", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -189,7 +189,7 @@ func TestGetPedigree_NotFound(t *testing.T) {
 func TestGetPedigree_InvalidID(t *testing.T) {
 	server := setupPedigreeTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/not-a-uuid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/not-a-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -203,7 +203,7 @@ func TestGetPedigree_MaxGenerations(t *testing.T) {
 	juniorID := importPedigreeTestData(t, server)
 
 	// Request only 1 generation
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/"+juniorID+"?generations=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/"+juniorID+"?generations=1", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -249,7 +249,7 @@ func TestGetPedigree_NoAncestors(t *testing.T) {
 	personID := created["id"].(string)
 
 	// Get pedigree for person with no ancestors
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/"+personID, nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/pedigree/"+personID, http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

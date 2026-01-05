@@ -949,13 +949,13 @@ func (s *Server) importGedcom(c echo.Context) error {
 }
 
 func (s *Server) exportGedcom(c echo.Context) error {
-	exporter := gedcom.NewExporter(s.readStore)
+	gedcomExporter := gedcom.NewExporter(s.readStore)
 
 	// Set response headers for file download
 	c.Response().Header().Set("Content-Type", "application/x-gedcom")
 	c.Response().Header().Set("Content-Disposition", "attachment; filename=export.ged")
 
-	result, err := exporter.Export(c.Request().Context(), c.Response().Writer)
+	result, err := gedcomExporter.Export(c.Request().Context(), c.Response().Writer)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to export GEDCOM: "+err.Error())
 	}
@@ -969,7 +969,7 @@ func (s *Server) exportGedcom(c echo.Context) error {
 
 // exportTree exports the complete family tree as JSON.
 func (s *Server) exportTree(c echo.Context) error {
-	exp := exporter.NewDataExporter(s.readStore)
+	dataExporter := exporter.NewDataExporter(s.readStore)
 
 	opts := exporter.ExportOptions{
 		Format:     exporter.FormatJSON,
@@ -979,7 +979,7 @@ func (s *Server) exportTree(c echo.Context) error {
 	c.Response().Header().Set("Content-Type", "application/json")
 	c.Response().Header().Set("Content-Disposition", "attachment; filename=export-tree.json")
 
-	result, err := exp.Export(c.Request().Context(), c.Response().Writer, opts)
+	result, err := dataExporter.Export(c.Request().Context(), c.Response().Writer, opts)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to export tree: "+err.Error())
 	}

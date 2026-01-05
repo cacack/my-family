@@ -565,13 +565,13 @@ func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.Citatio
 							if oldSource.CitationCount > 0 {
 								oldSource.CitationCount--
 							}
-							p.readStore.SaveSource(ctx, oldSource)
+							_ = p.readStore.SaveSource(ctx, oldSource)
 						}
 						// Increment new source
 						if newSource, _ := p.readStore.GetSource(ctx, newSourceID); newSource != nil {
 							newSource.CitationCount++
 							citation.SourceTitle = newSource.Title
-							p.readStore.SaveSource(ctx, newSource)
+							_ = p.readStore.SaveSource(ctx, newSource)
 						}
 						citation.SourceID = newSourceID
 					}

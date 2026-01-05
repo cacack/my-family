@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -616,7 +617,7 @@ func TestReadModelStore_DeleteFamily(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetFamilyChildren() after delete failed: %v", err)
 	}
-	if children != nil && len(children) != 0 {
+	if len(children) != 0 {
 		t.Errorf("len(children) after delete = %d, want 0", len(children))
 	}
 }
@@ -1211,7 +1212,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetFamilyChildren() after reset failed: %v", err)
 	}
-	if children != nil && len(children) != 0 {
+	if len(children) != 0 {
 		t.Errorf("len(children) after reset = %d, want 0", len(children))
 	}
 
@@ -1901,7 +1902,7 @@ func TestReadModelStore_GetMediaThumbnail(t *testing.T) {
 		t.Fatalf("GetMediaThumbnail() failed: %v", err)
 	}
 
-	if string(retrieved) != string(thumbnailData) {
+	if !bytes.Equal(retrieved, thumbnailData) {
 		t.Errorf("GetMediaThumbnail() = %s, want %s", retrieved, thumbnailData)
 	}
 

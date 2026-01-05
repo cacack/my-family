@@ -1026,7 +1026,7 @@ func TestImportGedcom_CitationImportError(t *testing.T) {
 	// Import sources first so they exist
 	for _, s := range sources {
 		srcInput := command.CreateSourceInput{
-			SourceType: string(s.SourceType),
+			SourceType: s.SourceType,
 			Title:      s.Title,
 			Author:     s.Author,
 		}
@@ -1915,60 +1915,4 @@ func TestImportGedcom_RepositoryWithFullDetails(t *testing.T) {
 	if result.RepositoriesImported != 1 {
 		t.Errorf("RepositoriesImported = %d, want 1", result.RepositoriesImported)
 	}
-}
-
-// mockReadStoreWithErrors is a mock that can return errors for specific operations.
-type mockReadStoreWithErrors struct {
-	*memory.ReadModelStore
-	getPersonError       error
-	getFamilyError       error
-	getChildFamilyError  error
-	getChildrenError     error
-	saveError            error
-	returnNilPerson      bool
-	returnNilFamily      bool
-	returnNilChildFamily bool
-}
-
-func newMockReadStoreWithErrors() *mockReadStoreWithErrors {
-	return &mockReadStoreWithErrors{
-		ReadModelStore: memory.NewReadModelStore(),
-	}
-}
-
-func (m *mockReadStoreWithErrors) GetPerson(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
-	if m.getPersonError != nil {
-		return nil, m.getPersonError
-	}
-	if m.returnNilPerson {
-		return nil, nil
-	}
-	return m.ReadModelStore.GetPerson(ctx, id)
-}
-
-func (m *mockReadStoreWithErrors) GetFamily(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
-	if m.getFamilyError != nil {
-		return nil, m.getFamilyError
-	}
-	if m.returnNilFamily {
-		return nil, nil
-	}
-	return m.ReadModelStore.GetFamily(ctx, id)
-}
-
-func (m *mockReadStoreWithErrors) GetChildFamily(ctx context.Context, personID uuid.UUID) (*repository.FamilyReadModel, error) {
-	if m.getChildFamilyError != nil {
-		return nil, m.getChildFamilyError
-	}
-	if m.returnNilChildFamily {
-		return nil, nil
-	}
-	return m.ReadModelStore.GetChildFamily(ctx, personID)
-}
-
-func (m *mockReadStoreWithErrors) GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
-	if m.getChildrenError != nil {
-		return nil, m.getChildrenError
-	}
-	return m.ReadModelStore.GetChildrenOfFamily(ctx, familyID)
 }

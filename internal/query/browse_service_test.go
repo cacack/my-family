@@ -107,7 +107,7 @@ func TestGetSurnamesByLetter(t *testing.T) {
 
 	// Verify all items start with S
 	for _, item := range result.Items {
-		if len(item.Surname) == 0 || item.Surname[0] != 'S' {
+		if item.Surname == "" || item.Surname[0] != 'S' {
 			t.Errorf("Surname %s does not start with S", item.Surname)
 		}
 	}

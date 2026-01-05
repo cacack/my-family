@@ -120,7 +120,7 @@ func TestListFamilies(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// List families
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/families", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -161,7 +161,7 @@ func TestGetFamily(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &created)
 
 	// Get family
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+created["id"].(string), nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+created["id"].(string), http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -222,7 +222,7 @@ func TestGetFamily_WithChildren_ResponseFormat(t *testing.T) {
 	}
 
 	// Get family with children
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID, nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID, http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -272,7 +272,7 @@ func TestGetFamily_WithChildren_ResponseFormat(t *testing.T) {
 func TestGetFamily_NotFound(t *testing.T) {
 	server := setupFamilyTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -349,7 +349,7 @@ func TestDeleteFamily(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &created)
 
 	// Delete family
-	req = httptest.NewRequest(http.MethodDelete, "/api/v1/families/"+created["id"].(string)+"?version=1", nil)
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/families/"+created["id"].(string)+"?version=1", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -358,7 +358,7 @@ func TestDeleteFamily(t *testing.T) {
 	}
 
 	// Verify deleted
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+created["id"].(string), nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+created["id"].(string), http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -495,14 +495,14 @@ func TestRemoveChildFromFamily(t *testing.T) {
 	}
 
 	// Get updated version
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+family["id"].(string), nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+family["id"].(string), http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 	json.Unmarshal(rec.Body.Bytes(), &family)
 
 	// Remove child
 	version := int(family["version"].(float64))
-	req = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/families/%s/children/%s?version=%d", family["id"].(string), child["id"].(string), version), nil)
+	req = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/families/%s/children/%s?version=%d", family["id"].(string), child["id"].(string), version), http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -535,7 +535,7 @@ func TestRemoveChildFromFamily_NotInFamily(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &family)
 
 	// Try to remove unrelated person as child - returns 400 (bad request) not 404
-	req = httptest.NewRequest(http.MethodDelete, "/api/v1/families/"+family["id"].(string)+"/children/"+unrelated["id"].(string)+"?version=1", nil)
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/families/"+family["id"].(string)+"/children/"+unrelated["id"].(string)+"?version=1", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -599,7 +599,7 @@ func TestCreateFamily_InvalidPartner2UUID(t *testing.T) {
 func TestGetFamily_InvalidUUID(t *testing.T) {
 	server := setupFamilyTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -678,7 +678,7 @@ func TestUpdateFamily_NotFound(t *testing.T) {
 func TestDeleteFamily_InvalidUUID(t *testing.T) {
 	server := setupFamilyTestServer(t)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/not-a-uuid?version=1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/not-a-uuid?version=1", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -690,7 +690,7 @@ func TestDeleteFamily_InvalidUUID(t *testing.T) {
 func TestDeleteFamily_NotFound(t *testing.T) {
 	server := setupFamilyTestServer(t)
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/00000000-0000-0000-0000-000000000001?version=1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/00000000-0000-0000-0000-000000000001?version=1", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -791,7 +791,7 @@ func TestRemoveChildFromFamily_InvalidFamilyUUID(t *testing.T) {
 
 	child := createTestPerson(t, server, "Junior", "Doe")
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/not-a-uuid/children/"+child["id"].(string)+"?version=1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/families/not-a-uuid/children/"+child["id"].(string)+"?version=1", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -821,7 +821,7 @@ func TestRemoveChildFromFamily_InvalidChildUUID(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &family)
 
 	// Remove child with invalid UUID
-	req = httptest.NewRequest(http.MethodDelete, "/api/v1/families/"+family["id"].(string)+"/children/not-a-uuid?version=1", nil)
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/families/"+family["id"].(string)+"/children/not-a-uuid?version=1", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

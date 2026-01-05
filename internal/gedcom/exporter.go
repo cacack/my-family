@@ -384,7 +384,8 @@ func notesToTags(notes string, level int) []*gedcom.Tag {
 
 // mapGPSToGedcomQuality maps GPS quality terms to GEDCOM QUAY values (0-3).
 // This is the reverse of mapGedcomQualityToGPS in importer.go
-func mapGPSToGedcomQuality(sourceQuality domain.SourceQuality, informantType domain.InformantType, evidenceType domain.EvidenceType) int {
+// TODO: sourceQuality is reserved for future use when GEDCOM quality mapping is enhanced
+func mapGPSToGedcomQuality(_ domain.SourceQuality, informantType domain.InformantType, evidenceType domain.EvidenceType) int {
 	// Priority: evidenceType > informantType > sourceQuality
 	// QUAY 3 = Direct and primary evidence
 	if evidenceType == domain.EvidenceDirect && informantType == domain.InformantPrimary {
@@ -517,7 +518,8 @@ func eventsToTags(events []repository.EventReadModel, sourceXrefs map[uuid.UUID]
 }
 
 // attributesToTags converts a slice of AttributeReadModel to gedcom.Tag slice.
-func attributesToTags(attributes []repository.AttributeReadModel, sourceXrefs map[uuid.UUID]string, level int) []*gedcom.Tag {
+// TODO: sourceXrefs is reserved for linking attributes to source citations
+func attributesToTags(attributes []repository.AttributeReadModel, _ map[uuid.UUID]string, level int) []*gedcom.Tag {
 	var tags []*gedcom.Tag
 
 	for _, attr := range attributes {

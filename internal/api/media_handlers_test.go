@@ -226,7 +226,7 @@ func TestListPersonMedia(t *testing.T) {
 	}
 
 	// List media
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media", personID), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media", personID), http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -281,7 +281,7 @@ func TestGetMedia(t *testing.T) {
 	mediaID := uploadResp["id"].(string)
 
 	// Get media
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s", mediaID), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s", mediaID), http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -302,7 +302,7 @@ func TestGetMedia(t *testing.T) {
 func TestGetMedia_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -314,7 +314,7 @@ func TestGetMedia_NotFound(t *testing.T) {
 func TestGetMedia_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -354,7 +354,7 @@ func TestDownloadMedia(t *testing.T) {
 	mediaID := uploadResp["id"].(string)
 
 	// Download content
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s/content", mediaID), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s/content", mediaID), http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -403,7 +403,7 @@ func TestGetMediaThumbnail(t *testing.T) {
 	mediaID := uploadResp["id"].(string)
 
 	// Get thumbnail
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s/thumbnail", mediaID), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s/thumbnail", mediaID), http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -499,7 +499,7 @@ func TestDeleteMedia(t *testing.T) {
 	version := int64(uploadResp["version"].(float64))
 
 	// Delete media
-	deleteReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/media/%s?version=%d", mediaID, version), nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/media/%s?version=%d", mediaID, version), http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -508,7 +508,7 @@ func TestDeleteMedia(t *testing.T) {
 	}
 
 	// Verify deleted
-	getReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s", mediaID), nil)
+	getReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/media/%s", mediaID), http.NoBody)
 	getRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(getRec, getReq)
 
@@ -520,7 +520,7 @@ func TestDeleteMedia(t *testing.T) {
 func TestDeleteMedia_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/media/invalid-uuid?version=1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/media/invalid-uuid?version=1", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -532,7 +532,7 @@ func TestDeleteMedia_InvalidID(t *testing.T) {
 func TestDeleteMedia_MissingVersion(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/media/00000000-0000-0000-0000-000000000001", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/media/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -571,7 +571,7 @@ func TestUpdateMedia_InvalidJSON(t *testing.T) {
 func TestDownloadMedia_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid/content", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid/content", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -583,7 +583,7 @@ func TestDownloadMedia_InvalidID(t *testing.T) {
 func TestDownloadMedia_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001/content", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001/content", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -595,7 +595,7 @@ func TestDownloadMedia_NotFound(t *testing.T) {
 func TestGetMediaThumbnail_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid/thumbnail", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/invalid-uuid/thumbnail", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -607,7 +607,7 @@ func TestGetMediaThumbnail_InvalidID(t *testing.T) {
 func TestGetMediaThumbnail_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001/thumbnail", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/media/00000000-0000-0000-0000-000000000001/thumbnail", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -619,7 +619,7 @@ func TestGetMediaThumbnail_NotFound(t *testing.T) {
 func TestListPersonMedia_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/invalid-uuid/media", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/invalid-uuid/media", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -631,7 +631,7 @@ func TestListPersonMedia_InvalidID(t *testing.T) {
 func TestListPersonMedia_PersonNotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001/media", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001/media", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -655,7 +655,7 @@ func TestListPersonMedia_LimitCapping(t *testing.T) {
 	personID := personResp["id"].(string)
 
 	// Request with limit > 100 (should be capped)
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media?limit=500", personID), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/persons/%s/media?limit=500", personID), http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

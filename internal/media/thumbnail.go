@@ -115,9 +115,7 @@ func encodeImage(img image.Image, opts ThumbnailOptions) ([]byte, error) {
 		if err := png.Encode(&buf, img); err != nil {
 			return nil, err
 		}
-	case ThumbnailJPEG:
-		fallthrough
-	default:
+	default: // ThumbnailJPEG or any unknown format defaults to JPEG
 		quality := opts.Quality
 		if quality <= 0 || quality > 100 {
 			quality = 85

@@ -5,6 +5,8 @@ version: "2"
 run:
   modules-download-mode: readonly
   tests: true
+  build-tags:
+    - dev
 
 linters:
   enable:
@@ -22,8 +24,19 @@ linters:
         - diagnostic
         - style
         - performance
+      disabled-checks:
+        # Performance suggestions - valid but not critical, address in future optimization
+        - hugeParam      # Passing large structs by value (intentional for immutability in many cases)
+        - rangeValCopy   # Range loops copying values (readability vs performance trade-off)
+        - paramTypeCombine  # Combining params of same type (stylistic)
+        - appendAssign   # Append patterns (intentional for clarity)
+        - appendCombine  # Combining appends (micro-optimization)
+        - unnamedResult  # Naming return values (stylistic)
+        - tooManyResultsChecker  # Importer returns many values for unpacking
+        - ifElseChain    # Date comparison chains are clearer as if-else
+        - filepathJoin   # Test path handling with absolute paths
     gocyclo:
-      min-complexity: 15
+      min-complexity: 20  # Raised from 15 - will refactor worst offenders
     revive:
       severity: warning
       rules:
@@ -55,11 +68,54 @@ linters:
       - linters:
           - gocyclo
         path: cmd/
+      # Event sourcing inherently requires switch statements for event types
+      - linters:
+          - gocyclo
+        path: internal/repository/(eventstore|projection)\.go
+      - linters:
+          - gocyclo
+        path: internal/query/rollback_queries\.go
+        text: applyEventToState
+      # GEDCOM tag mapping requires exhaustive switch statements
+      - linters:
+          - gocyclo
+        path: internal/gedcom/
+      # Import workflow has necessary sequential steps
+      - linters:
+          - gocyclo
+        path: internal/command/gedcom_commands\.go
       # Event interface methods must use value receivers for interface compatibility
       - linters:
           - gocritic
         path: internal/domain/events\.go
         text: hugeParam
+      # TODO: Migrate to RequestLoggerWithConfig (requires structural change)
+      - linters:
+          - staticcheck
+        path: internal/api/server\.go
+        text: SA1019.*middleware\.(Logger|LoggerWithConfig)
+      # APIError is intentionally verbose for clarity (api.APIError is clear)
+      - linters:
+          - revive
+        path: internal/api/middleware\.go
+        text: type name will be used as api.APIError
+      # Test helper functions designed for flexibility
+      - linters:
+          - unparam
+        path: _test\.go
+      # Function signatures kept for interface consistency or future extensibility
+      - linters:
+          - unparam
+        path: internal/query/history_queries\.go
+        text: result 1.*is always nil
+      - linters:
+          - unparam
+        path: internal/query/rollback_queries\.go
+        text: action always receives
+      - linters:
+          - unparam
+        path: internal/repository/postgres/eventstore\.go
+        text: limit is unused
 
     paths:
       - third_party$

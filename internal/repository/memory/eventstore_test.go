@@ -261,7 +261,7 @@ func TestEventStore_ReadStreamNonExistent(t *testing.T) {
 		t.Fatalf("ReadStream() failed: %v", err)
 	}
 
-	if events != nil && len(events) != 0 {
+	if len(events) != 0 {
 		t.Errorf("len(events) = %d, want 0 for non-existent stream", len(events))
 	}
 }
@@ -418,7 +418,7 @@ func TestEventStore_Reset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadStream() after reset failed: %v", err)
 	}
-	if events != nil && len(events) != 0 {
+	if len(events) != 0 {
 		t.Errorf("len(events) after reset = %d, want 0", len(events))
 	}
 }
