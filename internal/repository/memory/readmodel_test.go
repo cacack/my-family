@@ -2686,3 +2686,225 @@ func TestReadModelStore_MultipleEventTypes(t *testing.T) {
 		t.Errorf("len(familyResults) = %d, want %d", len(familyResults), len(familyEventTypes))
 	}
 }
+
+// Browse tests
+
+func TestReadModelStore_GetSurnameIndex(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Add persons with various surnames
+	persons := []struct {
+		surname string
+		count   int
+	}{
+		{"Smith", 3},
+		{"Anderson", 2},
+		{"Brown", 1},
+	}
+
+	for _, p := range persons {
+		for i := 0; i < p.count; i++ {
+			person := &repository.PersonReadModel{
+				ID:        uuid.New(),
+				GivenName: "Person",
+				Surname:   p.surname,
+				FullName:  "Person " + p.surname,
+				Version:   1,
+				UpdatedAt: time.Now(),
+			}
+			err := store.SavePerson(ctx, person)
+			if err != nil {
+				t.Fatalf("SavePerson() failed: %v", err)
+			}
+		}
+	}
+
+	// Get surname index
+	entries, letterCounts, err := store.GetSurnameIndex(ctx)
+	if err != nil {
+		t.Fatalf("GetSurnameIndex() failed: %v", err)
+	}
+
+	if len(entries) != 3 {
+		t.Errorf("len(entries) = %d, want 3", len(entries))
+	}
+
+	if len(letterCounts) == 0 {
+		t.Error("letterCounts should not be empty")
+	}
+}
+
+func TestReadModelStore_GetSurnamesByLetter(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Add persons starting with 'S'
+	surnames := []string{"Smith", "Simpson", "Sanders"}
+	for _, surname := range surnames {
+		person := &repository.PersonReadModel{
+			ID:        uuid.New(),
+			GivenName: "Person",
+			Surname:   surname,
+			FullName:  "Person " + surname,
+			Version:   1,
+			UpdatedAt: time.Now(),
+		}
+		err := store.SavePerson(ctx, person)
+		if err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	// Add person starting with 'J'
+	person := &repository.PersonReadModel{
+		ID:        uuid.New(),
+		GivenName: "John",
+		Surname:   "Jones",
+		FullName:  "John Jones",
+		Version:   1,
+		UpdatedAt: time.Now(),
+	}
+	_ = store.SavePerson(ctx, person)
+
+	// Get surnames starting with S
+	entries, err := store.GetSurnamesByLetter(ctx, "S")
+	if err != nil {
+		t.Fatalf("GetSurnamesByLetter() failed: %v", err)
+	}
+
+	if len(entries) != 3 {
+		t.Errorf("len(entries) = %d, want 3", len(entries))
+	}
+}
+
+func TestReadModelStore_GetPersonsBySurname(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Add multiple Smiths
+	for i := 0; i < 3; i++ {
+		person := &repository.PersonReadModel{
+			ID:        uuid.New(),
+			GivenName: "Person",
+			Surname:   "Smith",
+			FullName:  "Person Smith",
+			Version:   1,
+			UpdatedAt: time.Now(),
+		}
+		err := store.SavePerson(ctx, person)
+		if err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	// Add a Jones
+	jones := &repository.PersonReadModel{
+		ID:        uuid.New(),
+		GivenName: "John",
+		Surname:   "Jones",
+		FullName:  "John Jones",
+		Version:   1,
+		UpdatedAt: time.Now(),
+	}
+	_ = store.SavePerson(ctx, jones)
+
+	// Get Smiths
+	opts := repository.ListOptions{Limit: 10}
+	persons, total, err := store.GetPersonsBySurname(ctx, "Smith", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsBySurname() failed: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(persons) != 3 {
+		t.Errorf("len(persons) = %d, want 3", len(persons))
+	}
+}
+
+func TestReadModelStore_GetPlaceHierarchy(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Add persons with places
+	places := []string{
+		"New York, NY, USA",
+		"Boston, MA, USA",
+		"London, England, UK",
+	}
+	for _, place := range places {
+		person := &repository.PersonReadModel{
+			ID:         uuid.New(),
+			GivenName:  "Person",
+			Surname:    "Test",
+			FullName:   "Person Test",
+			BirthPlace: place,
+			Version:    1,
+			UpdatedAt:  time.Now(),
+		}
+		err := store.SavePerson(ctx, person)
+		if err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	// Get top-level places
+	entries, err := store.GetPlaceHierarchy(ctx, "")
+	if err != nil {
+		t.Fatalf("GetPlaceHierarchy() failed: %v", err)
+	}
+
+	if len(entries) == 0 {
+		t.Error("entries should not be empty")
+	}
+}
+
+func TestReadModelStore_GetPersonsByPlace(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Add persons from USA
+	for i := 0; i < 3; i++ {
+		person := &repository.PersonReadModel{
+			ID:         uuid.New(),
+			GivenName:  "Person",
+			Surname:    "USA",
+			FullName:   "Person USA",
+			BirthPlace: "New York, USA",
+			Version:    1,
+			UpdatedAt:  time.Now(),
+		}
+		err := store.SavePerson(ctx, person)
+		if err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	// Add person from UK
+	ukPerson := &repository.PersonReadModel{
+		ID:         uuid.New(),
+		GivenName:  "Person",
+		Surname:    "UK",
+		FullName:   "Person UK",
+		BirthPlace: "London, UK",
+		Version:    1,
+		UpdatedAt:  time.Now(),
+	}
+	_ = store.SavePerson(ctx, ukPerson)
+
+	// Get persons from USA
+	opts := repository.ListOptions{Limit: 10}
+	persons, total, err := store.GetPersonsByPlace(ctx, "USA", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsByPlace() failed: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(persons) != 3 {
+		t.Errorf("len(persons) = %d, want 3", len(persons))
+	}
+}
