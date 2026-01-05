@@ -131,7 +131,6 @@
 <div class="media-upload">
 	<h3>Upload Media</h3>
 
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="dropzone"
 		class:dragover={dragOver}
@@ -139,6 +138,8 @@
 		ondrop={handleDrop}
 		ondragover={handleDragOver}
 		ondragleave={handleDragLeave}
+		role="region"
+		aria-label={file ? `Selected file: ${file.name}` : 'File drop zone - drag and drop files here or use the browse button'}
 	>
 		{#if file}
 			<div class="file-info">
@@ -220,11 +221,11 @@
 	{/if}
 
 	{#if error}
-		<div class="message error-message">{error}</div>
+		<div class="message error-message" role="alert">{error}</div>
 	{/if}
 
 	{#if success}
-		<div class="message success-message">Media uploaded successfully!</div>
+		<div class="message success-message" role="status" aria-live="polite">Media uploaded successfully!</div>
 	{/if}
 </div>
 

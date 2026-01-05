@@ -186,7 +186,7 @@
 	</div>
 
 	{#if error}
-		<div class="section-error">{error}</div>
+		<div class="section-error" role="alert">{error}</div>
 	{/if}
 
 	{#if showAddForm}
@@ -314,7 +314,7 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading-state">Loading citations...</div>
+		<div class="loading-state" role="status" aria-live="polite">Loading citations...</div>
 	{:else if citations.length === 0 && !showAddForm}
 		<div class="empty-state">
 			<p>No citations yet.</p>

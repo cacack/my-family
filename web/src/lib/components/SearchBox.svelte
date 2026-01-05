@@ -13,7 +13,45 @@
 	let loading = $state(false);
 	let showDropdown = $state(false);
 	let fuzzy = $state(false);
+	let highlightedIndex = $state(-1);
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let inputRef: HTMLInputElement | undefined = $state();
+	let dropdownRef: HTMLDivElement | undefined = $state();
+
+	// Computed aria-activedescendant value
+	let activeDescendant = $derived(
+		highlightedIndex >= 0 ? `search-result-${highlightedIndex}` : undefined
+	);
+
+	// Reset highlighted index when results change
+	$effect(() => {
+		// Track results array to reset highlight on change
+		results;
+		highlightedIndex = -1;
+	});
+
+	// Scroll highlighted item into view
+	$effect(() => {
+		if (highlightedIndex >= 0 && dropdownRef) {
+			const highlightedEl = dropdownRef.querySelector(`#search-result-${highlightedIndex}`);
+			highlightedEl?.scrollIntoView({ block: 'nearest' });
+		}
+	});
+
+	/**
+	 * Focus the search input programmatically.
+	 * Used by global keyboard shortcut.
+	 */
+	export function focus() {
+		inputRef?.focus();
+	}
+
+	/**
+	 * Alias for focus() - alternative name for layout integration.
+	 */
+	export function focusInput() {
+		inputRef?.focus();
+	}
 
 	async function search(searchQuery: string) {
 		if (searchQuery.length < 2) {
@@ -53,6 +91,7 @@
 	function handleSelect(person: SearchResult) {
 		query = formatPersonName(person);
 		showDropdown = false;
+		highlightedIndex = -1;
 		results = [];
 		onSelect?.(person);
 	}
@@ -67,12 +106,46 @@
 		// Delay hiding dropdown to allow click events to fire
 		setTimeout(() => {
 			showDropdown = false;
+			highlightedIndex = -1;
 		}, 200);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
+		// Handle Escape even when dropdown is closed
 		if (e.key === 'Escape') {
+			e.preventDefault();
 			showDropdown = false;
+			highlightedIndex = -1;
+			return;
+		}
+
+		// Handle Tab - close dropdown but allow default behavior
+		if (e.key === 'Tab') {
+			showDropdown = false;
+			highlightedIndex = -1;
+			return;
+		}
+
+		// Only handle navigation keys when dropdown is open with results
+		if (!showDropdown || results.length === 0) {
+			return;
+		}
+
+		switch (e.key) {
+			case 'ArrowDown':
+				e.preventDefault();
+				highlightedIndex = (highlightedIndex + 1) % results.length;
+				break;
+			case 'ArrowUp':
+				e.preventDefault();
+				highlightedIndex = highlightedIndex <= 0 ? results.length - 1 : highlightedIndex - 1;
+				break;
+			case 'Enter':
+				if (highlightedIndex >= 0) {
+					e.preventDefault();
+					handleSelect(results[highlightedIndex]);
+				}
+				break;
 		}
 	}
 
@@ -91,6 +164,7 @@
 			<path d="m21 21-4.35-4.35" />
 		</svg>
 		<input
+			bind:this={inputRef}
 			type="text"
 			value={query}
 			oninput={handleInput}
@@ -101,6 +175,10 @@
 			aria-label="Search"
 			aria-expanded={showDropdown}
 			aria-haspopup="listbox"
+			aria-controls="search-listbox"
+			aria-autocomplete="list"
+			aria-activedescendant={activeDescendant}
+			role="combobox"
 		/>
 		{#if loading}
 			<span class="loading-indicator"></span>
@@ -110,22 +188,40 @@
 			class:active={fuzzy}
 			onclick={toggleFuzzy}
 			title={fuzzy ? 'Fuzzy search enabled' : 'Enable fuzzy search'}
+			aria-pressed={fuzzy}
 		>
 			~
 		</button>
 	</div>
 
+	<!-- Screen reader announcement for result count -->
+	<div class="sr-only" aria-live="polite" aria-atomic="true">
+		{#if results.length > 0}
+			{results.length} result{results.length === 1 ? '' : 's'} found
+		{:else if query.length >= 2 && !loading && showDropdown}
+			No results found
+		{/if}
+	</div>
+
 	{#if showDropdown && (results.length > 0 || (query.length >= 2 && !loading))}
-		<div class="dropdown" role="listbox">
+		<div
+			bind:this={dropdownRef}
+			class="dropdown"
+			role="listbox"
+			id="search-listbox"
+			aria-label="Search results"
+		>
 			{#if results.length === 0}
 				<div class="no-results">No results found</div>
 			{:else}
-				{#each results as person}
+				{#each results as person, index}
 					<button
+						id="search-result-{index}"
 						class="result-item"
+						class:highlighted={index === highlightedIndex}
 						onclick={() => handleSelect(person)}
 						role="option"
-						aria-selected="false"
+						aria-selected={index === highlightedIndex}
 					>
 						<span class="name">{formatPersonName(person)}</span>
 						<span class="lifespan">{formatLifespan(person)}</span>
@@ -137,6 +233,19 @@
 </div>
 
 <style>
+	/* Screen reader only - visually hidden but accessible */
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
 	.search-box {
 		position: relative;
 		width: 100%;
@@ -249,8 +358,14 @@
 		transition: background 0.15s;
 	}
 
-	.result-item:hover {
+	.result-item:hover,
+	.result-item.highlighted {
 		background: #f1f5f9;
+	}
+
+	.result-item.highlighted {
+		outline: 2px solid #3b82f6;
+		outline-offset: -2px;
 	}
 
 	.result-item:first-child {

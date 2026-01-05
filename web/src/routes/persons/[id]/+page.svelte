@@ -6,6 +6,7 @@
 	import MediaGallery from '$lib/components/MediaGallery.svelte';
 	import CitationSection from '$lib/components/CitationSection.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
+	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -128,11 +129,32 @@
 			loadPerson(id);
 		}
 	});
+
+	// Keyboard shortcut handlers
+	const { handleKeydown } = createShortcutHandler('person-detail', {
+		'edit': () => {
+			if (!editing && person && !loading) {
+				startEdit();
+			}
+		},
+		'save': () => {
+			if (editing && !saving) {
+				savePerson();
+			}
+		},
+		'cancel': () => {
+			if (editing) {
+				cancelEdit();
+			}
+		}
+	});
 </script>
 
 <svelte:head>
 	<title>{person ? formatPersonName(person) : 'Person'} | My Family</title>
 </svelte:head>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="person-page">
 	<header class="page-header">

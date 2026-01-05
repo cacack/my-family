@@ -1,1 +1,153 @@
 @import 'tailwindcss';
+
+/**
+ * Accessibility CSS Custom Properties
+ *
+ * These variables provide a consistent foundation for accessible styling
+ * throughout the application. They support font scaling, high contrast mode,
+ * and reduced motion preferences.
+ */
+
+:root {
+	/* Font sizing */
+	--font-size-base: 1rem;
+	--font-size-scale: 1;
+
+	/* Default colors (light theme) */
+	--color-text: #1e293b;
+	--color-text-muted: #64748b;
+	--color-bg: #ffffff;
+	--color-bg-secondary: #f8fafc;
+	--color-border: #e2e8f0;
+	--color-focus-ring: #3b82f6;
+	--color-link: #2563eb;
+	--color-link-hover: #1d4ed8;
+
+	/* Transition timing (disabled for reduced motion) */
+	--transition-duration: 0.15s;
+}
+
+/**
+ * Font Size Scaling Classes
+ *
+ * These classes scale text proportionally using the CSS custom property.
+ * The scale multiplier is also set programmatically for use in calculations.
+ */
+
+body.font-large {
+	--font-size-scale: 1.25;
+	font-size: calc(var(--font-size-base) * 1.25);
+}
+
+body.font-larger {
+	--font-size-scale: 1.5;
+	font-size: calc(var(--font-size-base) * 1.5);
+}
+
+/**
+ * High Contrast Mode
+ *
+ * Provides WCAG AA compliant contrast ratios (minimum 4.5:1 for normal text,
+ * 3:1 for large text). Uses pure black/white with bold borders and enhanced
+ * focus indicators.
+ */
+
+body.high-contrast {
+	--color-text: #000000;
+	--color-text-muted: #1a1a1a;
+	--color-bg: #ffffff;
+	--color-bg-secondary: #f0f0f0;
+	--color-border: #000000;
+	--color-focus-ring: #0000ff;
+	--color-link: #0000ee;
+	--color-link-hover: #0000aa;
+}
+
+body.high-contrast * {
+	border-color: var(--color-border) !important;
+}
+
+body.high-contrast a {
+	color: var(--color-link);
+	text-decoration: underline;
+}
+
+body.high-contrast a:hover,
+body.high-contrast a:focus {
+	color: var(--color-link-hover);
+}
+
+body.high-contrast button,
+body.high-contrast [role='button'] {
+	border: 2px solid var(--color-border) !important;
+}
+
+body.high-contrast :focus {
+	outline: 3px solid var(--color-focus-ring) !important;
+	outline-offset: 2px;
+}
+
+body.high-contrast :focus-visible {
+	outline: 3px solid var(--color-focus-ring) !important;
+	outline-offset: 2px;
+}
+
+/**
+ * Reduced Motion
+ *
+ * Disables animations and transitions for users who prefer reduced motion.
+ * This respects the prefers-reduced-motion media query by default, but can
+ * also be manually enabled.
+ */
+
+body.reduced-motion,
+body.reduced-motion * {
+	animation-duration: 0.001ms !important;
+	animation-iteration-count: 1 !important;
+	transition-duration: 0.001ms !important;
+	scroll-behavior: auto !important;
+}
+
+/* Also respect system preference even without the class */
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--transition-duration: 0s;
+	}
+
+	*:not(body.reduced-motion *) {
+		animation-duration: 0.001ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.001ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
+/**
+ * Focus Styles
+ *
+ * Enhanced focus indicators for keyboard navigation.
+ * Uses the focus-ring color variable for consistency.
+ */
+
+:focus-visible {
+	outline: 2px solid var(--color-focus-ring);
+	outline-offset: 2px;
+}
+
+/* Skip link for keyboard users */
+.skip-link {
+	position: absolute;
+	top: -100%;
+	left: 0;
+	padding: 0.5rem 1rem;
+	background: var(--color-bg);
+	color: var(--color-text);
+	border: 2px solid var(--color-focus-ring);
+	z-index: 9999;
+	text-decoration: none;
+	font-weight: 600;
+}
+
+.skip-link:focus {
+	top: 0;
+}

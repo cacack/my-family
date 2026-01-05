@@ -162,9 +162,9 @@
 	{/if}
 
 	{#if loading}
-		<div class="loading">Loading history...</div>
+		<div class="loading" role="status" aria-live="polite">Loading history...</div>
 	{:else if error}
-		<div class="error">{error}</div>
+		<div class="error" role="alert">{error}</div>
 	{:else if history && history.items.length > 0}
 		<div class="timeline">
 			{#each history.items as entry (entry.id)}

@@ -44,6 +44,25 @@ Completed features in my-family genealogy software.
 - **Tailwind CSS** - Utility-first styling
 - **Responsive Layout** - Works on desktop browsers
 
+## Keyboard Shortcuts
+
+Power user navigation without touching the mouse:
+
+- **Global Navigation** - `g h` home, `g p` people, `g f` families, `g s` sources
+- **Quick Search** - `/` to focus search, arrow keys to navigate results
+- **Help Overlay** - `?` shows all available shortcuts
+- **Pedigree Chart** - Arrow keys navigate tree, `+`/`-` zoom, `r` reset view
+- **Detail Pages** - `e` edit, `s` save, `Escape` cancel
+
+## Accessibility
+
+- **Font Size Controls** - Normal, Large (125%), Larger (150%)
+- **High Contrast Mode** - WCAG AA compliant color scheme (4.5:1 ratio)
+- **Reduced Motion** - Respects system preference, disables animations
+- **Screen Reader Support** - ARIA labels, live regions, landmark navigation
+- **Keyboard Navigation** - Skip link, focus traps in modals, full tab navigation
+- **Settings Panel** - Accessible from header, persists preferences
+
 ---
 
 See [GitHub Issues](https://github.com/cacack/my-family/issues) for planned features.

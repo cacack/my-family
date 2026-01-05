@@ -47,7 +47,7 @@
 
 <div class="place-browser">
 	{#if loading}
-		<div class="loading">Loading places...</div>
+		<div class="loading" role="status" aria-live="polite">Loading places...</div>
 	{:else}
 		<!-- Breadcrumb Navigation -->
 		<nav class="breadcrumb" aria-label="Place hierarchy">
