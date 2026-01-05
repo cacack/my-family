@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -530,44 +531,56 @@ func TestConvertReadModelToPerson_AllFields(t *testing.T) {
 
 func TestGenDateToSortTime(t *testing.T) {
 	tests := []struct {
-		name     string
-		genDate  *query.Person
-		wantNil  bool
-		testFunc func(*testing.T)
+		name    string
+		genDate *domain.GenDate
+		wantNil bool
 	}{
 		{
 			name:    "nil gendate returns nil",
 			genDate: nil,
 			wantNil: true,
 		},
+		{
+			name:    "empty gendate returns nil",
+			genDate: &domain.GenDate{},
+			wantNil: true,
+		},
+		{
+			name:    "gendate with year only returns time",
+			genDate: func() *domain.GenDate { gd := domain.ParseGenDate("1850"); return &gd }(),
+			wantNil: false,
+		},
+		{
+			name:    "gendate with full date returns time",
+			genDate: func() *domain.GenDate { gd := domain.ParseGenDate("15 MAR 1850"); return &gd }(),
+			wantNil: false,
+		},
+		{
+			name:    "gendate with about qualifier returns time",
+			genDate: func() *domain.GenDate { gd := domain.ParseGenDate("ABT 1850"); return &gd }(),
+			wantNil: false,
+		},
+		{
+			name:    "gendate with date range returns time",
+			genDate: func() *domain.GenDate { gd := domain.ParseGenDate("BET 1850 AND 1860"); return &gd }(),
+			wantNil: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test via GetPerson which exercises GenDateToSortTime
-			// This function is primarily used internally for sorting
-			eventStore := memory.NewEventStore()
-			readStore := memory.NewReadModelStore()
-			handler := command.NewHandler(eventStore, readStore)
-			service := query.NewPersonService(readStore)
-			ctx := context.Background()
-
-			// Create person without dates
-			createResult, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
-				GivenName: "Test",
-				Surname:   "Person",
-			})
-
-			person, err := service.GetPerson(ctx, createResult.ID)
-			if err != nil {
-				t.Fatalf("GetPerson failed: %v", err)
+			result := query.GenDateToSortTime(tt.genDate)
+			if tt.wantNil && result != nil {
+				t.Errorf("GenDateToSortTime() = %v, want nil", result)
 			}
-
-			if person.BirthDate != nil {
-				t.Error("BirthDate should be nil for person without birth date")
+			if !tt.wantNil && result == nil {
+				t.Error("GenDateToSortTime() = nil, want non-nil time")
 			}
-			if person.DeathDate != nil {
-				t.Error("DeathDate should be nil for person without death date")
+			if !tt.wantNil && result != nil {
+				// Verify year is correct for non-nil results
+				if result.Year() != 1850 {
+					t.Errorf("GenDateToSortTime().Year() = %d, want 1850", result.Year())
+				}
 			}
 		})
 	}
