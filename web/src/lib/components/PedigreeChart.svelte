@@ -24,15 +24,22 @@
 	interface Props {
 		data: PedigreeNode;
 		layout?: LayoutMode;
+		selectedPersonId?: string | null;
 		onPersonClick?: (personId: string) => void;
+		onSelectionChange?: (personId: string | null) => void;
 	}
 
-	let { data, layout = 'standard', onPersonClick }: Props = $props();
+	let { data, layout = 'standard', selectedPersonId = null, onPersonClick, onSelectionChange }: Props = $props();
 
 	let container: HTMLDivElement;
 	let svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
 	let g: d3.Selection<SVGGElement, unknown, null, undefined>;
 	let zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
+
+	// Map of person ID to their node data for navigation
+	let nodeMap: Map<string, d3.HierarchyPointNode<PedigreeNode>> = new Map();
+	// Store the tree data for navigation
+	let treeNodes: d3.HierarchyPointNode<PedigreeNode>[] = [];
 
 	interface TreeNode {
 		data: PedigreeNode;
@@ -120,6 +127,15 @@
 		const nodes = treeData.descendants();
 		const links = treeData.links();
 
+		// Store nodes for navigation and build the nodeMap
+		treeNodes = nodes;
+		nodeMap = new Map();
+		nodes.forEach((node) => {
+			if (node.data.id) {
+				nodeMap.set(node.data.id, node);
+			}
+		});
+
 		// Flip y coordinates so ancestors are above (root at bottom)
 		const maxDepth = d3.max(nodes, (d) => d.depth) || 0;
 		nodes.forEach((d) => {
@@ -163,6 +179,7 @@
 		// Node card background
 		nodeGroups
 			.append('rect')
+			.attr('class', 'node-card')
 			.attr('x', -cardWidth / 2)
 			.attr('y', -cardHeight / 2)
 			.attr('width', cardWidth)
@@ -174,11 +191,27 @@
 				return '#f1f5f9';
 			})
 			.attr('stroke', (d) => {
+				if (d.data.id === selectedPersonId) return '#f59e0b'; // Amber for selected
 				if (d.data.gender === 'male') return '#3b82f6';
 				if (d.data.gender === 'female') return '#ec4899';
 				return '#64748b';
 			})
-			.attr('stroke-width', 2);
+			.attr('stroke-width', (d) => d.data.id === selectedPersonId ? 3 : 2);
+
+		// Add selection ring for better visibility
+		nodeGroups
+			.filter((d) => d.data.id === selectedPersonId)
+			.insert('rect', '.node-card')
+			.attr('class', 'selection-ring')
+			.attr('x', -cardWidth / 2 - 4)
+			.attr('y', -cardHeight / 2 - 4)
+			.attr('width', cardWidth + 8)
+			.attr('height', cardHeight + 8)
+			.attr('rx', 12)
+			.attr('fill', 'none')
+			.attr('stroke', '#f59e0b')
+			.attr('stroke-width', 2)
+			.attr('stroke-dasharray', '4,2');
 
 		// Given name (first line)
 		nodeGroups
@@ -242,13 +275,13 @@
 	// Zoom control functions
 	export function zoomIn() {
 		if (svg && zoom) {
-			svg.transition().duration(300).call(zoom.scaleBy, 1.3);
+			svg.transition().duration(300).call(zoom.scaleBy, 1.2);
 		}
 	}
 
 	export function zoomOut() {
 		if (svg && zoom) {
-			svg.transition().duration(300).call(zoom.scaleBy, 0.7);
+			svg.transition().duration(300).call(zoom.scaleBy, 0.8);
 		}
 	}
 
@@ -258,6 +291,96 @@
 			// Re-fit after reset
 			setTimeout(renderChart, 350);
 		}
+	}
+
+	// Navigation helper functions
+	/**
+	 * Get the father of the currently selected person
+	 */
+	export function getFatherId(): string | null {
+		if (!selectedPersonId) return null;
+		const node = nodeMap.get(selectedPersonId);
+		if (!node) return null;
+		// In pedigree, father is the first child (left in the tree structure)
+		const pedigreeData = node.data;
+		return pedigreeData.father?.id || null;
+	}
+
+	/**
+	 * Get the mother of the currently selected person
+	 */
+	export function getMotherId(): string | null {
+		if (!selectedPersonId) return null;
+		const node = nodeMap.get(selectedPersonId);
+		if (!node) return null;
+		const pedigreeData = node.data;
+		return pedigreeData.mother?.id || null;
+	}
+
+	/**
+	 * Get the root person ID (starting person of the pedigree)
+	 */
+	export function getRootId(): string | null {
+		return data?.id || null;
+	}
+
+	/**
+	 * Get the first spouse/family ID if available
+	 * Note: In pedigree chart data, spouses are not directly available
+	 * This would need additional data from the API
+	 */
+	export function getSpouseId(): string | null {
+		// Spouse navigation would require additional data - returning null for now
+		// Could be extended when the API provides spouse information
+		return null;
+	}
+
+	/**
+	 * Check if a person exists in the current pedigree view
+	 */
+	export function hasNode(personId: string): boolean {
+		return nodeMap.has(personId);
+	}
+
+	/**
+	 * Update selection highlighting without full re-render
+	 */
+	function updateSelectionHighlight() {
+		if (!g) return;
+
+		const config = LAYOUTS[layout];
+		const cardWidth = config.cardWidth;
+		const cardHeight = config.cardHeight;
+
+		// Update existing node cards
+		g.selectAll<SVGRectElement, d3.HierarchyPointNode<PedigreeNode>>('.node-card')
+			.attr('stroke', (d) => {
+				if (d.data.id === selectedPersonId) return '#f59e0b';
+				if (d.data.gender === 'male') return '#3b82f6';
+				if (d.data.gender === 'female') return '#ec4899';
+				return '#64748b';
+			})
+			.attr('stroke-width', (d) => d.data.id === selectedPersonId ? 3 : 2);
+
+		// Remove old selection rings
+		g.selectAll('.selection-ring').remove();
+
+		// Add new selection ring
+		const selectedNode = g.selectAll<SVGGElement, d3.HierarchyPointNode<PedigreeNode>>('.node')
+			.filter((d) => d.data.id === selectedPersonId);
+
+		selectedNode
+			.insert('rect', '.node-card')
+			.attr('class', 'selection-ring')
+			.attr('x', -cardWidth / 2 - 4)
+			.attr('y', -cardHeight / 2 - 4)
+			.attr('width', cardWidth + 8)
+			.attr('height', cardHeight + 8)
+			.attr('rx', 12)
+			.attr('fill', 'none')
+			.attr('stroke', '#f59e0b')
+			.attr('stroke-width', 2)
+			.attr('stroke-dasharray', '4,2');
 	}
 
 	onMount(() => {
@@ -280,9 +403,22 @@
 			renderChart();
 		}
 	});
+
+	// Update selection highlighting when selectedPersonId changes (without full re-render)
+	$effect(() => {
+		if (selectedPersonId !== undefined && g) {
+			updateSelectionHighlight();
+		}
+	});
 </script>
 
-<div class="pedigree-chart" bind:this={container}></div>
+<div
+	class="pedigree-chart"
+	bind:this={container}
+	role="application"
+	aria-label="Pedigree chart. Use arrow keys to navigate: Up for father, Left for mother, Down to return to root. Plus/minus to zoom, R to reset view."
+	tabindex="0"
+></div>
 
 <style>
 	.pedigree-chart {
@@ -294,7 +430,24 @@
 		overflow: hidden;
 	}
 
-	:global(.pedigree-chart .node:hover rect) {
+	.pedigree-chart:focus {
+		outline: 2px solid #3b82f6;
+		outline-offset: 2px;
+	}
+
+	:global(.pedigree-chart .node:hover rect.node-card) {
 		filter: brightness(0.95);
+	}
+
+	/* High contrast mode support for selection indicator */
+	@media (forced-colors: active) {
+		:global(.pedigree-chart .selection-ring) {
+			stroke: Highlight !important;
+			stroke-width: 3px !important;
+		}
+
+		:global(.pedigree-chart .node-card[stroke-width="3"]) {
+			stroke: Highlight !important;
+		}
 	}
 </style>

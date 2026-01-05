@@ -15,8 +15,10 @@ A genealogy platform designed for research rigor and data ownership.
 - **GEDCOM 5.5 import/export** - Full round-trip fidelity with your existing data
 - **Flexible date handling** - Supports exact, approximate, ranges, and "before/after"
 - **Family relationships** - Biological, adopted, step, and foster qualifiers
-- **Interactive pedigree chart** - D3.js visualization with pan/zoom navigation
-- **Full-text search** - Fast fuzzy matching across your tree
+- **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation
+- **Full-text search** - Fast fuzzy matching with keyboard-navigable results
+- **Keyboard shortcuts** - Power user navigation (press `?` for help)
+- **Accessibility** - High contrast, font scaling, screen reader support
 - **API-first design** - Complete REST API with OpenAPI documentation
 - **Event sourcing** - Full audit trail of all changes
 - **Easy deployment** - Single binary or Docker, SQLite or PostgreSQL

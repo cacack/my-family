@@ -72,9 +72,15 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="lightbox-overlay" onclick={handleOverlayClick}>
+<div
+	class="lightbox-overlay"
+	onclick={handleOverlayClick}
+	onkeydown={(e) => e.key === 'Escape' && onClose()}
+	role="dialog"
+	aria-modal="true"
+	aria-label="Media lightbox - {currentMedia.title}"
+	tabindex="-1"
+>
 	<button class="close-btn" onclick={onClose} aria-label="Close lightbox">
 		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 			<line x1="18" y1="6" x2="6" y2="18" />

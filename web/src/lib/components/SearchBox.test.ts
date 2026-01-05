@@ -45,7 +45,7 @@ describe('SearchBox', () => {
 
 	it('renders the search input', () => {
 		render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 		expect(input).toBeDefined();
 	});
 
@@ -83,7 +83,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 
 		render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		// Type a search query
 		await fireEvent.input(input, { target: { value: 'John' } });
@@ -106,7 +106,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 
 		render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'J' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -118,7 +118,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 
 		const { container } = render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'Doe' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -137,7 +137,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue({ items: [], total: 0 });
 
 		const { container } = render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'xyz' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -154,7 +154,7 @@ describe('SearchBox', () => {
 		const selectHandler = vi.fn();
 
 		const { container } = render(SearchBox, { props: { onSelect: selectHandler } });
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'Doe' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -174,7 +174,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 
 		const { container } = render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'Doe' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -194,7 +194,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 
 		const { container } = render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'Doe' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -210,7 +210,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
 
 		const { container } = render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'Doe' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -231,7 +231,7 @@ describe('SearchBox', () => {
 		vi.mocked(apiModule.api.searchPersons).mockReturnValue(searchPromise);
 
 		const { container } = render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		await fireEvent.input(input, { target: { value: 'Doe' } });
 		await vi.advanceTimersByTimeAsync(300);
@@ -254,11 +254,12 @@ describe('SearchBox', () => {
 
 	it('has correct aria attributes', () => {
 		render(SearchBox);
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		expect(input.getAttribute('aria-label')).toBe('Search');
 		expect(input.getAttribute('aria-haspopup')).toBe('listbox');
 		expect(input.getAttribute('aria-expanded')).toBe('false');
+		expect(input.getAttribute('aria-autocomplete')).toBe('list');
 	});
 
 	it('searches with fuzzy mode when enabled', async () => {
@@ -266,7 +267,7 @@ describe('SearchBox', () => {
 
 		const { container } = render(SearchBox);
 		const fuzzyButton = container.querySelector('.fuzzy-toggle') as HTMLButtonElement;
-		const input = screen.getByRole('textbox');
+		const input = screen.getByRole('combobox');
 
 		// Enable fuzzy mode
 		await fireEvent.click(fuzzyButton);

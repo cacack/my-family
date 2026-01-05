@@ -263,13 +263,14 @@
 					</div>
 				</div>
 			{:else}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
+					<div
 					class="drop-zone"
 					class:drag-over={dragOver}
 					ondrop={handleDrop}
 					ondragover={handleDragOver}
 					ondragleave={handleDragLeave}
+					role="region"
+					aria-label={file ? `Selected file: ${file.name}` : 'GEDCOM file drop zone - drag and drop files here or use the browse button'}
 				>
 					{#if file}
 						<div class="file-info">
@@ -279,7 +280,7 @@
 							</svg>
 							<span class="file-name">{file.name}</span>
 							<span class="file-size">({(file.size / 1024).toFixed(1)} KB)</span>
-							<button class="remove-btn" onclick={reset}>&times;</button>
+							<button class="remove-btn" onclick={reset} aria-label="Remove selected file">&times;</button>
 						</div>
 					{:else}
 						<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -296,7 +297,7 @@
 				</div>
 
 				{#if error}
-					<p class="error-message">{error}</p>
+					<p class="error-message" role="alert">{error}</p>
 				{/if}
 
 				{#if file}
@@ -342,8 +343,8 @@
 
 				<!-- Entity Type Selector -->
 				<div class="form-group">
-					<label class="form-label">What to export</label>
-					<div class="radio-group">
+					<span class="form-label" id="export-entity-type-label">What to export</span>
+					<div class="radio-group" role="radiogroup" aria-labelledby="export-entity-type-label">
 						<label class="radio-label">
 							<input
 								type="radio"
@@ -377,8 +378,8 @@
 				<!-- Format Selector (only for persons/families) -->
 				{#if exportEntityType !== 'tree'}
 					<div class="form-group">
-						<label class="form-label">Format</label>
-						<div class="radio-group">
+						<span class="form-label" id="export-format-label">Format</span>
+						<div class="radio-group" role="radiogroup" aria-labelledby="export-format-label">
 							<label class="radio-label">
 								<input
 									type="radio"
@@ -404,7 +405,7 @@
 					{#if exportFormat === 'csv'}
 						<div class="form-group">
 							<div class="field-picker-header">
-								<label class="form-label">Fields to include</label>
+								<span class="form-label" id="export-fields-label">Fields to include</span>
 								<div class="field-picker-actions">
 									<button
 										type="button"
@@ -422,7 +423,7 @@
 									</button>
 								</div>
 							</div>
-							<div class="field-picker">
+							<div class="field-picker" role="group" aria-labelledby="export-fields-label">
 								{#if exportEntityType === 'persons'}
 									{#each personFields as field}
 										<label class="checkbox-label">
@@ -452,7 +453,7 @@
 				{/if}
 
 				{#if exportError}
-					<p class="error-message">{exportError}</p>
+					<p class="error-message" role="alert">{exportError}</p>
 				{/if}
 
 				<button class="btn btn-primary" onclick={exportData} disabled={exporting}>

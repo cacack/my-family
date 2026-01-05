@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { api, type FamilyDetail, formatGenDate, formatPersonName } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
+	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -108,11 +109,32 @@
 			loadFamily(id);
 		}
 	});
+
+	// Keyboard shortcut handlers
+	const { handleKeydown } = createShortcutHandler('family-detail', {
+		'edit': () => {
+			if (!editing && family && !loading) {
+				startEdit();
+			}
+		},
+		'save': () => {
+			if (editing && !saving) {
+				saveFamily();
+			}
+		},
+		'cancel': () => {
+			if (editing) {
+				cancelEdit();
+			}
+		}
+	});
 </script>
 
 <svelte:head>
 	<title>{family ? getPartnerDisplay() : 'Family'} | My Family</title>
 </svelte:head>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="family-page">
 	<header class="page-header">

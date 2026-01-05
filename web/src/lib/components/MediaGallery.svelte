@@ -68,12 +68,12 @@
 	<MediaUpload {personId} onUpload={handleUpload} />
 
 	{#if loading}
-		<div class="loading-state">
-			<span class="spinner"></span>
+		<div class="loading-state" role="status" aria-live="polite">
+			<span class="spinner" aria-hidden="true"></span>
 			Loading media...
 		</div>
 	{:else if error}
-		<div class="error-state">
+		<div class="error-state" role="alert">
 			<p>{error}</p>
 			<button class="btn" onclick={() => loadMedia()}>Retry</button>
 		</div>
@@ -87,44 +87,49 @@
 			<p>No media yet. Upload photos and documents.</p>
 		</div>
 	{:else}
-		<div class="gallery-grid">
+		<div class="gallery-grid" role="list" aria-label="Media gallery">
 			{#each mediaItems as media (media.id)}
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="thumbnail-card"
 					class:deleting={deletingId === media.id}
-					onclick={() => openLightbox(media)}
+					role="listitem"
 				>
-					{#if media.has_thumbnail}
-						<img
-							src={api.getMediaThumbnailUrl(media.id)}
-							alt={media.title}
-							class="thumbnail"
-						/>
-					{:else}
-						<div class="thumbnail-placeholder">
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-								<polyline points="14 2 14 8 20 8" />
-							</svg>
-						</div>
-					{/if}
+					<button
+						type="button"
+						class="thumbnail-button"
+						onclick={() => openLightbox(media)}
+						aria-label="View {media.title}"
+					>
+						{#if media.has_thumbnail}
+							<img
+								src={api.getMediaThumbnailUrl(media.id)}
+								alt=""
+								class="thumbnail"
+							/>
+						{:else}
+							<div class="thumbnail-placeholder" aria-hidden="true">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+									<polyline points="14 2 14 8 20 8" />
+								</svg>
+							</div>
+						{/if}
 
-					<div class="thumbnail-overlay">
-						<span class="thumbnail-title">{media.title}</span>
-					</div>
+						<div class="thumbnail-overlay" aria-hidden="true">
+							<span class="thumbnail-title">{media.title}</span>
+						</div>
+					</button>
 
 					<button
 						class="delete-btn"
 						onclick={(e) => deleteMedia(media, e)}
 						disabled={deletingId === media.id}
-						aria-label="Delete media"
+						aria-label="Delete {media.title}"
 					>
 						{#if deletingId === media.id}
 							<span class="spinner-small"></span>
 						{:else}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 								<polyline points="3 6 5 6 21 6" />
 								<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
 							</svg>
@@ -161,7 +166,6 @@
 		aspect-ratio: 1;
 		border-radius: 8px;
 		overflow: hidden;
-		cursor: pointer;
 		background: #f1f5f9;
 		transition: transform 0.2s, box-shadow 0.2s;
 	}
@@ -169,6 +173,22 @@
 	.thumbnail-card:hover {
 		transform: translateY(-2px);
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	}
+
+	.thumbnail-button {
+		display: block;
+		width: 100%;
+		height: 100%;
+		padding: 0;
+		border: none;
+		background: none;
+		cursor: pointer;
+		position: relative;
+	}
+
+	.thumbnail-button:focus-visible {
+		outline: 2px solid #3b82f6;
+		outline-offset: 2px;
 	}
 
 	.thumbnail-card.deleting {
