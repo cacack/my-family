@@ -61,4 +61,5 @@ internal/api/openapi_gen.go
 
 # Claude Code prompts (ephemeral, not committed)
 prompts/
+.prompts/
 coverage.html
