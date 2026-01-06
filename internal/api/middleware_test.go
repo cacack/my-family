@@ -25,7 +25,7 @@ func TestErrorHandler_NotFound(t *testing.T) {
 	server := setupMiddlewareTestServer()
 
 	// Request non-existent route
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/nonexistent", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -50,7 +50,7 @@ func TestErrorHandler_MethodNotAllowed(t *testing.T) {
 	server := setupMiddlewareTestServer()
 
 	// PATCH is not allowed on /persons
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/persons", nil)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -92,7 +92,7 @@ func TestServerWithJSONLogging(t *testing.T) {
 	server := api.NewServer(cfg, eventStore, readStore, nil)
 
 	// Make a request to ensure JSON logging is configured
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -105,7 +105,7 @@ func TestCORSHeaders(t *testing.T) {
 	server := setupMiddlewareTestServer()
 
 	// OPTIONS request to check CORS
-	req := httptest.NewRequest(http.MethodOptions, "/api/v1/persons", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/persons", http.NoBody)
 	req.Header.Set("Origin", "http://example.com")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	rec := httptest.NewRecorder()

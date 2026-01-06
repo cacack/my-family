@@ -282,7 +282,8 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 
 // parseIndividual converts a GEDCOM individual record to PersonData.
 // The doc parameter provides access to other records for PEDI lookup.
-func parseIndividual(indi *gedcom.Individual, doc *gedcom.Document, result *ImportResult) PersonData {
+// TODO: doc parameter reserved for future cross-record lookups
+func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *ImportResult) PersonData {
 	person := PersonData{
 		ID:         uuid.New(),
 		GedcomXref: indi.XRef,
@@ -515,7 +516,8 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 }
 
 // parseRepository converts a GEDCOM repository record to RepositoryData.
-func parseRepository(repo *gedcom.Repository, result *ImportResult) RepositoryData {
+// TODO: result parameter reserved for future error/warning tracking
+func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 	repository := RepositoryData{
 		ID:         uuid.New(),
 		GedcomXref: repo.XRef,
@@ -561,7 +563,8 @@ func parseRepository(repo *gedcom.Repository, result *ImportResult) RepositoryDa
 }
 
 // extractCitationsFromIndividual extracts all citations from individual events.
-func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID, result *ImportResult) []CitationData {
+// TODO: result parameter reserved for future error/warning tracking
+func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID, _ *ImportResult) []CitationData {
 	var citations []CitationData
 
 	for _, event := range indi.Events {
@@ -631,7 +634,8 @@ func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID,
 }
 
 // extractCitationsFromFamily extracts all citations from family events.
-func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, result *ImportResult) []CitationData {
+// TODO: result parameter reserved for future error/warning tracking
+func extractCitationsFromFamily(fam *gedcom.Family, familyID uuid.UUID, _ *ImportResult) []CitationData {
 	var citations []CitationData
 
 	for _, event := range fam.Events {

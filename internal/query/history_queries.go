@@ -289,7 +289,8 @@ func (s *HistoryService) getPersonName(ctx context.Context, personID uuid.UUID, 
 }
 
 // getFamilyName retrieves or constructs a family's name.
-func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, evt *repository.StoredEvent) string {
+// TODO: evt parameter reserved for extracting name from event data when read model unavailable
+func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, _ *repository.StoredEvent) string {
 	// Try to get from read model first
 	family, err := s.readStore.GetFamily(ctx, familyID)
 	if err == nil && family != nil {
@@ -331,7 +332,8 @@ func (s *HistoryService) getSourceName(ctx context.Context, sourceID uuid.UUID, 
 }
 
 // getCitationName retrieves or constructs a citation's name.
-func (s *HistoryService) getCitationName(ctx context.Context, citationID uuid.UUID, evt *repository.StoredEvent) string {
+// TODO: evt parameter reserved for extracting name from event data when read model unavailable
+func (s *HistoryService) getCitationName(ctx context.Context, citationID uuid.UUID, _ *repository.StoredEvent) string {
 	// Try to get from read model first
 	citation, err := s.readStore.GetCitation(ctx, citationID)
 	if err == nil && citation != nil {

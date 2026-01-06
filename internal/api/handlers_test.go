@@ -24,7 +24,7 @@ func setupTestServer() *api.Server {
 
 func TestHealthCheck(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -96,7 +96,7 @@ func TestListPersons(t *testing.T) {
 	server.Echo().ServeHTTP(createRec, createReq)
 
 	// List persons
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -132,7 +132,7 @@ func TestGetPerson(t *testing.T) {
 	personID := createResp["id"].(string)
 
 	// Get the person
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -151,7 +151,7 @@ func TestGetPerson(t *testing.T) {
 
 func TestGetPerson_NotFound(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -236,7 +236,7 @@ func TestDeletePerson(t *testing.T) {
 	personID := createResp["id"].(string)
 
 	// Delete the person
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/"+personID+"?version=1", nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/"+personID+"?version=1", http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -245,7 +245,7 @@ func TestDeletePerson(t *testing.T) {
 	}
 
 	// Verify person is gone
-	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, http.NoBody)
 	getRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(getRec, getReq)
 
@@ -268,7 +268,7 @@ func TestSearchPersons(t *testing.T) {
 	}
 
 	// Search for Smith
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Smith", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Smith", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -287,7 +287,7 @@ func TestSearchPersons(t *testing.T) {
 
 func TestSearchPersons_QueryTooShort(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=a", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=a", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -299,7 +299,7 @@ func TestSearchPersons_QueryTooShort(t *testing.T) {
 
 func TestOpenAPISpec(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/openapi.yaml", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/openapi.yaml", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -324,7 +324,7 @@ func TestOpenAPISpec(t *testing.T) {
 
 func TestSwaggerUI(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/docs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/docs", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -364,7 +364,7 @@ func TestCreatePerson_InvalidJSON(t *testing.T) {
 
 func TestGetPerson_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/not-a-uuid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/not-a-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -430,7 +430,7 @@ func TestUpdatePerson_NotFound(t *testing.T) {
 
 func TestDeletePerson_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/not-a-uuid?version=1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/not-a-uuid?version=1", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -442,7 +442,7 @@ func TestDeletePerson_InvalidUUID(t *testing.T) {
 
 func TestDeletePerson_NotFound(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/00000000-0000-0000-0000-000000000001?version=1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/00000000-0000-0000-0000-000000000001?version=1", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -454,7 +454,7 @@ func TestDeletePerson_NotFound(t *testing.T) {
 
 func TestSearchPersons_EmptyQuery(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?q=", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -509,7 +509,7 @@ func TestGetPerson_WithFamilies(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Get child person - should show family_as_child
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+child["id"].(string), nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+child["id"].(string), http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -528,7 +528,7 @@ func TestGetPerson_WithFamilies(t *testing.T) {
 	}
 
 	// Get parent person - should show families_as_partner
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+person1["id"].(string), nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+person1["id"].(string), http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -599,7 +599,7 @@ func TestGetFamilyGroupSheet(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Get group sheet
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+family["id"].(string)+"/group-sheet", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+family["id"].(string)+"/group-sheet", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -655,7 +655,7 @@ func TestGetFamilyGroupSheet(t *testing.T) {
 
 func TestGetFamilyGroupSheet_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid/group-sheet", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid/group-sheet", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -667,7 +667,7 @@ func TestGetFamilyGroupSheet_InvalidUUID(t *testing.T) {
 
 func TestGetFamilyGroupSheet_NotFound(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001/group-sheet", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001/group-sheet", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)

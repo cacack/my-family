@@ -68,7 +68,7 @@ func TestListSources(t *testing.T) {
 	server.Echo().ServeHTTP(createRec2, createReq2)
 
 	// List sources
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -106,7 +106,7 @@ func TestGetSource(t *testing.T) {
 	sourceID := createResp["id"].(string)
 
 	// Get the source
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID, http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -125,7 +125,7 @@ func TestGetSource(t *testing.T) {
 
 func TestGetSource_NotFound(t *testing.T) {
 	server := setupTestServer()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/00000000-0000-0000-0000-000000000001", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	server.Echo().ServeHTTP(rec, req)
@@ -211,7 +211,7 @@ func TestDeleteSource(t *testing.T) {
 	sourceID := createResp["id"].(string)
 
 	// Delete the source
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID, nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID, http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -220,7 +220,7 @@ func TestDeleteSource(t *testing.T) {
 	}
 
 	// Verify deletion
-	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID, nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID, http.NoBody)
 	getRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(getRec, getReq)
 
@@ -246,7 +246,7 @@ func TestSearchSources(t *testing.T) {
 	server.Echo().ServeHTTP(createRec2, createReq2)
 
 	// Search for "Census"
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=Census", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=Census", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -349,7 +349,7 @@ func TestGetCitation(t *testing.T) {
 	citationID := createResp["id"].(string)
 
 	// Get the citation
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID, http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -405,7 +405,7 @@ func TestGetCitationsForPerson(t *testing.T) {
 	server.Echo().ServeHTTP(citation2Rec, citation2Req)
 
 	// Get citations for person
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/citations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/citations", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -460,7 +460,7 @@ func TestDeleteCitation(t *testing.T) {
 	citationID := createResp["id"].(string)
 
 	// Delete the citation
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/"+citationID, nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/"+citationID, http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -469,7 +469,7 @@ func TestDeleteCitation(t *testing.T) {
 	}
 
 	// Verify deletion
-	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID, nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID, http.NoBody)
 	getRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(getRec, getReq)
 
@@ -511,7 +511,7 @@ func TestDeleteSource_WithCitations(t *testing.T) {
 	server.Echo().ServeHTTP(citationRec, citationReq)
 
 	// Try to delete source (should fail)
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID, nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID, http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -559,7 +559,7 @@ func TestGetCitationsForSource(t *testing.T) {
 	server.Echo().ServeHTTP(citation2Rec, citation2Req)
 
 	// Get citations for source
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID+"/citations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID+"/citations", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -685,7 +685,7 @@ func TestSearchSources_EmptyResults(t *testing.T) {
 	server := setupTestServer()
 
 	// Search with no matching sources
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=NonexistentSource", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=NonexistentSource", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -723,7 +723,7 @@ func TestDeleteCitation_NotFound(t *testing.T) {
 	server := setupTestServer()
 
 	// Try to delete non-existent citation
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/00000000-0000-0000-0000-000000000001", nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/00000000-0000-0000-0000-000000000001", http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -735,7 +735,7 @@ func TestDeleteCitation_NotFound(t *testing.T) {
 func TestGetSource_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/invalid-uuid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/invalid-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -761,7 +761,7 @@ func TestUpdateSource_InvalidUUID(t *testing.T) {
 func TestDeleteSource_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/invalid-uuid", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/invalid-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -773,7 +773,7 @@ func TestDeleteSource_InvalidUUID(t *testing.T) {
 func TestGetCitationsForSource_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/invalid-uuid/citations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/invalid-uuid/citations", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -785,7 +785,7 @@ func TestGetCitationsForSource_InvalidUUID(t *testing.T) {
 func TestGetCitationsForPerson_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/invalid-uuid/citations", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/invalid-uuid/citations", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -797,7 +797,7 @@ func TestGetCitationsForPerson_InvalidUUID(t *testing.T) {
 func TestGetCitation_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/invalid-uuid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/invalid-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -823,7 +823,7 @@ func TestUpdateCitation_InvalidUUID(t *testing.T) {
 func TestDeleteCitation_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/invalid-uuid", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/invalid-uuid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -863,7 +863,7 @@ func TestCreateCitation_InvalidFactOwnerID(t *testing.T) {
 func TestSearchSources_QueryTooShort(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=a", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/search?q=a", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -931,7 +931,7 @@ func TestUpdateCitation_InvalidBody(t *testing.T) {
 func TestGetCitation_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/00000000-0000-0000-0000-000000000001", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

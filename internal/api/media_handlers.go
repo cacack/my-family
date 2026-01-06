@@ -282,7 +282,7 @@ func (s *Server) getMediaThumbnail(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if thumbnail == nil || len(thumbnail) == 0 {
+	if len(thumbnail) == 0 {
 		return echo.NewHTTPError(http.StatusNotFound, "thumbnail not found")
 	}
 

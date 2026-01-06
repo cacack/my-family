@@ -289,15 +289,8 @@ func TestProjector_UnknownEventIgnored(t *testing.T) {
 	projector := repository.NewProjector(readStore)
 	ctx := context.Background()
 
-	// Create a mock event type
-	type UnknownEvent struct {
-		domain.BaseEvent
-		Data string
-	}
-
-	// This should not panic or error
-	// Since Go doesn't allow creating arbitrary interface implementations easily,
-	// we test with a GedcomImported event which is handled gracefully
+	// Test with a GedcomImported event which is handled gracefully
+	// (no projection action needed for this event type)
 	event := domain.NewGedcomImported("test.ged", 100, 10, 5, nil, nil)
 	err := projector.Project(ctx, event, 1)
 	if err != nil {

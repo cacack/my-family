@@ -204,22 +204,22 @@ func (s *ReadModelStore) tryCreateFTS5() {
 		return
 	}
 
-	// Create triggers to keep FTS in sync
-	s.db.Exec(`
+	// Create triggers to keep FTS in sync (errors non-critical with IF NOT EXISTS)
+	_, _ = s.db.Exec(`
 		CREATE TRIGGER IF NOT EXISTS persons_fts_insert AFTER INSERT ON persons BEGIN
 			INSERT INTO persons_fts(rowid, given_name, surname)
 			SELECT rowid, NEW.given_name, NEW.surname FROM persons WHERE id = NEW.id;
 		END
 	`)
 
-	s.db.Exec(`
+	_, _ = s.db.Exec(`
 		CREATE TRIGGER IF NOT EXISTS persons_fts_delete AFTER DELETE ON persons BEGIN
 			INSERT INTO persons_fts(persons_fts, rowid, given_name, surname)
 			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname);
 		END
 	`)
 
-	s.db.Exec(`
+	_, _ = s.db.Exec(`
 		CREATE TRIGGER IF NOT EXISTS persons_fts_update AFTER UPDATE ON persons BEGIN
 			INSERT INTO persons_fts(persons_fts, rowid, given_name, surname)
 			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname);
@@ -302,7 +302,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 
 	// For fuzzy matching, use prefix matching
 	if fuzzy {
-		ftsQuery = ftsQuery + "*"
+		ftsQuery += "*"
 	}
 
 	rows, err := s.db.QueryContext(ctx, `

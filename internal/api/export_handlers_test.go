@@ -52,7 +52,7 @@ const exportTestGedcom = `0 HEAD
 func TestExportGedcom_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -102,7 +102,7 @@ func TestExportGedcom_WithData(t *testing.T) {
 	}
 
 	// Now export
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -174,7 +174,7 @@ func TestExportGedcom_RoundTrip(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export data
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -204,7 +204,7 @@ func TestExportGedcom_RoundTrip(t *testing.T) {
 func TestExportTree_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/tree", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/tree", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -268,7 +268,7 @@ func TestExportTree_WithData(t *testing.T) {
 	}
 
 	// Export tree as JSON
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/tree", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/tree", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -309,7 +309,7 @@ func TestExportPersons_JSON(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export persons as JSON (default format)
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -350,7 +350,7 @@ func TestExportPersons_JSON_Explicit(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export with explicit format=json
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -380,7 +380,7 @@ func TestExportPersons_CSV(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export as CSV
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -436,7 +436,7 @@ func TestExportPersons_CSV_WithFields(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export with specific fields
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv&fields=id,surname,given_name", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv&fields=id,surname,given_name", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -469,7 +469,7 @@ func TestExportPersons_CSV_WithFields(t *testing.T) {
 func TestExportPersons_InvalidFormat(t *testing.T) {
 	server := setupExportTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=xml", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=xml", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -487,7 +487,7 @@ func TestExportPersons_InvalidFormat(t *testing.T) {
 func TestExportPersons_InvalidField(t *testing.T) {
 	server := setupExportTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv&fields=id,invalid_field_name", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv&fields=id,invalid_field_name", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -521,7 +521,7 @@ func TestExportFamilies_JSON(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export families as JSON
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=json", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=json", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -562,7 +562,7 @@ func TestExportFamilies_CSV(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export as CSV
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -609,7 +609,7 @@ func TestExportFamilies_CSV_WithFields(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export with specific fields
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv&fields=id,partner1_name,partner2_name", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv&fields=id,partner1_name,partner2_name", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -632,7 +632,7 @@ func TestExportFamilies_CSV_WithFields(t *testing.T) {
 func TestExportFamilies_InvalidFormat(t *testing.T) {
 	server := setupExportTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=yaml", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=yaml", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -644,7 +644,7 @@ func TestExportFamilies_InvalidFormat(t *testing.T) {
 func TestExportFamilies_InvalidField(t *testing.T) {
 	server := setupExportTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv&fields=id,nonexistent_field", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv&fields=id,nonexistent_field", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -663,7 +663,7 @@ func TestExportPersons_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
 	// Export persons without importing data (empty database)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -686,7 +686,7 @@ func TestExportPersons_CSV_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
 	// Export as CSV without data
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -711,7 +711,7 @@ func TestExportFamilies_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
 	// Export families without importing data
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=json", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=json", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -734,7 +734,7 @@ func TestExportFamilies_CSV_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
 	// Export as CSV without data
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -766,7 +766,7 @@ func TestExportPersons_FieldsOnlyApplyToCSV(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Fields parameter should be ignored for JSON format
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json&fields=id,surname", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json&fields=id,surname", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

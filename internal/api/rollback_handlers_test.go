@@ -32,7 +32,7 @@ func TestGetPersonRestorePoints_Success(t *testing.T) {
 	server.Echo().ServeHTTP(updateRec, updateReq)
 
 	// Get restore points
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -81,7 +81,7 @@ func TestGetPersonRestorePoints_Success(t *testing.T) {
 func TestGetPersonRestorePoints_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/not-a-uuid/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/not-a-uuid/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -93,7 +93,7 @@ func TestGetPersonRestorePoints_InvalidID(t *testing.T) {
 func TestGetPersonRestorePoints_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -126,7 +126,7 @@ func TestGetPersonRestorePoints_Pagination(t *testing.T) {
 	}
 
 	// Get first page with limit=2
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/restore-points?limit=2&offset=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/restore-points?limit=2&offset=0", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -198,7 +198,7 @@ func TestRollbackPerson_Success(t *testing.T) {
 	}
 
 	// Verify the person was restored
-	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, nil)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID, http.NoBody)
 	getRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(getRec, getReq)
 
@@ -368,7 +368,7 @@ func TestGetFamilyRestorePoints_Success(t *testing.T) {
 	familyID := createResp["id"].(string)
 
 	// Get restore points
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID+"/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID+"/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -380,7 +380,7 @@ func TestGetFamilyRestorePoints_Success(t *testing.T) {
 func TestGetFamilyRestorePoints_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -392,7 +392,7 @@ func TestGetFamilyRestorePoints_InvalidID(t *testing.T) {
 func TestGetFamilyRestorePoints_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -570,7 +570,7 @@ func TestGetSourceRestorePoints_Success(t *testing.T) {
 	sourceID := createResp["id"].(string)
 
 	// Get restore points
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID+"/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID+"/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -582,7 +582,7 @@ func TestGetSourceRestorePoints_Success(t *testing.T) {
 func TestGetSourceRestorePoints_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/not-a-uuid/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/not-a-uuid/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -594,7 +594,7 @@ func TestGetSourceRestorePoints_InvalidID(t *testing.T) {
 func TestGetSourceRestorePoints_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/00000000-0000-0000-0000-000000000001/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/00000000-0000-0000-0000-000000000001/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -762,7 +762,7 @@ func TestGetCitationRestorePoints_Success(t *testing.T) {
 	citationID := createResp["id"].(string)
 
 	// Get restore points
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID+"/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID+"/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -774,7 +774,7 @@ func TestGetCitationRestorePoints_Success(t *testing.T) {
 func TestGetCitationRestorePoints_InvalidID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/not-a-uuid/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/not-a-uuid/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -786,7 +786,7 @@ func TestGetCitationRestorePoints_InvalidID(t *testing.T) {
 func TestGetCitationRestorePoints_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/00000000-0000-0000-0000-000000000001/restore-points", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/00000000-0000-0000-0000-000000000001/restore-points", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

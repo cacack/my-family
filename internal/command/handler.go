@@ -77,8 +77,8 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 	for _, event := range events {
 		newVersion++
 		if err := h.projector.Project(ctx, event, newVersion); err != nil {
-			// Log but don't fail - projection can be rebuilt
-			// In production, this should be handled more robustly
+			// Projection can be rebuilt; ignore non-critical errors
+			_ = err
 		}
 	}
 

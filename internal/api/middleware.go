@@ -142,7 +142,7 @@ func customErrorHandler(err error, c echo.Context) {
 		}
 	}
 
-	c.JSON(code, apiErr)
+	_ = c.JSON(code, apiErr)
 }
 
 // httpStatusToCode converts HTTP status to error code.

@@ -166,7 +166,7 @@ func TestImportGedcom_VerifyPersonsCreated(t *testing.T) {
 	}
 
 	// Verify persons are accessible via search
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Doe", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/search?q=Doe", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -203,7 +203,7 @@ func TestImportGedcom_VerifyFamiliesCreated(t *testing.T) {
 	}
 
 	// Verify families are accessible
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/families", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

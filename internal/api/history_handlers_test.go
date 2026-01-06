@@ -21,7 +21,7 @@ func TestGetGlobalHistory(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Get global history
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/history", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -97,7 +97,7 @@ func TestGetGlobalHistory_WithPagination(t *testing.T) {
 	}
 
 	// Test with limit=2
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/history?limit=2&offset=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/history?limit=2&offset=0", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -147,7 +147,7 @@ func TestGetGlobalHistory_WithEntityTypeFilter(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Get history filtered by person
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=person", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=person", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -173,7 +173,7 @@ func TestGetGlobalHistory_WithEntityTypeFilter(t *testing.T) {
 func TestGetGlobalHistory_InvalidEntityType(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=invalid", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=invalid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -201,7 +201,7 @@ func TestGetGlobalHistory_WithTimeFilters(t *testing.T) {
 	params.Add("from", yesterday.Format(time.RFC3339))
 	params.Add("to", tomorrow.Format(time.RFC3339))
 
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?"+params.Encode(), nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?"+params.Encode(), http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -224,7 +224,7 @@ func TestGetGlobalHistory_WithTimeFilters(t *testing.T) {
 func TestGetGlobalHistory_InvalidTimeFormat(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/history?from=invalid-date", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/history?from=invalid-date", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -255,7 +255,7 @@ func TestGetPersonHistory(t *testing.T) {
 	server.Echo().ServeHTTP(updateRec, updateReq)
 
 	// Get person history
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -286,7 +286,7 @@ func TestGetPersonHistory(t *testing.T) {
 func TestGetPersonHistory_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/00000000-0000-0000-0000-000000000001/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -298,7 +298,7 @@ func TestGetPersonHistory_NotFound(t *testing.T) {
 func TestGetPersonHistory_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/not-a-uuid/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/not-a-uuid/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -337,7 +337,7 @@ func TestGetFamilyHistory(t *testing.T) {
 	familyID := createResp["id"].(string)
 
 	// Get family history
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID+"/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID+"/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -369,7 +369,7 @@ func TestGetFamilyHistory(t *testing.T) {
 func TestGetFamilyHistory_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/00000000-0000-0000-0000-000000000001/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -381,7 +381,7 @@ func TestGetFamilyHistory_NotFound(t *testing.T) {
 func TestGetFamilyHistory_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/not-a-uuid/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -405,7 +405,7 @@ func TestGetSourceHistory(t *testing.T) {
 	sourceID := createResp["id"].(string)
 
 	// Get source history
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID+"/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+sourceID+"/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -437,7 +437,7 @@ func TestGetSourceHistory(t *testing.T) {
 func TestGetSourceHistory_NotFound(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/00000000-0000-0000-0000-000000000001/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/00000000-0000-0000-0000-000000000001/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -449,7 +449,7 @@ func TestGetSourceHistory_NotFound(t *testing.T) {
 func TestGetSourceHistory_InvalidUUID(t *testing.T) {
 	server := setupTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/not-a-uuid/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/not-a-uuid/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -476,7 +476,7 @@ func TestGetGlobalHistory_WithSourceEntityTypeFilter(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Get history filtered by source
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=source", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=source", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -532,7 +532,7 @@ func TestGetGlobalHistory_WithCitationEntityTypeFilter(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Get history filtered by citation
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=citation", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=citation", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -573,7 +573,7 @@ func TestGetGlobalHistory_WithFamilyEntityTypeFilter(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Get history filtered by family
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=family", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=family", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -611,7 +611,7 @@ func TestHistoryResponseFormat(t *testing.T) {
 	personID := createResp["id"].(string)
 
 	// Get history
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/history", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/persons/"+personID+"/history", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

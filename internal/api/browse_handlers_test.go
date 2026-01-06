@@ -55,7 +55,7 @@ func TestBrowseSurnames(t *testing.T) {
 	createBrowseTestPerson(t, server, "Jane", "Smith", "", "")
 	createBrowseTestPerson(t, server, "Bob", "Anderson", "", "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -93,7 +93,7 @@ func TestBrowseSurnames_WithLetter(t *testing.T) {
 	createBrowseTestPerson(t, server, "Jane", "Simpson", "", "")
 	createBrowseTestPerson(t, server, "Bob", "Anderson", "", "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames?letter=S", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames?letter=S", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -128,7 +128,7 @@ func TestGetPersonsBySurname(t *testing.T) {
 	createBrowseTestPerson(t, server, "Jane", "Smith", "", "")
 	createBrowseTestPerson(t, server, "Bob", "Jones", "", "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames/Smith/persons", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames/Smith/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -163,7 +163,7 @@ func TestGetPersonsBySurname_URLEncoded(t *testing.T) {
 
 	// URL encode the surname
 	encoded := url.PathEscape("O'Brien")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames/"+encoded+"/persons", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames/"+encoded+"/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -186,7 +186,7 @@ func TestGetPersonsBySurname_Pagination(t *testing.T) {
 		createBrowseTestPerson(t, server, "Person", "Smith", "", "")
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames/Smith/persons?limit=2&offset=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames/Smith/persons?limit=2&offset=0", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -216,7 +216,7 @@ func TestBrowsePlaces(t *testing.T) {
 	createBrowseTestPerson(t, server, "Jane", "Doe", "Boston, USA", "")
 	createBrowseTestPerson(t, server, "Bob", "Smith", "London, UK", "")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -247,7 +247,7 @@ func TestBrowsePlaces_WithParent(t *testing.T) {
 
 	// URL encode the parent
 	encoded := url.QueryEscape("USA")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places?parent="+encoded, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places?parent="+encoded, http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -265,7 +265,7 @@ func TestGetPersonsByPlace(t *testing.T) {
 
 	// URL encode the place
 	encoded := url.PathEscape("USA")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -290,7 +290,7 @@ func TestGetPersonsByPlace_DeathPlace(t *testing.T) {
 	createBrowseTestPerson(t, server, "John", "Doe", "", "Paris, France")
 
 	encoded := url.PathEscape("France")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -310,7 +310,7 @@ func TestGetPersonsByPlace_Pagination(t *testing.T) {
 	}
 
 	encoded := url.PathEscape("USA")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons?limit=2&offset=0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places/"+encoded+"/persons?limit=2&offset=0", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -333,7 +333,7 @@ func TestGetPersonsByPlace_Pagination(t *testing.T) {
 func TestBrowseSurnames_EmptyDatabase(t *testing.T) {
 	server := setupBrowseTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/surnames", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -352,7 +352,7 @@ func TestBrowseSurnames_EmptyDatabase(t *testing.T) {
 func TestBrowsePlaces_EmptyDatabase(t *testing.T) {
 	server := setupBrowseTestServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/browse/places", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 

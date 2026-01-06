@@ -51,8 +51,8 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*reposito
 		return nil, nil
 	}
 	// Return a copy
-	copy := *p
-	return &copy, nil
+	result := *p
+	return &result, nil
 }
 
 // ListPersons returns a paginated list of persons.
@@ -149,8 +149,8 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := *person
-	s.persons[person.ID] = &copy
+	result := *person
+	s.persons[person.ID] = &result
 	return nil
 }
 
@@ -172,8 +172,8 @@ func (s *ReadModelStore) GetFamily(ctx context.Context, id uuid.UUID) (*reposito
 	if !exists {
 		return nil, nil
 	}
-	copy := *f
-	return &copy, nil
+	result := *f
+	return &result, nil
 }
 
 // ListFamilies returns a paginated list of families.
@@ -221,8 +221,8 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.Fami
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := *family
-	s.families[family.ID] = &copy
+	result := *family
+	s.families[family.ID] = &result
 	return nil
 }
 
@@ -274,8 +274,8 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID)
 		for _, child := range children {
 			if child.PersonID == personID {
 				if f, exists := s.families[familyID]; exists {
-					copy := *f
-					return &copy, nil
+					result := *f
+					return &result, nil
 				}
 			}
 		}
@@ -326,8 +326,8 @@ func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, personID uuid.UUID
 	if !exists {
 		return nil, nil
 	}
-	copy := *edge
-	return &copy, nil
+	result := *edge
+	return &result, nil
 }
 
 // SavePedigreeEdge saves a pedigree edge.
@@ -335,8 +335,8 @@ func (s *ReadModelStore) SavePedigreeEdge(ctx context.Context, edge *repository.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := *edge
-	s.pedigreeEdges[edge.PersonID] = &copy
+	result := *edge
+	s.pedigreeEdges[edge.PersonID] = &result
 	return nil
 }
 
@@ -374,8 +374,8 @@ func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*reposito
 	if !exists {
 		return nil, nil
 	}
-	copy := *src
-	return &copy, nil
+	result := *src
+	return &result, nil
 }
 
 // ListSources returns a paginated list of sources.
@@ -440,8 +440,8 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.Sour
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := *source
-	s.sources[source.ID] = &copy
+	result := *source
+	s.sources[source.ID] = &result
 	return nil
 }
 
@@ -463,8 +463,8 @@ func (s *ReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*reposi
 	if !exists {
 		return nil, nil
 	}
-	copy := *cit
-	return &copy, nil
+	result := *cit
+	return &result, nil
 }
 
 // GetCitationsForSource returns all citations for a source.
@@ -514,8 +514,8 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := *citation
-	s.citations[citation.ID] = &copy
+	result := *citation
+	s.citations[citation.ID] = &result
 	return nil
 }
 
@@ -538,10 +538,10 @@ func (s *ReadModelStore) GetMedia(ctx context.Context, id uuid.UUID) (*repositor
 		return nil, nil
 	}
 	// Return copy without binary data
-	copy := *m
-	copy.FileData = nil
-	copy.ThumbnailData = nil
-	return &copy, nil
+	result := *m
+	result.FileData = nil
+	result.ThumbnailData = nil
+	return &result, nil
 }
 
 // GetMediaWithData retrieves full media record including FileData and ThumbnailData.
@@ -553,8 +553,8 @@ func (s *ReadModelStore) GetMediaWithData(ctx context.Context, id uuid.UUID) (*r
 	if !exists {
 		return nil, nil
 	}
-	copy := *m
-	return &copy, nil
+	result := *m
+	return &result, nil
 }
 
 // GetMediaThumbnail retrieves just the thumbnail bytes.
@@ -577,10 +577,10 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	var results []repository.MediaReadModel
 	for _, m := range s.media {
 		if m.EntityType == entityType && m.EntityID == entityID {
-			copy := *m
-			copy.FileData = nil
-			copy.ThumbnailData = nil
-			results = append(results, copy)
+			result := *m
+			result.FileData = nil
+			result.ThumbnailData = nil
+			results = append(results, result)
 		}
 	}
 
@@ -612,8 +612,8 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaR
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	copy := *media
-	s.media[media.ID] = &copy
+	result := *media
+	s.media[media.ID] = &result
 	return nil
 }
 
@@ -743,7 +743,7 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.Surn
 	for _, p := range s.persons {
 		surname := p.Surname
 		surnameCount[surname]++
-		if len(surname) > 0 {
+		if surname != "" {
 			letter := strings.ToUpper(string(surname[0]))
 			if surnamesByLetter[letter] == nil {
 				surnamesByLetter[letter] = make(map[string]bool)
@@ -777,11 +777,9 @@ func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string)
 	defer s.mu.RUnlock()
 
 	surnameCount := make(map[string]int)
-	upperLetter := strings.ToUpper(letter)
-
 	for _, p := range s.persons {
 		surname := p.Surname
-		if len(surname) > 0 && strings.ToUpper(string(surname[0])) == upperLetter {
+		if surname != "" && strings.EqualFold(string(surname[0]), letter) {
 			surnameCount[surname]++
 		}
 	}
