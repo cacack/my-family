@@ -25,6 +25,12 @@ tags:
     description: Browse by surname and place
   - name: gedcom
     description: GEDCOM import/export
+  - name: sources
+    description: Source record management
+  - name: citations
+    description: Citation management
+  - name: export
+    description: Data export
   - name: history
     description: Change history and audit trail
   - name: rollback
@@ -1064,6 +1070,343 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # Source endpoints
+  /sources:
+    get:
+      operationId: listSources
+      summary: List all sources
+      tags: [sources]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [title, source_type, created_at, updated_at]
+            default: title
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - name: q
+          in: query
+          description: Search query to filter sources
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of sources
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createSource
+      summary: Create a new source
+      tags: [sources]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceCreate'
+      responses:
+        '201':
+          description: Source created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /sources/search:
+    get:
+      operationId: searchSources
+      summary: Search sources
+      tags: [sources]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+            minLength: 2
+        - $ref: '#/components/parameters/limitParam'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceSearchResults'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /sources/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getSource
+      summary: Get a source by ID
+      tags: [sources]
+      responses:
+        '200':
+          description: Source details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateSource
+      summary: Update a source
+      tags: [sources]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceUpdate'
+      responses:
+        '200':
+          description: Source updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Source'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteSource
+      summary: Delete a source
+      tags: [sources]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Source deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /sources/{id}/citations:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getCitationsForSource
+      summary: Get citations for a source
+      tags: [sources]
+      responses:
+        '200':
+          description: List of citations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitationList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Citation endpoints
+  /citations:
+    post:
+      operationId: createCitation
+      summary: Create a new citation
+      tags: [citations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CitationCreate'
+      responses:
+        '201':
+          description: Citation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Citation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Source or fact owner not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /citations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getCitation
+      summary: Get a citation by ID
+      tags: [citations]
+      responses:
+        '200':
+          description: Citation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Citation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateCitation
+      summary: Update a citation
+      tags: [citations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CitationUpdate'
+      responses:
+        '200':
+          description: Citation updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Citation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteCitation
+      summary: Delete a citation
+      tags: [citations]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Citation deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /persons/{id}/citations:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: getCitationsForPerson
+      summary: Get citations for a person
+      tags: [citations]
+      responses:
+        '200':
+          description: List of citations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitationList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Export endpoints
+  /export/tree:
+    get:
+      operationId: exportTree
+      summary: Export full family tree
+      description: Export the complete family tree data in a structured format
+      tags: [export]
+      responses:
+        '200':
+          description: Family tree data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  persons:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Person'
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+
+  /export/persons:
+    get:
+      operationId: exportPersons
+      summary: Export persons data
+      description: Export all persons data in a structured format
+      tags: [export]
+      responses:
+        '200':
+          description: Persons data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  persons:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Person'
+                  total:
+                    type: integer
+
+  /export/families:
+    get:
+      operationId: exportFamilies
+      summary: Export families data
+      description: Export all families data in a structured format
+      tags: [export]
+      responses:
+        '200':
+          description: Families data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  families:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Family'
+                  total:
+                    type: integer
+
 components:
   parameters:
     personId:
@@ -1098,6 +1441,14 @@ components:
         type: integer
         minimum: 0
         default: 0
+
+    versionParam:
+      name: version
+      in: query
+      description: Entity version for optimistic locking
+      schema:
+        type: integer
+        format: int64
 
   responses:
     BadRequest:
@@ -1955,3 +2306,251 @@ components:
         has_children:
           type: boolean
           description: Whether this place has sub-locations
+
+    # Source schemas
+    Source:
+      type: object
+      required: [id, source_type, title, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_type:
+          type: string
+          description: Type of source (e.g., vital_record, census, newspaper)
+        title:
+          type: string
+        author:
+          type: string
+        publisher:
+          type: string
+        publish_date:
+          type: string
+        url:
+          type: string
+          format: uri
+        repository_name:
+          type: string
+        collection_name:
+          type: string
+        call_number:
+          type: string
+        notes:
+          type: string
+        citation_count:
+          type: integer
+          description: Number of citations referencing this source
+        version:
+          type: integer
+          format: int64
+          description: Optimistic locking version
+
+    SourceCreate:
+      type: object
+      required: [source_type, title]
+      properties:
+        source_type:
+          type: string
+          description: Type of source (e.g., vital_record, census, newspaper)
+        title:
+          type: string
+        author:
+          type: string
+        publisher:
+          type: string
+        publish_date:
+          type: string
+        url:
+          type: string
+          format: uri
+        repository_name:
+          type: string
+        collection_name:
+          type: string
+        call_number:
+          type: string
+        notes:
+          type: string
+
+    SourceUpdate:
+      type: object
+      required: [version]
+      properties:
+        source_type:
+          type: string
+        title:
+          type: string
+        author:
+          type: string
+        publisher:
+          type: string
+        publish_date:
+          type: string
+        url:
+          type: string
+          format: uri
+        repository_name:
+          type: string
+        collection_name:
+          type: string
+        call_number:
+          type: string
+        notes:
+          type: string
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking
+
+    SourceDetail:
+      allOf:
+        - $ref: '#/components/schemas/Source'
+        - type: object
+          properties:
+            citations:
+              type: array
+              items:
+                $ref: '#/components/schemas/Citation'
+
+    SourceList:
+      type: object
+      required: [sources, total]
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    SourceSearchResults:
+      type: object
+      required: [sources, total, query]
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+        total:
+          type: integer
+        query:
+          type: string
+
+    # Citation schemas
+    Citation:
+      type: object
+      required: [id, source_id, source_title, fact_type, fact_owner_id, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        source_title:
+          type: string
+          description: Title of the referenced source
+        fact_type:
+          type: string
+          description: Type of fact being cited (e.g., birth, death, marriage)
+        fact_owner_id:
+          type: string
+          format: uuid
+          description: ID of the person or family this citation applies to
+        page:
+          type: string
+        volume:
+          type: string
+        source_quality:
+          type: string
+          description: Quality assessment of the source
+        informant_type:
+          type: string
+          description: Type of informant (e.g., primary, secondary)
+        evidence_type:
+          type: string
+          description: Type of evidence (e.g., direct, indirect)
+        quoted_text:
+          type: string
+          description: Exact text quoted from the source
+        analysis:
+          type: string
+          description: Researcher's analysis of the citation
+        template_id:
+          type: string
+          description: Citation template ID
+        version:
+          type: integer
+          format: int64
+          description: Optimistic locking version
+
+    CitationCreate:
+      type: object
+      required: [source_id, fact_type, fact_owner_id]
+      properties:
+        source_id:
+          type: string
+          format: uuid
+        fact_type:
+          type: string
+          description: Type of fact being cited (e.g., birth, death, marriage)
+        fact_owner_id:
+          type: string
+          format: uuid
+          description: ID of the person or family this citation applies to
+        page:
+          type: string
+        volume:
+          type: string
+        source_quality:
+          type: string
+        informant_type:
+          type: string
+        evidence_type:
+          type: string
+        quoted_text:
+          type: string
+        analysis:
+          type: string
+        template_id:
+          type: string
+
+    CitationUpdate:
+      type: object
+      required: [version]
+      properties:
+        page:
+          type: string
+        volume:
+          type: string
+        source_quality:
+          type: string
+        informant_type:
+          type: string
+        evidence_type:
+          type: string
+        quoted_text:
+          type: string
+        analysis:
+          type: string
+        template_id:
+          type: string
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking
+
+    CitationList:
+      type: object
+      required: [citations, total]
+      properties:
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Citation'
+        total:
+          type: integer
