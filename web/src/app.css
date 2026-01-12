@@ -151,3 +151,56 @@ body.reduced-motion * {
 .skip-link:focus {
 	top: 0;
 }
+
+/**
+ * Print Styles
+ *
+ * Global print styles for reports and print-friendly pages.
+ * Components can add their own specific print styles.
+ */
+
+@media print {
+	/* Hide navigation and UI elements */
+	nav,
+	.no-print,
+	.skip-link {
+		display: none !important;
+	}
+
+	/* Show print-only elements */
+	.print-only {
+		display: block !important;
+	}
+
+	/* Clean typography for print */
+	body {
+		font-size: 12pt;
+		line-height: 1.4;
+		color: black;
+		background: white;
+	}
+
+	/* Remove backgrounds and shadows */
+	* {
+		background: transparent !important;
+		box-shadow: none !important;
+	}
+
+	/* Ensure links are visible without color */
+	a {
+		color: black;
+		text-decoration: underline;
+	}
+
+	/* Page break controls */
+	h1,
+	h2,
+	h3 {
+		page-break-after: avoid;
+	}
+
+	table,
+	figure {
+		page-break-inside: avoid;
+	}
+}
