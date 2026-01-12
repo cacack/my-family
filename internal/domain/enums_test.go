@@ -520,6 +520,21 @@ func TestNameType_IsValid(t *testing.T) {
 			want:     true,
 		},
 		{
+			name:     "immigrant is valid",
+			nameType: NameTypeImmigrant,
+			want:     true,
+		},
+		{
+			name:     "religious is valid",
+			nameType: NameTypeReligious,
+			want:     true,
+		},
+		{
+			name:     "professional is valid",
+			nameType: NameTypeProfessional,
+			want:     true,
+		},
+		{
 			name:     "empty string is valid",
 			nameType: "",
 			want:     true,

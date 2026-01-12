@@ -168,3 +168,195 @@ func TestPerson_SetDeathDate(t *testing.T) {
 		t.Error("DeathDate should be nil after setting empty string")
 	}
 }
+
+func TestNewPersonName(t *testing.T) {
+	personID := uuid.New()
+	pn := NewPersonName(personID, "Mary", "Smith")
+
+	if pn.ID == uuid.Nil {
+		t.Error("Expected non-nil UUID for PersonName.ID")
+	}
+	if pn.PersonID != personID {
+		t.Errorf("PersonID = %v, want %v", pn.PersonID, personID)
+	}
+	if pn.GivenName != "Mary" {
+		t.Errorf("GivenName = %v, want Mary", pn.GivenName)
+	}
+	if pn.Surname != "Smith" {
+		t.Errorf("Surname = %v, want Smith", pn.Surname)
+	}
+}
+
+func TestPersonName_Validate(t *testing.T) {
+	personID := uuid.New()
+
+	tests := []struct {
+		name    string
+		pn      *PersonName
+		wantErr bool
+	}{
+		{
+			name:    "valid person name",
+			pn:      NewPersonName(personID, "Mary", "Smith"),
+			wantErr: false,
+		},
+		{
+			name:    "empty given name",
+			pn:      &PersonName{ID: uuid.New(), PersonID: personID, GivenName: "", Surname: "Smith"},
+			wantErr: true,
+		},
+		{
+			name:    "empty surname (valid for historical records)",
+			pn:      &PersonName{ID: uuid.New(), PersonID: personID, GivenName: "Mary", Surname: ""},
+			wantErr: false,
+		},
+		{
+			name: "given name too long",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: string(make([]byte, 101)),
+				Surname:   "Smith",
+			},
+			wantErr: true,
+		},
+		{
+			name: "surname too long",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: "Mary",
+				Surname:   string(make([]byte, 101)),
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid name type",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: "Mary",
+				Surname:   "Smith",
+				NameType:  "invalid",
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid birth name type",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: "Mary",
+				Surname:   "Smith",
+				NameType:  NameTypeBirth,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid married name type",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: "Mary",
+				Surname:   "Jones",
+				NameType:  NameTypeMarried,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid immigrant name type",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: "Maria",
+				Surname:   "Kowalski",
+				NameType:  NameTypeImmigrant,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid religious name type",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: "Sister Mary",
+				Surname:   "",
+				NameType:  NameTypeReligious,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid professional name type",
+			pn: &PersonName{
+				ID:        uuid.New(),
+				PersonID:  personID,
+				GivenName: "Mark",
+				Surname:   "Twain",
+				NameType:  NameTypeProfessional,
+			},
+			wantErr: false,
+		},
+		{
+			name: "full name with all optional fields",
+			pn: &PersonName{
+				ID:            uuid.New(),
+				PersonID:      personID,
+				GivenName:     "Johann",
+				Surname:       "Bach",
+				NamePrefix:    "Dr.",
+				NameSuffix:    "PhD",
+				SurnamePrefix: "von",
+				Nickname:      "Johnny",
+				NameType:      NameTypeBirth,
+				IsPrimary:     true,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.pn.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestPersonName_FullName(t *testing.T) {
+	personID := uuid.New()
+
+	tests := []struct {
+		name string
+		pn   *PersonName
+		want string
+	}{
+		{
+			name: "given and surname",
+			pn:   NewPersonName(personID, "Mary", "Smith"),
+			want: "Mary Smith",
+		},
+		{
+			name: "given name only",
+			pn:   NewPersonName(personID, "Mary", ""),
+			want: "Mary",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.pn.FullName(); got != tt.want {
+				t.Errorf("FullName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPersonNameValidationError_Error(t *testing.T) {
+	err := PersonNameValidationError{Field: "given_name", Message: "cannot be empty"}
+	expected := "given_name: cannot be empty"
+	if err.Error() != expected {
+		t.Errorf("Error() = %v, want %v", err.Error(), expected)
+	}
+}

@@ -99,6 +99,21 @@ func (m *mockReadModelStore) SavePerson(ctx context.Context, person *repository.
 func (m *mockReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
+
+// Person name stub methods
+func (m *mockReadModelStore) SavePersonName(ctx context.Context, name *repository.PersonNameReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
+	return nil
+}
+
 func (m *mockReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	return nil, 0, nil
 }

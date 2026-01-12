@@ -1548,3 +1548,180 @@ func TestExport_AllFamilyEventTypes(t *testing.T) {
 		}
 	}
 }
+
+func TestExport_MultipleNames(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a person with multiple names
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "Maria",
+		Surname:      "Schmidt",
+		FullName:     "Maria Schmidt",
+		Gender:       domain.GenderFemale,
+		BirthDateRaw: "1850",
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add multiple names
+	names := []repository.PersonNameReadModel{
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			GivenName: "Maria",
+			Surname:   "Schmidt",
+			FullName:  "Maria Schmidt",
+			Nickname:  "Mitzi",
+			NameType:  domain.NameTypeBirth,
+			IsPrimary: true,
+		},
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			GivenName: "Mary",
+			Surname:   "Smith",
+			FullName:  "Mary Smith",
+			NameType:  domain.NameTypeMarried,
+			IsPrimary: false,
+		},
+		{
+			ID:            uuid.New(),
+			PersonID:      personID,
+			GivenName:     "Mary Elizabeth",
+			Surname:       "Smith",
+			FullName:      "Mary Elizabeth Smith",
+			NamePrefix:    "Mrs.",
+			NameSuffix:    "Sr.",
+			SurnamePrefix: "von",
+			NameType:      domain.NameTypeAKA,
+			IsPrimary:     false,
+		},
+	}
+	for _, n := range names {
+		nm := n
+		if err := readStore.SavePersonName(ctx, &nm); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Verify all three names are exported
+	if !strings.Contains(output, "1 NAME Maria /Schmidt/") {
+		t.Error("Output should contain birth name 'Maria /Schmidt/'")
+	}
+	if !strings.Contains(output, "1 NAME Mary /Smith/") {
+		t.Error("Output should contain married name 'Mary /Smith/'")
+	}
+	if !strings.Contains(output, "1 NAME Mary Elizabeth /Smith/") {
+		t.Error("Output should contain AKA name 'Mary Elizabeth /Smith/'")
+	}
+
+	// Verify TYPE tags (birth should NOT have TYPE tag, others should)
+	if strings.Contains(output, "2 TYPE birth") {
+		t.Error("Birth type should not be exported as it's the default")
+	}
+	if !strings.Contains(output, "2 TYPE married") {
+		t.Error("Output should contain '2 TYPE married'")
+	}
+	if !strings.Contains(output, "2 TYPE aka") {
+		t.Error("Output should contain '2 TYPE aka'")
+	}
+
+	// Verify name components
+	if !strings.Contains(output, "2 NICK Mitzi") {
+		t.Error("Output should contain nickname 'Mitzi'")
+	}
+	if !strings.Contains(output, "2 NPFX Mrs.") {
+		t.Error("Output should contain prefix 'Mrs.'")
+	}
+	if !strings.Contains(output, "2 NSFX Sr.") {
+		t.Error("Output should contain suffix 'Sr.'")
+	}
+	if !strings.Contains(output, "2 SPFX von") {
+		t.Error("Output should contain surname prefix 'von'")
+	}
+}
+
+func TestExport_PrimaryNameFirst(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a person
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "Johann",
+		Surname:      "Muller",
+		FullName:     "Johann Muller",
+		Gender:       domain.GenderMale,
+		BirthDateRaw: "1850",
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add multiple names - note that secondary name is added first but has IsPrimary=false
+	names := []repository.PersonNameReadModel{
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			GivenName: "John",
+			Surname:   "Miller",
+			FullName:  "John Miller",
+			NameType:  domain.NameTypeImmigrant,
+			IsPrimary: false,
+		},
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			GivenName: "Johann",
+			Surname:   "Muller",
+			FullName:  "Johann Muller",
+			NameType:  domain.NameTypeBirth,
+			IsPrimary: true,
+		},
+	}
+	for _, n := range names {
+		nm := n
+		if err := readStore.SavePersonName(ctx, &nm); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Find the positions of both name tags
+	birthNamePos := strings.Index(output, "1 NAME Johann /Muller/")
+	immigrantNamePos := strings.Index(output, "1 NAME John /Miller/")
+
+	if birthNamePos == -1 {
+		t.Error("Output should contain birth name 'Johann /Muller/'")
+	}
+	if immigrantNamePos == -1 {
+		t.Error("Output should contain immigrant name 'John /Miller/'")
+	}
+
+	// Primary (birth) name should appear before immigrant name
+	if birthNamePos > immigrantNamePos {
+		t.Error("Primary name should appear before secondary names")
+	}
+}

@@ -160,14 +160,14 @@ func TestRollbackPerson_Success(t *testing.T) {
 	json.Unmarshal(createRec.Body.Bytes(), &createResp)
 	personID := createResp["id"].(string)
 
-	// Update the person
-	updateBody := `{"given_name":"Jane","version":1}`
+	// Update the person (version is 2 because creating a person also creates a primary name)
+	updateBody := `{"given_name":"Jane","version":2}`
 	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/persons/"+personID, strings.NewReader(updateBody))
 	updateReq.Header.Set("Content-Type", "application/json")
 	updateRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(updateRec, updateReq)
 
-	// Rollback to version 1
+	// Rollback to version 1 (the PersonCreated event only, before NameAdded)
 	rollbackBody := `{"target_version":1}`
 	rollbackReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons/"+personID+"/rollback", strings.NewReader(rollbackBody))
 	rollbackReq.Header.Set("Content-Type", "application/json")
@@ -190,8 +190,9 @@ func TestRollbackPerson_Success(t *testing.T) {
 	if rollbackResp["entity_type"] != "Person" {
 		t.Errorf("entity_type = %v, want Person", rollbackResp["entity_type"])
 	}
-	if rollbackResp["new_version"].(float64) != 3 {
-		t.Errorf("new_version = %v, want 3", rollbackResp["new_version"])
+	// Version sequence: 1 (PersonCreated) -> 2 (NameAdded) -> 3 (PersonUpdated) -> 4 (rollback)
+	if rollbackResp["new_version"].(float64) != 4 {
+		t.Errorf("new_version = %v, want 4", rollbackResp["new_version"])
 	}
 	if rollbackResp["message"] == nil {
 		t.Error("Expected message in response")
@@ -328,8 +329,8 @@ func TestRollbackPerson_NoChanges(t *testing.T) {
 	json.Unmarshal(createRec.Body.Bytes(), &createResp)
 	personID := createResp["id"].(string)
 
-	// Try to rollback to current version (version 1)
-	rollbackBody := `{"target_version":1}`
+	// Try to rollback to current version (version 2 - after person and name created)
+	rollbackBody := `{"target_version":2}`
 	rollbackReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons/"+personID+"/rollback", strings.NewReader(rollbackBody))
 	rollbackReq.Header.Set("Content-Type", "application/json")
 	rollbackRec := httptest.NewRecorder()

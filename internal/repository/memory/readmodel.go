@@ -16,6 +16,7 @@ import (
 type ReadModelStore struct {
 	mu             sync.RWMutex
 	persons        map[uuid.UUID]*repository.PersonReadModel
+	personNames    map[uuid.UUID][]repository.PersonNameReadModel // keyed by person ID
 	families       map[uuid.UUID]*repository.FamilyReadModel
 	familyChildren map[uuid.UUID][]repository.FamilyChildReadModel // keyed by family ID
 	pedigreeEdges  map[uuid.UUID]*repository.PedigreeEdge          // keyed by person ID
@@ -30,6 +31,7 @@ type ReadModelStore struct {
 func NewReadModelStore() *ReadModelStore {
 	return &ReadModelStore{
 		persons:        make(map[uuid.UUID]*repository.PersonReadModel),
+		personNames:    make(map[uuid.UUID][]repository.PersonNameReadModel),
 		families:       make(map[uuid.UUID]*repository.FamilyReadModel),
 		familyChildren: make(map[uuid.UUID][]repository.FamilyChildReadModel),
 		pedigreeEdges:  make(map[uuid.UUID]*repository.PedigreeEdge),
@@ -117,14 +119,16 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	return persons[start:end], total, nil
 }
 
-// SearchPersons searches for persons by name.
+// SearchPersons searches for persons by name, including alternate names.
 func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]repository.PersonReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	query = strings.ToLower(query)
+	foundIDs := make(map[uuid.UUID]bool)
 	var results []repository.PersonReadModel
 
+	// Search in main persons table
 	for _, p := range s.persons {
 		fullName := strings.ToLower(p.FullName)
 		givenName := strings.ToLower(p.GivenName)
@@ -134,9 +138,39 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 		if strings.Contains(fullName, query) ||
 			strings.Contains(givenName, query) ||
 			strings.Contains(surname, query) {
-			results = append(results, *p)
-			if len(results) >= limit {
-				break
+			if !foundIDs[p.ID] {
+				results = append(results, *p)
+				foundIDs[p.ID] = true
+				if len(results) >= limit {
+					return results, nil
+				}
+			}
+		}
+	}
+
+	// Search in person_names table for alternate names
+	for personID, names := range s.personNames {
+		if foundIDs[personID] {
+			continue
+		}
+		for _, name := range names {
+			fullName := strings.ToLower(name.FullName)
+			givenName := strings.ToLower(name.GivenName)
+			surname := strings.ToLower(name.Surname)
+			nickname := strings.ToLower(name.Nickname)
+
+			if strings.Contains(fullName, query) ||
+				strings.Contains(givenName, query) ||
+				strings.Contains(surname, query) ||
+				strings.Contains(nickname, query) {
+				if p, exists := s.persons[personID]; exists && !foundIDs[personID] {
+					results = append(results, *p)
+					foundIDs[personID] = true
+					if len(results) >= limit {
+						return results, nil
+					}
+				}
+				break // Found match in one of the names, move to next person
 			}
 		}
 	}
@@ -160,6 +194,93 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
 	defer s.mu.Unlock()
 
 	delete(s.persons, id)
+	// Also delete associated person names (cascade behavior)
+	delete(s.personNames, id)
+	return nil
+}
+
+// SavePersonName saves or updates a person name variant.
+func (s *ReadModelStore) SavePersonName(ctx context.Context, name *repository.PersonNameReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Compute full name if not set
+	fullName := name.FullName
+	if fullName == "" {
+		fullName = name.GivenName + " " + name.Surname
+	}
+
+	names := s.personNames[name.PersonID]
+	// Check if already exists and update
+	for i, n := range names {
+		if n.ID != name.ID {
+			continue
+		}
+		nameCopy := *name
+		nameCopy.FullName = fullName
+		names[i] = nameCopy
+		s.personNames[name.PersonID] = names
+		return nil
+	}
+	// Add new
+	nameCopy := *name
+	nameCopy.FullName = fullName
+	s.personNames[name.PersonID] = append(names, nameCopy)
+	return nil
+}
+
+// GetPersonName retrieves a person name by ID.
+func (s *ReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, names := range s.personNames {
+		for _, n := range names {
+			if n.ID == nameID {
+				result := n
+				return &result, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+// GetPersonNames retrieves all name variants for a person.
+func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	names := s.personNames[personID]
+	if names == nil {
+		return nil, nil
+	}
+	result := make([]repository.PersonNameReadModel, len(names))
+	copy(result, names)
+
+	// Sort by is_primary DESC, then name_type
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].IsPrimary != result[j].IsPrimary {
+			return result[i].IsPrimary // true comes before false
+		}
+		return result[i].NameType < result[j].NameType
+	})
+
+	return result, nil
+}
+
+// DeletePersonName removes a person name.
+func (s *ReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for personID, names := range s.personNames {
+		for i, n := range names {
+			if n.ID == nameID {
+				s.personNames[personID] = append(names[:i], names[i+1:]...)
+				return nil
+			}
+		}
+	}
 	return nil
 }
 
@@ -355,6 +476,7 @@ func (s *ReadModelStore) Reset() {
 	defer s.mu.Unlock()
 
 	s.persons = make(map[uuid.UUID]*repository.PersonReadModel)
+	s.personNames = make(map[uuid.UUID][]repository.PersonNameReadModel)
 	s.families = make(map[uuid.UUID]*repository.FamilyReadModel)
 	s.familyChildren = make(map[uuid.UUID][]repository.FamilyChildReadModel)
 	s.pedigreeEdges = make(map[uuid.UUID]*repository.PedigreeEdge)

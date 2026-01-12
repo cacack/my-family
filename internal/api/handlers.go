@@ -57,8 +57,52 @@ type PersonResponse struct {
 
 type PersonDetailResponse struct {
 	PersonResponse
+	Names             []PersonNameResponse    `json:"names,omitempty"`
 	FamiliesAsPartner []FamilySummaryResponse `json:"families_as_partner,omitempty"`
 	FamilyAsChild     *FamilySummaryResponse  `json:"family_as_child,omitempty"`
+}
+
+// PersonName request/response types
+
+type PersonNameResponse struct {
+	ID            string `json:"id"`
+	PersonID      string `json:"person_id"`
+	GivenName     string `json:"given_name"`
+	Surname       string `json:"surname"`
+	FullName      string `json:"full_name"`
+	NamePrefix    string `json:"name_prefix,omitempty"`
+	NameSuffix    string `json:"name_suffix,omitempty"`
+	SurnamePrefix string `json:"surname_prefix,omitempty"`
+	Nickname      string `json:"nickname,omitempty"`
+	NameType      string `json:"name_type"`
+	IsPrimary     bool   `json:"is_primary"`
+}
+
+type CreatePersonNameRequest struct {
+	GivenName     string `json:"given_name" validate:"required,min=1,max=100"`
+	Surname       string `json:"surname" validate:"max=100"`
+	NamePrefix    string `json:"name_prefix,omitempty"`
+	NameSuffix    string `json:"name_suffix,omitempty"`
+	SurnamePrefix string `json:"surname_prefix,omitempty"`
+	Nickname      string `json:"nickname,omitempty"`
+	NameType      string `json:"name_type" validate:"required"`
+	IsPrimary     *bool  `json:"is_primary,omitempty"`
+}
+
+type UpdatePersonNameRequest struct {
+	GivenName     *string `json:"given_name,omitempty"`
+	Surname       *string `json:"surname,omitempty"`
+	NamePrefix    *string `json:"name_prefix,omitempty"`
+	NameSuffix    *string `json:"name_suffix,omitempty"`
+	SurnamePrefix *string `json:"surname_prefix,omitempty"`
+	Nickname      *string `json:"nickname,omitempty"`
+	NameType      *string `json:"name_type,omitempty"`
+	IsPrimary     *bool   `json:"is_primary,omitempty"`
+}
+
+type PersonNameListResponse struct {
+	Items []PersonNameResponse `json:"items"`
+	Total int                  `json:"total"`
 }
 
 type FamilySummaryResponse struct {
@@ -144,6 +188,15 @@ func (s *Server) createPerson(c echo.Context) error {
 		return err
 	}
 
+	// Create the primary name for this person
+	// This creates the initial name entry associated with the person
+	_, _ = s.commandHandler.AddName(c.Request().Context(), command.AddNameInput{
+		PersonID:  result.ID,
+		GivenName: req.GivenName,
+		Surname:   req.Surname,
+		IsPrimary: true,
+	})
+
 	// Fetch the created person to return full response
 	person, err := s.personService.GetPerson(c.Request().Context(), result.ID)
 	if err != nil {
@@ -167,6 +220,11 @@ func (s *Server) getPerson(c echo.Context) error {
 
 	response := PersonDetailResponse{
 		PersonResponse: convertPersonToResponse(person.Person),
+	}
+
+	// Include names in the response
+	for _, n := range person.Names {
+		response.Names = append(response.Names, convertPersonNameToResponse(n))
 	}
 
 	for _, f := range person.FamiliesAsPartner {
@@ -331,6 +389,22 @@ func convertFamilySummaryToResponse(f query.FamilySummary) FamilySummaryResponse
 		Partner1Name:     f.Partner1Name,
 		Partner2Name:     f.Partner2Name,
 		RelationshipType: f.RelationshipType,
+	}
+}
+
+func convertPersonNameToResponse(n query.PersonName) PersonNameResponse {
+	return PersonNameResponse{
+		ID:            n.ID.String(),
+		PersonID:      "", // PersonID is not available in query.PersonName, omit or handle differently
+		GivenName:     n.GivenName,
+		Surname:       n.Surname,
+		FullName:      n.FullName,
+		NamePrefix:    n.NamePrefix,
+		NameSuffix:    n.NameSuffix,
+		SurnamePrefix: n.SurnamePrefix,
+		Nickname:      n.Nickname,
+		NameType:      n.NameType,
+		IsPrimary:     n.IsPrimary,
 	}
 }
 
@@ -1127,4 +1201,171 @@ func (s *Server) exportFamilies(c echo.Context) error {
 		strconv.Itoa(result.FamiliesExported), strconv.FormatInt(result.BytesWritten, 10))
 
 	return nil
+}
+
+// getPersonNames handles GET /persons/:id/names
+func (s *Server) getPersonNames(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid person ID")
+	}
+
+	names, err := s.readStore.GetPersonNames(c.Request().Context(), id)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get person names: "+err.Error())
+	}
+
+	response := PersonNameListResponse{
+		Items: make([]PersonNameResponse, len(names)),
+		Total: len(names),
+	}
+
+	for i, n := range names {
+		response.Items[i] = PersonNameResponse{
+			ID:            n.ID.String(),
+			PersonID:      n.PersonID.String(),
+			GivenName:     n.GivenName,
+			Surname:       n.Surname,
+			FullName:      n.FullName,
+			NamePrefix:    n.NamePrefix,
+			NameSuffix:    n.NameSuffix,
+			SurnamePrefix: n.SurnamePrefix,
+			Nickname:      n.Nickname,
+			NameType:      string(n.NameType),
+			IsPrimary:     n.IsPrimary,
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// addPersonName handles POST /persons/:id/names
+func (s *Server) addPersonName(c echo.Context) error {
+	personID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid person ID")
+	}
+
+	var req CreatePersonNameRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	input := command.AddNameInput{
+		PersonID:      personID,
+		GivenName:     req.GivenName,
+		Surname:       req.Surname,
+		NamePrefix:    req.NamePrefix,
+		NameSuffix:    req.NameSuffix,
+		SurnamePrefix: req.SurnamePrefix,
+		Nickname:      req.Nickname,
+		NameType:      req.NameType,
+	}
+	if req.IsPrimary != nil {
+		input.IsPrimary = *req.IsPrimary
+	}
+
+	result, err := s.commandHandler.AddName(c.Request().Context(), input)
+	if err != nil {
+		return err
+	}
+
+	// Fetch the created name to return full response
+	name, err := s.readStore.GetPersonName(c.Request().Context(), result.ID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get created name: "+err.Error())
+	}
+
+	return c.JSON(http.StatusCreated, PersonNameResponse{
+		ID:            name.ID.String(),
+		PersonID:      name.PersonID.String(),
+		GivenName:     name.GivenName,
+		Surname:       name.Surname,
+		FullName:      name.FullName,
+		NamePrefix:    name.NamePrefix,
+		NameSuffix:    name.NameSuffix,
+		SurnamePrefix: name.SurnamePrefix,
+		Nickname:      name.Nickname,
+		NameType:      string(name.NameType),
+		IsPrimary:     name.IsPrimary,
+	})
+}
+
+// updatePersonName handles PUT /persons/:id/names/:nameId
+func (s *Server) updatePersonName(c echo.Context) error {
+	personID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid person ID")
+	}
+
+	nameID, err := uuid.Parse(c.Param("nameId"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid name ID")
+	}
+
+	var req UpdatePersonNameRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	input := command.UpdateNameInput{
+		PersonID:      personID,
+		NameID:        nameID,
+		GivenName:     req.GivenName,
+		Surname:       req.Surname,
+		NamePrefix:    req.NamePrefix,
+		NameSuffix:    req.NameSuffix,
+		SurnamePrefix: req.SurnamePrefix,
+		Nickname:      req.Nickname,
+		NameType:      req.NameType,
+		IsPrimary:     req.IsPrimary,
+	}
+
+	_, err = s.commandHandler.UpdateName(c.Request().Context(), input)
+	if err != nil {
+		return err
+	}
+
+	// Fetch the updated name to return full response
+	name, err := s.readStore.GetPersonName(c.Request().Context(), nameID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get updated name: "+err.Error())
+	}
+
+	return c.JSON(http.StatusOK, PersonNameResponse{
+		ID:            name.ID.String(),
+		PersonID:      name.PersonID.String(),
+		GivenName:     name.GivenName,
+		Surname:       name.Surname,
+		FullName:      name.FullName,
+		NamePrefix:    name.NamePrefix,
+		NameSuffix:    name.NameSuffix,
+		SurnamePrefix: name.SurnamePrefix,
+		Nickname:      name.Nickname,
+		NameType:      string(name.NameType),
+		IsPrimary:     name.IsPrimary,
+	})
+}
+
+// deletePersonName handles DELETE /persons/:id/names/:nameId
+func (s *Server) deletePersonName(c echo.Context) error {
+	personID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid person ID")
+	}
+
+	nameID, err := uuid.Parse(c.Param("nameId"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid name ID")
+	}
+
+	err = s.commandHandler.DeleteName(c.Request().Context(), command.DeleteNameInput{
+		PersonID: personID,
+		NameID:   nameID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return c.NoContent(http.StatusNoContent)
 }

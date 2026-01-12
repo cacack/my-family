@@ -1081,6 +1081,155 @@ func TestRepositoryDeleted_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestNameAdded_RoundTrip(t *testing.T) {
+	personID := uuid.New()
+	pn := NewPersonName(personID, "Mary", "Smith")
+	pn.NamePrefix = "Mrs."
+	pn.NameSuffix = "Jr."
+	pn.SurnamePrefix = "van"
+	pn.Nickname = "Molly"
+	pn.NameType = NameTypeMarried
+	pn.IsPrimary = true
+
+	event := NewNameAdded(pn)
+
+	// Verify event type
+	if event.EventType() != "NameAdded" {
+		t.Errorf("EventType() = %v, want NameAdded", event.EventType())
+	}
+
+	// Verify aggregate ID (should be PersonID for name events)
+	if event.AggregateID() != personID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), personID)
+	}
+
+	// JSON round-trip
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded NameAdded
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.PersonID != personID {
+		t.Errorf("PersonID = %v, want %v", decoded.PersonID, personID)
+	}
+	if decoded.NameID != pn.ID {
+		t.Errorf("NameID = %v, want %v", decoded.NameID, pn.ID)
+	}
+	if decoded.GivenName != "Mary" {
+		t.Errorf("GivenName = %v, want Mary", decoded.GivenName)
+	}
+	if decoded.Surname != "Smith" {
+		t.Errorf("Surname = %v, want Smith", decoded.Surname)
+	}
+	if decoded.NamePrefix != "Mrs." {
+		t.Errorf("NamePrefix = %v, want Mrs.", decoded.NamePrefix)
+	}
+	if decoded.NameSuffix != "Jr." {
+		t.Errorf("NameSuffix = %v, want Jr.", decoded.NameSuffix)
+	}
+	if decoded.SurnamePrefix != "van" {
+		t.Errorf("SurnamePrefix = %v, want van", decoded.SurnamePrefix)
+	}
+	if decoded.Nickname != "Molly" {
+		t.Errorf("Nickname = %v, want Molly", decoded.Nickname)
+	}
+	if decoded.NameType != NameTypeMarried {
+		t.Errorf("NameType = %v, want %v", decoded.NameType, NameTypeMarried)
+	}
+	if decoded.IsPrimary != true {
+		t.Errorf("IsPrimary = %v, want true", decoded.IsPrimary)
+	}
+}
+
+func TestNameUpdated_RoundTrip(t *testing.T) {
+	personID := uuid.New()
+	pn := NewPersonName(personID, "Maria", "Kowalski")
+	pn.NameType = NameTypeImmigrant
+	pn.IsPrimary = false
+
+	event := NewNameUpdated(pn)
+
+	// Verify event type
+	if event.EventType() != "NameUpdated" {
+		t.Errorf("EventType() = %v, want NameUpdated", event.EventType())
+	}
+
+	// Verify aggregate ID
+	if event.AggregateID() != personID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), personID)
+	}
+
+	// JSON round-trip
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded NameUpdated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.PersonID != personID {
+		t.Errorf("PersonID = %v, want %v", decoded.PersonID, personID)
+	}
+	if decoded.NameID != pn.ID {
+		t.Errorf("NameID = %v, want %v", decoded.NameID, pn.ID)
+	}
+	if decoded.GivenName != "Maria" {
+		t.Errorf("GivenName = %v, want Maria", decoded.GivenName)
+	}
+	if decoded.Surname != "Kowalski" {
+		t.Errorf("Surname = %v, want Kowalski", decoded.Surname)
+	}
+	if decoded.NameType != NameTypeImmigrant {
+		t.Errorf("NameType = %v, want %v", decoded.NameType, NameTypeImmigrant)
+	}
+	if decoded.IsPrimary != false {
+		t.Errorf("IsPrimary = %v, want false", decoded.IsPrimary)
+	}
+}
+
+func TestNameRemoved_RoundTrip(t *testing.T) {
+	personID := uuid.New()
+	nameID := uuid.New()
+
+	event := NewNameRemoved(personID, nameID)
+
+	// Verify event type
+	if event.EventType() != "NameRemoved" {
+		t.Errorf("EventType() = %v, want NameRemoved", event.EventType())
+	}
+
+	// Verify aggregate ID
+	if event.AggregateID() != personID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), personID)
+	}
+
+	// JSON round-trip
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded NameRemoved
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.PersonID != personID {
+		t.Errorf("PersonID = %v, want %v", decoded.PersonID, personID)
+	}
+	if decoded.NameID != nameID {
+		t.Errorf("NameID = %v, want %v", decoded.NameID, nameID)
+	}
+}
+
 // Tests for AggregateID methods that were previously uncovered
 func TestEventAggregateIDs(t *testing.T) {
 	tests := []struct {

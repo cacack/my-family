@@ -169,15 +169,18 @@ func (m MediaType) IsValid() bool {
 type NameType string
 
 const (
-	NameTypeBirth   NameType = "birth"   // Name at birth
-	NameTypeMarried NameType = "married" // Married name
-	NameTypeAKA     NameType = "aka"     // Also known as
+	NameTypeBirth        NameType = "birth"        // Name at birth
+	NameTypeMarried      NameType = "married"      // Married name
+	NameTypeAKA          NameType = "aka"          // Also known as
+	NameTypeImmigrant    NameType = "immigrant"    // Name after immigration (anglicized, etc.)
+	NameTypeReligious    NameType = "religious"    // Religious name (confirmation, ordination)
+	NameTypeProfessional NameType = "professional" // Professional/stage name
 )
 
 // IsValid checks if the name type value is valid.
 func (n NameType) IsValid() bool {
 	switch n {
-	case NameTypeBirth, NameTypeMarried, NameTypeAKA, "":
+	case NameTypeBirth, NameTypeMarried, NameTypeAKA, NameTypeImmigrant, NameTypeReligious, NameTypeProfessional, "":
 		return true
 	default:
 		return false

@@ -1734,3 +1734,201 @@ func TestImportCitationWithoutAPID(t *testing.T) {
 		t.Errorf("Citation AncestryAPID should be nil when no _APID tag is present")
 	}
 }
+
+func TestImportMultipleNames(t *testing.T) {
+	// Test GEDCOM with multiple name variants (birth name, married name, immigrant name)
+	gedcomData := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Maria /Schmidt/
+2 TYPE birth
+2 NICK Mitzi
+1 NAME Mary /Smith/
+2 TYPE married
+1 NAME Mary Elizabeth /Smith/
+2 TYPE aka
+2 NPFX Mrs.
+2 NSFX Sr.
+1 SEX F
+1 BIRT
+2 DATE 1850
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	p := persons[0]
+
+	// Primary name fields should be from first name
+	if p.GivenName != "Maria" {
+		t.Errorf("GivenName = %q, want %q", p.GivenName, "Maria")
+	}
+	if p.Surname != "Schmidt" {
+		t.Errorf("Surname = %q, want %q", p.Surname, "Schmidt")
+	}
+	if p.NameType != domain.NameTypeBirth {
+		t.Errorf("NameType = %q, want %q", p.NameType, domain.NameTypeBirth)
+	}
+	if p.Nickname != "Mitzi" {
+		t.Errorf("Nickname = %q, want %q", p.Nickname, "Mitzi")
+	}
+
+	// Check all names are captured
+	if len(p.Names) != 3 {
+		t.Fatalf("len(p.Names) = %d, want 3", len(p.Names))
+	}
+
+	// First name should be primary
+	if !p.Names[0].IsPrimary {
+		t.Error("First name should be primary")
+	}
+	if p.Names[0].GivenName != "Maria" {
+		t.Errorf("Names[0].GivenName = %q, want %q", p.Names[0].GivenName, "Maria")
+	}
+	if p.Names[0].Surname != "Schmidt" {
+		t.Errorf("Names[0].Surname = %q, want %q", p.Names[0].Surname, "Schmidt")
+	}
+	if p.Names[0].NameType != domain.NameTypeBirth {
+		t.Errorf("Names[0].NameType = %q, want %q", p.Names[0].NameType, domain.NameTypeBirth)
+	}
+	if p.Names[0].Nickname != "Mitzi" {
+		t.Errorf("Names[0].Nickname = %q, want %q", p.Names[0].Nickname, "Mitzi")
+	}
+
+	// Second name (married name)
+	if p.Names[1].IsPrimary {
+		t.Error("Second name should not be primary")
+	}
+	if p.Names[1].GivenName != "Mary" {
+		t.Errorf("Names[1].GivenName = %q, want %q", p.Names[1].GivenName, "Mary")
+	}
+	if p.Names[1].Surname != "Smith" {
+		t.Errorf("Names[1].Surname = %q, want %q", p.Names[1].Surname, "Smith")
+	}
+	if p.Names[1].NameType != domain.NameTypeMarried {
+		t.Errorf("Names[1].NameType = %q, want %q", p.Names[1].NameType, domain.NameTypeMarried)
+	}
+
+	// Third name (AKA)
+	if p.Names[2].IsPrimary {
+		t.Error("Third name should not be primary")
+	}
+	if p.Names[2].GivenName != "Mary Elizabeth" {
+		t.Errorf("Names[2].GivenName = %q, want %q", p.Names[2].GivenName, "Mary Elizabeth")
+	}
+	if p.Names[2].Surname != "Smith" {
+		t.Errorf("Names[2].Surname = %q, want %q", p.Names[2].Surname, "Smith")
+	}
+	if p.Names[2].NameType != domain.NameTypeAKA {
+		t.Errorf("Names[2].NameType = %q, want %q", p.Names[2].NameType, domain.NameTypeAKA)
+	}
+	if p.Names[2].NamePrefix != "Mrs." {
+		t.Errorf("Names[2].NamePrefix = %q, want %q", p.Names[2].NamePrefix, "Mrs.")
+	}
+	if p.Names[2].NameSuffix != "Sr." {
+		t.Errorf("Names[2].NameSuffix = %q, want %q", p.Names[2].NameSuffix, "Sr.")
+	}
+}
+
+func TestImportMultipleNamesWithImmigrantType(t *testing.T) {
+	// Test GEDCOM with immigrant and professional name types
+	gedcomData := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Johann /Muller/
+2 TYPE birth
+2 SPFX von
+1 NAME John /Miller/
+2 TYPE immigrant
+1 NAME John /Miller/
+2 TYPE religious
+2 NPFX Rev.
+1 NAME John /Miller/
+2 TYPE professional
+1 SEX M
+1 BIRT
+2 DATE 1850
+2 PLAC Bavaria, Germany
+1 IMMI
+2 DATE 1875
+2 PLAC New York, NY
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	p := persons[0]
+
+	// Check all names are captured
+	if len(p.Names) != 4 {
+		t.Fatalf("len(p.Names) = %d, want 4", len(p.Names))
+	}
+
+	// First name (birth name with surname prefix)
+	if p.Names[0].GivenName != "Johann" {
+		t.Errorf("Names[0].GivenName = %q, want %q", p.Names[0].GivenName, "Johann")
+	}
+	if p.Names[0].Surname != "Muller" {
+		t.Errorf("Names[0].Surname = %q, want %q", p.Names[0].Surname, "Muller")
+	}
+	if p.Names[0].SurnamePrefix != "von" {
+		t.Errorf("Names[0].SurnamePrefix = %q, want %q", p.Names[0].SurnamePrefix, "von")
+	}
+	if p.Names[0].NameType != domain.NameTypeBirth {
+		t.Errorf("Names[0].NameType = %q, want %q", p.Names[0].NameType, domain.NameTypeBirth)
+	}
+
+	// Second name (immigrant/anglicized name)
+	if p.Names[1].GivenName != "John" {
+		t.Errorf("Names[1].GivenName = %q, want %q", p.Names[1].GivenName, "John")
+	}
+	if p.Names[1].Surname != "Miller" {
+		t.Errorf("Names[1].Surname = %q, want %q", p.Names[1].Surname, "Miller")
+	}
+	if p.Names[1].NameType != domain.NameTypeImmigrant {
+		t.Errorf("Names[1].NameType = %q, want %q", p.Names[1].NameType, domain.NameTypeImmigrant)
+	}
+
+	// Third name (religious name)
+	if p.Names[2].GivenName != "John" {
+		t.Errorf("Names[2].GivenName = %q, want %q", p.Names[2].GivenName, "John")
+	}
+	if p.Names[2].NamePrefix != "Rev." {
+		t.Errorf("Names[2].NamePrefix = %q, want %q", p.Names[2].NamePrefix, "Rev.")
+	}
+	if p.Names[2].NameType != domain.NameTypeReligious {
+		t.Errorf("Names[2].NameType = %q, want %q", p.Names[2].NameType, domain.NameTypeReligious)
+	}
+
+	// Fourth name (professional name)
+	if p.Names[3].GivenName != "John" {
+		t.Errorf("Names[3].GivenName = %q, want %q", p.Names[3].GivenName, "John")
+	}
+	if p.Names[3].NameType != domain.NameTypeProfessional {
+		t.Errorf("Names[3].NameType = %q, want %q", p.Names[3].NameType, domain.NameTypeProfessional)
+	}
+}

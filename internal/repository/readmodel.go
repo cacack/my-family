@@ -164,6 +164,12 @@ type ReadModelStore interface {
 	SavePerson(ctx context.Context, person *PersonReadModel) error
 	DeletePerson(ctx context.Context, id uuid.UUID) error
 
+	// Person name operations
+	SavePersonName(ctx context.Context, name *PersonNameReadModel) error
+	GetPersonName(ctx context.Context, nameID uuid.UUID) (*PersonNameReadModel, error)
+	GetPersonNames(ctx context.Context, personID uuid.UUID) ([]PersonNameReadModel, error)
+	DeletePersonName(ctx context.Context, nameID uuid.UUID) error
+
 	// Family operations
 	GetFamily(ctx context.Context, id uuid.UUID) (*FamilyReadModel, error)
 	ListFamilies(ctx context.Context, opts ListOptions) ([]FamilyReadModel, int, error)
@@ -245,6 +251,22 @@ type PlaceEntry struct {
 	FullName    string `json:"full_name"`
 	Count       int    `json:"count"`
 	HasChildren bool   `json:"has_children"`
+}
+
+// PersonNameReadModel represents a name variant for a person in the read model.
+type PersonNameReadModel struct {
+	ID            uuid.UUID       `json:"id"`
+	PersonID      uuid.UUID       `json:"person_id"`
+	GivenName     string          `json:"given_name"`
+	Surname       string          `json:"surname"`
+	FullName      string          `json:"full_name"`
+	NamePrefix    string          `json:"name_prefix,omitempty"`
+	NameSuffix    string          `json:"name_suffix,omitempty"`
+	SurnamePrefix string          `json:"surname_prefix,omitempty"`
+	Nickname      string          `json:"nickname,omitempty"`
+	NameType      domain.NameType `json:"name_type"`
+	IsPrimary     bool            `json:"is_primary"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
 // ListOptions contains options for list queries.

@@ -212,7 +212,35 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	if err := h.projector.Project(ctx, event, 1); err != nil {
+		return err
+	}
+
+	// Emit NameAdded events for all names from GEDCOM
+	for _, nameData := range p.Names {
+		personName := domain.NewPersonName(person.ID, nameData.GivenName, nameData.Surname)
+		personName.NamePrefix = nameData.NamePrefix
+		personName.NameSuffix = nameData.NameSuffix
+		personName.SurnamePrefix = nameData.SurnamePrefix
+		personName.Nickname = nameData.Nickname
+		personName.NameType = nameData.NameType
+		personName.IsPrimary = nameData.IsPrimary
+
+		nameEvent := domain.NewNameAdded(personName)
+
+		// Append name event to person stream
+		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, -1)
+		if err != nil {
+			return err
+		}
+
+		// Project to read model
+		if err := h.projector.Apply(ctx, nameEvent); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // importFamily creates a family from GEDCOM data.

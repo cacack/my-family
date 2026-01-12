@@ -176,6 +176,26 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_media_entity ON media(entity_type, entity_id);
 		CREATE INDEX IF NOT EXISTS idx_media_type ON media(media_type);
+
+		-- Person names table (for multiple name variants)
+		CREATE TABLE IF NOT EXISTS person_names (
+			id TEXT PRIMARY KEY,
+			person_id TEXT NOT NULL,
+			given_name TEXT NOT NULL,
+			surname TEXT NOT NULL,
+			full_name TEXT GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			name_prefix TEXT,
+			name_suffix TEXT,
+			surname_prefix TEXT,
+			nickname TEXT,
+			name_type TEXT NOT NULL DEFAULT '',
+			is_primary INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_person_names_person ON person_names(person_id);
+		CREATE INDEX IF NOT EXISTS idx_person_names_primary ON person_names(person_id, is_primary);
 	`)
 	if err != nil {
 		return err
@@ -190,7 +210,7 @@ func (s *ReadModelStore) createTables() error {
 // tryCreateFTS5 attempts to create FTS5 virtual table for full-text search.
 // If FTS5 is not available, search will fall back to LIKE-based queries.
 func (s *ReadModelStore) tryCreateFTS5() {
-	// Try to create FTS5 virtual table
+	// Try to create FTS5 virtual table for persons
 	_, err := s.db.Exec(`
 		CREATE VIRTUAL TABLE IF NOT EXISTS persons_fts USING fts5(
 			given_name,
@@ -225,6 +245,43 @@ func (s *ReadModelStore) tryCreateFTS5() {
 			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname);
 			INSERT INTO persons_fts(rowid, given_name, surname)
 			SELECT rowid, NEW.given_name, NEW.surname FROM persons WHERE id = NEW.id;
+		END
+	`)
+
+	// Create FTS5 virtual table for person_names
+	_, _ = s.db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS person_names_fts USING fts5(
+			given_name,
+			surname,
+			nickname,
+			content='person_names',
+			content_rowid='rowid'
+		)
+	`)
+
+	// Create triggers for person_names FTS
+	_, _ = s.db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS person_names_fts_insert AFTER INSERT ON person_names BEGIN
+			INSERT INTO person_names_fts(rowid, given_name, surname, nickname)
+			SELECT rowid, NEW.given_name, NEW.surname, COALESCE(NEW.nickname, '')
+			FROM person_names WHERE id = NEW.id;
+		END
+	`)
+
+	_, _ = s.db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS person_names_fts_delete AFTER DELETE ON person_names BEGIN
+			INSERT INTO person_names_fts(person_names_fts, rowid, given_name, surname, nickname)
+			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname, COALESCE(OLD.nickname, ''));
+		END
+	`)
+
+	_, _ = s.db.Exec(`
+		CREATE TRIGGER IF NOT EXISTS person_names_fts_update AFTER UPDATE ON person_names BEGIN
+			INSERT INTO person_names_fts(person_names_fts, rowid, given_name, surname, nickname)
+			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname, COALESCE(OLD.nickname, ''));
+			INSERT INTO person_names_fts(rowid, given_name, surname, nickname)
+			SELECT rowid, NEW.given_name, NEW.surname, COALESCE(NEW.nickname, '')
+			FROM person_names WHERE id = NEW.id;
 		END
 	`)
 }
@@ -295,7 +352,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	return persons, total, rows.Err()
 }
 
-// SearchPersons searches for persons by name using FTS5.
+// SearchPersons searches for persons by name using FTS5, including alternate names.
 func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]repository.PersonReadModel, error) {
 	// Escape and prepare FTS5 query
 	ftsQuery := escapeFTS5Query(query)
@@ -305,17 +362,39 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 		ftsQuery += "*"
 	}
 
+	// Search both persons table and person_names table, returning distinct persons
+	// Primary names rank higher (is_primary DESC puts 1 before 0)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place,
-			   p.death_date_raw, p.death_date_sort, p.death_place,
-			   p.notes, p.version, p.updated_at
-		FROM persons p
-		JOIN persons_fts fts ON p.rowid = fts.rowid
-		WHERE persons_fts MATCH ?
-		ORDER BY rank
+		WITH matched_persons AS (
+			-- Match in main persons table
+			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+				   p.birth_date_raw, p.birth_date_sort, p.birth_place,
+				   p.death_date_raw, p.death_date_sort, p.death_place,
+				   p.notes, p.version, p.updated_at, 1 as is_primary, rank as search_rank
+			FROM persons p
+			JOIN persons_fts fts ON p.rowid = fts.rowid
+			WHERE persons_fts MATCH ?
+
+			UNION
+
+			-- Match in person_names table
+			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+				   p.birth_date_raw, p.birth_date_sort, p.birth_place,
+				   p.death_date_raw, p.death_date_sort, p.death_place,
+				   p.notes, p.version, p.updated_at, pn.is_primary, nfts.rank as search_rank
+			FROM persons p
+			JOIN person_names pn ON p.id = pn.person_id
+			JOIN person_names_fts nfts ON pn.rowid = nfts.rowid
+			WHERE person_names_fts MATCH ?
+		)
+		SELECT DISTINCT id, given_name, surname, full_name, gender,
+			   birth_date_raw, birth_date_sort, birth_place,
+			   death_date_raw, death_date_sort, death_place,
+			   notes, version, updated_at
+		FROM matched_persons
+		ORDER BY is_primary DESC, search_rank
 		LIMIT ?
-	`, ftsQuery, limit)
+	`, ftsQuery, ftsQuery, limit)
 	if err != nil {
 		// Fallback to LIKE if FTS5 query fails (e.g., for special characters)
 		return s.searchPersonsLike(ctx, query, limit)
@@ -339,19 +418,22 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 	return persons, rows.Err()
 }
 
-// searchPersonsLike is a fallback search using LIKE.
+// searchPersonsLike is a fallback search using LIKE, including person_names.
 func (s *ReadModelStore) searchPersonsLike(ctx context.Context, query string, limit int) ([]repository.PersonReadModel, error) {
 	likeQuery := "%" + strings.ToLower(query) + "%"
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
-			   notes, version, updated_at
-		FROM persons
-		WHERE LOWER(full_name) LIKE ? OR LOWER(given_name) LIKE ? OR LOWER(surname) LIKE ?
+		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place,
+			   p.death_date_raw, p.death_date_sort, p.death_place,
+			   p.notes, p.version, p.updated_at
+		FROM persons p
+		LEFT JOIN person_names pn ON p.id = pn.person_id
+		WHERE LOWER(p.full_name) LIKE ? OR LOWER(p.given_name) LIKE ? OR LOWER(p.surname) LIKE ?
+		   OR LOWER(pn.full_name) LIKE ? OR LOWER(pn.given_name) LIKE ? OR LOWER(pn.surname) LIKE ?
+		   OR LOWER(pn.nickname) LIKE ?
 		LIMIT ?
-	`, likeQuery, likeQuery, likeQuery, limit)
+	`, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search persons: %w", err)
 	}
@@ -408,6 +490,129 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 func (s *ReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM persons WHERE id = ?", id.String())
 	return err
+}
+
+// SavePersonName saves or updates a person name variant.
+func (s *ReadModelStore) SavePersonName(ctx context.Context, name *repository.PersonNameReadModel) error {
+	isPrimary := 0
+	if name.IsPrimary {
+		isPrimary = 1
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix,
+								  surname_prefix, nickname, name_type, is_primary, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			person_id = excluded.person_id,
+			given_name = excluded.given_name,
+			surname = excluded.surname,
+			name_prefix = excluded.name_prefix,
+			name_suffix = excluded.name_suffix,
+			surname_prefix = excluded.surname_prefix,
+			nickname = excluded.nickname,
+			name_type = excluded.name_type,
+			is_primary = excluded.is_primary,
+			updated_at = excluded.updated_at
+	`, name.ID.String(), name.PersonID.String(), name.GivenName, name.Surname,
+		nullableString(name.NamePrefix), nullableString(name.NameSuffix),
+		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
+		string(name.NameType), isPrimary, formatTimestamp(name.UpdatedAt))
+
+	return err
+}
+
+// GetPersonName retrieves a person name by ID.
+func (s *ReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
+			   surname_prefix, nickname, name_type, is_primary, updated_at
+		FROM person_names WHERE id = ?
+	`, nameID.String())
+
+	return scanPersonName(row)
+}
+
+// GetPersonNames retrieves all name variants for a person.
+func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
+			   surname_prefix, nickname, name_type, is_primary, updated_at
+		FROM person_names
+		WHERE person_id = ?
+		ORDER BY is_primary DESC, name_type
+	`, personID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query person names: %w", err)
+	}
+	defer rows.Close()
+
+	var names []repository.PersonNameReadModel
+	for rows.Next() {
+		n, err := scanPersonNameRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, *n)
+	}
+
+	return names, rows.Err()
+}
+
+// DeletePersonName removes a person name.
+func (s *ReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM person_names WHERE id = ?", nameID.String())
+	return err
+}
+
+// scanPersonName scans a single person name row.
+func scanPersonName(row rowScanner) (*repository.PersonNameReadModel, error) {
+	var (
+		idStr, personIDStr, givenName, surname, fullName string
+		namePrefix, nameSuffix, surnamePrefix, nickname  sql.NullString
+		nameType                                         sql.NullString
+		isPrimary                                        int
+		updatedAt                                        string
+	)
+
+	err := row.Scan(&idStr, &personIDStr, &givenName, &surname, &fullName,
+		&namePrefix, &nameSuffix, &surnamePrefix, &nickname,
+		&nameType, &isPrimary, &updatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan person name: %w", err)
+	}
+
+	id, _ := uuid.Parse(idStr)
+	personID, _ := uuid.Parse(personIDStr)
+
+	n := &repository.PersonNameReadModel{
+		ID:            id,
+		PersonID:      personID,
+		GivenName:     givenName,
+		Surname:       surname,
+		FullName:      fullName,
+		NamePrefix:    namePrefix.String,
+		NameSuffix:    nameSuffix.String,
+		SurnamePrefix: surnamePrefix.String,
+		Nickname:      nickname.String,
+		NameType:      domain.NameType(nameType.String),
+		IsPrimary:     isPrimary == 1,
+	}
+
+	if t, err := parseTimestamp(updatedAt); err == nil {
+		n.UpdatedAt = t
+	}
+
+	return n, nil
+}
+
+// scanPersonNameRow scans a person name from rows.
+func scanPersonNameRow(rows *sql.Rows) (*repository.PersonNameReadModel, error) {
+	return scanPersonName(rows)
 }
 
 // GetFamily retrieves a family by ID.

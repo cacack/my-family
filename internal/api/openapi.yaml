@@ -1341,6 +1341,104 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /persons/{id}/names:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: getPersonNames
+      summary: Get all names for a person
+      description: Returns all name variants for a person (birth name, married name, aliases, etc.)
+      tags: [persons]
+      responses:
+        '200':
+          description: List of person names
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonNameList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      operationId: addPersonName
+      summary: Add a name to a person
+      description: |
+        Add a new name variant to a person. If is_primary is true, the existing
+        primary name will be demoted to non-primary.
+      tags: [persons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonNameCreate'
+      responses:
+        '201':
+          description: Name added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonName'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /persons/{id}/names/{nameId}:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+      - name: nameId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    put:
+      operationId: updatePersonName
+      summary: Update a person's name
+      description: |
+        Update an existing name variant. If is_primary is set to true, the existing
+        primary name will be demoted to non-primary.
+      tags: [persons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonNameUpdate'
+      responses:
+        '200':
+          description: Name updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonName'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deletePersonName
+      summary: Remove a name from a person
+      description: |
+        Remove a name variant from a person. Cannot delete the last remaining name
+        or the primary name (must transfer primary status first).
+      tags: [persons]
+      responses:
+        '204':
+          description: Name removed
+        '400':
+          description: Cannot delete last name or primary name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   # Export endpoints
   /export/tree:
     get:
@@ -1628,6 +1726,11 @@ components:
         - $ref: '#/components/schemas/Person'
         - type: object
           properties:
+            names:
+              type: array
+              description: All name variants for the person (birth, married, aliases, etc.)
+              items:
+                $ref: '#/components/schemas/PersonName'
             families_as_partner:
               type: array
               items:
@@ -2439,6 +2542,101 @@ components:
           type: integer
         query:
           type: string
+
+    # PersonName schemas
+    PersonName:
+      type: object
+      required: [id, person_id, given_name, surname, name_type, is_primary]
+      properties:
+        id:
+          type: string
+          format: uuid
+        person_id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+          maxLength: 100
+        surname:
+          type: string
+          maxLength: 100
+        full_name:
+          type: string
+          readOnly: true
+        name_prefix:
+          type: string
+        name_suffix:
+          type: string
+        surname_prefix:
+          type: string
+        nickname:
+          type: string
+        name_type:
+          type: string
+          enum: [birth, married, aka, immigrant, religious, professional]
+        is_primary:
+          type: boolean
+
+    PersonNameCreate:
+      type: object
+      required: [given_name, surname, name_type]
+      properties:
+        given_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        surname:
+          type: string
+          maxLength: 100
+        name_prefix:
+          type: string
+        name_suffix:
+          type: string
+        surname_prefix:
+          type: string
+        nickname:
+          type: string
+        name_type:
+          type: string
+          enum: [birth, married, aka, immigrant, religious, professional]
+        is_primary:
+          type: boolean
+          default: false
+
+    PersonNameUpdate:
+      type: object
+      properties:
+        given_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        surname:
+          type: string
+          maxLength: 100
+        name_prefix:
+          type: string
+        name_suffix:
+          type: string
+        surname_prefix:
+          type: string
+        nickname:
+          type: string
+        name_type:
+          type: string
+          enum: [birth, married, aka, immigrant, religious, professional]
+        is_primary:
+          type: boolean
+
+    PersonNameList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonName'
+        total:
+          type: integer
 
     # Citation schemas
     Citation:
