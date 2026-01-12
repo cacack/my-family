@@ -124,3 +124,73 @@ func (p *Person) SetDeathDate(dateStr string) {
 	gd := ParseGenDate(dateStr)
 	p.DeathDate = &gd
 }
+
+// PersonName represents a name variant for a person (maiden, alias, immigrant, etc.).
+type PersonName struct {
+	ID            uuid.UUID `json:"id"`
+	PersonID      uuid.UUID `json:"person_id"`
+	GivenName     string    `json:"given_name"`
+	Surname       string    `json:"surname,omitempty"`
+	NamePrefix    string    `json:"name_prefix,omitempty"`    // Dr., Rev., Sir (NPFX)
+	NameSuffix    string    `json:"name_suffix,omitempty"`    // Jr., III, PhD (NSFX)
+	SurnamePrefix string    `json:"surname_prefix,omitempty"` // von, de, van (SPFX)
+	Nickname      string    `json:"nickname,omitempty"`       // Informal name (NICK)
+	NameType      NameType  `json:"name_type,omitempty"`      // birth, married, aka, immigrant, religious, professional
+	IsPrimary     bool      `json:"is_primary"`               // Whether this is the display name
+}
+
+// PersonNameValidationError represents a validation error for a PersonName.
+type PersonNameValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e PersonNameValidationError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Field, e.Message)
+}
+
+// NewPersonName creates a new PersonName with the given required fields.
+func NewPersonName(personID uuid.UUID, givenName, surname string) *PersonName {
+	return &PersonName{
+		ID:        uuid.New(),
+		PersonID:  personID,
+		GivenName: givenName,
+		Surname:   surname,
+	}
+}
+
+// Validate checks if the PersonName has valid data.
+func (pn *PersonName) Validate() error {
+	var errs []error
+
+	// GivenName is required
+	if pn.GivenName == "" {
+		errs = append(errs, PersonNameValidationError{Field: "given_name", Message: "cannot be empty"})
+	}
+	if len(pn.GivenName) > 100 {
+		errs = append(errs, PersonNameValidationError{Field: "given_name", Message: "cannot exceed 100 characters"})
+	}
+
+	// Surname can be empty but cannot exceed 100 chars
+	if len(pn.Surname) > 100 {
+		errs = append(errs, PersonNameValidationError{Field: "surname", Message: "cannot exceed 100 characters"})
+	}
+
+	// NameType validation
+	if !pn.NameType.IsValid() {
+		errs = append(errs, PersonNameValidationError{Field: "name_type", Message: fmt.Sprintf("invalid value: %s", pn.NameType)})
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
+}
+
+// FullName returns the full name combining GivenName and Surname.
+func (pn *PersonName) FullName() string {
+	if pn.Surname == "" {
+		return pn.GivenName
+	}
+	return pn.GivenName + " " + pn.Surname
+}

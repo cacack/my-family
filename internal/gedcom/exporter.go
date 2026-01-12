@@ -234,9 +234,19 @@ func toGedcomSourceTags(s repository.SourceReadModel) []*gedcom.Tag {
 func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.Tag {
 	var tags []*gedcom.Tag
 
-	// Name
-	name := formatGedcomName(p.GivenName, p.Surname)
-	tags = append(tags, &gedcom.Tag{Level: 1, Tag: "NAME", Value: name})
+	// Fetch all names for this person
+	names, err := readStore.GetPersonNames(ctx, p.ID)
+	if err != nil || len(names) == 0 {
+		// Fallback to person's primary name fields if no names in person_names table
+		name := formatGedcomName(p.GivenName, p.Surname)
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "NAME", Value: name})
+	} else {
+		// Sort names: primary first, then others
+		sortedNames := sortNamesByPrimary(names)
+		for _, nm := range sortedNames {
+			tags = append(tags, nameToTags(nm)...)
+		}
+	}
 
 	// Sex
 	if p.Gender != "" {
@@ -412,6 +422,75 @@ func mapGPSToGedcomQuality(_ domain.SourceQuality, informantType domain.Informan
 func formatGedcomName(givenName, surname string) string {
 	// Always include surname delimiters per GEDCOM spec
 	return fmt.Sprintf("%s /%s/", givenName, surname)
+}
+
+// sortNamesByPrimary sorts names with primary name first.
+func sortNamesByPrimary(names []repository.PersonNameReadModel) []repository.PersonNameReadModel {
+	// Simple stable sort: primary first
+	sort.SliceStable(names, func(i, j int) bool {
+		// Primary names come first
+		if names[i].IsPrimary && !names[j].IsPrimary {
+			return true
+		}
+		return false
+	})
+	return names
+}
+
+// nameToTags converts a PersonNameReadModel to GEDCOM tags.
+func nameToTags(nm repository.PersonNameReadModel) []*gedcom.Tag {
+	var tags []*gedcom.Tag
+
+	// Main NAME tag with value in GEDCOM format
+	name := formatGedcomName(nm.GivenName, nm.Surname)
+	tags = append(tags, &gedcom.Tag{Level: 1, Tag: "NAME", Value: name})
+
+	// TYPE - only add if not birth (birth is the default)
+	if nm.NameType != "" && nm.NameType != domain.NameTypeBirth {
+		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "TYPE", Value: mapNameTypeToGedcom(nm.NameType)})
+	}
+
+	// NPFX - Name prefix (Dr., Rev., Sir)
+	if nm.NamePrefix != "" {
+		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NPFX", Value: nm.NamePrefix})
+	}
+
+	// NSFX - Name suffix (Jr., III, PhD)
+	if nm.NameSuffix != "" {
+		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NSFX", Value: nm.NameSuffix})
+	}
+
+	// SPFX - Surname prefix (von, de, van)
+	if nm.SurnamePrefix != "" {
+		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "SPFX", Value: nm.SurnamePrefix})
+	}
+
+	// NICK - Nickname
+	if nm.Nickname != "" {
+		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NICK", Value: nm.Nickname})
+	}
+
+	return tags
+}
+
+// mapNameTypeToGedcom converts a domain NameType to GEDCOM TYPE value.
+func mapNameTypeToGedcom(nameType domain.NameType) string {
+	switch nameType {
+	case domain.NameTypeBirth:
+		return "birth"
+	case domain.NameTypeMarried:
+		return "married"
+	case domain.NameTypeAKA:
+		return "aka"
+	case domain.NameTypeImmigrant:
+		return "immigrant"
+	case domain.NameTypeReligious:
+		return "religious"
+	case domain.NameTypeProfessional:
+		return "professional"
+	default:
+		return string(nameType)
+	}
 }
 
 // mapFactTypeToGedcomTag maps a FactType to its corresponding GEDCOM tag string.

@@ -175,8 +175,8 @@ func TestUpdatePerson(t *testing.T) {
 	json.Unmarshal(createRec.Body.Bytes(), &createResp)
 	personID := createResp["id"].(string)
 
-	// Update the person
-	updateBody := `{"given_name":"Jane","version":1}`
+	// Update the person (version is 2 because creating a person also creates a primary name)
+	updateBody := `{"given_name":"Jane","version":2}`
 	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/persons/"+personID, strings.NewReader(updateBody))
 	updateReq.Header.Set("Content-Type", "application/json")
 	updateRec := httptest.NewRecorder()
@@ -235,8 +235,8 @@ func TestDeletePerson(t *testing.T) {
 	json.Unmarshal(createRec.Body.Bytes(), &createResp)
 	personID := createResp["id"].(string)
 
-	// Delete the person
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/"+personID+"?version=1", http.NoBody)
+	// Delete the person (version is 2 because creating a person also creates a primary name)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/persons/"+personID+"?version=2", http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 

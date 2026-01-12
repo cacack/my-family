@@ -40,9 +40,24 @@ type Person struct {
 	Version        int64           `json:"version"`
 }
 
-// PersonDetail includes family relationships.
+// PersonName represents a name variant for a person in query results.
+type PersonName struct {
+	ID            uuid.UUID `json:"id"`
+	GivenName     string    `json:"given_name"`
+	Surname       string    `json:"surname"`
+	FullName      string    `json:"full_name"`
+	NamePrefix    string    `json:"name_prefix,omitempty"`
+	NameSuffix    string    `json:"name_suffix,omitempty"`
+	SurnamePrefix string    `json:"surname_prefix,omitempty"`
+	Nickname      string    `json:"nickname,omitempty"`
+	NameType      string    `json:"name_type"`
+	IsPrimary     bool      `json:"is_primary"`
+}
+
+// PersonDetail includes family relationships and names.
 type PersonDetail struct {
 	Person
+	Names             []PersonName    `json:"names,omitempty"`
 	FamiliesAsPartner []FamilySummary `json:"families_as_partner,omitempty"`
 	FamilyAsChild     *FamilySummary  `json:"family_as_child,omitempty"`
 }
@@ -111,7 +126,7 @@ func (s *PersonService) ListPersons(ctx context.Context, input ListPersonsInput)
 	}, nil
 }
 
-// GetPerson returns a person by ID with family relationships.
+// GetPerson returns a person by ID with family relationships and names.
 func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDetail, error) {
 	rm, err := s.readStore.GetPerson(ctx, id)
 	if err != nil {
@@ -124,6 +139,15 @@ func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDet
 	person := convertReadModelToPerson(*rm)
 	detail := &PersonDetail{
 		Person: person,
+	}
+
+	// Get all names for the person
+	nameReadModels, err := s.readStore.GetPersonNames(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, nm := range nameReadModels {
+		detail.Names = append(detail.Names, convertPersonNameReadModel(nm))
 	}
 
 	// Get families where person is a partner
@@ -250,6 +274,46 @@ func convertToFamilySummary(rm repository.FamilyReadModel) FamilySummary {
 		s.RelationshipType = &rt
 	}
 	return s
+}
+
+// GetPersonNames returns all names for a person.
+func (s *PersonService) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]PersonName, error) {
+	// Verify the person exists
+	rm, err := s.readStore.GetPerson(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+	if rm == nil {
+		return nil, ErrNotFound
+	}
+
+	nameReadModels, err := s.readStore.GetPersonNames(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]PersonName, len(nameReadModels))
+	for i, nm := range nameReadModels {
+		names[i] = convertPersonNameReadModel(nm)
+	}
+
+	return names, nil
+}
+
+// convertPersonNameReadModel converts a PersonNameReadModel to a PersonName query result.
+func convertPersonNameReadModel(rm repository.PersonNameReadModel) PersonName {
+	return PersonName{
+		ID:            rm.ID,
+		GivenName:     rm.GivenName,
+		Surname:       rm.Surname,
+		FullName:      rm.FullName,
+		NamePrefix:    rm.NamePrefix,
+		NameSuffix:    rm.NameSuffix,
+		SurnamePrefix: rm.SurnamePrefix,
+		Nickname:      rm.Nickname,
+		NameType:      string(rm.NameType),
+		IsPrimary:     rm.IsPrimary,
+	}
 }
 
 // GenDateToSortTime converts a GenDate to a sortable time for queries.

@@ -471,6 +471,45 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:      "NameAdded",
+			event:     domain.NewNameAdded(domain.NewPersonName(uuid.New(), "John", "Doe")),
+			eventType: "NameAdded",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.NameAdded)
+				if !ok {
+					t.Fatalf("Expected NameAdded, got %T", decoded)
+				}
+				if e.GivenName != "John" {
+					t.Errorf("GivenName = %s, want John", e.GivenName)
+				}
+			},
+		},
+		{
+			name:      "NameUpdated",
+			event:     domain.NewNameUpdated(domain.NewPersonName(uuid.New(), "Jane", "Smith")),
+			eventType: "NameUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.NameUpdated)
+				if !ok {
+					t.Fatalf("Expected NameUpdated, got %T", decoded)
+				}
+				if e.GivenName != "Jane" {
+					t.Errorf("GivenName = %s, want Jane", e.GivenName)
+				}
+			},
+		},
+		{
+			name:      "NameRemoved",
+			event:     domain.NewNameRemoved(uuid.New(), uuid.New()),
+			eventType: "NameRemoved",
+			validate: func(t *testing.T, decoded domain.Event) {
+				_, ok := decoded.(domain.NameRemoved)
+				if !ok {
+					t.Fatalf("Expected NameRemoved, got %T", decoded)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

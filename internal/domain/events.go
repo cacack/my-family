@@ -726,3 +726,92 @@ func NewAttributeDeleted(attributeID uuid.UUID, reason string) AttributeDeleted 
 		Reason:      reason,
 	}
 }
+
+// NameAdded event is emitted when a name is added to a person.
+type NameAdded struct {
+	BaseEvent
+	PersonID      uuid.UUID `json:"person_id"`
+	NameID        uuid.UUID `json:"name_id"`
+	GivenName     string    `json:"given_name"`
+	Surname       string    `json:"surname,omitempty"`
+	NamePrefix    string    `json:"name_prefix,omitempty"`
+	NameSuffix    string    `json:"name_suffix,omitempty"`
+	SurnamePrefix string    `json:"surname_prefix,omitempty"`
+	Nickname      string    `json:"nickname,omitempty"`
+	NameType      NameType  `json:"name_type,omitempty"`
+	IsPrimary     bool      `json:"is_primary"`
+}
+
+func (e NameAdded) EventType() string      { return "NameAdded" }
+func (e NameAdded) AggregateID() uuid.UUID { return e.PersonID }
+
+// NewNameAdded creates a NameAdded event from a PersonName.
+func NewNameAdded(pn *PersonName) NameAdded {
+	return NameAdded{
+		BaseEvent:     NewBaseEvent(),
+		PersonID:      pn.PersonID,
+		NameID:        pn.ID,
+		GivenName:     pn.GivenName,
+		Surname:       pn.Surname,
+		NamePrefix:    pn.NamePrefix,
+		NameSuffix:    pn.NameSuffix,
+		SurnamePrefix: pn.SurnamePrefix,
+		Nickname:      pn.Nickname,
+		NameType:      pn.NameType,
+		IsPrimary:     pn.IsPrimary,
+	}
+}
+
+// NameUpdated event is emitted when a name is modified.
+type NameUpdated struct {
+	BaseEvent
+	PersonID      uuid.UUID `json:"person_id"`
+	NameID        uuid.UUID `json:"name_id"`
+	GivenName     string    `json:"given_name"`
+	Surname       string    `json:"surname,omitempty"`
+	NamePrefix    string    `json:"name_prefix,omitempty"`
+	NameSuffix    string    `json:"name_suffix,omitempty"`
+	SurnamePrefix string    `json:"surname_prefix,omitempty"`
+	Nickname      string    `json:"nickname,omitempty"`
+	NameType      NameType  `json:"name_type,omitempty"`
+	IsPrimary     bool      `json:"is_primary"`
+}
+
+func (e NameUpdated) EventType() string      { return "NameUpdated" }
+func (e NameUpdated) AggregateID() uuid.UUID { return e.PersonID }
+
+// NewNameUpdated creates a NameUpdated event from a PersonName.
+func NewNameUpdated(pn *PersonName) NameUpdated {
+	return NameUpdated{
+		BaseEvent:     NewBaseEvent(),
+		PersonID:      pn.PersonID,
+		NameID:        pn.ID,
+		GivenName:     pn.GivenName,
+		Surname:       pn.Surname,
+		NamePrefix:    pn.NamePrefix,
+		NameSuffix:    pn.NameSuffix,
+		SurnamePrefix: pn.SurnamePrefix,
+		Nickname:      pn.Nickname,
+		NameType:      pn.NameType,
+		IsPrimary:     pn.IsPrimary,
+	}
+}
+
+// NameRemoved event is emitted when a name is deleted.
+type NameRemoved struct {
+	BaseEvent
+	PersonID uuid.UUID `json:"person_id"`
+	NameID   uuid.UUID `json:"name_id"`
+}
+
+func (e NameRemoved) EventType() string      { return "NameRemoved" }
+func (e NameRemoved) AggregateID() uuid.UUID { return e.PersonID }
+
+// NewNameRemoved creates a NameRemoved event.
+func NewNameRemoved(personID, nameID uuid.UUID) NameRemoved {
+	return NameRemoved{
+		BaseEvent: NewBaseEvent(),
+		PersonID:  personID,
+		NameID:    nameID,
+	}
+}

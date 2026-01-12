@@ -184,6 +184,44 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_media_entity ON media(entity_type, entity_id);
 		CREATE INDEX IF NOT EXISTS idx_media_type ON media(media_type);
+
+		-- Person names table (for multiple name variants)
+		CREATE TABLE IF NOT EXISTS person_names (
+			id UUID PRIMARY KEY,
+			person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+			given_name VARCHAR(100) NOT NULL,
+			surname VARCHAR(100) NOT NULL,
+			full_name VARCHAR(200) GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
+			name_prefix VARCHAR(50),
+			name_suffix VARCHAR(50),
+			surname_prefix VARCHAR(50),
+			nickname VARCHAR(100),
+			name_type VARCHAR(20) NOT NULL DEFAULT '',
+			is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+			search_vector TSVECTOR,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_person_names_person ON person_names(person_id);
+		CREATE INDEX IF NOT EXISTS idx_person_names_primary ON person_names(person_id, is_primary);
+		CREATE INDEX IF NOT EXISTS idx_person_names_search ON person_names USING GIN(search_vector);
+		CREATE INDEX IF NOT EXISTS idx_person_names_given_trgm ON person_names USING GIN(given_name gin_trgm_ops);
+		CREATE INDEX IF NOT EXISTS idx_person_names_surname_trgm ON person_names USING GIN(surname gin_trgm_ops);
+
+		-- Trigger to update search_vector for person_names
+		CREATE OR REPLACE FUNCTION person_names_search_trigger() RETURNS trigger AS $$
+		BEGIN
+			NEW.search_vector := to_tsvector('english',
+				coalesce(NEW.given_name,'') || ' ' ||
+				coalesce(NEW.surname,'') || ' ' ||
+				coalesce(NEW.nickname,''));
+			RETURN NEW;
+		END
+		$$ LANGUAGE plpgsql;
+
+		DROP TRIGGER IF EXISTS person_names_search_update ON person_names;
+		CREATE TRIGGER person_names_search_update BEFORE INSERT OR UPDATE ON person_names
+			FOR EACH ROW EXECUTE FUNCTION person_names_search_trigger();
 	`)
 	return err
 }
@@ -255,37 +293,92 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 }
 
 // SearchPersons searches for persons by name using tsvector and trigram similarity.
+// Also searches in person_names table for alternate names.
 func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]repository.PersonReadModel, error) {
 	var rows *sql.Rows
 	var err error
 
 	if fuzzy {
-		// Use trigram similarity for fuzzy matching
+		// Use trigram similarity for fuzzy matching across both tables
 		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, given_name, surname, full_name, gender,
+			WITH matched_persons AS (
+				-- Match in main persons table
+				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
+					   p.death_date_raw, p.death_date_sort, p.death_place,
+					   p.notes, p.version, p.updated_at,
+					   TRUE as is_primary,
+					   GREATEST(
+						   similarity(p.given_name, $1),
+						   similarity(p.surname, $1),
+						   similarity(p.full_name, $1)
+					   ) as sim_score
+				FROM persons p
+				WHERE p.given_name % $1 OR p.surname % $1 OR p.full_name % $1
+
+				UNION
+
+				-- Match in person_names table
+				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
+					   p.death_date_raw, p.death_date_sort, p.death_place,
+					   p.notes, p.version, p.updated_at,
+					   pn.is_primary,
+					   GREATEST(
+						   similarity(pn.given_name, $1),
+						   similarity(pn.surname, $1),
+						   similarity(pn.full_name, $1),
+						   similarity(COALESCE(pn.nickname, ''), $1)
+					   ) as sim_score
+				FROM persons p
+				JOIN person_names pn ON p.id = pn.person_id
+				WHERE pn.given_name % $1 OR pn.surname % $1 OR pn.full_name % $1
+				   OR pn.nickname % $1
+			)
+			SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
 				   birth_date_raw, birth_date_sort, birth_place,
 				   death_date_raw, death_date_sort, death_place,
 				   notes, version, updated_at
-			FROM persons
-			WHERE given_name % $1 OR surname % $1 OR full_name % $1
-			ORDER BY GREATEST(
-				similarity(given_name, $1),
-				similarity(surname, $1),
-				similarity(full_name, $1)
-			) DESC
+			FROM matched_persons
+			ORDER BY id, is_primary DESC, sim_score DESC
 			LIMIT $2
 		`, query, limit)
 	} else {
-		// Use full-text search with tsvector
+		// Use full-text search with tsvector across both tables
 		rows, err = s.db.QueryContext(ctx, `
-			SELECT id, given_name, surname, full_name, gender,
+			WITH matched_persons AS (
+				-- Match in main persons table
+				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
+					   p.death_date_raw, p.death_date_sort, p.death_place,
+					   p.notes, p.version, p.updated_at,
+					   TRUE as is_primary,
+					   ts_rank(p.search_vector, plainto_tsquery('english', $1)) as search_rank
+				FROM persons p
+				WHERE p.search_vector @@ plainto_tsquery('english', $1)
+				   OR p.full_name ILIKE '%' || $1 || '%'
+
+				UNION
+
+				-- Match in person_names table
+				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
+					   p.death_date_raw, p.death_date_sort, p.death_place,
+					   p.notes, p.version, p.updated_at,
+					   pn.is_primary,
+					   ts_rank(pn.search_vector, plainto_tsquery('english', $1)) as search_rank
+				FROM persons p
+				JOIN person_names pn ON p.id = pn.person_id
+				WHERE pn.search_vector @@ plainto_tsquery('english', $1)
+				   OR pn.full_name ILIKE '%' || $1 || '%'
+				   OR pn.nickname ILIKE '%' || $1 || '%'
+			)
+			SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
 				   birth_date_raw, birth_date_sort, birth_place,
 				   death_date_raw, death_date_sort, death_place,
 				   notes, version, updated_at
-			FROM persons
-			WHERE search_vector @@ plainto_tsquery('english', $1)
-			   OR full_name ILIKE '%' || $1 || '%'
-			ORDER BY ts_rank(search_vector, plainto_tsquery('english', $1)) DESC
+			FROM matched_persons
+			ORDER BY id, is_primary DESC, search_rank DESC
 			LIMIT $2
 		`, query, limit)
 	}
@@ -338,6 +431,117 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 func (s *ReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM persons WHERE id = $1", id)
 	return err
+}
+
+// SavePersonName saves or updates a person name variant.
+func (s *ReadModelStore) SavePersonName(ctx context.Context, name *repository.PersonNameReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix,
+								  surname_prefix, nickname, name_type, is_primary, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT(id) DO UPDATE SET
+			person_id = EXCLUDED.person_id,
+			given_name = EXCLUDED.given_name,
+			surname = EXCLUDED.surname,
+			name_prefix = EXCLUDED.name_prefix,
+			name_suffix = EXCLUDED.name_suffix,
+			surname_prefix = EXCLUDED.surname_prefix,
+			nickname = EXCLUDED.nickname,
+			name_type = EXCLUDED.name_type,
+			is_primary = EXCLUDED.is_primary,
+			updated_at = EXCLUDED.updated_at
+	`, name.ID, name.PersonID, name.GivenName, name.Surname,
+		nullableString(name.NamePrefix), nullableString(name.NameSuffix),
+		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
+		nullableString(string(name.NameType)), name.IsPrimary, name.UpdatedAt)
+
+	return err
+}
+
+// GetPersonName retrieves a person name by ID.
+func (s *ReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
+			   surname_prefix, nickname, name_type, is_primary, updated_at
+		FROM person_names WHERE id = $1
+	`, nameID)
+
+	return scanPersonName(row)
+}
+
+// GetPersonNames retrieves all name variants for a person.
+func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
+			   surname_prefix, nickname, name_type, is_primary, updated_at
+		FROM person_names
+		WHERE person_id = $1
+		ORDER BY is_primary DESC, name_type
+	`, personID)
+	if err != nil {
+		return nil, fmt.Errorf("query person names: %w", err)
+	}
+	defer rows.Close()
+
+	var names []repository.PersonNameReadModel
+	for rows.Next() {
+		n, err := scanPersonNameRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, *n)
+	}
+
+	return names, rows.Err()
+}
+
+// DeletePersonName removes a person name.
+func (s *ReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM person_names WHERE id = $1", nameID)
+	return err
+}
+
+// scanPersonName scans a single person name row.
+func scanPersonName(row rowScanner) (*repository.PersonNameReadModel, error) {
+	var (
+		id, personID                                    uuid.UUID
+		givenName, surname, fullName                    string
+		namePrefix, nameSuffix, surnamePrefix, nickname sql.NullString
+		nameType                                        sql.NullString
+		isPrimary                                       bool
+		updatedAt                                       time.Time
+	)
+
+	err := row.Scan(&id, &personID, &givenName, &surname, &fullName,
+		&namePrefix, &nameSuffix, &surnamePrefix, &nickname,
+		&nameType, &isPrimary, &updatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan person name: %w", err)
+	}
+
+	return &repository.PersonNameReadModel{
+		ID:            id,
+		PersonID:      personID,
+		GivenName:     givenName,
+		Surname:       surname,
+		FullName:      fullName,
+		NamePrefix:    namePrefix.String,
+		NameSuffix:    nameSuffix.String,
+		SurnamePrefix: surnamePrefix.String,
+		Nickname:      nickname.String,
+		NameType:      domain.NameType(nameType.String),
+		IsPrimary:     isPrimary,
+		UpdatedAt:     updatedAt,
+	}, nil
+}
+
+// scanPersonNameRow scans a person name from rows.
+func scanPersonNameRow(rows *sql.Rows) (*repository.PersonNameReadModel, error) {
+	return scanPersonName(rows)
 }
 
 // GetFamily retrieves a family by ID.

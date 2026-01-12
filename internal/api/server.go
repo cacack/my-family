@@ -152,6 +152,12 @@ func (s *Server) registerRoutes() {
 	// Person citations (nested under persons)
 	api.GET("/persons/:id/citations", s.getCitationsForPerson)
 
+	// Person names (nested under persons)
+	api.GET("/persons/:id/names", s.getPersonNames)
+	api.POST("/persons/:id/names", s.addPersonName)
+	api.PUT("/persons/:id/names/:nameId", s.updatePersonName)
+	api.DELETE("/persons/:id/names/:nameId", s.deletePersonName)
+
 	// GEDCOM (placeholder - will be implemented in Phase 5)
 	api.POST("/gedcom/import", s.importGedcom)
 	api.GET("/gedcom/export", s.exportGedcom)

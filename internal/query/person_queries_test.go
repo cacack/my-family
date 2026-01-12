@@ -585,3 +585,206 @@ func TestGenDateToSortTime(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPersonNames(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewPersonService(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Add a primary name
+	_, err = handler.AddName(ctx, command.AddNameInput{
+		PersonID:  createResult.ID,
+		GivenName: "John",
+		Surname:   "Doe",
+		IsPrimary: true,
+	})
+	if err != nil {
+		t.Fatalf("AddName failed: %v", err)
+	}
+
+	// Get names for the person
+	names, err := service.GetPersonNames(ctx, createResult.ID)
+	if err != nil {
+		t.Fatalf("GetPersonNames failed: %v", err)
+	}
+
+	// Should have one primary name
+	if len(names) != 1 {
+		t.Errorf("len(names) = %d, want 1", len(names))
+	}
+
+	if names[0].GivenName != "John" {
+		t.Errorf("GivenName = %s, want John", names[0].GivenName)
+	}
+	if names[0].Surname != "Doe" {
+		t.Errorf("Surname = %s, want Doe", names[0].Surname)
+	}
+	if !names[0].IsPrimary {
+		t.Error("Expected first name to be primary")
+	}
+}
+
+func TestGetPersonNames_MultipleNames(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewPersonService(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Jane",
+		Surname:   "Smith",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Add a primary name (married name)
+	_, err = handler.AddName(ctx, command.AddNameInput{
+		PersonID:  createResult.ID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		IsPrimary: true,
+	})
+	if err != nil {
+		t.Fatalf("AddName failed: %v", err)
+	}
+
+	// Add a maiden name
+	_, err = handler.AddName(ctx, command.AddNameInput{
+		PersonID:  createResult.ID,
+		GivenName: "Jane",
+		Surname:   "Johnson",
+		NameType:  "birth",
+	})
+	if err != nil {
+		t.Fatalf("AddName failed: %v", err)
+	}
+
+	// Get names for the person
+	names, err := service.GetPersonNames(ctx, createResult.ID)
+	if err != nil {
+		t.Fatalf("GetPersonNames failed: %v", err)
+	}
+
+	// Should have two names now
+	if len(names) != 2 {
+		t.Errorf("len(names) = %d, want 2", len(names))
+	}
+
+	// Count primary names (should be exactly 1)
+	primaryCount := 0
+	for _, n := range names {
+		if n.IsPrimary {
+			primaryCount++
+		}
+	}
+	if primaryCount != 1 {
+		t.Errorf("primary count = %d, want 1", primaryCount)
+	}
+}
+
+func TestGetPersonNames_NotFound(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewPersonService(readStore)
+	ctx := context.Background()
+
+	// Try to get names for non-existent person
+	_, err := service.GetPersonNames(ctx, [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+	if err != query.ErrNotFound {
+		t.Errorf("Expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetPersonNames_WithAllFields(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewPersonService(readStore)
+	ctx := context.Background()
+
+	// Create a person
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Smith",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Add a primary name first
+	_, err = handler.AddName(ctx, command.AddNameInput{
+		PersonID:  createResult.ID,
+		GivenName: "John",
+		Surname:   "Smith",
+		IsPrimary: true,
+	})
+	if err != nil {
+		t.Fatalf("AddName failed: %v", err)
+	}
+
+	// Add a name with all fields
+	_, err = handler.AddName(ctx, command.AddNameInput{
+		PersonID:      createResult.ID,
+		GivenName:     "Johann",
+		Surname:       "Schmidt",
+		NamePrefix:    "Dr.",
+		NameSuffix:    "Jr.",
+		SurnamePrefix: "von",
+		Nickname:      "Johnny",
+		NameType:      "immigrant",
+	})
+	if err != nil {
+		t.Fatalf("AddName failed: %v", err)
+	}
+
+	// Get names for the person
+	names, err := service.GetPersonNames(ctx, createResult.ID)
+	if err != nil {
+		t.Fatalf("GetPersonNames failed: %v", err)
+	}
+
+	// Find the immigrant name
+	var immigrantName *query.PersonName
+	for i := range names {
+		if names[i].NameType == "immigrant" {
+			immigrantName = &names[i]
+			break
+		}
+	}
+
+	if immigrantName == nil {
+		t.Fatal("Expected to find immigrant name")
+	}
+
+	if immigrantName.GivenName != "Johann" {
+		t.Errorf("GivenName = %s, want Johann", immigrantName.GivenName)
+	}
+	if immigrantName.Surname != "Schmidt" {
+		t.Errorf("Surname = %s, want Schmidt", immigrantName.Surname)
+	}
+	if immigrantName.NamePrefix != "Dr." {
+		t.Errorf("NamePrefix = %s, want Dr.", immigrantName.NamePrefix)
+	}
+	if immigrantName.NameSuffix != "Jr." {
+		t.Errorf("NameSuffix = %s, want Jr.", immigrantName.NameSuffix)
+	}
+	if immigrantName.SurnamePrefix != "von" {
+		t.Errorf("SurnamePrefix = %s, want von", immigrantName.SurnamePrefix)
+	}
+	if immigrantName.Nickname != "Johnny" {
+		t.Errorf("Nickname = %s, want Johnny", immigrantName.Nickname)
+	}
+}

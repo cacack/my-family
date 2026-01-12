@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,6 +70,12 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectAttributeCreated(ctx, e, version)
 	case domain.AttributeDeleted:
 		return p.projectAttributeDeleted(ctx, e)
+	case domain.NameAdded:
+		return p.projectNameAdded(ctx, e, version)
+	case domain.NameUpdated:
+		return p.projectNameUpdated(ctx, e, version)
+	case domain.NameRemoved:
+		return p.projectNameRemoved(ctx, e, version)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
@@ -801,4 +808,113 @@ func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.Attrib
 
 func (p *Projector) projectAttributeDeleted(ctx context.Context, e domain.AttributeDeleted) error {
 	return p.readStore.DeleteAttribute(ctx, e.AttributeID)
+}
+
+func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64) error {
+	// Build full name from components
+	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
+
+	name := &PersonNameReadModel{
+		ID:            e.NameID,
+		PersonID:      e.PersonID,
+		GivenName:     e.GivenName,
+		Surname:       e.Surname,
+		FullName:      fullName,
+		NamePrefix:    e.NamePrefix,
+		NameSuffix:    e.NameSuffix,
+		SurnamePrefix: e.SurnamePrefix,
+		Nickname:      e.Nickname,
+		NameType:      e.NameType,
+		IsPrimary:     e.IsPrimary,
+		UpdatedAt:     e.OccurredAt(),
+	}
+
+	if err := p.readStore.SavePersonName(ctx, name); err != nil {
+		return err
+	}
+
+	// Update person version to stay in sync with event stream
+	return p.updatePersonVersion(ctx, e.PersonID, version)
+}
+
+func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated, version int64) error {
+	// Build full name from components
+	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
+
+	name := &PersonNameReadModel{
+		ID:            e.NameID,
+		PersonID:      e.PersonID,
+		GivenName:     e.GivenName,
+		Surname:       e.Surname,
+		FullName:      fullName,
+		NamePrefix:    e.NamePrefix,
+		NameSuffix:    e.NameSuffix,
+		SurnamePrefix: e.SurnamePrefix,
+		Nickname:      e.Nickname,
+		NameType:      e.NameType,
+		IsPrimary:     e.IsPrimary,
+		UpdatedAt:     e.OccurredAt(),
+	}
+
+	if err := p.readStore.SavePersonName(ctx, name); err != nil {
+		return err
+	}
+
+	// Update person version to stay in sync with event stream
+	return p.updatePersonVersion(ctx, e.PersonID, version)
+}
+
+func (p *Projector) projectNameRemoved(ctx context.Context, e domain.NameRemoved, version int64) error {
+	if err := p.readStore.DeletePersonName(ctx, e.NameID); err != nil {
+		return err
+	}
+
+	// Update person version to stay in sync with event stream
+	return p.updatePersonVersion(ctx, e.PersonID, version)
+}
+
+// updatePersonVersion updates a person's version in the read model.
+func (p *Projector) updatePersonVersion(ctx context.Context, personID uuid.UUID, version int64) error {
+	person, err := p.readStore.GetPerson(ctx, personID)
+	if err != nil {
+		return fmt.Errorf("get person for version update: %w", err)
+	}
+	if person == nil {
+		// Person may not exist yet if events are out of order
+		return nil
+	}
+	person.Version = version
+	return p.readStore.SavePerson(ctx, person)
+}
+
+// buildFullName constructs a full name from its components.
+func buildFullName(givenName, surname, namePrefix, nameSuffix, surnamePrefix string) string {
+	var parts []string
+
+	if namePrefix != "" {
+		parts = append(parts, namePrefix)
+	}
+	if givenName != "" {
+		parts = append(parts, givenName)
+	}
+	if surnamePrefix != "" {
+		parts = append(parts, surnamePrefix)
+	}
+	if surname != "" {
+		parts = append(parts, surname)
+	}
+	if nameSuffix != "" {
+		parts = append(parts, nameSuffix)
+	}
+
+	if len(parts) == 0 {
+		return ""
+	}
+
+	// Join with spaces
+	result := parts[0]
+	for i := 1; i < len(parts); i++ {
+		result += " " + parts[i]
+	}
+	return result
 }

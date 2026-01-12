@@ -1,7 +1,11 @@
 {
-  "created": "2026-01-04T12:00:00Z",
-  "strategy": "parallel",
-  "source": "/do #32,29,26 -> meta-prompting -> simple prompts",
-  "prompts": ["031-uncertain-data-markers.md", "032-browse-surname-place.md", "033-family-group-sheet.md"],
-  "completed": ["031-uncertain-data-markers.md", "032-browse-surname-place.md", "033-family-group-sheet.md"]
+  "created": "2026-01-12T17:00:00Z",
+  "source": "/create-prompt Issue #33: Multiple name handling",
+  "execution": [
+    {"strategy": "sequential", "prompts": ["001-33-domain-events.md"]},
+    {"strategy": "sequential", "prompts": ["002-33-storage-layer.md"]},
+    {"strategy": "sequential", "prompts": ["003-33-projector-query.md"]},
+    {"strategy": "parallel", "prompts": ["004-33-api-layer.md", "005-33-gedcom-import-export.md"]}
+  ],
+  "completed": ["001-33-domain-events.md", "002-33-storage-layer.md", "003-33-projector-query.md", "004-33-api-layer.md", "005-33-gedcom-import-export.md"]
 }

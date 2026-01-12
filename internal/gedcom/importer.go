@@ -41,6 +41,18 @@ type ImportResult struct {
 	RepositoryXrefToID map[string]uuid.UUID
 }
 
+// PersonNameData contains parsed name data for a person.
+type PersonNameData struct {
+	GivenName     string
+	Surname       string
+	NamePrefix    string          // Dr., Rev., Sir (NPFX)
+	NameSuffix    string          // Jr., III, PhD (NSFX)
+	SurnamePrefix string          // von, de, van (SPFX)
+	Nickname      string          // Informal name (NICK)
+	NameType      domain.NameType // birth, married, aka (TYPE)
+	IsPrimary     bool            // First name is primary
+}
+
 // PersonData contains parsed person data ready for creation.
 type PersonData struct {
 	ID            uuid.UUID
@@ -58,6 +70,10 @@ type PersonData struct {
 	DeathDate     string
 	DeathPlace    string
 	Notes         string
+
+	// Names contains all name variants from the GEDCOM file.
+	// The first name is also stored in the main GivenName/Surname fields.
+	Names []PersonNameData
 
 	// FamilySearchID is the FamilySearch Family Tree ID from the _FSFTID tag.
 	// This is a vendor extension from FamilySearch.org that uniquely identifies
@@ -289,31 +305,41 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		GedcomXref: indi.XRef,
 	}
 
-	// Parse name with all components
+	// Parse ALL names with all components
 	if len(indi.Names) > 0 {
-		name := indi.Names[0]
-		person.GivenName = strings.TrimSpace(name.Given)
-		person.Surname = strings.TrimSpace(name.Surname)
-		person.NamePrefix = strings.TrimSpace(name.Prefix)
-		person.NameSuffix = strings.TrimSpace(name.Suffix)
-		person.SurnamePrefix = strings.TrimSpace(name.SurnamePrefix)
-		person.Nickname = strings.TrimSpace(name.Nickname)
+		for i, name := range indi.Names {
+			nameData := PersonNameData{
+				GivenName:     strings.TrimSpace(name.Given),
+				Surname:       strings.TrimSpace(name.Surname),
+				NamePrefix:    strings.TrimSpace(name.Prefix),
+				NameSuffix:    strings.TrimSpace(name.Suffix),
+				SurnamePrefix: strings.TrimSpace(name.SurnamePrefix),
+				Nickname:      strings.TrimSpace(name.Nickname),
+				NameType:      mapNameType(name.Type),
+				IsPrimary:     i == 0, // First name is primary
+			}
 
-		// Map name type
-		switch strings.ToLower(name.Type) {
-		case "birth":
-			person.NameType = domain.NameTypeBirth
-		case "married":
-			person.NameType = domain.NameTypeMarried
-		case "aka":
-			person.NameType = domain.NameTypeAKA
-		}
+			// Given name is required - use "Unknown" if missing
+			if nameData.GivenName == "" {
+				nameData.GivenName = "Unknown"
+				if i == 0 {
+					result.Warnings = append(result.Warnings,
+						fmt.Sprintf("Individual %s: missing given name, using 'Unknown'", indi.XRef))
+				}
+			}
 
-		// Given name is required
-		if person.GivenName == "" {
-			person.GivenName = "Unknown"
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Individual %s: missing given name, using 'Unknown'", indi.XRef))
+			person.Names = append(person.Names, nameData)
+
+			// First name populates the main Person fields for display
+			if i == 0 {
+				person.GivenName = nameData.GivenName
+				person.Surname = nameData.Surname
+				person.NamePrefix = nameData.NamePrefix
+				person.NameSuffix = nameData.NameSuffix
+				person.SurnamePrefix = nameData.SurnamePrefix
+				person.Nickname = nameData.Nickname
+				person.NameType = nameData.NameType
+			}
 		}
 		// Surname can be empty (historical records, royalty, single-name individuals)
 	} else {
@@ -887,4 +913,25 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 	}
 
 	return events
+}
+
+// mapNameType converts a GEDCOM name TYPE value to a domain NameType.
+func mapNameType(gedcomType string) domain.NameType {
+	switch strings.ToLower(gedcomType) {
+	case "birth":
+		return domain.NameTypeBirth
+	case "married", "marriage":
+		return domain.NameTypeMarried
+	case "aka", "alias":
+		return domain.NameTypeAKA
+	case "immigrant", "immigration":
+		return domain.NameTypeImmigrant
+	case "religious":
+		return domain.NameTypeReligious
+	case "professional", "stage":
+		return domain.NameTypeProfessional
+	default:
+		// Return empty for unknown types (valid per NameType.IsValid)
+		return ""
+	}
 }
