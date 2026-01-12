@@ -206,6 +206,32 @@ export interface Pedigree {
 	generations?: number;
 }
 
+export interface AhnentafelEntry {
+	number: number;
+	id?: string;
+	given_name?: string;
+	surname?: string;
+	gender?: 'male' | 'female' | 'unknown';
+	birth_date?: GenDate;
+	birth_place?: string;
+	death_date?: GenDate;
+	death_place?: string;
+	relationship: string;
+	generation: number;
+}
+
+export interface AhnentafelResponse {
+	subject: {
+		id: string;
+		given_name: string;
+		surname: string;
+	};
+	generations: number;
+	entries: AhnentafelEntry[];
+	total_count: number;
+	known_count: number;
+}
+
 export interface SearchResult extends PersonSummary {
 	score?: number;
 }
@@ -556,6 +582,30 @@ class ApiClient {
 	async getPedigree(personId: string, generations?: number): Promise<Pedigree> {
 		const params = generations ? `?generations=${generations}` : '';
 		return this.request<Pedigree>('GET', `/pedigree/${personId}${params}`);
+	}
+
+	// Ahnentafel endpoint
+	async getAhnentafel(personId: string, generations?: number): Promise<AhnentafelResponse> {
+		const params = generations ? `?generations=${generations}` : '';
+		return this.request<AhnentafelResponse>('GET', `/ahnentafel/${personId}${params}`);
+	}
+
+	async getAhnentafelText(personId: string, generations?: number): Promise<string> {
+		const params = new URLSearchParams();
+		params.set('format', 'text');
+		if (generations) params.set('generations', generations.toString());
+
+		const response = await fetch(`${API_BASE}/ahnentafel/${personId}?${params.toString()}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			throw error;
+		}
+
+		return response.text();
 	}
 
 	// Search endpoint

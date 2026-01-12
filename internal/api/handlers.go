@@ -1,9 +1,11 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -970,6 +972,232 @@ func convertPedigreeNode(node *query.PedigreeNode) *PedigreeNodeResponse {
 	resp.Mother = convertPedigreeNode(node.Mother)
 
 	return resp
+}
+
+// AhnentafelEntryResponse represents a single entry in an Ahnentafel report.
+type AhnentafelEntryResponse struct {
+	Number     int     `json:"number"`
+	Generation int     `json:"generation"`
+	ID         string  `json:"id"`
+	GivenName  string  `json:"given_name"`
+	Surname    string  `json:"surname"`
+	Gender     *string `json:"gender,omitempty"`
+	BirthDate  *string `json:"birth_date,omitempty"`
+	BirthPlace *string `json:"birth_place,omitempty"`
+	DeathDate  *string `json:"death_date,omitempty"`
+	DeathPlace *string `json:"death_place,omitempty"`
+}
+
+// AhnentafelRootPersonResponse represents the root person in an Ahnentafel report.
+type AhnentafelRootPersonResponse struct {
+	ID        string `json:"id"`
+	GivenName string `json:"given_name"`
+	Surname   string `json:"surname"`
+}
+
+// AhnentafelResponse represents the complete Ahnentafel report.
+type AhnentafelResponse struct {
+	RootPerson    AhnentafelRootPersonResponse `json:"root_person"`
+	Entries       []AhnentafelEntryResponse    `json:"entries"`
+	TotalEntries  int                          `json:"total_entries"`
+	MaxGeneration int                          `json:"max_generation"`
+}
+
+// getAhnentafel handles GET /ahnentafel/:id
+func (s *Server) getAhnentafel(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid person ID")
+	}
+
+	// Get generations from query param (default 5, max 10)
+	maxGen := 5
+	if mg := c.QueryParam("generations"); mg != "" {
+		if parsed, err := strconv.Atoi(mg); err == nil && parsed > 0 {
+			if parsed > 10 {
+				parsed = 10
+			}
+			maxGen = parsed
+		}
+	}
+
+	// Get format from query param (default "json")
+	format := c.QueryParam("format")
+	if format == "" {
+		format = "json"
+	}
+	if format != "json" && format != "text" {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid format: "+format+"; valid formats are 'json' or 'text'")
+	}
+
+	result, err := s.ahnentafelService.GetAhnentafel(c.Request().Context(), query.GetAhnentafelInput{
+		PersonID:       id,
+		MaxGenerations: maxGen,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Find root person (entry number 1)
+	var rootPerson AhnentafelRootPersonResponse
+	for _, entry := range result.Entries {
+		if entry.Number == 1 {
+			rootPerson = AhnentafelRootPersonResponse{
+				ID:        entry.ID.String(),
+				GivenName: entry.GivenName,
+				Surname:   entry.Surname,
+			}
+			break
+		}
+	}
+
+	if format == "text" {
+		return s.formatAhnentafelText(c, result, rootPerson)
+	}
+
+	// JSON format
+	response := AhnentafelResponse{
+		RootPerson:    rootPerson,
+		Entries:       make([]AhnentafelEntryResponse, len(result.Entries)),
+		TotalEntries:  result.TotalEntries,
+		MaxGeneration: result.MaxGeneration,
+	}
+
+	for i, entry := range result.Entries {
+		response.Entries[i] = convertAhnentafelEntry(entry)
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// convertAhnentafelEntry converts a query AhnentafelEntry to API response format.
+func convertAhnentafelEntry(entry query.AhnentafelEntry) AhnentafelEntryResponse {
+	resp := AhnentafelEntryResponse{
+		Number:     entry.Number,
+		Generation: entry.Generation,
+		ID:         entry.ID.String(),
+		GivenName:  entry.GivenName,
+		Surname:    entry.Surname,
+	}
+
+	if entry.Gender != "" {
+		resp.Gender = &entry.Gender
+	}
+	if entry.BirthDate != nil {
+		bd := entry.BirthDate.String()
+		resp.BirthDate = &bd
+	}
+	if entry.BirthPlace != nil {
+		resp.BirthPlace = entry.BirthPlace
+	}
+	if entry.DeathDate != nil {
+		dd := entry.DeathDate.String()
+		resp.DeathDate = &dd
+	}
+	if entry.DeathPlace != nil {
+		resp.DeathPlace = entry.DeathPlace
+	}
+
+	return resp
+}
+
+// formatAhnentafelText formats the Ahnentafel report as plain text.
+func (s *Server) formatAhnentafelText(c echo.Context, result *query.AhnentafelResult, root AhnentafelRootPersonResponse) error {
+	c.Response().Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString("AHNENTAFEL REPORT\n")
+	sb.WriteString("=================\n")
+	sb.WriteString(fmt.Sprintf("Subject: %s %s\n\n", root.GivenName, root.Surname))
+
+	// Entries
+	for _, entry := range result.Entries {
+		// Ahnentafel number and name
+		relationLabel := getRelationLabel(entry.Number)
+		if relationLabel != "" {
+			sb.WriteString(fmt.Sprintf("%d. %s %s (%s)\n", entry.Number, entry.GivenName, entry.Surname, relationLabel))
+		} else {
+			sb.WriteString(fmt.Sprintf("%d. %s %s\n", entry.Number, entry.GivenName, entry.Surname))
+		}
+
+		// Birth
+		var birthDateStr string
+		if entry.BirthDate != nil {
+			birthDateStr = entry.BirthDate.String()
+		}
+		birthStr := formatEventLine("b.", birthDateStr, entry.BirthPlace)
+		sb.WriteString(fmt.Sprintf("   %s\n", birthStr))
+
+		// Death
+		var deathDateStr string
+		if entry.DeathDate != nil {
+			deathDateStr = entry.DeathDate.String()
+		}
+		deathStr := formatEventLine("d.", deathDateStr, entry.DeathPlace)
+		sb.WriteString(fmt.Sprintf("   %s\n", deathStr))
+
+		sb.WriteString("\n")
+	}
+
+	// Footer
+	sb.WriteString(fmt.Sprintf("Generated: %s\n", time.Now().Format("2006-01-02")))
+	sb.WriteString(fmt.Sprintf("Total ancestors: %d\n", result.TotalEntries))
+	sb.WriteString(fmt.Sprintf("Generations: %d\n", result.MaxGeneration))
+
+	return c.String(http.StatusOK, sb.String())
+}
+
+// getRelationLabel returns the relationship label for a given Ahnentafel number.
+func getRelationLabel(num int) string {
+	if num == 1 {
+		return ""
+	}
+	if num == 2 {
+		return "Father"
+	}
+	if num == 3 {
+		return "Mother"
+	}
+
+	// For higher numbers, build the relationship string
+	// Start from the person and work backwards to find the path
+	var path []string
+	n := num
+	for n > 1 {
+		if n%2 == 0 {
+			path = append([]string{"Father"}, path...)
+		} else {
+			path = append([]string{"Mother"}, path...)
+		}
+		n /= 2
+	}
+
+	// Convert path to a label like "Father's Father" or "Mother's Mother"
+	if len(path) == 0 {
+		return ""
+	}
+
+	result := path[0]
+	for i := 1; i < len(path); i++ {
+		result += "'s " + path[i]
+	}
+	return result
+}
+
+// formatEventLine formats a birth or death event line.
+func formatEventLine(prefix string, date string, place *string) string {
+	dateStr := "-"
+	if date != "" {
+		dateStr = date
+	}
+
+	if place != nil && *place != "" {
+		return fmt.Sprintf("%s %s, %s", prefix, dateStr, *place)
+	}
+	return fmt.Sprintf("%s %s", prefix, dateStr)
 }
 
 // ImportGedcomResponse represents the response from a GEDCOM import.

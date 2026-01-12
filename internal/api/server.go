@@ -18,18 +18,19 @@ import (
 
 // Server wraps the Echo server with application dependencies.
 type Server struct {
-	echo            *echo.Echo
-	config          *config.Config
-	readStore       repository.ReadModelStore
-	commandHandler  *command.Handler
-	personService   *query.PersonService
-	familyService   *query.FamilyService
-	pedigreeService *query.PedigreeService
-	sourceService   *query.SourceService
-	historyService  *query.HistoryService
-	rollbackService *query.RollbackService
-	browseService   *query.BrowseService
-	frontendFS      fs.FS
+	echo              *echo.Echo
+	config            *config.Config
+	readStore         repository.ReadModelStore
+	commandHandler    *command.Handler
+	personService     *query.PersonService
+	familyService     *query.FamilyService
+	pedigreeService   *query.PedigreeService
+	ahnentafelService *query.AhnentafelService
+	sourceService     *query.SourceService
+	historyService    *query.HistoryService
+	rollbackService   *query.RollbackService
+	browseService     *query.BrowseService
+	frontendFS        fs.FS
 }
 
 // NewServer creates a new API server with all dependencies.
@@ -69,24 +70,26 @@ func NewServer(
 	personSvc := query.NewPersonService(readStore)
 	familySvc := query.NewFamilyService(readStore)
 	pedigreeSvc := query.NewPedigreeService(readStore)
+	ahnentafelSvc := query.NewAhnentafelService(pedigreeSvc)
 	sourceSvc := query.NewSourceService(readStore)
 	historySvc := query.NewHistoryService(eventStore, readStore)
 	rollbackSvc := query.NewRollbackService(eventStore, readStore)
 	browseSvc := query.NewBrowseService(readStore)
 
 	server := &Server{
-		echo:            e,
-		config:          cfg,
-		readStore:       readStore,
-		commandHandler:  cmdHandler,
-		personService:   personSvc,
-		familyService:   familySvc,
-		pedigreeService: pedigreeSvc,
-		sourceService:   sourceSvc,
-		historyService:  historySvc,
-		rollbackService: rollbackSvc,
-		browseService:   browseSvc,
-		frontendFS:      frontendFS,
+		echo:              e,
+		config:            cfg,
+		readStore:         readStore,
+		commandHandler:    cmdHandler,
+		personService:     personSvc,
+		familyService:     familySvc,
+		pedigreeService:   pedigreeSvc,
+		ahnentafelService: ahnentafelSvc,
+		sourceService:     sourceSvc,
+		historyService:    historySvc,
+		rollbackService:   rollbackSvc,
+		browseService:     browseSvc,
+		frontendFS:        frontendFS,
 	}
 
 	// Register routes
@@ -133,6 +136,9 @@ func (s *Server) registerRoutes() {
 
 	// Pedigree (placeholder - will be implemented in Phase 6)
 	api.GET("/pedigree/:id", s.getPedigree)
+
+	// Ahnentafel reports
+	api.GET("/ahnentafel/:id", s.getAhnentafel)
 
 	// Sources
 	api.GET("/sources", s.listSources)

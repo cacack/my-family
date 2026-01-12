@@ -17,6 +17,7 @@ Completed features in my-family genealogy software.
 ## Visualization
 
 - **Pedigree Chart** - Interactive ancestor chart with D3.js, pan/zoom navigation, click-to-navigate
+- **Ahnentafel Report** - Traditional numbered ancestor list with configurable generations (2-10), print support, and text export
 - **Person Detail View** - Complete view of individual records with all associated data
 - **Family View** - View family units with partners and children
 

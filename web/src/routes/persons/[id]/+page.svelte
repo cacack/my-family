@@ -161,7 +161,8 @@
 		<a href="/persons" class="back-link">&larr; People</a>
 		{#if person && !editing}
 			<div class="actions">
-				<a href="/pedigree/{person.id}" class="btn">View Pedigree</a>
+				<a href="/pedigree/{person.id}" class="btn">Pedigree</a>
+				<a href="/ahnentafel/{person.id}" class="btn">Ahnentafel</a>
 				<button class="btn" onclick={startEdit}>Edit</button>
 				<button class="btn btn-danger" onclick={deletePerson}>Delete</button>
 			</div>

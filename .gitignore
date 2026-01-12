@@ -63,3 +63,4 @@ internal/api/openapi_gen.go
 prompts/
 .prompts/
 coverage.html
+.prompts/
