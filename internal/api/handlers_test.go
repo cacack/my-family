@@ -502,7 +502,7 @@ func TestGetPerson_WithFamilies(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &family)
 
 	// Add child to family
-	addChildBody := `{"child_id":"` + child["id"].(string) + `"}`
+	addChildBody := `{"person_id":"` + child["id"].(string) + `"}`
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+family["id"].(string)+"/children", strings.NewReader(addChildBody))
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
@@ -592,7 +592,7 @@ func TestGetFamilyGroupSheet(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &family)
 
 	// Add child to family
-	addChildBody := `{"child_id":"` + child["id"].(string) + `"}`
+	addChildBody := `{"person_id":"` + child["id"].(string) + `"}`
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+family["id"].(string)+"/children", strings.NewReader(addChildBody))
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()

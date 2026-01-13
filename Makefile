@@ -1,4 +1,4 @@
-.PHONY: help build test fmt vet generate clean run dev setup check-coverage lint security check check-full
+.PHONY: help build test fmt vet generate generate-api generate-types verify-generated clean run dev setup check-coverage lint security check check-full
 
 # Default target
 .DEFAULT_GOAL := help
@@ -46,8 +46,34 @@ fmt: ## Format Go code
 vet: ## Run go vet
 	go vet ./...
 
-generate: ## Generate code (OpenAPI, etc.)
-	go generate ./...
+generate-api: ## Generate Go code from OpenAPI spec
+	go generate ./internal/api/...
+
+generate-types: ## Generate TypeScript types from OpenAPI spec
+	cd web && npm run generate:types
+
+generate: generate-api generate-types ## Generate all code from OpenAPI spec
+
+verify-generated: ## Verify generated code matches OpenAPI spec
+	@echo "Checking Go generated code..."
+	@go generate ./internal/api/...
+	@if ! git diff --quiet internal/api/generated.go 2>/dev/null; then \
+		echo "ERROR: Go API code is out of sync with OpenAPI spec"; \
+		echo "Run 'make generate-api' and commit the changes"; \
+		git diff --stat internal/api/generated.go; \
+		exit 1; \
+	fi
+	@echo "  Go generated code is up-to-date"
+	@echo "Checking TypeScript generated types..."
+	@cd web && npm run generate:types
+	@if ! git diff --quiet web/src/lib/api/types.generated.ts 2>/dev/null; then \
+		echo "ERROR: TypeScript types are out of sync with OpenAPI spec"; \
+		echo "Run 'make generate-types' and commit the changes"; \
+		git diff --stat web/src/lib/api/types.generated.ts; \
+		exit 1; \
+	fi
+	@echo "  TypeScript generated types are up-to-date"
+	@echo "All generated code is in sync"
 
 clean: ## Clean build artifacts
 	rm -f myfamily coverage.out coverage.html
@@ -95,6 +121,7 @@ setup: deps ## Set up development environment
 	@echo "Installing development tools..."
 	go install github.com/vladopajic/go-test-coverage/v2@$(GO_TEST_COVERAGE_VERSION)
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 	ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 	ln -sf ../../scripts/pre-push .git/hooks/pre-push
 	@echo ""

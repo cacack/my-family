@@ -69,7 +69,7 @@ func TestGetQualityOverview_EmptyDatabase(t *testing.T) {
 		t.Fatalf("Status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp api.QualityOverviewResponse
+	var resp api.QualityOverview
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestGetQualityOverview_WithData(t *testing.T) {
 		t.Fatalf("Status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp api.QualityOverviewResponse
+	var resp api.QualityOverview
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -200,13 +200,13 @@ func TestGetPersonQuality_ValidUUID(t *testing.T) {
 		t.Fatalf("Status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp api.PersonQualityResponse
+	var resp api.PersonQuality
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	if resp.PersonID != personID {
-		t.Errorf("PersonID = %s, want %s", resp.PersonID, personID)
+	if resp.PersonId.String() != personID {
+		t.Errorf("PersonID = %s, want %s", resp.PersonId.String(), personID)
 	}
 
 	if resp.CompletenessScore < 0 || resp.CompletenessScore > 100 {
@@ -294,7 +294,7 @@ func TestGetPersonQuality_WithIssues(t *testing.T) {
 		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var resp api.PersonQualityResponse
+	var resp api.PersonQuality
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestGetStatistics_EmptyDatabase(t *testing.T) {
 		t.Fatalf("Status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp api.StatisticsResponse
+	var resp api.Statistics
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -333,8 +333,12 @@ func TestGetStatistics_EmptyDatabase(t *testing.T) {
 	if resp.TotalFamilies != 0 {
 		t.Errorf("TotalFamilies = %d, want 0", resp.TotalFamilies)
 	}
-	if resp.DateRange != nil {
-		t.Errorf("DateRange = %v, want nil", resp.DateRange)
+	// DateRange is required per the OpenAPI spec - for empty database, date range fields should be nil
+	if resp.DateRange.EarliestBirth != nil {
+		t.Errorf("DateRange.EarliestBirth = %v, want nil", resp.DateRange.EarliestBirth)
+	}
+	if resp.DateRange.LatestBirth != nil {
+		t.Errorf("DateRange.LatestBirth = %v, want nil", resp.DateRange.LatestBirth)
 	}
 }
 
@@ -383,7 +387,7 @@ func TestGetStatistics_WithData(t *testing.T) {
 		t.Fatalf("Status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp api.StatisticsResponse
+	var resp api.Statistics
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -415,9 +419,6 @@ func TestGetStatistics_WithData(t *testing.T) {
 	}
 
 	// Check date range
-	if resp.DateRange == nil {
-		t.Fatal("DateRange should not be nil")
-	}
 	if resp.DateRange.EarliestBirth == nil || *resp.DateRange.EarliestBirth != "1950" {
 		t.Errorf("EarliestBirth = %v, want 1950", resp.DateRange.EarliestBirth)
 	}
@@ -498,7 +499,7 @@ func TestGetStatistics_TopSurnamesSorted(t *testing.T) {
 		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var resp api.StatisticsResponse
+	var resp api.Statistics
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -530,7 +531,7 @@ func TestGetQualityOverview_TopIssuesSorted(t *testing.T) {
 		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var resp api.QualityOverviewResponse
+	var resp api.QualityOverview
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
@@ -565,7 +566,7 @@ func TestGetPersonQuality_FullyDocumented(t *testing.T) {
 		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var resp api.PersonQualityResponse
+	var resp api.PersonQuality
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("Failed to parse response: %v", err)
 	}

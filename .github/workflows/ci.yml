@@ -69,6 +69,18 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install oapi-codegen
+        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+
+      - name: Verify Go generated code
+        run: |
+          go generate ./internal/api/...
+          if ! git diff --exit-code internal/api/generated.go; then
+            echo "::error::Go generated code is out of sync with OpenAPI spec"
+            echo "::error::Run 'make generate-api' locally and commit the changes"
+            exit 1
+          fi
+
       - name: Create placeholder for embedded files
         run: |
           mkdir -p internal/web/dist
@@ -162,6 +174,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify TypeScript generated types
+        run: |
+          npm run generate:types
+          if ! git diff --exit-code src/lib/api/types.generated.ts; then
+            echo "::error::TypeScript types are out of sync with OpenAPI spec"
+            echo "::error::Run 'make generate-types' locally and commit the changes"
+            exit 1
+          fi
 
       - name: Type check
         run: npm run check

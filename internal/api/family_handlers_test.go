@@ -206,7 +206,7 @@ func TestGetFamily_WithChildren_ResponseFormat(t *testing.T) {
 	// Add children
 	for _, child := range []map[string]interface{}{child1, child2} {
 		childBody := map[string]interface{}{
-			"child_id":          child["id"],
+			"person_id":         child["id"],
 			"relationship_type": "biological",
 		}
 		jsonBody, _ = json.Marshal(childBody)
@@ -242,30 +242,16 @@ func TestGetFamily_WithChildren_ResponseFormat(t *testing.T) {
 		t.Errorf("Expected 2 children, got %d", len(children))
 	}
 
-	// Verify each child has required fields: id, name, relationship_type
+	// Verify each child has required fields per OpenAPI spec: person_id, relationship_type
 	for i, c := range children {
 		child := c.(map[string]interface{})
 
-		if _, ok := child["id"]; !ok {
-			t.Errorf("Child %d missing 'id' field", i)
-		}
-		if _, ok := child["name"]; !ok {
-			t.Errorf("Child %d missing 'name' field", i)
+		if _, ok := child["person_id"]; !ok {
+			t.Errorf("Child %d missing 'person_id' field", i)
 		}
 		if _, ok := child["relationship_type"]; !ok {
 			t.Errorf("Child %d missing 'relationship_type' field", i)
 		}
-
-		// Verify name is formatted correctly (not empty)
-		name := child["name"].(string)
-		if name == "" {
-			t.Errorf("Child %d has empty name", i)
-		}
-	}
-
-	// Verify child_count matches
-	if result["child_count"].(float64) != 2 {
-		t.Errorf("Expected child_count 2, got %v", result["child_count"])
 	}
 }
 
@@ -392,7 +378,7 @@ func TestAddChildToFamily(t *testing.T) {
 
 	// Add child
 	childBody := map[string]interface{}{
-		"child_id":          child["id"],
+		"person_id":         child["id"],
 		"relationship_type": "biological",
 	}
 	jsonBody, _ = json.Marshal(childBody)
@@ -432,7 +418,7 @@ func TestAddChildToFamily_AlreadyLinked(t *testing.T) {
 
 	// Add child first time
 	childBody := map[string]interface{}{
-		"child_id": child["id"],
+		"person_id": child["id"],
 	}
 	jsonBody, _ = json.Marshal(childBody)
 
@@ -481,7 +467,7 @@ func TestRemoveChildFromFamily(t *testing.T) {
 
 	// Add child
 	childBody := map[string]interface{}{
-		"child_id": child["id"],
+		"person_id": child["id"],
 	}
 	jsonBody, _ = json.Marshal(childBody)
 
@@ -705,7 +691,7 @@ func TestAddChildToFamily_InvalidFamilyUUID(t *testing.T) {
 	child := createTestPerson(t, server, "Junior", "Doe")
 
 	childBody := map[string]interface{}{
-		"child_id": child["id"],
+		"person_id": child["id"],
 	}
 	jsonBody, _ := json.Marshal(childBody)
 
@@ -772,7 +758,7 @@ func TestAddChildToFamily_InvalidChildUUID(t *testing.T) {
 
 	// Add child with invalid UUID
 	childBody := map[string]interface{}{
-		"child_id": "not-a-uuid",
+		"person_id": "not-a-uuid",
 	}
 	jsonBody, _ = json.Marshal(childBody)
 

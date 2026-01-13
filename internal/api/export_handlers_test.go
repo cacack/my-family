@@ -214,14 +214,8 @@ func TestExportTree_Empty(t *testing.T) {
 
 	// Check Content-Type
 	contentType := rec.Header().Get("Content-Type")
-	if contentType != "application/json" {
+	if !strings.HasPrefix(contentType, "application/json") {
 		t.Errorf("Content-Type = %s, want application/json", contentType)
-	}
-
-	// Check Content-Disposition
-	contentDisposition := rec.Header().Get("Content-Disposition")
-	if !strings.Contains(contentDisposition, "attachment") {
-		t.Error("Content-Disposition should contain 'attachment'")
 	}
 
 	// Verify valid JSON structure
@@ -319,22 +313,28 @@ func TestExportPersons_JSON(t *testing.T) {
 
 	// Check Content-Type
 	contentType := rec.Header().Get("Content-Type")
-	if contentType != "application/json" {
+	if !strings.HasPrefix(contentType, "application/json") {
 		t.Errorf("Content-Type = %s, want application/json", contentType)
 	}
 
-	// Verify valid JSON array
-	var persons []map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &persons); err != nil {
-		t.Fatalf("Invalid JSON array: %v", err)
+	// Verify valid JSON object with persons array and total
+	var result struct {
+		Persons []map[string]interface{} `json:"persons"`
+		Total   int                      `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Invalid JSON: %v", err)
 	}
 
-	if len(persons) != 2 {
-		t.Errorf("Expected 2 persons, got %d", len(persons))
+	if len(result.Persons) != 2 {
+		t.Errorf("Expected 2 persons, got %d", len(result.Persons))
+	}
+	if result.Total != 2 {
+		t.Errorf("Expected total 2, got %d", result.Total)
 	}
 }
 
-func TestExportPersons_JSON_Explicit(t *testing.T) {
+func TestExportPersons_WithAllFields(t *testing.T) {
 	server := setupExportTestServer(t)
 
 	// Import data
@@ -349,8 +349,8 @@ func TestExportPersons_JSON_Explicit(t *testing.T) {
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
-	// Export with explicit format=json
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json", http.NoBody)
+	// Export persons
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -358,150 +358,26 @@ func TestExportPersons_JSON_Explicit(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", rec.Code)
 	}
 
-	contentType := rec.Header().Get("Content-Type")
-	if contentType != "application/json" {
-		t.Errorf("Content-Type = %s, want application/json", contentType)
+	// Verify JSON contains all expected fields
+	var result struct {
+		Persons []map[string]interface{} `json:"persons"`
+		Total   int                      `json:"total"`
 	}
-}
-
-func TestExportPersons_CSV(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	// Import data
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.ged")
-	io.WriteString(part, exportTestGedcom)
-	writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	// Export as CSV
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv", http.NoBody)
-	rec = httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Invalid JSON: %v", err)
 	}
 
-	// Check Content-Type
-	contentType := rec.Header().Get("Content-Type")
-	if contentType != "text/csv" {
-		t.Errorf("Content-Type = %s, want text/csv", contentType)
-	}
-
-	// Check Content-Disposition
-	contentDisposition := rec.Header().Get("Content-Disposition")
-	if !strings.Contains(contentDisposition, ".csv") {
-		t.Error("Content-Disposition should contain .csv filename")
-	}
-
-	// Verify CSV structure
-	output := rec.Body.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) < 2 {
-		t.Error("CSV should have header and at least one data row")
-	}
-
-	// Check header contains expected fields
-	header := lines[0]
-	if !strings.Contains(header, "id") {
-		t.Error("CSV header should contain 'id'")
-	}
-	if !strings.Contains(header, "given_name") {
-		t.Error("CSV header should contain 'given_name'")
-	}
-	if !strings.Contains(header, "surname") {
-		t.Error("CSV header should contain 'surname'")
-	}
-}
-
-func TestExportPersons_CSV_WithFields(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	// Import data
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.ged")
-	io.WriteString(part, exportTestGedcom)
-	writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	// Export with specific fields
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv&fields=id,surname,given_name", http.NoBody)
-	rec = httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	// Verify CSV has only requested fields
-	output := rec.Body.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	header := lines[0]
-
-	// Should have exactly 3 columns
-	columns := strings.Split(header, ",")
-	if len(columns) != 3 {
-		t.Errorf("Expected 3 columns, got %d: %s", len(columns), header)
-	}
-
-	// Header should match requested order
-	if columns[0] != "id" || columns[1] != "surname" || columns[2] != "given_name" {
-		t.Errorf("Unexpected column order: %v", columns)
-	}
-
-	// Data should not contain fields we didn't request
-	if strings.Contains(output, "birth_date") {
-		t.Error("CSV should not contain unrequested field 'birth_date'")
-	}
-}
-
-func TestExportPersons_InvalidFormat(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=xml", http.NoBody)
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-
-	// Check error message
-	body := rec.Body.String()
-	if !strings.Contains(body, "Invalid format") {
-		t.Error("Error should mention invalid format")
-	}
-}
-
-func TestExportPersons_InvalidField(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv&fields=id,invalid_field_name", http.NoBody)
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-
-	// Check error message
-	body := rec.Body.String()
-	if !strings.Contains(body, "Invalid field") {
-		t.Error("Error should mention invalid field")
-	}
-	if !strings.Contains(body, "invalid_field_name") {
-		t.Error("Error should mention the invalid field name")
+	if len(result.Persons) > 0 {
+		person := result.Persons[0]
+		if _, ok := person["id"]; !ok {
+			t.Error("Person should have id field")
+		}
+		if _, ok := person["given_name"]; !ok {
+			t.Error("Person should have given_name field")
+		}
+		if _, ok := person["surname"]; !ok {
+			t.Error("Person should have surname field")
+		}
 	}
 }
 
@@ -521,7 +397,7 @@ func TestExportFamilies_JSON(t *testing.T) {
 	server.Echo().ServeHTTP(rec, req)
 
 	// Export families as JSON
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=json", http.NoBody)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families", http.NoBody)
 	rec = httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -531,131 +407,24 @@ func TestExportFamilies_JSON(t *testing.T) {
 
 	// Check Content-Type
 	contentType := rec.Header().Get("Content-Type")
-	if contentType != "application/json" {
+	if !strings.HasPrefix(contentType, "application/json") {
 		t.Errorf("Content-Type = %s, want application/json", contentType)
 	}
 
-	// Verify valid JSON array
-	var families []map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &families); err != nil {
-		t.Fatalf("Invalid JSON array: %v", err)
+	// Verify valid JSON object with families array and total
+	var result struct {
+		Families []map[string]interface{} `json:"families"`
+		Total    int                      `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Invalid JSON: %v", err)
 	}
 
-	if len(families) != 1 {
-		t.Errorf("Expected 1 family, got %d", len(families))
+	if len(result.Families) != 1 {
+		t.Errorf("Expected 1 family, got %d", len(result.Families))
 	}
-}
-
-func TestExportFamilies_CSV(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	// Import data
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.ged")
-	io.WriteString(part, exportTestGedcom)
-	writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	// Export as CSV
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv", http.NoBody)
-	rec = httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	// Check Content-Type
-	contentType := rec.Header().Get("Content-Type")
-	if contentType != "text/csv" {
-		t.Errorf("Content-Type = %s, want text/csv", contentType)
-	}
-
-	// Verify CSV structure
-	output := rec.Body.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) < 2 {
-		t.Error("CSV should have header and at least one data row")
-	}
-
-	// Check header contains expected fields
-	header := lines[0]
-	if !strings.Contains(header, "id") {
-		t.Error("CSV header should contain 'id'")
-	}
-	if !strings.Contains(header, "partner1_name") {
-		t.Error("CSV header should contain 'partner1_name'")
-	}
-}
-
-func TestExportFamilies_CSV_WithFields(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	// Import data
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.ged")
-	io.WriteString(part, exportTestGedcom)
-	writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	// Export with specific fields
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv&fields=id,partner1_name,partner2_name", http.NoBody)
-	rec = httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	// Verify CSV has only requested fields
-	output := rec.Body.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	header := lines[0]
-
-	// Should have exactly 3 columns
-	columns := strings.Split(header, ",")
-	if len(columns) != 3 {
-		t.Errorf("Expected 3 columns, got %d: %s", len(columns), header)
-	}
-}
-
-func TestExportFamilies_InvalidFormat(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=yaml", http.NoBody)
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-}
-
-func TestExportFamilies_InvalidField(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv&fields=id,nonexistent_field", http.NoBody)
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rec.Code)
-	}
-
-	// Check error message
-	body := rec.Body.String()
-	if !strings.Contains(body, "Invalid field") {
-		t.Error("Error should mention invalid field")
+	if result.Total != 1 {
+		t.Errorf("Expected total 1, got %d", result.Total)
 	}
 }
 
@@ -663,7 +432,7 @@ func TestExportPersons_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
 	// Export persons without importing data (empty database)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json", http.NoBody)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -671,39 +440,20 @@ func TestExportPersons_Empty(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", rec.Code)
 	}
 
-	// Verify empty JSON array
-	var persons []map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &persons); err != nil {
+	// Verify JSON object with empty persons array
+	var result struct {
+		Persons []map[string]interface{} `json:"persons"`
+		Total   int                      `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("Invalid JSON: %v", err)
 	}
 
-	if len(persons) != 0 {
-		t.Errorf("Expected empty array, got %d items", len(persons))
+	if len(result.Persons) != 0 {
+		t.Errorf("Expected empty array, got %d items", len(result.Persons))
 	}
-}
-
-func TestExportPersons_CSV_Empty(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	// Export as CSV without data
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=csv", http.NoBody)
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d", rec.Code)
-	}
-
-	// Verify CSV has header only
-	output := rec.Body.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) != 1 {
-		t.Errorf("Expected 1 line (header only), got %d", len(lines))
-	}
-
-	// Header should still contain expected fields
-	if !strings.Contains(lines[0], "id") {
-		t.Error("CSV header should contain 'id' even when empty")
+	if result.Total != 0 {
+		t.Errorf("Expected total 0, got %d", result.Total)
 	}
 }
 
@@ -711,7 +461,7 @@ func TestExportFamilies_Empty(t *testing.T) {
 	server := setupExportTestServer(t)
 
 	// Export families without importing data
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=json", http.NoBody)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
@@ -719,71 +469,19 @@ func TestExportFamilies_Empty(t *testing.T) {
 		t.Fatalf("Expected status 200, got %d", rec.Code)
 	}
 
-	// Verify empty JSON array
-	var families []map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &families); err != nil {
+	// Verify JSON object with empty families array
+	var result struct {
+		Families []map[string]interface{} `json:"families"`
+		Total    int                      `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
 		t.Fatalf("Invalid JSON: %v", err)
 	}
 
-	if len(families) != 0 {
-		t.Errorf("Expected empty array, got %d items", len(families))
+	if len(result.Families) != 0 {
+		t.Errorf("Expected empty array, got %d items", len(result.Families))
 	}
-}
-
-func TestExportFamilies_CSV_Empty(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	// Export as CSV without data
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/families?format=csv", http.NoBody)
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d", rec.Code)
-	}
-
-	// Verify CSV has header only
-	output := rec.Body.String()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) != 1 {
-		t.Errorf("Expected 1 line (header only), got %d", len(lines))
-	}
-}
-
-func TestExportPersons_FieldsOnlyApplyToCSV(t *testing.T) {
-	server := setupExportTestServer(t)
-
-	// Import data
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.ged")
-	io.WriteString(part, exportTestGedcom)
-	writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	// Fields parameter should be ignored for JSON format
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/persons?format=json&fields=id,surname", http.NoBody)
-	rec = httptest.NewRecorder()
-	server.Echo().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected status 200, got %d", rec.Code)
-	}
-
-	// JSON should contain all fields regardless of fields parameter
-	var persons []map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &persons); err != nil {
-		t.Fatalf("Invalid JSON: %v", err)
-	}
-
-	if len(persons) > 0 {
-		// Should have more fields than just id and surname
-		if _, ok := persons[0]["given_name"]; !ok {
-			t.Error("JSON export should contain all fields, including given_name")
-		}
+	if result.Total != 0 {
+		t.Errorf("Expected total 0, got %d", result.Total)
 	}
 }

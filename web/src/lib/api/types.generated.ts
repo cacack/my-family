@@ -1226,6 +1226,10 @@ export interface components {
             root: components["schemas"]["PedigreeNode"];
             /** @description Number of generations included */
             generations?: number;
+            /** @description Total number of known ancestors */
+            total_ancestors?: number;
+            /** @description Maximum generation depth reached */
+            max_generation?: number;
         };
         PedigreeNode: {
             /** Format: uuid */
@@ -1235,6 +1239,8 @@ export interface components {
             birth_date?: components["schemas"]["GenDate"];
             death_date?: components["schemas"]["GenDate"];
             gender?: string;
+            /** @description Generation level (0 = subject, 1 = parents, 2 = grandparents, etc.) */
+            generation?: number;
             father?: components["schemas"]["PedigreeNode"];
             mother?: components["schemas"]["PedigreeNode"];
         };
@@ -2377,7 +2383,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
+                    "application/x-gedcom": string;
                 };
             };
         };
