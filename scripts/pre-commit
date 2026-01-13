@@ -62,5 +62,29 @@ echo "  ✓ Tests passed"
 
 # Note: Coverage threshold checks run in pre-push hook (faster commits)
 
+# --- OpenAPI Code Generation Check ---
+echo "→ Checking generated API code..."
+
+# Check Go generated code
+go generate ./internal/api/...
+if ! git diff --quiet internal/api/generated.go 2>/dev/null; then
+  echo "  ✗ Go API code is out of sync with OpenAPI spec"
+  echo "  Run: make generate-api"
+  echo "  Then: git add internal/api/generated.go"
+  exit 1
+fi
+echo "  ✓ Go generated code OK"
+
+# Check TypeScript generated types
+cd web && npm run generate:types --silent
+cd ..
+if ! git diff --quiet web/src/lib/api/types.generated.ts 2>/dev/null; then
+  echo "  ✗ TypeScript types are out of sync with OpenAPI spec"
+  echo "  Run: make generate-types"
+  echo "  Then: git add web/src/lib/api/types.generated.ts"
+  exit 1
+fi
+echo "  ✓ TypeScript generated types OK"
+
 echo ""
 echo "✓ All pre-commit checks passed"

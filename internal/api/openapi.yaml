@@ -542,7 +542,7 @@ paths:
         '200':
           description: GEDCOM file
           content:
-            text/plain:
+            application/x-gedcom:
               schema:
                 type: string
           headers:
@@ -2127,6 +2127,12 @@ components:
         generations:
           type: integer
           description: Number of generations included
+        total_ancestors:
+          type: integer
+          description: Total number of known ancestors
+        max_generation:
+          type: integer
+          description: Maximum generation depth reached
 
     PedigreeNode:
       type: object
@@ -2145,6 +2151,9 @@ components:
           $ref: '#/components/schemas/GenDate'
         gender:
           type: string
+        generation:
+          type: integer
+          description: Generation level (0 = subject, 1 = parents, 2 = grandparents, etc.)
         father:
           $ref: '#/components/schemas/PedigreeNode'
         mother:

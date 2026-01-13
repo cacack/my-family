@@ -105,106 +105,17 @@ func NewServer(
 func (s *Server) registerRoutes() {
 	api := s.echo.Group("/api/v1")
 
-	// Health check
+	// Health check (outside generated routes)
 	api.GET("/health", s.healthCheck)
 
-	// API documentation
+	// API documentation (outside generated routes)
 	s.registerDocsRoutes(api)
 
-	// Person routes
-	api.GET("/persons", s.listPersons)
-	api.POST("/persons", s.createPerson)
-	api.GET("/persons/:id", s.getPerson)
-	api.PUT("/persons/:id", s.updatePerson)
-	api.DELETE("/persons/:id", s.deletePerson)
-
-	// Search
-	api.GET("/search", s.searchPersons)
-
-	// Browse
-	api.GET("/browse/surnames", s.browseSurnames)
-	api.GET("/browse/surnames/:surname/persons", s.getPersonsBySurname)
-	api.GET("/browse/places", s.browsePlaces)
-	api.GET("/browse/places/:place/persons", s.getPersonsByPlace)
-
-	// Quality and statistics
-	api.GET("/quality/overview", s.getQualityOverview)
-	api.GET("/quality/persons/:id", s.getPersonQuality)
-	api.GET("/statistics", s.getStatistics)
-
-	// Families (placeholder - will be implemented in Phase 4)
-	api.GET("/families", s.listFamilies)
-	api.POST("/families", s.createFamily)
-	api.GET("/families/:id", s.getFamily)
-	api.PUT("/families/:id", s.updateFamily)
-	api.DELETE("/families/:id", s.deleteFamily)
-	api.POST("/families/:id/children", s.addChildToFamily)
-	api.DELETE("/families/:id/children/:personId", s.removeChildFromFamily)
-	api.GET("/families/:id/group-sheet", s.getFamilyGroupSheet)
-
-	// Pedigree (placeholder - will be implemented in Phase 6)
-	api.GET("/pedigree/:id", s.getPedigree)
-
-	// Ahnentafel reports
-	api.GET("/ahnentafel/:id", s.getAhnentafel)
-
-	// Sources
-	api.GET("/sources", s.listSources)
-	api.POST("/sources", s.createSource)
-	api.GET("/sources/search", s.searchSources)
-	api.GET("/sources/:id", s.getSource)
-	api.PUT("/sources/:id", s.updateSource)
-	api.DELETE("/sources/:id", s.deleteSource)
-	api.GET("/sources/:id/citations", s.getCitationsForSource)
-
-	// Citations
-	api.POST("/citations", s.createCitation)
-	api.GET("/citations/:id", s.getCitation)
-	api.PUT("/citations/:id", s.updateCitation)
-	api.DELETE("/citations/:id", s.deleteCitation)
-
-	// Person citations (nested under persons)
-	api.GET("/persons/:id/citations", s.getCitationsForPerson)
-
-	// Person names (nested under persons)
-	api.GET("/persons/:id/names", s.getPersonNames)
-	api.POST("/persons/:id/names", s.addPersonName)
-	api.PUT("/persons/:id/names/:nameId", s.updatePersonName)
-	api.DELETE("/persons/:id/names/:nameId", s.deletePersonName)
-
-	// GEDCOM (placeholder - will be implemented in Phase 5)
-	api.POST("/gedcom/import", s.importGedcom)
-	api.GET("/gedcom/export", s.exportGedcom)
-
-	// Data export endpoints
-	api.GET("/export/tree", s.exportTree)
-	api.GET("/export/persons", s.exportPersons)
-	api.GET("/export/families", s.exportFamilies)
-
-	// History
-	api.GET("/history", s.getGlobalHistory)
-	api.GET("/persons/:id/history", s.getPersonHistory)
-	api.GET("/families/:id/history", s.getFamilyHistory)
-	api.GET("/sources/:id/history", s.getSourceHistory)
-
-	// Rollback
-	api.GET("/persons/:id/restore-points", s.getPersonRestorePoints)
-	api.POST("/persons/:id/rollback", s.rollbackPerson)
-	api.GET("/families/:id/restore-points", s.getFamilyRestorePoints)
-	api.POST("/families/:id/rollback", s.rollbackFamily)
-	api.GET("/sources/:id/restore-points", s.getSourceRestorePoints)
-	api.POST("/sources/:id/rollback", s.rollbackSource)
-	api.GET("/citations/:id/restore-points", s.getCitationRestorePoints)
-	api.POST("/citations/:id/rollback", s.rollbackCitation)
-
-	// Media
-	api.GET("/persons/:id/media", s.listPersonMedia)
-	api.POST("/persons/:id/media", s.uploadPersonMedia)
-	api.GET("/media/:id", s.getMedia)
-	api.PUT("/media/:id", s.updateMedia)
-	api.DELETE("/media/:id", s.deleteMedia)
-	api.GET("/media/:id/content", s.downloadMedia)
-	api.GET("/media/:id/thumbnail", s.getMediaThumbnail)
+	// Use generated strict handler registration for all API routes
+	// This provides compile-time type safety for all endpoints
+	strictServer := NewStrictServer(s)
+	strictHandler := NewStrictHandler(strictServer, nil)
+	RegisterHandlersWithBaseURL(s.echo, strictHandler, "/api/v1")
 
 	// Serve frontend if available
 	if s.frontendFS != nil {
