@@ -976,20 +976,21 @@ func convertPedigreeNode(node *query.PedigreeNode) *PedigreeNodeResponse {
 
 // AhnentafelEntryResponse represents a single entry in an Ahnentafel report.
 type AhnentafelEntryResponse struct {
-	Number     int     `json:"number"`
-	Generation int     `json:"generation"`
-	ID         string  `json:"id"`
-	GivenName  string  `json:"given_name"`
-	Surname    string  `json:"surname"`
-	Gender     *string `json:"gender,omitempty"`
-	BirthDate  *string `json:"birth_date,omitempty"`
-	BirthPlace *string `json:"birth_place,omitempty"`
-	DeathDate  *string `json:"death_date,omitempty"`
-	DeathPlace *string `json:"death_place,omitempty"`
+	Number       int    `json:"number"`
+	Generation   int    `json:"generation"`
+	ID           string `json:"id,omitempty"`
+	GivenName    string `json:"given_name,omitempty"`
+	Surname      string `json:"surname,omitempty"`
+	Gender       string `json:"gender,omitempty"`
+	BirthDate    any    `json:"birth_date,omitempty"`
+	BirthPlace   string `json:"birth_place,omitempty"`
+	DeathDate    any    `json:"death_date,omitempty"`
+	DeathPlace   string `json:"death_place,omitempty"`
+	Relationship string `json:"relationship"`
 }
 
-// AhnentafelRootPersonResponse represents the root person in an Ahnentafel report.
-type AhnentafelRootPersonResponse struct {
+// AhnentafelSubjectResponse represents the subject person in an Ahnentafel report.
+type AhnentafelSubjectResponse struct {
 	ID        string `json:"id"`
 	GivenName string `json:"given_name"`
 	Surname   string `json:"surname"`
@@ -997,10 +998,11 @@ type AhnentafelRootPersonResponse struct {
 
 // AhnentafelResponse represents the complete Ahnentafel report.
 type AhnentafelResponse struct {
-	RootPerson    AhnentafelRootPersonResponse `json:"root_person"`
-	Entries       []AhnentafelEntryResponse    `json:"entries"`
-	TotalEntries  int                          `json:"total_entries"`
-	MaxGeneration int                          `json:"max_generation"`
+	Subject     AhnentafelSubjectResponse `json:"subject"`
+	Entries     []AhnentafelEntryResponse `json:"entries"`
+	Generations int                       `json:"generations"`
+	TotalCount  int                       `json:"total_count"`
+	KnownCount  int                       `json:"known_count"`
 }
 
 // getAhnentafel handles GET /ahnentafel/:id
@@ -1039,11 +1041,11 @@ func (s *Server) getAhnentafel(c echo.Context) error {
 		return err
 	}
 
-	// Find root person (entry number 1)
-	var rootPerson AhnentafelRootPersonResponse
+	// Find subject (entry number 1)
+	var subject AhnentafelSubjectResponse
 	for _, entry := range result.Entries {
 		if entry.Number == 1 {
-			rootPerson = AhnentafelRootPersonResponse{
+			subject = AhnentafelSubjectResponse{
 				ID:        entry.ID.String(),
 				GivenName: entry.GivenName,
 				Surname:   entry.Surname,
@@ -1053,19 +1055,25 @@ func (s *Server) getAhnentafel(c echo.Context) error {
 	}
 
 	if format == "text" {
-		return s.formatAhnentafelText(c, result, rootPerson)
+		return s.formatAhnentafelText(c, result, subject)
 	}
 
-	// JSON format
-	response := AhnentafelResponse{
-		RootPerson:    rootPerson,
-		Entries:       make([]AhnentafelEntryResponse, len(result.Entries)),
-		TotalEntries:  result.TotalEntries,
-		MaxGeneration: result.MaxGeneration,
-	}
-
+	// JSON format - convert entries and count known ancestors
+	entries := make([]AhnentafelEntryResponse, len(result.Entries))
+	knownCount := 0
 	for i, entry := range result.Entries {
-		response.Entries[i] = convertAhnentafelEntry(entry)
+		entries[i] = convertAhnentafelEntry(entry)
+		if entry.ID != uuid.Nil {
+			knownCount++
+		}
+	}
+
+	response := AhnentafelResponse{
+		Subject:     subject,
+		Entries:     entries,
+		Generations: result.MaxGeneration,
+		TotalCount:  result.TotalEntries,
+		KnownCount:  knownCount,
 	}
 
 	return c.JSON(http.StatusOK, response)
@@ -1074,36 +1082,37 @@ func (s *Server) getAhnentafel(c echo.Context) error {
 // convertAhnentafelEntry converts a query AhnentafelEntry to API response format.
 func convertAhnentafelEntry(entry query.AhnentafelEntry) AhnentafelEntryResponse {
 	resp := AhnentafelEntryResponse{
-		Number:     entry.Number,
-		Generation: entry.Generation,
-		ID:         entry.ID.String(),
-		GivenName:  entry.GivenName,
-		Surname:    entry.Surname,
+		Number:       entry.Number,
+		Generation:   entry.Generation,
+		Relationship: getRelationLabel(entry.Number),
 	}
 
-	if entry.Gender != "" {
-		resp.Gender = &entry.Gender
-	}
-	if entry.BirthDate != nil {
-		bd := entry.BirthDate.String()
-		resp.BirthDate = &bd
-	}
-	if entry.BirthPlace != nil {
-		resp.BirthPlace = entry.BirthPlace
-	}
-	if entry.DeathDate != nil {
-		dd := entry.DeathDate.String()
-		resp.DeathDate = &dd
-	}
-	if entry.DeathPlace != nil {
-		resp.DeathPlace = entry.DeathPlace
+	// Only include ID if the person is known (not nil UUID)
+	if entry.ID != uuid.Nil {
+		resp.ID = entry.ID.String()
+		resp.GivenName = entry.GivenName
+		resp.Surname = entry.Surname
+		resp.Gender = entry.Gender
+
+		if entry.BirthDate != nil {
+			resp.BirthDate = entry.BirthDate
+		}
+		if entry.BirthPlace != nil {
+			resp.BirthPlace = *entry.BirthPlace
+		}
+		if entry.DeathDate != nil {
+			resp.DeathDate = entry.DeathDate
+		}
+		if entry.DeathPlace != nil {
+			resp.DeathPlace = *entry.DeathPlace
+		}
 	}
 
 	return resp
 }
 
 // formatAhnentafelText formats the Ahnentafel report as plain text.
-func (s *Server) formatAhnentafelText(c echo.Context, result *query.AhnentafelResult, root AhnentafelRootPersonResponse) error {
+func (s *Server) formatAhnentafelText(c echo.Context, result *query.AhnentafelResult, subject AhnentafelSubjectResponse) error {
 	c.Response().Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 	var sb strings.Builder
@@ -1111,7 +1120,7 @@ func (s *Server) formatAhnentafelText(c echo.Context, result *query.AhnentafelRe
 	// Header
 	sb.WriteString("AHNENTAFEL REPORT\n")
 	sb.WriteString("=================\n")
-	sb.WriteString(fmt.Sprintf("Subject: %s %s\n\n", root.GivenName, root.Surname))
+	sb.WriteString(fmt.Sprintf("Subject: %s %s\n\n", subject.GivenName, subject.Surname))
 
 	// Entries
 	for _, entry := range result.Entries {
