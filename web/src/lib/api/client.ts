@@ -1,7 +1,15 @@
 /**
  * My Family Genealogy API Client
- * Generated from OpenAPI spec - contracts/openapi.yaml
+ * Types are generated from OpenAPI spec - see types.generated.ts
+ * Run `npm run generate:types` after OpenAPI changes
  */
+
+import type { components } from './types.generated';
+
+// Re-export Ahnentafel types from generated file (single source of truth)
+export type AhnentafelResponse = components['schemas']['AhnentafelResponse'];
+export type AhnentafelEntry = components['schemas']['AhnentafelEntry'];
+export type AhnentafelSubject = components['schemas']['AhnentafelSubject'];
 
 const API_BASE = '/api/v1';
 
@@ -206,31 +214,7 @@ export interface Pedigree {
 	generations?: number;
 }
 
-export interface AhnentafelEntry {
-	number: number;
-	id?: string;
-	given_name?: string;
-	surname?: string;
-	gender?: 'male' | 'female' | 'unknown';
-	birth_date?: GenDate;
-	birth_place?: string;
-	death_date?: GenDate;
-	death_place?: string;
-	relationship: string;
-	generation: number;
-}
-
-export interface AhnentafelResponse {
-	subject: {
-		id: string;
-		given_name: string;
-		surname: string;
-	};
-	generations: number;
-	entries: AhnentafelEntry[];
-	total_count: number;
-	known_count: number;
-}
+// AhnentafelEntry and AhnentafelResponse are imported from types.generated.ts above
 
 export interface SearchResult extends PersonSummary {
 	score?: number;
