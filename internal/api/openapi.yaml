@@ -65,6 +65,12 @@ paths:
             type: string
             enum: [asc, desc]
             default: asc
+        - name: research_status
+          in: query
+          description: Filter by research status
+          schema:
+            type: string
+            enum: [certain, probable, possible, unknown, unset]
       responses:
         '200':
           description: List of persons

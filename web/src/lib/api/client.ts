@@ -497,12 +497,14 @@ class ApiClient {
 		offset?: number;
 		sort?: 'surname' | 'given_name' | 'birth_date' | 'updated_at';
 		order?: 'asc' | 'desc';
+		research_status?: ResearchStatus | 'unset';
 	}): Promise<PersonList> {
 		const searchParams = new URLSearchParams();
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
 		if (params?.offset) searchParams.set('offset', params.offset.toString());
 		if (params?.sort) searchParams.set('sort', params.sort);
 		if (params?.order) searchParams.set('order', params.order);
+		if (params?.research_status) searchParams.set('research_status', params.research_status);
 
 		const query = searchParams.toString();
 		return this.request<PersonList>('GET', `/persons${query ? `?${query}` : ''}`);

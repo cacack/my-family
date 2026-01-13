@@ -271,10 +271,11 @@ type PersonNameReadModel struct {
 
 // ListOptions contains options for list queries.
 type ListOptions struct {
-	Limit  int
-	Offset int
-	Sort   string
-	Order  string // "asc" or "desc"
+	Limit          int
+	Offset         int
+	Sort           string
+	Order          string  // "asc" or "desc"
+	ResearchStatus *string // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
 }
 
 // DefaultListOptions returns sensible defaults for list queries.

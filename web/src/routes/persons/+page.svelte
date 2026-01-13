@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, type Person } from '$lib/api/client';
+	import { api, type Person, type ResearchStatus } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 
 	let persons: Person[] = $state([]);
@@ -8,6 +8,7 @@
 	let currentPage = $state(1);
 	let sort = $state<'surname' | 'given_name' | 'birth_date' | 'updated_at'>('surname');
 	let order = $state<'asc' | 'desc'>('asc');
+	let researchStatusFilter = $state<ResearchStatus | 'unset' | ''>('');
 	const pageSize = 20;
 
 	async function loadPersons() {
@@ -17,7 +18,8 @@
 				limit: pageSize,
 				offset: (currentPage - 1) * pageSize,
 				sort,
-				order
+				order,
+				research_status: researchStatusFilter || undefined
 			});
 			persons = result.items;
 			total = result.total;
@@ -37,6 +39,13 @@
 
 	function handleOrderChange() {
 		order = order === 'asc' ? 'desc' : 'asc';
+		loadPersons();
+	}
+
+	function handleStatusFilterChange(e: Event) {
+		const select = e.target as HTMLSelectElement;
+		researchStatusFilter = select.value as typeof researchStatusFilter;
+		currentPage = 1;
 		loadPersons();
 	}
 
@@ -69,6 +78,17 @@
 	<header class="page-header">
 		<h1>People</h1>
 		<div class="controls">
+			<label>
+				Confidence:
+				<select value={researchStatusFilter} onchange={handleStatusFilterChange}>
+					<option value="">All</option>
+					<option value="certain">Certain</option>
+					<option value="probable">Probable</option>
+					<option value="possible">Possible</option>
+					<option value="unknown">Unknown</option>
+					<option value="unset">Not assessed</option>
+				</select>
+			</label>
 			<label>
 				Sort by:
 				<select value={sort} onchange={handleSortChange}>

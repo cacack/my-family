@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -57,47 +58,76 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*reposito
 	return &result, nil
 }
 
+// matchesResearchStatusFilter checks if a person matches the research status filter.
+func matchesResearchStatusFilter(p *repository.PersonReadModel, filter *string) bool {
+	if filter == nil {
+		return true
+	}
+	if *filter == "unset" {
+		return p.ResearchStatus == ""
+	}
+	return string(p.ResearchStatus) == *filter
+}
+
+// comparePersons compares two persons based on the sort field.
+func comparePersons(a, b *repository.PersonReadModel, sortField string) int {
+	switch sortField {
+	case "given_name":
+		return strings.Compare(a.GivenName, b.GivenName)
+	case "birth_date":
+		return compareBirthDates(a.BirthDateSort, b.BirthDateSort)
+	case "updated_at":
+		return compareTimestamps(a.UpdatedAt, b.UpdatedAt)
+	default: // surname
+		cmp := strings.Compare(a.Surname, b.Surname)
+		if cmp == 0 {
+			return strings.Compare(a.GivenName, b.GivenName)
+		}
+		return cmp
+	}
+}
+
+// compareBirthDates compares two birth date pointers.
+func compareBirthDates(a, b *time.Time) int {
+	if a == nil && b == nil {
+		return 0
+	}
+	if a == nil {
+		return 1
+	}
+	if b == nil {
+		return -1
+	}
+	return compareTimestamps(*a, *b)
+}
+
+// compareTimestamps compares two timestamps.
+func compareTimestamps(a, b time.Time) int {
+	if a.Before(b) {
+		return -1
+	}
+	if a.After(b) {
+		return 1
+	}
+	return 0
+}
+
 // ListPersons returns a paginated list of persons.
 func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Convert map to slice
+	// Convert map to slice, applying research_status filter if present
 	persons := make([]repository.PersonReadModel, 0, len(s.persons))
 	for _, p := range s.persons {
-		persons = append(persons, *p)
+		if matchesResearchStatusFilter(p, opts.ResearchStatus) {
+			persons = append(persons, *p)
+		}
 	}
 
 	// Sort
 	sort.Slice(persons, func(i, j int) bool {
-		var cmp int
-		switch opts.Sort {
-		case "given_name":
-			cmp = strings.Compare(persons[i].GivenName, persons[j].GivenName)
-		case "birth_date":
-			if persons[i].BirthDateSort == nil && persons[j].BirthDateSort == nil {
-				cmp = 0
-			} else if persons[i].BirthDateSort == nil {
-				cmp = 1
-			} else if persons[j].BirthDateSort == nil {
-				cmp = -1
-			} else if persons[i].BirthDateSort.Before(*persons[j].BirthDateSort) {
-				cmp = -1
-			} else if persons[i].BirthDateSort.After(*persons[j].BirthDateSort) {
-				cmp = 1
-			}
-		case "updated_at":
-			if persons[i].UpdatedAt.Before(persons[j].UpdatedAt) {
-				cmp = -1
-			} else if persons[i].UpdatedAt.After(persons[j].UpdatedAt) {
-				cmp = 1
-			}
-		default: // surname
-			cmp = strings.Compare(persons[i].Surname, persons[j].Surname)
-			if cmp == 0 {
-				cmp = strings.Compare(persons[i].GivenName, persons[j].GivenName)
-			}
-		}
+		cmp := comparePersons(&persons[i], &persons[j], opts.Sort)
 		if opts.Order == "desc" {
 			return cmp > 0
 		}
