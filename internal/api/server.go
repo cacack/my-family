@@ -30,6 +30,7 @@ type Server struct {
 	historyService    *query.HistoryService
 	rollbackService   *query.RollbackService
 	browseService     *query.BrowseService
+	qualityService    *query.QualityService
 	frontendFS        fs.FS
 }
 
@@ -75,6 +76,7 @@ func NewServer(
 	historySvc := query.NewHistoryService(eventStore, readStore)
 	rollbackSvc := query.NewRollbackService(eventStore, readStore)
 	browseSvc := query.NewBrowseService(readStore)
+	qualitySvc := query.NewQualityService(readStore)
 
 	server := &Server{
 		echo:              e,
@@ -89,6 +91,7 @@ func NewServer(
 		historyService:    historySvc,
 		rollbackService:   rollbackSvc,
 		browseService:     browseSvc,
+		qualityService:    qualitySvc,
 		frontendFS:        frontendFS,
 	}
 
@@ -123,6 +126,11 @@ func (s *Server) registerRoutes() {
 	api.GET("/browse/surnames/:surname/persons", s.getPersonsBySurname)
 	api.GET("/browse/places", s.browsePlaces)
 	api.GET("/browse/places/:place/persons", s.getPersonsByPlace)
+
+	// Quality and statistics
+	api.GET("/quality/overview", s.getQualityOverview)
+	api.GET("/quality/persons/:id", s.getPersonQuality)
+	api.GET("/statistics", s.getStatistics)
 
 	// Families (placeholder - will be implemented in Phase 4)
 	api.GET("/families", s.listFamilies)
