@@ -12,7 +12,8 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest",
 		"test:watch": "vitest --watch",
-		"test:coverage": "vitest --coverage"
+		"test:coverage": "vitest --coverage",
+		"generate:types": "openapi-typescript ../internal/api/openapi.yaml -o src/lib/api/types.generated.ts"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",
@@ -24,6 +25,7 @@
 		"@types/d3": "^7.4.0",
 		"autoprefixer": "^10.4.23",
 		"jsdom": "^27.4.0",
+		"openapi-typescript": "^7.10.1",
 		"postcss": "^8.5.6",
 		"svelte": "^5.46.1",
 		"svelte-check": "^4.3.5",

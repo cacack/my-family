@@ -41,6 +41,8 @@ tags:
     description: Data quality metrics
   - name: statistics
     description: Tree-wide statistics
+  - name: reports
+    description: Genealogical reports (Ahnentafel, etc.)
 
 paths:
   /persons:
@@ -336,6 +338,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Pedigree'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /ahnentafel/{id}:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: getAhnentafel
+      summary: Get Ahnentafel (ancestor table) report for a person
+      description: |
+        Returns an Ahnentafel report listing ancestors using the standard numbering system:
+        1 = subject, 2 = father, 3 = mother, 4 = paternal grandfather, etc.
+        Each ancestor's number n has father at 2n and mother at 2n+1.
+      tags: [reports]
+      parameters:
+        - name: generations
+          in: query
+          description: Number of ancestor generations to include (1-10)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 5
+        - name: format
+          in: query
+          description: Output format
+          schema:
+            type: string
+            enum: [json, text]
+            default: json
+      responses:
+        '200':
+          description: Ahnentafel report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AhnentafelResponse'
+            text/plain:
+              schema:
+                type: string
+                description: Plain text formatted report
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -2103,6 +2149,88 @@ components:
           $ref: '#/components/schemas/PedigreeNode'
         mother:
           $ref: '#/components/schemas/PedigreeNode'
+
+    AhnentafelResponse:
+      type: object
+      description: |
+        Ahnentafel (ancestor table) report using standard genealogical numbering.
+        This schema is shared between backend and frontend - changes require updates to both.
+      required: [subject, entries, generations, total_count, known_count]
+      properties:
+        subject:
+          $ref: '#/components/schemas/AhnentafelSubject'
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AhnentafelEntry'
+          description: List of ancestors in Ahnentafel number order
+        generations:
+          type: integer
+          description: Number of generations included in the report
+          example: 4
+        total_count:
+          type: integer
+          description: Total number of entries (2^(generations+1) - 1)
+          example: 31
+        known_count:
+          type: integer
+          description: Number of entries with known ancestors
+          example: 15
+
+    AhnentafelSubject:
+      type: object
+      description: The subject (root person) of the Ahnentafel report
+      required: [id, given_name, surname]
+      properties:
+        id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        surname:
+          type: string
+
+    AhnentafelEntry:
+      type: object
+      description: A single entry in the Ahnentafel report
+      required: [number, generation, relationship]
+      properties:
+        number:
+          type: integer
+          description: Ahnentafel number (1=subject, 2=father, 3=mother, etc.)
+          minimum: 1
+          example: 4
+        generation:
+          type: integer
+          description: Generation number (0=subject, 1=parents, 2=grandparents, etc.)
+          minimum: 0
+          example: 2
+        id:
+          type: string
+          format: uuid
+          description: Person ID (omitted if ancestor is unknown)
+        given_name:
+          type: string
+          description: Given name (omitted if ancestor is unknown)
+        surname:
+          type: string
+          description: Surname (omitted if ancestor is unknown)
+        gender:
+          type: string
+          enum: [male, female, unknown]
+          description: Gender (omitted if ancestor is unknown)
+        birth_date:
+          $ref: '#/components/schemas/GenDate'
+        birth_place:
+          type: string
+        death_date:
+          $ref: '#/components/schemas/GenDate'
+        death_place:
+          type: string
+        relationship:
+          type: string
+          description: Human-readable relationship to subject
+          example: "Father's Father"
 
     SearchResults:
       type: object

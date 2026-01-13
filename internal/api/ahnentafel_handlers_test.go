@@ -135,13 +135,13 @@ func TestGetAhnentafel_JSONFormat_Success(t *testing.T) {
 		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	// Verify root_person
-	rootPerson := result["root_person"].(map[string]interface{})
-	if rootPerson["given_name"] != "Junior" {
-		t.Errorf("root_person.given_name = %v, want Junior", rootPerson["given_name"])
+	// Verify subject
+	subject := result["subject"].(map[string]interface{})
+	if subject["given_name"] != "Junior" {
+		t.Errorf("subject.given_name = %v, want Junior", subject["given_name"])
 	}
-	if rootPerson["surname"] != "Smith" {
-		t.Errorf("root_person.surname = %v, want Smith", rootPerson["surname"])
+	if subject["surname"] != "Smith" {
+		t.Errorf("subject.surname = %v, want Smith", subject["surname"])
 	}
 
 	// Verify entries
@@ -205,14 +205,19 @@ func TestGetAhnentafel_JSONFormat_Success(t *testing.T) {
 	}
 
 	// Verify counts
-	totalEntries := int(result["total_entries"].(float64))
-	if totalEntries != 5 {
-		t.Errorf("total_entries = %d, want 5", totalEntries)
+	totalCount := int(result["total_count"].(float64))
+	if totalCount != 5 {
+		t.Errorf("total_count = %d, want 5", totalCount)
 	}
 
-	maxGeneration := int(result["max_generation"].(float64))
-	if maxGeneration != 2 {
-		t.Errorf("max_generation = %d, want 2", maxGeneration)
+	generations := int(result["generations"].(float64))
+	if generations != 2 {
+		t.Errorf("generations = %d, want 2", generations)
+	}
+
+	knownCount := int(result["known_count"].(float64))
+	if knownCount != 5 {
+		t.Errorf("known_count = %d, want 5", knownCount)
 	}
 }
 
@@ -345,10 +350,10 @@ func TestGetAhnentafel_MaxGenerations(t *testing.T) {
 		t.Errorf("len(entries) = %d, want 3 (subject + parents only)", len(entries))
 	}
 
-	// Max generation should be 1
-	maxGeneration := int(result["max_generation"].(float64))
-	if maxGeneration != 1 {
-		t.Errorf("max_generation = %d, want 1", maxGeneration)
+	// Generations should be 1
+	generations := int(result["generations"].(float64))
+	if generations != 1 {
+		t.Errorf("generations = %d, want 1", generations)
 	}
 }
 
@@ -401,10 +406,10 @@ func TestGetAhnentafel_NoAncestors(t *testing.T) {
 	var result map[string]interface{}
 	json.Unmarshal(rec.Body.Bytes(), &result)
 
-	// Verify root_person
-	rootPerson := result["root_person"].(map[string]interface{})
-	if rootPerson["given_name"] != "Orphan" {
-		t.Errorf("root_person.given_name = %v, want Orphan", rootPerson["given_name"])
+	// Verify subject
+	subject := result["subject"].(map[string]interface{})
+	if subject["given_name"] != "Orphan" {
+		t.Errorf("subject.given_name = %v, want Orphan", subject["given_name"])
 	}
 
 	// Should have only 1 entry (the subject)
@@ -413,14 +418,14 @@ func TestGetAhnentafel_NoAncestors(t *testing.T) {
 		t.Errorf("len(entries) = %d, want 1", len(entries))
 	}
 
-	totalEntries := int(result["total_entries"].(float64))
-	if totalEntries != 1 {
-		t.Errorf("total_entries = %d, want 1", totalEntries)
+	totalCount := int(result["total_count"].(float64))
+	if totalCount != 1 {
+		t.Errorf("total_count = %d, want 1", totalCount)
 	}
 
-	maxGeneration := int(result["max_generation"].(float64))
-	if maxGeneration != 0 {
-		t.Errorf("max_generation = %d, want 0", maxGeneration)
+	generations := int(result["generations"].(float64))
+	if generations != 0 {
+		t.Errorf("generations = %d, want 0", generations)
 	}
 }
 
@@ -524,8 +529,8 @@ func TestGetAhnentafel_DefaultGenerations(t *testing.T) {
 	if result["entries"] == nil {
 		t.Error("Response should have entries")
 	}
-	if result["total_entries"] == nil {
-		t.Error("Response should have total_entries")
+	if result["total_count"] == nil {
+		t.Error("Response should have total_count")
 	}
 }
 
