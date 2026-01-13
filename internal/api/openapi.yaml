@@ -37,6 +37,10 @@ tags:
     description: Rollback and restore point management
   - name: media
     description: Media file management (photos, documents)
+  - name: quality
+    description: Data quality metrics
+  - name: statistics
+    description: Tree-wide statistics
 
 paths:
   /persons:
@@ -1505,6 +1509,54 @@ paths:
                   total:
                     type: integer
 
+  # Quality and Statistics endpoints
+  /quality/overview:
+    get:
+      operationId: getQualityOverview
+      summary: Get aggregate quality metrics
+      description: Returns overall data quality metrics across all persons
+      tags: [quality]
+      responses:
+        '200':
+          description: Quality overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityOverview'
+
+  /quality/persons/{id}:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: getPersonQuality
+      summary: Get quality score for a person
+      description: Returns data completeness score and issues for a specific person
+      tags: [quality]
+      responses:
+        '200':
+          description: Person quality metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonQuality'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /statistics:
+    get:
+      operationId: getStatistics
+      summary: Get tree-wide statistics
+      description: Returns aggregate statistics about the family tree
+      tags: [statistics]
+      responses:
+        '200':
+          description: Tree statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Statistics'
+
 components:
   parameters:
     personId:
@@ -2751,4 +2803,112 @@ components:
           items:
             $ref: '#/components/schemas/Citation'
         total:
+          type: integer
+
+    # Quality and Statistics schemas
+    QualityOverview:
+      type: object
+      required: [total_persons, average_completeness, records_with_issues, top_issues]
+      properties:
+        total_persons:
+          type: integer
+          description: Total number of persons in the tree
+        average_completeness:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Average completeness score across all persons (0-100)
+        records_with_issues:
+          type: integer
+          description: Number of persons with at least one data quality issue
+        top_issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/QualityIssue'
+          description: Most common data quality issues
+
+    QualityIssue:
+      type: object
+      required: [issue, count]
+      properties:
+        issue:
+          type: string
+          description: Description of the issue
+        count:
+          type: integer
+          description: Number of records with this issue
+
+    PersonQuality:
+      type: object
+      required: [person_id, completeness_score, issues, suggestions]
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        completeness_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Data completeness score (0-100)
+        issues:
+          type: array
+          items:
+            type: string
+          description: List of data quality issues
+        suggestions:
+          type: array
+          items:
+            type: string
+          description: Suggested improvements
+
+    Statistics:
+      type: object
+      required: [total_persons, total_families, date_range, top_surnames, gender_distribution]
+      properties:
+        total_persons:
+          type: integer
+          description: Total number of persons in the tree
+        total_families:
+          type: integer
+          description: Total number of family units
+        date_range:
+          $ref: '#/components/schemas/DateRange'
+        top_surnames:
+          type: array
+          items:
+            $ref: '#/components/schemas/SurnameCount'
+          description: Most common surnames (top 10)
+        gender_distribution:
+          $ref: '#/components/schemas/GenderDistribution'
+
+    DateRange:
+      type: object
+      properties:
+        earliest_birth:
+          type: string
+          description: Earliest birth year in the tree
+        latest_birth:
+          type: string
+          description: Latest birth year in the tree
+
+    SurnameCount:
+      type: object
+      required: [surname, count]
+      properties:
+        surname:
+          type: string
+        count:
+          type: integer
+
+    GenderDistribution:
+      type: object
+      required: [male, female, unknown]
+      properties:
+        male:
+          type: integer
+        female:
+          type: integer
+        unknown:
           type: integer
