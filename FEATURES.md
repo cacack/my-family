@@ -21,6 +21,13 @@ Completed features in my-family genealogy software.
 - **Person Detail View** - Complete view of individual records with all associated data
 - **Family View** - View family units with partners and children
 
+## Research Quality
+
+- **Uncertainty Indicators** - Visual badges showing research confidence (certain/probable/possible/unknown)
+- **Confidence Filtering** - Filter person lists by research status
+- **Research Status Analytics** - Dashboard showing distribution of confidence levels across the database
+- **Data Quality Scores** - Analytics page showing records needing attention with actionable issues
+
 ## Search
 
 - **Full-Text Search** - Fast name search with FTS5 (SQLite) or tsvector (PostgreSQL)

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Person, PersonSummary } from '$lib/api/client';
 	import { formatGenDate, formatPersonName, formatLifespan } from '$lib/api/client';
+	import UncertaintyBadge from './UncertaintyBadge.svelte';
 
 	interface Props {
 		person: Person | PersonSummary;
@@ -16,6 +17,9 @@
 	const birthDate = person.birth_date ? formatGenDate(person.birth_date) : null;
 	const deathDate =
 		'death_date' in person && person.death_date ? formatGenDate(person.death_date) : null;
+
+	// Get research_status if available (Person has it, PersonSummary doesn't)
+	const researchStatus = 'research_status' in person ? person.research_status : undefined;
 </script>
 
 {#if href}
@@ -42,7 +46,12 @@
 			{/if}
 		</div>
 		<div class="info">
-			<h3 class="name">{fullName}</h3>
+			<div class="name-row">
+				<h3 class="name">{fullName}</h3>
+				{#if researchStatus}
+					<UncertaintyBadge status={researchStatus} size="small" />
+				{/if}
+			</div>
 			{#if variant === 'default'}
 				{#if birthDate}
 					<p class="detail">b. {birthDate}</p>
@@ -84,7 +93,12 @@
 			{/if}
 		</div>
 		<div class="info">
-			<h3 class="name">{fullName}</h3>
+			<div class="name-row">
+				<h3 class="name">{fullName}</h3>
+				{#if researchStatus}
+					<UncertaintyBadge status={researchStatus} size="small" />
+				{/if}
+			</div>
 			{#if variant === 'default'}
 				{#if birthDate}
 					<p class="detail">b. {birthDate}</p>
@@ -170,6 +184,12 @@
 	.info {
 		flex: 1;
 		min-width: 0;
+	}
+
+	.name-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	.name {

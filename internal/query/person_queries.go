@@ -80,19 +80,21 @@ type PersonListResult struct {
 
 // ListPersonsInput contains options for listing persons.
 type ListPersonsInput struct {
-	Limit  int
-	Offset int
-	Sort   string // surname, given_name, birth_date, updated_at
-	Order  string // asc, desc
+	Limit          int
+	Offset         int
+	Sort           string  // surname, given_name, birth_date, updated_at
+	Order          string  // asc, desc
+	ResearchStatus *string // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
 }
 
 // ListPersons returns a paginated list of persons.
 func (s *PersonService) ListPersons(ctx context.Context, input ListPersonsInput) (*PersonListResult, error) {
 	opts := repository.ListOptions{
-		Limit:  input.Limit,
-		Offset: input.Offset,
-		Sort:   input.Sort,
-		Order:  input.Order,
+		Limit:          input.Limit,
+		Offset:         input.Offset,
+		Sort:           input.Sort,
+		Order:          input.Order,
+		ResearchStatus: input.ResearchStatus,
 	}
 
 	if opts.Limit <= 0 {

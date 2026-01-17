@@ -251,6 +251,15 @@ const (
 	ListPersonsParamsOrderDesc ListPersonsParamsOrder = "desc"
 )
 
+// Defines values for ListPersonsParamsResearchStatus.
+const (
+	Certain  ListPersonsParamsResearchStatus = "certain"
+	Possible ListPersonsParamsResearchStatus = "possible"
+	Probable ListPersonsParamsResearchStatus = "probable"
+	Unknown  ListPersonsParamsResearchStatus = "unknown"
+	Unset    ListPersonsParamsResearchStatus = "unset"
+)
+
 // Defines values for UploadPersonMediaMultipartBodyMediaType.
 const (
 	Audio       UploadPersonMediaMultipartBodyMediaType = "audio"
@@ -1382,6 +1391,9 @@ type ListPersonsParams struct {
 	Offset *OffsetParam            `form:"offset,omitempty" json:"offset,omitempty"`
 	Sort   *ListPersonsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
 	Order  *ListPersonsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+
+	// ResearchStatus Filter by research status
+	ResearchStatus *ListPersonsParamsResearchStatus `form:"research_status,omitempty" json:"research_status,omitempty"`
 }
 
 // ListPersonsParamsSort defines parameters for ListPersons.
@@ -1389,6 +1401,9 @@ type ListPersonsParamsSort string
 
 // ListPersonsParamsOrder defines parameters for ListPersons.
 type ListPersonsParamsOrder string
+
+// ListPersonsParamsResearchStatus defines parameters for ListPersons.
+type ListPersonsParamsResearchStatus string
 
 // GetPersonHistoryParams defines parameters for GetPersonHistory.
 type GetPersonHistoryParams struct {
@@ -2431,6 +2446,13 @@ func (w *ServerInterfaceWrapper) ListPersons(ctx echo.Context) error {
 	err = runtime.BindQueryParameter("form", true, false, "order", ctx.QueryParams(), &params.Order)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// ------------- Optional query parameter "research_status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "research_status", ctx.QueryParams(), &params.ResearchStatus)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter research_status: %s", err))
 	}
 
 	// Invoke the callback with all the unmarshaled arguments

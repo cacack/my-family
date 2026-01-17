@@ -1283,12 +1283,18 @@ func (ss *StrictServer) ListPersons(ctx context.Context, request ListPersonsRequ
 		order = string(*request.Params.Order)
 	}
 
-	result, err := ss.server.personService.ListPersons(ctx, query.ListPersonsInput{
+	input := query.ListPersonsInput{
 		Limit:  limit,
 		Offset: offset,
 		Sort:   sort,
 		Order:  order,
-	})
+	}
+	if request.Params.ResearchStatus != nil {
+		rs := string(*request.Params.ResearchStatus)
+		input.ResearchStatus = &rs
+	}
+
+	result, err := ss.server.personService.ListPersons(ctx, input)
 	if err != nil {
 		return nil, err
 	}

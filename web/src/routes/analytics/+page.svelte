@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { api, type Person, type FamilyDetail } from '$lib/api/client';
+	import { api, type Person, type FamilyDetail, type ResearchStatus } from '$lib/api/client';
 	import QualityScore from '$lib/components/QualityScore.svelte';
 	import QualityChart from '$lib/components/QualityChart.svelte';
+	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 
 	interface PersonWithScore extends Person {
 		qualityScore: number;
@@ -17,6 +18,7 @@
 	let personsWithScores: PersonWithScore[] = $state([]);
 	let overallScore = $state(0);
 	let issuesCounts = $state<{ label: string; value: number; color: string }[]>([]);
+	let researchStatusCounts = $state<{ status: ResearchStatus | 'unset'; label: string; count: number; color: string }[]>([]);
 
 	// Stats
 	let totalPersons = $derived(persons.length);
@@ -135,6 +137,41 @@
 			{ label: 'Missing death info', value: missingDeathInfo, color: '#eab308' },
 			{ label: 'No family connections', value: orphanedPersons, color: '#8b5cf6' }
 		].filter((item) => item.value > 0);
+
+		// Calculate research status distribution
+		let certainCount = 0;
+		let probableCount = 0;
+		let possibleCount = 0;
+		let unknownCount = 0;
+		let unsetCount = 0;
+
+		for (const person of persons) {
+			switch (person.research_status) {
+				case 'certain':
+					certainCount++;
+					break;
+				case 'probable':
+					probableCount++;
+					break;
+				case 'possible':
+					possibleCount++;
+					break;
+				case 'unknown':
+					unknownCount++;
+					break;
+				default:
+					unsetCount++;
+					break;
+			}
+		}
+
+		researchStatusCounts = [
+			{ status: 'certain', label: 'Certain', count: certainCount, color: '#22c55e' },
+			{ status: 'probable', label: 'Probable', count: probableCount, color: '#3b82f6' },
+			{ status: 'possible', label: 'Possible', count: possibleCount, color: '#f97316' },
+			{ status: 'unknown', label: 'Unknown', count: unknownCount, color: '#ef4444' },
+			{ status: 'unset', label: 'Not assessed', count: unsetCount, color: '#94a3b8' }
+		];
 	}
 
 	async function loadData() {
@@ -211,6 +248,32 @@
 				</div>
 			</section>
 		{/if}
+
+		<!-- Research Status Distribution -->
+		<section class="section">
+			<h2>Research Confidence</h2>
+			<p class="section-description">Distribution of research status across all persons</p>
+			<div class="status-distribution">
+				{#each researchStatusCounts as item}
+					<div class="status-bar-row">
+						<div class="status-label">
+							{#if item.status !== 'unset'}
+								<UncertaintyBadge status={item.status} size="small" />
+							{:else}
+								<span class="unset-label">Not assessed</span>
+							{/if}
+						</div>
+						<div class="status-bar-container">
+							<div
+								class="status-bar"
+								style="width: {totalPersons > 0 ? (item.count / totalPersons) * 100 : 0}%; background-color: {item.color};"
+							></div>
+						</div>
+						<div class="status-count">{item.count}</div>
+					</div>
+				{/each}
+			</div>
+		</section>
 
 		<!-- Records Needing Attention Table -->
 		{#if lowestScoringRecords.length > 0}
@@ -416,5 +479,52 @@
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
+	}
+
+	/* Research Status Distribution */
+	.status-distribution {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.status-bar-row {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.status-label {
+		width: 120px;
+		flex-shrink: 0;
+	}
+
+	.unset-label {
+		font-size: 0.75rem;
+		color: #94a3b8;
+		font-weight: 500;
+	}
+
+	.status-bar-container {
+		flex: 1;
+		height: 1.25rem;
+		background: #f1f5f9;
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.status-bar {
+		height: 100%;
+		border-radius: 4px;
+		transition: width 0.3s ease;
+		min-width: 2px;
+	}
+
+	.status-count {
+		width: 3rem;
+		text-align: right;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: #475569;
 	}
 </style>

@@ -46,6 +46,7 @@ func (s *ReadModelStore) createTables() error {
 			death_date_sort DATE,
 			death_place VARCHAR(255),
 			notes TEXT,
+			research_status VARCHAR(20),
 			search_vector TSVECTOR,
 			version BIGINT NOT NULL DEFAULT 1,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -56,6 +57,7 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_persons_search ON persons USING GIN(search_vector);
 		CREATE INDEX IF NOT EXISTS idx_persons_surname_trgm ON persons USING GIN(surname gin_trgm_ops);
 		CREATE INDEX IF NOT EXISTS idx_persons_given_name_trgm ON persons USING GIN(given_name gin_trgm_ops);
+		CREATE INDEX IF NOT EXISTS idx_persons_research_status ON persons(research_status);
 
 		-- Trigger to update search_vector
 		CREATE OR REPLACE FUNCTION persons_search_trigger() RETURNS trigger AS $$
@@ -223,7 +225,21 @@ func (s *ReadModelStore) createTables() error {
 		CREATE TRIGGER person_names_search_update BEFORE INSERT OR UPDATE ON person_names
 			FOR EACH ROW EXECUTE FUNCTION person_names_search_trigger();
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Run schema migrations for existing databases
+	s.runMigrations()
+
+	return nil
+}
+
+// runMigrations applies schema changes for existing databases.
+func (s *ReadModelStore) runMigrations() {
+	// Add research_status column if it doesn't exist (for databases created before this column was added)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS research_status VARCHAR(20)`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_research_status ON persons(research_status)`)
 }
 
 // GetPerson retrieves a person by ID.
@@ -232,7 +248,7 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*reposito
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place,
 			   death_date_raw, death_date_sort, death_place,
-			   notes, version, updated_at
+			   notes, research_status, version, updated_at
 		FROM persons WHERE id = $1
 	`, id)
 
@@ -241,9 +257,24 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*reposito
 
 // ListPersons returns a paginated list of persons.
 func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	// Count total
+	// Build WHERE clause for research_status filter
+	whereClause := ""
+	var whereArgs []any
+	paramNum := 1
+	if opts.ResearchStatus != nil {
+		if *opts.ResearchStatus == "unset" {
+			whereClause = "WHERE research_status IS NULL OR research_status = ''"
+		} else {
+			whereClause = fmt.Sprintf("WHERE research_status = $%d", paramNum)
+			whereArgs = append(whereArgs, *opts.ResearchStatus)
+			paramNum++
+		}
+	}
+
+	// Count total (with filter if present)
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM persons").Scan(&total)
+	countQuery := "SELECT COUNT(*) FROM persons " + whereClause
+	err := s.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons: %w", err)
 	}
@@ -263,18 +294,22 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		orderDir = "DESC"
 	}
 
+	// Build query with filter
 	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place,
 			   death_date_raw, death_date_sort, death_place,
-			   notes, version, updated_at
+			   notes, research_status, version, updated_at
 		FROM persons
+		%s
 		ORDER BY %s %s NULLS LAST, given_name %s
-		LIMIT $1 OFFSET $2
-	`, orderColumn, orderDir, orderDir)
+		LIMIT $%d OFFSET $%d
+	`, whereClause, orderColumn, orderDir, orderDir, paramNum, paramNum+1)
 
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	// Build args: where args + limit + offset
+	queryArgs := append(whereArgs, opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons: %w", err)
 	}
@@ -306,7 +341,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
 					   p.death_date_raw, p.death_date_sort, p.death_place,
-					   p.notes, p.version, p.updated_at,
+					   p.notes, p.research_status, p.version, p.updated_at,
 					   TRUE as is_primary,
 					   GREATEST(
 						   similarity(p.given_name, $1),
@@ -322,7 +357,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
 					   p.death_date_raw, p.death_date_sort, p.death_place,
-					   p.notes, p.version, p.updated_at,
+					   p.notes, p.research_status, p.version, p.updated_at,
 					   pn.is_primary,
 					   GREATEST(
 						   similarity(pn.given_name, $1),
@@ -338,7 +373,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 			SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
 				   birth_date_raw, birth_date_sort, birth_place,
 				   death_date_raw, death_date_sort, death_place,
-				   notes, version, updated_at
+				   notes, research_status, version, updated_at
 			FROM matched_persons
 			ORDER BY id, is_primary DESC, sim_score DESC
 			LIMIT $2
@@ -351,7 +386,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
 					   p.death_date_raw, p.death_date_sort, p.death_place,
-					   p.notes, p.version, p.updated_at,
+					   p.notes, p.research_status, p.version, p.updated_at,
 					   TRUE as is_primary,
 					   ts_rank(p.search_vector, plainto_tsquery('english', $1)) as search_rank
 				FROM persons p
@@ -364,7 +399,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 					   p.birth_date_raw, p.birth_date_sort, p.birth_place,
 					   p.death_date_raw, p.death_date_sort, p.death_place,
-					   p.notes, p.version, p.updated_at,
+					   p.notes, p.research_status, p.version, p.updated_at,
 					   pn.is_primary,
 					   ts_rank(pn.search_vector, plainto_tsquery('english', $1)) as search_rank
 				FROM persons p
@@ -376,7 +411,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 			SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
 				   birth_date_raw, birth_date_sort, birth_place,
 				   death_date_raw, death_date_sort, death_place,
-				   notes, version, updated_at
+				   notes, research_status, version, updated_at
 			FROM matched_persons
 			ORDER BY id, is_primary DESC, search_rank DESC
 			LIMIT $2
@@ -404,8 +439,8 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.PersonReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO persons (id, given_name, surname, gender, birth_date_raw, birth_date_sort, birth_place,
-							 death_date_raw, death_date_sort, death_place, notes, version, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+							 death_date_raw, death_date_sort, death_place, notes, research_status, version, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		ON CONFLICT(id) DO UPDATE SET
 			given_name = EXCLUDED.given_name,
 			surname = EXCLUDED.surname,
@@ -417,12 +452,13 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 			death_date_sort = EXCLUDED.death_date_sort,
 			death_place = EXCLUDED.death_place,
 			notes = EXCLUDED.notes,
+			research_status = EXCLUDED.research_status,
 			version = EXCLUDED.version,
 			updated_at = EXCLUDED.updated_at
 	`, person.ID, person.GivenName, person.Surname, nullableGender(person.Gender),
 		nullableString(person.BirthDateRaw), nullableTime(person.BirthDateSort), nullableString(person.BirthPlace),
 		nullableString(person.DeathDateRaw), nullableTime(person.DeathDateSort), nullableString(person.DeathPlace),
-		nullableString(person.Notes), person.Version, person.UpdatedAt)
+		nullableString(person.Notes), nullableString(string(person.ResearchStatus)), person.Version, person.UpdatedAt)
 
 	return err
 }
@@ -696,7 +732,7 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place,
 			   p.death_date_raw, p.death_date_sort, p.death_place,
-			   p.notes, p.version, p.updated_at
+			   p.notes, p.research_status, p.version, p.updated_at
 		FROM persons p
 		JOIN family_children fc ON p.id = fc.person_id
 		WHERE fc.family_id = $1
@@ -827,6 +863,7 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 		givenName, surname, fullName     string
 		gender, birthDateRaw, birthPlace sql.NullString
 		deathDateRaw, deathPlace, notes  sql.NullString
+		researchStatus                   sql.NullString
 		birthDateSort, deathDateSort     sql.NullTime
 		version                          int64
 		updatedAt                        time.Time
@@ -835,7 +872,7 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	err := row.Scan(&id, &givenName, &surname, &fullName, &gender,
 		&birthDateRaw, &birthDateSort, &birthPlace,
 		&deathDateRaw, &deathDateSort, &deathPlace,
-		&notes, &version, &updatedAt)
+		&notes, &researchStatus, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -845,18 +882,19 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	}
 
 	p := &repository.PersonReadModel{
-		ID:           id,
-		GivenName:    givenName,
-		Surname:      surname,
-		FullName:     fullName,
-		Gender:       domain.Gender(gender.String),
-		BirthDateRaw: birthDateRaw.String,
-		BirthPlace:   birthPlace.String,
-		DeathDateRaw: deathDateRaw.String,
-		DeathPlace:   deathPlace.String,
-		Notes:        notes.String,
-		Version:      version,
-		UpdatedAt:    updatedAt,
+		ID:             id,
+		GivenName:      givenName,
+		Surname:        surname,
+		FullName:       fullName,
+		Gender:         domain.Gender(gender.String),
+		BirthDateRaw:   birthDateRaw.String,
+		BirthPlace:     birthPlace.String,
+		DeathDateRaw:   deathDateRaw.String,
+		DeathPlace:     deathPlace.String,
+		Notes:          notes.String,
+		ResearchStatus: domain.ResearchStatus(researchStatus.String),
+		Version:        version,
+		UpdatedAt:      updatedAt,
 	}
 
 	if birthDateSort.Valid {
@@ -1645,7 +1683,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place,
 			   death_date_raw, death_date_sort, death_place,
-			   notes, version, updated_at
+			   notes, research_status, version, updated_at
 		FROM persons
 		WHERE LOWER(surname) = LOWER($1)
 		ORDER BY given_name ASC
@@ -1784,7 +1822,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place,
 			   death_date_raw, death_date_sort, death_place,
-			   notes, version, updated_at
+			   notes, research_status, version, updated_at
 		FROM persons
 		WHERE birth_place ILIKE '%' || $1 || '%' OR death_place ILIKE '%' || $1 || '%'
 		ORDER BY surname ASC, given_name ASC

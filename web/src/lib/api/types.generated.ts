@@ -1819,6 +1819,8 @@ export interface operations {
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "surname" | "given_name" | "birth_date" | "updated_at";
                 order?: "asc" | "desc";
+                /** @description Filter by research status */
+                research_status?: "certain" | "probable" | "possible" | "unknown" | "unset";
             };
             header?: never;
             path?: never;
