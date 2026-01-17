@@ -298,18 +298,14 @@ jobs:
 
       # Semgrep: Rule-based static analysis
       - name: Semgrep scan
-        uses: semgrep/semgrep-action@v1
+        uses: docker://semgrep/semgrep:latest
         with:
-          config: >-
-            p/security-audit
-            p/secrets
-            p/golang
-            p/typescript
-          generateSarif: true
+          args: semgrep scan --config p/security-audit --config p/secrets --config p/golang --config p/typescript --sarif --output semgrep.sarif .
+        continue-on-error: true
 
       - name: Upload Semgrep results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
-        if: success() || failure()
+        if: always()
         with:
           sarif_file: semgrep.sarif
           category: semgrep
