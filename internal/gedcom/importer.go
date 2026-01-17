@@ -55,21 +55,25 @@ type PersonNameData struct {
 
 // PersonData contains parsed person data ready for creation.
 type PersonData struct {
-	ID            uuid.UUID
-	GedcomXref    string
-	GivenName     string
-	Surname       string
-	NamePrefix    string          // Dr., Rev., Sir (NPFX)
-	NameSuffix    string          // Jr., III, PhD (NSFX)
-	SurnamePrefix string          // von, de, van (SPFX)
-	Nickname      string          // Informal name (NICK)
-	NameType      domain.NameType // birth, married, aka (TYPE)
-	Gender        domain.Gender
-	BirthDate     string
-	BirthPlace    string
-	DeathDate     string
-	DeathPlace    string
-	Notes         string
+	ID             uuid.UUID
+	GedcomXref     string
+	GivenName      string
+	Surname        string
+	NamePrefix     string          // Dr., Rev., Sir (NPFX)
+	NameSuffix     string          // Jr., III, PhD (NSFX)
+	SurnamePrefix  string          // von, de, van (SPFX)
+	Nickname       string          // Informal name (NICK)
+	NameType       domain.NameType // birth, married, aka (TYPE)
+	Gender         domain.Gender
+	BirthDate      string
+	BirthPlace     string
+	BirthPlaceLat  *string // Latitude in GEDCOM format (e.g., "N42.3601")
+	BirthPlaceLong *string // Longitude in GEDCOM format (e.g., "W71.0589")
+	DeathDate      string
+	DeathPlace     string
+	DeathPlaceLat  *string // Latitude in GEDCOM format
+	DeathPlaceLong *string // Longitude in GEDCOM format
+	Notes          string
 
 	// Names contains all name variants from the GEDCOM file.
 	// The first name is also stored in the main GivenName/Surname fields.
@@ -83,15 +87,17 @@ type PersonData struct {
 
 // FamilyData contains parsed family data ready for creation.
 type FamilyData struct {
-	ID               uuid.UUID
-	GedcomXref       string
-	Partner1ID       *uuid.UUID
-	Partner2ID       *uuid.UUID
-	RelationshipType domain.RelationType
-	MarriageDate     string
-	MarriagePlace    string
-	ChildIDs         []uuid.UUID
-	ChildRelTypes    []domain.ChildRelationType
+	ID                uuid.UUID
+	GedcomXref        string
+	Partner1ID        *uuid.UUID
+	Partner2ID        *uuid.UUID
+	RelationshipType  domain.RelationType
+	MarriageDate      string
+	MarriagePlace     string
+	MarriagePlaceLat  *string // Latitude in GEDCOM format (e.g., "N39.7817")
+	MarriagePlaceLong *string // Longitude in GEDCOM format (e.g., "W89.6501")
+	ChildIDs          []uuid.UUID
+	ChildRelTypes     []domain.ChildRelationType
 }
 
 // SourceData contains parsed source data ready for creation.
@@ -176,6 +182,8 @@ type EventData struct {
 	FactType    domain.FactType
 	Date        string
 	Place       string
+	PlaceLat    *string // Latitude in GEDCOM format (e.g., "N42.3601")
+	PlaceLong   *string // Longitude in GEDCOM format (e.g., "W71.0589")
 	Description string
 	Cause       string // For death/burial events
 	Age         string // Age at event
@@ -365,6 +373,17 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		case gedcom.EventBirth:
 			person.BirthDate = event.Date
 			person.BirthPlace = event.Place
+			// Extract coordinates from PlaceDetail if available
+			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+				if event.PlaceDetail.Coordinates.Latitude != "" {
+					lat := event.PlaceDetail.Coordinates.Latitude
+					person.BirthPlaceLat = &lat
+				}
+				if event.PlaceDetail.Coordinates.Longitude != "" {
+					long := event.PlaceDetail.Coordinates.Longitude
+					person.BirthPlaceLong = &long
+				}
+			}
 			// Validate the date if parsed
 			if event.ParsedDate != nil {
 				if err := event.ParsedDate.Validate(); err != nil {
@@ -375,6 +394,17 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		case gedcom.EventDeath:
 			person.DeathDate = event.Date
 			person.DeathPlace = event.Place
+			// Extract coordinates from PlaceDetail if available
+			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+				if event.PlaceDetail.Coordinates.Latitude != "" {
+					lat := event.PlaceDetail.Coordinates.Latitude
+					person.DeathPlaceLat = &lat
+				}
+				if event.PlaceDetail.Coordinates.Longitude != "" {
+					long := event.PlaceDetail.Coordinates.Longitude
+					person.DeathPlaceLong = &long
+				}
+			}
 			// Validate the date if parsed
 			if event.ParsedDate != nil {
 				if err := event.ParsedDate.Validate(); err != nil {
@@ -439,6 +469,17 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 			family.RelationshipType = domain.RelationMarriage
 			family.MarriageDate = event.Date
 			family.MarriagePlace = event.Place
+			// Extract coordinates from PlaceDetail if available
+			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+				if event.PlaceDetail.Coordinates.Latitude != "" {
+					lat := event.PlaceDetail.Coordinates.Latitude
+					family.MarriagePlaceLat = &lat
+				}
+				if event.PlaceDetail.Coordinates.Longitude != "" {
+					long := event.PlaceDetail.Coordinates.Longitude
+					family.MarriagePlaceLong = &long
+				}
+			}
 			// Validate the date if parsed
 			if event.ParsedDate != nil {
 				if err := event.ParsedDate.Validate(); err != nil {
@@ -793,6 +834,17 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 			Cause:       event.Cause,
 			Age:         event.Age,
 		}
+		// Extract coordinates from PlaceDetail if available
+		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+			if event.PlaceDetail.Coordinates.Latitude != "" {
+				lat := event.PlaceDetail.Coordinates.Latitude
+				eventData.PlaceLat = &lat
+			}
+			if event.PlaceDetail.Coordinates.Longitude != "" {
+				long := event.PlaceDetail.Coordinates.Longitude
+				eventData.PlaceLong = &long
+			}
+		}
 		events = append(events, eventData)
 	}
 
@@ -908,6 +960,17 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 			Date:        event.Date,
 			Place:       event.Place,
 			Description: event.Description,
+		}
+		// Extract coordinates from PlaceDetail if available
+		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+			if event.PlaceDetail.Coordinates.Latitude != "" {
+				lat := event.PlaceDetail.Coordinates.Latitude
+				eventData.PlaceLat = &lat
+			}
+			if event.PlaceDetail.Coordinates.Longitude != "" {
+				long := event.PlaceDetail.Coordinates.Longitude
+				eventData.PlaceLong = &long
+			}
 		}
 		events = append(events, eventData)
 	}

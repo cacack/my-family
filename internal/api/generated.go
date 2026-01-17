@@ -488,12 +488,18 @@ type Family struct {
 	Id openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
-	MarriageDate     *GenDate                `json:"marriage_date,omitempty"`
-	MarriagePlace    *string                 `json:"marriage_place,omitempty"`
-	Partner1Id       *openapi_types.UUID     `json:"partner1_id,omitempty"`
-	Partner2Id       *openapi_types.UUID     `json:"partner2_id,omitempty"`
-	RelationshipType *FamilyRelationshipType `json:"relationship_type,omitempty"`
-	Version          int64                   `json:"version"`
+	MarriageDate  *GenDate `json:"marriage_date,omitempty"`
+	MarriagePlace *string  `json:"marriage_place,omitempty"`
+
+	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
+	MarriagePlaceLatitude *string `json:"marriage_place_latitude"`
+
+	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
+	MarriagePlaceLongitude *string                 `json:"marriage_place_longitude"`
+	Partner1Id             *openapi_types.UUID     `json:"partner1_id,omitempty"`
+	Partner2Id             *openapi_types.UUID     `json:"partner2_id,omitempty"`
+	RelationshipType       *FamilyRelationshipType `json:"relationship_type,omitempty"`
+	Version                int64                   `json:"version"`
 }
 
 // FamilyRelationshipType defines model for Family.RelationshipType.
@@ -528,14 +534,20 @@ type FamilyDetail struct {
 	Id       openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
-	MarriageDate     *GenDate                      `json:"marriage_date,omitempty"`
-	MarriagePlace    *string                       `json:"marriage_place,omitempty"`
-	Partner1         *PersonSummary                `json:"partner1,omitempty"`
-	Partner1Id       *openapi_types.UUID           `json:"partner1_id,omitempty"`
-	Partner2         *PersonSummary                `json:"partner2,omitempty"`
-	Partner2Id       *openapi_types.UUID           `json:"partner2_id,omitempty"`
-	RelationshipType *FamilyDetailRelationshipType `json:"relationship_type,omitempty"`
-	Version          int64                         `json:"version"`
+	MarriageDate  *GenDate `json:"marriage_date,omitempty"`
+	MarriagePlace *string  `json:"marriage_place,omitempty"`
+
+	// MarriagePlaceLatitude Latitude in GEDCOM format (e.g., "N39.7817")
+	MarriagePlaceLatitude *string `json:"marriage_place_latitude"`
+
+	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
+	MarriagePlaceLongitude *string                       `json:"marriage_place_longitude"`
+	Partner1               *PersonSummary                `json:"partner1,omitempty"`
+	Partner1Id             *openapi_types.UUID           `json:"partner1_id,omitempty"`
+	Partner2               *PersonSummary                `json:"partner2,omitempty"`
+	Partner2Id             *openapi_types.UUID           `json:"partner2_id,omitempty"`
+	RelationshipType       *FamilyDetailRelationshipType `json:"relationship_type,omitempty"`
+	Version                int64                         `json:"version"`
 }
 
 // FamilyDetailRelationshipType defines model for FamilyDetail.RelationshipType.
@@ -819,13 +831,25 @@ type Person struct {
 	BirthDate  *GenDate `json:"birth_date,omitempty"`
 	BirthPlace *string  `json:"birth_place,omitempty"`
 
+	// BirthPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
+	BirthPlaceLatitude *string `json:"birth_place_latitude"`
+
+	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
+	BirthPlaceLongitude *string `json:"birth_place_longitude"`
+
 	// DeathDate Genealogical date with flexible precision
-	DeathDate  *GenDate           `json:"death_date,omitempty"`
-	DeathPlace *string            `json:"death_place,omitempty"`
-	Gender     *PersonGender      `json:"gender,omitempty"`
-	GivenName  string             `json:"given_name"`
-	Id         openapi_types.UUID `json:"id"`
-	Notes      *string            `json:"notes,omitempty"`
+	DeathDate  *GenDate `json:"death_date,omitempty"`
+	DeathPlace *string  `json:"death_place,omitempty"`
+
+	// DeathPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
+	DeathPlaceLatitude *string `json:"death_place_latitude"`
+
+	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
+	DeathPlaceLongitude *string            `json:"death_place_longitude"`
+	Gender              *PersonGender      `json:"gender,omitempty"`
+	GivenName           string             `json:"given_name"`
+	Id                  openapi_types.UUID `json:"id"`
+	Notes               *string            `json:"notes,omitempty"`
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
@@ -865,14 +889,26 @@ type PersonDetail struct {
 	BirthDate  *GenDate `json:"birth_date,omitempty"`
 	BirthPlace *string  `json:"birth_place,omitempty"`
 
+	// BirthPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
+	BirthPlaceLatitude *string `json:"birth_place_latitude"`
+
+	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
+	BirthPlaceLongitude *string `json:"birth_place_longitude"`
+
 	// DeathDate Genealogical date with flexible precision
-	DeathDate         *GenDate            `json:"death_date,omitempty"`
-	DeathPlace        *string             `json:"death_place,omitempty"`
-	FamiliesAsPartner *[]FamilySummary    `json:"families_as_partner,omitempty"`
-	FamilyAsChild     *FamilySummary      `json:"family_as_child,omitempty"`
-	Gender            *PersonDetailGender `json:"gender,omitempty"`
-	GivenName         string              `json:"given_name"`
-	Id                openapi_types.UUID  `json:"id"`
+	DeathDate  *GenDate `json:"death_date,omitempty"`
+	DeathPlace *string  `json:"death_place,omitempty"`
+
+	// DeathPlaceLatitude Latitude in GEDCOM format (e.g., "N42.3601")
+	DeathPlaceLatitude *string `json:"death_place_latitude"`
+
+	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
+	DeathPlaceLongitude *string             `json:"death_place_longitude"`
+	FamiliesAsPartner   *[]FamilySummary    `json:"families_as_partner,omitempty"`
+	FamilyAsChild       *FamilySummary      `json:"family_as_child,omitempty"`
+	Gender              *PersonDetailGender `json:"gender,omitempty"`
+	GivenName           string              `json:"given_name"`
+	Id                  openapi_types.UUID  `json:"id"`
 
 	// Names All name variants for the person (birth, married, aliases, etc.)
 	Names *[]PersonName `json:"names,omitempty"`
@@ -1126,6 +1162,56 @@ type SearchResults struct {
 	Total int            `json:"total"`
 }
 
+// Snapshot defines model for Snapshot.
+type Snapshot struct {
+	// CreatedAt When the snapshot was created
+	CreatedAt time.Time `json:"created_at"`
+
+	// Description Optional description of the snapshot
+	Description *string            `json:"description,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Name Name of the research milestone
+	Name string `json:"name"`
+
+	// Position Event store position captured by this snapshot
+	Position int64 `json:"position"`
+}
+
+// SnapshotComparisonResult defines model for SnapshotComparisonResult.
+type SnapshotComparisonResult struct {
+	// Changes Events that occurred between the two snapshot positions
+	Changes []ChangeEntry `json:"changes"`
+
+	// HasMore Whether there are more changes beyond the limit
+	HasMore bool `json:"has_more"`
+
+	// OlderFirst True if snapshot1 is the older (lower position) snapshot
+	OlderFirst bool     `json:"older_first"`
+	Snapshot1  Snapshot `json:"snapshot1"`
+	Snapshot2  Snapshot `json:"snapshot2"`
+
+	// TotalCount Number of changes between snapshots
+	TotalCount int `json:"total_count"`
+}
+
+// SnapshotCreate defines model for SnapshotCreate.
+type SnapshotCreate struct {
+	// Description Optional description of the snapshot
+	Description *string `json:"description,omitempty"`
+
+	// Name Name of the research milestone
+	Name string `json:"name"`
+}
+
+// SnapshotList defines model for SnapshotList.
+type SnapshotList struct {
+	Items []Snapshot `json:"items"`
+
+	// Total Total number of snapshots
+	Total int `json:"total"`
+}
+
 // Source defines model for Source.
 type Source struct {
 	Author     *string `json:"author,omitempty"`
@@ -1271,6 +1357,9 @@ type OffsetParam = int
 
 // PersonId defines model for personId.
 type PersonId = openapi_types.UUID
+
+// SnapshotId defines model for snapshotId.
+type SnapshotId = openapi_types.UUID
 
 // VersionParam defines model for versionParam.
 type VersionParam = int64
@@ -1538,6 +1627,9 @@ type UpdatePersonNameJSONRequestBody = PersonNameUpdate
 // RollbackPersonJSONRequestBody defines body for RollbackPerson for application/json ContentType.
 type RollbackPersonJSONRequestBody = RollbackRequest
 
+// CreateSnapshotJSONRequestBody defines body for CreateSnapshot for application/json ContentType.
+type CreateSnapshotJSONRequestBody = SnapshotCreate
+
 // CreateSourceJSONRequestBody defines body for CreateSource for application/json ContentType.
 type CreateSourceJSONRequestBody = SourceCreate
 
@@ -1705,6 +1797,21 @@ type ServerInterface interface {
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx echo.Context, params SearchPersonsParams) error
+	// List all snapshots
+	// (GET /snapshots)
+	ListSnapshots(ctx echo.Context) error
+	// Create a new snapshot
+	// (POST /snapshots)
+	CreateSnapshot(ctx echo.Context) error
+	// Compare two snapshots
+	// (GET /snapshots/{id1}/compare/{id2})
+	CompareSnapshots(ctx echo.Context, id1 openapi_types.UUID, id2 openapi_types.UUID) error
+	// Delete a snapshot
+	// (DELETE /snapshots/{id})
+	DeleteSnapshot(ctx echo.Context, id SnapshotId) error
+	// Get a snapshot by ID
+	// (GET /snapshots/{id})
+	GetSnapshot(ctx echo.Context, id SnapshotId) error
 	// List all sources
 	// (GET /sources)
 	ListSources(ctx echo.Context, params ListSourcesParams) error
@@ -2798,6 +2905,80 @@ func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 	return err
 }
 
+// ListSnapshots converts echo context to params.
+func (w *ServerInterfaceWrapper) ListSnapshots(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListSnapshots(ctx)
+	return err
+}
+
+// CreateSnapshot converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateSnapshot(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateSnapshot(ctx)
+	return err
+}
+
+// CompareSnapshots converts echo context to params.
+func (w *ServerInterfaceWrapper) CompareSnapshots(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id1" -------------
+	var id1 openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id1", ctx.Param("id1"), &id1, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id1: %s", err))
+	}
+
+	// ------------- Path parameter "id2" -------------
+	var id2 openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id2", ctx.Param("id2"), &id2, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id2: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CompareSnapshots(ctx, id1, id2)
+	return err
+}
+
+// DeleteSnapshot converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteSnapshot(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id SnapshotId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteSnapshot(ctx, id)
+	return err
+}
+
+// GetSnapshot converts echo context to params.
+func (w *ServerInterfaceWrapper) GetSnapshot(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id SnapshotId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetSnapshot(ctx, id)
+	return err
+}
+
 // ListSources converts echo context to params.
 func (w *ServerInterfaceWrapper) ListSources(ctx echo.Context) error {
 	var err error
@@ -3120,6 +3301,11 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/quality/overview", wrapper.GetQualityOverview)
 	router.GET(baseURL+"/quality/persons/:id", wrapper.GetPersonQuality)
 	router.GET(baseURL+"/search", wrapper.SearchPersons)
+	router.GET(baseURL+"/snapshots", wrapper.ListSnapshots)
+	router.POST(baseURL+"/snapshots", wrapper.CreateSnapshot)
+	router.GET(baseURL+"/snapshots/:id1/compare/:id2", wrapper.CompareSnapshots)
+	router.DELETE(baseURL+"/snapshots/:id", wrapper.DeleteSnapshot)
+	router.GET(baseURL+"/snapshots/:id", wrapper.GetSnapshot)
 	router.GET(baseURL+"/sources", wrapper.ListSources)
 	router.POST(baseURL+"/sources", wrapper.CreateSource)
 	router.GET(baseURL+"/sources/search", wrapper.SearchSources)
@@ -4773,6 +4959,126 @@ func (response SearchPersons400JSONResponse) VisitSearchPersonsResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListSnapshotsRequestObject struct {
+}
+
+type ListSnapshotsResponseObject interface {
+	VisitListSnapshotsResponse(w http.ResponseWriter) error
+}
+
+type ListSnapshots200JSONResponse SnapshotList
+
+func (response ListSnapshots200JSONResponse) VisitListSnapshotsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateSnapshotRequestObject struct {
+	Body *CreateSnapshotJSONRequestBody
+}
+
+type CreateSnapshotResponseObject interface {
+	VisitCreateSnapshotResponse(w http.ResponseWriter) error
+}
+
+type CreateSnapshot201JSONResponse Snapshot
+
+func (response CreateSnapshot201JSONResponse) VisitCreateSnapshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateSnapshot400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateSnapshot400JSONResponse) VisitCreateSnapshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CompareSnapshotsRequestObject struct {
+	Id1 openapi_types.UUID `json:"id1"`
+	Id2 openapi_types.UUID `json:"id2"`
+}
+
+type CompareSnapshotsResponseObject interface {
+	VisitCompareSnapshotsResponse(w http.ResponseWriter) error
+}
+
+type CompareSnapshots200JSONResponse SnapshotComparisonResult
+
+func (response CompareSnapshots200JSONResponse) VisitCompareSnapshotsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CompareSnapshots404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CompareSnapshots404JSONResponse) VisitCompareSnapshotsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteSnapshotRequestObject struct {
+	Id SnapshotId `json:"id"`
+}
+
+type DeleteSnapshotResponseObject interface {
+	VisitDeleteSnapshotResponse(w http.ResponseWriter) error
+}
+
+type DeleteSnapshot204Response struct {
+}
+
+func (response DeleteSnapshot204Response) VisitDeleteSnapshotResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSnapshot404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteSnapshot404JSONResponse) VisitDeleteSnapshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetSnapshotRequestObject struct {
+	Id SnapshotId `json:"id"`
+}
+
+type GetSnapshotResponseObject interface {
+	VisitGetSnapshotResponse(w http.ResponseWriter) error
+}
+
+type GetSnapshot200JSONResponse Snapshot
+
+func (response GetSnapshot200JSONResponse) VisitGetSnapshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetSnapshot404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSnapshot404JSONResponse) VisitGetSnapshotResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListSourcesRequestObject struct {
 	Params ListSourcesParams
 }
@@ -5256,6 +5562,21 @@ type StrictServerInterface interface {
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error)
+	// List all snapshots
+	// (GET /snapshots)
+	ListSnapshots(ctx context.Context, request ListSnapshotsRequestObject) (ListSnapshotsResponseObject, error)
+	// Create a new snapshot
+	// (POST /snapshots)
+	CreateSnapshot(ctx context.Context, request CreateSnapshotRequestObject) (CreateSnapshotResponseObject, error)
+	// Compare two snapshots
+	// (GET /snapshots/{id1}/compare/{id2})
+	CompareSnapshots(ctx context.Context, request CompareSnapshotsRequestObject) (CompareSnapshotsResponseObject, error)
+	// Delete a snapshot
+	// (DELETE /snapshots/{id})
+	DeleteSnapshot(ctx context.Context, request DeleteSnapshotRequestObject) (DeleteSnapshotResponseObject, error)
+	// Get a snapshot by ID
+	// (GET /snapshots/{id})
+	GetSnapshot(ctx context.Context, request GetSnapshotRequestObject) (GetSnapshotResponseObject, error)
 	// List all sources
 	// (GET /sources)
 	ListSources(ctx context.Context, request ListSourcesRequestObject) (ListSourcesResponseObject, error)
@@ -6684,6 +7005,134 @@ func (sh *strictHandler) SearchPersons(ctx echo.Context, params SearchPersonsPar
 		return err
 	} else if validResponse, ok := response.(SearchPersonsResponseObject); ok {
 		return validResponse.VisitSearchPersonsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListSnapshots operation middleware
+func (sh *strictHandler) ListSnapshots(ctx echo.Context) error {
+	var request ListSnapshotsRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSnapshots(ctx.Request().Context(), request.(ListSnapshotsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSnapshots")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListSnapshotsResponseObject); ok {
+		return validResponse.VisitListSnapshotsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateSnapshot operation middleware
+func (sh *strictHandler) CreateSnapshot(ctx echo.Context) error {
+	var request CreateSnapshotRequestObject
+
+	var body CreateSnapshotJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSnapshot(ctx.Request().Context(), request.(CreateSnapshotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSnapshot")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateSnapshotResponseObject); ok {
+		return validResponse.VisitCreateSnapshotResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CompareSnapshots operation middleware
+func (sh *strictHandler) CompareSnapshots(ctx echo.Context, id1 openapi_types.UUID, id2 openapi_types.UUID) error {
+	var request CompareSnapshotsRequestObject
+
+	request.Id1 = id1
+	request.Id2 = id2
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CompareSnapshots(ctx.Request().Context(), request.(CompareSnapshotsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompareSnapshots")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CompareSnapshotsResponseObject); ok {
+		return validResponse.VisitCompareSnapshotsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteSnapshot operation middleware
+func (sh *strictHandler) DeleteSnapshot(ctx echo.Context, id SnapshotId) error {
+	var request DeleteSnapshotRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSnapshot(ctx.Request().Context(), request.(DeleteSnapshotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSnapshot")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteSnapshotResponseObject); ok {
+		return validResponse.VisitDeleteSnapshotResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetSnapshot operation middleware
+func (sh *strictHandler) GetSnapshot(ctx echo.Context, id SnapshotId) error {
+	var request GetSnapshotRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSnapshot(ctx.Request().Context(), request.(GetSnapshotRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSnapshot")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetSnapshotResponseObject); ok {
+		return validResponse.VisitGetSnapshotResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

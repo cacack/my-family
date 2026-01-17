@@ -22,8 +22,9 @@ func setupExportTestServer(t *testing.T) *api.Server {
 		LogFormat: "text",
 	}
 	eventStore := memory.NewEventStore()
+	snapshotStore := memory.NewSnapshotStore(eventStore)
 	readStore := memory.NewReadModelStore()
-	return api.NewServer(cfg, eventStore, readStore, nil)
+	return api.NewServer(cfg, eventStore, readStore, snapshotStore, nil)
 }
 
 const exportTestGedcom = `0 HEAD

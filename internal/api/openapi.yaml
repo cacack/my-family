@@ -43,6 +43,8 @@ tags:
     description: Tree-wide statistics
   - name: reports
     description: Genealogical reports (Ahnentafel, etc.)
+  - name: snapshots
+    description: Research milestone snapshots
 
 paths:
   /persons:
@@ -1609,6 +1611,107 @@ paths:
               schema:
                 $ref: '#/components/schemas/Statistics'
 
+  # Snapshot endpoints
+
+  /snapshots:
+    get:
+      operationId: listSnapshots
+      summary: List all snapshots
+      description: Returns all research milestone snapshots ordered by creation date (newest first)
+      tags: [snapshots]
+      responses:
+        '200':
+          description: List of snapshots
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotList'
+
+    post:
+      operationId: createSnapshot
+      summary: Create a new snapshot
+      description: Creates a snapshot capturing the current position in the event store
+      tags: [snapshots]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SnapshotCreate'
+            example:
+              name: "Pre-DNA results"
+              description: "Research state before DNA test results arrived"
+      responses:
+        '201':
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Snapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /snapshots/{id}:
+    parameters:
+      - $ref: '#/components/parameters/snapshotId'
+
+    get:
+      operationId: getSnapshot
+      summary: Get a snapshot by ID
+      tags: [snapshots]
+      responses:
+        '200':
+          description: Snapshot details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Snapshot'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      operationId: deleteSnapshot
+      summary: Delete a snapshot
+      description: Removes the snapshot record (events in the store remain untouched)
+      tags: [snapshots]
+      responses:
+        '204':
+          description: Snapshot deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /snapshots/{id1}/compare/{id2}:
+    parameters:
+      - name: id1
+        in: path
+        required: true
+        description: First snapshot ID
+        schema:
+          type: string
+          format: uuid
+      - name: id2
+        in: path
+        required: true
+        description: Second snapshot ID
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: compareSnapshots
+      summary: Compare two snapshots
+      description: Returns the list of changes (events) between two snapshot positions
+      tags: [snapshots]
+      responses:
+        '200':
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotComparisonResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   parameters:
     personId:
@@ -1651,6 +1754,15 @@ components:
       schema:
         type: integer
         format: int64
+
+    snapshotId:
+      name: id
+      in: path
+      required: true
+      description: Snapshot UUID
+      schema:
+        type: string
+        format: uuid
 
   responses:
     BadRequest:
@@ -1749,10 +1861,26 @@ components:
           $ref: '#/components/schemas/GenDate'
         birth_place:
           type: string
+        birth_place_latitude:
+          type: string
+          nullable: true
+          description: Latitude in GEDCOM format (e.g., "N42.3601")
+        birth_place_longitude:
+          type: string
+          nullable: true
+          description: Longitude in GEDCOM format (e.g., "W71.0589")
         death_date:
           $ref: '#/components/schemas/GenDate'
         death_place:
           type: string
+        death_place_latitude:
+          type: string
+          nullable: true
+          description: Latitude in GEDCOM format (e.g., "N42.3601")
+        death_place_longitude:
+          type: string
+          nullable: true
+          description: Longitude in GEDCOM format (e.g., "W71.0589")
         notes:
           type: string
         research_status:
@@ -1893,6 +2021,14 @@ components:
           $ref: '#/components/schemas/GenDate'
         marriage_place:
           type: string
+        marriage_place_latitude:
+          type: string
+          nullable: true
+          description: Latitude in GEDCOM format (e.g., "N39.7817")
+        marriage_place_longitude:
+          type: string
+          nullable: true
+          description: Longitude in GEDCOM format (e.g., "W89.6501")
         version:
           type: integer
           format: int64
@@ -3055,3 +3191,79 @@ components:
           type: integer
         unknown:
           type: integer
+
+    Snapshot:
+      type: object
+      required: [id, name, position, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+          description: Name of the research milestone
+          example: "Pre-DNA results"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of the snapshot
+          example: "Research state before DNA test results arrived"
+        position:
+          type: integer
+          format: int64
+          description: Event store position captured by this snapshot
+          example: 42
+        created_at:
+          type: string
+          format: date-time
+          description: When the snapshot was created
+
+    SnapshotCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name of the research milestone
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of the snapshot
+
+    SnapshotList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Snapshot'
+        total:
+          type: integer
+          description: Total number of snapshots
+
+    SnapshotComparisonResult:
+      type: object
+      required: [snapshot1, snapshot2, changes, total_count, has_more, older_first]
+      properties:
+        snapshot1:
+          $ref: '#/components/schemas/Snapshot'
+        snapshot2:
+          $ref: '#/components/schemas/Snapshot'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeEntry'
+          description: Events that occurred between the two snapshot positions
+        total_count:
+          type: integer
+          description: Number of changes between snapshots
+        has_more:
+          type: boolean
+          description: Whether there are more changes beyond the limit
+        older_first:
+          type: boolean
+          description: True if snapshot1 is the older (lower position) snapshot

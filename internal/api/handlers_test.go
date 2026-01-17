@@ -19,7 +19,8 @@ func setupTestServer() *api.Server {
 	}
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
-	return api.NewServer(cfg, eventStore, readStore, nil)
+	snapshotStore := memory.NewSnapshotStore(eventStore)
+	return api.NewServer(cfg, eventStore, readStore, snapshotStore, nil)
 }
 
 func TestHealthCheck(t *testing.T) {

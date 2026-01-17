@@ -217,6 +217,14 @@ func (s *ReadModelStore) runMigrations() {
 	// Add research_status column if it doesn't exist (for databases created before this column was added)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN research_status TEXT`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_research_status ON persons(research_status)`)
+
+	// Add place coordinate columns for geographic features (issue #105)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN birth_place_lat TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN birth_place_long TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN death_place_lat TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN death_place_long TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN marriage_place_lat TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN marriage_place_long TEXT`)
 }
 
 // tryCreateFTS5 attempts to create FTS5 virtual table for full-text search.
@@ -302,8 +310,8 @@ func (s *ReadModelStore) tryCreateFTS5() {
 func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, version, updated_at
 		FROM persons WHERE id = ?
 	`, id.String())
@@ -352,8 +360,8 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, version, updated_at
 		FROM persons
 		%s
@@ -397,8 +405,8 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 		WITH matched_persons AS (
 			-- Match in main persons table
 			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-				   p.birth_date_raw, p.birth_date_sort, p.birth_place,
-				   p.death_date_raw, p.death_date_sort, p.death_place,
+				   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+				   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 				   p.notes, p.research_status, p.version, p.updated_at, 1 as is_primary, rank as search_rank
 			FROM persons p
 			JOIN persons_fts fts ON p.rowid = fts.rowid
@@ -408,8 +416,8 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 
 			-- Match in person_names table
 			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-				   p.birth_date_raw, p.birth_date_sort, p.birth_place,
-				   p.death_date_raw, p.death_date_sort, p.death_place,
+				   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+				   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 				   p.notes, p.research_status, p.version, p.updated_at, pn.is_primary, nfts.rank as search_rank
 			FROM persons p
 			JOIN person_names pn ON p.id = pn.person_id
@@ -417,8 +425,8 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 			WHERE person_names_fts MATCH ?
 		)
 		SELECT DISTINCT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, version, updated_at
 		FROM matched_persons
 		ORDER BY is_primary DESC, search_rank
@@ -453,8 +461,8 @@ func (s *ReadModelStore) searchPersonsLike(ctx context.Context, query string, li
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place,
-			   p.death_date_raw, p.death_date_sort, p.death_place,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.research_status, p.version, p.updated_at
 		FROM persons p
 		LEFT JOIN person_names pn ON p.id = pn.person_id
@@ -490,10 +498,26 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 		deathDateSort = sql.NullString{String: person.DeathDateSort.Format("2006-01-02"), Valid: true}
 	}
 
+	// Convert coordinate pointers to nullable strings
+	var birthPlaceLat, birthPlaceLong, deathPlaceLat, deathPlaceLong sql.NullString
+	if person.BirthPlaceLat != nil {
+		birthPlaceLat = sql.NullString{String: *person.BirthPlaceLat, Valid: true}
+	}
+	if person.BirthPlaceLong != nil {
+		birthPlaceLong = sql.NullString{String: *person.BirthPlaceLong, Valid: true}
+	}
+	if person.DeathPlaceLat != nil {
+		deathPlaceLat = sql.NullString{String: *person.DeathPlaceLat, Valid: true}
+	}
+	if person.DeathPlaceLong != nil {
+		deathPlaceLong = sql.NullString{String: *person.DeathPlaceLong, Valid: true}
+	}
+
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO persons (id, given_name, surname, gender, birth_date_raw, birth_date_sort, birth_place,
-							 death_date_raw, death_date_sort, death_place, notes, research_status, version, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+							 birth_place_lat, birth_place_long, death_date_raw, death_date_sort, death_place,
+							 death_place_lat, death_place_long, notes, research_status, version, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			given_name = excluded.given_name,
 			surname = excluded.surname,
@@ -501,16 +525,20 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 			birth_date_raw = excluded.birth_date_raw,
 			birth_date_sort = excluded.birth_date_sort,
 			birth_place = excluded.birth_place,
+			birth_place_lat = excluded.birth_place_lat,
+			birth_place_long = excluded.birth_place_long,
 			death_date_raw = excluded.death_date_raw,
 			death_date_sort = excluded.death_date_sort,
 			death_place = excluded.death_place,
+			death_place_lat = excluded.death_place_lat,
+			death_place_long = excluded.death_place_long,
 			notes = excluded.notes,
 			research_status = excluded.research_status,
 			version = excluded.version,
 			updated_at = excluded.updated_at
 	`, person.ID.String(), person.GivenName, person.Surname, string(person.Gender),
-		person.BirthDateRaw, birthDateSort, person.BirthPlace,
-		person.DeathDateRaw, deathDateSort, person.DeathPlace,
+		person.BirthDateRaw, birthDateSort, person.BirthPlace, birthPlaceLat, birthPlaceLong,
+		person.DeathDateRaw, deathDateSort, person.DeathPlace, deathPlaceLat, deathPlaceLong,
 		person.Notes, string(person.ResearchStatus), person.Version, formatTimestamp(person.UpdatedAt))
 
 	return err
@@ -650,6 +678,7 @@ func (s *ReadModelStore) GetFamily(ctx context.Context, id uuid.UUID) (*reposito
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, partner1_id, partner1_name, partner2_id, partner2_name,
 			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
+			   marriage_place_lat, marriage_place_long,
 			   child_count, version, updated_at
 		FROM families WHERE id = ?
 	`, id.String())
@@ -668,6 +697,7 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, partner1_id, partner1_name, partner2_id, partner2_name,
 			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
+			   marriage_place_lat, marriage_place_long,
 			   child_count, version, updated_at
 		FROM families
 		ORDER BY updated_at DESC
@@ -695,6 +725,7 @@ func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, partner1_id, partner1_name, partner2_id, partner2_name,
 			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
+			   marriage_place_lat, marriage_place_long,
 			   child_count, version, updated_at
 		FROM families
 		WHERE partner1_id = ? OR partner2_id = ?
@@ -731,11 +762,21 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.Fami
 		marriageDateSort = sql.NullString{String: family.MarriageDateSort.Format("2006-01-02"), Valid: true}
 	}
 
+	// Convert coordinate pointers to nullable strings
+	var marriagePlaceLat, marriagePlaceLong sql.NullString
+	if family.MarriagePlaceLat != nil {
+		marriagePlaceLat = sql.NullString{String: *family.MarriagePlaceLat, Valid: true}
+	}
+	if family.MarriagePlaceLong != nil {
+		marriagePlaceLong = sql.NullString{String: *family.MarriagePlaceLong, Valid: true}
+	}
+
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO families (id, partner1_id, partner1_name, partner2_id, partner2_name,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
+							  marriage_place_lat, marriage_place_long,
 							  child_count, version, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			partner1_id = excluded.partner1_id,
 			partner1_name = excluded.partner1_name,
@@ -745,11 +786,14 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.Fami
 			marriage_date_raw = excluded.marriage_date_raw,
 			marriage_date_sort = excluded.marriage_date_sort,
 			marriage_place = excluded.marriage_place,
+			marriage_place_lat = excluded.marriage_place_lat,
+			marriage_place_long = excluded.marriage_place_long,
 			child_count = excluded.child_count,
 			version = excluded.version,
 			updated_at = excluded.updated_at
 	`, family.ID.String(), partner1ID, family.Partner1Name, partner2ID, family.Partner2Name,
 		string(family.RelationshipType), family.MarriageDateRaw, marriageDateSort, family.MarriagePlace,
+		marriagePlaceLat, marriagePlaceLong,
 		family.ChildCount, family.Version, formatTimestamp(family.UpdatedAt))
 
 	return err
@@ -809,8 +853,8 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UU
 func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place,
-			   p.death_date_raw, p.death_date_sort, p.death_place,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.research_status, p.version, p.updated_at
 		FROM persons p
 		JOIN family_children fc ON p.id = fc.person_id
@@ -839,6 +883,7 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID)
 	row := s.db.QueryRowContext(ctx, `
 		SELECT f.id, f.partner1_id, f.partner1_name, f.partner2_id, f.partner2_name,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
+			   f.marriage_place_lat, f.marriage_place_long,
 			   f.child_count, f.version, f.updated_at
 		FROM families f
 		JOIN family_children fc ON f.id = fc.family_id
@@ -951,15 +996,17 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	var (
 		idStr, givenName, surname, fullName             string
 		gender, birthDateRaw, birthDateSort, birthPlace sql.NullString
+		birthPlaceLat, birthPlaceLong                   sql.NullString
 		deathDateRaw, deathDateSort, deathPlace, notes  sql.NullString
+		deathPlaceLat, deathPlaceLong                   sql.NullString
 		researchStatus                                  sql.NullString
 		version                                         int64
 		updatedAt                                       string
 	)
 
 	err := row.Scan(&idStr, &givenName, &surname, &fullName, &gender,
-		&birthDateRaw, &birthDateSort, &birthPlace,
-		&deathDateRaw, &deathDateSort, &deathPlace,
+		&birthDateRaw, &birthDateSort, &birthPlace, &birthPlaceLat, &birthPlaceLong,
+		&deathDateRaw, &deathDateSort, &deathPlace, &deathPlaceLat, &deathPlaceLong,
 		&notes, &researchStatus, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -983,6 +1030,20 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 		Notes:          notes.String,
 		ResearchStatus: domain.ResearchStatus(researchStatus.String),
 		Version:        version,
+	}
+
+	// Set coordinate pointers if values are present
+	if birthPlaceLat.Valid && birthPlaceLat.String != "" {
+		p.BirthPlaceLat = &birthPlaceLat.String
+	}
+	if birthPlaceLong.Valid && birthPlaceLong.String != "" {
+		p.BirthPlaceLong = &birthPlaceLong.String
+	}
+	if deathPlaceLat.Valid && deathPlaceLat.String != "" {
+		p.DeathPlaceLat = &deathPlaceLat.String
+	}
+	if deathPlaceLong.Valid && deathPlaceLong.String != "" {
+		p.DeathPlaceLong = &deathPlaceLong.String
 	}
 
 	if birthDateSort.Valid {
@@ -1011,6 +1072,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		idStr                                                     string
 		partner1ID, partner1Name, partner2ID, partner2Name        sql.NullString
 		relType, marriageDateRaw, marriageDateSort, marriagePlace sql.NullString
+		marriagePlaceLat, marriagePlaceLong                       sql.NullString
 		childCount                                                int
 		version                                                   int64
 		updatedAt                                                 string
@@ -1018,6 +1080,7 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 
 	err := row.Scan(&idStr, &partner1ID, &partner1Name, &partner2ID, &partner2Name,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
+		&marriagePlaceLat, &marriagePlaceLong,
 		&childCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -1051,6 +1114,13 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		if t, err := time.Parse("2006-01-02", marriageDateSort.String); err == nil {
 			f.MarriageDateSort = &t
 		}
+	}
+	// Set coordinate pointers if values are present
+	if marriagePlaceLat.Valid && marriagePlaceLat.String != "" {
+		f.MarriagePlaceLat = &marriagePlaceLat.String
+	}
+	if marriagePlaceLong.Valid && marriagePlaceLong.String != "" {
+		f.MarriagePlaceLong = &marriagePlaceLong.String
 	}
 	if t, err := parseTimestamp(updatedAt); err == nil {
 		f.UpdatedAt = t
@@ -1779,8 +1849,8 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, version, updated_at
 		FROM persons
 		WHERE LOWER(surname) = LOWER(?)
@@ -1920,8 +1990,8 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, version, updated_at
 		FROM persons
 		WHERE birth_place LIKE '%' || ? || '%' OR death_place LIKE '%' || ? || '%'

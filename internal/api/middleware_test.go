@@ -17,8 +17,9 @@ func setupMiddlewareTestServer() *api.Server {
 		LogFormat: "text",
 	}
 	eventStore := memory.NewEventStore()
+	snapshotStore := memory.NewSnapshotStore(eventStore)
 	readStore := memory.NewReadModelStore()
-	return api.NewServer(cfg, eventStore, readStore, nil)
+	return api.NewServer(cfg, eventStore, readStore, snapshotStore, nil)
 }
 
 func TestErrorHandler_NotFound(t *testing.T) {
@@ -88,8 +89,9 @@ func TestServerWithJSONLogging(t *testing.T) {
 		LogFormat: "json",
 	}
 	eventStore := memory.NewEventStore()
+	snapshotStore := memory.NewSnapshotStore(eventStore)
 	readStore := memory.NewReadModelStore()
-	server := api.NewServer(cfg, eventStore, readStore, nil)
+	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, nil)
 
 	// Make a request to ensure JSON logging is configured
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", http.NoBody)
