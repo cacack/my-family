@@ -28,8 +28,8 @@ COPY . .
 # Remove local replace directive from copied source
 RUN sed -i '/^replace.*=> \//d' go.mod
 
-# Copy built frontend into web/build for embedding
-COPY --from=frontend-builder /app/web/build ./web/build
+# Copy built frontend into internal/web/dist for embedding
+COPY --from=frontend-builder /app/web/build ./internal/web/dist
 
 # Build with CGO enabled for SQLite support
 ENV CGO_ENABLED=1
