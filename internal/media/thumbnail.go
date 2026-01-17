@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/disintegration/imaging"
+	"golang.org/x/image/draw"
 )
 
 // MaxThumbnailSize is the maximum dimension (width or height) for thumbnails.
@@ -64,8 +64,8 @@ func GenerateThumbnail(data []byte, opts ThumbnailOptions) ([]byte, error) {
 		return encodeImage(img, opts)
 	}
 
-	// Resize with aspect ratio preserved using Lanczos resampling
-	thumbnail := imaging.Fit(img, opts.MaxWidth, opts.MaxHeight, imaging.Lanczos)
+	// Resize with aspect ratio preserved using CatmullRom resampling
+	thumbnail := fitImage(img, opts.MaxWidth, opts.MaxHeight)
 
 	// Encode thumbnail
 	result, err := encodeImage(thumbnail, opts)
@@ -94,6 +94,29 @@ func IsImageMimeType(mimeType string) bool {
 	default:
 		return false
 	}
+}
+
+// fitImage resizes an image to fit within maxWidth x maxHeight while preserving aspect ratio.
+// Uses CatmullRom interpolation for high-quality results.
+func fitImage(img image.Image, maxWidth, maxHeight int) *image.RGBA {
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	// Calculate scale factor to fit within maxWidth × maxHeight
+	scaleW := float64(maxWidth) / float64(srcW)
+	scaleH := float64(maxHeight) / float64(srcH)
+	scale := scaleW
+	if scaleH < scaleW {
+		scale = scaleH
+	}
+
+	newW := int(float64(srcW) * scale)
+	newH := int(float64(srcH) * scale)
+
+	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Src, nil)
+	return dst
 }
 
 // decodeImage decodes image data to an image.Image.
