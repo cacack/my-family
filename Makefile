@@ -141,7 +141,7 @@ docker-smoke-test: ## Build and test Docker image
 	@echo "Waiting for container to be healthy..."
 	@timeout=60; \
 	while [ $$timeout -gt 0 ]; do \
-		status=$$(docker compose ps --format json 2>/dev/null | jq -r '.[0].Health // "starting"'); \
+		status=$$(docker compose ps --format json 2>/dev/null | jq -rs '.[0].Health // "starting"'); \
 		if [ "$$status" = "healthy" ]; then \
 			echo "Container is healthy"; \
 			break; \
