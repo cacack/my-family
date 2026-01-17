@@ -962,6 +962,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all snapshots
+         * @description Returns all research milestone snapshots ordered by creation date (newest first)
+         */
+        get: operations["listSnapshots"];
+        put?: never;
+        /**
+         * Create a new snapshot
+         * @description Creates a snapshot capturing the current position in the event store
+         */
+        post: operations["createSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/snapshots/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot UUID */
+                id: components["parameters"]["snapshotId"];
+            };
+            cookie?: never;
+        };
+        /** Get a snapshot by ID */
+        get: operations["getSnapshot"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a snapshot
+         * @description Removes the snapshot record (events in the store remain untouched)
+         */
+        delete: operations["deleteSnapshot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/snapshots/{id1}/compare/{id2}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description First snapshot ID */
+                id1: string;
+                /** @description Second snapshot ID */
+                id2: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare two snapshots
+         * @description Returns the list of changes (events) between two snapshot positions
+         */
+        get: operations["compareSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1018,8 +1091,16 @@ export interface components {
             gender?: "male" | "female" | "unknown";
             birth_date?: components["schemas"]["GenDate"];
             birth_place?: string;
+            /** @description Latitude in GEDCOM format (e.g., "N42.3601") */
+            birth_place_latitude?: string | null;
+            /** @description Longitude in GEDCOM format (e.g., "W71.0589") */
+            birth_place_longitude?: string | null;
             death_date?: components["schemas"]["GenDate"];
             death_place?: string;
+            /** @description Latitude in GEDCOM format (e.g., "N42.3601") */
+            death_place_latitude?: string | null;
+            /** @description Longitude in GEDCOM format (e.g., "W71.0589") */
+            death_place_longitude?: string | null;
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
             /**
@@ -1093,6 +1174,10 @@ export interface components {
             relationship_type?: "marriage" | "partnership" | "unknown";
             marriage_date?: components["schemas"]["GenDate"];
             marriage_place?: string;
+            /** @description Latitude in GEDCOM format (e.g., "N39.7817") */
+            marriage_place_latitude?: string | null;
+            /** @description Longitude in GEDCOM format (e.g., "W89.6501") */
+            marriage_place_longitude?: string | null;
             /** Format: int64 */
             version: number;
         };
@@ -1768,6 +1853,54 @@ export interface components {
             female: number;
             unknown: number;
         };
+        Snapshot: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Name of the research milestone
+             * @example Pre-DNA results
+             */
+            name: string;
+            /**
+             * @description Optional description of the snapshot
+             * @example Research state before DNA test results arrived
+             */
+            description?: string;
+            /**
+             * Format: int64
+             * @description Event store position captured by this snapshot
+             * @example 42
+             */
+            position: number;
+            /**
+             * Format: date-time
+             * @description When the snapshot was created
+             */
+            created_at: string;
+        };
+        SnapshotCreate: {
+            /** @description Name of the research milestone */
+            name: string;
+            /** @description Optional description of the snapshot */
+            description?: string;
+        };
+        SnapshotList: {
+            items: components["schemas"]["Snapshot"][];
+            /** @description Total number of snapshots */
+            total: number;
+        };
+        SnapshotComparisonResult: {
+            snapshot1: components["schemas"]["Snapshot"];
+            snapshot2: components["schemas"]["Snapshot"];
+            /** @description Events that occurred between the two snapshot positions */
+            changes: components["schemas"]["ChangeEntry"][];
+            /** @description Number of changes between snapshots */
+            total_count: number;
+            /** @description Whether there are more changes beyond the limit */
+            has_more: boolean;
+            /** @description True if snapshot1 is the older (lower position) snapshot */
+            older_first: boolean;
+        };
     };
     responses: {
         /** @description Invalid request */
@@ -1805,6 +1938,8 @@ export interface components {
         offsetParam: number;
         /** @description Entity version for optimistic locking */
         versionParam: number;
+        /** @description Snapshot UUID */
+        snapshotId: string;
     };
     requestBodies: never;
     headers: never;
@@ -3556,6 +3691,129 @@ export interface operations {
                     "application/json": components["schemas"]["Statistics"];
                 };
             };
+        };
+    };
+    listSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of snapshots */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotList"];
+                };
+            };
+        };
+    };
+    createSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Pre-DNA results",
+                 *       "description": "Research state before DNA test results arrived"
+                 *     }
+                 */
+                "application/json": components["schemas"]["SnapshotCreate"];
+            };
+        };
+        responses: {
+            /** @description Snapshot created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot UUID */
+                id: components["parameters"]["snapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Snapshot"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot UUID */
+                id: components["parameters"]["snapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    compareSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description First snapshot ID */
+                id1: string;
+                /** @description Second snapshot ID */
+                id2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comparison result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotComparisonResult"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }

@@ -19,8 +19,9 @@ func setupBrowseTestServer() *api.Server {
 		LogFormat: "text",
 	}
 	eventStore := memory.NewEventStore()
+	snapshotStore := memory.NewSnapshotStore(eventStore)
 	readStore := memory.NewReadModelStore()
-	return api.NewServer(cfg, eventStore, readStore, nil)
+	return api.NewServer(cfg, eventStore, readStore, snapshotStore, nil)
 }
 
 func createBrowseTestPerson(t *testing.T, server *api.Server, givenName, surname, birthPlace, deathPlace string) string {

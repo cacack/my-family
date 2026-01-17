@@ -510,6 +510,26 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "SnapshotCreated",
+			event: func() domain.Event {
+				s, _ := domain.NewSnapshot("Test Snapshot", "Test description", 42)
+				return domain.NewSnapshotCreated(s)
+			}(),
+			eventType: "SnapshotCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.SnapshotCreated)
+				if !ok {
+					t.Fatalf("Expected SnapshotCreated, got %T", decoded)
+				}
+				if e.Name != "Test Snapshot" {
+					t.Errorf("Name = %s, want Test Snapshot", e.Name)
+				}
+				if e.Position != 42 {
+					t.Errorf("Position = %d, want 42", e.Position)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

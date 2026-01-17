@@ -31,6 +31,7 @@ type Server struct {
 	rollbackService   *query.RollbackService
 	browseService     *query.BrowseService
 	qualityService    *query.QualityService
+	snapshotService   *query.SnapshotService
 	frontendFS        fs.FS
 }
 
@@ -39,6 +40,7 @@ func NewServer(
 	cfg *config.Config,
 	eventStore repository.EventStore,
 	readStore repository.ReadModelStore,
+	snapshotStore repository.SnapshotStore,
 	frontendFS fs.FS,
 ) *Server {
 	e := echo.New()
@@ -77,6 +79,7 @@ func NewServer(
 	rollbackSvc := query.NewRollbackService(eventStore, readStore)
 	browseSvc := query.NewBrowseService(readStore)
 	qualitySvc := query.NewQualityService(readStore)
+	snapshotSvc := query.NewSnapshotService(snapshotStore, eventStore, historySvc)
 
 	server := &Server{
 		echo:              e,
@@ -92,6 +95,7 @@ func NewServer(
 		rollbackService:   rollbackSvc,
 		browseService:     browseSvc,
 		qualityService:    qualitySvc,
+		snapshotService:   snapshotSvc,
 		frontendFS:        frontendFS,
 	}
 

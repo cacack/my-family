@@ -1725,3 +1725,176 @@ func TestExport_PrimaryNameFirst(t *testing.T) {
 		t.Error("Primary name should appear before secondary names")
 	}
 }
+
+func TestExport_PlaceCoordinates(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a person with birth and death place coordinates
+	personID := uuid.New()
+	birthLat := "N42.3601"
+	birthLong := "W71.0589"
+	deathLat := "N41.8781"
+	deathLong := "W87.6298"
+
+	person := &repository.PersonReadModel{
+		ID:             personID,
+		GivenName:      "John",
+		Surname:        "Doe",
+		FullName:       "John Doe",
+		Gender:         domain.GenderMale,
+		BirthDateRaw:   "15 JAN 1850",
+		BirthPlace:     "Boston, MA, USA",
+		BirthPlaceLat:  &birthLat,
+		BirthPlaceLong: &birthLong,
+		DeathDateRaw:   "20 MAR 1920",
+		DeathPlace:     "Chicago, IL, USA",
+		DeathPlaceLat:  &deathLat,
+		DeathPlaceLong: &deathLong,
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Verify birth place with MAP structure
+	if !strings.Contains(output, "2 PLAC Boston, MA, USA\n") {
+		t.Error("Output should contain birth place")
+	}
+	if !strings.Contains(output, "3 MAP\n") {
+		t.Error("Output should contain MAP tag for birth place")
+	}
+	if !strings.Contains(output, "4 LATI N42.3601\n") {
+		t.Error("Output should contain LATI tag with birth latitude")
+	}
+	if !strings.Contains(output, "4 LONG W71.0589\n") {
+		t.Error("Output should contain LONG tag with birth longitude")
+	}
+
+	// Verify death place with MAP structure
+	if !strings.Contains(output, "2 PLAC Chicago, IL, USA\n") {
+		t.Error("Output should contain death place")
+	}
+	if !strings.Contains(output, "4 LATI N41.8781\n") {
+		t.Error("Output should contain LATI tag with death latitude")
+	}
+	if !strings.Contains(output, "4 LONG W87.6298\n") {
+		t.Error("Output should contain LONG tag with death longitude")
+	}
+}
+
+func TestExport_MarriagePlaceCoordinates(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create two persons and a family with marriage place coordinates
+	johnID := uuid.New()
+	janeID := uuid.New()
+	familyID := uuid.New()
+
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        johnID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Gender:    domain.GenderMale,
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        janeID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+		Gender:    domain.GenderFemale,
+	})
+
+	marriageLat := "N39.7817"
+	marriageLong := "W89.6501"
+
+	family := &repository.FamilyReadModel{
+		ID:                familyID,
+		Partner1ID:        &johnID,
+		Partner2ID:        &janeID,
+		RelationshipType:  domain.RelationMarriage,
+		MarriageDateRaw:   "15 JUN 1875",
+		MarriagePlace:     "Springfield, IL, USA",
+		MarriagePlaceLat:  &marriageLat,
+		MarriagePlaceLong: &marriageLong,
+	}
+	if err := readStore.SaveFamily(ctx, family); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Verify marriage place with MAP structure
+	if !strings.Contains(output, "2 PLAC Springfield, IL, USA\n") {
+		t.Error("Output should contain marriage place")
+	}
+	if !strings.Contains(output, "3 MAP\n") {
+		t.Error("Output should contain MAP tag for marriage place")
+	}
+	if !strings.Contains(output, "4 LATI N39.7817\n") {
+		t.Error("Output should contain LATI tag with marriage latitude")
+	}
+	if !strings.Contains(output, "4 LONG W89.6501\n") {
+		t.Error("Output should contain LONG tag with marriage longitude")
+	}
+}
+
+func TestExport_PlaceWithoutCoordinates(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a person with place but no coordinates
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:         personID,
+		GivenName:  "John",
+		Surname:    "Doe",
+		FullName:   "John Doe",
+		BirthPlace: "Unknown City",
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+
+	// Verify place is present but no MAP structure
+	if !strings.Contains(output, "2 PLAC Unknown City\n") {
+		t.Error("Output should contain birth place")
+	}
+	// MAP should NOT appear after this place
+	placeIdx := strings.Index(output, "2 PLAC Unknown City\n")
+	nextLineIdx := placeIdx + len("2 PLAC Unknown City\n")
+	if nextLineIdx < len(output) {
+		nextSection := output[nextLineIdx:]
+		// Find next tag at level 2 or higher (end of place subordinates)
+		lines := strings.Split(nextSection, "\n")
+		if len(lines) > 0 && strings.HasPrefix(lines[0], "3 MAP") {
+			t.Error("Output should NOT contain MAP tag when coordinates are missing")
+		}
+	}
+}

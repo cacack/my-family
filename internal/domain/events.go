@@ -815,3 +815,26 @@ func NewNameRemoved(personID, nameID uuid.UUID) NameRemoved {
 		NameID:    nameID,
 	}
 }
+
+// SnapshotCreated event is emitted when a new snapshot is created.
+type SnapshotCreated struct {
+	BaseEvent
+	SnapshotID  uuid.UUID `json:"snapshot_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	Position    int64     `json:"position"`
+}
+
+func (e SnapshotCreated) EventType() string      { return "SnapshotCreated" }
+func (e SnapshotCreated) AggregateID() uuid.UUID { return e.SnapshotID }
+
+// NewSnapshotCreated creates a SnapshotCreated event from a Snapshot.
+func NewSnapshotCreated(s *Snapshot) SnapshotCreated {
+	return SnapshotCreated{
+		BaseEvent:   NewBaseEvent(),
+		SnapshotID:  s.ID,
+		Name:        s.Name,
+		Description: s.Description,
+		Position:    s.Position,
+	}
+}

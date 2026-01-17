@@ -24,8 +24,9 @@ func setupQualityTestServer() (*api.Server, *memory.ReadModelStore) {
 		LogFormat: "text",
 	}
 	eventStore := memory.NewEventStore()
+	snapshotStore := memory.NewSnapshotStore(eventStore)
 	readStore := memory.NewReadModelStore()
-	server := api.NewServer(cfg, eventStore, readStore, nil)
+	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, nil)
 	return server, readStore
 }
 

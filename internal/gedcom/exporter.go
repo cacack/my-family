@@ -266,6 +266,8 @@ func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.U
 		}
 		if p.BirthPlace != "" {
 			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: p.BirthPlace})
+			// Add MAP structure with coordinates if present
+			tags = append(tags, placeCoordinatesToTags(p.BirthPlaceLat, p.BirthPlaceLong, 3)...)
 		}
 		// Citations for birth
 		tags = append(tags, citationsToTags(birthCitations, sourceXrefs, 2)...)
@@ -279,6 +281,8 @@ func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.U
 		}
 		if p.DeathPlace != "" {
 			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: p.DeathPlace})
+			// Add MAP structure with coordinates if present
+			tags = append(tags, placeCoordinatesToTags(p.DeathPlaceLat, p.DeathPlaceLong, 3)...)
 		}
 		// Citations for death
 		tags = append(tags, citationsToTags(deathCitations, sourceXrefs, 2)...)
@@ -324,6 +328,8 @@ func toGedcomFamilyTags(f repository.FamilyReadModel, personXrefs, sourceXrefs m
 		}
 		if f.MarriagePlace != "" {
 			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: f.MarriagePlace})
+			// Add MAP structure with coordinates if present
+			tags = append(tags, placeCoordinatesToTags(f.MarriagePlaceLat, f.MarriagePlaceLong, 3)...)
 		}
 		// Citations for marriage
 		tags = append(tags, citationsToTags(marriageCitations, sourceXrefs, 2)...)
@@ -574,6 +580,8 @@ func eventsToTags(events []repository.EventReadModel, sourceXrefs map[uuid.UUID]
 		// Add PLAC subordinate if present
 		if event.Place != "" {
 			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "PLAC", Value: event.Place})
+			// Add MAP structure with coordinates if present
+			tags = append(tags, placeCoordinatesToTags(event.PlaceLat, event.PlaceLong, level+2)...)
 		}
 
 		// Add CAUS subordinate if present (for death/burial events)
@@ -622,4 +630,19 @@ func attributesToTags(attributes []repository.AttributeReadModel, _ map[uuid.UUI
 	}
 
 	return tags
+}
+
+// placeCoordinatesToTags generates MAP/LATI/LONG tags if coordinates are present.
+// The level parameter is the level at which MAP should be written (subordinate to PLAC).
+func placeCoordinatesToTags(lat, long *string, level int) []*gedcom.Tag {
+	// Only generate MAP structure if both coordinates are present
+	if lat == nil || long == nil || *lat == "" || *long == "" {
+		return nil
+	}
+
+	return []*gedcom.Tag{
+		{Level: level, Tag: "MAP"},
+		{Level: level + 1, Tag: "LATI", Value: *lat},
+		{Level: level + 1, Tag: "LONG", Value: *long},
+	}
 }

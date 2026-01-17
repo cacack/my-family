@@ -19,9 +19,13 @@ type PersonReadModel struct {
 	BirthDateRaw   string                `json:"birth_date_raw,omitempty"`
 	BirthDateSort  *time.Time            `json:"birth_date_sort,omitempty"`
 	BirthPlace     string                `json:"birth_place,omitempty"`
+	BirthPlaceLat  *string               `json:"birth_place_lat,omitempty"`
+	BirthPlaceLong *string               `json:"birth_place_long,omitempty"`
 	DeathDateRaw   string                `json:"death_date_raw,omitempty"`
 	DeathDateSort  *time.Time            `json:"death_date_sort,omitempty"`
 	DeathPlace     string                `json:"death_place,omitempty"`
+	DeathPlaceLat  *string               `json:"death_place_lat,omitempty"`
+	DeathPlaceLong *string               `json:"death_place_long,omitempty"`
 	Notes          string                `json:"notes,omitempty"`
 	ResearchStatus domain.ResearchStatus `json:"research_status,omitempty"`
 	Version        int64                 `json:"version"`
@@ -30,18 +34,20 @@ type PersonReadModel struct {
 
 // FamilyReadModel represents a family in the read model.
 type FamilyReadModel struct {
-	ID               uuid.UUID           `json:"id"`
-	Partner1ID       *uuid.UUID          `json:"partner1_id,omitempty"`
-	Partner1Name     string              `json:"partner1_name,omitempty"`
-	Partner2ID       *uuid.UUID          `json:"partner2_id,omitempty"`
-	Partner2Name     string              `json:"partner2_name,omitempty"`
-	RelationshipType domain.RelationType `json:"relationship_type,omitempty"`
-	MarriageDateRaw  string              `json:"marriage_date_raw,omitempty"`
-	MarriageDateSort *time.Time          `json:"marriage_date_sort,omitempty"`
-	MarriagePlace    string              `json:"marriage_place,omitempty"`
-	ChildCount       int                 `json:"child_count"`
-	Version          int64               `json:"version"`
-	UpdatedAt        time.Time           `json:"updated_at"`
+	ID                uuid.UUID           `json:"id"`
+	Partner1ID        *uuid.UUID          `json:"partner1_id,omitempty"`
+	Partner1Name      string              `json:"partner1_name,omitempty"`
+	Partner2ID        *uuid.UUID          `json:"partner2_id,omitempty"`
+	Partner2Name      string              `json:"partner2_name,omitempty"`
+	RelationshipType  domain.RelationType `json:"relationship_type,omitempty"`
+	MarriageDateRaw   string              `json:"marriage_date_raw,omitempty"`
+	MarriageDateSort  *time.Time          `json:"marriage_date_sort,omitempty"`
+	MarriagePlace     string              `json:"marriage_place,omitempty"`
+	MarriagePlaceLat  *string             `json:"marriage_place_lat,omitempty"`
+	MarriagePlaceLong *string             `json:"marriage_place_long,omitempty"`
+	ChildCount        int                 `json:"child_count"`
+	Version           int64               `json:"version"`
+	UpdatedAt         time.Time           `json:"updated_at"`
 }
 
 // FamilyChildReadModel represents a child in a family.
@@ -134,6 +140,8 @@ type EventReadModel struct {
 	DateRaw        string                `json:"date_raw,omitempty"`
 	DateSort       *time.Time            `json:"date_sort,omitempty"`
 	Place          string                `json:"place,omitempty"`
+	PlaceLat       *string               `json:"place_lat,omitempty"`
+	PlaceLong      *string               `json:"place_long,omitempty"`
 	Description    string                `json:"description,omitempty"`
 	Cause          string                `json:"cause,omitempty"`           // For death/burial events
 	Age            string                `json:"age,omitempty"`             // Age at event

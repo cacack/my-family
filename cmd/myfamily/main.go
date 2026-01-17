@@ -68,6 +68,7 @@ func runServer() {
 	// For MVP, use in-memory stores. SQLite will be added later.
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
+	snapshotStore := memory.NewSnapshotStore(eventStore)
 
 	// Get frontend filesystem (embedded in production, local in dev)
 	frontendFS, err := web.GetFileSystem()
@@ -89,7 +90,7 @@ func runServer() {
 	}
 
 	// Create and start server
-	server := api.NewServer(cfg, eventStore, readStore, frontendFS)
+	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, frontendFS)
 
 	// Handle graceful shutdown
 	go func() {
