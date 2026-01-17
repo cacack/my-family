@@ -59,7 +59,7 @@ PR titles use descriptive format (not conventional commits). See [CONTRIBUTING.m
 *To be documented as the codebase develops.*
 
 ## Active Technologies
-- Go 1.22+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend) (001-genealogy-mvp)
+- Go 1.25+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend) (001-genealogy-mvp)
 - PostgreSQL (primary, required for future pgvector/PostGIS), SQLite (local/demo fallback) (001-genealogy-mvp)
 
 ## Linked Library Development
@@ -73,4 +73,4 @@ This project uses `github.com/cacack/gedcom-go` via a `replace` directive pointi
 5. **Document the dependency**: If adding new gedcom-go features, note what my-family feature required them
 
 ## Recent Changes
-- 001-genealogy-mvp: Added Go 1.22+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend)
+- 001-genealogy-mvp: Added Go 1.25+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend)
