@@ -1,4 +1,4 @@
-.PHONY: help build test fmt vet generate generate-api generate-types verify-generated clean run dev setup check-coverage lint security check check-full
+.PHONY: help build test fmt vet generate generate-api generate-types verify-generated clean run dev setup check-coverage lint security check check-full docker-smoke-test
 
 # Default target
 .DEFAULT_GOAL := help
@@ -132,3 +132,33 @@ setup: deps ## Set up development environment
 	@echo "    pre-push:   coverage threshold checks (85%)"
 	@echo ""
 	@echo "  Run 'make help' to see available commands"
+
+docker-smoke-test: ## Build and test Docker image
+	@echo "Building Docker image..."
+	docker compose build
+	@echo "Starting container..."
+	docker compose up -d
+	@echo "Waiting for container to be healthy..."
+	@timeout=60; \
+	while [ $$timeout -gt 0 ]; do \
+		status=$$(docker compose ps --format json 2>/dev/null | jq -rs '.[0].Health // "starting"'); \
+		if [ "$$status" = "healthy" ]; then \
+			echo "Container is healthy"; \
+			break; \
+		fi; \
+		echo "  Status: $$status ($$timeout s remaining)"; \
+		sleep 5; \
+		timeout=$$((timeout - 5)); \
+	done; \
+	if [ $$timeout -le 0 ]; then \
+		echo "ERROR: Container failed to become healthy"; \
+		docker compose logs; \
+		docker compose down; \
+		exit 1; \
+	fi
+	@echo "Running smoke test..."
+	@curl -sf http://localhost:8080/api/v1/persons > /dev/null || \
+		(echo "ERROR: Health endpoint failed"; docker compose logs; docker compose down; exit 1)
+	@echo "Smoke test passed"
+	@docker compose down
+	@echo "Docker smoke test complete"
