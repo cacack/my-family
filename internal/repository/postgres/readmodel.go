@@ -281,6 +281,7 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 
 	// Count total (with filter if present)
 	var total int
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query -- whereClause uses parameterized placeholders, not user input
 	countQuery := "SELECT COUNT(*) FROM persons " + whereClause
 	err := s.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total)
 	if err != nil {
