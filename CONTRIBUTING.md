@@ -42,9 +42,42 @@ ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 ln -sf ../../scripts/pre-push .git/hooks/pre-push
 ```
 
+## Development Standards
+
+These standards guide all development work. See [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) for detailed code patterns.
+
+### Code Quality
+
+- Code MUST pass `go vet` and `go fmt` without warnings or changes
+- All exported functions, types, and packages MUST have documentation comments
+- Functions MUST have a single, clear responsibility
+- Error handling MUST be explicit; never ignore returned errors
+- Dependencies MUST be minimal and justified; prefer standard library
+
+### Testing Standards
+
+- Unit tests MUST cover core business logic (models, services)
+- Integration tests MUST verify data persistence and retrieval
+- Tests MUST be deterministic and not depend on external services
+- Test names MUST describe the scenario being tested (e.g., `TestPerson_AddChild_DuplicateReturnsError`)
+- Coverage target: 85% for core packages
+
+### Performance Requirements
+
+- Single record operations (add, view, edit): <100ms response time
+- Bulk imports (1000 records): <10 seconds
+- Search operations: <500ms for databases up to 10,000 individuals
+- Memory usage: <100MB for typical family trees (<5000 individuals)
+
+### Documentation Requirements
+
+- README.md MUST stay current with installation and usage instructions
+- Breaking changes MUST be documented in a changelog
+- API changes MUST update relevant documentation before merge
+
 ## Code Standards
 
-Follow the patterns documented in [specs/CONVENTIONS.md](./specs/CONVENTIONS.md):
+Follow the patterns documented in [docs/CONVENTIONS.md](./docs/CONVENTIONS.md):
 - Go: standard formatting (`go fmt`), idiomatic error handling
 - Git: conventional commits, feature branches
 - API: OpenAPI-first design
@@ -69,10 +102,9 @@ We use conventional commits to maintain clear project history and automate chang
 **Note**: Only these 7 types are used. `feat` and `fix` are reserved for user-facing changes.
 
 Examples:
-- `feat(source): add citation confidence levels` ✅ (user-facing feature)
-- `fix(gedcom): handle malformed DATE tags` ✅ (user-facing bug fix)
-- `ci(deps): update golangci-lint to v1.55` ✅ (tooling, won't appear in changelog)
-- `feat(ci): add coverage gate` ❌ (should be `ci(coverage): add threshold check`)
+- `feat(source): add citation confidence levels` (user-facing feature)
+- `fix(gedcom): handle malformed DATE tags` (user-facing bug fix)
+- `ci(deps): update golangci-lint to v1.55` (tooling, won't appear in changelog)
 
 #### Commit Messages vs PR Titles
 
@@ -93,74 +125,44 @@ When implementing a feature from [GitHub Issues](https://github.com/cacack/my-fa
 
 ```bash
 git checkout main
+git pull origin main
 git checkout -b NNN-feature-name
-mkdir -p specs/NNN-feature-name
-cp -r specs/TEMPLATE-feature/* specs/NNN-feature-name/
 ```
 
-### 2. Specification Pipeline
+### 2. Implement and Test
 
 ```bash
-# Research (optional but recommended)
-# Document findings in specs/NNN-feature-name/research.md
+# Develop the feature
+go build ./...
+go test ./...
 
-# Specify requirements
-/speckit.specify
-# Output: specs/NNN-feature-name/spec.md
+# Check coverage
+make check-coverage
 
-# Clarify ambiguities
-/speckit.clarify
-
-# Plan implementation
-/speckit.plan
-# Output: specs/NNN-feature-name/plan.md
-
-# Generate tasks
-/speckit.tasks
-# Output: specs/NNN-feature-name/tasks.md
+# Format and lint
+go fmt ./...
+go vet ./...
 ```
 
-### 3. Implementation
+### 3. Commit and Push
 
 ```bash
-/speckit.implement
+git add .
+git commit -m "feat(scope): description"
+git push -u origin NNN-feature-name
 ```
 
-Use meta-prompts for quality (in `.claude/prompts/`):
-
-| Prompt | Purpose |
-|--------|---------|
-| `research-feature` | Research before implementing |
-| `implement-with-gps` | Add source/citation/evidence support |
-| `implement-git-workflow` | Add versioning/audit trail |
-| `review-accessibility` | Check a11y compliance |
-| `write-tests` | Generate tests following patterns |
-| `bring-to-life` | Enhance engagement/storytelling |
-
-### 4. Validate & Ship
+### 4. Create Pull Request
 
 ```bash
-/speckit.analyze      # Cross-artifact consistency check
-go test ./...         # Run all tests
-cd web && npm test    # Frontend tests
-gh pr create          # Create pull request
+gh pr create
 ```
-
-## Template Reference
-
-Feature specs use the template in `specs/TEMPLATE-feature/`:
-
-| File | Purpose |
-|------|---------|
-| `spec.md` | User stories, acceptance criteria |
-| `plan.md` | Architecture, data model, phases |
-| `tasks.md` | Actionable implementation tasks |
-| `research.md` | Prior art, standards research |
-| `decisions.md` | Feature-specific ADRs |
 
 ## Architecture Decision Records
 
-For project-wide decisions, use the template in `specs/decisions/TEMPLATE.md`.
+For project-wide architectural decisions, use the template in [docs/adr/TEMPLATE.md](./docs/adr/TEMPLATE.md).
+
+Existing decisions are documented in [docs/adr/](./docs/adr/).
 
 ## Linked Library: gedcom-go
 

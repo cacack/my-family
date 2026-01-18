@@ -109,9 +109,13 @@ go fmt ./...
 go vet ./...
 ```
 
-## Contributing
+## Documentation
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the feature development workflow and code standards.
+- [ETHOS.md](./docs/ETHOS.md) - Project vision, principles, and success factors
+- [CONVENTIONS.md](./docs/CONVENTIONS.md) - Code patterns and standards
+- [Architecture Decisions](./docs/adr/) - Key technical decisions with rationale
+- [FEATURES.md](./FEATURES.md) - Complete feature list
+- [CONTRIBUTING.md](./CONTRIBUTING.md) - Development workflow and code standards
 
 ## License
 

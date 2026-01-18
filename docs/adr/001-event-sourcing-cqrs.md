@@ -106,7 +106,7 @@ The "lite" in CQRS-lite means we use synchronous projections (see ADR-003) and a
 - Developers need to think in events, not state mutations
 - Mitigation: Clear documentation and examples in codebase
 - Storage grows with all changes, not just current state
-- Mitigation: Acceptable for genealogy scale; snapshot strategy if needed (see research.md)
+- Mitigation: Acceptable for genealogy scale; snapshot strategy if needed
 
 ### Neutral
 
@@ -115,7 +115,7 @@ The "lite" in CQRS-lite means we use synchronous projections (see ADR-003) and a
 
 ## Implementation Notes
 
-Key implementation details from research.md:
+Key implementation details:
 
 - **Stream per aggregate**: Events grouped by Person ID or Family ID
 - **Optimistic locking**: Version field prevents concurrent writes
@@ -129,7 +129,7 @@ internal/
 ├── query/                # Read side - queries read models
 └── repository/
     ├── eventstore.go     # EventStore interface
-    ├── projection.go     # Event → read model handlers
+    ├── projection.go     # Event -> read model handlers
     ├── postgres/         # PostgreSQL implementation
     └── sqlite/           # SQLite implementation
 ```
@@ -137,6 +137,5 @@ internal/
 ## References
 
 - [ETHOS.md - Git-Inspired Workflow](../ETHOS.md)
-- [research.md - Event Sourcing with CQRS-lite](../001-genealogy-mvp/research.md#3-event-sourcing-with-cqrs-lite)
 - [Martin Fowler - Event Sourcing](https://martinfowler.com/eaaDev/EventSourcing.html)
 - [Greg Young - CQRS Documents](https://cqrs.files.wordpress.com/2010/11/cqrs_documents.pdf)

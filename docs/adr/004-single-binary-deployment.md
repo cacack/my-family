@@ -109,7 +109,7 @@ The build overhead (frontend change requires Go rebuild) is acceptable given the
 ### Neutral
 
 - `go:embed` directive bundles assets at compile time
-- Makefile orchestrates frontend build → Go build
+- Makefile orchestrates frontend build -> Go build
 
 ## Implementation Notes
 
@@ -210,4 +210,3 @@ ENTRYPOINT ["myfamily"]
 
 - [ETHOS.md - Easy self-hosting](../ETHOS.md)
 - [Go embed directive](https://pkg.go.dev/embed)
-- [plan.md - Project Structure](../001-genealogy-mvp/plan.md)

@@ -8,21 +8,11 @@ Self-hosted genealogy software written in Go. A premier self-hosted genealogy pl
 
 ## Strategic Context
 
-- [Project Ethos](./specs/ETHOS.md) - Vision, principles, success factors
+- [Project Ethos](./docs/ETHOS.md) - Vision, principles, success factors
 - [GitHub Issues](https://github.com/cacack/my-family/issues) - Planned features and work
-- [Conventions](./specs/CONVENTIONS.md) - Code patterns and standards
-- [Contributing Guide](./CONTRIBUTING.md) - Feature development workflow
-
-## Feature Implementation Workflow
-
-When implementing a new feature from GitHub Issues:
-
-1. **Branch**: `git checkout -b NNN-feature-name`
-2. **Template**: `cp -r specs/TEMPLATE-feature/* specs/NNN-feature-name/`
-3. **Pipeline**: `/speckit.specify` → `/speckit.clarify` → `/speckit.plan` → `/speckit.tasks` → `/speckit.implement`
-4. **Validate**: `/speckit.analyze`, then `go test ./...`
-
-Meta-prompts in `.claude/prompts/` enhance quality: `implement-with-gps`, `implement-git-workflow`, `review-accessibility`, `write-tests`, `bring-to-life`.
+- [Conventions](./docs/CONVENTIONS.md) - Code patterns and standards
+- [Architecture Decisions](./docs/adr/) - Key technical decisions with rationale
+- [Contributing Guide](./CONTRIBUTING.md) - Development workflow
 
 ## Build Commands
 
@@ -56,11 +46,31 @@ PR titles use descriptive format (not conventional commits). See [CONTRIBUTING.m
 
 ## Architecture
 
-*To be documented as the codebase develops.*
+The application uses event sourcing with CQRS-lite for a full audit trail (see [ADR-001](./docs/adr/001-event-sourcing-cqrs.md)):
+
+```
+internal/
+├── domain/         # Pure domain types (Person, Family, events)
+├── command/        # Command handlers (CQRS write side)
+├── query/          # Query services (CQRS read side)
+├── repository/     # Event store and read model persistence
+│   ├── postgres/   # PostgreSQL implementation
+│   └── sqlite/     # SQLite implementation
+├── api/            # HTTP handlers and OpenAPI server
+├── gedcom/         # GEDCOM import/export
+└── config/         # Configuration
+web/                # Svelte frontend
+```
+
+Key architectural decisions:
+- [Event Sourcing](./docs/adr/001-event-sourcing-cqrs.md) - Full audit trail, future branching support
+- [Dual Database](./docs/adr/002-dual-database-strategy.md) - PostgreSQL primary, SQLite fallback
+- [Synchronous Projections](./docs/adr/003-synchronous-projections.md) - Immediate consistency for MVP
+- [Single Binary](./docs/adr/004-single-binary-deployment.md) - Embedded frontend for easy deployment
 
 ## Active Technologies
-- Go 1.25+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend) (001-genealogy-mvp)
-- PostgreSQL (primary, required for future pgvector/PostGIS), SQLite (local/demo fallback) (001-genealogy-mvp)
+- Go 1.25+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend)
+- PostgreSQL (primary, required for future pgvector/PostGIS), SQLite (local/demo fallback)
 
 ## Linked Library Development
 
@@ -71,6 +81,3 @@ This project uses `github.com/cacack/gedcom-go` via a `replace` directive pointi
 3. **Run both test suites**: After gedcom-go changes, run `go test ./...` in both repos
 4. **Commit separately**: gedcom-go changes should be committed to that repo independently, with their own descriptive commit message
 5. **Document the dependency**: If adding new gedcom-go features, note what my-family feature required them
-
-## Recent Changes
-- 001-genealogy-mvp: Added Go 1.25+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend)

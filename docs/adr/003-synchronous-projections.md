@@ -154,5 +154,4 @@ func (h *PersonCommandHandler) Handle(ctx context.Context, cmd Command) error {
 ## References
 
 - [ADR-001: Event Sourcing with CQRS-lite](./001-event-sourcing-cqrs.md)
-- [research.md - Synchronous Projections](../001-genealogy-mvp/research.md#3-event-sourcing-with-cqrs-lite)
 - [Martin Fowler - CQRS](https://martinfowler.com/bliki/CQRS.html)
