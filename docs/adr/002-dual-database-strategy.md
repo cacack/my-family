@@ -121,9 +121,9 @@ type Config struct {
 }
 
 // Selection logic in main.go:
-// 1. If DATABASE_URL set → PostgreSQL
-// 2. Else if SQLITE_PATH set → SQLite at that path
-// 3. Else → SQLite at ./myfamily.db (default)
+// 1. If DATABASE_URL set -> PostgreSQL
+// 2. Else if SQLITE_PATH set -> SQLite at that path
+// 3. Else -> SQLite at ./myfamily.db (default)
 ```
 
 ### Repository Interfaces
@@ -153,5 +153,3 @@ internal/repository/
 ## References
 
 - [ETHOS.md - Easy self-hosting](../ETHOS.md)
-- [research.md - Full-Text Search](../001-genealogy-mvp/research.md#6-full-text-search)
-- [plan.md - Technical Context](../001-genealogy-mvp/plan.md)

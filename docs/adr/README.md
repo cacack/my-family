@@ -13,7 +13,7 @@ Architecture Decision Records document significant technical decisions:
 
 ```bash
 # Create a new ADR
-cp specs/decisions/TEMPLATE.md specs/decisions/NNN-title.md
+cp docs/adr/TEMPLATE.md docs/adr/NNN-title.md
 ```
 
 Number ADRs sequentially (001, 002, etc.).
@@ -29,12 +29,7 @@ See [TEMPLATE.md](./TEMPLATE.md) for the ADR structure.
 - [003-synchronous-projections.md](./003-synchronous-projections.md) - Synchronous projections for MVP simplicity (with migration path)
 - [004-single-binary-deployment.md](./004-single-binary-deployment.md) - Embedded frontend via go:embed for simple self-hosting
 
-## Feature-Specific Decisions
-
-For decisions scoped to a single feature, use `decisions.md` within the feature's spec folder (e.g., `specs/002-feature-name/decisions.md`).
-
 ## Related
 
 - [../ETHOS.md](../ETHOS.md) - Guiding principles that inform decisions
-- [../CONVENTIONS.md](../CONVENTIONS.md) - Code standards resulting from decisions
 - [../../CONTRIBUTING.md](../../CONTRIBUTING.md) - Development workflow
