@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.2.0](https://github.com/cacack/my-family/compare/v0.1.0...v0.2.0) (2026-01-18)
+
+
+### Features
+
+* add Ahnentafel ancestor report ([aac71d2](https://github.com/cacack/my-family/commit/aac71d21ec02d3da0e4489dd6b71b0edd1c48e04))
+* add data quality and statistics API endpoints (closes [#135](https://github.com/cacack/my-family/issues/135)) ([680ffcc](https://github.com/cacack/my-family/commit/680ffcc637d984c82a500b6b69f8d0e36e05fa4e))
+* add keyboard shortcuts and accessibility features ([00cc342](https://github.com/cacack/my-family/commit/00cc3422fc3a283f0f8e3259e523e74ccc1bbc34))
+* add multiple name handling per person (closes [#33](https://github.com/cacack/my-family/issues/33)) ([fc4c563](https://github.com/cacack/my-family/commit/fc4c563fa7cf4f18d62c8bacbdbda1b460b33f17))
+* add uncertain data markers, surname/place browsing, and family group sheets ([7cd7f96](https://github.com/cacack/my-family/commit/7cd7f961016c12c9d259493e0753176f975af604))
+* add uncertainty indicators UI (closes [#90](https://github.com/cacack/my-family/issues/90)) ([bb024b8](https://github.com/cacack/my-family/commit/bb024b8effaeb8cb9c1475525d5c07d839c686b5))
+* **api:** add change history and audit trail ([a14cdcb](https://github.com/cacack/my-family/commit/a14cdcb8c74ede1c322789a2c05038ac624f113f))
+* **api:** add OpenAPI contract enforcement with oapi-codegen ([b6f8b26](https://github.com/cacack/my-family/commit/b6f8b2683933b576e4fab8ebf5eecc99396845a3))
+* **api:** add OpenAPI schema for Ahnentafel and generate TypeScript types ([b8c6c43](https://github.com/cacack/my-family/commit/b8c6c43f32a4564f00e58ac7fcf54a713b09e53f))
+* **api:** add rollback capability for entities ([2b475d3](https://github.com/cacack/my-family/commit/2b475d3b2288a9fbe2021dbe90ed21a3e50aa6f5))
+* **export:** add JSON and CSV export for persons and families ([97d10bc](https://github.com/cacack/my-family/commit/97d10bc8e6eaa80e436a92a866de5fe82c5f5286))
+* **gedcom:** add Ancestry and FamilySearch GEDCOM import support ([2373dde](https://github.com/cacack/my-family/commit/2373dde5ef6db86c54df501aec3d591be42486ab))
+* **gedcom:** add life events and individual attributes support ([8f41e7e](https://github.com/cacack/my-family/commit/8f41e7e1307c57676228d9b1822af6e9fddeeb5a))
+* **gedcom:** enhance import with repositories, name components, pedigree types, and validation ([4bb3726](https://github.com/cacack/my-family/commit/4bb3726fdee232f01525e2c82a76a45f8269c6d8))
+* implement snapshots and place coordinates ([f72799d](https://github.com/cacack/my-family/commit/f72799d2c5df1b43a0d4f7b7e928f0234c0604d4))
+* **media:** add media management foundation ([bb2af7a](https://github.com/cacack/my-family/commit/bb2af7a2749a4d92402b1f08aa62c7ab00d14eb8))
+* **sources:** implement GPS-compliant sources and citations foundation ([ec1ac45](https://github.com/cacack/my-family/commit/ec1ac4550cd333d6fa45ed6766758a6150e434f5))
+* **web:** add Sources, History, Media, and Analytics UI ([fe01de5](https://github.com/cacack/my-family/commit/fe01de5cf837eb79c7dcd3df6baa98123c6ee8eb))
+
+
+### Bug Fixes
+
+* address log injection security alerts (CWE-117) ([8e51bc4](https://github.com/cacack/my-family/commit/8e51bc40ae99b5f5157c947e75d8d77a3b26ad8f))
+* **api:** align ahnentafel response schema with frontend expectations ([3a710c2](https://github.com/cacack/my-family/commit/3a710c2e1fa1788ee62267ed6467efc3554c1624))
+* **api:** remove user input from export log messages ([c218853](https://github.com/cacack/my-family/commit/c2188534a47f9e861611843d53705b16bf3a1874))
+* **ci:** add workflow_dispatch trigger for manual releases ([f323f68](https://github.com/cacack/my-family/commit/f323f68c8722dbe6f842f8af8c97f4b75bdd4ed0))
+* **ci:** chain goreleaser directly in release-please workflow ([bd3ba14](https://github.com/cacack/my-family/commit/bd3ba14f868542caa041de7407dffcffb583d8c5))
+* **ci:** handle docker compose ps NDJSON output format ([ff7c5be](https://github.com/cacack/my-family/commit/ff7c5be2e2b853fb42c15c0287a700ccc5c22938))
+* **ci:** use exclude paths instead of override for coverage config ([b195788](https://github.com/cacack/my-family/commit/b1957887e9c116247df274d466f9ce3fe4b58c05))
+* **ci:** use Go 1.24 in release workflow ([daec3a7](https://github.com/cacack/my-family/commit/daec3a7ad7ddd613f94ea842bcb8bf9b04e2e885))
+* **docker:** copy frontend assets to correct embed path ([d731b1c](https://github.com/cacack/my-family/commit/d731b1ce46349d769274ce39af5dd59d725b7c6f))
+* format code and add nosec annotation for gosec ([ec9f77e](https://github.com/cacack/my-family/commit/ec9f77e8e17310e150aa17802b50f6aab9f3a16b))
+* replace deprecated semgrep-action with Docker container ([adf718b](https://github.com/cacack/my-family/commit/adf718bf1ff55a147d35ea3f0af0a73208d6ca28))
+* resolve npm audit vulnerabilities and enhance security CI ([be973d0](https://github.com/cacack/my-family/commit/be973d0665085417da3c29433e6a5254041a91e0))
+* **security:** resolve code scanning alerts ([6073e64](https://github.com/cacack/my-family/commit/6073e647c15852ec493b57faa443e94f509819f4))
+* **security:** use correct nosemgrep rule ID for SQL query suppression ([436496c](https://github.com/cacack/my-family/commit/436496cfaa797a2b9797f721835f5fada6deca8e))
+* **security:** use validated format enum in export logs ([de9f2cf](https://github.com/cacack/my-family/commit/de9f2cf3c7c6dad1b7228469f224ede9947cd520))
+* **web:** add family page edit functionality ([fa803e8](https://github.com/cacack/my-family/commit/fa803e8f84fc9ec0dd28ad080213d8f5cc32e4be))
+* **web:** add getFamilyHistory mock to family page tests ([7fc5801](https://github.com/cacack/my-family/commit/7fc5801c7fe714e98e7651e93b67d2b7f621da5d))
+* **web:** add hover states to family and person page links ([9c82954](https://github.com/cacack/my-family/commit/9c82954920f0701c1a2b5be756e3d8329dfefbbd))
+* **web:** add person and family creation forms ([965ad20](https://github.com/cacack/my-family/commit/965ad20d6fc4897435f1fee956e0fd3b41f7a7a8))
+
 ## [0.1.0](https://github.com/cacack/my-family/compare/v0.0.1...v0.1.0) (2025-12-21)
 
 
