@@ -20,8 +20,7 @@ jobs:
         id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          # release-please-config.json has draft: true
-          # This creates a draft release that GoReleaser can upload to
+          # Creates tag + release, then GoReleaser uploads assets
 
   build-release:
     needs: release-please
