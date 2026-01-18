@@ -50,5 +50,3 @@ release:
   github:
     owner: cacack
     name: my-family
-  # Append to existing release created by release-please
-  mode: append
