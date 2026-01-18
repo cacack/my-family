@@ -50,3 +50,9 @@ release:
   github:
     owner: cacack
     name: my-family
+  # Use the draft release created by release-please
+  use_existing_draft: true
+  # Keep release-please's changelog (don't overwrite)
+  mode: keep-existing
+  # Publish the release after uploading assets (draft: false is default)
+  draft: false

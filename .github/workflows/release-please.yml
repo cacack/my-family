@@ -15,14 +15,13 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      body: ${{ steps.release.outputs.body }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
-          # Skip creating GitHub release - GoReleaser will create it with assets
-          skip-github-release: true
+          # release-please-config.json has draft: true
+          # This creates a draft release that GoReleaser can upload to
 
   build-release:
     needs: release-please
@@ -59,17 +58,11 @@ jobs:
           mkdir -p internal/web/dist
           cp -r web/build/* internal/web/dist/
 
-      - name: Write release notes
-        run: |
-          cat << 'EOF' > RELEASE_NOTES.md
-          ${{ needs.release-please.outputs.body }}
-          EOF
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --release-notes=RELEASE_NOTES.md
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
