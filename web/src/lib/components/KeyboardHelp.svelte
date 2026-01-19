@@ -21,6 +21,7 @@
 	const contextLabels: Record<ShortcutContext, string> = {
 		global: 'Global',
 		pedigree: 'Pedigree View',
+		descendancy: 'Descendancy View',
 		'person-detail': 'Person Detail',
 		'family-detail': 'Family Detail',
 		search: 'Search'
@@ -32,6 +33,7 @@
 	const contextOrder: ShortcutContext[] = [
 		'global',
 		'pedigree',
+		'descendancy',
 		'person-detail',
 		'family-detail',
 		'search'

@@ -1260,6 +1260,42 @@ func (ss *StrictServer) GetPedigree(ctx context.Context, request GetPedigreeRequ
 }
 
 // ============================================================================
+// Descendancy endpoint
+// ============================================================================
+
+// GetDescendancy implements StrictServerInterface.
+func (ss *StrictServer) GetDescendancy(ctx context.Context, request GetDescendancyRequestObject) (GetDescendancyResponseObject, error) {
+	maxGen := 4
+	if request.Params.Generations != nil {
+		maxGen = *request.Params.Generations
+	}
+
+	result, err := ss.server.descendancyService.GetDescendancy(ctx, query.GetDescendancyInput{
+		PersonID:       request.Id,
+		MaxGenerations: maxGen,
+	})
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return GetDescendancy404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Person not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	generations := result.MaxGeneration
+	totalDescendants := result.TotalDescendants
+	maxGeneration := result.MaxGeneration
+	return GetDescendancy200JSONResponse{
+		Root:             convertQueryDescendancyNodeToGenerated(result.Root),
+		Generations:      &generations,
+		TotalDescendants: &totalDescendants,
+		MaxGeneration:    &maxGeneration,
+	}, nil
+}
+
+// ============================================================================
 // Person endpoints
 // ============================================================================
 
@@ -2939,6 +2975,56 @@ func convertQueryPedigreeNodeToGenerated(node *query.PedigreeNode) PedigreeNode 
 	if node.Mother != nil {
 		m := convertQueryPedigreeNodeToGenerated(node.Mother)
 		resp.Mother = &m
+	}
+
+	return resp
+}
+
+// convertQueryDescendancyNodeToGenerated converts a query.DescendancyNode to the generated DescendancyNode type.
+func convertQueryDescendancyNodeToGenerated(node *query.DescendancyNode) DescendancyNode {
+	if node == nil {
+		return DescendancyNode{}
+	}
+	gen := node.Generation
+	resp := DescendancyNode{
+		Id:         node.ID,
+		Generation: &gen,
+	}
+
+	if node.GivenName != "" {
+		resp.GivenName = &node.GivenName
+	}
+	if node.Surname != "" {
+		resp.Surname = &node.Surname
+	}
+	if node.Gender != "" {
+		resp.Gender = &node.Gender
+	}
+	if node.BirthDate != nil {
+		resp.BirthDate = convertDomainGenDateToGenerated(node.BirthDate)
+	}
+	if node.DeathDate != nil {
+		resp.DeathDate = convertDomainGenDateToGenerated(node.DeathDate)
+	}
+	if len(node.Spouses) > 0 {
+		spouses := make([]SpouseInfo, len(node.Spouses))
+		for i, s := range node.Spouses {
+			spouses[i] = SpouseInfo{
+				Id:   s.ID,
+				Name: s.Name,
+			}
+			if s.MarriageDate != nil {
+				spouses[i].MarriageDate = convertDomainGenDateToGenerated(s.MarriageDate)
+			}
+		}
+		resp.Spouses = &spouses
+	}
+	if len(node.Children) > 0 {
+		children := make([]DescendancyNode, len(node.Children))
+		for i, c := range node.Children {
+			children[i] = convertQueryDescendancyNodeToGenerated(c)
+		}
+		resp.Children = &children
 	}
 
 	return resp

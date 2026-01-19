@@ -349,6 +349,36 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /descendancy/{id}:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: getDescendancy
+      summary: Get descendancy tree for a person
+      description: |
+        Returns the descendant tree for a person, showing children, grandchildren,
+        and so on, along with spouse information for each generation.
+      tags: [pedigree]
+      parameters:
+        - name: generations
+          in: query
+          description: Number of descendant generations to include
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 4
+      responses:
+        '200':
+          description: Descendancy data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Descendancy'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /ahnentafel/{id}:
     parameters:
       - $ref: '#/components/parameters/personId'
@@ -2365,6 +2395,66 @@ components:
           $ref: '#/components/schemas/PedigreeNode'
         mother:
           $ref: '#/components/schemas/PedigreeNode'
+
+    Descendancy:
+      type: object
+      description: Descendancy tree showing descendants of a person
+      required: [root]
+      properties:
+        root:
+          $ref: '#/components/schemas/DescendancyNode'
+        generations:
+          type: integer
+          description: Number of generations included
+        total_descendants:
+          type: integer
+          description: Total number of descendants
+        max_generation:
+          type: integer
+          description: Maximum generation depth reached
+
+    DescendancyNode:
+      type: object
+      description: A person node in the descendancy tree
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        given_name:
+          type: string
+        surname:
+          type: string
+        birth_date:
+          $ref: '#/components/schemas/GenDate'
+        death_date:
+          $ref: '#/components/schemas/GenDate'
+        gender:
+          type: string
+        generation:
+          type: integer
+          description: Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
+        spouses:
+          type: array
+          items:
+            $ref: '#/components/schemas/SpouseInfo'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/DescendancyNode'
+
+    SpouseInfo:
+      type: object
+      description: Spouse information in the descendancy tree
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        marriage_date:
+          $ref: '#/components/schemas/GenDate'
 
     AhnentafelResponse:
       type: object

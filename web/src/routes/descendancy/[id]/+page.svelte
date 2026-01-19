@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type Pedigree } from '$lib/api/client';
-	import PedigreeChart, { type LayoutMode } from '$lib/components/PedigreeChart.svelte';
+	import { api, type Descendancy, type DescendancyNode } from '$lib/api/client';
+	import DescendancyChart, { type LayoutMode } from '$lib/components/DescendancyChart.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 
-	let pedigree: Pedigree | null = $state(null);
+	let descendancy: Descendancy | null = $state(null);
 	let error: string | null = $state(null);
 	let loading = $state(true);
 	let generations = $state(4);
 	let layout: LayoutMode = $state('compact');
-	let chart: PedigreeChart;
+	let chart: DescendancyChart;
 	let selectedPersonId: string | null = $state(null);
 	let announceMessage: string = $state('');
 
@@ -24,25 +24,23 @@
 	}
 
 	// Navigation handlers for keyboard shortcuts
-	function navigateToFather() {
+	function navigateToFirstChild() {
 		if (!chart) return;
-		const fatherId = chart.getFatherId();
-		if (fatherId) {
-			selectedPersonId = fatherId;
-			const node = pedigree?.root;
-			// Find the person's name for announcement
-			const name = findPersonName(fatherId);
-			announce(`Navigated to father: ${name || 'Unknown'}`);
+		const childId = chart.getFirstChildId();
+		if (childId) {
+			selectedPersonId = childId;
+			const name = findPersonName(childId);
+			announce(`Navigated to child: ${name || 'Unknown'}`);
 		}
 	}
 
-	function navigateToMother() {
+	function navigateToParent() {
 		if (!chart) return;
-		const motherId = chart.getMotherId();
-		if (motherId) {
-			selectedPersonId = motherId;
-			const name = findPersonName(motherId);
-			announce(`Navigated to mother: ${name || 'Unknown'}`);
+		const parentId = chart.getParentId();
+		if (parentId) {
+			selectedPersonId = parentId;
+			const name = findPersonName(parentId);
+			announce(`Navigated to parent: ${name || 'Unknown'}`);
 		}
 	}
 
@@ -56,15 +54,24 @@
 		}
 	}
 
-	function navigateToSpouse() {
+	function navigateToNextSibling() {
 		if (!chart) return;
-		const spouseId = chart.getSpouseId();
-		if (spouseId) {
-			selectedPersonId = spouseId;
-			const name = findPersonName(spouseId);
-			announce(`Navigated to spouse: ${name || 'Unknown'}`);
+		const siblingId = chart.getNextSiblingId();
+		if (siblingId) {
+			selectedPersonId = siblingId;
+			const name = findPersonName(siblingId);
+			announce(`Navigated to next sibling: ${name || 'Unknown'}`);
 		}
-		// Note: spouse navigation not available in current pedigree data
+	}
+
+	function navigateToPrevSibling() {
+		if (!chart) return;
+		const siblingId = chart.getPrevSiblingId();
+		if (siblingId) {
+			selectedPersonId = siblingId;
+			const name = findPersonName(siblingId);
+			announce(`Navigated to previous sibling: ${name || 'Unknown'}`);
+		}
 	}
 
 	function viewPersonDetail() {
@@ -86,53 +93,63 @@
 		announce('View reset');
 	}
 
-	// Helper to find person name from pedigree data
+	// Helper to find person name from descendancy data
 	function findPersonName(personId: string): string | null {
-		if (!pedigree?.root) return null;
-		return searchForPerson(pedigree.root, personId);
+		if (!descendancy?.root) return null;
+		return searchForPerson(descendancy.root, personId);
 	}
 
-	function searchForPerson(node: import('$lib/api/client').PedigreeNode, personId: string): string | null {
+	function searchForPerson(node: DescendancyNode, personId: string): string | null {
 		if (node.id === personId) {
 			const given = node.given_name || '';
 			const surname = node.surname || '';
 			return `${given} ${surname}`.trim() || null;
 		}
-		if (node.father) {
-			const result = searchForPerson(node.father, personId);
-			if (result) return result;
+		// Search in spouses
+		if (node.spouses) {
+			for (const spouse of node.spouses) {
+				if (spouse.id === personId) {
+					const given = spouse.given_name || '';
+					const surname = spouse.surname || '';
+					return `${given} ${surname}`.trim() || null;
+				}
+			}
 		}
-		if (node.mother) {
-			const result = searchForPerson(node.mother, personId);
-			if (result) return result;
+		// Search in children
+		if (node.children) {
+			for (const child of node.children) {
+				const result = searchForPerson(child, personId);
+				if (result) return result;
+			}
 		}
 		return null;
 	}
 
-	// Set up keyboard shortcuts for pedigree context
-	const { handleKeydown } = createShortcutHandler('pedigree', {
-		'navigate-father': navigateToFather,
-		'navigate-mother': navigateToMother,
+	// Set up keyboard shortcuts for descendancy context
+	const { handleKeydown } = createShortcutHandler('descendancy', {
+		'navigate-first-child': navigateToFirstChild,
+		'navigate-parent': navigateToParent,
 		'navigate-root': navigateToRoot,
-		'navigate-spouse': navigateToSpouse,
+		'navigate-next-sibling': navigateToNextSibling,
+		'navigate-prev-sibling': navigateToPrevSibling,
 		'view-person-detail': viewPersonDetail,
 		'zoom-in': handleZoomIn,
 		'zoom-out': handleZoomOut,
 		'reset-view': handleResetView
 	});
 
-	async function loadPedigree(personId: string, gens: number) {
+	async function loadDescendancy(personId: string, gens: number) {
 		loading = true;
 		error = null;
 		try {
-			pedigree = await api.getPedigree(personId, gens);
+			descendancy = await api.getDescendancy(personId, gens);
 			// Initialize selection to the root person
-			if (pedigree?.root?.id) {
-				selectedPersonId = pedigree.root.id;
+			if (descendancy?.root?.id) {
+				selectedPersonId = descendancy.root.id;
 			}
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load pedigree';
-			pedigree = null;
+			error = (e as { message?: string }).message || 'Failed to load descendancy';
+			descendancy = null;
 			selectedPersonId = null;
 		} finally {
 			loading = false;
@@ -140,7 +157,7 @@
 	}
 
 	function handlePersonClick(personId: string) {
-		goto(`/pedigree/${personId}`);
+		goto(`/descendancy/${personId}`);
 	}
 
 	function handleGenerationsChange(e: Event) {
@@ -148,39 +165,34 @@
 		generations = parseInt(select.value, 10);
 		const personId = $page.params.id;
 		if (personId) {
-			loadPedigree(personId, generations);
+			loadDescendancy(personId, generations);
 		}
 	}
 
 	$effect(() => {
 		const personId = $page.params.id;
 		if (personId) {
-			loadPedigree(personId, generations);
+			loadDescendancy(personId, generations);
 		}
 	});
 </script>
 
 <svelte:head>
-	<title>Pedigree Chart | My Family</title>
+	<title>Descendancy Chart | My Family</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <!-- Screen reader announcements for navigation -->
-<div
-	role="status"
-	aria-live="polite"
-	aria-atomic="true"
-	class="sr-only"
->
+<div role="status" aria-live="polite" aria-atomic="true" class="sr-only">
 	{announceMessage}
 </div>
 
-<div class="pedigree-page">
+<div class="descendancy-page">
 	<header class="page-header">
 		<div class="header-left">
 			<a href="/" class="back-link">&larr; Back</a>
-			<h1>Pedigree Chart</h1>
+			<h1>Descendancy Chart</h1>
 		</div>
 		<div class="controls">
 			<label>
@@ -201,15 +213,24 @@
 				<button
 					class:active={layout === 'compact'}
 					onclick={() => (layout = 'compact')}
-					title="Compact layout">Compact</button>
+					title="Compact layout"
+				>
+					Compact
+				</button>
 				<button
 					class:active={layout === 'standard'}
 					onclick={() => (layout = 'standard')}
-					title="Standard layout">Standard</button>
+					title="Standard layout"
+				>
+					Standard
+				</button>
 				<button
 					class:active={layout === 'wide'}
 					onclick={() => (layout = 'wide')}
-					title="Wide layout">Wide</button>
+					title="Wide layout"
+				>
+					Wide
+				</button>
 			</div>
 			<div class="zoom-controls">
 				<button onclick={() => chart?.zoomIn()} title="Zoom In">+</button>
@@ -221,20 +242,37 @@
 
 	<main class="chart-container">
 		{#if loading}
-			<div class="loading">Loading pedigree...</div>
+			<div class="loading">Loading descendancy...</div>
 		{:else if error}
 			<div class="error">{error}</div>
-		{:else if pedigree}
-			<PedigreeChart bind:this={chart} data={pedigree.root} {layout} {selectedPersonId} onPersonClick={handlePersonClick} />
-			<p class="hint">Click on any person to view their pedigree. Scroll to zoom, drag to pan. Use arrow keys to navigate, +/- to zoom, R to reset.</p>
+		{:else if descendancy}
+			<DescendancyChart
+				bind:this={chart}
+				data={descendancy.root}
+				{layout}
+				{selectedPersonId}
+				onPersonClick={handlePersonClick}
+			/>
+			<div class="chart-info">
+				<span class="stat">
+					{descendancy.total_descendants} descendant{descendancy.total_descendants !== 1
+						? 's'
+						: ''}
+				</span>
+				<span class="stat">{descendancy.max_generation} generation{descendancy.max_generation !== 1 ? 's' : ''}</span>
+			</div>
+			<p class="hint">
+				Click on any person to view their descendants. Scroll to zoom, drag to pan. Use arrow keys
+				to navigate, +/- to zoom, R to reset.
+			</p>
 		{:else}
-			<div class="empty">No pedigree data available.</div>
+			<div class="empty">No descendancy data available.</div>
 		{/if}
 	</main>
 </div>
 
 <style>
-	.pedigree-page {
+	.descendancy-page {
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
@@ -367,6 +405,18 @@
 
 	.error {
 		color: #dc2626;
+	}
+
+	.chart-info {
+		display: flex;
+		justify-content: center;
+		gap: 2rem;
+		margin-top: 0.5rem;
+	}
+
+	.stat {
+		font-size: 0.875rem;
+		color: #64748b;
 	}
 
 	.hint {

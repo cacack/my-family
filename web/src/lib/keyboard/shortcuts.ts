@@ -25,6 +25,7 @@ export interface Shortcut {
 export type ShortcutContext =
 	| 'global'
 	| 'pedigree'
+	| 'descendancy'
 	| 'person-detail'
 	| 'family-detail'
 	| 'search';
@@ -145,6 +146,64 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		action: 'reset-view',
 		description: 'Reset view to center',
 		context: 'pedigree'
+	},
+
+	// Descendancy chart navigation shortcuts
+	{
+		keys: ['ArrowDown'],
+		action: 'navigate-first-child',
+		description: 'Navigate to first child',
+		context: 'descendancy'
+	},
+	{
+		keys: ['ArrowUp'],
+		action: 'navigate-parent',
+		description: 'Navigate to parent',
+		context: 'descendancy'
+	},
+	{
+		keys: ['ArrowLeft'],
+		action: 'navigate-prev-sibling',
+		description: 'Navigate to previous sibling',
+		context: 'descendancy'
+	},
+	{
+		keys: ['ArrowRight'],
+		action: 'navigate-next-sibling',
+		description: 'Navigate to next sibling',
+		context: 'descendancy'
+	},
+	{
+		keys: ['Enter'],
+		action: 'view-person-detail',
+		description: 'View selected person details',
+		context: 'descendancy'
+	},
+
+	// Descendancy chart zoom shortcuts
+	{
+		keys: ['+'],
+		action: 'zoom-in',
+		description: 'Zoom in',
+		context: 'descendancy'
+	},
+	{
+		keys: ['='],
+		action: 'zoom-in',
+		description: 'Zoom in',
+		context: 'descendancy'
+	},
+	{
+		keys: ['-'],
+		action: 'zoom-out',
+		description: 'Zoom out',
+		context: 'descendancy'
+	},
+	{
+		keys: ['r'],
+		action: 'reset-view',
+		description: 'Reset view to center',
+		context: 'descendancy'
 	},
 
 	// Person detail page shortcuts
