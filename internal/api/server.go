@@ -32,6 +32,7 @@ type Server struct {
 	browseService     *query.BrowseService
 	qualityService    *query.QualityService
 	snapshotService   *query.SnapshotService
+	validationService *query.ValidationService
 	frontendFS        fs.FS
 }
 
@@ -80,6 +81,7 @@ func NewServer(
 	browseSvc := query.NewBrowseService(readStore)
 	qualitySvc := query.NewQualityService(readStore)
 	snapshotSvc := query.NewSnapshotService(snapshotStore, eventStore, historySvc)
+	validationSvc := query.NewValidationService(readStore)
 
 	server := &Server{
 		echo:              e,
@@ -96,6 +98,7 @@ func NewServer(
 		browseService:     browseSvc,
 		qualityService:    qualitySvc,
 		snapshotService:   snapshotSvc,
+		validationService: validationSvc,
 		frontendFS:        frontendFS,
 	}
 

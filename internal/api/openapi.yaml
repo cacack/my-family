@@ -1597,6 +1597,71 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /quality/report:
+    get:
+      operationId: getQualityReport
+      summary: Get full quality report
+      description: Returns comprehensive data quality metrics including completeness, coverage, and aggregated issues
+      tags: [quality]
+      responses:
+        '200':
+          description: Full quality report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityReport'
+
+  /quality/validation:
+    get:
+      operationId: getValidationIssues
+      summary: Get validation issues
+      description: Returns date logic and reference validation issues categorized by severity
+      tags: [quality]
+      parameters:
+        - name: severity
+          in: query
+          description: Filter by severity level
+          schema:
+            type: string
+            enum: [error, warning, info]
+      responses:
+        '200':
+          description: Validation issues
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationIssuesResponse'
+
+  /persons/duplicates:
+    get:
+      operationId: getPersonsDuplicates
+      summary: Find potential duplicate persons
+      description: Returns pairs of persons that may be duplicates based on name, date, and place matching
+      tags: [quality]
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of duplicate pairs to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: offset
+          in: query
+          description: Number of duplicate pairs to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Potential duplicate pairs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DuplicatesResponse'
+
   /statistics:
     get:
       operationId: getStatistics
@@ -3141,6 +3206,154 @@ components:
           items:
             type: string
           description: Suggested improvements
+
+    QualityReport:
+      type: object
+      description: Comprehensive data quality report with coverage metrics and issue aggregation
+      required: [total_individuals, total_families, total_sources, birth_date_coverage, death_date_coverage, source_coverage, error_count, warning_count, info_count, top_issues]
+      properties:
+        total_individuals:
+          type: integer
+          description: Total number of individuals in the tree
+        total_families:
+          type: integer
+          description: Total number of family units
+        total_sources:
+          type: integer
+          description: Total number of source records
+        birth_date_coverage:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Fraction of individuals with birth dates (0.0-1.0)
+        death_date_coverage:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Fraction of individuals with death dates (0.0-1.0)
+        source_coverage:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Fraction of individuals with at least one source citation (0.0-1.0)
+        error_count:
+          type: integer
+          description: Total number of error-level issues
+        warning_count:
+          type: integer
+          description: Total number of warning-level issues
+        info_count:
+          type: integer
+          description: Total number of info-level issues
+        top_issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/QualityReportIssue'
+          description: Most common issues by count
+
+    QualityReportIssue:
+      type: object
+      description: Aggregated issue count for quality reports
+      required: [code, count]
+      properties:
+        code:
+          type: string
+          description: Issue code identifier
+        count:
+          type: integer
+          description: Number of occurrences of this issue
+
+    DuplicatePair:
+      type: object
+      description: A pair of potentially duplicate persons
+      required: [person1_id, person1_name, person2_id, person2_name, confidence, match_reasons]
+      properties:
+        person1_id:
+          type: string
+          format: uuid
+          description: ID of the first person
+        person1_name:
+          type: string
+          description: Display name of the first person
+        person2_id:
+          type: string
+          format: uuid
+          description: ID of the second person
+        person2_name:
+          type: string
+          description: Display name of the second person
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Confidence score that these are duplicates (0.0-1.0)
+        match_reasons:
+          type: array
+          items:
+            type: string
+          description: Reasons why these persons are considered potential duplicates
+
+    DuplicatesResponse:
+      type: object
+      description: Response containing potential duplicate pairs
+      required: [duplicates, total]
+      properties:
+        duplicates:
+          type: array
+          items:
+            $ref: '#/components/schemas/DuplicatePair'
+          description: List of potential duplicate pairs
+        total:
+          type: integer
+          description: Total number of potential duplicate pairs found
+
+    ValidationIssue:
+      type: object
+      description: A single validation issue detected in the data
+      required: [severity, code, message]
+      properties:
+        severity:
+          type: string
+          enum: [error, warning, info]
+          description: Severity level of the issue
+        code:
+          type: string
+          description: Issue code identifier
+        message:
+          type: string
+          description: Human-readable description of the issue
+        record_id:
+          type: string
+          format: uuid
+          description: ID of the primary record with the issue
+        related_record_id:
+          type: string
+          format: uuid
+          description: ID of a related record (if applicable)
+
+    ValidationIssuesResponse:
+      type: object
+      description: Response containing validation issues categorized by severity
+      required: [issues, error_count, warning_count, info_count]
+      properties:
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationIssue'
+          description: List of validation issues
+        error_count:
+          type: integer
+          description: Total number of error-level issues
+        warning_count:
+          type: integer
+          description: Total number of warning-level issues
+        info_count:
+          type: integer
+          description: Total number of info-level issues
 
     Statistics:
       type: object
