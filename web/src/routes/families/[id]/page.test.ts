@@ -53,14 +53,22 @@ const mockFamilyWithChildren: apiModule.FamilyDetail = {
 	},
 	children: [
 		{
-			id: 'child1-id',
-			name: 'Alice Smith',
-			relationship_type: 'biological'
+			person_id: 'child1-id',
+			relationship_type: 'biological',
+			person: {
+				id: 'child1-id',
+				given_name: 'Alice',
+				surname: 'Smith'
+			}
 		},
 		{
-			id: 'child2-id',
-			name: 'Bob Smith',
-			relationship_type: 'adopted'
+			person_id: 'child2-id',
+			relationship_type: 'adopted',
+			person: {
+				id: 'child2-id',
+				given_name: 'Bob',
+				surname: 'Smith'
+			}
 		}
 	]
 };

@@ -2958,14 +2958,18 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	}
 
 	// Add partner details if available
-	if fd.Partner1Name != nil {
+	if fd.Partner1ID != nil && fd.Partner1Name != nil {
 		resp.Partner1 = &PersonSummary{
+			Id:        *fd.Partner1ID,
 			GivenName: *fd.Partner1Name,
+			Surname:   "",
 		}
 	}
-	if fd.Partner2Name != nil {
+	if fd.Partner2ID != nil && fd.Partner2Name != nil {
 		resp.Partner2 = &PersonSummary{
+			Id:        *fd.Partner2ID,
 			GivenName: *fd.Partner2Name,
+			Surname:   "",
 		}
 	}
 
@@ -2975,6 +2979,11 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 			children[i] = FamilyChild{
 				PersonId:         c.ID,
 				RelationshipType: FamilyChildRelationshipType(c.RelationshipType),
+				Person: &PersonSummary{
+					Id:        c.ID,
+					GivenName: c.Name,
+					Surname:   "",
+				},
 			}
 		}
 		resp.Children = &children
