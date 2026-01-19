@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as d3 from 'd3';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { PedigreeNode } from '$lib/api/client';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
@@ -802,9 +802,12 @@
 	$effect(() => {
 		if (data && layout) {
 			// Reset collapsed state when the root person changes (new person selected)
-			if (previousDataId !== data.id) {
-				previousDataId = data.id;
-				// Use untracked assignment to avoid reactive loops
+			// Use untrack to prevent reactive loops when reading/writing previousDataId
+			const prevId = untrack(() => previousDataId);
+			if (prevId !== data.id) {
+				untrack(() => {
+					previousDataId = data.id;
+				});
 				collapsedNodes.clear();
 				previousNodePositions.clear();
 			}
