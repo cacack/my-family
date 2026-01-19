@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/cacack/my-family/compare/v0.5.0...v0.6.0) (2026-01-19)
+
+
+### Features
+
+* add descendancy chart and collapsible pedigree branches ([d68e0c2](https://github.com/cacack/my-family/commit/d68e0c2e980dd65b0c5a0a2e6da5fd4d136f5df2))
+* add person merge and batch cleanup operations ([cb56ac5](https://github.com/cacack/my-family/commit/cb56ac5646eb7662219c5704e94e83ec14af08d1))
+* add relationship calculator ([6210e32](https://github.com/cacack/my-family/commit/6210e32289b4e45df7429f985f8a6060096649d7))
+* **api:** add data validation endpoints for quality reports and duplicate detection ([437ff81](https://github.com/cacack/my-family/commit/437ff81a7898c02cda00fb1b6bd763cdff1b3d8d))
+
+
+### Bug Fixes
+
+* resolve Svelte effect infinite loop in PedigreeChart ([8632860](https://github.com/cacack/my-family/commit/863286041a04373a366a6694facf05f677e19100))
+* resolve TypeScript errors in PedigreeChart and KeyboardHelp ([05a0a47](https://github.com/cacack/my-family/commit/05a0a47860e299ebfea460fb3c0981fb81ac3cca))
+
 ## [0.5.0](https://github.com/cacack/my-family/compare/v0.4.0...v0.5.0) (2026-01-18)
 
 
