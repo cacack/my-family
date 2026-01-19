@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
@@ -3123,4 +3124,62 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 	}
 
 	return resp
+}
+
+// ============================================================================
+// Relationship endpoint
+// ============================================================================
+
+// GetRelationship implements StrictServerInterface.
+func (ss *StrictServer) GetRelationship(ctx context.Context, request GetRelationshipRequestObject) (GetRelationshipResponseObject, error) {
+	result, err := ss.server.relationshipService.GetRelationship(ctx, request.PersonId1, request.PersonId2)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return GetRelationship404JSONResponse{
+				Code:    "not_found",
+				Message: "One or both persons not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	// Convert domain types to API types
+	personA := convertQueryPersonToGenerated(*result.PersonA)
+	personB := convertQueryPersonToGenerated(*result.PersonB)
+
+	paths := make([]RelationshipPath, len(result.Paths))
+	for i, p := range result.Paths {
+		pathFromA := make([]openapi_types.UUID, len(p.PathFromA))
+		copy(pathFromA, p.PathFromA)
+		pathFromB := make([]openapi_types.UUID, len(p.PathFromB))
+		copy(pathFromB, p.PathFromB)
+
+		name := p.Name
+		genDistA := p.GenerationDistanceA
+		genDistB := p.GenerationDistanceB
+
+		paths[i] = RelationshipPath{
+			Name:                &name,
+			PathFromA:           &pathFromA,
+			PathFromB:           &pathFromB,
+			GenerationDistanceA: &genDistA,
+			GenerationDistanceB: &genDistB,
+		}
+
+		if p.CommonAncestor != nil {
+			commonAncestorID := p.CommonAncestor.ID
+			paths[i].CommonAncestorId = &commonAncestorID
+		}
+	}
+
+	isRelated := result.IsRelated
+	summary := result.Summary
+
+	return GetRelationship200JSONResponse{
+		PersonA:   &personA,
+		PersonB:   &personB,
+		Paths:     &paths,
+		IsRelated: &isRelated,
+		Summary:   &summary,
+	}, nil
 }

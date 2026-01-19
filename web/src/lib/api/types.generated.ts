@@ -1118,6 +1118,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/relationship/{personId1}/{personId2}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Calculate relationship between two people */
+        get: operations["getRelationship"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2117,6 +2134,24 @@ export interface components {
             has_more: boolean;
             /** @description True if snapshot1 is the older (lower position) snapshot */
             older_first: boolean;
+        };
+        RelationshipPath: {
+            /** @description Relationship name (e.g., "1st cousin once removed") */
+            name?: string;
+            pathFromA?: string[];
+            pathFromB?: string[];
+            /** Format: uuid */
+            commonAncestorId?: string;
+            generationDistanceA?: number;
+            generationDistanceB?: number;
+        };
+        RelationshipResult: {
+            personA?: components["schemas"]["Person"];
+            personB?: components["schemas"]["Person"];
+            paths?: components["schemas"]["RelationshipPath"][];
+            isRelated?: boolean;
+            /** @description Human-readable relationship summary */
+            summary?: string;
         };
     };
     responses: {
@@ -4125,6 +4160,38 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    getRelationship: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                personId1: string;
+                personId2: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Relationship calculated successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipResult"];
+                };
+            };
+            /** @description One or both persons not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
 }

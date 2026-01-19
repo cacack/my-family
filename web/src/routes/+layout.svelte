@@ -77,6 +77,7 @@
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
 			<a href="/history" class:active={$page.url.pathname.startsWith('/history')}>History</a>
 			<a href="/analytics" class:active={$page.url.pathname.startsWith('/analytics')}>Analytics</a>
+			<a href="/relationship" class:active={$page.url.pathname.startsWith('/relationship')}>Relationship</a>
 			<a href="/import" class:active={$page.url.pathname === '/import'}>Import</a>
 		</nav>
 		<div class="header-controls">

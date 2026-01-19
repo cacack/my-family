@@ -1201,6 +1201,29 @@ type QualityReportIssue struct {
 	Count int `json:"count"`
 }
 
+// RelationshipPath defines model for RelationshipPath.
+type RelationshipPath struct {
+	CommonAncestorId    *openapi_types.UUID `json:"commonAncestorId,omitempty"`
+	GenerationDistanceA *int                `json:"generationDistanceA,omitempty"`
+	GenerationDistanceB *int                `json:"generationDistanceB,omitempty"`
+
+	// Name Relationship name (e.g., "1st cousin once removed")
+	Name      *string               `json:"name,omitempty"`
+	PathFromA *[]openapi_types.UUID `json:"pathFromA,omitempty"`
+	PathFromB *[]openapi_types.UUID `json:"pathFromB,omitempty"`
+}
+
+// RelationshipResult defines model for RelationshipResult.
+type RelationshipResult struct {
+	IsRelated *bool               `json:"isRelated,omitempty"`
+	Paths     *[]RelationshipPath `json:"paths,omitempty"`
+	PersonA   *Person             `json:"personA,omitempty"`
+	PersonB   *Person             `json:"personB,omitempty"`
+
+	// Summary Human-readable relationship summary
+	Summary *string `json:"summary,omitempty"`
+}
+
 // ResearchStatus Confidence level of genealogical data per GPS standards
 type ResearchStatus string
 
@@ -1994,6 +2017,9 @@ type ServerInterface interface {
 	// Get validation issues
 	// (GET /quality/validation)
 	GetValidationIssues(ctx echo.Context, params GetValidationIssuesParams) error
+	// Calculate relationship between two people
+	// (GET /relationship/{personId1}/{personId2})
+	GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID) error
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx echo.Context, params SearchPersonsParams) error
@@ -3150,6 +3176,30 @@ func (w *ServerInterfaceWrapper) GetValidationIssues(ctx echo.Context) error {
 	return err
 }
 
+// GetRelationship converts echo context to params.
+func (w *ServerInterfaceWrapper) GetRelationship(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "personId1" -------------
+	var personId1 openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "personId1", ctx.Param("personId1"), &personId1, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter personId1: %s", err))
+	}
+
+	// ------------- Path parameter "personId2" -------------
+	var personId2 openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "personId2", ctx.Param("personId2"), &personId2, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter personId2: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetRelationship(ctx, personId1, personId2)
+	return err
+}
+
 // SearchPersons converts echo context to params.
 func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 	var err error
@@ -3581,6 +3631,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/quality/persons/:id", wrapper.GetPersonQuality)
 	router.GET(baseURL+"/quality/report", wrapper.GetQualityReport)
 	router.GET(baseURL+"/quality/validation", wrapper.GetValidationIssues)
+	router.GET(baseURL+"/relationship/:personId1/:personId2", wrapper.GetRelationship)
 	router.GET(baseURL+"/search", wrapper.SearchPersons)
 	router.GET(baseURL+"/snapshots", wrapper.ListSnapshots)
 	router.POST(baseURL+"/snapshots", wrapper.CreateSnapshot)
@@ -5291,6 +5342,33 @@ func (response GetValidationIssues200JSONResponse) VisitGetValidationIssuesRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetRelationshipRequestObject struct {
+	PersonId1 openapi_types.UUID `json:"personId1"`
+	PersonId2 openapi_types.UUID `json:"personId2"`
+}
+
+type GetRelationshipResponseObject interface {
+	VisitGetRelationshipResponse(w http.ResponseWriter) error
+}
+
+type GetRelationship200JSONResponse RelationshipResult
+
+func (response GetRelationship200JSONResponse) VisitGetRelationshipResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRelationship404JSONResponse Error
+
+func (response GetRelationship404JSONResponse) VisitGetRelationshipResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type SearchPersonsRequestObject struct {
 	Params SearchPersonsParams
 }
@@ -5929,6 +6007,9 @@ type StrictServerInterface interface {
 	// Get validation issues
 	// (GET /quality/validation)
 	GetValidationIssues(ctx context.Context, request GetValidationIssuesRequestObject) (GetValidationIssuesResponseObject, error)
+	// Calculate relationship between two people
+	// (GET /relationship/{personId1}/{personId2})
+	GetRelationship(ctx context.Context, request GetRelationshipRequestObject) (GetRelationshipResponseObject, error)
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error)
@@ -7449,6 +7530,32 @@ func (sh *strictHandler) GetValidationIssues(ctx echo.Context, params GetValidat
 		return err
 	} else if validResponse, ok := response.(GetValidationIssuesResponseObject); ok {
 		return validResponse.VisitGetValidationIssuesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetRelationship operation middleware
+func (sh *strictHandler) GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID) error {
+	var request GetRelationshipRequestObject
+
+	request.PersonId1 = personId1
+	request.PersonId2 = personId2
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRelationship(ctx.Request().Context(), request.(GetRelationshipRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRelationship")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetRelationshipResponseObject); ok {
+		return validResponse.VisitGetRelationshipResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
