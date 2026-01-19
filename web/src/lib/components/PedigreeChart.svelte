@@ -431,7 +431,7 @@
 
 		// Update collapse toggle state on existing nodes
 		nodeSelection.each(function(d) {
-			const nodeGroup = d3.select(this);
+			const nodeGroup = d3.select(this) as d3.Selection<SVGGElement, d3.HierarchyPointNode<PedigreeNode>, null, undefined>;
 			updateCollapseToggle(nodeGroup, d, cardWidth, cardHeight);
 		});
 
@@ -575,7 +575,7 @@
 			.text((d) => d.data.id && collapsedNodes.has(d.data.id) ? '+' : '-');
 
 		// Ancestor count badge (only for collapsed nodes)
-		const collapsedToggles = toggleGroups.filter((d) => d.data.id && collapsedNodes.has(d.data.id));
+		const collapsedToggles = toggleGroups.filter((d) => Boolean(d.data.id && collapsedNodes.has(d.data.id)));
 
 		collapsedToggles
 			.append('g')
