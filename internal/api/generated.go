@@ -223,6 +223,13 @@ const (
 	RollbackResponseEntityTypeSource   RollbackResponseEntityType = "Source"
 )
 
+// Defines values for ValidationIssueSeverity.
+const (
+	ValidationIssueSeverityError   ValidationIssueSeverity = "error"
+	ValidationIssueSeverityInfo    ValidationIssueSeverity = "info"
+	ValidationIssueSeverityWarning ValidationIssueSeverity = "warning"
+)
+
 // Defines values for GetAhnentafelParamsFormat.
 const (
 	Json GetAhnentafelParamsFormat = "json"
@@ -267,6 +274,13 @@ const (
 	Document    UploadPersonMediaMultipartBodyMediaType = "document"
 	Photo       UploadPersonMediaMultipartBodyMediaType = "photo"
 	Video       UploadPersonMediaMultipartBodyMediaType = "video"
+)
+
+// Defines values for GetValidationIssuesParamsSeverity.
+const (
+	GetValidationIssuesParamsSeverityError   GetValidationIssuesParamsSeverity = "error"
+	GetValidationIssuesParamsSeverityInfo    GetValidationIssuesParamsSeverity = "info"
+	GetValidationIssuesParamsSeverityWarning GetValidationIssuesParamsSeverity = "warning"
 )
 
 // Defines values for ListSourcesParamsSort.
@@ -471,6 +485,36 @@ type DateRange struct {
 
 	// LatestBirth Latest birth year in the tree
 	LatestBirth *string `json:"latest_birth,omitempty"`
+}
+
+// DuplicatePair A pair of potentially duplicate persons
+type DuplicatePair struct {
+	// Confidence Confidence score that these are duplicates (0.0-1.0)
+	Confidence float32 `json:"confidence"`
+
+	// MatchReasons Reasons why these persons are considered potential duplicates
+	MatchReasons []string `json:"match_reasons"`
+
+	// Person1Id ID of the first person
+	Person1Id openapi_types.UUID `json:"person1_id"`
+
+	// Person1Name Display name of the first person
+	Person1Name string `json:"person1_name"`
+
+	// Person2Id ID of the second person
+	Person2Id openapi_types.UUID `json:"person2_id"`
+
+	// Person2Name Display name of the second person
+	Person2Name string `json:"person2_name"`
+}
+
+// DuplicatesResponse Response containing potential duplicate pairs
+type DuplicatesResponse struct {
+	// Duplicates List of potential duplicate pairs
+	Duplicates []DuplicatePair `json:"duplicates"`
+
+	// Total Total number of potential duplicate pairs found
+	Total int `json:"total"`
 }
 
 // Error defines model for Error.
@@ -1082,6 +1126,48 @@ type QualityOverview struct {
 	TotalPersons int `json:"total_persons"`
 }
 
+// QualityReport Comprehensive data quality report with coverage metrics and issue aggregation
+type QualityReport struct {
+	// BirthDateCoverage Fraction of individuals with birth dates (0.0-1.0)
+	BirthDateCoverage float32 `json:"birth_date_coverage"`
+
+	// DeathDateCoverage Fraction of individuals with death dates (0.0-1.0)
+	DeathDateCoverage float32 `json:"death_date_coverage"`
+
+	// ErrorCount Total number of error-level issues
+	ErrorCount int `json:"error_count"`
+
+	// InfoCount Total number of info-level issues
+	InfoCount int `json:"info_count"`
+
+	// SourceCoverage Fraction of individuals with at least one source citation (0.0-1.0)
+	SourceCoverage float32 `json:"source_coverage"`
+
+	// TopIssues Most common issues by count
+	TopIssues []QualityReportIssue `json:"top_issues"`
+
+	// TotalFamilies Total number of family units
+	TotalFamilies int `json:"total_families"`
+
+	// TotalIndividuals Total number of individuals in the tree
+	TotalIndividuals int `json:"total_individuals"`
+
+	// TotalSources Total number of source records
+	TotalSources int `json:"total_sources"`
+
+	// WarningCount Total number of warning-level issues
+	WarningCount int `json:"warning_count"`
+}
+
+// QualityReportIssue Aggregated issue count for quality reports
+type QualityReportIssue struct {
+	// Code Issue code identifier
+	Code string `json:"code"`
+
+	// Count Number of occurrences of this issue
+	Count int `json:"count"`
+}
+
 // ResearchStatus Confidence level of genealogical data per GPS standards
 type ResearchStatus string
 
@@ -1346,6 +1432,42 @@ type SurnameIndexResponse struct {
 	Total int `json:"total"`
 }
 
+// ValidationIssue A single validation issue detected in the data
+type ValidationIssue struct {
+	// Code Issue code identifier
+	Code string `json:"code"`
+
+	// Message Human-readable description of the issue
+	Message string `json:"message"`
+
+	// RecordId ID of the primary record with the issue
+	RecordId *openapi_types.UUID `json:"record_id,omitempty"`
+
+	// RelatedRecordId ID of a related record (if applicable)
+	RelatedRecordId *openapi_types.UUID `json:"related_record_id,omitempty"`
+
+	// Severity Severity level of the issue
+	Severity ValidationIssueSeverity `json:"severity"`
+}
+
+// ValidationIssueSeverity Severity level of the issue
+type ValidationIssueSeverity string
+
+// ValidationIssuesResponse Response containing validation issues categorized by severity
+type ValidationIssuesResponse struct {
+	// ErrorCount Total number of error-level issues
+	ErrorCount int `json:"error_count"`
+
+	// InfoCount Total number of info-level issues
+	InfoCount int `json:"info_count"`
+
+	// Issues List of validation issues
+	Issues []ValidationIssue `json:"issues"`
+
+	// WarningCount Total number of warning-level issues
+	WarningCount int `json:"warning_count"`
+}
+
 // FamilyId defines model for familyId.
 type FamilyId = openapi_types.UUID
 
@@ -1494,6 +1616,15 @@ type ListPersonsParamsOrder string
 // ListPersonsParamsResearchStatus defines parameters for ListPersons.
 type ListPersonsParamsResearchStatus string
 
+// GetPersonsDuplicatesParams defines parameters for GetPersonsDuplicates.
+type GetPersonsDuplicatesParams struct {
+	// Limit Maximum number of duplicate pairs to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of duplicate pairs to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // GetPersonHistoryParams defines parameters for GetPersonHistory.
 type GetPersonHistoryParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1529,6 +1660,15 @@ type GetPersonRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// GetValidationIssuesParams defines parameters for GetValidationIssues.
+type GetValidationIssuesParams struct {
+	// Severity Filter by severity level
+	Severity *GetValidationIssuesParamsSeverity `form:"severity,omitempty" json:"severity,omitempty"`
+}
+
+// GetValidationIssuesParamsSeverity defines parameters for GetValidationIssues.
+type GetValidationIssuesParamsSeverity string
 
 // SearchPersonsParams defines parameters for SearchPersons.
 type SearchPersonsParams struct {
@@ -1749,6 +1889,9 @@ type ServerInterface interface {
 	// Create a new person
 	// (POST /persons)
 	CreatePerson(ctx echo.Context) error
+	// Find potential duplicate persons
+	// (GET /persons/duplicates)
+	GetPersonsDuplicates(ctx echo.Context, params GetPersonsDuplicatesParams) error
 	// Delete a person
 	// (DELETE /persons/{id})
 	DeletePerson(ctx echo.Context, id PersonId) error
@@ -1794,6 +1937,12 @@ type ServerInterface interface {
 	// Get quality score for a person
 	// (GET /quality/persons/{id})
 	GetPersonQuality(ctx echo.Context, id PersonId) error
+	// Get full quality report
+	// (GET /quality/report)
+	GetQualityReport(ctx echo.Context) error
+	// Get validation issues
+	// (GET /quality/validation)
+	GetValidationIssues(ctx echo.Context, params GetValidationIssuesParams) error
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx echo.Context, params SearchPersonsParams) error
@@ -2576,6 +2725,31 @@ func (w *ServerInterfaceWrapper) CreatePerson(ctx echo.Context) error {
 	return err
 }
 
+// GetPersonsDuplicates converts echo context to params.
+func (w *ServerInterfaceWrapper) GetPersonsDuplicates(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPersonsDuplicatesParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", ctx.QueryParams(), &params.Offset)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetPersonsDuplicates(ctx, params)
+	return err
+}
+
 // DeletePerson converts echo context to params.
 func (w *ServerInterfaceWrapper) DeletePerson(ctx echo.Context) error {
 	var err error
@@ -2870,6 +3044,33 @@ func (w *ServerInterfaceWrapper) GetPersonQuality(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetPersonQuality(ctx, id)
+	return err
+}
+
+// GetQualityReport converts echo context to params.
+func (w *ServerInterfaceWrapper) GetQualityReport(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetQualityReport(ctx)
+	return err
+}
+
+// GetValidationIssues converts echo context to params.
+func (w *ServerInterfaceWrapper) GetValidationIssues(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetValidationIssuesParams
+	// ------------- Optional query parameter "severity" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "severity", ctx.QueryParams(), &params.Severity)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter severity: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetValidationIssues(ctx, params)
 	return err
 }
 
@@ -3285,6 +3486,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/pedigree/:id", wrapper.GetPedigree)
 	router.GET(baseURL+"/persons", wrapper.ListPersons)
 	router.POST(baseURL+"/persons", wrapper.CreatePerson)
+	router.GET(baseURL+"/persons/duplicates", wrapper.GetPersonsDuplicates)
 	router.DELETE(baseURL+"/persons/:id", wrapper.DeletePerson)
 	router.GET(baseURL+"/persons/:id", wrapper.GetPerson)
 	router.PUT(baseURL+"/persons/:id", wrapper.UpdatePerson)
@@ -3300,6 +3502,8 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/persons/:id/rollback", wrapper.RollbackPerson)
 	router.GET(baseURL+"/quality/overview", wrapper.GetQualityOverview)
 	router.GET(baseURL+"/quality/persons/:id", wrapper.GetPersonQuality)
+	router.GET(baseURL+"/quality/report", wrapper.GetQualityReport)
+	router.GET(baseURL+"/quality/validation", wrapper.GetValidationIssues)
 	router.GET(baseURL+"/search", wrapper.SearchPersons)
 	router.GET(baseURL+"/snapshots", wrapper.ListSnapshots)
 	router.POST(baseURL+"/snapshots", wrapper.CreateSnapshot)
@@ -4455,6 +4659,23 @@ func (response CreatePerson400JSONResponse) VisitCreatePersonResponse(w http.Res
 	return json.NewEncoder(w).Encode(response)
 }
 
+type GetPersonsDuplicatesRequestObject struct {
+	Params GetPersonsDuplicatesParams
+}
+
+type GetPersonsDuplicatesResponseObject interface {
+	VisitGetPersonsDuplicatesResponse(w http.ResponseWriter) error
+}
+
+type GetPersonsDuplicates200JSONResponse DuplicatesResponse
+
+func (response GetPersonsDuplicates200JSONResponse) VisitGetPersonsDuplicatesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeletePersonRequestObject struct {
 	Id PersonId `json:"id"`
 }
@@ -4929,6 +5150,39 @@ type GetPersonQuality404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetPersonQuality404JSONResponse) VisitGetPersonQualityResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetQualityReportRequestObject struct {
+}
+
+type GetQualityReportResponseObject interface {
+	VisitGetQualityReportResponse(w http.ResponseWriter) error
+}
+
+type GetQualityReport200JSONResponse QualityReport
+
+func (response GetQualityReport200JSONResponse) VisitGetQualityReportResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetValidationIssuesRequestObject struct {
+	Params GetValidationIssuesParams
+}
+
+type GetValidationIssuesResponseObject interface {
+	VisitGetValidationIssuesResponse(w http.ResponseWriter) error
+}
+
+type GetValidationIssues200JSONResponse ValidationIssuesResponse
+
+func (response GetValidationIssues200JSONResponse) VisitGetValidationIssuesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -5514,6 +5768,9 @@ type StrictServerInterface interface {
 	// Create a new person
 	// (POST /persons)
 	CreatePerson(ctx context.Context, request CreatePersonRequestObject) (CreatePersonResponseObject, error)
+	// Find potential duplicate persons
+	// (GET /persons/duplicates)
+	GetPersonsDuplicates(ctx context.Context, request GetPersonsDuplicatesRequestObject) (GetPersonsDuplicatesResponseObject, error)
 	// Delete a person
 	// (DELETE /persons/{id})
 	DeletePerson(ctx context.Context, request DeletePersonRequestObject) (DeletePersonResponseObject, error)
@@ -5559,6 +5816,12 @@ type StrictServerInterface interface {
 	// Get quality score for a person
 	// (GET /quality/persons/{id})
 	GetPersonQuality(ctx context.Context, request GetPersonQualityRequestObject) (GetPersonQualityResponseObject, error)
+	// Get full quality report
+	// (GET /quality/report)
+	GetQualityReport(ctx context.Context, request GetQualityReportRequestObject) (GetQualityReportResponseObject, error)
+	// Get validation issues
+	// (GET /quality/validation)
+	GetValidationIssues(ctx context.Context, request GetValidationIssuesRequestObject) (GetValidationIssuesResponseObject, error)
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error)
@@ -6578,6 +6841,31 @@ func (sh *strictHandler) CreatePerson(ctx echo.Context) error {
 	return nil
 }
 
+// GetPersonsDuplicates operation middleware
+func (sh *strictHandler) GetPersonsDuplicates(ctx echo.Context, params GetPersonsDuplicatesParams) error {
+	var request GetPersonsDuplicatesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPersonsDuplicates(ctx.Request().Context(), request.(GetPersonsDuplicatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPersonsDuplicates")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetPersonsDuplicatesResponseObject); ok {
+		return validResponse.VisitGetPersonsDuplicatesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // DeletePerson operation middleware
 func (sh *strictHandler) DeletePerson(ctx echo.Context, id PersonId) error {
 	var request DeletePersonRequestObject
@@ -6980,6 +7268,54 @@ func (sh *strictHandler) GetPersonQuality(ctx echo.Context, id PersonId) error {
 		return err
 	} else if validResponse, ok := response.(GetPersonQualityResponseObject); ok {
 		return validResponse.VisitGetPersonQualityResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetQualityReport operation middleware
+func (sh *strictHandler) GetQualityReport(ctx echo.Context) error {
+	var request GetQualityReportRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetQualityReport(ctx.Request().Context(), request.(GetQualityReportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetQualityReport")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetQualityReportResponseObject); ok {
+		return validResponse.VisitGetQualityReportResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetValidationIssues operation middleware
+func (sh *strictHandler) GetValidationIssues(ctx echo.Context, params GetValidationIssuesParams) error {
+	var request GetValidationIssuesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetValidationIssues(ctx.Request().Context(), request.(GetValidationIssuesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetValidationIssues")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetValidationIssuesResponseObject); ok {
+		return validResponse.VisitGetValidationIssuesResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

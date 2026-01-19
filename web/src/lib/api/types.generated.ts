@@ -942,6 +942,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/quality/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get full quality report
+         * @description Returns comprehensive data quality metrics including completeness, coverage, and aggregated issues
+         */
+        get: operations["getQualityReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quality/validation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get validation issues
+         * @description Returns date logic and reference validation issues categorized by severity
+         */
+        get: operations["getValidationIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find potential duplicate persons
+         * @description Returns pairs of persons that may be duplicates based on name, date, and place matching
+         */
+        get: operations["getPersonsDuplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/statistics": {
         parameters: {
             query?: never;
@@ -1827,6 +1887,109 @@ export interface components {
             issues: string[];
             /** @description Suggested improvements */
             suggestions: string[];
+        };
+        /** @description Comprehensive data quality report with coverage metrics and issue aggregation */
+        QualityReport: {
+            /** @description Total number of individuals in the tree */
+            total_individuals: number;
+            /** @description Total number of family units */
+            total_families: number;
+            /** @description Total number of source records */
+            total_sources: number;
+            /**
+             * Format: float
+             * @description Fraction of individuals with birth dates (0.0-1.0)
+             */
+            birth_date_coverage: number;
+            /**
+             * Format: float
+             * @description Fraction of individuals with death dates (0.0-1.0)
+             */
+            death_date_coverage: number;
+            /**
+             * Format: float
+             * @description Fraction of individuals with at least one source citation (0.0-1.0)
+             */
+            source_coverage: number;
+            /** @description Total number of error-level issues */
+            error_count: number;
+            /** @description Total number of warning-level issues */
+            warning_count: number;
+            /** @description Total number of info-level issues */
+            info_count: number;
+            /** @description Most common issues by count */
+            top_issues: components["schemas"]["QualityReportIssue"][];
+        };
+        /** @description Aggregated issue count for quality reports */
+        QualityReportIssue: {
+            /** @description Issue code identifier */
+            code: string;
+            /** @description Number of occurrences of this issue */
+            count: number;
+        };
+        /** @description A pair of potentially duplicate persons */
+        DuplicatePair: {
+            /**
+             * Format: uuid
+             * @description ID of the first person
+             */
+            person1_id: string;
+            /** @description Display name of the first person */
+            person1_name: string;
+            /**
+             * Format: uuid
+             * @description ID of the second person
+             */
+            person2_id: string;
+            /** @description Display name of the second person */
+            person2_name: string;
+            /**
+             * Format: float
+             * @description Confidence score that these are duplicates (0.0-1.0)
+             */
+            confidence: number;
+            /** @description Reasons why these persons are considered potential duplicates */
+            match_reasons: string[];
+        };
+        /** @description Response containing potential duplicate pairs */
+        DuplicatesResponse: {
+            /** @description List of potential duplicate pairs */
+            duplicates: components["schemas"]["DuplicatePair"][];
+            /** @description Total number of potential duplicate pairs found */
+            total: number;
+        };
+        /** @description A single validation issue detected in the data */
+        ValidationIssue: {
+            /**
+             * @description Severity level of the issue
+             * @enum {string}
+             */
+            severity: "error" | "warning" | "info";
+            /** @description Issue code identifier */
+            code: string;
+            /** @description Human-readable description of the issue */
+            message: string;
+            /**
+             * Format: uuid
+             * @description ID of the primary record with the issue
+             */
+            record_id?: string;
+            /**
+             * Format: uuid
+             * @description ID of a related record (if applicable)
+             */
+            related_record_id?: string;
+        };
+        /** @description Response containing validation issues categorized by severity */
+        ValidationIssuesResponse: {
+            /** @description List of validation issues */
+            issues: components["schemas"]["ValidationIssue"][];
+            /** @description Total number of error-level issues */
+            error_count: number;
+            /** @description Total number of warning-level issues */
+            warning_count: number;
+            /** @description Total number of info-level issues */
+            info_count: number;
         };
         Statistics: {
             /** @description Total number of persons in the tree */
@@ -3671,6 +3834,74 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    getQualityReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Full quality report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityReport"];
+                };
+            };
+        };
+    };
+    getValidationIssues: {
+        parameters: {
+            query?: {
+                /** @description Filter by severity level */
+                severity?: "error" | "warning" | "info";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validation issues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationIssuesResponse"];
+                };
+            };
+        };
+    };
+    getPersonsDuplicates: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of duplicate pairs to return */
+                limit?: number;
+                /** @description Number of duplicate pairs to skip */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Potential duplicate pairs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicatesResponse"];
+                };
+            };
         };
     };
     getStatistics: {

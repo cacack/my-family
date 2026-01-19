@@ -1889,6 +1889,118 @@ func (ss *StrictServer) GetPersonQuality(ctx context.Context, request GetPersonQ
 	}, nil
 }
 
+// GetQualityReport implements StrictServerInterface.
+func (ss *StrictServer) GetQualityReport(ctx context.Context, request GetQualityReportRequestObject) (GetQualityReportResponseObject, error) {
+	result, err := ss.server.validationService.GetQualityReport(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map domain type to API type
+	topIssues := make([]QualityReportIssue, len(result.TopIssues))
+	for i, issue := range result.TopIssues {
+		topIssues[i] = QualityReportIssue{
+			Code:  issue.Code,
+			Count: issue.Count,
+		}
+	}
+
+	return GetQualityReport200JSONResponse{
+		TotalIndividuals:  result.TotalIndividuals,
+		TotalFamilies:     result.TotalFamilies,
+		TotalSources:      result.TotalSources,
+		BirthDateCoverage: float32(result.BirthDateCoverage),
+		DeathDateCoverage: float32(result.DeathDateCoverage),
+		SourceCoverage:    float32(result.SourceCoverage),
+		ErrorCount:        result.ErrorCount,
+		WarningCount:      result.WarningCount,
+		InfoCount:         result.InfoCount,
+		TopIssues:         topIssues,
+	}, nil
+}
+
+// GetValidationIssues implements StrictServerInterface.
+func (ss *StrictServer) GetValidationIssues(ctx context.Context, request GetValidationIssuesRequestObject) (GetValidationIssuesResponseObject, error) {
+	// Extract severity filter from params (optional)
+	var severityFilter string
+	if request.Params.Severity != nil {
+		severityFilter = string(*request.Params.Severity)
+	}
+
+	results, err := ss.server.validationService.GetValidationIssues(ctx, severityFilter)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map to API types and count issues by severity
+	issues := make([]ValidationIssue, len(results))
+	errorCount, warningCount, infoCount := 0, 0, 0
+	for i, r := range results {
+		issues[i] = ValidationIssue{
+			Severity: ValidationIssueSeverity(r.Severity),
+			Code:     r.Code,
+			Message:  r.Message,
+			RecordId: r.RecordID,
+		}
+		if r.RelatedRecordID != nil {
+			issues[i].RelatedRecordId = r.RelatedRecordID
+		}
+
+		// Count by severity
+		switch r.Severity {
+		case "error":
+			errorCount++
+		case "warning":
+			warningCount++
+		case "info":
+			infoCount++
+		}
+	}
+
+	return GetValidationIssues200JSONResponse{
+		Issues:       issues,
+		ErrorCount:   errorCount,
+		WarningCount: warningCount,
+		InfoCount:    infoCount,
+	}, nil
+}
+
+// GetPersonsDuplicates implements StrictServerInterface.
+func (ss *StrictServer) GetPersonsDuplicates(ctx context.Context, request GetPersonsDuplicatesRequestObject) (GetPersonsDuplicatesResponseObject, error) {
+	// Extract limit/offset from params with defaults
+	limit := 100
+	offset := 0
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+
+	results, total, err := ss.server.validationService.FindDuplicates(ctx, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	// Map to API types
+	duplicates := make([]DuplicatePair, len(results))
+	for i, r := range results {
+		duplicates[i] = DuplicatePair{
+			Person1Id:    r.Person1ID,
+			Person1Name:  r.Person1Name,
+			Person2Id:    r.Person2ID,
+			Person2Name:  r.Person2Name,
+			Confidence:   float32(r.Confidence),
+			MatchReasons: r.MatchReasons,
+		}
+	}
+
+	return GetPersonsDuplicates200JSONResponse{
+		Duplicates: duplicates,
+		Total:      total,
+	}, nil
+}
+
 // ============================================================================
 // Search endpoint
 // ============================================================================
