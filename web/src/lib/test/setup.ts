@@ -19,3 +19,24 @@ if (typeof SVGElement !== 'undefined') {
 		height: 100
 	});
 }
+
+// Mock SVG transform.baseVal for D3 transition animations
+// jsdom doesn't fully support SVG transforms, causing "Cannot read properties of undefined (reading 'baseVal')"
+// when D3 tries to animate transform attributes
+if (typeof SVGGraphicsElement !== 'undefined') {
+	Object.defineProperty(SVGGraphicsElement.prototype, 'transform', {
+		get() {
+			return {
+				baseVal: {
+					numberOfItems: 0,
+					consolidate: () => null,
+					getItem: () => ({
+						type: 1,
+						matrix: { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }
+					})
+				}
+			};
+		},
+		configurable: true
+	});
+}
