@@ -1025,6 +1025,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/persons/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge two person records
+         * @description Merges two person records, consolidating data from the merged person into the survivor.
+         *     The merged person is deleted after the merge. All relationships (families, citations,
+         *     alternate names, events, media) are transferred to the survivor.
+         */
+        post: operations["mergePersons"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/duplicates/{person1Id}/{person2Id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description First person ID in the duplicate pair */
+                person1Id: string;
+                /** @description Second person ID in the duplicate pair */
+                person2Id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a duplicate pair as false positive
+         * @description Marks a duplicate pair as a false positive. The pair will not be returned
+         *     in future duplicate detection results.
+         */
+        post: operations["dismissDuplicate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/merge/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch merge multiple duplicate pairs
+         * @description Merges multiple duplicate pairs in a single batch operation.
+         *     Each pair is processed independently; partial failures are reported
+         *     in the response. Successfully merged pairs continue processing even
+         *     if earlier pairs fail.
+         */
+        post: operations["batchMergePersons"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/duplicates/dismiss/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch dismiss multiple duplicate pairs
+         * @description Dismisses multiple duplicate pairs as false positives in a single operation.
+         *     Each pair is processed independently; partial failures are reported in the response.
+         */
+        post: operations["batchDismissDuplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/statistics": {
         parameters: {
             query?: never;
@@ -2028,6 +2120,152 @@ export interface components {
             duplicates: components["schemas"]["DuplicatePair"][];
             /** @description Total number of potential duplicate pairs found */
             total: number;
+        };
+        /** @description Request to merge two person records */
+        MergePersonsRequest: {
+            /**
+             * Format: uuid
+             * @description ID of the person that will remain after merge
+             */
+            survivor_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the person to be merged into survivor
+             */
+            merged_id: string;
+            /**
+             * Format: int64
+             * @description Expected version of survivor for optimistic locking
+             */
+            survivor_version: number;
+            /**
+             * Format: int64
+             * @description Expected version of merged person for optimistic locking
+             */
+            merged_version: number;
+            /**
+             * @description Optional per-field source selection. Keys are field names
+             *     (given_name, surname, gender, birth_date, birth_place,
+             *     death_date, death_place, notes, research_status).
+             *     Default is "survivor" for all fields unless survivor's value is empty.
+             * @example {
+             *       "birth_date": "merged",
+             *       "death_date": "survivor"
+             *     }
+             */
+            field_resolution?: {
+                [key: string]: "survivor" | "merged";
+            };
+        };
+        /** @description Result of merging two persons */
+        MergePersonsResponse: {
+            /** @description The survivor person after merge */
+            person: components["schemas"]["Person"];
+            merge_summary: components["schemas"]["MergeSummary"];
+        };
+        /** @description Summary of what was merged */
+        MergeSummary: {
+            /** @description Full name of the person that was merged */
+            merged_person_name: string;
+            /** @description List of fields that were updated from merged person */
+            fields_updated: string[];
+            /** @description Number of families where partner reference was updated */
+            families_updated: number;
+            /** @description Number of citations transferred to survivor */
+            citations_transferred: number;
+            /** @description Number of alternate names added to survivor */
+            names_transferred: number;
+            /** @description Number of life events transferred */
+            events_transferred: number;
+            /** @description Number of media files transferred */
+            media_transferred: number;
+        };
+        /** @description Request to dismiss a duplicate pair as false positive */
+        DismissDuplicateRequest: {
+            /** @description Optional reason for dismissal */
+            reason?: string;
+        };
+        /** @description Request to merge multiple duplicate pairs */
+        BatchMergeRequest: {
+            /** @description List of merge operations to perform */
+            merges: components["schemas"]["MergePersonsRequest"][];
+        };
+        /** @description Results of batch merge operation */
+        BatchMergeResponse: {
+            /** @description Total number of merge operations attempted */
+            total: number;
+            /** @description Number of successful merges */
+            successful: number;
+            /** @description Number of failed merges */
+            failed: number;
+            /** @description Individual results for each merge operation */
+            results: components["schemas"]["BatchMergeResult"][];
+        };
+        /** @description Result of a single merge operation in batch */
+        BatchMergeResult: {
+            /**
+             * Format: uuid
+             * @description ID of the survivor person
+             */
+            survivor_id: string;
+            /**
+             * Format: uuid
+             * @description ID of the merged person
+             */
+            merged_id: string;
+            /** @description Whether the merge succeeded */
+            success: boolean;
+            /** @description Error message if merge failed */
+            error?: string;
+            merge_summary?: components["schemas"]["MergeSummary"];
+        };
+        /** @description Request to dismiss multiple duplicate pairs */
+        BatchDismissRequest: {
+            /** @description List of duplicate pairs to dismiss */
+            dismissals: components["schemas"]["DuplicatePairRef"][];
+        };
+        /** @description Reference to a duplicate pair */
+        DuplicatePairRef: {
+            /**
+             * Format: uuid
+             * @description First person ID in the pair
+             */
+            person1_id: string;
+            /**
+             * Format: uuid
+             * @description Second person ID in the pair
+             */
+            person2_id: string;
+            /** @description Optional reason for dismissal */
+            reason?: string;
+        };
+        /** @description Results of batch dismiss operation */
+        BatchDismissResponse: {
+            /** @description Total number of dismiss operations attempted */
+            total: number;
+            /** @description Number of successful dismissals */
+            successful: number;
+            /** @description Number of failed dismissals */
+            failed: number;
+            /** @description Individual results for each dismiss operation */
+            results: components["schemas"]["BatchDismissResult"][];
+        };
+        /** @description Result of a single dismiss operation in batch */
+        BatchDismissResult: {
+            /**
+             * Format: uuid
+             * @description First person ID in the pair
+             */
+            person1_id: string;
+            /**
+             * Format: uuid
+             * @description Second person ID in the pair
+             */
+            person2_id: string;
+            /** @description Whether the dismissal succeeded */
+            success: boolean;
+            /** @description Error message if dismissal failed */
+            error?: string;
         };
         /** @description A single validation issue detected in the data */
         ValidationIssue: {
@@ -4017,6 +4255,123 @@ export interface operations {
                     "application/json": components["schemas"]["DuplicatesResponse"];
                 };
             };
+        };
+    };
+    mergePersons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergePersonsRequest"];
+            };
+        };
+        responses: {
+            /** @description Persons merged successfully */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergePersonsResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Conflict - version mismatch, circular merge (ancestor/descendant relationship),
+             *     or both persons are children in different families
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    dismissDuplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description First person ID in the duplicate pair */
+                person1Id: string;
+                /** @description Second person ID in the duplicate pair */
+                person2Id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DismissDuplicateRequest"];
+            };
+        };
+        responses: {
+            /** @description Duplicate pair dismissed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    batchMergePersons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Batch operation completed (check results for individual outcomes) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchMergeResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    batchDismissDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchDismissRequest"];
+            };
+        };
+        responses: {
+            /** @description Batch operation completed (check results for individual outcomes) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchDismissResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     getStatistics: {
