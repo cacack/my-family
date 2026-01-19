@@ -14,6 +14,16 @@ Self-hosted genealogy software written in Go. A premier self-hosted genealogy pl
 - [Architecture Decisions](./docs/adr/) - Key technical decisions with rationale
 - [Contributing Guide](./CONTRIBUTING.md) - Development workflow
 
+## Feature Integration
+
+When adding new features, consult these docs to ensure proper integration:
+
+- [Integration Matrix](./docs/INTEGRATION-MATRIX.md) - What features must integrate with (checklists by category)
+- [Architectural Invariants](./docs/ARCHITECTURAL-INVARIANTS.md) - 40 rules that must always hold
+- [Testing Strategy](./docs/TESTING-STRATEGY.md) - Cross-feature test scenarios
+
+**New entity types** require integration across 7 layers (domain, events, commands, projections, read model, API, GEDCOM). Use the 20-item checklist in the Integration Matrix.
+
 ## Build Commands
 
 ```bash

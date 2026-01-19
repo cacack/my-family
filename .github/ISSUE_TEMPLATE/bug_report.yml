@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report a bug in my-family
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please provide as much detail as possible to help us reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened vs what you expected?
+      placeholder: |
+        Expected: [what you expected to happen]
+        Actual: [what actually happened]
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Go to...
+        2. Click on...
+        3. See error...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected Area
+      description: Which part of the application is affected?
+      options:
+        - API / Backend
+        - Frontend / UI
+        - GEDCOM Import
+        - GEDCOM Export
+        - Search
+        - Database (PostgreSQL)
+        - Database (SQLite)
+        - Quality/Validation
+        - Charts/Visualizations
+        - Authentication
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How severe is the impact?
+      options:
+        - Critical - Application unusable, data loss risk
+        - High - Major feature broken, no workaround
+        - Medium - Feature broken, workaround exists
+        - Low - Minor issue, cosmetic
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Database, OS, browser if relevant
+      placeholder: |
+        - Database: PostgreSQL 15 / SQLite
+        - OS: macOS / Linux / Windows
+        - Browser: Chrome / Firefox / Safari
+        - Version: [if known]
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Any error messages or log output?
+      render: shell
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or information?
