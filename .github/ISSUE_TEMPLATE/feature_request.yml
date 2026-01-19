@@ -1,0 +1,83 @@
+name: Feature Request
+description: Propose a new feature for my-family
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to propose a feature!
+
+        Before submitting, please review [docs/INTEGRATION-MATRIX.md](https://github.com/cacack/my-family/blob/main/docs/INTEGRATION-MATRIX.md) to understand the integration requirements for different feature types.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What feature would you like to see?
+      placeholder: A clear description of the feature...
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: What genealogy problem does this solve?
+      placeholder: "As a researcher, I want to... so that..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-category
+    attributes:
+      label: Feature Category
+      description: What type of feature is this? (See docs/INTEGRATION-MATRIX.md)
+      options:
+        - Core Entity (Person, Family, Source)
+        - Supporting Entity (Citation, Media, Repository)
+        - Life Data (LifeEvent, Attribute)
+        - Research Tool (Snapshot, Tag, Branch)
+        - Visualization (Chart, Map, Timeline)
+        - Analytics (Quality, Statistics)
+        - Import/Export
+        - Browse/Search
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: integration-points
+    attributes:
+      label: Integration Points
+      description: Which areas might this feature affect? Check all that apply.
+      options:
+        - label: Domain model (new/modified structs)
+        - label: Events (new event types)
+        - label: Commands (write operations)
+        - label: Projections (read model updates)
+        - label: API endpoints
+        - label: GEDCOM import/export
+        - label: Search/browse
+        - label: Quality scoring
+        - label: Frontend components
+        - label: Database schema (both PostgreSQL and SQLite)
+
+  - type: textarea
+    id: gedcom-mapping
+    attributes:
+      label: GEDCOM Mapping
+      description: If applicable, how does this map to GEDCOM 7.0?
+      placeholder: "Maps to @REPO@ record / No GEDCOM equivalent / N/A"
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered other approaches?
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other context, mockups, or references?

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/cacack/my-family/blob/main/docs/
+    about: Read the project documentation before opening an issue
+  - name: Integration Matrix
+    url: https://github.com/cacack/my-family/blob/main/docs/INTEGRATION-MATRIX.md
+    about: Understand feature integration requirements
+  - name: Architectural Invariants
+    url: https://github.com/cacack/my-family/blob/main/docs/ARCHITECTURAL-INVARIANTS.md
+    about: Rules that must hold true in the codebase

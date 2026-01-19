@@ -1,0 +1,177 @@
+name: New Entity Type
+description: Track implementation of a new domain entity
+title: "[Entity]: "
+labels: ["enhancement", "entity"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when adding a new domain entity type (Person, Family, Source, etc.)
+
+        See [docs/INTEGRATION-MATRIX.md](https://github.com/cacack/my-family/blob/main/docs/INTEGRATION-MATRIX.md) for the full checklist and rationale for each requirement.
+
+  - type: input
+    id: entity-name
+    attributes:
+      label: Entity Name
+      placeholder: e.g., Repository, Note, Place
+    validations:
+      required: true
+
+  - type: input
+    id: gedcom-tag
+    attributes:
+      label: GEDCOM Tag
+      description: The GEDCOM record type this maps to, if any
+      placeholder: e.g., @REPO@, NOTE, PLAC
+
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: What does this entity represent in genealogy?
+    validations:
+      required: true
+
+  - type: textarea
+    id: fields
+    attributes:
+      label: Key Fields
+      description: What are the main fields this entity will have?
+      placeholder: |
+        - name: string (required)
+        - address: string (optional)
+        - ...
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Implementation Checklist
+
+        Track completion of each integration layer. All 20 items are required for Core/Supporting entities.
+        See [INTEGRATION-MATRIX.md](https://github.com/cacack/my-family/blob/main/docs/INTEGRATION-MATRIX.md) for why each is needed.
+
+        ### Domain Layer (4 items)
+
+  - type: checkboxes
+    id: domain-checklist
+    attributes:
+      label: Domain Layer
+      description: Core domain model requirements
+      options:
+        - label: "1. Struct with UUID `ID` field (set by NewX constructor)"
+        - label: "2. `Version` field for optimistic locking (ADR-001)"
+        - label: "3. `GedcomXref` field for GEDCOM round-trip (if applicable)"
+        - label: "4. `Validate()` method returning ValidationError"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Event Layer (4 items)
+
+  - type: checkboxes
+    id: event-checklist
+    attributes:
+      label: Event Layer
+      description: Event sourcing requirements (ADR-001)
+      options:
+        - label: "5. XCreated, XUpdated, XDeleted event types defined"
+        - label: "6. NewXCreated() factory using NewBaseEvent()"
+        - label: "7. Events implement Event interface"
+        - label: "8. DecodeEvent() case added for all event types"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Command Layer (2 items)
+
+  - type: checkboxes
+    id: command-checklist
+    attributes:
+      label: Command Layer
+      description: CQRS write side requirements
+      options:
+        - label: "9. CreateX, UpdateX, DeleteX handlers implemented"
+        - label: "10. Handlers use execute() helper for persistence"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Projection Layer (2 items)
+
+  - type: checkboxes
+    id: projection-checklist
+    attributes:
+      label: Projection Layer
+      description: Synchronous projection requirements (ADR-003)
+      options:
+        - label: "11. projectXCreated/Updated/Deleted functions implemented"
+        - label: "12. Projector.Project() case added for all events"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Read Model Layer (4 items)
+
+  - type: checkboxes
+    id: readmodel-checklist
+    attributes:
+      label: Read Model Layer
+      description: Query side and dual database requirements (ADR-002)
+      options:
+        - label: "13. XReadModel struct with denormalized data"
+        - label: "14. Interface methods: GetX, ListX, SaveX, DeleteX (SearchX if searchable)"
+        - label: "15. PostgreSQL implementation complete"
+        - label: "16. SQLite implementation complete"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### API Layer (2 items)
+
+  - type: checkboxes
+    id: api-checklist
+    attributes:
+      label: API Layer
+      description: HTTP API requirements
+      options:
+        - label: "17. OpenAPI spec endpoints added"
+        - label: "18. Handler implementation with type conversion"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### GEDCOM Integration (2 items)
+
+  - type: checkboxes
+    id: gedcom-checklist
+    attributes:
+      label: GEDCOM Integration
+      description: Data portability requirements (ETHOS - Respect the Data)
+      options:
+        - label: "19. Import parsing implemented (if GEDCOM concept)"
+        - label: "20. Export generation implemented (if GEDCOM concept)"
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Additional Requirements
+
+  - type: checkboxes
+    id: additional-checklist
+    attributes:
+      label: Additional Requirements
+      description: Frontend, quality, and testing
+      options:
+        - label: "Frontend: Card component created"
+        - label: "Frontend: List/detail views implemented"
+        - label: "Frontend: Edit forms implemented"
+        - label: "Quality: Scoring integration (if applicable)"
+        - label: "Tests: 85% per-package coverage achieved"
+        - label: "Tests: Integration tests pass on both databases"
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Implementation Notes
+      description: Any additional notes, decisions, or blockers?
