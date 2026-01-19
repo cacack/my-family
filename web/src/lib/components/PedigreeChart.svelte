@@ -21,6 +21,9 @@
 		wide: { cardWidth: 160, cardHeight: 80, horizontalGap: 40, verticalGap: 50, cousinSeparation: 0.85 }
 	};
 
+	// Animation duration for collapse/expand transitions
+	const ANIMATION_DURATION = 300;
+
 	interface Props {
 		data: PedigreeNode;
 		layout?: LayoutMode;
@@ -41,6 +44,13 @@
 	// Store the tree data for navigation
 	let treeNodes: d3.HierarchyPointNode<PedigreeNode>[] = [];
 
+	// Collapsed nodes state - tracks which node IDs have their ancestors collapsed
+	// Using a plain Set since reactivity is managed through manual re-renders
+	let collapsedNodes: Set<string> = new Set();
+
+	// Debounce timer for rapid collapse/expand operations
+	let collapseDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 	interface TreeNode {
 		data: PedigreeNode;
 		x: number;
@@ -49,23 +59,95 @@
 		children: TreeNode[];
 	}
 
-	// Convert pedigree data to D3 hierarchy format
+	/**
+	 * Count all ancestors recursively from the original data (before filtering for collapsed state)
+	 */
+	function countAncestors(node: PedigreeNode): number {
+		let count = 0;
+		if (node.father) {
+			count += 1 + countAncestors(node.father);
+		}
+		if (node.mother) {
+			count += 1 + countAncestors(node.mother);
+		}
+		return count;
+	}
+
+	/**
+	 * Check if a node has ancestors (father or mother)
+	 */
+	function hasAncestors(node: PedigreeNode): boolean {
+		return !!(node.father || node.mother);
+	}
+
+	/**
+	 * Toggle collapse state for a node
+	 */
+	export function toggleCollapse(nodeId: string): void {
+		// Clear any pending debounce timer
+		if (collapseDebounceTimer) {
+			clearTimeout(collapseDebounceTimer);
+		}
+
+		// Debounce rapid operations (50ms delay)
+		collapseDebounceTimer = setTimeout(() => {
+			if (collapsedNodes.has(nodeId)) {
+				collapsedNodes.delete(nodeId);
+			} else {
+				collapsedNodes.add(nodeId);
+			}
+			renderChartWithAnimation();
+		}, 50);
+	}
+
+	/**
+	 * Check if a node is collapsed
+	 */
+	export function isCollapsed(nodeId: string): boolean {
+		return collapsedNodes.has(nodeId);
+	}
+
+	/**
+	 * Expand all collapsed branches
+	 */
+	export function expandAll(): void {
+		collapsedNodes.clear();
+		renderChartWithAnimation();
+	}
+
+	/**
+	 * Collapse all branches that have ancestors
+	 */
+	export function collapseAll(): void {
+		collapsedNodes.clear();
+		function collectCollapsibleNodes(node: PedigreeNode) {
+			if (node.id && hasAncestors(node)) {
+				collapsedNodes.add(node.id);
+			}
+			if (node.father) collectCollapsibleNodes(node.father);
+			if (node.mother) collectCollapsibleNodes(node.mother);
+		}
+		collectCollapsibleNodes(data);
+		renderChartWithAnimation();
+	}
+
+	// Convert pedigree data to D3 hierarchy format, respecting collapsed state
 	function buildHierarchy(node: PedigreeNode): d3.HierarchyNode<PedigreeNode> {
-		// For pedigree charts, we show ancestors (parents above children)
-		// We need to build the hierarchy with ancestors as "children" for the tree layout
-		const children: PedigreeNode[] = [];
-		if (node.father) children.push(node.father);
-		if (node.mother) children.push(node.mother);
-
-		const hierarchyData = {
-			...node,
-			children: children.length > 0 ? children.map((c) => buildHierarchyData(c)) : undefined
-		};
-
+		const hierarchyData = buildHierarchyData(node);
 		return d3.hierarchy(hierarchyData as PedigreeNode);
 	}
 
 	function buildHierarchyData(node: PedigreeNode): PedigreeNode & { children?: PedigreeNode[] } {
+		// If this node is collapsed, don't include its ancestors
+		if (node.id && collapsedNodes.has(node.id)) {
+			return {
+				...node,
+				children: undefined
+			} as PedigreeNode & { children?: PedigreeNode[] };
+		}
+
+		// For pedigree charts, we show ancestors (parents above children)
+		// We need to build the hierarchy with ancestors as "children" for the tree layout
 		const children: PedigreeNode[] = [];
 		if (node.father) children.push(node.father);
 		if (node.mother) children.push(node.mother);
@@ -75,6 +157,9 @@
 			children: children.length > 0 ? children.map((c) => buildHierarchyData(c)) : undefined
 		} as PedigreeNode & { children?: PedigreeNode[] };
 	}
+
+	// Store previous node positions for animations
+	let previousNodePositions: Map<string, { x: number; y: number }> = new Map();
 
 	function renderChart() {
 		if (!container || !data) return;
@@ -176,6 +261,194 @@
 				}
 			});
 
+		// Render node cards
+		renderNodeCards(nodeGroups, cardWidth, cardHeight);
+
+		// Render collapse toggle buttons
+		renderCollapseToggles(nodeGroups, cardWidth, cardHeight);
+
+		// Store current positions for future animations
+		nodes.forEach((d) => {
+			if (d.data.id) {
+				previousNodePositions.set(d.data.id, { x: d.x, y: d.y });
+			}
+		});
+
+		// Initial zoom to fit
+		const bounds = g.node()?.getBBox();
+		if (bounds) {
+			const dx = bounds.width;
+			const dy = bounds.height;
+			const x = bounds.x + dx / 2;
+			const y = bounds.y + dy / 2;
+			const scale = 0.85 / Math.max(dx / width, dy / height);
+			const translate = [width / 2 - scale * x, height / 2 - scale * y];
+
+			svg.call(
+				zoom.transform,
+				d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
+			);
+		}
+	}
+
+	function renderChartWithAnimation() {
+		if (!container || !data) return;
+
+		const width = container.clientWidth || 800;
+		const height = container.clientHeight || 600;
+
+		// Build new hierarchy with updated collapsed state
+		const root = buildHierarchy(data);
+
+		// Get layout config
+		const config = LAYOUTS[layout];
+		const cardWidth = config.cardWidth;
+		const cardHeight = config.cardHeight;
+		const horizontalSpacing = cardWidth + config.horizontalGap;
+		const verticalSpacing = cardHeight + config.verticalGap;
+
+		const treeLayout = d3
+			.tree<PedigreeNode>()
+			.nodeSize([horizontalSpacing, verticalSpacing])
+			.separation((a, b) => (a.parent === b.parent ? 1 : config.cousinSeparation));
+
+		const treeData = treeLayout(root);
+		const nodes = treeData.descendants();
+		const links = treeData.links();
+
+		// Update nodeMap
+		treeNodes = nodes;
+		nodeMap = new Map();
+		nodes.forEach((node) => {
+			if (node.data.id) {
+				nodeMap.set(node.data.id, node);
+			}
+		});
+
+		// Flip y coordinates
+		const maxDepth = d3.max(nodes, (d) => d.depth) || 0;
+		nodes.forEach((d) => {
+			d.y = (maxDepth - d.depth) * verticalSpacing;
+		});
+
+		// Create sets for tracking which nodes exist
+		const newNodeIds = new Set(nodes.map((d) => d.data.id).filter(Boolean));
+		const previousNodeIds = new Set(previousNodePositions.keys());
+
+		// Update links with animation
+		const linkSelection = g.selectAll<SVGPathElement, d3.HierarchyLink<PedigreeNode>>('.link')
+			.data(links, (d) => `${d.source.data.id}-${d.target.data.id}`);
+
+		// Remove old links
+		linkSelection.exit()
+			.transition()
+			.duration(ANIMATION_DURATION)
+			.attr('stroke-opacity', 0)
+			.remove();
+
+		// Add new links
+		const newLinks = linkSelection.enter()
+			.append('path')
+			.attr('class', 'link')
+			.attr('fill', 'none')
+			.attr('stroke', '#94a3b8')
+			.attr('stroke-width', 2)
+			.attr('stroke-opacity', 0)
+			.attr(
+				'd',
+				d3
+					.linkVertical<d3.HierarchyLink<PedigreeNode>, d3.HierarchyPointNode<PedigreeNode>>()
+					.x((d) => d.x)
+					.y((d) => d.y) as (
+					d: d3.HierarchyLink<PedigreeNode>
+				) => string | null
+			);
+
+		// Animate new links appearing
+		newLinks.transition()
+			.duration(ANIMATION_DURATION)
+			.attr('stroke-opacity', 1);
+
+		// Update existing links
+		linkSelection.transition()
+			.duration(ANIMATION_DURATION)
+			.attr(
+				'd',
+				d3
+					.linkVertical<d3.HierarchyLink<PedigreeNode>, d3.HierarchyPointNode<PedigreeNode>>()
+					.x((d) => d.x)
+					.y((d) => d.y) as (
+					d: d3.HierarchyLink<PedigreeNode>
+				) => string | null
+			);
+
+		// Update nodes with animation
+		const nodeSelection = g.selectAll<SVGGElement, d3.HierarchyPointNode<PedigreeNode>>('.node')
+			.data(nodes, (d) => d.data.id || '');
+
+		// Remove old nodes with fade out
+		nodeSelection.exit()
+			.transition()
+			.duration(ANIMATION_DURATION)
+			.attr('opacity', 0)
+			.remove();
+
+		// Add new nodes
+		const newNodes = nodeSelection.enter()
+			.append('g')
+			.attr('class', 'node')
+			.attr('transform', (d) => {
+				// Start from parent position if exists, otherwise from own position
+				const parentId = d.parent?.data.id;
+				if (parentId && previousNodePositions.has(parentId)) {
+					const parentPos = previousNodePositions.get(parentId)!;
+					return `translate(${parentPos.x},${parentPos.y})`;
+				}
+				return `translate(${d.x},${d.y})`;
+			})
+			.attr('opacity', 0)
+			.style('cursor', 'pointer')
+			.on('click', (_event, d) => {
+				if (onPersonClick && d.data.id) {
+					onPersonClick(d.data.id);
+				}
+			});
+
+		// Render cards on new nodes
+		renderNodeCards(newNodes, cardWidth, cardHeight);
+		renderCollapseToggles(newNodes, cardWidth, cardHeight);
+
+		// Animate new nodes appearing and moving to position
+		newNodes.transition()
+			.duration(ANIMATION_DURATION)
+			.attr('transform', (d) => `translate(${d.x},${d.y})`)
+			.attr('opacity', 1);
+
+		// Animate existing nodes to new positions
+		nodeSelection.transition()
+			.duration(ANIMATION_DURATION)
+			.attr('transform', (d) => `translate(${d.x},${d.y})`);
+
+		// Update collapse toggle state on existing nodes
+		nodeSelection.each(function(d) {
+			const nodeGroup = d3.select(this);
+			updateCollapseToggle(nodeGroup, d, cardWidth, cardHeight);
+		});
+
+		// Store new positions for future animations
+		previousNodePositions = new Map();
+		nodes.forEach((d) => {
+			if (d.data.id) {
+				previousNodePositions.set(d.data.id, { x: d.x, y: d.y });
+			}
+		});
+	}
+
+	function renderNodeCards(
+		nodeGroups: d3.Selection<SVGGElement, d3.HierarchyPointNode<PedigreeNode>, SVGGElement, unknown>,
+		cardWidth: number,
+		cardHeight: number
+	) {
 		// Node card background
 		nodeGroups
 			.append('rect')
@@ -216,6 +489,7 @@
 		// Given name (first line)
 		nodeGroups
 			.append('text')
+			.attr('class', 'given-name')
 			.attr('y', -14)
 			.attr('text-anchor', 'middle')
 			.attr('font-size', '13px')
@@ -229,6 +503,7 @@
 		// Surname (second line)
 		nodeGroups
 			.append('text')
+			.attr('class', 'surname')
 			.attr('y', 2)
 			.attr('text-anchor', 'middle')
 			.attr('font-size', '13px')
@@ -242,6 +517,7 @@
 		// Birth-death dates (third line)
 		nodeGroups
 			.append('text')
+			.attr('class', 'dates')
 			.attr('y', 18)
 			.attr('text-anchor', 'middle')
 			.attr('font-size', '11px')
@@ -254,21 +530,139 @@
 				if (!birth && death) return `d. ${death}`;
 				return `${birth} - ${death}`;
 			});
+	}
 
-		// Initial zoom to fit
-		const bounds = g.node()?.getBBox();
-		if (bounds) {
-			const dx = bounds.width;
-			const dy = bounds.height;
-			const x = bounds.x + dx / 2;
-			const y = bounds.y + dy / 2;
-			const scale = 0.85 / Math.max(dx / width, dy / height);
-			const translate = [width / 2 - scale * x, height / 2 - scale * y];
+	function renderCollapseToggles(
+		nodeGroups: d3.Selection<SVGGElement, d3.HierarchyPointNode<PedigreeNode>, SVGGElement, unknown>,
+		cardWidth: number,
+		cardHeight: number
+	) {
+		// Filter to only nodes that have ancestors in the original data
+		const nodesWithAncestors = nodeGroups.filter((d) => hasAncestors(d.data));
 
-			svg.call(
-				zoom.transform,
-				d3.zoomIdentity.translate(translate[0], translate[1]).scale(scale)
-			);
+		// Create toggle group positioned below the card
+		const toggleGroups = nodesWithAncestors
+			.append('g')
+			.attr('class', 'collapse-toggle')
+			.attr('transform', `translate(0, ${cardHeight / 2 + 12})`)
+			.style('cursor', 'pointer')
+			.on('click', (event, d) => {
+				event.stopPropagation(); // Prevent triggering person click
+				if (d.data.id) {
+					toggleCollapse(d.data.id);
+				}
+			});
+
+		// Toggle button circle
+		toggleGroups
+			.append('circle')
+			.attr('class', 'toggle-button')
+			.attr('r', 9)
+			.attr('fill', '#f8fafc')
+			.attr('stroke', '#94a3b8')
+			.attr('stroke-width', 1.5);
+
+		// Toggle button text (+ or -)
+		toggleGroups
+			.append('text')
+			.attr('class', 'toggle-text')
+			.attr('text-anchor', 'middle')
+			.attr('dominant-baseline', 'central')
+			.attr('font-size', '14px')
+			.attr('font-weight', '600')
+			.attr('fill', '#64748b')
+			.attr('pointer-events', 'none')
+			.text((d) => d.data.id && collapsedNodes.has(d.data.id) ? '+' : '-');
+
+		// Ancestor count badge (only for collapsed nodes)
+		const collapsedToggles = toggleGroups.filter((d) => d.data.id && collapsedNodes.has(d.data.id));
+
+		collapsedToggles
+			.append('g')
+			.attr('class', 'ancestor-badge')
+			.attr('transform', 'translate(16, 0)')
+			.each(function(d) {
+				const badgeGroup = d3.select(this);
+				const ancestorCount = countAncestors(d.data);
+				const badgeText = `+${ancestorCount}`;
+				const textWidth = badgeText.length * 7 + 8;
+
+				// Badge background
+				badgeGroup
+					.append('rect')
+					.attr('x', 0)
+					.attr('y', -8)
+					.attr('width', textWidth)
+					.attr('height', 16)
+					.attr('rx', 8)
+					.attr('fill', '#e2e8f0')
+					.attr('stroke', '#94a3b8')
+					.attr('stroke-width', 1);
+
+				// Badge text
+				badgeGroup
+					.append('text')
+					.attr('x', textWidth / 2)
+					.attr('y', 0)
+					.attr('text-anchor', 'middle')
+					.attr('dominant-baseline', 'central')
+					.attr('font-size', '10px')
+					.attr('font-weight', '500')
+					.attr('fill', '#475569')
+					.text(badgeText);
+			});
+	}
+
+	function updateCollapseToggle(
+		nodeGroup: d3.Selection<SVGGElement, d3.HierarchyPointNode<PedigreeNode>, null, undefined>,
+		d: d3.HierarchyPointNode<PedigreeNode>,
+		cardWidth: number,
+		cardHeight: number
+	) {
+		// Update toggle text
+		nodeGroup.select('.toggle-text')
+			.text(d.data.id && collapsedNodes.has(d.data.id) ? '+' : '-');
+
+		// Remove existing badge
+		nodeGroup.select('.ancestor-badge').remove();
+
+		// Add badge if collapsed
+		if (d.data.id && collapsedNodes.has(d.data.id)) {
+			const toggleGroup = nodeGroup.select('.collapse-toggle');
+			if (!toggleGroup.empty()) {
+				const badgeGroup = toggleGroup
+					.append('g')
+					.attr('class', 'ancestor-badge')
+					.attr('transform', 'translate(16, 0)');
+
+				const ancestorCount = countAncestors(d.data);
+				const badgeText = `+${ancestorCount}`;
+				const textWidth = badgeText.length * 7 + 8;
+
+				// Badge background
+				badgeGroup
+					.append('rect')
+					.attr('x', 0)
+					.attr('y', -8)
+					.attr('width', textWidth)
+					.attr('height', 16)
+					.attr('rx', 8)
+					.attr('fill', '#e2e8f0')
+					.attr('stroke', '#94a3b8')
+					.attr('stroke-width', 1);
+
+				// Badge text
+				badgeGroup
+					.append('text')
+					.attr('x', textWidth / 2)
+					.attr('y', 0)
+					.attr('text-anchor', 'middle')
+					.attr('dominant-baseline', 'central')
+					.attr('font-size', '10px')
+					.attr('font-weight', '500')
+					.attr('fill', '#475569')
+					.text(badgeText);
+			}
 		}
 	}
 
@@ -394,12 +788,26 @@
 
 		return () => {
 			resizeObserver.disconnect();
+			// Clear any pending debounce timer
+			if (collapseDebounceTimer) {
+				clearTimeout(collapseDebounceTimer);
+			}
 		};
 	});
+
+	// Track the previous data ID to detect when person changes
+	let previousDataId: string | undefined = undefined;
 
 	// Re-render when data or layout changes
 	$effect(() => {
 		if (data && layout) {
+			// Reset collapsed state when the root person changes (new person selected)
+			if (previousDataId !== data.id) {
+				previousDataId = data.id;
+				// Use untracked assignment to avoid reactive loops
+				collapsedNodes.clear();
+				previousNodePositions.clear();
+			}
 			renderChart();
 		}
 	});
@@ -416,7 +824,7 @@
 	class="pedigree-chart"
 	bind:this={container}
 	role="application"
-	aria-label="Pedigree chart. Use arrow keys to navigate: Up for father, Left for mother, Down to return to root. Plus/minus to zoom, R to reset view."
+	aria-label="Pedigree chart. Use arrow keys to navigate: Up for father, Left for mother, Down to return to root. Plus/minus to zoom, R to reset view. Click toggle buttons below nodes to collapse or expand ancestor branches."
 	tabindex="0"
 ></div>
 
@@ -437,6 +845,11 @@
 
 	:global(.pedigree-chart .node:hover rect.node-card) {
 		filter: brightness(0.95);
+	}
+
+	:global(.pedigree-chart .collapse-toggle:hover circle.toggle-button) {
+		fill: #e2e8f0;
+		stroke: #64748b;
 	}
 
 	/* High contrast mode support for selection indicator */

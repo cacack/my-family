@@ -214,6 +214,36 @@ export interface Pedigree {
 	generations?: number;
 }
 
+// Descendancy chart types
+export interface SpouseInfo {
+	id: string;
+	given_name?: string;
+	surname?: string;
+	birth_date?: GenDate;
+	death_date?: GenDate;
+	gender?: string;
+	marriage_date?: GenDate;
+	marriage_place?: string;
+}
+
+export interface DescendancyNode {
+	id: string;
+	given_name?: string;
+	surname?: string;
+	birth_date?: GenDate;
+	death_date?: GenDate;
+	gender?: string;
+	spouses?: SpouseInfo[];
+	children?: DescendancyNode[];
+}
+
+export interface Descendancy {
+	root: DescendancyNode;
+	generations: number;
+	total_descendants: number;
+	max_generation: number;
+}
+
 // AhnentafelEntry and AhnentafelResponse are imported from types.generated.ts above
 
 export interface SearchResult extends PersonSummary {
@@ -592,6 +622,12 @@ class ApiClient {
 		}
 
 		return response.text();
+	}
+
+	// Descendancy endpoint
+	async getDescendancy(personId: string, generations?: number): Promise<Descendancy> {
+		const params = generations ? `?generations=${generations}` : '';
+		return this.request<Descendancy>('GET', `/descendancy/${personId}${params}`);
 	}
 
 	// Search endpoint

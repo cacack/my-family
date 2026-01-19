@@ -18,22 +18,23 @@ import (
 
 // Server wraps the Echo server with application dependencies.
 type Server struct {
-	echo              *echo.Echo
-	config            *config.Config
-	readStore         repository.ReadModelStore
-	commandHandler    *command.Handler
-	personService     *query.PersonService
-	familyService     *query.FamilyService
-	pedigreeService   *query.PedigreeService
-	ahnentafelService *query.AhnentafelService
-	sourceService     *query.SourceService
-	historyService    *query.HistoryService
-	rollbackService   *query.RollbackService
-	browseService     *query.BrowseService
-	qualityService    *query.QualityService
-	snapshotService   *query.SnapshotService
-	validationService *query.ValidationService
-	frontendFS        fs.FS
+	echo               *echo.Echo
+	config             *config.Config
+	readStore          repository.ReadModelStore
+	commandHandler     *command.Handler
+	personService      *query.PersonService
+	familyService      *query.FamilyService
+	pedigreeService    *query.PedigreeService
+	descendancyService *query.DescendancyService
+	ahnentafelService  *query.AhnentafelService
+	sourceService      *query.SourceService
+	historyService     *query.HistoryService
+	rollbackService    *query.RollbackService
+	browseService      *query.BrowseService
+	qualityService     *query.QualityService
+	snapshotService    *query.SnapshotService
+	validationService  *query.ValidationService
+	frontendFS         fs.FS
 }
 
 // NewServer creates a new API server with all dependencies.
@@ -74,6 +75,7 @@ func NewServer(
 	personSvc := query.NewPersonService(readStore)
 	familySvc := query.NewFamilyService(readStore)
 	pedigreeSvc := query.NewPedigreeService(readStore)
+	descendancySvc := query.NewDescendancyService(readStore)
 	ahnentafelSvc := query.NewAhnentafelService(pedigreeSvc)
 	sourceSvc := query.NewSourceService(readStore)
 	historySvc := query.NewHistoryService(eventStore, readStore)
@@ -84,22 +86,23 @@ func NewServer(
 	validationSvc := query.NewValidationService(readStore)
 
 	server := &Server{
-		echo:              e,
-		config:            cfg,
-		readStore:         readStore,
-		commandHandler:    cmdHandler,
-		personService:     personSvc,
-		familyService:     familySvc,
-		pedigreeService:   pedigreeSvc,
-		ahnentafelService: ahnentafelSvc,
-		sourceService:     sourceSvc,
-		historyService:    historySvc,
-		rollbackService:   rollbackSvc,
-		browseService:     browseSvc,
-		qualityService:    qualitySvc,
-		snapshotService:   snapshotSvc,
-		validationService: validationSvc,
-		frontendFS:        frontendFS,
+		echo:               e,
+		config:             cfg,
+		readStore:          readStore,
+		commandHandler:     cmdHandler,
+		personService:      personSvc,
+		familyService:      familySvc,
+		pedigreeService:    pedigreeSvc,
+		descendancyService: descendancySvc,
+		ahnentafelService:  ahnentafelSvc,
+		sourceService:      sourceSvc,
+		historyService:     historySvc,
+		rollbackService:    rollbackSvc,
+		browseService:      browseSvc,
+		qualityService:     qualitySvc,
+		snapshotService:    snapshotSvc,
+		validationService:  validationSvc,
+		frontendFS:         frontendFS,
 	}
 
 	// Register routes

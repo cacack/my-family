@@ -487,6 +487,39 @@ type DateRange struct {
 	LatestBirth *string `json:"latest_birth,omitempty"`
 }
 
+// Descendancy Descendancy tree showing descendants of a person
+type Descendancy struct {
+	// Generations Number of generations included
+	Generations *int `json:"generations,omitempty"`
+
+	// MaxGeneration Maximum generation depth reached
+	MaxGeneration *int `json:"max_generation,omitempty"`
+
+	// Root A person node in the descendancy tree
+	Root DescendancyNode `json:"root"`
+
+	// TotalDescendants Total number of descendants
+	TotalDescendants *int `json:"total_descendants,omitempty"`
+}
+
+// DescendancyNode A person node in the descendancy tree
+type DescendancyNode struct {
+	// BirthDate Genealogical date with flexible precision
+	BirthDate *GenDate           `json:"birth_date,omitempty"`
+	Children  *[]DescendancyNode `json:"children,omitempty"`
+
+	// DeathDate Genealogical date with flexible precision
+	DeathDate *GenDate `json:"death_date,omitempty"`
+	Gender    *string  `json:"gender,omitempty"`
+
+	// Generation Generation level (0 = root, 1 = children, 2 = grandchildren, etc.)
+	Generation *int               `json:"generation,omitempty"`
+	GivenName  *string            `json:"given_name,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+	Spouses    *[]SpouseInfo      `json:"spouses,omitempty"`
+	Surname    *string            `json:"surname,omitempty"`
+}
+
 // DuplicatePair A pair of potentially duplicate persons
 type DuplicatePair struct {
 	// Confidence Confidence score that these are duplicates (0.0-1.0)
@@ -1393,6 +1426,15 @@ type SourceUpdate struct {
 	Version int64 `json:"version"`
 }
 
+// SpouseInfo Spouse information in the descendancy tree
+type SpouseInfo struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// MarriageDate Genealogical date with flexible precision
+	MarriageDate *GenDate `json:"marriage_date,omitempty"`
+	Name         string   `json:"name"`
+}
+
 // Statistics defines model for Statistics.
 type Statistics struct {
 	DateRange          DateRange          `json:"date_range"`
@@ -1541,6 +1583,12 @@ type DeleteCitationParams struct {
 type GetCitationRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetDescendancyParams defines parameters for GetDescendancy.
+type GetDescendancyParams struct {
+	// Generations Number of descendant generations to include
+	Generations *int `form:"generations,omitempty" json:"generations,omitempty"`
 }
 
 // ListFamiliesParams defines parameters for ListFamilies.
@@ -1814,6 +1862,9 @@ type ServerInterface interface {
 	// Rollback a citation to a previous version
 	// (POST /citations/{id}/rollback)
 	RollbackCitation(ctx echo.Context, id openapi_types.UUID) error
+	// Get descendancy tree for a person
+	// (GET /descendancy/{id})
+	GetDescendancy(ctx echo.Context, id PersonId, params GetDescendancyParams) error
 	// Export families data
 	// (GET /export/families)
 	ExportFamilies(ctx echo.Context) error
@@ -2244,6 +2295,31 @@ func (w *ServerInterfaceWrapper) RollbackCitation(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.RollbackCitation(ctx, id)
+	return err
+}
+
+// GetDescendancy converts echo context to params.
+func (w *ServerInterfaceWrapper) GetDescendancy(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDescendancyParams
+	// ------------- Optional query parameter "generations" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "generations", ctx.QueryParams(), &params.Generations)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter generations: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetDescendancy(ctx, id, params)
 	return err
 }
 
@@ -3461,6 +3537,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.PUT(baseURL+"/citations/:id", wrapper.UpdateCitation)
 	router.GET(baseURL+"/citations/:id/restore-points", wrapper.GetCitationRestorePoints)
 	router.POST(baseURL+"/citations/:id/rollback", wrapper.RollbackCitation)
+	router.GET(baseURL+"/descendancy/:id", wrapper.GetDescendancy)
 	router.GET(baseURL+"/export/families", wrapper.ExportFamilies)
 	router.GET(baseURL+"/export/persons", wrapper.ExportPersons)
 	router.GET(baseURL+"/export/tree", wrapper.ExportTree)
@@ -3855,6 +3932,33 @@ type RollbackCitation409JSONResponse Error
 func (response RollbackCitation409JSONResponse) VisitRollbackCitationResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDescendancyRequestObject struct {
+	Id     PersonId `json:"id"`
+	Params GetDescendancyParams
+}
+
+type GetDescendancyResponseObject interface {
+	VisitGetDescendancyResponse(w http.ResponseWriter) error
+}
+
+type GetDescendancy200JSONResponse Descendancy
+
+func (response GetDescendancy200JSONResponse) VisitGetDescendancyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDescendancy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetDescendancy404JSONResponse) VisitGetDescendancyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -5693,6 +5797,9 @@ type StrictServerInterface interface {
 	// Rollback a citation to a previous version
 	// (POST /citations/{id}/rollback)
 	RollbackCitation(ctx context.Context, request RollbackCitationRequestObject) (RollbackCitationResponseObject, error)
+	// Get descendancy tree for a person
+	// (GET /descendancy/{id})
+	GetDescendancy(ctx context.Context, request GetDescendancyRequestObject) (GetDescendancyResponseObject, error)
 	// Export families data
 	// (GET /export/families)
 	ExportFamilies(ctx context.Context, request ExportFamiliesRequestObject) (ExportFamiliesResponseObject, error)
@@ -6177,6 +6284,32 @@ func (sh *strictHandler) RollbackCitation(ctx echo.Context, id openapi_types.UUI
 		return err
 	} else if validResponse, ok := response.(RollbackCitationResponseObject); ok {
 		return validResponse.VisitRollbackCitationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetDescendancy operation middleware
+func (sh *strictHandler) GetDescendancy(ctx echo.Context, id PersonId, params GetDescendancyParams) error {
+	var request GetDescendancyRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDescendancy(ctx.Request().Context(), request.(GetDescendancyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDescendancy")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetDescendancyResponseObject); ok {
+		return validResponse.VisitGetDescendancyResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
