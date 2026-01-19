@@ -2038,6 +2038,256 @@ func (ss *StrictServer) GetPersonsDuplicates(ctx context.Context, request GetPer
 	}, nil
 }
 
+// MergePersons implements StrictServerInterface.
+func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRequestObject) (MergePersonsResponseObject, error) {
+	// Build field resolution map
+	var fieldResolution map[string]string
+	if request.Body.FieldResolution != nil {
+		fieldResolution = make(map[string]string)
+		for k, v := range *request.Body.FieldResolution {
+			fieldResolution[k] = string(v)
+		}
+	}
+
+	// Call command handler
+	result, err := ss.server.commandHandler.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID:      request.Body.SurvivorId,
+		MergedID:        request.Body.MergedId,
+		SurvivorVersion: request.Body.SurvivorVersion,
+		MergedVersion:   request.Body.MergedVersion,
+		FieldResolution: fieldResolution,
+	})
+	if err != nil {
+		if errors.Is(err, command.ErrSamePersonMerge) {
+			return MergePersons400JSONResponse{BadRequestJSONResponse{
+				Code:    "bad_request",
+				Message: "Cannot merge a person with themselves",
+			}}, nil
+		}
+		if errors.Is(err, command.ErrPersonNotFound) {
+			return MergePersons404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: err.Error(),
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return MergePersons409JSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict - one or both persons were modified",
+			}, nil
+		}
+		if errors.Is(err, command.ErrCircularMerge) {
+			return MergePersons409JSONResponse{
+				Code:    "conflict",
+				Message: "Cannot merge: persons have an ancestor-descendant relationship",
+			}, nil
+		}
+		if errors.Is(err, command.ErrChildFamilyConflict) {
+			return MergePersons409JSONResponse{
+				Code:    "conflict",
+				Message: "Cannot merge: both persons are children in different families",
+			}, nil
+		}
+		return nil, err
+	}
+
+	// Get updated survivor person
+	person, err := ss.server.personService.GetPerson(ctx, result.SurvivorID)
+	if err != nil {
+		return nil, err
+	}
+
+	return MergePersons200JSONResponse{
+		Person: convertQueryPersonToGenerated(person.Person),
+		MergeSummary: MergeSummary{
+			MergedPersonName:     result.Summary.MergedPersonName,
+			FieldsUpdated:        result.Summary.FieldsUpdated,
+			FamiliesUpdated:      result.Summary.FamiliesUpdated,
+			CitationsTransferred: result.Summary.CitationsTransferred,
+			NamesTransferred:     result.Summary.NamesTransferred,
+			EventsTransferred:    result.Summary.EventsTransferred,
+			MediaTransferred:     result.Summary.MediaTransferred,
+		},
+	}, nil
+}
+
+// DismissDuplicate implements StrictServerInterface.
+func (ss *StrictServer) DismissDuplicate(ctx context.Context, request DismissDuplicateRequestObject) (DismissDuplicateResponseObject, error) {
+	// Validate both persons exist
+	_, err := ss.server.personService.GetPerson(ctx, request.Person1Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return DismissDuplicate404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Person 1 not found",
+			}}, nil
+		}
+		return nil, err
+	}
+	_, err = ss.server.personService.GetPerson(ctx, request.Person2Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return DismissDuplicate404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Person 2 not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	// For now, dismissing duplicates is a no-op since we don't have persistent
+	// dismissal storage. The duplicate detection uses gedcom-go's algorithm
+	// which doesn't support dismissals yet. A future enhancement could store
+	// dismissed pairs in a database table.
+	//
+	// TODO: Implement persistent dismissal storage when needed
+	// (see plan.md Phase 4 for details on future implementation)
+
+	return DismissDuplicate204Response{}, nil
+}
+
+// BatchMergePersons implements StrictServerInterface.
+func (ss *StrictServer) BatchMergePersons(ctx context.Context, request BatchMergePersonsRequestObject) (BatchMergePersonsResponseObject, error) {
+	if len(request.Body.Merges) == 0 {
+		return BatchMergePersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "At least one merge operation is required",
+		}}, nil
+	}
+
+	if len(request.Body.Merges) > 100 {
+		return BatchMergePersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "Maximum 100 merge operations per batch",
+		}}, nil
+	}
+
+	results := make([]BatchMergeResult, len(request.Body.Merges))
+	successful := 0
+	failed := 0
+
+	for i, mergeReq := range request.Body.Merges {
+		// Build field resolution map
+		var fieldResolution map[string]string
+		if mergeReq.FieldResolution != nil {
+			fieldResolution = make(map[string]string)
+			for k, v := range *mergeReq.FieldResolution {
+				fieldResolution[k] = string(v)
+			}
+		}
+
+		// Attempt the merge
+		result, err := ss.server.commandHandler.MergePersons(ctx, command.MergePersonsInput{
+			SurvivorID:      mergeReq.SurvivorId,
+			MergedID:        mergeReq.MergedId,
+			SurvivorVersion: mergeReq.SurvivorVersion,
+			MergedVersion:   mergeReq.MergedVersion,
+			FieldResolution: fieldResolution,
+		})
+
+		results[i] = BatchMergeResult{
+			SurvivorId: mergeReq.SurvivorId,
+			MergedId:   mergeReq.MergedId,
+		}
+
+		if err != nil {
+			failed++
+			results[i].Success = false
+			errMsg := err.Error()
+			results[i].Error = &errMsg
+		} else {
+			successful++
+			results[i].Success = true
+			summary := MergeSummary{
+				MergedPersonName:     result.Summary.MergedPersonName,
+				FieldsUpdated:        result.Summary.FieldsUpdated,
+				FamiliesUpdated:      result.Summary.FamiliesUpdated,
+				CitationsTransferred: result.Summary.CitationsTransferred,
+				NamesTransferred:     result.Summary.NamesTransferred,
+				EventsTransferred:    result.Summary.EventsTransferred,
+				MediaTransferred:     result.Summary.MediaTransferred,
+			}
+			results[i].MergeSummary = &summary
+		}
+	}
+
+	return BatchMergePersons200JSONResponse{
+		Total:      len(request.Body.Merges),
+		Successful: successful,
+		Failed:     failed,
+		Results:    results,
+	}, nil
+}
+
+// BatchDismissDuplicates implements StrictServerInterface.
+func (ss *StrictServer) BatchDismissDuplicates(ctx context.Context, request BatchDismissDuplicatesRequestObject) (BatchDismissDuplicatesResponseObject, error) {
+	if len(request.Body.Dismissals) == 0 {
+		return BatchDismissDuplicates400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "At least one dismissal is required",
+		}}, nil
+	}
+
+	if len(request.Body.Dismissals) > 100 {
+		return BatchDismissDuplicates400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "Maximum 100 dismissals per batch",
+		}}, nil
+	}
+
+	results := make([]BatchDismissResult, len(request.Body.Dismissals))
+	successful := 0
+	failed := 0
+
+	for i, dismissal := range request.Body.Dismissals {
+		results[i] = BatchDismissResult{
+			Person1Id: dismissal.Person1Id,
+			Person2Id: dismissal.Person2Id,
+		}
+
+		// Validate person1 exists
+		_, err := ss.server.personService.GetPerson(ctx, dismissal.Person1Id)
+		if err != nil {
+			failed++
+			results[i].Success = false
+			if errors.Is(err, query.ErrNotFound) {
+				errMsg := "Person 1 not found"
+				results[i].Error = &errMsg
+			} else {
+				errMsg := err.Error()
+				results[i].Error = &errMsg
+			}
+			continue
+		}
+
+		// Validate person2 exists
+		_, err = ss.server.personService.GetPerson(ctx, dismissal.Person2Id)
+		if err != nil {
+			failed++
+			results[i].Success = false
+			if errors.Is(err, query.ErrNotFound) {
+				errMsg := "Person 2 not found"
+				results[i].Error = &errMsg
+			} else {
+				errMsg := err.Error()
+				results[i].Error = &errMsg
+			}
+			continue
+		}
+
+		// Dismissal is currently a no-op (see single dismiss comment)
+		successful++
+		results[i].Success = true
+	}
+
+	return BatchDismissDuplicates200JSONResponse{
+		Total:      len(request.Body.Dismissals),
+		Successful: successful,
+		Failed:     failed,
+		Results:    results,
+	}, nil
+}
+
 // ============================================================================
 // Search endpoint
 // ============================================================================

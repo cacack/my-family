@@ -838,3 +838,41 @@ func NewSnapshotCreated(s *Snapshot) SnapshotCreated {
 		Position:    s.Position,
 	}
 }
+
+// PersonMerged event is emitted when two persons are merged into one.
+// The survivor person continues to exist with merged data; the merged person is deleted.
+type PersonMerged struct {
+	BaseEvent
+	SurvivorID           uuid.UUID      `json:"survivor_id"`
+	MergedID             uuid.UUID      `json:"merged_id"`
+	MergedPersonSnapshot map[string]any `json:"merged_person_snapshot"` // Full state for audit/unmerge
+	ResolvedFields       map[string]any `json:"resolved_fields"`        // Fields merged into survivor
+	AffectedFamilyIDs    []uuid.UUID    `json:"affected_family_ids"`
+	AffectedCitationIDs  []uuid.UUID    `json:"affected_citation_ids"`
+	TransferredNameIDs   []uuid.UUID    `json:"transferred_name_ids"`
+	TransferredEventIDs  []uuid.UUID    `json:"transferred_event_ids"`
+	TransferredMediaIDs  []uuid.UUID    `json:"transferred_media_ids"`
+}
+
+func (e PersonMerged) EventType() string      { return "PersonMerged" }
+func (e PersonMerged) AggregateID() uuid.UUID { return e.SurvivorID }
+
+// NewPersonMerged creates a PersonMerged event.
+func NewPersonMerged(
+	survivorID, mergedID uuid.UUID,
+	mergedSnapshot, resolvedFields map[string]any,
+	affectedFamilies, affectedCitations, transferredNames, transferredEvents, transferredMedia []uuid.UUID,
+) PersonMerged {
+	return PersonMerged{
+		BaseEvent:            NewBaseEvent(),
+		SurvivorID:           survivorID,
+		MergedID:             mergedID,
+		MergedPersonSnapshot: mergedSnapshot,
+		ResolvedFields:       resolvedFields,
+		AffectedFamilyIDs:    affectedFamilies,
+		AffectedCitationIDs:  affectedCitations,
+		TransferredNameIDs:   transferredNames,
+		TransferredEventIDs:  transferredEvents,
+		TransferredMediaIDs:  transferredMedia,
+	}
+}

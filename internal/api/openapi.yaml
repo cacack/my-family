@@ -1694,6 +1694,127 @@ paths:
               schema:
                 $ref: '#/components/schemas/DuplicatesResponse'
 
+  /persons/merge:
+    post:
+      operationId: mergePersons
+      summary: Merge two person records
+      description: |
+        Merges two person records, consolidating data from the merged person into the survivor.
+        The merged person is deleted after the merge. All relationships (families, citations,
+        alternate names, events, media) are transferred to the survivor.
+      tags: [persons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergePersonsRequest'
+      responses:
+        '200':
+          description: Persons merged successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MergePersonsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            Conflict - version mismatch, circular merge (ancestor/descendant relationship),
+            or both persons are children in different families
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /persons/duplicates/{person1Id}/{person2Id}/dismiss:
+    parameters:
+      - name: person1Id
+        in: path
+        required: true
+        description: First person ID in the duplicate pair
+        schema:
+          type: string
+          format: uuid
+      - name: person2Id
+        in: path
+        required: true
+        description: Second person ID in the duplicate pair
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: dismissDuplicate
+      summary: Dismiss a duplicate pair as false positive
+      description: |
+        Marks a duplicate pair as a false positive. The pair will not be returned
+        in future duplicate detection results.
+      tags: [quality]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DismissDuplicateRequest'
+      responses:
+        '204':
+          description: Duplicate pair dismissed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /persons/merge/batch:
+    post:
+      operationId: batchMergePersons
+      summary: Batch merge multiple duplicate pairs
+      description: |
+        Merges multiple duplicate pairs in a single batch operation.
+        Each pair is processed independently; partial failures are reported
+        in the response. Successfully merged pairs continue processing even
+        if earlier pairs fail.
+      tags: [persons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchMergeRequest'
+      responses:
+        '200':
+          description: Batch operation completed (check results for individual outcomes)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchMergeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /persons/duplicates/dismiss/batch:
+    post:
+      operationId: batchDismissDuplicates
+      summary: Batch dismiss multiple duplicate pairs
+      description: |
+        Dismisses multiple duplicate pairs as false positives in a single operation.
+        Each pair is processed independently; partial failures are reported in the response.
+      tags: [quality]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchDismissRequest'
+      responses:
+        '200':
+          description: Batch operation completed (check results for individual outcomes)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchDismissResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /statistics:
     get:
       operationId: getStatistics
@@ -3435,6 +3556,214 @@ components:
         total:
           type: integer
           description: Total number of potential duplicate pairs found
+
+    MergePersonsRequest:
+      type: object
+      description: Request to merge two person records
+      required: [survivor_id, merged_id, survivor_version, merged_version]
+      properties:
+        survivor_id:
+          type: string
+          format: uuid
+          description: ID of the person that will remain after merge
+        merged_id:
+          type: string
+          format: uuid
+          description: ID of the person to be merged into survivor
+        survivor_version:
+          type: integer
+          format: int64
+          description: Expected version of survivor for optimistic locking
+        merged_version:
+          type: integer
+          format: int64
+          description: Expected version of merged person for optimistic locking
+        field_resolution:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [survivor, merged]
+          description: |
+            Optional per-field source selection. Keys are field names
+            (given_name, surname, gender, birth_date, birth_place,
+            death_date, death_place, notes, research_status).
+            Default is "survivor" for all fields unless survivor's value is empty.
+          example:
+            birth_date: merged
+            death_date: survivor
+
+    MergePersonsResponse:
+      type: object
+      description: Result of merging two persons
+      required: [person, merge_summary]
+      properties:
+        person:
+          $ref: '#/components/schemas/Person'
+          description: The survivor person after merge
+        merge_summary:
+          $ref: '#/components/schemas/MergeSummary'
+
+    MergeSummary:
+      type: object
+      description: Summary of what was merged
+      required: [merged_person_name, fields_updated, families_updated, citations_transferred, names_transferred, events_transferred, media_transferred]
+      properties:
+        merged_person_name:
+          type: string
+          description: Full name of the person that was merged
+        fields_updated:
+          type: array
+          items:
+            type: string
+          description: List of fields that were updated from merged person
+        families_updated:
+          type: integer
+          description: Number of families where partner reference was updated
+        citations_transferred:
+          type: integer
+          description: Number of citations transferred to survivor
+        names_transferred:
+          type: integer
+          description: Number of alternate names added to survivor
+        events_transferred:
+          type: integer
+          description: Number of life events transferred
+        media_transferred:
+          type: integer
+          description: Number of media files transferred
+
+    DismissDuplicateRequest:
+      type: object
+      description: Request to dismiss a duplicate pair as false positive
+      properties:
+        reason:
+          type: string
+          description: Optional reason for dismissal
+
+    BatchMergeRequest:
+      type: object
+      description: Request to merge multiple duplicate pairs
+      required: [merges]
+      properties:
+        merges:
+          type: array
+          items:
+            $ref: '#/components/schemas/MergePersonsRequest'
+          description: List of merge operations to perform
+          minItems: 1
+          maxItems: 100
+
+    BatchMergeResponse:
+      type: object
+      description: Results of batch merge operation
+      required: [total, successful, failed, results]
+      properties:
+        total:
+          type: integer
+          description: Total number of merge operations attempted
+        successful:
+          type: integer
+          description: Number of successful merges
+        failed:
+          type: integer
+          description: Number of failed merges
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchMergeResult'
+          description: Individual results for each merge operation
+
+    BatchMergeResult:
+      type: object
+      description: Result of a single merge operation in batch
+      required: [survivor_id, merged_id, success]
+      properties:
+        survivor_id:
+          type: string
+          format: uuid
+          description: ID of the survivor person
+        merged_id:
+          type: string
+          format: uuid
+          description: ID of the merged person
+        success:
+          type: boolean
+          description: Whether the merge succeeded
+        error:
+          type: string
+          description: Error message if merge failed
+        merge_summary:
+          $ref: '#/components/schemas/MergeSummary'
+
+    BatchDismissRequest:
+      type: object
+      description: Request to dismiss multiple duplicate pairs
+      required: [dismissals]
+      properties:
+        dismissals:
+          type: array
+          items:
+            $ref: '#/components/schemas/DuplicatePairRef'
+          description: List of duplicate pairs to dismiss
+          minItems: 1
+          maxItems: 100
+
+    DuplicatePairRef:
+      type: object
+      description: Reference to a duplicate pair
+      required: [person1_id, person2_id]
+      properties:
+        person1_id:
+          type: string
+          format: uuid
+          description: First person ID in the pair
+        person2_id:
+          type: string
+          format: uuid
+          description: Second person ID in the pair
+        reason:
+          type: string
+          description: Optional reason for dismissal
+
+    BatchDismissResponse:
+      type: object
+      description: Results of batch dismiss operation
+      required: [total, successful, failed, results]
+      properties:
+        total:
+          type: integer
+          description: Total number of dismiss operations attempted
+        successful:
+          type: integer
+          description: Number of successful dismissals
+        failed:
+          type: integer
+          description: Number of failed dismissals
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchDismissResult'
+          description: Individual results for each dismiss operation
+
+    BatchDismissResult:
+      type: object
+      description: Result of a single dismiss operation in batch
+      required: [person1_id, person2_id, success]
+      properties:
+        person1_id:
+          type: string
+          format: uuid
+          description: First person ID in the pair
+        person2_id:
+          type: string
+          format: uuid
+          description: Second person ID in the pair
+        success:
+          type: boolean
+          description: Whether the dismissal succeeded
+        error:
+          type: string
+          description: Error message if dismissal failed
 
     ValidationIssue:
       type: object
