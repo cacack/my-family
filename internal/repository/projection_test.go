@@ -2258,3 +2258,674 @@ func TestProjector_ChildUnlinked_WithChildCount(t *testing.T) {
 		t.Errorf("ChildCount after unlink = %d, want 0", rm.ChildCount)
 	}
 }
+
+// PersonMerged Projection Tests
+
+func TestProjector_PersonMerged_Basic(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create survivor and merged person
+	survivor := domain.NewPerson("John", "Doe")
+	survivor.Gender = domain.GenderMale
+	survivor.SetBirthDate("1 JAN 1850")
+
+	merged := domain.NewPerson("Johnny", "Doe")
+	merged.Gender = domain.GenderMale
+	merged.SetBirthDate("ABT 1850")
+	merged.BirthPlace = "Springfield, IL"
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create PersonMerged event with resolved fields from merged
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{"full_name": "Johnny Doe"},        // merged snapshot
+		map[string]any{"birth_place": "Springfield, IL"}, // resolved fields
+		[]uuid.UUID{}, // affected families
+		[]uuid.UUID{}, // affected citations
+		[]uuid.UUID{}, // transferred names
+		[]uuid.UUID{}, // transferred events
+		[]uuid.UUID{}, // transferred media
+	)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify survivor was updated
+	survivorRM, _ := readStore.GetPerson(ctx, survivor.ID)
+	if survivorRM == nil {
+		t.Fatal("Survivor should exist after merge")
+	}
+	if survivorRM.BirthPlace != "Springfield, IL" {
+		t.Errorf("BirthPlace = %s, want 'Springfield, IL'", survivorRM.BirthPlace)
+	}
+	if survivorRM.Version != 2 {
+		t.Errorf("Version = %d, want 2", survivorRM.Version)
+	}
+
+	// Verify merged person was deleted
+	mergedRM, _ := readStore.GetPerson(ctx, merged.ID)
+	if mergedRM != nil {
+		t.Error("Merged person should be deleted")
+	}
+}
+
+func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create survivor with some fields
+	survivor := domain.NewPerson("John", "Doe")
+	survivor.Gender = domain.GenderMale
+
+	// Create merged person with more fields
+	merged := domain.NewPerson("Johnny", "Smith")
+	merged.Gender = domain.GenderMale
+	merged.SetBirthDate("1 JAN 1850")
+	merged.BirthPlace = "Boston, MA"
+	merged.SetDeathDate("15 DEC 1920")
+	merged.DeathPlace = "New York, NY"
+	merged.Notes = "Important notes"
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Resolve multiple fields from merged
+	resolvedFields := map[string]any{
+		"given_name":      "Johnny",
+		"surname":         "Smith",
+		"birth_date":      "1 JAN 1850",
+		"birth_place":     "Boston, MA",
+		"death_date":      "15 DEC 1920",
+		"death_place":     "New York, NY",
+		"notes":           "Important notes",
+		"research_status": "verified",
+	}
+
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		resolvedFields,
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify all fields were updated
+	survivorRM, _ := readStore.GetPerson(ctx, survivor.ID)
+	if survivorRM.GivenName != "Johnny" {
+		t.Errorf("GivenName = %s, want Johnny", survivorRM.GivenName)
+	}
+	if survivorRM.Surname != "Smith" {
+		t.Errorf("Surname = %s, want Smith", survivorRM.Surname)
+	}
+	if survivorRM.FullName != "Johnny Smith" {
+		t.Errorf("FullName = %s, want 'Johnny Smith'", survivorRM.FullName)
+	}
+	if survivorRM.BirthDateRaw != "1 JAN 1850" {
+		t.Errorf("BirthDateRaw = %s, want '1 JAN 1850'", survivorRM.BirthDateRaw)
+	}
+	if survivorRM.BirthDateSort == nil {
+		t.Error("BirthDateSort should not be nil")
+	}
+	if survivorRM.BirthPlace != "Boston, MA" {
+		t.Errorf("BirthPlace = %s, want 'Boston, MA'", survivorRM.BirthPlace)
+	}
+	if survivorRM.DeathDateRaw != "15 DEC 1920" {
+		t.Errorf("DeathDateRaw = %s, want '15 DEC 1920'", survivorRM.DeathDateRaw)
+	}
+	if survivorRM.DeathDateSort == nil {
+		t.Error("DeathDateSort should not be nil")
+	}
+	if survivorRM.DeathPlace != "New York, NY" {
+		t.Errorf("DeathPlace = %s, want 'New York, NY'", survivorRM.DeathPlace)
+	}
+	if survivorRM.Notes != "Important notes" {
+		t.Errorf("Notes = %s, want 'Important notes'", survivorRM.Notes)
+	}
+	if survivorRM.ResearchStatus != domain.ParseResearchStatus("verified") {
+		t.Errorf("ResearchStatus = %s, want verified", survivorRM.ResearchStatus)
+	}
+}
+
+func TestProjector_PersonMerged_FamilyPartnerUpdate(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create survivor, merged, and spouse
+	survivor := domain.NewPerson("John", "Doe")
+	survivor.Gender = domain.GenderMale
+	merged := domain.NewPerson("Johnny", "Doe")
+	merged.Gender = domain.GenderMale
+	spouse := domain.NewPerson("Jane", "Doe")
+	spouse.Gender = domain.GenderFemale
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(spouse), 1)
+
+	// Create family where merged person is partner1
+	family := domain.NewFamilyWithPartners(&merged.ID, &spouse.ID)
+	family.RelationshipType = domain.RelationMarriage
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Verify initial family state
+	familyRM, _ := readStore.GetFamily(ctx, family.ID)
+	if familyRM.Partner1Name != "Johnny Doe" {
+		t.Errorf("Initial Partner1Name = %s, want 'Johnny Doe'", familyRM.Partner1Name)
+	}
+
+	// Merge merged into survivor
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{family.ID},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify family was updated with survivor as partner
+	familyRM, _ = readStore.GetFamily(ctx, family.ID)
+	if familyRM.Partner1ID == nil || *familyRM.Partner1ID != survivor.ID {
+		t.Error("Partner1ID should be updated to survivor ID")
+	}
+	if familyRM.Partner1Name != "John Doe" {
+		t.Errorf("Partner1Name = %s, want 'John Doe'", familyRM.Partner1Name)
+	}
+}
+
+func TestProjector_PersonMerged_FamilyPartner2Update(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create survivor, merged, and spouse
+	survivor := domain.NewPerson("Jane", "Doe")
+	survivor.Gender = domain.GenderFemale
+	merged := domain.NewPerson("Janet", "Doe")
+	merged.Gender = domain.GenderFemale
+	spouse := domain.NewPerson("John", "Doe")
+	spouse.Gender = domain.GenderMale
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(spouse), 1)
+
+	// Create family where merged person is partner2
+	family := domain.NewFamilyWithPartners(&spouse.ID, &merged.ID)
+	family.RelationshipType = domain.RelationMarriage
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Merge merged into survivor
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{family.ID},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify family was updated with survivor as partner2
+	familyRM, _ := readStore.GetFamily(ctx, family.ID)
+	if familyRM.Partner2ID == nil || *familyRM.Partner2ID != survivor.ID {
+		t.Error("Partner2ID should be updated to survivor ID")
+	}
+	if familyRM.Partner2Name != "Jane Doe" {
+		t.Errorf("Partner2Name = %s, want 'Jane Doe'", familyRM.Partner2Name)
+	}
+}
+
+func TestProjector_PersonMerged_CitationTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create source and citation for merged person
+	source := domain.NewSource("Test Source", domain.SourceBook)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+
+	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, merged.ID)
+	citation.Page = "123"
+	projector.Project(ctx, domain.NewCitationCreated(citation), 1)
+
+	// Verify citation is for merged person
+	citationRM, _ := readStore.GetCitation(ctx, citation.ID)
+	if citationRM.FactOwnerID != merged.ID {
+		t.Error("Citation should be for merged person initially")
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{citation.ID},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify citation was transferred to survivor
+	citationRM, _ = readStore.GetCitation(ctx, citation.ID)
+	if citationRM.FactOwnerID != survivor.ID {
+		t.Errorf("Citation FactOwnerID = %v, want %v", citationRM.FactOwnerID, survivor.ID)
+	}
+}
+
+func TestProjector_PersonMerged_NameTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Add alternate name to merged person
+	personName := domain.NewPersonName(merged.ID, "Jonathan", "Doe")
+	personName.IsPrimary = true
+	nameEvent := domain.NewNameAdded(personName)
+	projector.Project(ctx, nameEvent, 2)
+
+	// Verify name is for merged person
+	names, _ := readStore.GetPersonNames(ctx, merged.ID)
+	if len(names) != 1 {
+		t.Fatalf("Expected 1 name for merged person, got %d", len(names))
+	}
+	if names[0].IsPrimary != true {
+		t.Error("Name should be primary before merge")
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{personName.ID},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 3)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify name was transferred to survivor (and is no longer primary)
+	survivorNames, _ := readStore.GetPersonNames(ctx, survivor.ID)
+	if len(survivorNames) != 1 {
+		t.Fatalf("Expected 1 name for survivor, got %d", len(survivorNames))
+	}
+	if survivorNames[0].IsPrimary != false {
+		t.Error("Transferred name should not be primary")
+	}
+	if survivorNames[0].GivenName != "Jonathan" {
+		t.Errorf("GivenName = %s, want Jonathan", survivorNames[0].GivenName)
+	}
+}
+
+func TestProjector_PersonMerged_EventTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create life event for merged person
+	lifeEvent := domain.NewLifeEvent(merged.ID, domain.FactPersonBirth)
+	gd := domain.ParseGenDate("1 JAN 1850")
+	lifeEvent.Date = &gd
+	lifeEvent.Place = "Springfield, IL"
+	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent), 2)
+
+	// Verify event is for merged person
+	events, _ := readStore.ListEventsForPerson(ctx, merged.ID)
+	if len(events) != 1 {
+		t.Fatalf("Expected 1 event for merged person, got %d", len(events))
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{lifeEvent.ID},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 3)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify event was transferred to survivor
+	survivorEvents, _ := readStore.ListEventsForPerson(ctx, survivor.ID)
+	if len(survivorEvents) != 1 {
+		t.Fatalf("Expected 1 event for survivor, got %d", len(survivorEvents))
+	}
+	if survivorEvents[0].OwnerID != survivor.ID {
+		t.Errorf("Event OwnerID = %v, want %v", survivorEvents[0].OwnerID, survivor.ID)
+	}
+}
+
+func TestProjector_PersonMerged_MediaTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create media for merged person
+	media := domain.NewMedia("Photo", "person", merged.ID)
+	media.MimeType = "image/jpeg"
+	media.FileData = []byte("fake data")
+	projector.Project(ctx, domain.NewMediaCreated(media), 2)
+
+	// Verify media is for merged person
+	mediaList, _, _ := readStore.ListMediaForEntity(ctx, "person", merged.ID, repository.ListOptions{Limit: 100})
+	if len(mediaList) != 1 {
+		t.Fatalf("Expected 1 media for merged person, got %d", len(mediaList))
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{media.ID},
+	)
+
+	err := projector.Project(ctx, event, 3)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify media was transferred to survivor
+	survivorMedia, _, _ := readStore.ListMediaForEntity(ctx, "person", survivor.ID, repository.ListOptions{Limit: 100})
+	if len(survivorMedia) != 1 {
+		t.Fatalf("Expected 1 media for survivor, got %d", len(survivorMedia))
+	}
+	if survivorMedia[0].EntityID != survivor.ID {
+		t.Errorf("Media EntityID = %v, want %v", survivorMedia[0].EntityID, survivor.ID)
+	}
+}
+
+func TestProjector_PersonMerged_AttributeTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create attribute for merged person
+	attr := domain.NewAttribute(merged.ID, domain.FactPersonOccupation, "Blacksmith")
+	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr), 2)
+
+	// Verify attribute is for merged person
+	attrs, _ := readStore.ListAttributesForPerson(ctx, merged.ID)
+	if len(attrs) != 1 {
+		t.Fatalf("Expected 1 attribute for merged person, got %d", len(attrs))
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 3)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify attribute was transferred to survivor
+	survivorAttrs, _ := readStore.ListAttributesForPerson(ctx, survivor.ID)
+	if len(survivorAttrs) != 1 {
+		t.Fatalf("Expected 1 attribute for survivor, got %d", len(survivorAttrs))
+	}
+	if survivorAttrs[0].PersonID != survivor.ID {
+		t.Errorf("Attribute PersonID = %v, want %v", survivorAttrs[0].PersonID, survivor.ID)
+	}
+	if survivorAttrs[0].Value != "Blacksmith" {
+		t.Errorf("Attribute Value = %s, want 'Blacksmith'", survivorAttrs[0].Value)
+	}
+}
+
+func TestProjector_PersonMerged_PedigreeEdgeTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create grandparents
+	grandfather := domain.NewPerson("George", "Doe")
+	grandfather.Gender = domain.GenderMale
+	grandmother := domain.NewPerson("Martha", "Doe")
+	grandmother.Gender = domain.GenderFemale
+
+	projector.Project(ctx, domain.NewPersonCreated(grandfather), 1)
+	projector.Project(ctx, domain.NewPersonCreated(grandmother), 1)
+
+	// Create family for grandparents
+	grandparentFamily := domain.NewFamilyWithPartners(&grandfather.ID, &grandmother.ID)
+	projector.Project(ctx, domain.NewFamilyCreated(grandparentFamily), 1)
+
+	// Create survivor (has no parents)
+	survivor := domain.NewPerson("John", "Doe")
+	survivor.Gender = domain.GenderMale
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+
+	// Create merged person as child of grandparents
+	merged := domain.NewPerson("Johnny", "Doe")
+	merged.Gender = domain.GenderMale
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Link merged person to grandparent family
+	fc := domain.NewFamilyChild(grandparentFamily.ID, merged.ID, domain.ChildBiological)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2)
+
+	// Verify merged person has pedigree edge
+	mergedEdge, _ := readStore.GetPedigreeEdge(ctx, merged.ID)
+	if mergedEdge == nil {
+		t.Fatal("Merged person should have pedigree edge before merge")
+	}
+
+	// Verify survivor has no pedigree edge
+	survivorEdge, _ := readStore.GetPedigreeEdge(ctx, survivor.ID)
+	if survivorEdge != nil {
+		t.Fatal("Survivor should not have pedigree edge before merge")
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 3)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify survivor now has pedigree edge with grandparents
+	survivorEdge, _ = readStore.GetPedigreeEdge(ctx, survivor.ID)
+	if survivorEdge == nil {
+		t.Fatal("Survivor should have pedigree edge after merge")
+	}
+	if survivorEdge.FatherID == nil || *survivorEdge.FatherID != grandfather.ID {
+		t.Error("Survivor's father should be grandfather")
+	}
+	if survivorEdge.MotherID == nil || *survivorEdge.MotherID != grandmother.ID {
+		t.Error("Survivor's mother should be grandmother")
+	}
+
+	// Verify merged person's pedigree edge is removed
+	mergedEdge, _ = readStore.GetPedigreeEdge(ctx, merged.ID)
+	if mergedEdge != nil {
+		t.Error("Merged person's pedigree edge should be removed")
+	}
+}
+
+func TestProjector_PersonMerged_SurvivorNotFound(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create only merged person (survivor doesn't exist)
+	merged := domain.NewPerson("Johnny", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Try to merge (survivor doesn't exist)
+	event := domain.NewPersonMerged(
+		uuid.New(), // non-existent survivor
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 2)
+	// Should not error, just skip
+	if err != nil {
+		t.Fatalf("Project should not fail for non-existent survivor: %v", err)
+	}
+
+	// Merged person should still exist (merge didn't proceed)
+	mergedRM, _ := readStore.GetPerson(ctx, merged.ID)
+	if mergedRM == nil {
+		t.Error("Merged person should still exist when survivor is not found")
+	}
+}
+
+func TestProjector_PersonMerged_GenderUpdate(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create survivor without gender
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+	merged.Gender = domain.GenderMale
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Merge with gender from merged
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{"gender": "male"},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify gender was updated
+	survivorRM, _ := readStore.GetPerson(ctx, survivor.ID)
+	if survivorRM.Gender != domain.GenderMale {
+		t.Errorf("Gender = %s, want male", survivorRM.Gender)
+	}
+}

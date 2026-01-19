@@ -140,6 +140,12 @@ const (
 	MediaUpdateMediaTypeVideo       MediaUpdateMediaType = "video"
 )
 
+// Defines values for MergePersonsRequestFieldResolution.
+const (
+	Merged   MergePersonsRequestFieldResolution = "merged"
+	Survivor MergePersonsRequestFieldResolution = "survivor"
+)
+
 // Defines values for PersonGender.
 const (
 	PersonGenderFemale  PersonGender = "female"
@@ -368,6 +374,81 @@ type AhnentafelSubject struct {
 	Surname   string             `json:"surname"`
 }
 
+// BatchDismissRequest Request to dismiss multiple duplicate pairs
+type BatchDismissRequest struct {
+	// Dismissals List of duplicate pairs to dismiss
+	Dismissals []DuplicatePairRef `json:"dismissals"`
+}
+
+// BatchDismissResponse Results of batch dismiss operation
+type BatchDismissResponse struct {
+	// Failed Number of failed dismissals
+	Failed int `json:"failed"`
+
+	// Results Individual results for each dismiss operation
+	Results []BatchDismissResult `json:"results"`
+
+	// Successful Number of successful dismissals
+	Successful int `json:"successful"`
+
+	// Total Total number of dismiss operations attempted
+	Total int `json:"total"`
+}
+
+// BatchDismissResult Result of a single dismiss operation in batch
+type BatchDismissResult struct {
+	// Error Error message if dismissal failed
+	Error *string `json:"error,omitempty"`
+
+	// Person1Id First person ID in the pair
+	Person1Id openapi_types.UUID `json:"person1_id"`
+
+	// Person2Id Second person ID in the pair
+	Person2Id openapi_types.UUID `json:"person2_id"`
+
+	// Success Whether the dismissal succeeded
+	Success bool `json:"success"`
+}
+
+// BatchMergeRequest Request to merge multiple duplicate pairs
+type BatchMergeRequest struct {
+	// Merges List of merge operations to perform
+	Merges []MergePersonsRequest `json:"merges"`
+}
+
+// BatchMergeResponse Results of batch merge operation
+type BatchMergeResponse struct {
+	// Failed Number of failed merges
+	Failed int `json:"failed"`
+
+	// Results Individual results for each merge operation
+	Results []BatchMergeResult `json:"results"`
+
+	// Successful Number of successful merges
+	Successful int `json:"successful"`
+
+	// Total Total number of merge operations attempted
+	Total int `json:"total"`
+}
+
+// BatchMergeResult Result of a single merge operation in batch
+type BatchMergeResult struct {
+	// Error Error message if merge failed
+	Error *string `json:"error,omitempty"`
+
+	// MergeSummary Summary of what was merged
+	MergeSummary *MergeSummary `json:"merge_summary,omitempty"`
+
+	// MergedId ID of the merged person
+	MergedId openapi_types.UUID `json:"merged_id"`
+
+	// Success Whether the merge succeeded
+	Success bool `json:"success"`
+
+	// SurvivorId ID of the survivor person
+	SurvivorId openapi_types.UUID `json:"survivor_id"`
+}
+
 // ChangeEntry defines model for ChangeEntry.
 type ChangeEntry struct {
 	Action ChangeEntryAction `json:"action"`
@@ -520,6 +601,12 @@ type DescendancyNode struct {
 	Surname    *string            `json:"surname,omitempty"`
 }
 
+// DismissDuplicateRequest Request to dismiss a duplicate pair as false positive
+type DismissDuplicateRequest struct {
+	// Reason Optional reason for dismissal
+	Reason *string `json:"reason,omitempty"`
+}
+
 // DuplicatePair A pair of potentially duplicate persons
 type DuplicatePair struct {
 	// Confidence Confidence score that these are duplicates (0.0-1.0)
@@ -539,6 +626,18 @@ type DuplicatePair struct {
 
 	// Person2Name Display name of the second person
 	Person2Name string `json:"person2_name"`
+}
+
+// DuplicatePairRef Reference to a duplicate pair
+type DuplicatePairRef struct {
+	// Person1Id First person ID in the pair
+	Person1Id openapi_types.UUID `json:"person1_id"`
+
+	// Person2Id Second person ID in the pair
+	Person2Id openapi_types.UUID `json:"person2_id"`
+
+	// Reason Optional reason for dismissal
+	Reason *string `json:"reason,omitempty"`
 }
 
 // DuplicatesResponse Response containing potential duplicate pairs
@@ -870,6 +969,61 @@ type MediaUpdate struct {
 
 // MediaUpdateMediaType defines model for MediaUpdate.MediaType.
 type MediaUpdateMediaType string
+
+// MergePersonsRequest Request to merge two person records
+type MergePersonsRequest struct {
+	// FieldResolution Optional per-field source selection. Keys are field names
+	// (given_name, surname, gender, birth_date, birth_place,
+	// death_date, death_place, notes, research_status).
+	// Default is "survivor" for all fields unless survivor's value is empty.
+	FieldResolution *map[string]MergePersonsRequestFieldResolution `json:"field_resolution,omitempty"`
+
+	// MergedId ID of the person to be merged into survivor
+	MergedId openapi_types.UUID `json:"merged_id"`
+
+	// MergedVersion Expected version of merged person for optimistic locking
+	MergedVersion int64 `json:"merged_version"`
+
+	// SurvivorId ID of the person that will remain after merge
+	SurvivorId openapi_types.UUID `json:"survivor_id"`
+
+	// SurvivorVersion Expected version of survivor for optimistic locking
+	SurvivorVersion int64 `json:"survivor_version"`
+}
+
+// MergePersonsRequestFieldResolution defines model for MergePersonsRequest.FieldResolution.
+type MergePersonsRequestFieldResolution string
+
+// MergePersonsResponse Result of merging two persons
+type MergePersonsResponse struct {
+	// MergeSummary Summary of what was merged
+	MergeSummary MergeSummary `json:"merge_summary"`
+	Person       Person       `json:"person"`
+}
+
+// MergeSummary Summary of what was merged
+type MergeSummary struct {
+	// CitationsTransferred Number of citations transferred to survivor
+	CitationsTransferred int `json:"citations_transferred"`
+
+	// EventsTransferred Number of life events transferred
+	EventsTransferred int `json:"events_transferred"`
+
+	// FamiliesUpdated Number of families where partner reference was updated
+	FamiliesUpdated int `json:"families_updated"`
+
+	// FieldsUpdated List of fields that were updated from merged person
+	FieldsUpdated []string `json:"fields_updated"`
+
+	// MediaTransferred Number of media files transferred
+	MediaTransferred int `json:"media_transferred"`
+
+	// MergedPersonName Full name of the person that was merged
+	MergedPersonName string `json:"merged_person_name"`
+
+	// NamesTransferred Number of alternate names added to survivor
+	NamesTransferred int `json:"names_transferred"`
+}
 
 // Pedigree defines model for Pedigree.
 type Pedigree struct {
@@ -1823,6 +1977,18 @@ type UpdateMediaJSONRequestBody = MediaUpdate
 // CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
 type CreatePersonJSONRequestBody = PersonCreate
 
+// BatchDismissDuplicatesJSONRequestBody defines body for BatchDismissDuplicates for application/json ContentType.
+type BatchDismissDuplicatesJSONRequestBody = BatchDismissRequest
+
+// DismissDuplicateJSONRequestBody defines body for DismissDuplicate for application/json ContentType.
+type DismissDuplicateJSONRequestBody = DismissDuplicateRequest
+
+// MergePersonsJSONRequestBody defines body for MergePersons for application/json ContentType.
+type MergePersonsJSONRequestBody = MergePersonsRequest
+
+// BatchMergePersonsJSONRequestBody defines body for BatchMergePersons for application/json ContentType.
+type BatchMergePersonsJSONRequestBody = BatchMergeRequest
+
 // UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
 type UpdatePersonJSONRequestBody = PersonUpdate
 
@@ -1966,6 +2132,18 @@ type ServerInterface interface {
 	// Find potential duplicate persons
 	// (GET /persons/duplicates)
 	GetPersonsDuplicates(ctx echo.Context, params GetPersonsDuplicatesParams) error
+	// Batch dismiss multiple duplicate pairs
+	// (POST /persons/duplicates/dismiss/batch)
+	BatchDismissDuplicates(ctx echo.Context) error
+	// Dismiss a duplicate pair as false positive
+	// (POST /persons/duplicates/{person1Id}/{person2Id}/dismiss)
+	DismissDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID) error
+	// Merge two person records
+	// (POST /persons/merge)
+	MergePersons(ctx echo.Context) error
+	// Batch merge multiple duplicate pairs
+	// (POST /persons/merge/batch)
+	BatchMergePersons(ctx echo.Context) error
 	// Delete a person
 	// (DELETE /persons/{id})
 	DeletePerson(ctx echo.Context, id PersonId) error
@@ -2852,6 +3030,57 @@ func (w *ServerInterfaceWrapper) GetPersonsDuplicates(ctx echo.Context) error {
 	return err
 }
 
+// BatchDismissDuplicates converts echo context to params.
+func (w *ServerInterfaceWrapper) BatchDismissDuplicates(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.BatchDismissDuplicates(ctx)
+	return err
+}
+
+// DismissDuplicate converts echo context to params.
+func (w *ServerInterfaceWrapper) DismissDuplicate(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "person1Id" -------------
+	var person1Id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person1Id", ctx.Param("person1Id"), &person1Id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter person1Id: %s", err))
+	}
+
+	// ------------- Path parameter "person2Id" -------------
+	var person2Id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "person2Id", ctx.Param("person2Id"), &person2Id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter person2Id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DismissDuplicate(ctx, person1Id, person2Id)
+	return err
+}
+
+// MergePersons converts echo context to params.
+func (w *ServerInterfaceWrapper) MergePersons(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.MergePersons(ctx)
+	return err
+}
+
+// BatchMergePersons converts echo context to params.
+func (w *ServerInterfaceWrapper) BatchMergePersons(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.BatchMergePersons(ctx)
+	return err
+}
+
 // DeletePerson converts echo context to params.
 func (w *ServerInterfaceWrapper) DeletePerson(ctx echo.Context) error {
 	var err error
@@ -3614,6 +3843,10 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/persons", wrapper.ListPersons)
 	router.POST(baseURL+"/persons", wrapper.CreatePerson)
 	router.GET(baseURL+"/persons/duplicates", wrapper.GetPersonsDuplicates)
+	router.POST(baseURL+"/persons/duplicates/dismiss/batch", wrapper.BatchDismissDuplicates)
+	router.POST(baseURL+"/persons/duplicates/:person1Id/:person2Id/dismiss", wrapper.DismissDuplicate)
+	router.POST(baseURL+"/persons/merge", wrapper.MergePersons)
+	router.POST(baseURL+"/persons/merge/batch", wrapper.BatchMergePersons)
 	router.DELETE(baseURL+"/persons/:id", wrapper.DeletePerson)
 	router.GET(baseURL+"/persons/:id", wrapper.GetPerson)
 	router.PUT(baseURL+"/persons/:id", wrapper.UpdatePerson)
@@ -4831,6 +5064,138 @@ func (response GetPersonsDuplicates200JSONResponse) VisitGetPersonsDuplicatesRes
 	return json.NewEncoder(w).Encode(response)
 }
 
+type BatchDismissDuplicatesRequestObject struct {
+	Body *BatchDismissDuplicatesJSONRequestBody
+}
+
+type BatchDismissDuplicatesResponseObject interface {
+	VisitBatchDismissDuplicatesResponse(w http.ResponseWriter) error
+}
+
+type BatchDismissDuplicates200JSONResponse BatchDismissResponse
+
+func (response BatchDismissDuplicates200JSONResponse) VisitBatchDismissDuplicatesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BatchDismissDuplicates400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response BatchDismissDuplicates400JSONResponse) VisitBatchDismissDuplicatesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DismissDuplicateRequestObject struct {
+	Person1Id openapi_types.UUID `json:"person1Id"`
+	Person2Id openapi_types.UUID `json:"person2Id"`
+	Body      *DismissDuplicateJSONRequestBody
+}
+
+type DismissDuplicateResponseObject interface {
+	VisitDismissDuplicateResponse(w http.ResponseWriter) error
+}
+
+type DismissDuplicate204Response struct {
+}
+
+func (response DismissDuplicate204Response) VisitDismissDuplicateResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DismissDuplicate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DismissDuplicate400JSONResponse) VisitDismissDuplicateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DismissDuplicate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DismissDuplicate404JSONResponse) VisitDismissDuplicateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type MergePersonsRequestObject struct {
+	Body *MergePersonsJSONRequestBody
+}
+
+type MergePersonsResponseObject interface {
+	VisitMergePersonsResponse(w http.ResponseWriter) error
+}
+
+type MergePersons200JSONResponse MergePersonsResponse
+
+func (response MergePersons200JSONResponse) VisitMergePersonsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type MergePersons400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response MergePersons400JSONResponse) VisitMergePersonsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type MergePersons404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response MergePersons404JSONResponse) VisitMergePersonsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type MergePersons409JSONResponse Error
+
+func (response MergePersons409JSONResponse) VisitMergePersonsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BatchMergePersonsRequestObject struct {
+	Body *BatchMergePersonsJSONRequestBody
+}
+
+type BatchMergePersonsResponseObject interface {
+	VisitBatchMergePersonsResponse(w http.ResponseWriter) error
+}
+
+type BatchMergePersons200JSONResponse BatchMergeResponse
+
+func (response BatchMergePersons200JSONResponse) VisitBatchMergePersonsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BatchMergePersons400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response BatchMergePersons400JSONResponse) VisitBatchMergePersonsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeletePersonRequestObject struct {
 	Id PersonId `json:"id"`
 }
@@ -5956,6 +6321,18 @@ type StrictServerInterface interface {
 	// Find potential duplicate persons
 	// (GET /persons/duplicates)
 	GetPersonsDuplicates(ctx context.Context, request GetPersonsDuplicatesRequestObject) (GetPersonsDuplicatesResponseObject, error)
+	// Batch dismiss multiple duplicate pairs
+	// (POST /persons/duplicates/dismiss/batch)
+	BatchDismissDuplicates(ctx context.Context, request BatchDismissDuplicatesRequestObject) (BatchDismissDuplicatesResponseObject, error)
+	// Dismiss a duplicate pair as false positive
+	// (POST /persons/duplicates/{person1Id}/{person2Id}/dismiss)
+	DismissDuplicate(ctx context.Context, request DismissDuplicateRequestObject) (DismissDuplicateResponseObject, error)
+	// Merge two person records
+	// (POST /persons/merge)
+	MergePersons(ctx context.Context, request MergePersonsRequestObject) (MergePersonsResponseObject, error)
+	// Batch merge multiple duplicate pairs
+	// (POST /persons/merge/batch)
+	BatchMergePersons(ctx context.Context, request BatchMergePersonsRequestObject) (BatchMergePersonsResponseObject, error)
 	// Delete a person
 	// (DELETE /persons/{id})
 	DeletePerson(ctx context.Context, request DeletePersonRequestObject) (DeletePersonResponseObject, error)
@@ -7074,6 +7451,125 @@ func (sh *strictHandler) GetPersonsDuplicates(ctx echo.Context, params GetPerson
 		return err
 	} else if validResponse, ok := response.(GetPersonsDuplicatesResponseObject); ok {
 		return validResponse.VisitGetPersonsDuplicatesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// BatchDismissDuplicates operation middleware
+func (sh *strictHandler) BatchDismissDuplicates(ctx echo.Context) error {
+	var request BatchDismissDuplicatesRequestObject
+
+	var body BatchDismissDuplicatesJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.BatchDismissDuplicates(ctx.Request().Context(), request.(BatchDismissDuplicatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BatchDismissDuplicates")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(BatchDismissDuplicatesResponseObject); ok {
+		return validResponse.VisitBatchDismissDuplicatesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DismissDuplicate operation middleware
+func (sh *strictHandler) DismissDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID) error {
+	var request DismissDuplicateRequestObject
+
+	request.Person1Id = person1Id
+	request.Person2Id = person2Id
+
+	var body DismissDuplicateJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DismissDuplicate(ctx.Request().Context(), request.(DismissDuplicateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DismissDuplicate")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DismissDuplicateResponseObject); ok {
+		return validResponse.VisitDismissDuplicateResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// MergePersons operation middleware
+func (sh *strictHandler) MergePersons(ctx echo.Context) error {
+	var request MergePersonsRequestObject
+
+	var body MergePersonsJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.MergePersons(ctx.Request().Context(), request.(MergePersonsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MergePersons")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(MergePersonsResponseObject); ok {
+		return validResponse.VisitMergePersonsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// BatchMergePersons operation middleware
+func (sh *strictHandler) BatchMergePersons(ctx echo.Context) error {
+	var request BatchMergePersonsRequestObject
+
+	var body BatchMergePersonsJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.BatchMergePersons(ctx.Request().Context(), request.(BatchMergePersonsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BatchMergePersons")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(BatchMergePersonsResponseObject); ok {
+		return validResponse.VisitBatchMergePersonsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

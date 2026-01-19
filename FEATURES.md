@@ -29,6 +29,15 @@ Completed features in my-family genealogy software.
 - **Research Status Analytics** - Dashboard showing distribution of confidence levels across the database
 - **Data Quality Scores** - Analytics page showing records needing attention with actionable issues
 
+## Data Validation & Cleanup
+
+- **Duplicate Detection** - Find potential duplicate persons with configurable confidence thresholds
+- **Person Merge** - Safely merge duplicate records, consolidating data with field-level resolution
+- **Batch Operations** - Merge multiple duplicate pairs or dismiss false positives in bulk
+- **Date Validation** - Detect logical inconsistencies (death before birth, child older than parent)
+- **Orphan Detection** - Identify records with broken references
+- **Quality Reports** - Comprehensive data completeness metrics with coverage percentages
+
 ## Search
 
 - **Full-Text Search** - Fast name search with FTS5 (SQLite) or tsvector (PostgreSQL)

@@ -76,6 +76,8 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectNameUpdated(ctx, e, version)
 	case domain.NameRemoved:
 		return p.projectNameRemoved(ctx, e, version)
+	case domain.PersonMerged:
+		return p.projectPersonMerged(ctx, e, version)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
@@ -917,4 +919,235 @@ func buildFullName(givenName, surname, namePrefix, nameSuffix, surnamePrefix str
 		result += " " + parts[i]
 	}
 	return result
+}
+
+// projectPersonMerged handles the PersonMerged event by updating the survivor,
+// transferring relationships/data, and deleting the merged person.
+func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerged, version int64) error {
+	// 1. Update survivor person with resolved fields
+	survivor, err := p.readStore.GetPerson(ctx, e.SurvivorID)
+	if err != nil {
+		return err
+	}
+	if survivor == nil {
+		return nil // Survivor doesn't exist, skip
+	}
+
+	// Apply resolved fields to survivor (same logic as PersonUpdated)
+	for key, value := range e.ResolvedFields {
+		switch key {
+		case "given_name":
+			if v, ok := value.(string); ok {
+				survivor.GivenName = v
+				survivor.FullName = v + " " + survivor.Surname
+			}
+		case "surname":
+			if v, ok := value.(string); ok {
+				survivor.Surname = v
+				survivor.FullName = survivor.GivenName + " " + v
+			}
+		case "gender":
+			if v, ok := value.(string); ok {
+				survivor.Gender = domain.Gender(v)
+			}
+		case "birth_date":
+			if v, ok := value.(string); ok {
+				survivor.BirthDateRaw = v
+				gd := domain.ParseGenDate(v)
+				t := gd.ToTime()
+				if !t.IsZero() {
+					survivor.BirthDateSort = &t
+				} else {
+					survivor.BirthDateSort = nil
+				}
+			}
+		case "birth_place":
+			if v, ok := value.(string); ok {
+				survivor.BirthPlace = v
+			}
+		case "death_date":
+			if v, ok := value.(string); ok {
+				survivor.DeathDateRaw = v
+				gd := domain.ParseGenDate(v)
+				t := gd.ToTime()
+				if !t.IsZero() {
+					survivor.DeathDateSort = &t
+				} else {
+					survivor.DeathDateSort = nil
+				}
+			}
+		case "death_place":
+			if v, ok := value.(string); ok {
+				survivor.DeathPlace = v
+			}
+		case "notes":
+			if v, ok := value.(string); ok {
+				survivor.Notes = v
+			}
+		case "research_status":
+			if v, ok := value.(string); ok {
+				survivor.ResearchStatus = domain.ParseResearchStatus(v)
+			}
+		}
+	}
+
+	survivor.Version = version
+	survivor.UpdatedAt = e.OccurredAt()
+
+	if err := p.readStore.SavePerson(ctx, survivor); err != nil {
+		return err
+	}
+
+	// 2. Update families where merged person is a partner
+	families, err := p.readStore.GetFamiliesForPerson(ctx, e.MergedID)
+	if err != nil {
+		return err
+	}
+	for _, family := range families {
+		if family.Partner1ID != nil && *family.Partner1ID == e.MergedID {
+			family.Partner1ID = &e.SurvivorID
+			family.Partner1Name = survivor.FullName
+		}
+		if family.Partner2ID != nil && *family.Partner2ID == e.MergedID {
+			family.Partner2ID = &e.SurvivorID
+			family.Partner2Name = survivor.FullName
+		}
+		family.UpdatedAt = e.OccurredAt()
+		if err := p.readStore.SaveFamily(ctx, &family); err != nil {
+			return err
+		}
+	}
+
+	// 3. Update pedigree edges where merged person is a parent
+	// (We need to find all children who have the merged person as father/mother)
+	// This requires iterating through all pedigree edges - a bit expensive but necessary
+	// For now, handle the merged person's own pedigree edge (if they are a child somewhere)
+	mergedEdge, err := p.readStore.GetPedigreeEdge(ctx, e.MergedID)
+	if err != nil {
+		return err
+	}
+	if mergedEdge != nil {
+		// Transfer the child-family relationship to survivor
+		// First, get the family where merged person is a child
+		mergedChildFamily, err := p.readStore.GetChildFamily(ctx, e.MergedID)
+		if err != nil {
+			return err
+		}
+		if mergedChildFamily != nil {
+			// Delete old family-child record
+			if err := p.readStore.DeleteFamilyChild(ctx, mergedChildFamily.ID, e.MergedID); err != nil {
+				return err
+			}
+			// Delete old pedigree edge
+			if err := p.readStore.DeletePedigreeEdge(ctx, e.MergedID); err != nil {
+				return err
+			}
+
+			// Check if survivor already has a child-family relationship
+			survivorChildFamily, err := p.readStore.GetChildFamily(ctx, e.SurvivorID)
+			if err != nil {
+				return err
+			}
+			if survivorChildFamily == nil {
+				// Survivor doesn't have a child-family, transfer the relationship
+				fc := &FamilyChildReadModel{
+					FamilyID:         mergedChildFamily.ID,
+					PersonID:         e.SurvivorID,
+					PersonName:       survivor.FullName,
+					RelationshipType: domain.ChildBiological, // Default, could be improved
+				}
+				if err := p.readStore.SaveFamilyChild(ctx, fc); err != nil {
+					return err
+				}
+
+				// Create pedigree edge for survivor
+				edge := &PedigreeEdge{
+					PersonID:   e.SurvivorID,
+					FatherID:   mergedEdge.FatherID,
+					MotherID:   mergedEdge.MotherID,
+					FatherName: mergedEdge.FatherName,
+					MotherName: mergedEdge.MotherName,
+				}
+				if err := p.readStore.SavePedigreeEdge(ctx, edge); err != nil {
+					return err
+				}
+
+				// Update family child count
+				mergedChildFamily.ChildCount-- // We removed merged
+				mergedChildFamily.ChildCount++ // We added survivor (net 0 change if same family)
+				mergedChildFamily.UpdatedAt = e.OccurredAt()
+				if err := p.readStore.SaveFamily(ctx, mergedChildFamily); err != nil {
+					return err
+				}
+			}
+			// If survivor already has a child-family, we don't transfer (plan says block this case)
+		}
+	}
+
+	// 4. Reassign citations from merged person to survivor
+	citations, err := p.readStore.GetCitationsForPerson(ctx, e.MergedID)
+	if err != nil {
+		return err
+	}
+	for _, citation := range citations {
+		citation.FactOwnerID = e.SurvivorID
+		if err := p.readStore.SaveCitation(ctx, &citation); err != nil {
+			return err
+		}
+	}
+
+	// 5. Transfer PersonName records from merged to survivor
+	names, err := p.readStore.GetPersonNames(ctx, e.MergedID)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		// Change the person ID to survivor and mark as non-primary
+		name.PersonID = e.SurvivorID
+		name.IsPrimary = false // Transferred names become alternate names
+		name.UpdatedAt = e.OccurredAt()
+		if err := p.readStore.SavePersonName(ctx, &name); err != nil {
+			return err
+		}
+	}
+
+	// 6. Transfer life events from merged person to survivor
+	events, err := p.readStore.ListEventsForPerson(ctx, e.MergedID)
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		event.OwnerID = e.SurvivorID
+		if err := p.readStore.SaveEvent(ctx, &event); err != nil {
+			return err
+		}
+	}
+
+	// 7. Transfer media from merged person to survivor
+	mediaList, _, err := p.readStore.ListMediaForEntity(ctx, "person", e.MergedID, ListOptions{Limit: 10000})
+	if err != nil {
+		return err
+	}
+	for _, media := range mediaList {
+		media.EntityID = e.SurvivorID
+		media.UpdatedAt = e.OccurredAt()
+		if err := p.readStore.SaveMedia(ctx, &media); err != nil {
+			return err
+		}
+	}
+
+	// 8. Transfer attributes from merged person to survivor
+	attributes, err := p.readStore.ListAttributesForPerson(ctx, e.MergedID)
+	if err != nil {
+		return err
+	}
+	for _, attr := range attributes {
+		attr.PersonID = e.SurvivorID
+		if err := p.readStore.SaveAttribute(ctx, &attr); err != nil {
+			return err
+		}
+	}
+
+	// 9. Delete merged person from read model
+	return p.readStore.DeletePerson(ctx, e.MergedID)
 }
