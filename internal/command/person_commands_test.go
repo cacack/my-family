@@ -372,3 +372,302 @@ func TestCreatePerson_WithOptionalFields(t *testing.T) {
 		t.Errorf("DeathPlace = %s, want Chicago, IL", person.DeathPlace)
 	}
 }
+
+// ============================================================================
+// Optimistic Locking / Version Conflict Tests for Person
+// ============================================================================
+
+func TestPersonUpdateStaleVersion(t *testing.T) {
+	// Tests that updating with a stale version fails with version conflict error
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person (version 1)
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	if createResult.Version != 1 {
+		t.Fatalf("Expected initial version 1, got %d", createResult.Version)
+	}
+
+	// First update succeeds (version 1 -> 2)
+	newName := "Jane"
+	updateResult, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:        createResult.ID,
+		GivenName: &newName,
+		Version:   1,
+	})
+	if err != nil {
+		t.Fatalf("First update failed: %v", err)
+	}
+	if updateResult.Version != 2 {
+		t.Fatalf("Expected version 2 after first update, got %d", updateResult.Version)
+	}
+
+	// Attempt update with stale version 1 (current is 2)
+	staleName := "Stale"
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:        createResult.ID,
+		GivenName: &staleName,
+		Version:   1, // Stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error for stale version update")
+	}
+
+	// Verify the person still has the name from the successful update
+	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	if person.GivenName != "Jane" {
+		t.Errorf("Person name = %s, want Jane (stale update should not have applied)", person.GivenName)
+	}
+}
+
+func TestPersonConcurrentModificationScenario(t *testing.T) {
+	// Simulates two concurrent updates to the same entity with the same base version
+	// The second update should fail because the first one incremented the version
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Simulate two "concurrent" readers getting the same version
+	baseVersion := createResult.Version // Both readers see version 1
+
+	// First "concurrent" update succeeds
+	name1 := "Alice"
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:        createResult.ID,
+		GivenName: &name1,
+		Version:   baseVersion,
+	})
+	if err != nil {
+		t.Fatalf("First concurrent update failed: %v", err)
+	}
+
+	// Second "concurrent" update with same base version should fail
+	name2 := "Bob"
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:        createResult.ID,
+		GivenName: &name2,
+		Version:   baseVersion, // Same stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error for second concurrent update")
+	}
+
+	// Verify only the first update was applied
+	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	if person.GivenName != "Alice" {
+		t.Errorf("Person name = %s, want Alice", person.GivenName)
+	}
+}
+
+func TestPersonSequentialUpdatesSucceed(t *testing.T) {
+	// Tests that sequential updates with correct version increments all succeed
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person (version 1)
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Sequential updates with correct versions
+	updates := []struct {
+		name            string
+		expectedVersion int64
+	}{
+		{"Jane", 2},
+		{"Alice", 3},
+		{"Bob", 4},
+	}
+
+	currentVersion := createResult.Version
+	for _, update := range updates {
+		newName := update.name
+		result, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
+			ID:        createResult.ID,
+			GivenName: &newName,
+			Version:   currentVersion,
+		})
+		if err != nil {
+			t.Fatalf("Sequential update to %s failed: %v", update.name, err)
+		}
+		if result.Version != update.expectedVersion {
+			t.Errorf("After update to %s: version = %d, want %d", update.name, result.Version, update.expectedVersion)
+		}
+		currentVersion = result.Version
+	}
+
+	// Verify final state
+	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	if person.GivenName != "Bob" {
+		t.Errorf("Final name = %s, want Bob", person.GivenName)
+	}
+	if person.Version != 4 {
+		t.Errorf("Final version = %d, want 4", person.Version)
+	}
+}
+
+func TestPersonDeleteVersionConflict(t *testing.T) {
+	// Tests that deleting with a stale version fails
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Update person (version 1 -> 2)
+	newName := "Jane"
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:        createResult.ID,
+		GivenName: &newName,
+		Version:   1,
+	})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	// Attempt delete with stale version 1
+	err = handler.DeletePerson(ctx, command.DeletePersonInput{
+		ID:      createResult.ID,
+		Version: 1, // Stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error for stale version delete")
+	}
+
+	// Verify person still exists
+	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	if person == nil {
+		t.Error("Person should still exist after failed delete")
+	}
+}
+
+func TestPersonDeleteWithCorrectVersion(t *testing.T) {
+	// Tests that delete succeeds with correct version after updates
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Update person (version 1 -> 2)
+	newName := "Jane"
+	updateResult, err := handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:        createResult.ID,
+		GivenName: &newName,
+		Version:   1,
+	})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	// Delete with correct version
+	err = handler.DeletePerson(ctx, command.DeletePersonInput{
+		ID:      createResult.ID,
+		Version: updateResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("Delete with correct version failed: %v", err)
+	}
+
+	// Verify person is deleted
+	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	if person != nil {
+		t.Error("Person should be deleted")
+	}
+}
+
+func TestPersonVersionConflictNoPartialState(t *testing.T) {
+	// Tests that version conflict leaves no partial state changes
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person with initial values
+	createResult, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName:  "John",
+		Surname:    "Doe",
+		BirthPlace: "Boston",
+	})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+
+	// Update to change values (version 1 -> 2)
+	newPlace := "New York"
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:         createResult.ID,
+		BirthPlace: &newPlace,
+		Version:    1,
+	})
+	if err != nil {
+		t.Fatalf("First update failed: %v", err)
+	}
+
+	// Attempt update with stale version that would change multiple fields
+	staleName := "Stale"
+	stalePlace := "Chicago"
+	staleNotes := "Should not appear"
+	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID:         createResult.ID,
+		GivenName:  &staleName,
+		BirthPlace: &stalePlace,
+		Notes:      &staleNotes,
+		Version:    1, // Stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error")
+	}
+
+	// Verify no partial changes were applied
+	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	if person.GivenName != "John" {
+		t.Errorf("GivenName = %s, want John (no partial change)", person.GivenName)
+	}
+	if person.BirthPlace != "New York" {
+		t.Errorf("BirthPlace = %s, want New York (from successful update)", person.BirthPlace)
+	}
+	if person.Notes != "" {
+		t.Errorf("Notes = %s, want empty (stale update should not apply)", person.Notes)
+	}
+}

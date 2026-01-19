@@ -1414,3 +1414,486 @@ func TestCircularAncestryDetection_ThroughPartner2Ancestry(t *testing.T) {
 		t.Errorf("Expected ErrCircularAncestry through Partner2's ancestry, got %v", err)
 	}
 }
+
+// ============================================================================
+// Optimistic Locking / Version Conflict Tests for Family
+// ============================================================================
+
+func TestFamilyUpdateStaleVersion(t *testing.T) {
+	// Tests that updating a family with a stale version fails
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person and family
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	createResult, err := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	if createResult.Version != 1 {
+		t.Fatalf("Expected initial version 1, got %d", createResult.Version)
+	}
+
+	// First update succeeds (version 1 -> 2)
+	newPlace := "Boston"
+	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		MarriagePlace: &newPlace,
+		Version:       1,
+	})
+	if err != nil {
+		t.Fatalf("First update failed: %v", err)
+	}
+	if updateResult.Version != 2 {
+		t.Fatalf("Expected version 2 after first update, got %d", updateResult.Version)
+	}
+
+	// Attempt update with stale version 1 (current is 2)
+	stalePlace := "Chicago"
+	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		MarriagePlace: &stalePlace,
+		Version:       1, // Stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error for stale version update")
+	}
+
+	// Verify the family still has the value from the successful update
+	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	if family.MarriagePlace != "Boston" {
+		t.Errorf("Family MarriagePlace = %s, want Boston", family.MarriagePlace)
+	}
+}
+
+func TestFamilyConcurrentModificationScenario(t *testing.T) {
+	// Simulates two concurrent updates to the same family with the same base version
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person and family
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+
+	// Simulate two "concurrent" readers getting the same version
+	baseVersion := createResult.Version // Both readers see version 1
+
+	// First "concurrent" update succeeds
+	place1 := "Boston"
+	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		MarriagePlace: &place1,
+		Version:       baseVersion,
+	})
+	if err != nil {
+		t.Fatalf("First concurrent update failed: %v", err)
+	}
+
+	// Second "concurrent" update with same base version should fail
+	place2 := "Chicago"
+	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		MarriagePlace: &place2,
+		Version:       baseVersion, // Same stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error for second concurrent update")
+	}
+
+	// Verify only the first update was applied
+	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	if family.MarriagePlace != "Boston" {
+		t.Errorf("Family MarriagePlace = %s, want Boston", family.MarriagePlace)
+	}
+}
+
+func TestFamilySequentialUpdatesSucceed(t *testing.T) {
+	// Tests that sequential updates with correct version increments all succeed
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person and family
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+
+	// Sequential updates with correct versions
+	updates := []struct {
+		place           string
+		expectedVersion int64
+	}{
+		{"Boston", 2},
+		{"Chicago", 3},
+		{"New York", 4},
+	}
+
+	currentVersion := createResult.Version
+	for _, update := range updates {
+		newPlace := update.place
+		result, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+			ID:            createResult.ID,
+			MarriagePlace: &newPlace,
+			Version:       currentVersion,
+		})
+		if err != nil {
+			t.Fatalf("Sequential update to %s failed: %v", update.place, err)
+		}
+		if result.Version != update.expectedVersion {
+			t.Errorf("After update to %s: version = %d, want %d", update.place, result.Version, update.expectedVersion)
+		}
+		currentVersion = result.Version
+	}
+
+	// Verify final state - data should be updated
+	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	if family.MarriagePlace != "New York" {
+		t.Errorf("Final MarriagePlace = %s, want New York", family.MarriagePlace)
+	}
+
+	// Verify event store version tracking (source of truth for optimistic locking)
+	eventStoreVersion, _ := eventStore.GetStreamVersion(ctx, createResult.ID)
+	if eventStoreVersion != 4 {
+		t.Errorf("Event store version = %d, want 4", eventStoreVersion)
+	}
+}
+
+func TestFamilyDeleteStaleVersion(t *testing.T) {
+	// Tests that deleting a family with a stale version fails
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person and family
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+
+	// Update family (version 1 -> 2)
+	newPlace := "Boston"
+	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		MarriagePlace: &newPlace,
+		Version:       1,
+	})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	// Attempt delete with stale version 1
+	err = handler.DeleteFamily(ctx, command.DeleteFamilyInput{
+		ID:      createResult.ID,
+		Version: 1, // Stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error for stale version delete")
+	}
+
+	// Verify family still exists
+	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	if family == nil {
+		t.Error("Family should still exist after failed delete")
+	}
+}
+
+func TestFamilyDeleteWithCorrectVersion(t *testing.T) {
+	// Tests that delete succeeds with correct version after updates
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create person and family
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+	})
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &p1.ID,
+	})
+
+	// Update family (version 1 -> 2)
+	newPlace := "Boston"
+	updateResult, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		MarriagePlace: &newPlace,
+		Version:       1,
+	})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	// Delete with correct version
+	err = handler.DeleteFamily(ctx, command.DeleteFamilyInput{
+		ID:      createResult.ID,
+		Version: updateResult.Version,
+	})
+	if err != nil {
+		t.Fatalf("Delete with correct version failed: %v", err)
+	}
+
+	// Verify family is deleted
+	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	if family != nil {
+		t.Error("Family should be deleted")
+	}
+}
+
+func TestFamilyLinkChildVersionTracking(t *testing.T) {
+	// Tests that linking children properly tracks versions through the event store
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent and family
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+
+	// Create two children
+	child1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child1",
+		Surname:   "Doe",
+	})
+	child2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child2",
+		Surname:   "Doe",
+	})
+
+	// Link first child (increments event store version from 1 to 2)
+	linkResult1, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: createResult.ID,
+		ChildID:  child1.ID,
+	})
+	if err != nil {
+		t.Fatalf("First LinkChild failed: %v", err)
+	}
+	if linkResult1.FamilyVersion != 2 {
+		t.Errorf("Expected family version 2 after first LinkChild, got %d", linkResult1.FamilyVersion)
+	}
+
+	// Link second child (should succeed as it reads current version)
+	linkResult2, err := handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: createResult.ID,
+		ChildID:  child2.ID,
+	})
+	if err != nil {
+		t.Fatalf("Second LinkChild failed: %v", err)
+	}
+	if linkResult2.FamilyVersion != 3 {
+		t.Errorf("Expected family version 3 after second LinkChild, got %d", linkResult2.FamilyVersion)
+	}
+
+	// Verify both children are linked
+	children, _ := readStore.GetChildrenOfFamily(ctx, createResult.ID)
+	if len(children) != 2 {
+		t.Errorf("Expected 2 children, got %d", len(children))
+	}
+}
+
+func TestFamilyUnlinkChildVersionConflict(t *testing.T) {
+	// Tests that unlinking a child works with proper version tracking
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent and family
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+	family, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+
+	// Create and link two children
+	child1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child1",
+		Surname:   "Doe",
+	})
+	child2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Child2",
+		Surname:   "Doe",
+	})
+
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child1.ID,
+	})
+	_, _ = handler.LinkChild(ctx, command.LinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child2.ID,
+	})
+
+	// Unlink first child
+	err := handler.UnlinkChild(ctx, command.UnlinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child1.ID,
+	})
+	if err != nil {
+		t.Fatalf("First UnlinkChild failed: %v", err)
+	}
+
+	// Unlink second child (should succeed as it reads current version)
+	err = handler.UnlinkChild(ctx, command.UnlinkChildInput{
+		FamilyID: family.ID,
+		ChildID:  child2.ID,
+	})
+	if err != nil {
+		t.Fatalf("Second UnlinkChild failed: %v", err)
+	}
+
+	// Verify both children are unlinked
+	children, _ := readStore.GetChildrenOfFamily(ctx, family.ID)
+	if len(children) != 0 {
+		t.Errorf("Expected 0 children, got %d", len(children))
+	}
+}
+
+func TestFamilyVersionConflictNoPartialState(t *testing.T) {
+	// Tests that version conflict leaves no partial state changes for family
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create persons
+	p1, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Partner1",
+		Surname:   "Doe",
+	})
+	p2, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Partner2",
+		Surname:   "Smith",
+	})
+
+	// Create family with initial values
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID:    &p1.ID,
+		MarriagePlace: "Boston",
+	})
+
+	// Update to change values (version 1 -> 2)
+	newPlace := "New York"
+	_, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		MarriagePlace: &newPlace,
+		Version:       1,
+	})
+	if err != nil {
+		t.Fatalf("First update failed: %v", err)
+	}
+
+	// Attempt update with stale version that would change multiple fields
+	stalePlace := "Chicago"
+	staleDate := "1 JAN 2000"
+	_, err = handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+		ID:            createResult.ID,
+		Partner2ID:    &p2.ID,
+		MarriagePlace: &stalePlace,
+		MarriageDate:  &staleDate,
+		Version:       1, // Stale version
+	})
+	if err == nil {
+		t.Fatal("Expected version conflict error")
+	}
+
+	// Verify no partial changes were applied
+	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	if family.MarriagePlace != "New York" {
+		t.Errorf("MarriagePlace = %s, want New York (from successful update)", family.MarriagePlace)
+	}
+	if family.Partner2ID != nil {
+		t.Error("Partner2ID should be nil (stale update should not apply)")
+	}
+}
+
+func TestFamilyMultipleUpdatesVersionTracking(t *testing.T) {
+	// Tests version tracking across multiple UpdateFamily operations
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	// Create parent
+	parent, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Parent",
+		Surname:   "Doe",
+	})
+
+	// Create family (event store version 1)
+	createResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &parent.ID,
+	})
+	if createResult.Version != 1 {
+		t.Errorf("After CreateFamily: version = %d, want 1", createResult.Version)
+	}
+
+	// Sequential updates tracking versions through returned results
+	updates := []struct {
+		place           string
+		inputVersion    int64
+		expectedVersion int64
+	}{
+		{"Boston", 1, 2},
+		{"Chicago", 2, 3},
+		{"New York", 3, 4},
+	}
+
+	for _, update := range updates {
+		newPlace := update.place
+		result, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+			ID:            createResult.ID,
+			MarriagePlace: &newPlace,
+			Version:       update.inputVersion,
+		})
+		if err != nil {
+			t.Fatalf("UpdateFamily to %s failed: %v", update.place, err)
+		}
+		if result.Version != update.expectedVersion {
+			t.Errorf("After update to %s: version = %d, want %d", update.place, result.Version, update.expectedVersion)
+		}
+	}
+
+	// Verify final state
+	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	if family.MarriagePlace != "New York" {
+		t.Errorf("Final MarriagePlace = %s, want New York", family.MarriagePlace)
+	}
+
+	// Verify event store version tracking
+	eventStoreVersion, _ := eventStore.GetStreamVersion(ctx, createResult.ID)
+	if eventStoreVersion != 4 {
+		t.Errorf("Event store version = %d, want 4", eventStoreVersion)
+	}
+}
