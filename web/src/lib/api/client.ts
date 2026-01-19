@@ -418,6 +418,24 @@ export interface MediaListResponse {
 	total: number;
 }
 
+// Relationship types
+export interface RelationshipPath {
+	name?: string;
+	pathFromA?: string[];
+	pathFromB?: string[];
+	commonAncestorId?: string;
+	generationDistanceA?: number;
+	generationDistanceB?: number;
+}
+
+export interface RelationshipResult {
+	personA?: Person;
+	personB?: Person;
+	paths?: RelationshipPath[];
+	isRelated?: boolean;
+	summary?: string;
+}
+
 // Browse types
 export interface SurnameIndexResponse {
 	items: SurnameEntry[];
@@ -951,6 +969,14 @@ class ApiClient {
 		return this.request<PersonList>(
 			'GET',
 			`/browse/places/${encodeURIComponent(place)}/persons${query ? `?${query}` : ''}`
+		);
+	}
+
+	// Relationship endpoint
+	async getRelationship(personId1: string, personId2: string): Promise<RelationshipResult> {
+		return this.request<RelationshipResult>(
+			'GET',
+			`/relationship/${encodeURIComponent(personId1)}/${encodeURIComponent(personId2)}`
 		);
 	}
 }

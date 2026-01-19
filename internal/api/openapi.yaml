@@ -45,6 +45,8 @@ tags:
     description: Genealogical reports (Ahnentafel, etc.)
   - name: snapshots
     description: Research milestone snapshots
+  - name: relationships
+    description: Relationship calculation between people
 
 paths:
   /persons:
@@ -1806,6 +1808,39 @@ paths:
                 $ref: '#/components/schemas/SnapshotComparisonResult'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /relationship/{personId1}/{personId2}:
+    get:
+      operationId: getRelationship
+      summary: Calculate relationship between two people
+      tags:
+        - relationships
+      parameters:
+        - name: personId1
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: personId2
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Relationship calculated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipResult'
+        '404':
+          description: One or both persons not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   parameters:
@@ -3570,3 +3605,44 @@ components:
         older_first:
           type: boolean
           description: True if snapshot1 is the older (lower position) snapshot
+
+    RelationshipPath:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Relationship name (e.g., "1st cousin once removed")
+        pathFromA:
+          type: array
+          items:
+            type: string
+            format: uuid
+        pathFromB:
+          type: array
+          items:
+            type: string
+            format: uuid
+        commonAncestorId:
+          type: string
+          format: uuid
+        generationDistanceA:
+          type: integer
+        generationDistanceB:
+          type: integer
+
+    RelationshipResult:
+      type: object
+      properties:
+        personA:
+          $ref: '#/components/schemas/Person'
+        personB:
+          $ref: '#/components/schemas/Person'
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationshipPath'
+        isRelated:
+          type: boolean
+        summary:
+          type: string
+          description: Human-readable relationship summary
