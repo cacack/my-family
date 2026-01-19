@@ -165,6 +165,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/descendancy/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get descendancy tree for a person
+         * @description Returns the descendant tree for a person, showing children, grandchildren,
+         *     and so on, along with spouse information for each generation.
+         */
+        get: operations["getDescendancy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ahnentafel/{id}": {
         parameters: {
             query?: never;
@@ -1389,6 +1412,37 @@ export interface components {
             father?: components["schemas"]["PedigreeNode"];
             mother?: components["schemas"]["PedigreeNode"];
         };
+        /** @description Descendancy tree showing descendants of a person */
+        Descendancy: {
+            root: components["schemas"]["DescendancyNode"];
+            /** @description Number of generations included */
+            generations?: number;
+            /** @description Total number of descendants */
+            total_descendants?: number;
+            /** @description Maximum generation depth reached */
+            max_generation?: number;
+        };
+        /** @description A person node in the descendancy tree */
+        DescendancyNode: {
+            /** Format: uuid */
+            id: string;
+            given_name?: string;
+            surname?: string;
+            birth_date?: components["schemas"]["GenDate"];
+            death_date?: components["schemas"]["GenDate"];
+            gender?: string;
+            /** @description Generation level (0 = root, 1 = children, 2 = grandchildren, etc.) */
+            generation?: number;
+            spouses?: components["schemas"]["SpouseInfo"][];
+            children?: components["schemas"]["DescendancyNode"][];
+        };
+        /** @description Spouse information in the descendancy tree */
+        SpouseInfo: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            marriage_date?: components["schemas"]["GenDate"];
+        };
         /**
          * @description Ahnentafel (ancestor table) report using standard genealogical numbering.
          *     This schema is shared between backend and frontend - changes require updates to both.
@@ -2468,6 +2522,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Pedigree"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getDescendancy: {
+        parameters: {
+            query?: {
+                /** @description Number of descendant generations to include */
+                generations?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Descendancy data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Descendancy"];
                 };
             };
             404: components["responses"]["NotFound"];
