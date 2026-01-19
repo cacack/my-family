@@ -203,11 +203,7 @@ jobs:
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:
-          fail-on-severity: high
-          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, 0BSD, CC0-1.0, Unlicense
-          # Allow golang.org/x packages which have BSD-3-Clause + Google patent license
-          allow-dependencies-licenses: |
-            pkg:golang/golang.org/x/*
+          config-file: .github/dependency-review-config.yml
 
   # Security scanning
   security:
