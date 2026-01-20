@@ -217,6 +217,78 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "NoteCreated":
+		var event domain.NoteCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "NoteUpdated":
+		var event domain.NoteUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "NoteDeleted":
+		var event domain.NoteDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "SubmitterCreated":
+		var event domain.SubmitterCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "SubmitterUpdated":
+		var event domain.SubmitterUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "SubmitterDeleted":
+		var event domain.SubmitterDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "AssociationCreated":
+		var event domain.AssociationCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "AssociationUpdated":
+		var event domain.AssociationUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "AssociationDeleted":
+		var event domain.AssociationDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "LDSOrdinanceCreated":
+		var event domain.LDSOrdinanceCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "LDSOrdinanceUpdated":
+		var event domain.LDSOrdinanceUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "LDSOrdinanceDeleted":
+		var event domain.LDSOrdinanceDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	default:
 		return nil, errors.New("unknown event type: " + e.EventType)
 	}

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -12,6 +13,23 @@ const MaxMediaFileSize = 10 * 1024 * 1024
 
 // ValidEntityTypes for media attachment.
 var ValidEntityTypes = []string{"person", "family", "source"}
+
+// MediaFile represents a single file reference in a GEDCOM OBJE record.
+// GEDCOM 7.0 supports multiple files per media object (e.g., high-res and thumbnail).
+type MediaFile struct {
+	Path         string             `json:"path"`                   // File path or URL (FILE)
+	Format       string             `json:"format,omitempty"`       // MIME type (FORM) - e.g., "image/jpeg"
+	MediaType    string             `json:"media_type,omitempty"`   // Type categorization (MEDI) - e.g., "PHOTO", "VIDEO"
+	Title        string             `json:"title,omitempty"`        // Title for this specific file (TITL)
+	Translations []MediaTranslation `json:"translations,omitempty"` // GEDCOM 7.0 FILE-TRAN translations
+}
+
+// MediaTranslation represents an alternate version of a file (GEDCOM 7.0 FILE-TRAN).
+// Examples: transcripts for audio, thumbnails for images, different format conversions.
+type MediaTranslation struct {
+	Path   string `json:"path"`   // File path or URL
+	Format string `json:"format"` // MIME type of the translation
+}
 
 // Media represents a media file attached to an entity.
 type Media struct {
@@ -32,6 +50,10 @@ type Media struct {
 	CropHeight    *int      `json:"crop_height,omitempty"`
 	GedcomXref    string    `json:"gedcom_xref,omitempty"` // Original GEDCOM @XREF@ for round-trip
 	Version       int64     `json:"version"`               // Optimistic locking version
+	// GEDCOM 7.0 enhanced fields
+	Files        []MediaFile `json:"files,omitempty"`        // Multiple file references (GEDCOM 7.0)
+	Format       string      `json:"format,omitempty"`       // Primary format/MIME type (FORM)
+	Translations []string    `json:"translations,omitempty"` // Translated titles (GEDCOM 7.0)
 }
 
 // MediaValidationError represents a validation error for a Media.
@@ -110,4 +132,44 @@ func isValidEntityType(entityType string) bool {
 		}
 	}
 	return false
+}
+
+// MarshalFilesToJSON serializes the Files slice to JSON for database storage.
+func MarshalFilesToJSON(files []MediaFile) ([]byte, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(files)
+}
+
+// UnmarshalFilesFromJSON deserializes JSON to a Files slice.
+func UnmarshalFilesFromJSON(data []byte) ([]MediaFile, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var files []MediaFile
+	if err := json.Unmarshal(data, &files); err != nil {
+		return nil, fmt.Errorf("unmarshal media files: %w", err)
+	}
+	return files, nil
+}
+
+// MarshalTranslationsToJSON serializes the Translations slice to JSON for database storage.
+func MarshalTranslationsToJSON(translations []string) ([]byte, error) {
+	if len(translations) == 0 {
+		return nil, nil
+	}
+	return json.Marshal(translations)
+}
+
+// UnmarshalTranslationsFromJSON deserializes JSON to a Translations slice.
+func UnmarshalTranslationsFromJSON(data []byte) ([]string, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var translations []string
+	if err := json.Unmarshal(data, &translations); err != nil {
+		return nil, fmt.Errorf("unmarshal translations: %w", err)
+	}
+	return translations, nil
 }

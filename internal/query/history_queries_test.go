@@ -246,6 +246,71 @@ func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place string
 	return nil, 0, nil
 }
 
+// Note stub methods
+func (m *mockReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListNotes(ctx context.Context, opts repository.ListOptions) ([]repository.NoteReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveNote(ctx context.Context, note *repository.NoteReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteNote(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// Submitter stub methods
+func (m *mockReadModelStore) GetSubmitter(ctx context.Context, id uuid.UUID) (*repository.SubmitterReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListSubmitters(ctx context.Context, opts repository.ListOptions) ([]repository.SubmitterReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveSubmitter(ctx context.Context, submitter *repository.SubmitterReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteSubmitter(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// Association stub methods
+func (m *mockReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) SaveAssociation(ctx context.Context, association *repository.AssociationReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteAssociation(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// LDS Ordinance stub methods
+func (m *mockReadModelStore) GetLDSOrdinance(ctx context.Context, id uuid.UUID) (*repository.LDSOrdinanceReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.ListOptions) ([]repository.LDSOrdinanceReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) ListLDSOrdinancesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.LDSOrdinanceReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListLDSOrdinancesForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.LDSOrdinanceReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) SaveLDSOrdinance(ctx context.Context, ordinance *repository.LDSOrdinanceReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
 func TestNewHistoryService(t *testing.T) {
 	eventStore := &mockEventStore{}
 	readStore := &mockReadModelStore{}

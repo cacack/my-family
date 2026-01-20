@@ -69,11 +69,11 @@ func TestRepository_FullAddress(t *testing.T) {
 		{
 			name: "full address",
 			repo: &domain.Repository{
-				Address:    "35 N West Temple St",
-				City:       "Salt Lake City",
-				State:      "UT",
-				PostalCode: "84150",
-				Country:    "USA",
+				StreetAddress: "35 N West Temple St",
+				City:          "Salt Lake City",
+				State:         "UT",
+				PostalCode:    "84150",
+				Country:       "USA",
 			},
 			want: "35 N West Temple St, Salt Lake City, UT, 84150, USA",
 		},
@@ -106,6 +106,87 @@ func TestRepository_FullAddress(t *testing.T) {
 				t.Errorf("FullAddress() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRepository_GetAddress(t *testing.T) {
+	tests := []struct {
+		name     string
+		repo     *domain.Repository
+		wantNil  bool
+		wantCity string
+	}{
+		{
+			name:    "empty repository returns nil",
+			repo:    &domain.Repository{},
+			wantNil: true,
+		},
+		{
+			name: "repository with address fields",
+			repo: &domain.Repository{
+				StreetAddress: "35 N West Temple St",
+				City:          "Salt Lake City",
+				State:         "UT",
+			},
+			wantNil:  false,
+			wantCity: "Salt Lake City",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr := tt.repo.GetAddress()
+			if tt.wantNil {
+				if addr != nil {
+					t.Error("GetAddress() = non-nil, want nil")
+				}
+			} else {
+				if addr == nil {
+					t.Fatal("GetAddress() = nil, want non-nil")
+				}
+				if addr.City != tt.wantCity {
+					t.Errorf("GetAddress().City = %q, want %q", addr.City, tt.wantCity)
+				}
+			}
+		})
+	}
+}
+
+func TestRepository_SetAddress(t *testing.T) {
+	repo := domain.NewRepository("Test Repo")
+	addr := &domain.Address{
+		Line1:      "123 Main St",
+		Line2:      "Suite 100",
+		City:       "Boston",
+		State:      "MA",
+		PostalCode: "02101",
+		Country:    "USA",
+		Phone:      "555-1234",
+		Email:      "test@example.com",
+		Website:    "https://example.com",
+	}
+
+	repo.SetAddress(addr)
+
+	// StreetAddress should be the combined lines
+	if repo.StreetAddress != "123 Main St, Suite 100" {
+		t.Errorf("StreetAddress = %q, want %q", repo.StreetAddress, "123 Main St, Suite 100")
+	}
+	if repo.City != "Boston" {
+		t.Errorf("City = %q, want %q", repo.City, "Boston")
+	}
+	if repo.State != "MA" {
+		t.Errorf("State = %q, want %q", repo.State, "MA")
+	}
+	if repo.Phone != "555-1234" {
+		t.Errorf("Phone = %q, want %q", repo.Phone, "555-1234")
+	}
+
+	// Test nil address does nothing
+	repo2 := domain.NewRepository("Test Repo 2")
+	repo2.SetAddress(nil)
+	if repo2.City != "" {
+		t.Error("SetAddress(nil) should not modify fields")
 	}
 }
 

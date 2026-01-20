@@ -693,6 +693,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 		evidenceType  domain.EvidenceType
 		informantType domain.InformantType
 		wantQuality   string
+		wantNoQuality bool // QUAY 0 is not output (it's the default)
 		factType      domain.FactType
 	}{
 		{
@@ -715,10 +716,10 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 			factType:     domain.FactPersonBirth,
 		},
 		{
-			name:         "negative evidence",
-			evidenceType: domain.EvidenceNegative,
-			wantQuality:  "3 QUAY 0",
-			factType:     domain.FactPersonDeath,
+			name:          "negative evidence",
+			evidenceType:  domain.EvidenceNegative,
+			wantNoQuality: true, // QUAY 0 is the default, not output per GEDCOM spec
+			factType:      domain.FactPersonDeath,
 		},
 	}
 
@@ -758,7 +759,12 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 			}
 
 			output := buf.String()
-			if !strings.Contains(output, tt.wantQuality) {
+			if tt.wantNoQuality {
+				// QUAY 0 should NOT be in output (it's the default)
+				if strings.Contains(output, "QUAY") {
+					t.Errorf("Output should not contain QUAY tag for quality 0, got:\n%s", output)
+				}
+			} else if !strings.Contains(output, tt.wantQuality) {
 				t.Errorf("Output should contain %s, got:\n%s", tt.wantQuality, output)
 			}
 		})
@@ -1896,5 +1902,147 @@ func TestExport_PlaceWithoutCoordinates(t *testing.T) {
 		if len(lines) > 0 && strings.HasPrefix(lines[0], "3 MAP") {
 			t.Error("Output should NOT contain MAP tag when coordinates are missing")
 		}
+	}
+}
+
+// Progress callback tests
+
+func TestExportWithProgress_CallsCallback(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	setupExportTestData(t, readStore)
+
+	exporter := gedcom.NewExporter(readStore)
+	ctx := context.Background()
+
+	// Track progress callbacks
+	var progressCalls []gedcom.ExportProgress
+	callback := func(progress gedcom.ExportProgress) error {
+		progressCalls = append(progressCalls, progress)
+		return nil
+	}
+
+	buf := &bytes.Buffer{}
+	result, err := exporter.ExportWithProgress(ctx, buf, callback)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify export succeeded
+	if result.PersonsExported != 3 {
+		t.Errorf("PersonsExported = %d, want 3", result.PersonsExported)
+	}
+
+	// Verify progress callbacks were called
+	if len(progressCalls) == 0 {
+		t.Fatal("Expected progress callbacks to be called")
+	}
+
+	// Verify we got callbacks for different phases
+	phases := make(map[string]bool)
+	for _, p := range progressCalls {
+		phases[p.Phase] = true
+	}
+
+	// Should have persons and families phases (sources might be empty)
+	if !phases["persons"] {
+		t.Error("Expected 'persons' phase in progress callbacks")
+	}
+	if !phases["families"] {
+		t.Error("Expected 'families' phase in progress callbacks")
+	}
+	if !phases["complete"] {
+		t.Error("Expected 'complete' phase in progress callbacks")
+	}
+
+	// Last callback should be complete with 100%
+	lastProgress := progressCalls[len(progressCalls)-1]
+	if lastProgress.Phase != "complete" {
+		t.Errorf("Last phase = %s, want 'complete'", lastProgress.Phase)
+	}
+	if lastProgress.Percentage != 100.0 {
+		t.Errorf("Final percentage = %f, want 100.0", lastProgress.Percentage)
+	}
+}
+
+func TestExportWithProgress_NoCallback(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	setupExportTestData(t, readStore)
+
+	exporter := gedcom.NewExporter(readStore)
+	ctx := context.Background()
+
+	buf := &bytes.Buffer{}
+	result, err := exporter.ExportWithProgress(ctx, buf, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify export still works without callback
+	if result.PersonsExported != 3 {
+		t.Errorf("PersonsExported = %d, want 3", result.PersonsExported)
+	}
+}
+
+func TestExportWithProgress_CallbackCancellation(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	setupExportTestData(t, readStore)
+
+	exporter := gedcom.NewExporter(readStore)
+	ctx := context.Background()
+
+	// Callback that returns an error to cancel export
+	callCount := 0
+	cancelErr := context.Canceled
+	callback := func(_ gedcom.ExportProgress) error {
+		callCount++
+		if callCount >= 2 {
+			return cancelErr
+		}
+		return nil
+	}
+
+	buf := &bytes.Buffer{}
+	_, err := exporter.ExportWithProgress(ctx, buf, callback)
+
+	// Should return the cancellation error
+	if err != cancelErr {
+		t.Errorf("Expected cancellation error, got %v", err)
+	}
+}
+
+func TestExportWithProgress_ProgressPercentage(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Add more data for better progress tracking
+	for i := 0; i < 30; i++ {
+		person := &repository.PersonReadModel{
+			ID:        uuid.New(),
+			GivenName: "Person",
+			Surname:   "Test",
+		}
+		readStore.SavePerson(ctx, person)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+
+	var lastPercentage float64 = -1
+	callback := func(progress gedcom.ExportProgress) error {
+		// Percentage should be monotonically increasing or equal
+		if progress.Percentage < lastPercentage {
+			t.Errorf("Percentage decreased from %f to %f", lastPercentage, progress.Percentage)
+		}
+		// Percentage should be in valid range
+		if progress.Percentage < 0 || progress.Percentage > 100 {
+			t.Errorf("Percentage %f out of range [0, 100]", progress.Percentage)
+		}
+		lastPercentage = progress.Percentage
+		return nil
+	}
+
+	buf := &bytes.Buffer{}
+	_, err := exporter.ExportWithProgress(ctx, buf, callback)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

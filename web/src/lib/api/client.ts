@@ -277,6 +277,27 @@ export interface ImportResult {
 	errors?: ImportError[];
 }
 
+// Export estimation types
+export interface ExportEstimate {
+	person_count: number;
+	family_count: number;
+	source_count: number;
+	citation_count: number;
+	event_count: number;
+	note_count: number;
+	total_records: number;
+	estimated_bytes: number;
+	is_large_export: boolean;
+}
+
+// Export progress tracking (for streaming exports)
+export interface ExportProgress {
+	phase: string;
+	current: number;
+	total: number;
+	percentage: number;
+}
+
 export interface ApiError {
 	code: string;
 	message: string;
@@ -744,6 +765,10 @@ class ApiClient {
 		}
 
 		return response.text();
+	}
+
+	async getExportEstimate(): Promise<ExportEstimate> {
+		return this.request<ExportEstimate>('GET', '/export/estimate');
 	}
 
 	// Source endpoints

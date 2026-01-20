@@ -20,16 +20,20 @@ type ImportGedcomInput struct {
 
 // ImportGedcomResult contains the result of a GEDCOM import.
 type ImportGedcomResult struct {
-	ImportID             uuid.UUID
-	PersonsImported      int
-	FamiliesImported     int
-	SourcesImported      int
-	CitationsImported    int
-	RepositoriesImported int
-	EventsImported       int
-	AttributesImported   int
-	Warnings             []string
-	Errors               []string
+	ImportID              uuid.UUID
+	PersonsImported       int
+	FamiliesImported      int
+	SourcesImported       int
+	CitationsImported     int
+	RepositoriesImported  int
+	EventsImported        int
+	AttributesImported    int
+	NotesImported         int
+	SubmittersImported    int
+	AssociationsImported  int
+	LDSOrdinancesImported int
+	Warnings              []string
+	Errors                []string
 }
 
 // ImportGedcom imports persons and families from a GEDCOM file.
@@ -37,7 +41,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	importer := gedcom.NewImporter()
 
 	// Parse the GEDCOM file
-	importResult, persons, families, sources, citations, repositories, events, attributes, err := importer.Import(ctx, input.Reader)
+	importResult, persons, families, sources, citations, repositories, events, attributes, notes, submitters, associations, ldsOrdinances, _, err := importer.Import(ctx, input.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GEDCOM file: %w", err)
 	}
@@ -155,6 +159,51 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 			continue
 		}
 		result.AttributesImported++
+	}
+
+	// Import shared notes
+	for _, n := range notes {
+		err := h.importNote(ctx, n)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Failed to import note (%s): %v", n.GedcomXref, err))
+			continue
+		}
+		result.NotesImported++
+	}
+
+	// Import submitters
+	for _, s := range submitters {
+		err := h.importSubmitter(ctx, s)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Failed to import submitter (%s): %v", s.GedcomXref, err))
+			continue
+		}
+		result.SubmittersImported++
+	}
+
+	// Import associations (after persons exist, since they reference PersonID and AssociateID)
+	for _, a := range associations {
+		err := h.importAssociation(ctx, a)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Failed to import association (%s -> %s, %s): %v",
+					a.PersonID.String(), a.AssociateID.String(), a.Role, err))
+			continue
+		}
+		result.AssociationsImported++
+	}
+
+	// Import LDS ordinances (after persons and families exist)
+	for _, o := range ldsOrdinances {
+		err := h.importLDSOrdinance(ctx, o)
+		if err != nil {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Failed to import LDS ordinance (%s): %v", o.Type, err))
+			continue
+		}
+		result.LDSOrdinancesImported++
 	}
 
 	// Record the import event
@@ -326,19 +375,19 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData) error {
 	// Create repository entity
 	repo := &domain.Repository{
-		ID:         r.ID,
-		Name:       r.Name,
-		Address:    r.Address,
-		City:       r.City,
-		State:      r.State,
-		PostalCode: r.PostalCode,
-		Country:    r.Country,
-		Phone:      r.Phone,
-		Email:      r.Email,
-		Website:    r.Website,
-		Notes:      r.Notes,
-		GedcomXref: r.GedcomXref,
-		Version:    1,
+		ID:            r.ID,
+		Name:          r.Name,
+		StreetAddress: r.Address,
+		City:          r.City,
+		State:         r.State,
+		PostalCode:    r.PostalCode,
+		Country:       r.Country,
+		Phone:         r.Phone,
+		Email:         r.Email,
+		Website:       r.Website,
+		Notes:         r.Notes,
+		GedcomXref:    r.GedcomXref,
+		Version:       1,
 	}
 
 	// Create event
@@ -454,6 +503,7 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	// Override ID to preserve GEDCOM-assigned ID
 	lifeEvent.ID = e.ID
 	lifeEvent.Place = e.Place
+	lifeEvent.Address = e.Address
 	lifeEvent.Description = e.Description
 	lifeEvent.Cause = e.Cause
 	lifeEvent.Age = e.Age
@@ -495,6 +545,119 @@ func (h *Handler) importAttribute(ctx context.Context, a gedcom.AttributeData) e
 
 	// Append to event store
 	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importNote creates a shared note from GEDCOM data.
+func (h *Handler) importNote(ctx context.Context, n gedcom.NoteData) error {
+	// Create note entity
+	note := domain.NewNoteWithID(n.ID, n.Text)
+	note.SetGedcomXref(n.GedcomXref)
+
+	// Create event
+	event := domain.NewNoteCreated(note)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, note.ID, "note", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importSubmitter creates a submitter from GEDCOM data.
+func (h *Handler) importSubmitter(ctx context.Context, s gedcom.SubmitterData) error {
+	// Create submitter entity
+	submitter := domain.NewSubmitterWithID(s.ID, s.Name)
+	submitter.SetGedcomXref(s.GedcomXref)
+
+	if s.Address != nil {
+		submitter.SetAddress(s.Address)
+	}
+	for _, phone := range s.Phone {
+		submitter.AddPhone(phone)
+	}
+	for _, email := range s.Email {
+		submitter.AddEmail(email)
+	}
+	if s.Language != "" {
+		submitter.SetLanguage(s.Language)
+	}
+
+	// Create event
+	event := domain.NewSubmitterCreated(submitter)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, submitter.ID, "submitter", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importAssociation creates an association from GEDCOM data.
+func (h *Handler) importAssociation(ctx context.Context, a gedcom.AssociationData) error {
+	// Create association entity
+	association := domain.NewAssociationWithID(a.ID, a.PersonID, a.AssociateID, a.Role)
+
+	if a.Phrase != "" {
+		association.SetPhrase(a.Phrase)
+	}
+	if a.Notes != "" {
+		association.SetNotes(a.Notes)
+	}
+
+	// Create event
+	event := domain.NewAssociationCreated(association)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, association.ID, "association", []domain.Event{event}, -1)
+	if err != nil {
+		return err
+	}
+
+	// Project to read model
+	return h.projector.Project(ctx, event, 1)
+}
+
+// importLDSOrdinance creates an LDS ordinance from GEDCOM data.
+func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceData) error {
+	// Create ordinance entity
+	ordinance := domain.NewLDSOrdinanceWithID(o.ID, o.Type)
+
+	if o.PersonID != nil {
+		ordinance.SetPersonID(*o.PersonID)
+	}
+	if o.FamilyID != nil {
+		ordinance.SetFamilyID(*o.FamilyID)
+	}
+	if o.Date != "" {
+		ordinance.SetDate(o.Date)
+	}
+	if o.Place != "" {
+		ordinance.SetPlace(o.Place)
+	}
+	if o.Temple != "" {
+		ordinance.SetTemple(o.Temple)
+	}
+	if o.Status != "" {
+		ordinance.SetStatus(o.Status)
+	}
+
+	// Create event
+	event := domain.NewLDSOrdinanceCreated(ordinance)
+
+	// Append to event store
+	err := h.eventStore.Append(ctx, ordinance.ID, "LDSOrdinance", []domain.Event{event}, -1)
 	if err != nil {
 		return err
 	}

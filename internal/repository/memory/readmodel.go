@@ -26,6 +26,10 @@ type ReadModelStore struct {
 	media          map[uuid.UUID]*repository.MediaReadModel
 	events         map[uuid.UUID]*repository.EventReadModel
 	attributes     map[uuid.UUID]*repository.AttributeReadModel
+	notes          map[uuid.UUID]*repository.NoteReadModel
+	submitters     map[uuid.UUID]*repository.SubmitterReadModel
+	associations   map[uuid.UUID]*repository.AssociationReadModel
+	ldsOrdinances  map[uuid.UUID]*repository.LDSOrdinanceReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -41,6 +45,10 @@ func NewReadModelStore() *ReadModelStore {
 		media:          make(map[uuid.UUID]*repository.MediaReadModel),
 		events:         make(map[uuid.UUID]*repository.EventReadModel),
 		attributes:     make(map[uuid.UUID]*repository.AttributeReadModel),
+		notes:          make(map[uuid.UUID]*repository.NoteReadModel),
+		submitters:     make(map[uuid.UUID]*repository.SubmitterReadModel),
+		associations:   make(map[uuid.UUID]*repository.AssociationReadModel),
+		ldsOrdinances:  make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
 	}
 }
 
@@ -515,6 +523,10 @@ func (s *ReadModelStore) Reset() {
 	s.media = make(map[uuid.UUID]*repository.MediaReadModel)
 	s.events = make(map[uuid.UUID]*repository.EventReadModel)
 	s.attributes = make(map[uuid.UUID]*repository.AttributeReadModel)
+	s.notes = make(map[uuid.UUID]*repository.NoteReadModel)
+	s.submitters = make(map[uuid.UUID]*repository.SubmitterReadModel)
+	s.associations = make(map[uuid.UUID]*repository.AssociationReadModel)
+	s.ldsOrdinances = make(map[uuid.UUID]*repository.LDSOrdinanceReadModel)
 }
 
 // GetSource retrieves a source by ID.
@@ -1043,4 +1055,352 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	}
 
 	return results, total, nil
+}
+
+// GetNote retrieves a note by ID.
+func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	n, exists := s.notes[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *n
+	return &result, nil
+}
+
+// ListNotes returns a paginated list of notes.
+func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOptions) ([]repository.NoteReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.NoteReadModel
+	for _, n := range s.notes {
+		results = append(results, *n)
+	}
+
+	total := len(results)
+
+	// Sort by updated_at
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		if asc {
+			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+		}
+		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveNote saves or updates a note.
+func (s *ReadModelStore) SaveNote(ctx context.Context, note *repository.NoteReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *note
+	s.notes[note.ID] = &result
+	return nil
+}
+
+// DeleteNote removes a note.
+func (s *ReadModelStore) DeleteNote(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.notes, id)
+	return nil
+}
+
+// GetSubmitter retrieves a submitter by ID.
+func (s *ReadModelStore) GetSubmitter(ctx context.Context, id uuid.UUID) (*repository.SubmitterReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sub, exists := s.submitters[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *sub
+	return &result, nil
+}
+
+// ListSubmitters returns a paginated list of submitters.
+func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.ListOptions) ([]repository.SubmitterReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.SubmitterReadModel
+	for _, sub := range s.submitters {
+		results = append(results, *sub)
+	}
+
+	total := len(results)
+
+	// Sort by name
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		if asc {
+			return results[i].Name < results[j].Name
+		}
+		return results[i].Name > results[j].Name
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveSubmitter saves or updates a submitter.
+func (s *ReadModelStore) SaveSubmitter(ctx context.Context, submitter *repository.SubmitterReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *submitter
+	s.submitters[submitter.ID] = &result
+	return nil
+}
+
+// DeleteSubmitter removes a submitter.
+func (s *ReadModelStore) DeleteSubmitter(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.submitters, id)
+	return nil
+}
+
+// GetAssociation retrieves an association by ID.
+func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	assoc, exists := s.associations[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *assoc
+	return &result, nil
+}
+
+// ListAssociations returns a paginated list of associations.
+func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.AssociationReadModel
+	for _, assoc := range s.associations {
+		results = append(results, *assoc)
+	}
+
+	total := len(results)
+
+	// Sort by role or updated_at
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		var cmp int
+		if sortField == "role" {
+			cmp = strings.Compare(results[i].Role, results[j].Role)
+		} else {
+			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
+		}
+		if asc {
+			return cmp < 0
+		}
+		return cmp > 0
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// ListAssociationsForPerson returns all associations for a given person.
+func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.AssociationReadModel
+	for _, assoc := range s.associations {
+		if assoc.PersonID == personID || assoc.AssociateID == personID {
+			results = append(results, *assoc)
+		}
+	}
+
+	// Sort by role, then updated_at
+	sort.Slice(results, func(i, j int) bool {
+		cmp := strings.Compare(results[i].Role, results[j].Role)
+		if cmp != 0 {
+			return cmp < 0
+		}
+		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+	})
+
+	return results, nil
+}
+
+// SaveAssociation saves or updates an association.
+func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.AssociationReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *assoc
+	s.associations[assoc.ID] = &result
+	return nil
+}
+
+// DeleteAssociation removes an association.
+func (s *ReadModelStore) DeleteAssociation(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.associations, id)
+	return nil
+}
+
+// GetLDSOrdinance retrieves an LDS ordinance by ID.
+func (s *ReadModelStore) GetLDSOrdinance(ctx context.Context, id uuid.UUID) (*repository.LDSOrdinanceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ord, exists := s.ldsOrdinances[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *ord
+	return &result, nil
+}
+
+// ListLDSOrdinances returns a paginated list of LDS ordinances.
+func (s *ReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.ListOptions) ([]repository.LDSOrdinanceReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.LDSOrdinanceReadModel
+	for _, ord := range s.ldsOrdinances {
+		results = append(results, *ord)
+	}
+
+	total := len(results)
+
+	// Sort by type or updated_at
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		var cmp int
+		if sortField == "type" {
+			cmp = strings.Compare(string(results[i].Type), string(results[j].Type))
+		} else {
+			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
+		}
+		if asc {
+			return cmp < 0
+		}
+		return cmp > 0
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// ListLDSOrdinancesForPerson returns all LDS ordinances for a given person.
+func (s *ReadModelStore) ListLDSOrdinancesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.LDSOrdinanceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.LDSOrdinanceReadModel
+	for _, ord := range s.ldsOrdinances {
+		if ord.PersonID != nil && *ord.PersonID == personID {
+			results = append(results, *ord)
+		}
+	}
+
+	// Sort by type
+	sort.Slice(results, func(i, j int) bool {
+		return string(results[i].Type) < string(results[j].Type)
+	})
+
+	return results, nil
+}
+
+// ListLDSOrdinancesForFamily returns all LDS ordinances for a given family.
+func (s *ReadModelStore) ListLDSOrdinancesForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.LDSOrdinanceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.LDSOrdinanceReadModel
+	for _, ord := range s.ldsOrdinances {
+		if ord.FamilyID != nil && *ord.FamilyID == familyID {
+			results = append(results, *ord)
+		}
+	}
+
+	// Sort by type
+	sort.Slice(results, func(i, j int) bool {
+		return string(results[i].Type) < string(results[j].Type)
+	})
+
+	return results, nil
+}
+
+// SaveLDSOrdinance saves or updates an LDS ordinance.
+func (s *ReadModelStore) SaveLDSOrdinance(ctx context.Context, ord *repository.LDSOrdinanceReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *ord
+	s.ldsOrdinances[ord.ID] = &result
+	return nil
+}
+
+// DeleteLDSOrdinance removes an LDS ordinance.
+func (s *ReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.ldsOrdinances, id)
+	return nil
 }

@@ -129,6 +129,10 @@ type MediaReadModel struct {
 	Version       int64            `json:"version"`
 	CreatedAt     time.Time        `json:"created_at"`
 	UpdatedAt     time.Time        `json:"updated_at"`
+	// GEDCOM 7.0 enhanced fields
+	Files        []domain.MediaFile `json:"files,omitempty"`        // Multiple file references (GEDCOM 7.0)
+	Format       string             `json:"format,omitempty"`       // Primary format/MIME type (FORM)
+	Translations []string           `json:"translations,omitempty"` // Translated titles (GEDCOM 7.0)
 }
 
 // EventReadModel represents a life event in the read model.
@@ -142,6 +146,7 @@ type EventReadModel struct {
 	Place          string                `json:"place,omitempty"`
 	PlaceLat       *string               `json:"place_lat,omitempty"`
 	PlaceLong      *string               `json:"place_long,omitempty"`
+	Address        *domain.Address       `json:"address,omitempty"` // Structured address (RESI, etc.)
 	Description    string                `json:"description,omitempty"`
 	Cause          string                `json:"cause,omitempty"`           // For death/burial events
 	Age            string                `json:"age,omitempty"`             // Age at event
@@ -161,6 +166,69 @@ type AttributeReadModel struct {
 	Place     string          `json:"place,omitempty"`
 	Version   int64           `json:"version"`
 	CreatedAt time.Time       `json:"created_at"`
+}
+
+// NoteReadModel represents a shared GEDCOM note in the read model.
+// GEDCOM supports two note styles:
+// - Inline notes: embedded directly in an entity
+// - Shared notes: top-level NOTE records that can be referenced by multiple entities via @N1@
+type NoteReadModel struct {
+	ID         uuid.UUID `json:"id"`
+	Text       string    `json:"text"`                  // Full text with embedded newlines
+	GedcomXref string    `json:"gedcom_xref,omitempty"` // GEDCOM cross-reference ID (e.g., "@N1@")
+	Version    int64     `json:"version"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// SubmitterReadModel represents a GEDCOM SUBM (Submitter) record in the read model.
+// Submitters track who created or submitted genealogical data.
+type SubmitterReadModel struct {
+	ID         uuid.UUID       `json:"id"`
+	Name       string          `json:"name"`                  // NAME - Submitter's name
+	Address    *domain.Address `json:"address,omitempty"`     // ADDR - Structured address
+	Phone      []string        `json:"phone,omitempty"`       // PHON - Multiple phone numbers
+	Email      []string        `json:"email,omitempty"`       // EMAIL - Multiple email addresses
+	Language   string          `json:"language,omitempty"`    // LANG - Preferred language
+	MediaID    *uuid.UUID      `json:"media_id,omitempty"`    // OBJE - Link to submitter photo
+	GedcomXref string          `json:"gedcom_xref,omitempty"` // GEDCOM cross-reference ID for round-trip
+	Version    int64           `json:"version"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+}
+
+// AssociationReadModel represents a GEDCOM ASSO (Association) record in the read model.
+// Associations capture non-family relationships like godparents, witnesses, mentors, etc.
+type AssociationReadModel struct {
+	ID            uuid.UUID   `json:"id"`
+	PersonID      uuid.UUID   `json:"person_id"`             // The individual (INDI containing ASSO)
+	PersonName    string      `json:"person_name"`           // Denormalized for display
+	AssociateID   uuid.UUID   `json:"associate_id"`          // The associated person
+	AssociateName string      `json:"associate_name"`        // Denormalized for display
+	Role          string      `json:"role"`                  // godparent, witness, or custom
+	Phrase        string      `json:"phrase,omitempty"`      // GEDCOM 7.0 human-readable description
+	Notes         string      `json:"notes,omitempty"`       // Inline note text
+	NoteIDs       []uuid.UUID `json:"note_ids,omitempty"`    // Linked Note entities
+	GedcomXref    string      `json:"gedcom_xref,omitempty"` // GEDCOM cross-reference ID for round-trip
+	Version       int64       `json:"version"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+}
+
+// LDSOrdinanceReadModel represents an LDS temple ordinance in the read model.
+// GEDCOM was originally developed by the LDS Church and includes tags for temple ordinances
+// (BAPL, CONL, ENDL, SLGC, SLGS). These are important for users with LDS heritage or data from FamilySearch.
+type LDSOrdinanceReadModel struct {
+	ID         uuid.UUID               `json:"id"`
+	Type       domain.LDSOrdinanceType `json:"type"`                  // BAPL, CONL, ENDL, SLGC, SLGS
+	TypeLabel  string                  `json:"type_label"`            // Human-readable: "Baptism (LDS)"
+	PersonID   *uuid.UUID              `json:"person_id,omitempty"`   // For individual ordinances
+	PersonName string                  `json:"person_name,omitempty"` // Denormalized for display
+	FamilyID   *uuid.UUID              `json:"family_id,omitempty"`   // For SLGS (sealing to spouse)
+	DateRaw    string                  `json:"date_raw,omitempty"`    // Raw date string
+	DateSort   *time.Time              `json:"date_sort,omitempty"`   // Parsed date for sorting
+	Place      string                  `json:"place,omitempty"`       // Location
+	Temple     string                  `json:"temple,omitempty"`      // Temple code (TEMP)
+	Status     string                  `json:"status,omitempty"`      // COMPLETED, BIC, CHILD, EXCLUDED, etc.
+	Version    int64                   `json:"version"`
+	UpdatedAt  time.Time               `json:"updated_at"`
 }
 
 // ReadModelStore provides access to denormalized read models.
@@ -232,6 +300,33 @@ type ReadModelStore interface {
 	ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]AttributeReadModel, error)
 	SaveAttribute(ctx context.Context, attribute *AttributeReadModel) error
 	DeleteAttribute(ctx context.Context, id uuid.UUID) error
+
+	// Note operations
+	GetNote(ctx context.Context, id uuid.UUID) (*NoteReadModel, error)
+	ListNotes(ctx context.Context, opts ListOptions) ([]NoteReadModel, int, error)
+	SaveNote(ctx context.Context, note *NoteReadModel) error
+	DeleteNote(ctx context.Context, id uuid.UUID) error
+
+	// Submitter operations
+	GetSubmitter(ctx context.Context, id uuid.UUID) (*SubmitterReadModel, error)
+	ListSubmitters(ctx context.Context, opts ListOptions) ([]SubmitterReadModel, int, error)
+	SaveSubmitter(ctx context.Context, submitter *SubmitterReadModel) error
+	DeleteSubmitter(ctx context.Context, id uuid.UUID) error
+
+	// Association operations
+	GetAssociation(ctx context.Context, id uuid.UUID) (*AssociationReadModel, error)
+	ListAssociations(ctx context.Context, opts ListOptions) ([]AssociationReadModel, int, error)
+	ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]AssociationReadModel, error)
+	SaveAssociation(ctx context.Context, association *AssociationReadModel) error
+	DeleteAssociation(ctx context.Context, id uuid.UUID) error
+
+	// LDS Ordinance operations
+	GetLDSOrdinance(ctx context.Context, id uuid.UUID) (*LDSOrdinanceReadModel, error)
+	ListLDSOrdinances(ctx context.Context, opts ListOptions) ([]LDSOrdinanceReadModel, int, error)
+	ListLDSOrdinancesForPerson(ctx context.Context, personID uuid.UUID) ([]LDSOrdinanceReadModel, error)
+	ListLDSOrdinancesForFamily(ctx context.Context, familyID uuid.UUID) ([]LDSOrdinanceReadModel, error)
+	SaveLDSOrdinance(ctx context.Context, ordinance *LDSOrdinanceReadModel) error
+	DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) error
 
 	// Browse operations
 	GetSurnameIndex(ctx context.Context) ([]SurnameEntry, []LetterCount, error)

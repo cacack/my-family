@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api, type ImportResult } from '$lib/api/client';
+	import { ExportButton } from '$lib/components/export';
 
 	let file: File | null = $state(null);
 	let importing = $state(false);
@@ -133,21 +134,6 @@
 		file = null;
 		result = null;
 		error = null;
-	}
-
-	async function exportGedcomData() {
-		try {
-			const gedcom = await api.exportGedcom();
-			const blob = new Blob([gedcom], { type: 'text/plain' });
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = 'export.ged';
-			a.click();
-			URL.revokeObjectURL(url);
-		} catch (e) {
-			error = (e as { message?: string }).message || 'Export failed';
-		}
 	}
 
 	async function exportData() {
@@ -320,18 +306,11 @@
 				genealogy software, while JSON and CSV formats are useful for data analysis.
 			</p>
 
-			<!-- GEDCOM Export -->
+			<!-- GEDCOM Export with Progress Tracking -->
 			<div class="export-option">
 				<h3>GEDCOM Format</h3>
 				<p class="option-description">Standard genealogy format compatible with most software.</p>
-				<button class="btn" onclick={exportGedcomData}>
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-						<polyline points="7 10 12 15 17 10" />
-						<line x1="12" y1="15" x2="12" y2="3" />
-					</svg>
-					Export GEDCOM
-				</button>
+				<ExportButton label="Export GEDCOM" showEstimate={true} />
 			</div>
 
 			<hr class="divider" />

@@ -35,6 +35,11 @@ type Server struct {
 	snapshotService     *query.SnapshotService
 	validationService   *query.ValidationService
 	relationshipService *query.RelationshipService
+	noteService         *query.NoteService
+	submitterService    *query.SubmitterService
+	associationService  *query.AssociationService
+	ldsOrdinanceService *query.LDSOrdinanceService
+	exportService       *query.ExportService
 	frontendFS          fs.FS
 }
 
@@ -86,6 +91,11 @@ func NewServer(
 	snapshotSvc := query.NewSnapshotService(snapshotStore, eventStore, historySvc)
 	validationSvc := query.NewValidationService(readStore)
 	relationshipSvc := query.NewRelationshipService(readStore)
+	noteSvc := query.NewNoteService(readStore)
+	submitterSvc := query.NewSubmitterService(readStore)
+	associationSvc := query.NewAssociationService(readStore)
+	ldsOrdinanceSvc := query.NewLDSOrdinanceService(readStore)
+	exportSvc := query.NewExportService(readStore)
 
 	server := &Server{
 		echo:                e,
@@ -105,6 +115,11 @@ func NewServer(
 		snapshotService:     snapshotSvc,
 		validationService:   validationSvc,
 		relationshipService: relationshipSvc,
+		noteService:         noteSvc,
+		submitterService:    submitterSvc,
+		associationService:  associationSvc,
+		ldsOrdinanceService: ldsOrdinanceSvc,
+		exportService:       exportSvc,
 		frontendFS:          frontendFS,
 	}
 

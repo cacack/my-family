@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/cacack/gedcom-go/encoder"
@@ -18,14 +17,30 @@ import (
 
 // ExportResult contains the results of a GEDCOM export operation.
 type ExportResult struct {
-	BytesWritten       int64
-	PersonsExported    int
-	FamiliesExported   int
-	SourcesExported    int
-	CitationsExported  int
-	EventsExported     int
-	AttributesExported int
+	BytesWritten          int64
+	PersonsExported       int
+	FamiliesExported      int
+	SourcesExported       int
+	CitationsExported     int
+	EventsExported        int
+	AttributesExported    int
+	NotesExported         int
+	SubmittersExported    int
+	AssociationsExported  int
+	LDSOrdinancesExported int
 }
+
+// ExportProgress represents the current progress of an export operation.
+type ExportProgress struct {
+	Phase      string  `json:"phase"`      // Current phase: "sources", "persons", "families", "notes", "submitters", "encoding"
+	Current    int     `json:"current"`    // Current item number in this phase
+	Total      int     `json:"total"`      // Total items in this phase
+	Percentage float64 `json:"percentage"` // Overall progress percentage (0-100)
+}
+
+// ProgressCallback is called during export to report progress.
+// Return an error to cancel the export.
+type ProgressCallback func(progress ExportProgress) error
 
 // Exporter handles GEDCOM file generation from repository data.
 type Exporter struct {
@@ -38,8 +53,29 @@ func NewExporter(readStore repository.ReadModelStore) *Exporter {
 }
 
 // Export generates a GEDCOM 5.5 file from all data in the repository.
+// For progress tracking during large exports, use ExportWithProgress instead.
 func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, error) {
+	return exp.ExportWithProgress(ctx, w, nil)
+}
+
+// ExportWithProgress generates a GEDCOM 5.5 file with optional progress callback.
+// The onProgress callback is called periodically to report export progress.
+// Pass nil for onProgress to disable progress tracking.
+func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProgress ProgressCallback) (*ExportResult, error) {
 	result := &ExportResult{}
+
+	// Helper to report progress (no-op if onProgress is nil)
+	reportProgress := func(phase string, current, total int, overallPct float64) error {
+		if onProgress != nil {
+			return onProgress(ExportProgress{
+				Phase:      phase,
+				Current:    current,
+				Total:      total,
+				Percentage: overallPct,
+			})
+		}
+		return nil
+	}
 
 	// Get all persons
 	persons, _, err := exp.readStore.ListPersons(ctx, repository.ListOptions{
@@ -64,6 +100,26 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sources: %w", err)
 	}
+
+	// Get notes and submitters counts for progress calculation
+	notes, _, err := exp.readStore.ListNotes(ctx, repository.ListOptions{
+		Limit: 100000,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list notes: %w", err)
+	}
+
+	submitters, _, err := exp.readStore.ListSubmitters(ctx, repository.ListOptions{
+		Limit: 100000,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list submitters: %w", err)
+	}
+
+	// Calculate total items for progress tracking
+	// Weight persons more heavily since they have the most processing
+	totalItems := len(sources) + len(persons)*2 + len(families) + len(notes) + len(submitters) + 1 // +1 for encoding
+	processedItems := 0
 
 	// Create XREF mappings (UUID -> @Xn@)
 	personXrefs := make(map[uuid.UUID]string)
@@ -110,19 +166,28 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 	}
 
 	// Add source records
-	for _, s := range sources {
+	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		tags := toGedcomSourceTags(s)
+		src := toGedcomSource(s)
 		doc.Records = append(doc.Records, &gedcom.Record{
-			XRef: xref,
-			Type: gedcom.RecordTypeSource,
-			Tags: tags,
+			XRef:   xref,
+			Type:   gedcom.RecordTypeSource,
+			Entity: src, // Encoder converts Entity -> Tags automatically
 		})
 		result.SourcesExported++
+		processedItems++
+
+		// Report progress every 10 items or at the end
+		if i%10 == 0 || i == len(sources)-1 {
+			pct := float64(processedItems) / float64(totalItems) * 100
+			if err := reportProgress("sources", i+1, len(sources), pct); err != nil {
+				return result, err
+			}
+		}
 	}
 
 	// Add individual records
-	for _, p := range persons {
+	for i, p := range persons {
 		xref := personXrefs[p.ID]
 		// Fetch citations for this person's events
 		birthCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactPersonBirth, p.ID)
@@ -136,17 +201,41 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 		result.EventsExported += len(events)
 		result.AttributesExported += len(attributes)
 
-		tags := toGedcomIndividualTags(p, sourceXrefs, birthCitations, deathCitations, events, attributes, exp.readStore, ctx)
+		// Fetch associations for this person (where this person is the PersonID)
+		allAssocs, _ := exp.readStore.ListAssociationsForPerson(ctx, p.ID)
+		// Filter to only associations where this person is the PersonID (the one who has the association)
+		var associations []repository.AssociationReadModel
+		for _, a := range allAssocs {
+			if a.PersonID == p.ID {
+				associations = append(associations, a)
+			}
+		}
+		result.AssociationsExported += len(associations)
+
+		// Fetch LDS ordinances for this person
+		ldsOrdinances, _ := exp.readStore.ListLDSOrdinancesForPerson(ctx, p.ID)
+		result.LDSOrdinancesExported += len(ldsOrdinances)
+
+		indi := toGedcomIndividual(p, sourceXrefs, personXrefs, birthCitations, deathCitations, events, attributes, associations, ldsOrdinances, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
-			XRef: xref,
-			Type: gedcom.RecordTypeIndividual,
-			Tags: tags,
+			XRef:   xref,
+			Type:   gedcom.RecordTypeIndividual,
+			Entity: indi, // Encoder converts Entity -> Tags automatically
 		})
 		result.PersonsExported++
+		processedItems += 2 // Persons count double due to extra processing
+
+		// Report progress every 10 items or at the end
+		if i%10 == 0 || i == len(persons)-1 {
+			pct := float64(processedItems) / float64(totalItems) * 100
+			if err := reportProgress("persons", i+1, len(persons), pct); err != nil {
+				return result, err
+			}
+		}
 	}
 
 	// Add family records
-	for _, f := range families {
+	for i, f := range families {
 		xref := familyXrefs[f.ID]
 		children, _ := exp.readStore.GetFamilyChildren(ctx, f.ID)
 		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, f.ID)
@@ -156,13 +245,95 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, f.ID)
 		result.EventsExported += len(familyEvents)
 
-		tags := toGedcomFamilyTags(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, exp.readStore, ctx)
+		// Fetch LDS ordinances for this family
+		familyLDSOrdinances, _ := exp.readStore.ListLDSOrdinancesForFamily(ctx, f.ID)
+		result.LDSOrdinancesExported += len(familyLDSOrdinances)
+
+		fam := toGedcomFamily(f, personXrefs, sourceXrefs, children, marriageCitations, familyEvents, familyLDSOrdinances, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
-			XRef: xref,
-			Type: gedcom.RecordTypeFamily,
-			Tags: tags,
+			XRef:   xref,
+			Type:   gedcom.RecordTypeFamily,
+			Entity: fam, // Encoder converts Entity -> Tags automatically
 		})
 		result.FamiliesExported++
+		processedItems++
+
+		// Report progress every 10 items or at the end
+		if i%10 == 0 || i == len(families)-1 {
+			pct := float64(processedItems) / float64(totalItems) * 100
+			if err := reportProgress("families", i+1, len(families), pct); err != nil {
+				return result, err
+			}
+		}
+	}
+
+	// Sort notes by ID for stable output
+	sort.Slice(notes, func(i, j int) bool {
+		return notes[i].ID.String() < notes[j].ID.String()
+	})
+
+	for i, n := range notes {
+		// Use GedcomXref if available (for round-trip), otherwise generate
+		var xref string
+		if n.GedcomXref != "" {
+			xref = n.GedcomXref
+		} else {
+			xref = fmt.Sprintf("@N%d@", i+1)
+		}
+
+		note := toGedcomNote(n)
+		doc.Records = append(doc.Records, &gedcom.Record{
+			XRef:   xref,
+			Type:   gedcom.RecordTypeNote,
+			Entity: note,
+		})
+		result.NotesExported++
+		processedItems++
+
+		// Report progress every 10 items or at the end
+		if i%10 == 0 || i == len(notes)-1 {
+			pct := float64(processedItems) / float64(totalItems) * 100
+			if err := reportProgress("notes", i+1, len(notes), pct); err != nil {
+				return result, err
+			}
+		}
+	}
+
+	// Sort submitters by ID for stable output
+	sort.Slice(submitters, func(i, j int) bool {
+		return submitters[i].ID.String() < submitters[j].ID.String()
+	})
+
+	for i, s := range submitters {
+		// Use GedcomXref if available (for round-trip), otherwise generate
+		var xref string
+		if s.GedcomXref != "" {
+			xref = s.GedcomXref
+		} else {
+			xref = fmt.Sprintf("@U%d@", i+1)
+		}
+
+		subm := toGedcomSubmitter(s)
+		doc.Records = append(doc.Records, &gedcom.Record{
+			XRef:   xref,
+			Type:   gedcom.RecordTypeSubmitter,
+			Entity: subm,
+		})
+		result.SubmittersExported++
+		processedItems++
+
+		// Report progress every 10 items or at the end
+		if i%10 == 0 || i == len(submitters)-1 {
+			pct := float64(processedItems) / float64(totalItems) * 100
+			if err := reportProgress("submitters", i+1, len(submitters), pct); err != nil {
+				return result, err
+			}
+		}
+	}
+
+	// Report encoding phase
+	if err := reportProgress("encoding", 0, 1, 99.0); err != nil {
+		return result, err
 	}
 
 	// Use a counting writer to track bytes written
@@ -175,6 +346,11 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 	}
 
 	result.BytesWritten = cw.count
+
+	// Report completion
+	if err := reportProgress("complete", 1, 1, 100.0); err != nil {
+		return result, err
+	}
 
 	return result, nil
 }
@@ -191,60 +367,62 @@ func (cw *countingWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-// toGedcomSourceTags converts a repository SourceReadModel to gedcom.Tag slice.
-func toGedcomSourceTags(s repository.SourceReadModel) []*gedcom.Tag {
-	var tags []*gedcom.Tag
+// toGedcomSource converts a repository SourceReadModel to a gedcom.Source entity.
+// The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
+func toGedcomSource(s repository.SourceReadModel) *gedcom.Source {
+	src := &gedcom.Source{}
 
 	// Title
 	if s.Title != "" {
-		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "TITL", Value: s.Title})
+		src.Title = s.Title
 	}
 
 	// Author
 	if s.Author != "" {
-		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "AUTH", Value: s.Author})
+		src.Author = s.Author
 	}
 
 	// Publisher (as PUBL)
 	if s.Publisher != "" {
-		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "PUBL", Value: s.Publisher})
+		src.Publication = s.Publisher
 	}
 
 	// Repository
 	if s.RepositoryName != "" {
-		// If it looks like an XREF, use directly
+		// If it looks like an XREF, use RepositoryRef
 		if strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@") {
-			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "REPO", Value: s.RepositoryName})
+			src.RepositoryRef = s.RepositoryName
 		} else {
 			// Inline repository with NAME subordinate
-			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "REPO"})
-			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NAME", Value: s.RepositoryName})
+			src.Repository = &gedcom.InlineRepository{Name: s.RepositoryName}
 		}
 	}
 
-	// Notes with CONT for multiline
+	// Notes - encoder handles CONT/CONC automatically for multiline text
 	if s.Notes != "" {
-		tags = append(tags, notesToTags(s.Notes, 1)...)
+		src.Notes = []string{s.Notes}
 	}
 
-	return tags
+	return src
 }
 
-// toGedcomIndividualTags converts a repository PersonReadModel to gedcom.Tag slice.
-func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.Tag {
-	var tags []*gedcom.Tag
+// toGedcomIndividual converts a repository PersonReadModel to a gedcom.Individual entity.
+// The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
+func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]string, personXrefs map[uuid.UUID]string, birthCitations, deathCitations []repository.CitationReadModel, events []repository.EventReadModel, attributes []repository.AttributeReadModel, associations []repository.AssociationReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Individual {
+	indi := &gedcom.Individual{}
 
 	// Fetch all names for this person
 	names, err := readStore.GetPersonNames(ctx, p.ID)
 	if err != nil || len(names) == 0 {
 		// Fallback to person's primary name fields if no names in person_names table
-		name := formatGedcomName(p.GivenName, p.Surname)
-		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "NAME", Value: name})
+		indi.Names = []*gedcom.PersonalName{{
+			Full: formatGedcomName(p.GivenName, p.Surname),
+		}}
 	} else {
 		// Sort names: primary first, then others
 		sortedNames := sortNamesByPrimary(names)
 		for _, nm := range sortedNames {
-			tags = append(tags, nameToTags(nm)...)
+			indi.Names = append(indi.Names, toGedcomPersonalName(nm))
 		}
 	}
 
@@ -252,105 +430,169 @@ func toGedcomIndividualTags(p repository.PersonReadModel, sourceXrefs map[uuid.U
 	if p.Gender != "" {
 		switch p.Gender {
 		case domain.GenderMale:
-			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "SEX", Value: "M"})
+			indi.Sex = "M"
 		case domain.GenderFemale:
-			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "SEX", Value: "F"})
+			indi.Sex = "F"
 		}
 	}
 
 	// Birth event
 	if p.BirthDateRaw != "" || p.BirthPlace != "" {
-		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "BIRT"})
+		birthEvent := &gedcom.Event{Type: gedcom.EventBirth}
 		if p.BirthDateRaw != "" {
-			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "DATE", Value: p.BirthDateRaw})
+			birthEvent.Date = p.BirthDateRaw
 		}
 		if p.BirthPlace != "" {
-			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: p.BirthPlace})
-			// Add MAP structure with coordinates if present
-			tags = append(tags, placeCoordinatesToTags(p.BirthPlaceLat, p.BirthPlaceLong, 3)...)
+			birthEvent.Place = p.BirthPlace
+			// Add coordinates if present
+			if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
+				birthEvent.PlaceDetail = &gedcom.PlaceDetail{
+					Name: p.BirthPlace,
+					Coordinates: &gedcom.Coordinates{
+						Latitude:  *p.BirthPlaceLat,
+						Longitude: *p.BirthPlaceLong,
+					},
+				}
+			}
 		}
 		// Citations for birth
-		tags = append(tags, citationsToTags(birthCitations, sourceXrefs, 2)...)
+		birthEvent.SourceCitations = toGedcomSourceCitations(birthCitations, sourceXrefs)
+		indi.Events = append(indi.Events, birthEvent)
 	}
 
 	// Death event
 	if p.DeathDateRaw != "" || p.DeathPlace != "" {
-		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "DEAT"})
+		deathEvent := &gedcom.Event{Type: gedcom.EventDeath}
 		if p.DeathDateRaw != "" {
-			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "DATE", Value: p.DeathDateRaw})
+			deathEvent.Date = p.DeathDateRaw
 		}
 		if p.DeathPlace != "" {
-			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: p.DeathPlace})
-			// Add MAP structure with coordinates if present
-			tags = append(tags, placeCoordinatesToTags(p.DeathPlaceLat, p.DeathPlaceLong, 3)...)
+			deathEvent.Place = p.DeathPlace
+			// Add coordinates if present
+			if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
+				deathEvent.PlaceDetail = &gedcom.PlaceDetail{
+					Name: p.DeathPlace,
+					Coordinates: &gedcom.Coordinates{
+						Latitude:  *p.DeathPlaceLat,
+						Longitude: *p.DeathPlaceLong,
+					},
+				}
+			}
 		}
 		// Citations for death
-		tags = append(tags, citationsToTags(deathCitations, sourceXrefs, 2)...)
+		deathEvent.SourceCitations = toGedcomSourceCitations(deathCitations, sourceXrefs)
+		indi.Events = append(indi.Events, deathEvent)
 	}
 
 	// Additional life events (burial, baptism, emigration, etc.)
-	tags = append(tags, eventsToTags(events, sourceXrefs, 1, readStore, ctx)...)
+	for _, event := range events {
+		if gedcomEvent := toGedcomEvent(event, sourceXrefs, readStore, ctx); gedcomEvent != nil {
+			indi.Events = append(indi.Events, gedcomEvent)
+		}
+	}
 
 	// Attributes (occupation, residence, education, etc.)
-	tags = append(tags, attributesToTags(attributes, sourceXrefs, 1)...)
+	for _, attr := range attributes {
+		if gedcomAttr := toGedcomAttribute(attr); gedcomAttr != nil {
+			indi.Attributes = append(indi.Attributes, gedcomAttr)
+		}
+	}
 
-	// Notes with CONT for multiline
+	// Notes - encoder handles CONT/CONC automatically for multiline text
 	if p.Notes != "" {
-		tags = append(tags, notesToTags(p.Notes, 1)...)
+		indi.Notes = []string{p.Notes}
 	}
 
-	return tags
+	// Associations (godparents, witnesses, etc.)
+	for _, assoc := range associations {
+		if gedcomAssoc := toGedcomAssociation(assoc, personXrefs); gedcomAssoc != nil {
+			indi.Associations = append(indi.Associations, gedcomAssoc)
+		}
+	}
+
+	// LDS ordinances (BAPL, CONL, ENDL, SLGC)
+	for _, ord := range ldsOrdinances {
+		// Only individual-level ordinances (not SLGS which is family-level)
+		if ord.Type == domain.LDSBaptism || ord.Type == domain.LDSConfirmation ||
+			ord.Type == domain.LDSEndowment || ord.Type == domain.LDSSealingChild {
+			indi.LDSOrdinances = append(indi.LDSOrdinances, toGedcomLDSOrdinance(ord))
+		}
+	}
+
+	return indi
 }
 
-// toGedcomFamilyTags converts a repository FamilyReadModel to gedcom.Tag slice.
-func toGedcomFamilyTags(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel, events []repository.EventReadModel, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.Tag {
-	var tags []*gedcom.Tag
-
-	// Husband (Partner1)
-	if f.Partner1ID != nil {
-		if pXref, ok := personXrefs[*f.Partner1ID]; ok {
-			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "HUSB", Value: pXref})
-		}
+// toGedcomAssociation converts a repository AssociationReadModel to a gedcom.Association.
+func toGedcomAssociation(a repository.AssociationReadModel, personXrefs map[uuid.UUID]string) *gedcom.Association {
+	// Look up the associate's XREF
+	associateXref, found := personXrefs[a.AssociateID]
+	if !found {
+		// Can't export without a valid XREF
+		return nil
 	}
 
-	// Wife (Partner2)
-	if f.Partner2ID != nil {
-		if pXref, ok := personXrefs[*f.Partner2ID]; ok {
-			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "WIFE", Value: pXref})
-		}
+	assoc := &gedcom.Association{
+		IndividualXRef: associateXref,
+		Role:           mapRoleToGedcom(a.Role),
 	}
 
-	// Marriage event
-	if f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" {
-		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "MARR"})
-		if f.MarriageDateRaw != "" {
-			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "DATE", Value: f.MarriageDateRaw})
-		}
-		if f.MarriagePlace != "" {
-			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "PLAC", Value: f.MarriagePlace})
-			// Add MAP structure with coordinates if present
-			tags = append(tags, placeCoordinatesToTags(f.MarriagePlaceLat, f.MarriagePlaceLong, 3)...)
-		}
-		// Citations for marriage
-		tags = append(tags, citationsToTags(marriageCitations, sourceXrefs, 2)...)
+	// PHRASE (GEDCOM 7.0)
+	if a.Phrase != "" {
+		assoc.Phrase = a.Phrase
 	}
 
-	// Additional family events (divorce, annulment, engagement, etc.)
-	tags = append(tags, eventsToTags(events, sourceXrefs, 1, readStore, ctx)...)
-
-	// Children
-	for _, c := range children {
-		if pXref, ok := personXrefs[c.PersonID]; ok {
-			tags = append(tags, &gedcom.Tag{Level: 1, Tag: "CHIL", Value: pXref})
-		}
+	// Notes
+	if a.Notes != "" {
+		assoc.Notes = []string{a.Notes}
 	}
 
-	return tags
+	return assoc
 }
 
-// citationsToTags converts repository citations to gedcom.Tag slice.
-func citationsToTags(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string, level int) []*gedcom.Tag {
-	var tags []*gedcom.Tag
+// mapRoleToGedcom converts internal role names to GEDCOM RELA values.
+func mapRoleToGedcom(role string) string {
+	switch role {
+	case domain.RoleGodparent:
+		return "GODP"
+	case domain.RoleWitness:
+		return "WITN"
+	default:
+		// Return custom role as-is (GEDCOM 5.5.1 allows free text)
+		return strings.ToUpper(role)
+	}
+}
+
+// toGedcomPersonalName converts a PersonNameReadModel to a gedcom.PersonalName.
+func toGedcomPersonalName(nm repository.PersonNameReadModel) *gedcom.PersonalName {
+	pn := &gedcom.PersonalName{
+		Full: formatGedcomName(nm.GivenName, nm.Surname),
+	}
+
+	// TYPE - only add if not birth (birth is the default)
+	if nm.NameType != "" && nm.NameType != domain.NameTypeBirth {
+		pn.Type = mapNameTypeToGedcom(nm.NameType)
+	}
+
+	// Name components
+	if nm.NamePrefix != "" {
+		pn.Prefix = nm.NamePrefix
+	}
+	if nm.NameSuffix != "" {
+		pn.Suffix = nm.NameSuffix
+	}
+	if nm.SurnamePrefix != "" {
+		pn.SurnamePrefix = nm.SurnamePrefix
+	}
+	if nm.Nickname != "" {
+		pn.Nickname = nm.Nickname
+	}
+
+	return pn
+}
+
+// toGedcomSourceCitations converts a slice of CitationReadModel to gedcom.SourceCitation slice.
+func toGedcomSourceCitations(citations []repository.CitationReadModel, sourceXrefs map[uuid.UUID]string) []*gedcom.SourceCitation {
+	var result []*gedcom.SourceCitation
 
 	for _, cit := range citations {
 		srcXref, ok := sourceXrefs[cit.SourceID]
@@ -358,44 +600,190 @@ func citationsToTags(citations []repository.CitationReadModel, sourceXrefs map[u
 			continue
 		}
 
-		// SOUR tag with source XRef
-		tags = append(tags, &gedcom.Tag{Level: level, Tag: "SOUR", Value: srcXref})
+		citation := &gedcom.SourceCitation{
+			SourceXRef: srcXref,
+		}
 
-		// PAGE
 		if cit.Page != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "PAGE", Value: cit.Page})
+			citation.Page = cit.Page
 		}
 
 		// QUAY (quality) - always output if any GPS quality info present
 		if cit.SourceQuality != "" || cit.InformantType != "" || cit.EvidenceType != "" {
-			quay := mapGPSToGedcomQuality(cit.SourceQuality, cit.InformantType, cit.EvidenceType)
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "QUAY", Value: strconv.Itoa(quay)})
+			citation.Quality = mapGPSToGedcomQuality(cit.SourceQuality, cit.InformantType, cit.EvidenceType)
 		}
 
 		// DATA with TEXT (quoted text)
 		if cit.QuotedText != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "DATA"})
-			// Handle multiline quoted text with CONT
-			lines := strings.Split(cit.QuotedText, "\n")
-			tags = append(tags, &gedcom.Tag{Level: level + 2, Tag: "TEXT", Value: lines[0]})
-			for _, line := range lines[1:] {
-				tags = append(tags, &gedcom.Tag{Level: level + 3, Tag: "CONT", Value: line})
+			citation.Data = &gedcom.SourceCitationData{
+				Text: cit.QuotedText,
+			}
+		}
+
+		result = append(result, citation)
+	}
+
+	return result
+}
+
+// toGedcomEvent converts an EventReadModel to a gedcom.Event.
+func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Event {
+	tagName := mapFactTypeToGedcomTag(event.FactType)
+	if tagName == "" {
+		return nil // Skip unknown event types
+	}
+
+	ge := &gedcom.Event{
+		Type: gedcom.EventType(tagName),
+	}
+
+	if event.DateRaw != "" {
+		ge.Date = event.DateRaw
+	}
+
+	if event.Place != "" {
+		ge.Place = event.Place
+		// Add coordinates if present
+		if event.PlaceLat != nil && event.PlaceLong != nil && *event.PlaceLat != "" && *event.PlaceLong != "" {
+			ge.PlaceDetail = &gedcom.PlaceDetail{
+				Name: event.Place,
+				Coordinates: &gedcom.Coordinates{
+					Latitude:  *event.PlaceLat,
+					Longitude: *event.PlaceLong,
+				},
 			}
 		}
 	}
 
-	return tags
+	// Add structured address if available
+	if event.Address != nil && !event.Address.IsEmpty() {
+		ge.Address = convertDomainAddressToGedcom(event.Address)
+	}
+
+	if event.Cause != "" {
+		ge.Cause = event.Cause
+	}
+
+	if event.Age != "" {
+		ge.Age = event.Age
+	}
+
+	// Fetch and add citations for this event
+	if readStore != nil {
+		citations, _ := readStore.GetCitationsForFact(ctx, event.FactType, event.OwnerID)
+		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs)
+	}
+
+	return ge
 }
 
-// notesToTags converts notes text to tags with CONT for multiline.
-func notesToTags(notes string, level int) []*gedcom.Tag {
-	var tags []*gedcom.Tag
-	lines := strings.Split(notes, "\n")
-	tags = append(tags, &gedcom.Tag{Level: level, Tag: "NOTE", Value: lines[0]})
-	for _, line := range lines[1:] {
-		tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "CONT", Value: line})
+// convertDomainAddressToGedcom converts a domain.Address to a gedcom.Address.
+func convertDomainAddressToGedcom(addr *domain.Address) *gedcom.Address {
+	if addr == nil {
+		return nil
 	}
-	return tags
+	return &gedcom.Address{
+		Line1:      addr.Line1,
+		Line2:      addr.Line2,
+		Line3:      addr.Line3,
+		City:       addr.City,
+		State:      addr.State,
+		PostalCode: addr.PostalCode,
+		Country:    addr.Country,
+		Phone:      addr.Phone,
+		Email:      addr.Email,
+		Website:    addr.Website,
+	}
+}
+
+// toGedcomAttribute converts an AttributeReadModel to a gedcom.Attribute.
+func toGedcomAttribute(attr repository.AttributeReadModel) *gedcom.Attribute {
+	tagName := mapFactTypeToGedcomTag(attr.FactType)
+	if tagName == "" {
+		return nil // Skip unknown attribute types
+	}
+
+	ga := &gedcom.Attribute{
+		Type:  tagName,
+		Value: attr.Value,
+	}
+
+	if attr.DateRaw != "" {
+		ga.Date = attr.DateRaw
+	}
+
+	if attr.Place != "" {
+		ga.Place = attr.Place
+	}
+
+	return ga
+}
+
+// toGedcomFamily converts a repository FamilyReadModel to a gedcom.Family entity.
+// The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
+func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[uuid.UUID]string, children []repository.FamilyChildReadModel, marriageCitations []repository.CitationReadModel, events []repository.EventReadModel, ldsOrdinances []repository.LDSOrdinanceReadModel, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Family {
+	fam := &gedcom.Family{}
+
+	// Husband (Partner1)
+	if f.Partner1ID != nil {
+		if pXref, ok := personXrefs[*f.Partner1ID]; ok {
+			fam.Husband = pXref
+		}
+	}
+
+	// Wife (Partner2)
+	if f.Partner2ID != nil {
+		if pXref, ok := personXrefs[*f.Partner2ID]; ok {
+			fam.Wife = pXref
+		}
+	}
+
+	// Marriage event
+	if f.RelationshipType == domain.RelationMarriage || f.MarriageDateRaw != "" || f.MarriagePlace != "" {
+		marriageEvent := &gedcom.Event{Type: gedcom.EventMarriage}
+		if f.MarriageDateRaw != "" {
+			marriageEvent.Date = f.MarriageDateRaw
+		}
+		if f.MarriagePlace != "" {
+			marriageEvent.Place = f.MarriagePlace
+			// Add coordinates if present
+			if f.MarriagePlaceLat != nil && f.MarriagePlaceLong != nil && *f.MarriagePlaceLat != "" && *f.MarriagePlaceLong != "" {
+				marriageEvent.PlaceDetail = &gedcom.PlaceDetail{
+					Name: f.MarriagePlace,
+					Coordinates: &gedcom.Coordinates{
+						Latitude:  *f.MarriagePlaceLat,
+						Longitude: *f.MarriagePlaceLong,
+					},
+				}
+			}
+		}
+		// Citations for marriage
+		marriageEvent.SourceCitations = toGedcomSourceCitations(marriageCitations, sourceXrefs)
+		fam.Events = append(fam.Events, marriageEvent)
+	}
+
+	// Additional family events (divorce, annulment, engagement, etc.)
+	for _, event := range events {
+		if gedcomEvent := toGedcomEvent(event, sourceXrefs, readStore, ctx); gedcomEvent != nil {
+			fam.Events = append(fam.Events, gedcomEvent)
+		}
+	}
+
+	// Children
+	for _, c := range children {
+		if pXref, ok := personXrefs[c.PersonID]; ok {
+			fam.Children = append(fam.Children, pXref)
+		}
+	}
+
+	// LDS ordinances (SLGS - sealing to spouse)
+	for _, ord := range ldsOrdinances {
+		if ord.Type == domain.LDSSealingSpouse {
+			fam.LDSOrdinances = append(fam.LDSOrdinances, toGedcomLDSOrdinance(ord))
+		}
+	}
+
+	return fam
 }
 
 // mapGPSToGedcomQuality maps GPS quality terms to GEDCOM QUAY values (0-3).
@@ -441,42 +829,6 @@ func sortNamesByPrimary(names []repository.PersonNameReadModel) []repository.Per
 		return false
 	})
 	return names
-}
-
-// nameToTags converts a PersonNameReadModel to GEDCOM tags.
-func nameToTags(nm repository.PersonNameReadModel) []*gedcom.Tag {
-	var tags []*gedcom.Tag
-
-	// Main NAME tag with value in GEDCOM format
-	name := formatGedcomName(nm.GivenName, nm.Surname)
-	tags = append(tags, &gedcom.Tag{Level: 1, Tag: "NAME", Value: name})
-
-	// TYPE - only add if not birth (birth is the default)
-	if nm.NameType != "" && nm.NameType != domain.NameTypeBirth {
-		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "TYPE", Value: mapNameTypeToGedcom(nm.NameType)})
-	}
-
-	// NPFX - Name prefix (Dr., Rev., Sir)
-	if nm.NamePrefix != "" {
-		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NPFX", Value: nm.NamePrefix})
-	}
-
-	// NSFX - Name suffix (Jr., III, PhD)
-	if nm.NameSuffix != "" {
-		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NSFX", Value: nm.NameSuffix})
-	}
-
-	// SPFX - Surname prefix (von, de, van)
-	if nm.SurnamePrefix != "" {
-		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "SPFX", Value: nm.SurnamePrefix})
-	}
-
-	// NICK - Nickname
-	if nm.Nickname != "" {
-		tags = append(tags, &gedcom.Tag{Level: 2, Tag: "NICK", Value: nm.Nickname})
-	}
-
-	return tags
 }
 
 // mapNameTypeToGedcom converts a domain NameType to GEDCOM TYPE value.
@@ -559,90 +911,43 @@ func mapFactTypeToGedcomTag(factType domain.FactType) string {
 	}
 }
 
-// eventsToTags converts a slice of EventReadModel to gedcom.Tag slice.
-func eventsToTags(events []repository.EventReadModel, sourceXrefs map[uuid.UUID]string, level int, readStore repository.ReadModelStore, ctx context.Context) []*gedcom.Tag {
-	var tags []*gedcom.Tag
-
-	for _, event := range events {
-		tagName := mapFactTypeToGedcomTag(event.FactType)
-		if tagName == "" {
-			continue // Skip unknown event types
-		}
-
-		// Add event tag
-		tags = append(tags, &gedcom.Tag{Level: level, Tag: tagName})
-
-		// Add DATE subordinate if present
-		if event.DateRaw != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "DATE", Value: event.DateRaw})
-		}
-
-		// Add PLAC subordinate if present
-		if event.Place != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "PLAC", Value: event.Place})
-			// Add MAP structure with coordinates if present
-			tags = append(tags, placeCoordinatesToTags(event.PlaceLat, event.PlaceLong, level+2)...)
-		}
-
-		// Add CAUS subordinate if present (for death/burial events)
-		if event.Cause != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "CAUS", Value: event.Cause})
-		}
-
-		// Add AGE subordinate if present
-		if event.Age != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "AGE", Value: event.Age})
-		}
-
-		// Fetch and add citations for this event
-		if readStore != nil {
-			citations, _ := readStore.GetCitationsForFact(ctx, event.FactType, event.OwnerID)
-			tags = append(tags, citationsToTags(citations, sourceXrefs, level+1)...)
-		}
+// toGedcomNote converts a repository NoteReadModel to a gedcom.Note entity.
+// The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC for multiline text.
+func toGedcomNote(n repository.NoteReadModel) *gedcom.Note {
+	return &gedcom.Note{
+		Text: n.Text,
 	}
-
-	return tags
 }
 
-// attributesToTags converts a slice of AttributeReadModel to gedcom.Tag slice.
-// TODO: sourceXrefs is reserved for linking attributes to source citations
-func attributesToTags(attributes []repository.AttributeReadModel, _ map[uuid.UUID]string, level int) []*gedcom.Tag {
-	var tags []*gedcom.Tag
-
-	for _, attr := range attributes {
-		tagName := mapFactTypeToGedcomTag(attr.FactType)
-		if tagName == "" {
-			continue // Skip unknown attribute types
-		}
-
-		// Add attribute tag with value
-		tags = append(tags, &gedcom.Tag{Level: level, Tag: tagName, Value: attr.Value})
-
-		// Add DATE subordinate if present
-		if attr.DateRaw != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "DATE", Value: attr.DateRaw})
-		}
-
-		// Add PLAC subordinate if present
-		if attr.Place != "" {
-			tags = append(tags, &gedcom.Tag{Level: level + 1, Tag: "PLAC", Value: attr.Place})
-		}
+// toGedcomSubmitter converts a repository SubmitterReadModel to a gedcom.Submitter entity.
+// The encoder will automatically convert this to GEDCOM tags.
+func toGedcomSubmitter(s repository.SubmitterReadModel) *gedcom.Submitter {
+	subm := &gedcom.Submitter{
+		Name:  s.Name,
+		Phone: s.Phone,
+		Email: s.Email,
 	}
 
-	return tags
+	// Convert address if present
+	if s.Address != nil && !s.Address.IsEmpty() {
+		subm.Address = convertDomainAddressToGedcom(s.Address)
+	}
+
+	// GEDCOM allows multiple languages, but we only store one
+	if s.Language != "" {
+		subm.Language = []string{s.Language}
+	}
+
+	return subm
 }
 
-// placeCoordinatesToTags generates MAP/LATI/LONG tags if coordinates are present.
-// The level parameter is the level at which MAP should be written (subordinate to PLAC).
-func placeCoordinatesToTags(lat, long *string, level int) []*gedcom.Tag {
-	// Only generate MAP structure if both coordinates are present
-	if lat == nil || long == nil || *lat == "" || *long == "" {
-		return nil
-	}
-
-	return []*gedcom.Tag{
-		{Level: level, Tag: "MAP"},
-		{Level: level + 1, Tag: "LATI", Value: *lat},
-		{Level: level + 1, Tag: "LONG", Value: *long},
+// toGedcomLDSOrdinance converts a repository LDSOrdinanceReadModel to a gedcom.LDSOrdinance.
+func toGedcomLDSOrdinance(ord repository.LDSOrdinanceReadModel) *gedcom.LDSOrdinance {
+	return &gedcom.LDSOrdinance{
+		Type:   gedcom.LDSOrdinanceType(ord.Type),
+		Date:   ord.DateRaw,
+		Temple: ord.Temple,
+		Place:  ord.Place,
+		Status: ord.Status,
 	}
 }

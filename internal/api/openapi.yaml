@@ -47,6 +47,14 @@ tags:
     description: Research milestone snapshots
   - name: relationships
     description: Relationship calculation between people
+  - name: notes
+    description: GEDCOM NOTE record management
+  - name: submitters
+    description: GEDCOM SUBM record management (file provenance)
+  - name: associations
+    description: GEDCOM ASSO record management (non-family relationships)
+  - name: lds-ordinances
+    description: LDS temple ordinance management (BAPL, CONL, ENDL, SLGC, SLGS)
 
 paths:
   /persons:
@@ -1595,6 +1603,23 @@ paths:
                   total:
                     type: integer
 
+  /export/estimate:
+    get:
+      operationId: getExportEstimate
+      summary: Get export size estimation
+      description: |
+        Returns an estimate of the export file size and record counts.
+        Useful for showing users expected download size and determining
+        whether to use streaming progress for large exports.
+      tags: [export]
+      responses:
+        '200':
+          description: Export estimation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportEstimate'
+
   # Quality and Statistics endpoints
   /quality/overview:
     get:
@@ -1963,6 +1988,496 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Notes endpoints
+  /notes:
+    get:
+      operationId: listNotes
+      summary: List all notes
+      description: Returns paginated list of shared GEDCOM NOTE records
+      tags: [notes]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of notes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createNote
+      summary: Create a new note
+      tags: [notes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteCreate'
+      responses:
+        '201':
+          description: Note created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /notes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/noteId'
+
+    get:
+      operationId: getNote
+      summary: Get a note by ID
+      tags: [notes]
+      responses:
+        '200':
+          description: Note details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateNote
+      summary: Update a note
+      tags: [notes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteUpdate'
+      responses:
+        '200':
+          description: Note updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Note'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteNote
+      summary: Delete a note
+      tags: [notes]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Note deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  # Submitters endpoints
+  /submitters:
+    get:
+      operationId: listSubmitters
+      summary: List all submitters
+      description: Returns paginated list of GEDCOM SUBM (submitter) records
+      tags: [submitters]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, updated_at]
+            default: updated_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of submitters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitterList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createSubmitter
+      summary: Create a new submitter
+      tags: [submitters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitterCreate'
+      responses:
+        '201':
+          description: Submitter created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submitter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /submitters/{id}:
+    parameters:
+      - $ref: '#/components/parameters/submitterId'
+
+    get:
+      operationId: getSubmitter
+      summary: Get a submitter by ID
+      tags: [submitters]
+      responses:
+        '200':
+          description: Submitter details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submitter'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateSubmitter
+      summary: Update a submitter
+      tags: [submitters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitterUpdate'
+      responses:
+        '200':
+          description: Submitter updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Submitter'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteSubmitter
+      summary: Delete a submitter
+      tags: [submitters]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Submitter deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  # Associations endpoints
+  /associations:
+    get:
+      operationId: listAssociations
+      summary: List all associations
+      description: Returns paginated list of GEDCOM ASSO (association) records
+      tags: [associations]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [role, updated_at]
+            default: updated_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of associations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociationList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createAssociation
+      summary: Create a new association
+      description: Create a GEDCOM ASSO association between two persons
+      tags: [associations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssociationCreate'
+      responses:
+        '201':
+          description: Association created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Association'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /associations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/associationId'
+
+    get:
+      operationId: getAssociation
+      summary: Get an association by ID
+      tags: [associations]
+      responses:
+        '200':
+          description: Association details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Association'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateAssociation
+      summary: Update an association
+      tags: [associations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssociationUpdate'
+      responses:
+        '200':
+          description: Association updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Association'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteAssociation
+      summary: Delete an association
+      tags: [associations]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Association deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /persons/{id}/associations:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: listAssociationsForPerson
+      summary: List associations for a person
+      description: Returns all associations where the person is either the subject or associate
+      tags: [associations]
+      responses:
+        '200':
+          description: List of associations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Association'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # LDS Ordinances endpoints
+  /lds-ordinances:
+    get:
+      operationId: listLDSOrdinances
+      summary: List all LDS ordinances
+      description: Returns paginated list of LDS temple ordinance records (BAPL, CONL, ENDL, SLGC, SLGS)
+      tags: [lds-ordinances]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [type, date, updated_at]
+            default: updated_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of LDS ordinances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LDSOrdinanceList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createLDSOrdinance
+      summary: Create a new LDS ordinance
+      tags: [lds-ordinances]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LDSOrdinanceCreate'
+      responses:
+        '201':
+          description: LDS ordinance created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LDSOrdinance'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /lds-ordinances/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ldsOrdinanceId'
+
+    get:
+      operationId: getLDSOrdinance
+      summary: Get an LDS ordinance by ID
+      tags: [lds-ordinances]
+      responses:
+        '200':
+          description: LDS ordinance details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LDSOrdinance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateLDSOrdinance
+      summary: Update an LDS ordinance
+      tags: [lds-ordinances]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LDSOrdinanceUpdate'
+      responses:
+        '200':
+          description: LDS ordinance updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LDSOrdinance'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteLDSOrdinance
+      summary: Delete an LDS ordinance
+      tags: [lds-ordinances]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: LDS ordinance deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /persons/{id}/lds-ordinances:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+
+    get:
+      operationId: listLDSOrdinancesForPerson
+      summary: List LDS ordinances for a person
+      description: Returns all individual LDS ordinances (BAPL, CONL, ENDL, SLGC) for a person
+      tags: [lds-ordinances]
+      responses:
+        '200':
+          description: List of LDS ordinances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LDSOrdinance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /families/{id}/lds-ordinances:
+    parameters:
+      - $ref: '#/components/parameters/familyId'
+
+    get:
+      operationId: listLDSOrdinancesForFamily
+      summary: List LDS ordinances for a family
+      description: Returns all spouse sealing (SLGS) ordinances for a family
+      tags: [lds-ordinances]
+      responses:
+        '200':
+          description: List of LDS ordinances
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LDSOrdinance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   parameters:
     personId:
@@ -2015,6 +2530,42 @@ components:
         type: string
         format: uuid
 
+    noteId:
+      name: id
+      in: path
+      required: true
+      description: Note UUID
+      schema:
+        type: string
+        format: uuid
+
+    submitterId:
+      name: id
+      in: path
+      required: true
+      description: Submitter UUID
+      schema:
+        type: string
+        format: uuid
+
+    associationId:
+      name: id
+      in: path
+      required: true
+      description: Association UUID
+      schema:
+        type: string
+        format: uuid
+
+    ldsOrdinanceId:
+      name: id
+      in: path
+      required: true
+      description: LDS Ordinance UUID
+      schema:
+        type: string
+        format: uuid
+
   responses:
     BadRequest:
       description: Invalid request
@@ -2053,6 +2604,57 @@ components:
         details:
           type: object
           additionalProperties: true
+
+    ExportEstimate:
+      type: object
+      required:
+        - person_count
+        - family_count
+        - source_count
+        - citation_count
+        - event_count
+        - note_count
+        - total_records
+        - estimated_bytes
+        - is_large_export
+      properties:
+        person_count:
+          type: integer
+          description: Number of person records
+          example: 150
+        family_count:
+          type: integer
+          description: Number of family records
+          example: 50
+        source_count:
+          type: integer
+          description: Number of source records
+          example: 25
+        citation_count:
+          type: integer
+          description: Estimated number of citations (embedded in facts)
+          example: 300
+        event_count:
+          type: integer
+          description: Estimated number of events
+          example: 450
+        note_count:
+          type: integer
+          description: Number of note records
+          example: 10
+        total_records:
+          type: integer
+          description: Total number of top-level records
+          example: 235
+        estimated_bytes:
+          type: integer
+          format: int64
+          description: Estimated file size in bytes
+          example: 125000
+        is_large_export:
+          type: boolean
+          description: True if export exceeds large threshold (>1000 records or >1MB)
+          example: false
 
     ResearchStatus:
       type: string
@@ -2941,6 +3543,56 @@ components:
         updated_at:
           type: string
           format: date-time
+        # GEDCOM 7.0 enhanced fields
+        files:
+          type: array
+          description: Multiple file references (GEDCOM 7.0 support)
+          items:
+            $ref: '#/components/schemas/MediaFile'
+        format:
+          type: string
+          description: Primary format/MIME type (FORM tag)
+          example: "image/jpeg"
+        translations:
+          type: array
+          description: Translated titles (GEDCOM 7.0 support)
+          items:
+            type: string
+
+    MediaFile:
+      type: object
+      description: A single file reference within a media object (GEDCOM 7.0 FILE structure)
+      properties:
+        path:
+          type: string
+          description: File path or URL
+        format:
+          type: string
+          description: MIME type (FORM tag)
+          example: "image/jpeg"
+        media_type:
+          type: string
+          description: Media type categorization (MEDI tag)
+          example: "PHOTO"
+        title:
+          type: string
+          description: Title for this specific file
+        translations:
+          type: array
+          description: Alternate versions (transcripts, thumbnails, different formats)
+          items:
+            $ref: '#/components/schemas/MediaTranslation'
+
+    MediaTranslation:
+      type: object
+      description: Alternate version of a file (GEDCOM 7.0 FILE-TRAN structure)
+      properties:
+        path:
+          type: string
+          description: File path or URL of the translation
+        format:
+          type: string
+          description: MIME type of the translation file
 
     MediaList:
       type: object
@@ -3975,3 +4627,460 @@ components:
         summary:
           type: string
           description: Human-readable relationship summary
+
+    # Note schemas
+    Note:
+      type: object
+      description: A shared GEDCOM NOTE record that can be referenced by multiple entities
+      required: [id, text, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+          description: Full note text (may contain embedded newlines from CONT/CONC lines)
+        gedcom_xref:
+          type: string
+          description: GEDCOM cross-reference ID (e.g., "@N1@") for round-trip support
+        version:
+          type: integer
+          format: int64
+          description: Optimistic locking version
+        updated_at:
+          type: string
+          format: date-time
+
+    NoteCreate:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          description: Note text content
+          minLength: 1
+        gedcom_xref:
+          type: string
+          description: Optional GEDCOM cross-reference ID for import
+
+    NoteUpdate:
+      type: object
+      required: [version]
+      properties:
+        text:
+          type: string
+          description: Updated note text
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking
+
+    NoteList:
+      type: object
+      required: [notes, total]
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Note'
+        total:
+          type: integer
+          description: Total number of notes
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Address schema for embedded addresses
+    Address:
+      type: object
+      description: Structured GEDCOM address (embedded in other entities)
+      properties:
+        line1:
+          type: string
+          description: First address line (ADR1)
+        line2:
+          type: string
+          description: Second address line (ADR2)
+        line3:
+          type: string
+          description: Third address line (ADR3)
+        city:
+          type: string
+          description: City (CITY)
+        state:
+          type: string
+          description: State/Province (STAE)
+        postal_code:
+          type: string
+          description: Postal/ZIP code (POST)
+        country:
+          type: string
+          description: Country (CTRY)
+        phone:
+          type: string
+          description: Phone number (PHON)
+        email:
+          type: string
+          description: Email address (EMAIL)
+        fax:
+          type: string
+          description: Fax number (FAX)
+        website:
+          type: string
+          description: Website URL (WWW)
+
+    # Submitter schemas
+    Submitter:
+      type: object
+      description: A GEDCOM SUBM (submitter) record tracking who created or submitted data
+      required: [id, name, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Submitter's name
+        address:
+          $ref: '#/components/schemas/Address'
+        phone:
+          type: array
+          items:
+            type: string
+          description: Phone numbers
+        email:
+          type: array
+          items:
+            type: string
+          description: Email addresses
+        language:
+          type: string
+          description: Preferred language
+        media_id:
+          type: string
+          format: uuid
+          description: ID of linked media (submitter photo)
+        gedcom_xref:
+          type: string
+          description: GEDCOM cross-reference ID for round-trip support
+        version:
+          type: integer
+          format: int64
+          description: Optimistic locking version
+        updated_at:
+          type: string
+          format: date-time
+
+    SubmitterCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Submitter's name
+          minLength: 1
+          maxLength: 200
+        address:
+          $ref: '#/components/schemas/Address'
+        phone:
+          type: array
+          items:
+            type: string
+          description: Phone numbers
+        email:
+          type: array
+          items:
+            type: string
+          description: Email addresses
+        language:
+          type: string
+          description: Preferred language
+        media_id:
+          type: string
+          format: uuid
+          description: ID of linked media (submitter photo)
+        gedcom_xref:
+          type: string
+          description: Optional GEDCOM cross-reference ID for import
+
+    SubmitterUpdate:
+      type: object
+      required: [version]
+      properties:
+        name:
+          type: string
+          description: Updated submitter name
+          minLength: 1
+          maxLength: 200
+        address:
+          $ref: '#/components/schemas/Address'
+        phone:
+          type: array
+          items:
+            type: string
+          description: Updated phone numbers
+        email:
+          type: array
+          items:
+            type: string
+          description: Updated email addresses
+        language:
+          type: string
+          description: Updated preferred language
+        media_id:
+          type: string
+          format: uuid
+          description: Updated media ID
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking
+
+    SubmitterList:
+      type: object
+      required: [submitters, total]
+      properties:
+        submitters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Submitter'
+        total:
+          type: integer
+          description: Total number of submitters
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Association schemas (GEDCOM ASSO records)
+    Association:
+      type: object
+      required: [id, person_id, associate_id, role, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        person_id:
+          type: string
+          format: uuid
+          description: The person who has the association
+        person_name:
+          type: string
+          description: Denormalized name of the person
+        associate_id:
+          type: string
+          format: uuid
+          description: The associated person
+        associate_name:
+          type: string
+          description: Denormalized name of the associate
+        role:
+          type: string
+          description: Role of the association (e.g., godparent, witness)
+        phrase:
+          type: string
+          description: Human-readable description (GEDCOM 7.0 PHRASE)
+        notes:
+          type: string
+          description: Inline note text
+        note_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: References to Note entities
+        gedcom_xref:
+          type: string
+          description: Original GEDCOM cross-reference ID
+        version:
+          type: integer
+          format: int64
+          description: Version for optimistic locking
+        updated_at:
+          type: string
+          format: date-time
+
+    AssociationCreate:
+      type: object
+      required: [person_id, associate_id, role]
+      properties:
+        person_id:
+          type: string
+          format: uuid
+          description: The person who has the association
+        associate_id:
+          type: string
+          format: uuid
+          description: The associated person
+        role:
+          type: string
+          description: Role of the association (e.g., godparent, witness)
+        phrase:
+          type: string
+          description: Human-readable description (GEDCOM 7.0 PHRASE)
+        notes:
+          type: string
+          description: Inline note text
+        note_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: References to Note entities
+
+    AssociationUpdate:
+      type: object
+      required: [version]
+      properties:
+        role:
+          type: string
+          description: Updated role
+        phrase:
+          type: string
+          description: Updated phrase
+        notes:
+          type: string
+          description: Updated notes
+        note_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Updated note references
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking
+
+    AssociationList:
+      type: object
+      required: [associations, total]
+      properties:
+        associations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Association'
+        total:
+          type: integer
+          description: Total number of associations
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # LDS Ordinance schemas
+    LDSOrdinanceType:
+      type: string
+      enum: [BAPL, CONL, ENDL, SLGC, SLGS]
+      description: |
+        LDS temple ordinance type:
+        - BAPL: Baptism (LDS)
+        - CONL: Confirmation (LDS)
+        - ENDL: Endowment
+        - SLGC: Sealing to Parents
+        - SLGS: Sealing to Spouse (family level)
+
+    LDSOrdinance:
+      type: object
+      required: [id, type, type_label, version, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/LDSOrdinanceType'
+        type_label:
+          type: string
+          description: Human-readable ordinance type label
+        person_id:
+          type: string
+          format: uuid
+          description: Person ID (for individual ordinances BAPL, CONL, ENDL, SLGC)
+        person_name:
+          type: string
+          description: Person's full name (denormalized for display)
+        family_id:
+          type: string
+          format: uuid
+          description: Family ID (for spouse sealing SLGS)
+        date:
+          $ref: '#/components/schemas/GenDate'
+        place:
+          type: string
+          description: Location where ordinance was performed
+        temple:
+          type: string
+          description: Temple code (GEDCOM TEMP tag)
+        status:
+          type: string
+          description: Status (COMPLETED, BIC, CHILD, EXCLUDED, etc.)
+        version:
+          type: integer
+          format: int64
+        updated_at:
+          type: string
+          format: date-time
+
+    LDSOrdinanceCreate:
+      type: object
+      required: [type]
+      properties:
+        type:
+          $ref: '#/components/schemas/LDSOrdinanceType'
+        person_id:
+          type: string
+          format: uuid
+          description: Required for individual ordinances (BAPL, CONL, ENDL, SLGC)
+        family_id:
+          type: string
+          format: uuid
+          description: Required for spouse sealing (SLGS)
+        date:
+          type: string
+          description: Date string in GEDCOM format
+        place:
+          type: string
+        temple:
+          type: string
+          description: Temple code
+        status:
+          type: string
+          description: Ordinance status
+
+    LDSOrdinanceUpdate:
+      type: object
+      required: [version]
+      properties:
+        date:
+          type: string
+          description: Updated date
+        place:
+          type: string
+          description: Updated place
+        temple:
+          type: string
+          description: Updated temple code
+        status:
+          type: string
+          description: Updated status
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking
+
+    LDSOrdinanceList:
+      type: object
+      required: [lds_ordinances, total]
+      properties:
+        lds_ordinances:
+          type: array
+          items:
+            $ref: '#/components/schemas/LDSOrdinance'
+        total:
+          type: integer
+          description: Total number of LDS ordinances
+        limit:
+          type: integer
+        offset:
+          type: integer

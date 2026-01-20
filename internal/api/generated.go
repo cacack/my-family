@@ -115,6 +115,15 @@ const (
 	GroupSheetPersonGenderUnknown GroupSheetPersonGender = "unknown"
 )
 
+// Defines values for LDSOrdinanceType.
+const (
+	BAPL LDSOrdinanceType = "BAPL"
+	CONL LDSOrdinanceType = "CONL"
+	ENDL LDSOrdinanceType = "ENDL"
+	SLGC LDSOrdinanceType = "SLGC"
+	SLGS LDSOrdinanceType = "SLGS"
+)
+
 // Defines values for MediaEntityType.
 const (
 	MediaEntityTypeFamily MediaEntityType = "family"
@@ -242,12 +251,43 @@ const (
 	Text GetAhnentafelParamsFormat = "text"
 )
 
+// Defines values for ListAssociationsParamsSort.
+const (
+	ListAssociationsParamsSortRole      ListAssociationsParamsSort = "role"
+	ListAssociationsParamsSortUpdatedAt ListAssociationsParamsSort = "updated_at"
+)
+
+// Defines values for ListAssociationsParamsOrder.
+const (
+	ListAssociationsParamsOrderAsc  ListAssociationsParamsOrder = "asc"
+	ListAssociationsParamsOrderDesc ListAssociationsParamsOrder = "desc"
+)
+
 // Defines values for ListHistoryParamsEntityType.
 const (
 	ListHistoryParamsEntityTypeCitation ListHistoryParamsEntityType = "citation"
 	ListHistoryParamsEntityTypeFamily   ListHistoryParamsEntityType = "family"
 	ListHistoryParamsEntityTypePerson   ListHistoryParamsEntityType = "person"
 	ListHistoryParamsEntityTypeSource   ListHistoryParamsEntityType = "source"
+)
+
+// Defines values for ListLDSOrdinancesParamsSort.
+const (
+	ListLDSOrdinancesParamsSortDate      ListLDSOrdinancesParamsSort = "date"
+	ListLDSOrdinancesParamsSortType      ListLDSOrdinancesParamsSort = "type"
+	ListLDSOrdinancesParamsSortUpdatedAt ListLDSOrdinancesParamsSort = "updated_at"
+)
+
+// Defines values for ListLDSOrdinancesParamsOrder.
+const (
+	ListLDSOrdinancesParamsOrderAsc  ListLDSOrdinancesParamsOrder = "asc"
+	ListLDSOrdinancesParamsOrderDesc ListLDSOrdinancesParamsOrder = "desc"
+)
+
+// Defines values for ListNotesParamsOrder.
+const (
+	ListNotesParamsOrderAsc  ListNotesParamsOrder = "asc"
+	ListNotesParamsOrderDesc ListNotesParamsOrder = "desc"
 )
 
 // Defines values for ListPersonsParamsSort.
@@ -303,6 +343,18 @@ const (
 	ListSourcesParamsOrderDesc ListSourcesParamsOrder = "desc"
 )
 
+// Defines values for ListSubmittersParamsSort.
+const (
+	Name      ListSubmittersParamsSort = "name"
+	UpdatedAt ListSubmittersParamsSort = "updated_at"
+)
+
+// Defines values for ListSubmittersParamsOrder.
+const (
+	ListSubmittersParamsOrderAsc  ListSubmittersParamsOrder = "asc"
+	ListSubmittersParamsOrderDesc ListSubmittersParamsOrder = "desc"
+)
+
 // AddChild defines model for AddChild.
 type AddChild struct {
 	PersonId         openapi_types.UUID        `json:"person_id"`
@@ -312,6 +364,42 @@ type AddChild struct {
 
 // AddChildRelationshipType defines model for AddChild.RelationshipType.
 type AddChildRelationshipType string
+
+// Address Structured GEDCOM address (embedded in other entities)
+type Address struct {
+	// City City (CITY)
+	City *string `json:"city,omitempty"`
+
+	// Country Country (CTRY)
+	Country *string `json:"country,omitempty"`
+
+	// Email Email address (EMAIL)
+	Email *string `json:"email,omitempty"`
+
+	// Fax Fax number (FAX)
+	Fax *string `json:"fax,omitempty"`
+
+	// Line1 First address line (ADR1)
+	Line1 *string `json:"line1,omitempty"`
+
+	// Line2 Second address line (ADR2)
+	Line2 *string `json:"line2,omitempty"`
+
+	// Line3 Third address line (ADR3)
+	Line3 *string `json:"line3,omitempty"`
+
+	// Phone Phone number (PHON)
+	Phone *string `json:"phone,omitempty"`
+
+	// PostalCode Postal/ZIP code (POST)
+	PostalCode *string `json:"postal_code,omitempty"`
+
+	// State State/Province (STAE)
+	State *string `json:"state,omitempty"`
+
+	// Website Website URL (WWW)
+	Website *string `json:"website,omitempty"`
+}
 
 // AhnentafelEntry A single entry in the Ahnentafel report
 type AhnentafelEntry struct {
@@ -372,6 +460,90 @@ type AhnentafelSubject struct {
 	GivenName string             `json:"given_name"`
 	Id        openapi_types.UUID `json:"id"`
 	Surname   string             `json:"surname"`
+}
+
+// Association defines model for Association.
+type Association struct {
+	// AssociateId The associated person
+	AssociateId openapi_types.UUID `json:"associate_id"`
+
+	// AssociateName Denormalized name of the associate
+	AssociateName *string `json:"associate_name,omitempty"`
+
+	// GedcomXref Original GEDCOM cross-reference ID
+	GedcomXref *string            `json:"gedcom_xref,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// NoteIds References to Note entities
+	NoteIds *[]openapi_types.UUID `json:"note_ids,omitempty"`
+
+	// Notes Inline note text
+	Notes *string `json:"notes,omitempty"`
+
+	// PersonId The person who has the association
+	PersonId openapi_types.UUID `json:"person_id"`
+
+	// PersonName Denormalized name of the person
+	PersonName *string `json:"person_name,omitempty"`
+
+	// Phrase Human-readable description (GEDCOM 7.0 PHRASE)
+	Phrase *string `json:"phrase,omitempty"`
+
+	// Role Role of the association (e.g., godparent, witness)
+	Role      string     `json:"role"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+
+	// Version Version for optimistic locking
+	Version int64 `json:"version"`
+}
+
+// AssociationCreate defines model for AssociationCreate.
+type AssociationCreate struct {
+	// AssociateId The associated person
+	AssociateId openapi_types.UUID `json:"associate_id"`
+
+	// NoteIds References to Note entities
+	NoteIds *[]openapi_types.UUID `json:"note_ids,omitempty"`
+
+	// Notes Inline note text
+	Notes *string `json:"notes,omitempty"`
+
+	// PersonId The person who has the association
+	PersonId openapi_types.UUID `json:"person_id"`
+
+	// Phrase Human-readable description (GEDCOM 7.0 PHRASE)
+	Phrase *string `json:"phrase,omitempty"`
+
+	// Role Role of the association (e.g., godparent, witness)
+	Role string `json:"role"`
+}
+
+// AssociationList defines model for AssociationList.
+type AssociationList struct {
+	Associations []Association `json:"associations"`
+	Limit        *int          `json:"limit,omitempty"`
+	Offset       *int          `json:"offset,omitempty"`
+
+	// Total Total number of associations
+	Total int `json:"total"`
+}
+
+// AssociationUpdate defines model for AssociationUpdate.
+type AssociationUpdate struct {
+	// NoteIds Updated note references
+	NoteIds *[]openapi_types.UUID `json:"note_ids,omitempty"`
+
+	// Notes Updated notes
+	Notes *string `json:"notes,omitempty"`
+
+	// Phrase Updated phrase
+	Phrase *string `json:"phrase,omitempty"`
+
+	// Role Updated role
+	Role *string `json:"role,omitempty"`
+
+	// Version Current version for optimistic locking
+	Version int64 `json:"version"`
 }
 
 // BatchDismissRequest Request to dismiss multiple duplicate pairs
@@ -659,6 +831,36 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+// ExportEstimate defines model for ExportEstimate.
+type ExportEstimate struct {
+	// CitationCount Estimated number of citations (embedded in facts)
+	CitationCount int `json:"citation_count"`
+
+	// EstimatedBytes Estimated file size in bytes
+	EstimatedBytes int64 `json:"estimated_bytes"`
+
+	// EventCount Estimated number of events
+	EventCount int `json:"event_count"`
+
+	// FamilyCount Number of family records
+	FamilyCount int `json:"family_count"`
+
+	// IsLargeExport True if export exceeds large threshold (>1000 records or >1MB)
+	IsLargeExport bool `json:"is_large_export"`
+
+	// NoteCount Number of note records
+	NoteCount int `json:"note_count"`
+
+	// PersonCount Number of person records
+	PersonCount int `json:"person_count"`
+
+	// SourceCount Number of source records
+	SourceCount int `json:"source_count"`
+
+	// TotalRecords Total number of top-level records
+	TotalRecords int `json:"total_records"`
+}
+
 // Family defines model for Family.
 type Family struct {
 	Id openapi_types.UUID `json:"id"`
@@ -905,6 +1107,107 @@ type ImportWarning struct {
 	Record *string `json:"record,omitempty"`
 }
 
+// LDSOrdinance defines model for LDSOrdinance.
+type LDSOrdinance struct {
+	// Date Genealogical date with flexible precision
+	Date *GenDate `json:"date,omitempty"`
+
+	// FamilyId Family ID (for spouse sealing SLGS)
+	FamilyId *openapi_types.UUID `json:"family_id,omitempty"`
+	Id       openapi_types.UUID  `json:"id"`
+
+	// PersonId Person ID (for individual ordinances BAPL, CONL, ENDL, SLGC)
+	PersonId *openapi_types.UUID `json:"person_id,omitempty"`
+
+	// PersonName Person's full name (denormalized for display)
+	PersonName *string `json:"person_name,omitempty"`
+
+	// Place Location where ordinance was performed
+	Place *string `json:"place,omitempty"`
+
+	// Status Status (COMPLETED, BIC, CHILD, EXCLUDED, etc.)
+	Status *string `json:"status,omitempty"`
+
+	// Temple Temple code (GEDCOM TEMP tag)
+	Temple *string `json:"temple,omitempty"`
+
+	// Type LDS temple ordinance type:
+	// - BAPL: Baptism (LDS)
+	// - CONL: Confirmation (LDS)
+	// - ENDL: Endowment
+	// - SLGC: Sealing to Parents
+	// - SLGS: Sealing to Spouse (family level)
+	Type LDSOrdinanceType `json:"type"`
+
+	// TypeLabel Human-readable ordinance type label
+	TypeLabel string    `json:"type_label"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+// LDSOrdinanceCreate defines model for LDSOrdinanceCreate.
+type LDSOrdinanceCreate struct {
+	// Date Date string in GEDCOM format
+	Date *string `json:"date,omitempty"`
+
+	// FamilyId Required for spouse sealing (SLGS)
+	FamilyId *openapi_types.UUID `json:"family_id,omitempty"`
+
+	// PersonId Required for individual ordinances (BAPL, CONL, ENDL, SLGC)
+	PersonId *openapi_types.UUID `json:"person_id,omitempty"`
+	Place    *string             `json:"place,omitempty"`
+
+	// Status Ordinance status
+	Status *string `json:"status,omitempty"`
+
+	// Temple Temple code
+	Temple *string `json:"temple,omitempty"`
+
+	// Type LDS temple ordinance type:
+	// - BAPL: Baptism (LDS)
+	// - CONL: Confirmation (LDS)
+	// - ENDL: Endowment
+	// - SLGC: Sealing to Parents
+	// - SLGS: Sealing to Spouse (family level)
+	Type LDSOrdinanceType `json:"type"`
+}
+
+// LDSOrdinanceList defines model for LDSOrdinanceList.
+type LDSOrdinanceList struct {
+	LdsOrdinances []LDSOrdinance `json:"lds_ordinances"`
+	Limit         *int           `json:"limit,omitempty"`
+	Offset        *int           `json:"offset,omitempty"`
+
+	// Total Total number of LDS ordinances
+	Total int `json:"total"`
+}
+
+// LDSOrdinanceType LDS temple ordinance type:
+// - BAPL: Baptism (LDS)
+// - CONL: Confirmation (LDS)
+// - ENDL: Endowment
+// - SLGC: Sealing to Parents
+// - SLGS: Sealing to Spouse (family level)
+type LDSOrdinanceType string
+
+// LDSOrdinanceUpdate defines model for LDSOrdinanceUpdate.
+type LDSOrdinanceUpdate struct {
+	// Date Updated date
+	Date *string `json:"date,omitempty"`
+
+	// Place Updated place
+	Place *string `json:"place,omitempty"`
+
+	// Status Updated status
+	Status *string `json:"status,omitempty"`
+
+	// Temple Updated temple code
+	Temple *string `json:"temple,omitempty"`
+
+	// Version Current version for optimistic locking
+	Version int64 `json:"version"`
+}
+
 // LetterCount defines model for LetterCount.
 type LetterCount struct {
 	// Count Number of surnames starting with this letter
@@ -929,14 +1232,23 @@ type Media struct {
 	FileSize int64  `json:"file_size"`
 	Filename string `json:"filename"`
 
+	// Files Multiple file references (GEDCOM 7.0 support)
+	Files *[]MediaFile `json:"files,omitempty"`
+
+	// Format Primary format/MIME type (FORM tag)
+	Format *string `json:"format,omitempty"`
+
 	// HasThumbnail Whether a thumbnail is available
 	HasThumbnail *bool              `json:"has_thumbnail,omitempty"`
 	Id           openapi_types.UUID `json:"id"`
 	MediaType    *MediaMediaType    `json:"media_type,omitempty"`
 	MimeType     string             `json:"mime_type"`
 	Title        string             `json:"title"`
-	UpdatedAt    *time.Time         `json:"updated_at,omitempty"`
-	Version      int64              `json:"version"`
+
+	// Translations Translated titles (GEDCOM 7.0 support)
+	Translations *[]string  `json:"translations,omitempty"`
+	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+	Version      int64      `json:"version"`
 }
 
 // MediaEntityType defines model for Media.EntityType.
@@ -945,12 +1257,39 @@ type MediaEntityType string
 // MediaMediaType defines model for Media.MediaType.
 type MediaMediaType string
 
+// MediaFile A single file reference within a media object (GEDCOM 7.0 FILE structure)
+type MediaFile struct {
+	// Format MIME type (FORM tag)
+	Format *string `json:"format,omitempty"`
+
+	// MediaType Media type categorization (MEDI tag)
+	MediaType *string `json:"media_type,omitempty"`
+
+	// Path File path or URL
+	Path *string `json:"path,omitempty"`
+
+	// Title Title for this specific file
+	Title *string `json:"title,omitempty"`
+
+	// Translations Alternate versions (transcripts, thumbnails, different formats)
+	Translations *[]MediaTranslation `json:"translations,omitempty"`
+}
+
 // MediaList defines model for MediaList.
 type MediaList struct {
 	Items []Media `json:"items"`
 
 	// Total Total number of media items
 	Total int `json:"total"`
+}
+
+// MediaTranslation Alternate version of a file (GEDCOM 7.0 FILE-TRAN structure)
+type MediaTranslation struct {
+	// Format MIME type of the translation file
+	Format *string `json:"format,omitempty"`
+
+	// Path File path or URL of the translation
+	Path *string `json:"path,omitempty"`
 }
 
 // MediaUpdate defines model for MediaUpdate.
@@ -1023,6 +1362,48 @@ type MergeSummary struct {
 
 	// NamesTransferred Number of alternate names added to survivor
 	NamesTransferred int `json:"names_transferred"`
+}
+
+// Note A shared GEDCOM NOTE record that can be referenced by multiple entities
+type Note struct {
+	// GedcomXref GEDCOM cross-reference ID (e.g., "@N1@") for round-trip support
+	GedcomXref *string            `json:"gedcom_xref,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Text Full note text (may contain embedded newlines from CONT/CONC lines)
+	Text      string     `json:"text"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+
+	// Version Optimistic locking version
+	Version int64 `json:"version"`
+}
+
+// NoteCreate defines model for NoteCreate.
+type NoteCreate struct {
+	// GedcomXref Optional GEDCOM cross-reference ID for import
+	GedcomXref *string `json:"gedcom_xref,omitempty"`
+
+	// Text Note text content
+	Text string `json:"text"`
+}
+
+// NoteList defines model for NoteList.
+type NoteList struct {
+	Limit  *int   `json:"limit,omitempty"`
+	Notes  []Note `json:"notes"`
+	Offset *int   `json:"offset,omitempty"`
+
+	// Total Total number of notes
+	Total int `json:"total"`
+}
+
+// NoteUpdate defines model for NoteUpdate.
+type NoteUpdate struct {
+	// Text Updated note text
+	Text *string `json:"text,omitempty"`
+
+	// Version Current version for optimistic locking
+	Version int64 `json:"version"`
 }
 
 // Pedigree defines model for Pedigree.
@@ -1627,6 +2008,93 @@ type Statistics struct {
 	TotalPersons int `json:"total_persons"`
 }
 
+// Submitter A GEDCOM SUBM (submitter) record tracking who created or submitted data
+type Submitter struct {
+	// Address Structured GEDCOM address (embedded in other entities)
+	Address *Address `json:"address,omitempty"`
+
+	// Email Email addresses
+	Email *[]string `json:"email,omitempty"`
+
+	// GedcomXref GEDCOM cross-reference ID for round-trip support
+	GedcomXref *string            `json:"gedcom_xref,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Language Preferred language
+	Language *string `json:"language,omitempty"`
+
+	// MediaId ID of linked media (submitter photo)
+	MediaId *openapi_types.UUID `json:"media_id,omitempty"`
+
+	// Name Submitter's name
+	Name string `json:"name"`
+
+	// Phone Phone numbers
+	Phone     *[]string  `json:"phone,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+
+	// Version Optimistic locking version
+	Version int64 `json:"version"`
+}
+
+// SubmitterCreate defines model for SubmitterCreate.
+type SubmitterCreate struct {
+	// Address Structured GEDCOM address (embedded in other entities)
+	Address *Address `json:"address,omitempty"`
+
+	// Email Email addresses
+	Email *[]string `json:"email,omitempty"`
+
+	// GedcomXref Optional GEDCOM cross-reference ID for import
+	GedcomXref *string `json:"gedcom_xref,omitempty"`
+
+	// Language Preferred language
+	Language *string `json:"language,omitempty"`
+
+	// MediaId ID of linked media (submitter photo)
+	MediaId *openapi_types.UUID `json:"media_id,omitempty"`
+
+	// Name Submitter's name
+	Name string `json:"name"`
+
+	// Phone Phone numbers
+	Phone *[]string `json:"phone,omitempty"`
+}
+
+// SubmitterList defines model for SubmitterList.
+type SubmitterList struct {
+	Limit      *int        `json:"limit,omitempty"`
+	Offset     *int        `json:"offset,omitempty"`
+	Submitters []Submitter `json:"submitters"`
+
+	// Total Total number of submitters
+	Total int `json:"total"`
+}
+
+// SubmitterUpdate defines model for SubmitterUpdate.
+type SubmitterUpdate struct {
+	// Address Structured GEDCOM address (embedded in other entities)
+	Address *Address `json:"address,omitempty"`
+
+	// Email Updated email addresses
+	Email *[]string `json:"email,omitempty"`
+
+	// Language Updated preferred language
+	Language *string `json:"language,omitempty"`
+
+	// MediaId Updated media ID
+	MediaId *openapi_types.UUID `json:"media_id,omitempty"`
+
+	// Name Updated submitter name
+	Name *string `json:"name,omitempty"`
+
+	// Phone Updated phone numbers
+	Phone *[]string `json:"phone,omitempty"`
+
+	// Version Current version for optimistic locking
+	Version int64 `json:"version"`
+}
+
 // SurnameCount defines model for SurnameCount.
 type SurnameCount struct {
 	Count   int    `json:"count"`
@@ -1687,11 +2155,20 @@ type ValidationIssuesResponse struct {
 	WarningCount int `json:"warning_count"`
 }
 
+// AssociationId defines model for associationId.
+type AssociationId = openapi_types.UUID
+
 // FamilyId defines model for familyId.
 type FamilyId = openapi_types.UUID
 
+// LdsOrdinanceId defines model for ldsOrdinanceId.
+type LdsOrdinanceId = openapi_types.UUID
+
 // LimitParam defines model for limitParam.
 type LimitParam = int
+
+// NoteId defines model for noteId.
+type NoteId = openapi_types.UUID
 
 // OffsetParam defines model for offsetParam.
 type OffsetParam = int
@@ -1701,6 +2178,9 @@ type PersonId = openapi_types.UUID
 
 // SnapshotId defines model for snapshotId.
 type SnapshotId = openapi_types.UUID
+
+// SubmitterId defines model for submitterId.
+type SubmitterId = openapi_types.UUID
 
 // VersionParam defines model for versionParam.
 type VersionParam = int64
@@ -1725,6 +2205,26 @@ type GetAhnentafelParams struct {
 
 // GetAhnentafelParamsFormat defines parameters for GetAhnentafel.
 type GetAhnentafelParamsFormat string
+
+// ListAssociationsParams defines parameters for ListAssociations.
+type ListAssociationsParams struct {
+	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam                 `form:"offset,omitempty" json:"offset,omitempty"`
+	Sort   *ListAssociationsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
+	Order  *ListAssociationsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListAssociationsParamsSort defines parameters for ListAssociations.
+type ListAssociationsParamsSort string
+
+// ListAssociationsParamsOrder defines parameters for ListAssociations.
+type ListAssociationsParamsOrder string
+
+// DeleteAssociationParams defines parameters for DeleteAssociation.
+type DeleteAssociationParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
 
 // BrowsePlacesParams defines parameters for BrowsePlaces.
 type BrowsePlacesParams struct {
@@ -1809,8 +2309,44 @@ type ListHistoryParams struct {
 // ListHistoryParamsEntityType defines parameters for ListHistory.
 type ListHistoryParamsEntityType string
 
+// ListLDSOrdinancesParams defines parameters for ListLDSOrdinances.
+type ListLDSOrdinancesParams struct {
+	Limit  *LimitParam                   `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam                  `form:"offset,omitempty" json:"offset,omitempty"`
+	Sort   *ListLDSOrdinancesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
+	Order  *ListLDSOrdinancesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListLDSOrdinancesParamsSort defines parameters for ListLDSOrdinances.
+type ListLDSOrdinancesParamsSort string
+
+// ListLDSOrdinancesParamsOrder defines parameters for ListLDSOrdinances.
+type ListLDSOrdinancesParamsOrder string
+
+// DeleteLDSOrdinanceParams defines parameters for DeleteLDSOrdinance.
+type DeleteLDSOrdinanceParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
+
 // DeleteMediaParams defines parameters for DeleteMedia.
 type DeleteMediaParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
+
+// ListNotesParams defines parameters for ListNotes.
+type ListNotesParams struct {
+	Limit  *LimitParam           `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam          `form:"offset,omitempty" json:"offset,omitempty"`
+	Order  *ListNotesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListNotesParamsOrder defines parameters for ListNotes.
+type ListNotesParamsOrder string
+
+// DeleteNoteParams defines parameters for DeleteNote.
+type DeleteNoteParams struct {
 	// Version Entity version for optimistic locking
 	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
 }
@@ -1947,6 +2483,32 @@ type GetSourceRestorePointsParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListSubmittersParams defines parameters for ListSubmitters.
+type ListSubmittersParams struct {
+	Limit  *LimitParam                `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam               `form:"offset,omitempty" json:"offset,omitempty"`
+	Sort   *ListSubmittersParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
+	Order  *ListSubmittersParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListSubmittersParamsSort defines parameters for ListSubmitters.
+type ListSubmittersParamsSort string
+
+// ListSubmittersParamsOrder defines parameters for ListSubmitters.
+type ListSubmittersParamsOrder string
+
+// DeleteSubmitterParams defines parameters for DeleteSubmitter.
+type DeleteSubmitterParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
+
+// CreateAssociationJSONRequestBody defines body for CreateAssociation for application/json ContentType.
+type CreateAssociationJSONRequestBody = AssociationCreate
+
+// UpdateAssociationJSONRequestBody defines body for UpdateAssociation for application/json ContentType.
+type UpdateAssociationJSONRequestBody = AssociationUpdate
+
 // CreateCitationJSONRequestBody defines body for CreateCitation for application/json ContentType.
 type CreateCitationJSONRequestBody = CitationCreate
 
@@ -1971,8 +2533,20 @@ type RollbackFamilyJSONRequestBody = RollbackRequest
 // ImportGedcomMultipartRequestBody defines body for ImportGedcom for multipart/form-data ContentType.
 type ImportGedcomMultipartRequestBody ImportGedcomMultipartBody
 
+// CreateLDSOrdinanceJSONRequestBody defines body for CreateLDSOrdinance for application/json ContentType.
+type CreateLDSOrdinanceJSONRequestBody = LDSOrdinanceCreate
+
+// UpdateLDSOrdinanceJSONRequestBody defines body for UpdateLDSOrdinance for application/json ContentType.
+type UpdateLDSOrdinanceJSONRequestBody = LDSOrdinanceUpdate
+
 // UpdateMediaJSONRequestBody defines body for UpdateMedia for application/json ContentType.
 type UpdateMediaJSONRequestBody = MediaUpdate
+
+// CreateNoteJSONRequestBody defines body for CreateNote for application/json ContentType.
+type CreateNoteJSONRequestBody = NoteCreate
+
+// UpdateNoteJSONRequestBody defines body for UpdateNote for application/json ContentType.
+type UpdateNoteJSONRequestBody = NoteUpdate
 
 // CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
 type CreatePersonJSONRequestBody = PersonCreate
@@ -2016,11 +2590,32 @@ type UpdateSourceJSONRequestBody = SourceUpdate
 // RollbackSourceJSONRequestBody defines body for RollbackSource for application/json ContentType.
 type RollbackSourceJSONRequestBody = RollbackRequest
 
+// CreateSubmitterJSONRequestBody defines body for CreateSubmitter for application/json ContentType.
+type CreateSubmitterJSONRequestBody = SubmitterCreate
+
+// UpdateSubmitterJSONRequestBody defines body for UpdateSubmitter for application/json ContentType.
+type UpdateSubmitterJSONRequestBody = SubmitterUpdate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Get Ahnentafel (ancestor table) report for a person
 	// (GET /ahnentafel/{id})
 	GetAhnentafel(ctx echo.Context, id PersonId, params GetAhnentafelParams) error
+	// List all associations
+	// (GET /associations)
+	ListAssociations(ctx echo.Context, params ListAssociationsParams) error
+	// Create a new association
+	// (POST /associations)
+	CreateAssociation(ctx echo.Context) error
+	// Delete an association
+	// (DELETE /associations/{id})
+	DeleteAssociation(ctx echo.Context, id AssociationId, params DeleteAssociationParams) error
+	// Get an association by ID
+	// (GET /associations/{id})
+	GetAssociation(ctx echo.Context, id AssociationId) error
+	// Update an association
+	// (PUT /associations/{id})
+	UpdateAssociation(ctx echo.Context, id AssociationId) error
 	// Get place hierarchy with counts
 	// (GET /browse/places)
 	BrowsePlaces(ctx echo.Context, params BrowsePlacesParams) error
@@ -2054,6 +2649,9 @@ type ServerInterface interface {
 	// Get descendancy tree for a person
 	// (GET /descendancy/{id})
 	GetDescendancy(ctx echo.Context, id PersonId, params GetDescendancyParams) error
+	// Get export size estimation
+	// (GET /export/estimate)
+	GetExportEstimate(ctx echo.Context) error
 	// Export families data
 	// (GET /export/families)
 	ExportFamilies(ctx echo.Context) error
@@ -2090,6 +2688,9 @@ type ServerInterface interface {
 	// Get change history for a family
 	// (GET /families/{id}/history)
 	GetFamilyHistory(ctx echo.Context, id FamilyId, params GetFamilyHistoryParams) error
+	// List LDS ordinances for a family
+	// (GET /families/{id}/lds-ordinances)
+	ListLDSOrdinancesForFamily(ctx echo.Context, id FamilyId) error
 	// Get restore points for a family
 	// (GET /families/{id}/restore-points)
 	GetFamilyRestorePoints(ctx echo.Context, id FamilyId, params GetFamilyRestorePointsParams) error
@@ -2105,6 +2706,21 @@ type ServerInterface interface {
 	// List global change history
 	// (GET /history)
 	ListHistory(ctx echo.Context, params ListHistoryParams) error
+	// List all LDS ordinances
+	// (GET /lds-ordinances)
+	ListLDSOrdinances(ctx echo.Context, params ListLDSOrdinancesParams) error
+	// Create a new LDS ordinance
+	// (POST /lds-ordinances)
+	CreateLDSOrdinance(ctx echo.Context) error
+	// Delete an LDS ordinance
+	// (DELETE /lds-ordinances/{id})
+	DeleteLDSOrdinance(ctx echo.Context, id LdsOrdinanceId, params DeleteLDSOrdinanceParams) error
+	// Get an LDS ordinance by ID
+	// (GET /lds-ordinances/{id})
+	GetLDSOrdinance(ctx echo.Context, id LdsOrdinanceId) error
+	// Update an LDS ordinance
+	// (PUT /lds-ordinances/{id})
+	UpdateLDSOrdinance(ctx echo.Context, id LdsOrdinanceId) error
 	// Delete media
 	// (DELETE /media/{id})
 	DeleteMedia(ctx echo.Context, id openapi_types.UUID, params DeleteMediaParams) error
@@ -2120,6 +2736,21 @@ type ServerInterface interface {
 	// Get media thumbnail
 	// (GET /media/{id}/thumbnail)
 	GetMediaThumbnail(ctx echo.Context, id openapi_types.UUID) error
+	// List all notes
+	// (GET /notes)
+	ListNotes(ctx echo.Context, params ListNotesParams) error
+	// Create a new note
+	// (POST /notes)
+	CreateNote(ctx echo.Context) error
+	// Delete a note
+	// (DELETE /notes/{id})
+	DeleteNote(ctx echo.Context, id NoteId, params DeleteNoteParams) error
+	// Get a note by ID
+	// (GET /notes/{id})
+	GetNote(ctx echo.Context, id NoteId) error
+	// Update a note
+	// (PUT /notes/{id})
+	UpdateNote(ctx echo.Context, id NoteId) error
 	// Get ancestor pedigree for a person
 	// (GET /pedigree/{id})
 	GetPedigree(ctx echo.Context, id PersonId, params GetPedigreeParams) error
@@ -2153,12 +2784,18 @@ type ServerInterface interface {
 	// Update a person
 	// (PUT /persons/{id})
 	UpdatePerson(ctx echo.Context, id PersonId) error
+	// List associations for a person
+	// (GET /persons/{id}/associations)
+	ListAssociationsForPerson(ctx echo.Context, id PersonId) error
 	// Get citations for a person
 	// (GET /persons/{id}/citations)
 	GetCitationsForPerson(ctx echo.Context, id PersonId) error
 	// Get change history for a person
 	// (GET /persons/{id}/history)
 	GetPersonHistory(ctx echo.Context, id PersonId, params GetPersonHistoryParams) error
+	// List LDS ordinances for a person
+	// (GET /persons/{id}/lds-ordinances)
+	ListLDSOrdinancesForPerson(ctx echo.Context, id PersonId) error
 	// List media attached to a person
 	// (GET /persons/{id}/media)
 	ListPersonMedia(ctx echo.Context, id PersonId, params ListPersonMediaParams) error
@@ -2249,6 +2886,21 @@ type ServerInterface interface {
 	// Get tree-wide statistics
 	// (GET /statistics)
 	GetStatistics(ctx echo.Context) error
+	// List all submitters
+	// (GET /submitters)
+	ListSubmitters(ctx echo.Context, params ListSubmittersParams) error
+	// Create a new submitter
+	// (POST /submitters)
+	CreateSubmitter(ctx echo.Context) error
+	// Delete a submitter
+	// (DELETE /submitters/{id})
+	DeleteSubmitter(ctx echo.Context, id SubmitterId, params DeleteSubmitterParams) error
+	// Get a submitter by ID
+	// (GET /submitters/{id})
+	GetSubmitter(ctx echo.Context, id SubmitterId) error
+	// Update a submitter
+	// (PUT /submitters/{id})
+	UpdateSubmitter(ctx echo.Context, id SubmitterId) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -2285,6 +2937,111 @@ func (w *ServerInterfaceWrapper) GetAhnentafel(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetAhnentafel(ctx, id, params)
+	return err
+}
+
+// ListAssociations converts echo context to params.
+func (w *ServerInterfaceWrapper) ListAssociations(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAssociationsParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", ctx.QueryParams(), &params.Offset)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", ctx.QueryParams(), &params.Sort)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "order", ctx.QueryParams(), &params.Order)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListAssociations(ctx, params)
+	return err
+}
+
+// CreateAssociation converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateAssociation(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateAssociation(ctx)
+	return err
+}
+
+// DeleteAssociation converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteAssociation(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id AssociationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteAssociationParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", ctx.QueryParams(), &params.Version)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteAssociation(ctx, id, params)
+	return err
+}
+
+// GetAssociation converts echo context to params.
+func (w *ServerInterfaceWrapper) GetAssociation(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id AssociationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetAssociation(ctx, id)
+	return err
+}
+
+// UpdateAssociation converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id AssociationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateAssociation(ctx, id)
 	return err
 }
 
@@ -2527,6 +3284,15 @@ func (w *ServerInterfaceWrapper) GetDescendancy(ctx echo.Context) error {
 	return err
 }
 
+// GetExportEstimate converts echo context to params.
+func (w *ServerInterfaceWrapper) GetExportEstimate(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetExportEstimate(ctx)
+	return err
+}
+
 // ExportFamilies converts echo context to params.
 func (w *ServerInterfaceWrapper) ExportFamilies(ctx echo.Context) error {
 	var err error
@@ -2724,6 +3490,22 @@ func (w *ServerInterfaceWrapper) GetFamilyHistory(ctx echo.Context) error {
 	return err
 }
 
+// ListLDSOrdinancesForFamily converts echo context to params.
+func (w *ServerInterfaceWrapper) ListLDSOrdinancesForFamily(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id FamilyId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListLDSOrdinancesForFamily(ctx, id)
+	return err
+}
+
 // GetFamilyRestorePoints converts echo context to params.
 func (w *ServerInterfaceWrapper) GetFamilyRestorePoints(ctx echo.Context) error {
 	var err error
@@ -2836,6 +3618,111 @@ func (w *ServerInterfaceWrapper) ListHistory(ctx echo.Context) error {
 	return err
 }
 
+// ListLDSOrdinances converts echo context to params.
+func (w *ServerInterfaceWrapper) ListLDSOrdinances(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLDSOrdinancesParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", ctx.QueryParams(), &params.Offset)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", ctx.QueryParams(), &params.Sort)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "order", ctx.QueryParams(), &params.Order)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListLDSOrdinances(ctx, params)
+	return err
+}
+
+// CreateLDSOrdinance converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateLDSOrdinance(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateLDSOrdinance(ctx)
+	return err
+}
+
+// DeleteLDSOrdinance converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteLDSOrdinance(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id LdsOrdinanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteLDSOrdinanceParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", ctx.QueryParams(), &params.Version)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteLDSOrdinance(ctx, id, params)
+	return err
+}
+
+// GetLDSOrdinance converts echo context to params.
+func (w *ServerInterfaceWrapper) GetLDSOrdinance(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id LdsOrdinanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetLDSOrdinance(ctx, id)
+	return err
+}
+
+// UpdateLDSOrdinance converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateLDSOrdinance(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id LdsOrdinanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateLDSOrdinance(ctx, id)
+	return err
+}
+
 // DeleteMedia converts echo context to params.
 func (w *ServerInterfaceWrapper) DeleteMedia(ctx echo.Context) error {
 	var err error
@@ -2922,6 +3809,104 @@ func (w *ServerInterfaceWrapper) GetMediaThumbnail(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetMediaThumbnail(ctx, id)
+	return err
+}
+
+// ListNotes converts echo context to params.
+func (w *ServerInterfaceWrapper) ListNotes(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListNotesParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", ctx.QueryParams(), &params.Offset)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "order", ctx.QueryParams(), &params.Order)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListNotes(ctx, params)
+	return err
+}
+
+// CreateNote converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateNote(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateNote(ctx)
+	return err
+}
+
+// DeleteNote converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteNote(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id NoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteNoteParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", ctx.QueryParams(), &params.Version)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteNote(ctx, id, params)
+	return err
+}
+
+// GetNote converts echo context to params.
+func (w *ServerInterfaceWrapper) GetNote(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id NoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetNote(ctx, id)
+	return err
+}
+
+// UpdateNote converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateNote(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id NoteId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateNote(ctx, id)
 	return err
 }
 
@@ -3129,6 +4114,22 @@ func (w *ServerInterfaceWrapper) UpdatePerson(ctx echo.Context) error {
 	return err
 }
 
+// ListAssociationsForPerson converts echo context to params.
+func (w *ServerInterfaceWrapper) ListAssociationsForPerson(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListAssociationsForPerson(ctx, id)
+	return err
+}
+
 // GetCitationsForPerson converts echo context to params.
 func (w *ServerInterfaceWrapper) GetCitationsForPerson(ctx echo.Context) error {
 	var err error
@@ -3174,6 +4175,22 @@ func (w *ServerInterfaceWrapper) GetPersonHistory(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetPersonHistory(ctx, id, params)
+	return err
+}
+
+// ListLDSOrdinancesForPerson converts echo context to params.
+func (w *ServerInterfaceWrapper) ListLDSOrdinancesForPerson(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListLDSOrdinancesForPerson(ctx, id)
 	return err
 }
 
@@ -3777,6 +4794,111 @@ func (w *ServerInterfaceWrapper) GetStatistics(ctx echo.Context) error {
 	return err
 }
 
+// ListSubmitters converts echo context to params.
+func (w *ServerInterfaceWrapper) ListSubmitters(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSubmittersParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", ctx.QueryParams(), &params.Offset)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", ctx.QueryParams(), &params.Sort)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "order", ctx.QueryParams(), &params.Order)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListSubmitters(ctx, params)
+	return err
+}
+
+// CreateSubmitter converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateSubmitter(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateSubmitter(ctx)
+	return err
+}
+
+// DeleteSubmitter converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteSubmitter(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id SubmitterId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteSubmitterParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", ctx.QueryParams(), &params.Version)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteSubmitter(ctx, id, params)
+	return err
+}
+
+// GetSubmitter converts echo context to params.
+func (w *ServerInterfaceWrapper) GetSubmitter(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id SubmitterId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetSubmitter(ctx, id)
+	return err
+}
+
+// UpdateSubmitter converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateSubmitter(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id SubmitterId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateSubmitter(ctx, id)
+	return err
+}
+
 // This is a simple interface which specifies echo.Route addition functions which
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
@@ -3806,6 +4928,11 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	}
 
 	router.GET(baseURL+"/ahnentafel/:id", wrapper.GetAhnentafel)
+	router.GET(baseURL+"/associations", wrapper.ListAssociations)
+	router.POST(baseURL+"/associations", wrapper.CreateAssociation)
+	router.DELETE(baseURL+"/associations/:id", wrapper.DeleteAssociation)
+	router.GET(baseURL+"/associations/:id", wrapper.GetAssociation)
+	router.PUT(baseURL+"/associations/:id", wrapper.UpdateAssociation)
 	router.GET(baseURL+"/browse/places", wrapper.BrowsePlaces)
 	router.GET(baseURL+"/browse/places/:place/persons", wrapper.GetPersonsByPlace)
 	router.GET(baseURL+"/browse/surnames", wrapper.BrowseSurnames)
@@ -3817,6 +4944,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/citations/:id/restore-points", wrapper.GetCitationRestorePoints)
 	router.POST(baseURL+"/citations/:id/rollback", wrapper.RollbackCitation)
 	router.GET(baseURL+"/descendancy/:id", wrapper.GetDescendancy)
+	router.GET(baseURL+"/export/estimate", wrapper.GetExportEstimate)
 	router.GET(baseURL+"/export/families", wrapper.ExportFamilies)
 	router.GET(baseURL+"/export/persons", wrapper.ExportPersons)
 	router.GET(baseURL+"/export/tree", wrapper.ExportTree)
@@ -3829,16 +4957,27 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.DELETE(baseURL+"/families/:id/children/:personId", wrapper.RemoveChildFromFamily)
 	router.GET(baseURL+"/families/:id/group-sheet", wrapper.GetFamilyGroupSheet)
 	router.GET(baseURL+"/families/:id/history", wrapper.GetFamilyHistory)
+	router.GET(baseURL+"/families/:id/lds-ordinances", wrapper.ListLDSOrdinancesForFamily)
 	router.GET(baseURL+"/families/:id/restore-points", wrapper.GetFamilyRestorePoints)
 	router.POST(baseURL+"/families/:id/rollback", wrapper.RollbackFamily)
 	router.GET(baseURL+"/gedcom/export", wrapper.ExportGedcom)
 	router.POST(baseURL+"/gedcom/import", wrapper.ImportGedcom)
 	router.GET(baseURL+"/history", wrapper.ListHistory)
+	router.GET(baseURL+"/lds-ordinances", wrapper.ListLDSOrdinances)
+	router.POST(baseURL+"/lds-ordinances", wrapper.CreateLDSOrdinance)
+	router.DELETE(baseURL+"/lds-ordinances/:id", wrapper.DeleteLDSOrdinance)
+	router.GET(baseURL+"/lds-ordinances/:id", wrapper.GetLDSOrdinance)
+	router.PUT(baseURL+"/lds-ordinances/:id", wrapper.UpdateLDSOrdinance)
 	router.DELETE(baseURL+"/media/:id", wrapper.DeleteMedia)
 	router.GET(baseURL+"/media/:id", wrapper.GetMedia)
 	router.PUT(baseURL+"/media/:id", wrapper.UpdateMedia)
 	router.GET(baseURL+"/media/:id/content", wrapper.DownloadMedia)
 	router.GET(baseURL+"/media/:id/thumbnail", wrapper.GetMediaThumbnail)
+	router.GET(baseURL+"/notes", wrapper.ListNotes)
+	router.POST(baseURL+"/notes", wrapper.CreateNote)
+	router.DELETE(baseURL+"/notes/:id", wrapper.DeleteNote)
+	router.GET(baseURL+"/notes/:id", wrapper.GetNote)
+	router.PUT(baseURL+"/notes/:id", wrapper.UpdateNote)
 	router.GET(baseURL+"/pedigree/:id", wrapper.GetPedigree)
 	router.GET(baseURL+"/persons", wrapper.ListPersons)
 	router.POST(baseURL+"/persons", wrapper.CreatePerson)
@@ -3850,8 +4989,10 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.DELETE(baseURL+"/persons/:id", wrapper.DeletePerson)
 	router.GET(baseURL+"/persons/:id", wrapper.GetPerson)
 	router.PUT(baseURL+"/persons/:id", wrapper.UpdatePerson)
+	router.GET(baseURL+"/persons/:id/associations", wrapper.ListAssociationsForPerson)
 	router.GET(baseURL+"/persons/:id/citations", wrapper.GetCitationsForPerson)
 	router.GET(baseURL+"/persons/:id/history", wrapper.GetPersonHistory)
+	router.GET(baseURL+"/persons/:id/lds-ordinances", wrapper.ListLDSOrdinancesForPerson)
 	router.GET(baseURL+"/persons/:id/media", wrapper.ListPersonMedia)
 	router.POST(baseURL+"/persons/:id/media", wrapper.UploadPersonMedia)
 	router.GET(baseURL+"/persons/:id/names", wrapper.GetPersonNames)
@@ -3882,6 +5023,11 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/sources/:id/restore-points", wrapper.GetSourceRestorePoints)
 	router.POST(baseURL+"/sources/:id/rollback", wrapper.RollbackSource)
 	router.GET(baseURL+"/statistics", wrapper.GetStatistics)
+	router.GET(baseURL+"/submitters", wrapper.ListSubmitters)
+	router.POST(baseURL+"/submitters", wrapper.CreateSubmitter)
+	router.DELETE(baseURL+"/submitters/:id", wrapper.DeleteSubmitter)
+	router.GET(baseURL+"/submitters/:id", wrapper.GetSubmitter)
+	router.PUT(baseURL+"/submitters/:id", wrapper.UpdateSubmitter)
 
 }
 
@@ -3933,6 +5079,164 @@ type GetAhnentafel404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetAhnentafel404JSONResponse) VisitGetAhnentafelResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAssociationsRequestObject struct {
+	Params ListAssociationsParams
+}
+
+type ListAssociationsResponseObject interface {
+	VisitListAssociationsResponse(w http.ResponseWriter) error
+}
+
+type ListAssociations200JSONResponse AssociationList
+
+func (response ListAssociations200JSONResponse) VisitListAssociationsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAssociations400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListAssociations400JSONResponse) VisitListAssociationsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAssociationRequestObject struct {
+	Body *CreateAssociationJSONRequestBody
+}
+
+type CreateAssociationResponseObject interface {
+	VisitCreateAssociationResponse(w http.ResponseWriter) error
+}
+
+type CreateAssociation201JSONResponse Association
+
+func (response CreateAssociation201JSONResponse) VisitCreateAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAssociation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAssociation400JSONResponse) VisitCreateAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAssociationRequestObject struct {
+	Id     AssociationId `json:"id"`
+	Params DeleteAssociationParams
+}
+
+type DeleteAssociationResponseObject interface {
+	VisitDeleteAssociationResponse(w http.ResponseWriter) error
+}
+
+type DeleteAssociation204Response struct {
+}
+
+func (response DeleteAssociation204Response) VisitDeleteAssociationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAssociation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteAssociation404JSONResponse) VisitDeleteAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAssociation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteAssociation409JSONResponse) VisitDeleteAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAssociationRequestObject struct {
+	Id AssociationId `json:"id"`
+}
+
+type GetAssociationResponseObject interface {
+	VisitGetAssociationResponse(w http.ResponseWriter) error
+}
+
+type GetAssociation200JSONResponse Association
+
+func (response GetAssociation200JSONResponse) VisitGetAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAssociation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAssociation404JSONResponse) VisitGetAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAssociationRequestObject struct {
+	Id   AssociationId `json:"id"`
+	Body *UpdateAssociationJSONRequestBody
+}
+
+type UpdateAssociationResponseObject interface {
+	VisitUpdateAssociationResponse(w http.ResponseWriter) error
+}
+
+type UpdateAssociation200JSONResponse Association
+
+func (response UpdateAssociation200JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAssociation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAssociation400JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAssociation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAssociation404JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAssociation409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -4243,6 +5547,22 @@ type GetDescendancy404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetDescendancy404JSONResponse) VisitGetDescendancyResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetExportEstimateRequestObject struct {
+}
+
+type GetExportEstimateResponseObject interface {
+	VisitGetExportEstimateResponse(w http.ResponseWriter) error
+}
+
+type GetExportEstimate200JSONResponse ExportEstimate
+
+func (response GetExportEstimate200JSONResponse) VisitGetExportEstimateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -4558,6 +5878,32 @@ func (response GetFamilyHistory404JSONResponse) VisitGetFamilyHistoryResponse(w 
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListLDSOrdinancesForFamilyRequestObject struct {
+	Id FamilyId `json:"id"`
+}
+
+type ListLDSOrdinancesForFamilyResponseObject interface {
+	VisitListLDSOrdinancesForFamilyResponse(w http.ResponseWriter) error
+}
+
+type ListLDSOrdinancesForFamily200JSONResponse []LDSOrdinance
+
+func (response ListLDSOrdinancesForFamily200JSONResponse) VisitListLDSOrdinancesForFamilyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListLDSOrdinancesForFamily404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListLDSOrdinancesForFamily404JSONResponse) VisitListLDSOrdinancesForFamilyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetFamilyRestorePointsRequestObject struct {
 	Id     FamilyId `json:"id"`
 	Params GetFamilyRestorePointsParams
@@ -4710,6 +6056,164 @@ type ListHistory400JSONResponse struct{ BadRequestJSONResponse }
 func (response ListHistory400JSONResponse) VisitListHistoryResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListLDSOrdinancesRequestObject struct {
+	Params ListLDSOrdinancesParams
+}
+
+type ListLDSOrdinancesResponseObject interface {
+	VisitListLDSOrdinancesResponse(w http.ResponseWriter) error
+}
+
+type ListLDSOrdinances200JSONResponse LDSOrdinanceList
+
+func (response ListLDSOrdinances200JSONResponse) VisitListLDSOrdinancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListLDSOrdinances400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListLDSOrdinances400JSONResponse) VisitListLDSOrdinancesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateLDSOrdinanceRequestObject struct {
+	Body *CreateLDSOrdinanceJSONRequestBody
+}
+
+type CreateLDSOrdinanceResponseObject interface {
+	VisitCreateLDSOrdinanceResponse(w http.ResponseWriter) error
+}
+
+type CreateLDSOrdinance201JSONResponse LDSOrdinance
+
+func (response CreateLDSOrdinance201JSONResponse) VisitCreateLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateLDSOrdinance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateLDSOrdinance400JSONResponse) VisitCreateLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteLDSOrdinanceRequestObject struct {
+	Id     LdsOrdinanceId `json:"id"`
+	Params DeleteLDSOrdinanceParams
+}
+
+type DeleteLDSOrdinanceResponseObject interface {
+	VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error
+}
+
+type DeleteLDSOrdinance204Response struct {
+}
+
+func (response DeleteLDSOrdinance204Response) VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteLDSOrdinance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteLDSOrdinance404JSONResponse) VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteLDSOrdinance409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteLDSOrdinance409JSONResponse) VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetLDSOrdinanceRequestObject struct {
+	Id LdsOrdinanceId `json:"id"`
+}
+
+type GetLDSOrdinanceResponseObject interface {
+	VisitGetLDSOrdinanceResponse(w http.ResponseWriter) error
+}
+
+type GetLDSOrdinance200JSONResponse LDSOrdinance
+
+func (response GetLDSOrdinance200JSONResponse) VisitGetLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetLDSOrdinance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetLDSOrdinance404JSONResponse) VisitGetLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLDSOrdinanceRequestObject struct {
+	Id   LdsOrdinanceId `json:"id"`
+	Body *UpdateLDSOrdinanceJSONRequestBody
+}
+
+type UpdateLDSOrdinanceResponseObject interface {
+	VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error
+}
+
+type UpdateLDSOrdinance200JSONResponse LDSOrdinance
+
+func (response UpdateLDSOrdinance200JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLDSOrdinance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateLDSOrdinance400JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLDSOrdinance404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateLDSOrdinance404JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateLDSOrdinance409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateLDSOrdinance409JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -4964,6 +6468,164 @@ type GetMediaThumbnail404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetMediaThumbnail404JSONResponse) VisitGetMediaThumbnailResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListNotesRequestObject struct {
+	Params ListNotesParams
+}
+
+type ListNotesResponseObject interface {
+	VisitListNotesResponse(w http.ResponseWriter) error
+}
+
+type ListNotes200JSONResponse NoteList
+
+func (response ListNotes200JSONResponse) VisitListNotesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListNotes400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListNotes400JSONResponse) VisitListNotesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateNoteRequestObject struct {
+	Body *CreateNoteJSONRequestBody
+}
+
+type CreateNoteResponseObject interface {
+	VisitCreateNoteResponse(w http.ResponseWriter) error
+}
+
+type CreateNote201JSONResponse Note
+
+func (response CreateNote201JSONResponse) VisitCreateNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateNote400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateNote400JSONResponse) VisitCreateNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteNoteRequestObject struct {
+	Id     NoteId `json:"id"`
+	Params DeleteNoteParams
+}
+
+type DeleteNoteResponseObject interface {
+	VisitDeleteNoteResponse(w http.ResponseWriter) error
+}
+
+type DeleteNote204Response struct {
+}
+
+func (response DeleteNote204Response) VisitDeleteNoteResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteNote404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteNote404JSONResponse) VisitDeleteNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteNote409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteNote409JSONResponse) VisitDeleteNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetNoteRequestObject struct {
+	Id NoteId `json:"id"`
+}
+
+type GetNoteResponseObject interface {
+	VisitGetNoteResponse(w http.ResponseWriter) error
+}
+
+type GetNote200JSONResponse Note
+
+func (response GetNote200JSONResponse) VisitGetNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetNote404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetNote404JSONResponse) VisitGetNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateNoteRequestObject struct {
+	Id   NoteId `json:"id"`
+	Body *UpdateNoteJSONRequestBody
+}
+
+type UpdateNoteResponseObject interface {
+	VisitUpdateNoteResponse(w http.ResponseWriter) error
+}
+
+type UpdateNote200JSONResponse Note
+
+func (response UpdateNote200JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateNote400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateNote400JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateNote404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateNote404JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateNote409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateNote409JSONResponse) VisitUpdateNoteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -5301,6 +6963,32 @@ func (response UpdatePerson409JSONResponse) VisitUpdatePersonResponse(w http.Res
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListAssociationsForPersonRequestObject struct {
+	Id PersonId `json:"id"`
+}
+
+type ListAssociationsForPersonResponseObject interface {
+	VisitListAssociationsForPersonResponse(w http.ResponseWriter) error
+}
+
+type ListAssociationsForPerson200JSONResponse []Association
+
+func (response ListAssociationsForPerson200JSONResponse) VisitListAssociationsForPersonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListAssociationsForPerson404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAssociationsForPerson404JSONResponse) VisitListAssociationsForPersonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetCitationsForPersonRequestObject struct {
 	Id PersonId `json:"id"`
 }
@@ -5348,6 +7036,32 @@ func (response GetPersonHistory200JSONResponse) VisitGetPersonHistoryResponse(w 
 type GetPersonHistory404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetPersonHistory404JSONResponse) VisitGetPersonHistoryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListLDSOrdinancesForPersonRequestObject struct {
+	Id PersonId `json:"id"`
+}
+
+type ListLDSOrdinancesForPersonResponseObject interface {
+	VisitListLDSOrdinancesForPersonResponse(w http.ResponseWriter) error
+}
+
+type ListLDSOrdinancesForPerson200JSONResponse []LDSOrdinance
+
+func (response ListLDSOrdinancesForPerson200JSONResponse) VisitListLDSOrdinancesForPersonResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListLDSOrdinancesForPerson404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListLDSOrdinancesForPerson404JSONResponse) VisitListLDSOrdinancesForPersonResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -6205,11 +7919,184 @@ func (response GetStatistics200JSONResponse) VisitGetStatisticsResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListSubmittersRequestObject struct {
+	Params ListSubmittersParams
+}
+
+type ListSubmittersResponseObject interface {
+	VisitListSubmittersResponse(w http.ResponseWriter) error
+}
+
+type ListSubmitters200JSONResponse SubmitterList
+
+func (response ListSubmitters200JSONResponse) VisitListSubmittersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListSubmitters400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListSubmitters400JSONResponse) VisitListSubmittersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateSubmitterRequestObject struct {
+	Body *CreateSubmitterJSONRequestBody
+}
+
+type CreateSubmitterResponseObject interface {
+	VisitCreateSubmitterResponse(w http.ResponseWriter) error
+}
+
+type CreateSubmitter201JSONResponse Submitter
+
+func (response CreateSubmitter201JSONResponse) VisitCreateSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateSubmitter400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateSubmitter400JSONResponse) VisitCreateSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteSubmitterRequestObject struct {
+	Id     SubmitterId `json:"id"`
+	Params DeleteSubmitterParams
+}
+
+type DeleteSubmitterResponseObject interface {
+	VisitDeleteSubmitterResponse(w http.ResponseWriter) error
+}
+
+type DeleteSubmitter204Response struct {
+}
+
+func (response DeleteSubmitter204Response) VisitDeleteSubmitterResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSubmitter404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteSubmitter404JSONResponse) VisitDeleteSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteSubmitter409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteSubmitter409JSONResponse) VisitDeleteSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetSubmitterRequestObject struct {
+	Id SubmitterId `json:"id"`
+}
+
+type GetSubmitterResponseObject interface {
+	VisitGetSubmitterResponse(w http.ResponseWriter) error
+}
+
+type GetSubmitter200JSONResponse Submitter
+
+func (response GetSubmitter200JSONResponse) VisitGetSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetSubmitter404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSubmitter404JSONResponse) VisitGetSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSubmitterRequestObject struct {
+	Id   SubmitterId `json:"id"`
+	Body *UpdateSubmitterJSONRequestBody
+}
+
+type UpdateSubmitterResponseObject interface {
+	VisitUpdateSubmitterResponse(w http.ResponseWriter) error
+}
+
+type UpdateSubmitter200JSONResponse Submitter
+
+func (response UpdateSubmitter200JSONResponse) VisitUpdateSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSubmitter400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateSubmitter400JSONResponse) VisitUpdateSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSubmitter404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateSubmitter404JSONResponse) VisitUpdateSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateSubmitter409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateSubmitter409JSONResponse) VisitUpdateSubmitterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Get Ahnentafel (ancestor table) report for a person
 	// (GET /ahnentafel/{id})
 	GetAhnentafel(ctx context.Context, request GetAhnentafelRequestObject) (GetAhnentafelResponseObject, error)
+	// List all associations
+	// (GET /associations)
+	ListAssociations(ctx context.Context, request ListAssociationsRequestObject) (ListAssociationsResponseObject, error)
+	// Create a new association
+	// (POST /associations)
+	CreateAssociation(ctx context.Context, request CreateAssociationRequestObject) (CreateAssociationResponseObject, error)
+	// Delete an association
+	// (DELETE /associations/{id})
+	DeleteAssociation(ctx context.Context, request DeleteAssociationRequestObject) (DeleteAssociationResponseObject, error)
+	// Get an association by ID
+	// (GET /associations/{id})
+	GetAssociation(ctx context.Context, request GetAssociationRequestObject) (GetAssociationResponseObject, error)
+	// Update an association
+	// (PUT /associations/{id})
+	UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error)
 	// Get place hierarchy with counts
 	// (GET /browse/places)
 	BrowsePlaces(ctx context.Context, request BrowsePlacesRequestObject) (BrowsePlacesResponseObject, error)
@@ -6243,6 +8130,9 @@ type StrictServerInterface interface {
 	// Get descendancy tree for a person
 	// (GET /descendancy/{id})
 	GetDescendancy(ctx context.Context, request GetDescendancyRequestObject) (GetDescendancyResponseObject, error)
+	// Get export size estimation
+	// (GET /export/estimate)
+	GetExportEstimate(ctx context.Context, request GetExportEstimateRequestObject) (GetExportEstimateResponseObject, error)
 	// Export families data
 	// (GET /export/families)
 	ExportFamilies(ctx context.Context, request ExportFamiliesRequestObject) (ExportFamiliesResponseObject, error)
@@ -6279,6 +8169,9 @@ type StrictServerInterface interface {
 	// Get change history for a family
 	// (GET /families/{id}/history)
 	GetFamilyHistory(ctx context.Context, request GetFamilyHistoryRequestObject) (GetFamilyHistoryResponseObject, error)
+	// List LDS ordinances for a family
+	// (GET /families/{id}/lds-ordinances)
+	ListLDSOrdinancesForFamily(ctx context.Context, request ListLDSOrdinancesForFamilyRequestObject) (ListLDSOrdinancesForFamilyResponseObject, error)
 	// Get restore points for a family
 	// (GET /families/{id}/restore-points)
 	GetFamilyRestorePoints(ctx context.Context, request GetFamilyRestorePointsRequestObject) (GetFamilyRestorePointsResponseObject, error)
@@ -6294,6 +8187,21 @@ type StrictServerInterface interface {
 	// List global change history
 	// (GET /history)
 	ListHistory(ctx context.Context, request ListHistoryRequestObject) (ListHistoryResponseObject, error)
+	// List all LDS ordinances
+	// (GET /lds-ordinances)
+	ListLDSOrdinances(ctx context.Context, request ListLDSOrdinancesRequestObject) (ListLDSOrdinancesResponseObject, error)
+	// Create a new LDS ordinance
+	// (POST /lds-ordinances)
+	CreateLDSOrdinance(ctx context.Context, request CreateLDSOrdinanceRequestObject) (CreateLDSOrdinanceResponseObject, error)
+	// Delete an LDS ordinance
+	// (DELETE /lds-ordinances/{id})
+	DeleteLDSOrdinance(ctx context.Context, request DeleteLDSOrdinanceRequestObject) (DeleteLDSOrdinanceResponseObject, error)
+	// Get an LDS ordinance by ID
+	// (GET /lds-ordinances/{id})
+	GetLDSOrdinance(ctx context.Context, request GetLDSOrdinanceRequestObject) (GetLDSOrdinanceResponseObject, error)
+	// Update an LDS ordinance
+	// (PUT /lds-ordinances/{id})
+	UpdateLDSOrdinance(ctx context.Context, request UpdateLDSOrdinanceRequestObject) (UpdateLDSOrdinanceResponseObject, error)
 	// Delete media
 	// (DELETE /media/{id})
 	DeleteMedia(ctx context.Context, request DeleteMediaRequestObject) (DeleteMediaResponseObject, error)
@@ -6309,6 +8217,21 @@ type StrictServerInterface interface {
 	// Get media thumbnail
 	// (GET /media/{id}/thumbnail)
 	GetMediaThumbnail(ctx context.Context, request GetMediaThumbnailRequestObject) (GetMediaThumbnailResponseObject, error)
+	// List all notes
+	// (GET /notes)
+	ListNotes(ctx context.Context, request ListNotesRequestObject) (ListNotesResponseObject, error)
+	// Create a new note
+	// (POST /notes)
+	CreateNote(ctx context.Context, request CreateNoteRequestObject) (CreateNoteResponseObject, error)
+	// Delete a note
+	// (DELETE /notes/{id})
+	DeleteNote(ctx context.Context, request DeleteNoteRequestObject) (DeleteNoteResponseObject, error)
+	// Get a note by ID
+	// (GET /notes/{id})
+	GetNote(ctx context.Context, request GetNoteRequestObject) (GetNoteResponseObject, error)
+	// Update a note
+	// (PUT /notes/{id})
+	UpdateNote(ctx context.Context, request UpdateNoteRequestObject) (UpdateNoteResponseObject, error)
 	// Get ancestor pedigree for a person
 	// (GET /pedigree/{id})
 	GetPedigree(ctx context.Context, request GetPedigreeRequestObject) (GetPedigreeResponseObject, error)
@@ -6342,12 +8265,18 @@ type StrictServerInterface interface {
 	// Update a person
 	// (PUT /persons/{id})
 	UpdatePerson(ctx context.Context, request UpdatePersonRequestObject) (UpdatePersonResponseObject, error)
+	// List associations for a person
+	// (GET /persons/{id}/associations)
+	ListAssociationsForPerson(ctx context.Context, request ListAssociationsForPersonRequestObject) (ListAssociationsForPersonResponseObject, error)
 	// Get citations for a person
 	// (GET /persons/{id}/citations)
 	GetCitationsForPerson(ctx context.Context, request GetCitationsForPersonRequestObject) (GetCitationsForPersonResponseObject, error)
 	// Get change history for a person
 	// (GET /persons/{id}/history)
 	GetPersonHistory(ctx context.Context, request GetPersonHistoryRequestObject) (GetPersonHistoryResponseObject, error)
+	// List LDS ordinances for a person
+	// (GET /persons/{id}/lds-ordinances)
+	ListLDSOrdinancesForPerson(ctx context.Context, request ListLDSOrdinancesForPersonRequestObject) (ListLDSOrdinancesForPersonResponseObject, error)
 	// List media attached to a person
 	// (GET /persons/{id}/media)
 	ListPersonMedia(ctx context.Context, request ListPersonMediaRequestObject) (ListPersonMediaResponseObject, error)
@@ -6438,6 +8367,21 @@ type StrictServerInterface interface {
 	// Get tree-wide statistics
 	// (GET /statistics)
 	GetStatistics(ctx context.Context, request GetStatisticsRequestObject) (GetStatisticsResponseObject, error)
+	// List all submitters
+	// (GET /submitters)
+	ListSubmitters(ctx context.Context, request ListSubmittersRequestObject) (ListSubmittersResponseObject, error)
+	// Create a new submitter
+	// (POST /submitters)
+	CreateSubmitter(ctx context.Context, request CreateSubmitterRequestObject) (CreateSubmitterResponseObject, error)
+	// Delete a submitter
+	// (DELETE /submitters/{id})
+	DeleteSubmitter(ctx context.Context, request DeleteSubmitterRequestObject) (DeleteSubmitterResponseObject, error)
+	// Get a submitter by ID
+	// (GET /submitters/{id})
+	GetSubmitter(ctx context.Context, request GetSubmitterRequestObject) (GetSubmitterResponseObject, error)
+	// Update a submitter
+	// (PUT /submitters/{id})
+	UpdateSubmitter(ctx context.Context, request UpdateSubmitterRequestObject) (UpdateSubmitterResponseObject, error)
 }
 
 type StrictHandlerFunc = strictecho.StrictEchoHandlerFunc
@@ -6472,6 +8416,142 @@ func (sh *strictHandler) GetAhnentafel(ctx echo.Context, id PersonId, params Get
 		return err
 	} else if validResponse, ok := response.(GetAhnentafelResponseObject); ok {
 		return validResponse.VisitGetAhnentafelResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListAssociations operation middleware
+func (sh *strictHandler) ListAssociations(ctx echo.Context, params ListAssociationsParams) error {
+	var request ListAssociationsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAssociations(ctx.Request().Context(), request.(ListAssociationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAssociations")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListAssociationsResponseObject); ok {
+		return validResponse.VisitListAssociationsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateAssociation operation middleware
+func (sh *strictHandler) CreateAssociation(ctx echo.Context) error {
+	var request CreateAssociationRequestObject
+
+	var body CreateAssociationJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAssociation(ctx.Request().Context(), request.(CreateAssociationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAssociation")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateAssociationResponseObject); ok {
+		return validResponse.VisitCreateAssociationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteAssociation operation middleware
+func (sh *strictHandler) DeleteAssociation(ctx echo.Context, id AssociationId, params DeleteAssociationParams) error {
+	var request DeleteAssociationRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAssociation(ctx.Request().Context(), request.(DeleteAssociationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAssociation")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteAssociationResponseObject); ok {
+		return validResponse.VisitDeleteAssociationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetAssociation operation middleware
+func (sh *strictHandler) GetAssociation(ctx echo.Context, id AssociationId) error {
+	var request GetAssociationRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAssociation(ctx.Request().Context(), request.(GetAssociationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAssociation")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetAssociationResponseObject); ok {
+		return validResponse.VisitGetAssociationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateAssociation operation middleware
+func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId) error {
+	var request UpdateAssociationRequestObject
+
+	request.Id = id
+
+	var body UpdateAssociationJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAssociation(ctx.Request().Context(), request.(UpdateAssociationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAssociation")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateAssociationResponseObject); ok {
+		return validResponse.VisitUpdateAssociationResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -6768,6 +8848,29 @@ func (sh *strictHandler) GetDescendancy(ctx echo.Context, id PersonId, params Ge
 		return err
 	} else if validResponse, ok := response.(GetDescendancyResponseObject); ok {
 		return validResponse.VisitGetDescendancyResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetExportEstimate operation middleware
+func (sh *strictHandler) GetExportEstimate(ctx echo.Context) error {
+	var request GetExportEstimateRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExportEstimate(ctx.Request().Context(), request.(GetExportEstimateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExportEstimate")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetExportEstimateResponseObject); ok {
+		return validResponse.VisitGetExportEstimateResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -7086,6 +9189,31 @@ func (sh *strictHandler) GetFamilyHistory(ctx echo.Context, id FamilyId, params 
 	return nil
 }
 
+// ListLDSOrdinancesForFamily operation middleware
+func (sh *strictHandler) ListLDSOrdinancesForFamily(ctx echo.Context, id FamilyId) error {
+	var request ListLDSOrdinancesForFamilyRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListLDSOrdinancesForFamily(ctx.Request().Context(), request.(ListLDSOrdinancesForFamilyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListLDSOrdinancesForFamily")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListLDSOrdinancesForFamilyResponseObject); ok {
+		return validResponse.VisitListLDSOrdinancesForFamilyResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // GetFamilyRestorePoints operation middleware
 func (sh *strictHandler) GetFamilyRestorePoints(ctx echo.Context, id FamilyId, params GetFamilyRestorePointsParams) error {
 	var request GetFamilyRestorePointsRequestObject
@@ -7220,6 +9348,142 @@ func (sh *strictHandler) ListHistory(ctx echo.Context, params ListHistoryParams)
 	return nil
 }
 
+// ListLDSOrdinances operation middleware
+func (sh *strictHandler) ListLDSOrdinances(ctx echo.Context, params ListLDSOrdinancesParams) error {
+	var request ListLDSOrdinancesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListLDSOrdinances(ctx.Request().Context(), request.(ListLDSOrdinancesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListLDSOrdinances")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListLDSOrdinancesResponseObject); ok {
+		return validResponse.VisitListLDSOrdinancesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateLDSOrdinance operation middleware
+func (sh *strictHandler) CreateLDSOrdinance(ctx echo.Context) error {
+	var request CreateLDSOrdinanceRequestObject
+
+	var body CreateLDSOrdinanceJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateLDSOrdinance(ctx.Request().Context(), request.(CreateLDSOrdinanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateLDSOrdinance")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateLDSOrdinanceResponseObject); ok {
+		return validResponse.VisitCreateLDSOrdinanceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteLDSOrdinance operation middleware
+func (sh *strictHandler) DeleteLDSOrdinance(ctx echo.Context, id LdsOrdinanceId, params DeleteLDSOrdinanceParams) error {
+	var request DeleteLDSOrdinanceRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteLDSOrdinance(ctx.Request().Context(), request.(DeleteLDSOrdinanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteLDSOrdinance")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteLDSOrdinanceResponseObject); ok {
+		return validResponse.VisitDeleteLDSOrdinanceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetLDSOrdinance operation middleware
+func (sh *strictHandler) GetLDSOrdinance(ctx echo.Context, id LdsOrdinanceId) error {
+	var request GetLDSOrdinanceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetLDSOrdinance(ctx.Request().Context(), request.(GetLDSOrdinanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetLDSOrdinance")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetLDSOrdinanceResponseObject); ok {
+		return validResponse.VisitGetLDSOrdinanceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateLDSOrdinance operation middleware
+func (sh *strictHandler) UpdateLDSOrdinance(ctx echo.Context, id LdsOrdinanceId) error {
+	var request UpdateLDSOrdinanceRequestObject
+
+	request.Id = id
+
+	var body UpdateLDSOrdinanceJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateLDSOrdinance(ctx.Request().Context(), request.(UpdateLDSOrdinanceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateLDSOrdinance")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateLDSOrdinanceResponseObject); ok {
+		return validResponse.VisitUpdateLDSOrdinanceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // DeleteMedia operation middleware
 func (sh *strictHandler) DeleteMedia(ctx echo.Context, id openapi_types.UUID, params DeleteMediaParams) error {
 	var request DeleteMediaRequestObject
@@ -7346,6 +9610,142 @@ func (sh *strictHandler) GetMediaThumbnail(ctx echo.Context, id openapi_types.UU
 		return err
 	} else if validResponse, ok := response.(GetMediaThumbnailResponseObject); ok {
 		return validResponse.VisitGetMediaThumbnailResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListNotes operation middleware
+func (sh *strictHandler) ListNotes(ctx echo.Context, params ListNotesParams) error {
+	var request ListNotesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListNotes(ctx.Request().Context(), request.(ListNotesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListNotes")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListNotesResponseObject); ok {
+		return validResponse.VisitListNotesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateNote operation middleware
+func (sh *strictHandler) CreateNote(ctx echo.Context) error {
+	var request CreateNoteRequestObject
+
+	var body CreateNoteJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateNote(ctx.Request().Context(), request.(CreateNoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateNote")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateNoteResponseObject); ok {
+		return validResponse.VisitCreateNoteResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteNote operation middleware
+func (sh *strictHandler) DeleteNote(ctx echo.Context, id NoteId, params DeleteNoteParams) error {
+	var request DeleteNoteRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteNote(ctx.Request().Context(), request.(DeleteNoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteNote")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteNoteResponseObject); ok {
+		return validResponse.VisitDeleteNoteResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetNote operation middleware
+func (sh *strictHandler) GetNote(ctx echo.Context, id NoteId) error {
+	var request GetNoteRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetNote(ctx.Request().Context(), request.(GetNoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetNote")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetNoteResponseObject); ok {
+		return validResponse.VisitGetNoteResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateNote operation middleware
+func (sh *strictHandler) UpdateNote(ctx echo.Context, id NoteId) error {
+	var request UpdateNoteRequestObject
+
+	request.Id = id
+
+	var body UpdateNoteJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateNote(ctx.Request().Context(), request.(UpdateNoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateNote")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateNoteResponseObject); ok {
+		return validResponse.VisitUpdateNoteResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -7657,6 +10057,31 @@ func (sh *strictHandler) UpdatePerson(ctx echo.Context, id PersonId) error {
 	return nil
 }
 
+// ListAssociationsForPerson operation middleware
+func (sh *strictHandler) ListAssociationsForPerson(ctx echo.Context, id PersonId) error {
+	var request ListAssociationsForPersonRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAssociationsForPerson(ctx.Request().Context(), request.(ListAssociationsForPersonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAssociationsForPerson")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListAssociationsForPersonResponseObject); ok {
+		return validResponse.VisitListAssociationsForPersonResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // GetCitationsForPerson operation middleware
 func (sh *strictHandler) GetCitationsForPerson(ctx echo.Context, id PersonId) error {
 	var request GetCitationsForPersonRequestObject
@@ -7702,6 +10127,31 @@ func (sh *strictHandler) GetPersonHistory(ctx echo.Context, id PersonId, params 
 		return err
 	} else if validResponse, ok := response.(GetPersonHistoryResponseObject); ok {
 		return validResponse.VisitGetPersonHistoryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListLDSOrdinancesForPerson operation middleware
+func (sh *strictHandler) ListLDSOrdinancesForPerson(ctx echo.Context, id PersonId) error {
+	var request ListLDSOrdinancesForPersonRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListLDSOrdinancesForPerson(ctx.Request().Context(), request.(ListLDSOrdinancesForPersonRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListLDSOrdinancesForPerson")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListLDSOrdinancesForPersonResponseObject); ok {
+		return validResponse.VisitListLDSOrdinancesForPersonResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -8497,6 +10947,142 @@ func (sh *strictHandler) GetStatistics(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(GetStatisticsResponseObject); ok {
 		return validResponse.VisitGetStatisticsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListSubmitters operation middleware
+func (sh *strictHandler) ListSubmitters(ctx echo.Context, params ListSubmittersParams) error {
+	var request ListSubmittersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSubmitters(ctx.Request().Context(), request.(ListSubmittersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSubmitters")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListSubmittersResponseObject); ok {
+		return validResponse.VisitListSubmittersResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateSubmitter operation middleware
+func (sh *strictHandler) CreateSubmitter(ctx echo.Context) error {
+	var request CreateSubmitterRequestObject
+
+	var body CreateSubmitterJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSubmitter(ctx.Request().Context(), request.(CreateSubmitterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSubmitter")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateSubmitterResponseObject); ok {
+		return validResponse.VisitCreateSubmitterResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteSubmitter operation middleware
+func (sh *strictHandler) DeleteSubmitter(ctx echo.Context, id SubmitterId, params DeleteSubmitterParams) error {
+	var request DeleteSubmitterRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSubmitter(ctx.Request().Context(), request.(DeleteSubmitterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSubmitter")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteSubmitterResponseObject); ok {
+		return validResponse.VisitDeleteSubmitterResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetSubmitter operation middleware
+func (sh *strictHandler) GetSubmitter(ctx echo.Context, id SubmitterId) error {
+	var request GetSubmitterRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSubmitter(ctx.Request().Context(), request.(GetSubmitterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSubmitter")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetSubmitterResponseObject); ok {
+		return validResponse.VisitGetSubmitterResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateSubmitter operation middleware
+func (sh *strictHandler) UpdateSubmitter(ctx echo.Context, id SubmitterId) error {
+	var request UpdateSubmitterRequestObject
+
+	request.Id = id
+
+	var body UpdateSubmitterJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSubmitter(ctx.Request().Context(), request.(UpdateSubmitterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSubmitter")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateSubmitterResponseObject); ok {
+		return validResponse.VisitUpdateSubmitterResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

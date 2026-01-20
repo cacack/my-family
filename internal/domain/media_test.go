@@ -241,3 +241,276 @@ func TestMediaTypeValidation(t *testing.T) {
 		t.Errorf("Empty MediaType should be valid, got error: %v", err)
 	}
 }
+
+func TestMarshalFilesToJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		files   []MediaFile
+		wantNil bool
+	}{
+		{
+			name:    "empty files",
+			files:   nil,
+			wantNil: true,
+		},
+		{
+			name:    "empty slice",
+			files:   []MediaFile{},
+			wantNil: true,
+		},
+		{
+			name: "single file",
+			files: []MediaFile{
+				{
+					Path:      "/photos/test.jpg",
+					Format:    "image/jpeg",
+					MediaType: "PHOTO",
+					Title:     "Test Photo",
+				},
+			},
+			wantNil: false,
+		},
+		{
+			name: "multiple files with translations",
+			files: []MediaFile{
+				{
+					Path:      "/photos/highres.jpg",
+					Format:    "image/jpeg",
+					MediaType: "PHOTO",
+					Title:     "High Resolution",
+					Translations: []MediaTranslation{
+						{Path: "/photos/thumbnail.jpg", Format: "image/jpeg"},
+					},
+				},
+				{
+					Path:   "/docs/transcript.pdf",
+					Format: "application/pdf",
+					Title:  "Document",
+				},
+			},
+			wantNil: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := MarshalFilesToJSON(tt.files)
+			if err != nil {
+				t.Fatalf("MarshalFilesToJSON() error = %v", err)
+			}
+			if tt.wantNil && data != nil {
+				t.Errorf("MarshalFilesToJSON() = %v, want nil", data)
+			}
+			if !tt.wantNil && data == nil {
+				t.Errorf("MarshalFilesToJSON() = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestUnmarshalFilesFromJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    []byte
+		want    int // number of files expected
+		wantErr bool
+	}{
+		{
+			name:    "nil data",
+			data:    nil,
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name:    "empty data",
+			data:    []byte{},
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name:    "valid JSON",
+			data:    []byte(`[{"path":"/test.jpg","format":"image/jpeg"}]`),
+			want:    1,
+			wantErr: false,
+		},
+		{
+			name:    "invalid JSON",
+			data:    []byte(`{invalid`),
+			want:    0,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files, err := UnmarshalFilesFromJSON(tt.data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("UnmarshalFilesFromJSON() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if len(files) != tt.want {
+				t.Errorf("UnmarshalFilesFromJSON() = %d files, want %d", len(files), tt.want)
+			}
+		})
+	}
+}
+
+func TestMarshalTranslationsToJSON(t *testing.T) {
+	tests := []struct {
+		name         string
+		translations []string
+		wantNil      bool
+	}{
+		{
+			name:         "nil translations",
+			translations: nil,
+			wantNil:      true,
+		},
+		{
+			name:         "empty slice",
+			translations: []string{},
+			wantNil:      true,
+		},
+		{
+			name:         "single translation",
+			translations: []string{"Translated Title"},
+			wantNil:      false,
+		},
+		{
+			name:         "multiple translations",
+			translations: []string{"English Title", "German Title", "French Title"},
+			wantNil:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := MarshalTranslationsToJSON(tt.translations)
+			if err != nil {
+				t.Fatalf("MarshalTranslationsToJSON() error = %v", err)
+			}
+			if tt.wantNil && data != nil {
+				t.Errorf("MarshalTranslationsToJSON() = %v, want nil", data)
+			}
+			if !tt.wantNil && data == nil {
+				t.Errorf("MarshalTranslationsToJSON() = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestUnmarshalTranslationsFromJSON(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    []byte
+		want    int // number of translations expected
+		wantErr bool
+	}{
+		{
+			name:    "nil data",
+			data:    nil,
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name:    "empty data",
+			data:    []byte{},
+			want:    0,
+			wantErr: false,
+		},
+		{
+			name:    "valid JSON",
+			data:    []byte(`["Title 1","Title 2"]`),
+			want:    2,
+			wantErr: false,
+		},
+		{
+			name:    "invalid JSON",
+			data:    []byte(`{invalid`),
+			want:    0,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			translations, err := UnmarshalTranslationsFromJSON(tt.data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("UnmarshalTranslationsFromJSON() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if len(translations) != tt.want {
+				t.Errorf("UnmarshalTranslationsFromJSON() = %d translations, want %d", len(translations), tt.want)
+			}
+		})
+	}
+}
+
+func TestFilesRoundTrip(t *testing.T) {
+	original := []MediaFile{
+		{
+			Path:      "/photos/family.jpg",
+			Format:    "image/jpeg",
+			MediaType: "PHOTO",
+			Title:     "Family Photo 1920",
+			Translations: []MediaTranslation{
+				{Path: "/photos/family_thumb.jpg", Format: "image/jpeg"},
+			},
+		},
+	}
+
+	data, err := MarshalFilesToJSON(original)
+	if err != nil {
+		t.Fatalf("MarshalFilesToJSON() error = %v", err)
+	}
+
+	restored, err := UnmarshalFilesFromJSON(data)
+	if err != nil {
+		t.Fatalf("UnmarshalFilesFromJSON() error = %v", err)
+	}
+
+	if len(restored) != len(original) {
+		t.Fatalf("len(restored) = %d, want %d", len(restored), len(original))
+	}
+
+	if restored[0].Path != original[0].Path {
+		t.Errorf("Path = %q, want %q", restored[0].Path, original[0].Path)
+	}
+	if restored[0].Format != original[0].Format {
+		t.Errorf("Format = %q, want %q", restored[0].Format, original[0].Format)
+	}
+	if len(restored[0].Translations) != len(original[0].Translations) {
+		t.Errorf("Translations count = %d, want %d", len(restored[0].Translations), len(original[0].Translations))
+	}
+}
+
+func TestMediaWithGedcom7Fields(t *testing.T) {
+	entityID := uuid.New()
+	m := NewMedia("Test Media", "person", entityID)
+
+	// Set GEDCOM 7.0 enhanced fields
+	m.Files = []MediaFile{
+		{
+			Path:      "/photos/portrait.jpg",
+			Format:    "image/jpeg",
+			MediaType: "PHOTO",
+			Title:     "Portrait",
+		},
+	}
+	m.Format = "image/jpeg"
+	m.Translations = []string{"Portrait in German", "Portrait in French"}
+
+	// Validate should pass with the new fields
+	if err := m.Validate(); err != nil {
+		t.Errorf("Validate() with GEDCOM 7.0 fields failed: %v", err)
+	}
+
+	// Check values
+	if len(m.Files) != 1 {
+		t.Errorf("Files count = %d, want 1", len(m.Files))
+	}
+	if m.Format != "image/jpeg" {
+		t.Errorf("Format = %q, want %q", m.Format, "image/jpeg")
+	}
+	if len(m.Translations) != 2 {
+		t.Errorf("Translations count = %d, want 2", len(m.Translations))
+	}
+}

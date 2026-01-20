@@ -10,19 +10,19 @@ import (
 // Repository represents a physical or digital location where source documents are stored.
 // This maps to GEDCOM REPO records and supports GPS-compliant source documentation.
 type Repository struct {
-	ID         uuid.UUID `json:"id"`
-	Name       string    `json:"name"`
-	Address    string    `json:"address,omitempty"`
-	City       string    `json:"city,omitempty"`
-	State      string    `json:"state,omitempty"`
-	PostalCode string    `json:"postal_code,omitempty"`
-	Country    string    `json:"country,omitempty"`
-	Phone      string    `json:"phone,omitempty"`
-	Email      string    `json:"email,omitempty"`
-	Website    string    `json:"website,omitempty"`
-	Notes      string    `json:"notes,omitempty"`
-	GedcomXref string    `json:"gedcom_xref,omitempty"` // Original GEDCOM @XREF@ for round-trip
-	Version    int64     `json:"version"`               // Optimistic locking version
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	StreetAddress string    `json:"street_address,omitempty"` // Renamed from Address to avoid conflict
+	City          string    `json:"city,omitempty"`
+	State         string    `json:"state,omitempty"`
+	PostalCode    string    `json:"postal_code,omitempty"`
+	Country       string    `json:"country,omitempty"`
+	Phone         string    `json:"phone,omitempty"`
+	Email         string    `json:"email,omitempty"`
+	Website       string    `json:"website,omitempty"`
+	Notes         string    `json:"notes,omitempty"`
+	GedcomXref    string    `json:"gedcom_xref,omitempty"` // Original GEDCOM @XREF@ for round-trip
+	Version       int64     `json:"version"`               // Optimistic locking version
 }
 
 // RepositoryValidationError represents a validation error for a Repository.
@@ -65,8 +65,8 @@ func (r *Repository) Validate() error {
 // FullAddress returns a formatted address string.
 func (r *Repository) FullAddress() string {
 	parts := []string{}
-	if r.Address != "" {
-		parts = append(parts, r.Address)
+	if r.StreetAddress != "" {
+		parts = append(parts, r.StreetAddress)
 	}
 	if r.City != "" {
 		parts = append(parts, r.City)
@@ -89,4 +89,37 @@ func (r *Repository) FullAddress() string {
 		result += part
 	}
 	return result
+}
+
+// GetAddress returns an Address struct representation of this repository's address fields.
+func (r *Repository) GetAddress() *Address {
+	addr := &Address{
+		Line1:      r.StreetAddress,
+		City:       r.City,
+		State:      r.State,
+		PostalCode: r.PostalCode,
+		Country:    r.Country,
+		Phone:      r.Phone,
+		Email:      r.Email,
+		Website:    r.Website,
+	}
+	if addr.IsEmpty() {
+		return nil
+	}
+	return addr
+}
+
+// SetAddress sets the repository's address fields from an Address struct.
+func (r *Repository) SetAddress(addr *Address) {
+	if addr == nil {
+		return
+	}
+	r.StreetAddress = addr.StreetAddress()
+	r.City = addr.City
+	r.State = addr.State
+	r.PostalCode = addr.PostalCode
+	r.Country = addr.Country
+	r.Phone = addr.Phone
+	r.Email = addr.Email
+	r.Website = addr.Website
 }

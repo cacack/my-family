@@ -37,6 +37,11 @@ linters:
         - filepathJoin   # Test path handling with absolute paths
     gocyclo:
       min-complexity: 20  # Raised from 15 - will refactor worst offenders
+    misspell:
+      # ignore-rules: words in lowercase that should not trigger misspell
+      ignore-rules:
+        - rela  # GEDCOM tag for relationship type
+        - witn  # GEDCOM tag for witness role
     revive:
       severity: warning
       rules:

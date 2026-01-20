@@ -486,3 +486,112 @@ func TestExportFamilies_Empty(t *testing.T) {
 		t.Errorf("Expected total 0, got %d", result.Total)
 	}
 }
+
+// Export estimate endpoint tests
+
+func TestGetExportEstimate_Empty(t *testing.T) {
+	server := setupExportTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/export/estimate", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Check Content-Type
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.HasPrefix(contentType, "application/json") {
+		t.Errorf("Content-Type = %s, want application/json", contentType)
+	}
+
+	// Verify valid JSON structure
+	var result struct {
+		PersonCount    int   `json:"person_count"`
+		FamilyCount    int   `json:"family_count"`
+		SourceCount    int   `json:"source_count"`
+		CitationCount  int   `json:"citation_count"`
+		EventCount     int   `json:"event_count"`
+		NoteCount      int   `json:"note_count"`
+		TotalRecords   int   `json:"total_records"`
+		EstimatedBytes int64 `json:"estimated_bytes"`
+		IsLargeExport  bool  `json:"is_large_export"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Invalid JSON: %v", err)
+	}
+
+	// Empty export should have zero counts
+	if result.PersonCount != 0 {
+		t.Errorf("PersonCount = %d, want 0", result.PersonCount)
+	}
+	if result.FamilyCount != 0 {
+		t.Errorf("FamilyCount = %d, want 0", result.FamilyCount)
+	}
+	if result.TotalRecords != 0 {
+		t.Errorf("TotalRecords = %d, want 0", result.TotalRecords)
+	}
+	if result.IsLargeExport {
+		t.Error("IsLargeExport = true, want false for empty database")
+	}
+}
+
+func TestGetExportEstimate_WithData(t *testing.T) {
+	server := setupExportTestServer(t)
+
+	// Import data first
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.ged")
+	io.WriteString(part, exportTestGedcom)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Import failed: %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Now get estimate
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/export/estimate", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result struct {
+		PersonCount    int   `json:"person_count"`
+		FamilyCount    int   `json:"family_count"`
+		SourceCount    int   `json:"source_count"`
+		TotalRecords   int   `json:"total_records"`
+		EstimatedBytes int64 `json:"estimated_bytes"`
+		IsLargeExport  bool  `json:"is_large_export"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Invalid JSON: %v", err)
+	}
+
+	// Should have persons and families from imported data
+	if result.PersonCount != 2 {
+		t.Errorf("PersonCount = %d, want 2", result.PersonCount)
+	}
+	if result.FamilyCount != 1 {
+		t.Errorf("FamilyCount = %d, want 1", result.FamilyCount)
+	}
+	if result.TotalRecords < 3 {
+		t.Errorf("TotalRecords = %d, want >= 3", result.TotalRecords)
+	}
+	if result.EstimatedBytes <= 0 {
+		t.Errorf("EstimatedBytes = %d, want > 0", result.EstimatedBytes)
+	}
+	// Small test data should not be large export
+	if result.IsLargeExport {
+		t.Error("IsLargeExport = true, want false for small data")
+	}
+}
