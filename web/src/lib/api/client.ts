@@ -125,9 +125,10 @@ export interface FamilyUpdate {
 }
 
 export interface FamilyChild {
-	id: string;
-	name: string;
+	person_id: string;
 	relationship_type: 'biological' | 'adopted' | 'foster';
+	person?: PersonSummary;
+	sequence?: number;
 }
 
 export interface FamilyDetail extends Family {

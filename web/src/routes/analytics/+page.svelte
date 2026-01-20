@@ -80,7 +80,7 @@
 			if (family.partner1_id === person.id || family.partner2_id === person.id) {
 				return false;
 			}
-			if (family.children?.some((c) => c.id === person.id)) {
+			if (family.children?.some((c) => c.person_id === person.id)) {
 				return false;
 			}
 		}

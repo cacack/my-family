@@ -242,8 +242,8 @@
 						<ul class="children-list">
 							{#each family.children as child}
 								<li>
-									<a href="/persons/{child.id}">
-										{child.name}
+									<a href="/persons/{child.person?.id || child.person_id}">
+										{child.person ? formatPersonName(child.person) : 'Unknown'}
 									</a>
 									{#if child.relationship_type && child.relationship_type !== 'biological'}
 										<span class="child-type">({child.relationship_type})</span>
