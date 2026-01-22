@@ -923,6 +923,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/export/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get export size estimation
+         * @description Returns an estimate of the export file size and record counts.
+         *     Useful for showing users expected download size and determining
+         *     whether to use streaming progress for large exports.
+         */
+        get: operations["getExportEstimate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/quality/overview": {
         parameters: {
             query?: never;
@@ -1227,6 +1249,247 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all notes
+         * @description Returns paginated list of shared GEDCOM NOTE records
+         */
+        get: operations["listNotes"];
+        put?: never;
+        /** Create a new note */
+        post: operations["createNote"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Note UUID */
+                id: components["parameters"]["noteId"];
+            };
+            cookie?: never;
+        };
+        /** Get a note by ID */
+        get: operations["getNote"];
+        /** Update a note */
+        put: operations["updateNote"];
+        post?: never;
+        /** Delete a note */
+        delete: operations["deleteNote"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/submitters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all submitters
+         * @description Returns paginated list of GEDCOM SUBM (submitter) records
+         */
+        get: operations["listSubmitters"];
+        put?: never;
+        /** Create a new submitter */
+        post: operations["createSubmitter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/submitters/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Submitter UUID */
+                id: components["parameters"]["submitterId"];
+            };
+            cookie?: never;
+        };
+        /** Get a submitter by ID */
+        get: operations["getSubmitter"];
+        /** Update a submitter */
+        put: operations["updateSubmitter"];
+        post?: never;
+        /** Delete a submitter */
+        delete: operations["deleteSubmitter"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/associations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all associations
+         * @description Returns paginated list of GEDCOM ASSO (association) records
+         */
+        get: operations["listAssociations"];
+        put?: never;
+        /**
+         * Create a new association
+         * @description Create a GEDCOM ASSO association between two persons
+         */
+        post: operations["createAssociation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/associations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Association UUID */
+                id: components["parameters"]["associationId"];
+            };
+            cookie?: never;
+        };
+        /** Get an association by ID */
+        get: operations["getAssociation"];
+        /** Update an association */
+        put: operations["updateAssociation"];
+        post?: never;
+        /** Delete an association */
+        delete: operations["deleteAssociation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/{id}/associations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List associations for a person
+         * @description Returns all associations where the person is either the subject or associate
+         */
+        get: operations["listAssociationsForPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lds-ordinances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all LDS ordinances
+         * @description Returns paginated list of LDS temple ordinance records (BAPL, CONL, ENDL, SLGC, SLGS)
+         */
+        get: operations["listLDSOrdinances"];
+        put?: never;
+        /** Create a new LDS ordinance */
+        post: operations["createLDSOrdinance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lds-ordinances/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description LDS Ordinance UUID */
+                id: components["parameters"]["ldsOrdinanceId"];
+            };
+            cookie?: never;
+        };
+        /** Get an LDS ordinance by ID */
+        get: operations["getLDSOrdinance"];
+        /** Update an LDS ordinance */
+        put: operations["updateLDSOrdinance"];
+        post?: never;
+        /** Delete an LDS ordinance */
+        delete: operations["deleteLDSOrdinance"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/{id}/lds-ordinances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List LDS ordinances for a person
+         * @description Returns all individual LDS ordinances (BAPL, CONL, ENDL, SLGC) for a person
+         */
+        get: operations["listLDSOrdinancesForPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/families/{id}/lds-ordinances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["familyId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List LDS ordinances for a family
+         * @description Returns all spouse sealing (SLGS) ordinances for a family
+         */
+        get: operations["listLDSOrdinancesForFamily"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1245,6 +1508,54 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
+        };
+        ExportEstimate: {
+            /**
+             * @description Number of person records
+             * @example 150
+             */
+            person_count: number;
+            /**
+             * @description Number of family records
+             * @example 50
+             */
+            family_count: number;
+            /**
+             * @description Number of source records
+             * @example 25
+             */
+            source_count: number;
+            /**
+             * @description Estimated number of citations (embedded in facts)
+             * @example 300
+             */
+            citation_count: number;
+            /**
+             * @description Estimated number of events
+             * @example 450
+             */
+            event_count: number;
+            /**
+             * @description Number of note records
+             * @example 10
+             */
+            note_count: number;
+            /**
+             * @description Total number of top-level records
+             * @example 235
+             */
+            total_records: number;
+            /**
+             * Format: int64
+             * @description Estimated file size in bytes
+             * @example 125000
+             */
+            estimated_bytes: number;
+            /**
+             * @description True if export exceeds large threshold (>1000 records or >1MB)
+             * @example false
+             */
+            is_large_export: boolean;
         };
         /**
          * @description Confidence level of genealogical data per GPS standards
@@ -1779,6 +2090,41 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+            /** @description Multiple file references (GEDCOM 7.0 support) */
+            files?: components["schemas"]["MediaFile"][];
+            /**
+             * @description Primary format/MIME type (FORM tag)
+             * @example image/jpeg
+             */
+            format?: string;
+            /** @description Translated titles (GEDCOM 7.0 support) */
+            translations?: string[];
+        };
+        /** @description A single file reference within a media object (GEDCOM 7.0 FILE structure) */
+        MediaFile: {
+            /** @description File path or URL */
+            path?: string;
+            /**
+             * @description MIME type (FORM tag)
+             * @example image/jpeg
+             */
+            format?: string;
+            /**
+             * @description Media type categorization (MEDI tag)
+             * @example PHOTO
+             */
+            media_type?: string;
+            /** @description Title for this specific file */
+            title?: string;
+            /** @description Alternate versions (transcripts, thumbnails, different formats) */
+            translations?: components["schemas"]["MediaTranslation"][];
+        };
+        /** @description Alternate version of a file (GEDCOM 7.0 FILE-TRAN structure) */
+        MediaTranslation: {
+            /** @description File path or URL of the translation */
+            path?: string;
+            /** @description MIME type of the translation file */
+            format?: string;
         };
         MediaList: {
             items: components["schemas"]["Media"][];
@@ -2391,6 +2737,302 @@ export interface components {
             /** @description Human-readable relationship summary */
             summary?: string;
         };
+        /** @description A shared GEDCOM NOTE record that can be referenced by multiple entities */
+        Note: {
+            /** Format: uuid */
+            id: string;
+            /** @description Full note text (may contain embedded newlines from CONT/CONC lines) */
+            text: string;
+            /** @description GEDCOM cross-reference ID (e.g., "@N1@") for round-trip support */
+            gedcom_xref?: string;
+            /**
+             * Format: int64
+             * @description Optimistic locking version
+             */
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        NoteCreate: {
+            /** @description Note text content */
+            text: string;
+            /** @description Optional GEDCOM cross-reference ID for import */
+            gedcom_xref?: string;
+        };
+        NoteUpdate: {
+            /** @description Updated note text */
+            text?: string;
+            /**
+             * Format: int64
+             * @description Current version for optimistic locking
+             */
+            version: number;
+        };
+        NoteList: {
+            notes: components["schemas"]["Note"][];
+            /** @description Total number of notes */
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
+        /** @description Structured GEDCOM address (embedded in other entities) */
+        Address: {
+            /** @description First address line (ADR1) */
+            line1?: string;
+            /** @description Second address line (ADR2) */
+            line2?: string;
+            /** @description Third address line (ADR3) */
+            line3?: string;
+            /** @description City (CITY) */
+            city?: string;
+            /** @description State/Province (STAE) */
+            state?: string;
+            /** @description Postal/ZIP code (POST) */
+            postal_code?: string;
+            /** @description Country (CTRY) */
+            country?: string;
+            /** @description Phone number (PHON) */
+            phone?: string;
+            /** @description Email address (EMAIL) */
+            email?: string;
+            /** @description Fax number (FAX) */
+            fax?: string;
+            /** @description Website URL (WWW) */
+            website?: string;
+        };
+        /** @description A GEDCOM SUBM (submitter) record tracking who created or submitted data */
+        Submitter: {
+            /** Format: uuid */
+            id: string;
+            /** @description Submitter's name */
+            name: string;
+            address?: components["schemas"]["Address"];
+            /** @description Phone numbers */
+            phone?: string[];
+            /** @description Email addresses */
+            email?: string[];
+            /** @description Preferred language */
+            language?: string;
+            /**
+             * Format: uuid
+             * @description ID of linked media (submitter photo)
+             */
+            media_id?: string;
+            /** @description GEDCOM cross-reference ID for round-trip support */
+            gedcom_xref?: string;
+            /**
+             * Format: int64
+             * @description Optimistic locking version
+             */
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        SubmitterCreate: {
+            /** @description Submitter's name */
+            name: string;
+            address?: components["schemas"]["Address"];
+            /** @description Phone numbers */
+            phone?: string[];
+            /** @description Email addresses */
+            email?: string[];
+            /** @description Preferred language */
+            language?: string;
+            /**
+             * Format: uuid
+             * @description ID of linked media (submitter photo)
+             */
+            media_id?: string;
+            /** @description Optional GEDCOM cross-reference ID for import */
+            gedcom_xref?: string;
+        };
+        SubmitterUpdate: {
+            /** @description Updated submitter name */
+            name?: string;
+            address?: components["schemas"]["Address"];
+            /** @description Updated phone numbers */
+            phone?: string[];
+            /** @description Updated email addresses */
+            email?: string[];
+            /** @description Updated preferred language */
+            language?: string;
+            /**
+             * Format: uuid
+             * @description Updated media ID
+             */
+            media_id?: string;
+            /**
+             * Format: int64
+             * @description Current version for optimistic locking
+             */
+            version: number;
+        };
+        SubmitterList: {
+            submitters: components["schemas"]["Submitter"][];
+            /** @description Total number of submitters */
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
+        Association: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The person who has the association
+             */
+            person_id: string;
+            /** @description Denormalized name of the person */
+            person_name?: string;
+            /**
+             * Format: uuid
+             * @description The associated person
+             */
+            associate_id: string;
+            /** @description Denormalized name of the associate */
+            associate_name?: string;
+            /** @description Role of the association (e.g., godparent, witness) */
+            role: string;
+            /** @description Human-readable description (GEDCOM 7.0 PHRASE) */
+            phrase?: string;
+            /** @description Inline note text */
+            notes?: string;
+            /** @description References to Note entities */
+            note_ids?: string[];
+            /** @description Original GEDCOM cross-reference ID */
+            gedcom_xref?: string;
+            /**
+             * Format: int64
+             * @description Version for optimistic locking
+             */
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        AssociationCreate: {
+            /**
+             * Format: uuid
+             * @description The person who has the association
+             */
+            person_id: string;
+            /**
+             * Format: uuid
+             * @description The associated person
+             */
+            associate_id: string;
+            /** @description Role of the association (e.g., godparent, witness) */
+            role: string;
+            /** @description Human-readable description (GEDCOM 7.0 PHRASE) */
+            phrase?: string;
+            /** @description Inline note text */
+            notes?: string;
+            /** @description References to Note entities */
+            note_ids?: string[];
+        };
+        AssociationUpdate: {
+            /** @description Updated role */
+            role?: string;
+            /** @description Updated phrase */
+            phrase?: string;
+            /** @description Updated notes */
+            notes?: string;
+            /** @description Updated note references */
+            note_ids?: string[];
+            /**
+             * Format: int64
+             * @description Current version for optimistic locking
+             */
+            version: number;
+        };
+        AssociationList: {
+            associations: components["schemas"]["Association"][];
+            /** @description Total number of associations */
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
+        /**
+         * @description LDS temple ordinance type:
+         *     - BAPL: Baptism (LDS)
+         *     - CONL: Confirmation (LDS)
+         *     - ENDL: Endowment
+         *     - SLGC: Sealing to Parents
+         *     - SLGS: Sealing to Spouse (family level)
+         * @enum {string}
+         */
+        LDSOrdinanceType: "BAPL" | "CONL" | "ENDL" | "SLGC" | "SLGS";
+        LDSOrdinance: {
+            /** Format: uuid */
+            id: string;
+            type: components["schemas"]["LDSOrdinanceType"];
+            /** @description Human-readable ordinance type label */
+            type_label: string;
+            /**
+             * Format: uuid
+             * @description Person ID (for individual ordinances BAPL, CONL, ENDL, SLGC)
+             */
+            person_id?: string;
+            /** @description Person's full name (denormalized for display) */
+            person_name?: string;
+            /**
+             * Format: uuid
+             * @description Family ID (for spouse sealing SLGS)
+             */
+            family_id?: string;
+            date?: components["schemas"]["GenDate"];
+            /** @description Location where ordinance was performed */
+            place?: string;
+            /** @description Temple code (GEDCOM TEMP tag) */
+            temple?: string;
+            /** @description Status (COMPLETED, BIC, CHILD, EXCLUDED, etc.) */
+            status?: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        LDSOrdinanceCreate: {
+            type: components["schemas"]["LDSOrdinanceType"];
+            /**
+             * Format: uuid
+             * @description Required for individual ordinances (BAPL, CONL, ENDL, SLGC)
+             */
+            person_id?: string;
+            /**
+             * Format: uuid
+             * @description Required for spouse sealing (SLGS)
+             */
+            family_id?: string;
+            /** @description Date string in GEDCOM format */
+            date?: string;
+            place?: string;
+            /** @description Temple code */
+            temple?: string;
+            /** @description Ordinance status */
+            status?: string;
+        };
+        LDSOrdinanceUpdate: {
+            /** @description Updated date */
+            date?: string;
+            /** @description Updated place */
+            place?: string;
+            /** @description Updated temple code */
+            temple?: string;
+            /** @description Updated status */
+            status?: string;
+            /**
+             * Format: int64
+             * @description Current version for optimistic locking
+             */
+            version: number;
+        };
+        LDSOrdinanceList: {
+            lds_ordinances: components["schemas"]["LDSOrdinance"][];
+            /** @description Total number of LDS ordinances */
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
     };
     responses: {
         /** @description Invalid request */
@@ -2430,6 +3072,14 @@ export interface components {
         versionParam: number;
         /** @description Snapshot UUID */
         snapshotId: string;
+        /** @description Note UUID */
+        noteId: string;
+        /** @description Submitter UUID */
+        submitterId: string;
+        /** @description Association UUID */
+        associationId: string;
+        /** @description LDS Ordinance UUID */
+        ldsOrdinanceId: string;
     };
     requestBodies: never;
     headers: never;
@@ -4146,6 +4796,26 @@ export interface operations {
             };
         };
     };
+    getExportEstimate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export estimation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportEstimate"];
+                };
+            };
+        };
+    };
     getQualityOverview: {
         parameters: {
             query?: never;
@@ -4547,6 +5217,598 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    listNotes: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of notes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NoteList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Note created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Note"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Note UUID */
+                id: components["parameters"]["noteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Note details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Note"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Note UUID */
+                id: components["parameters"]["noteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteUpdate"];
+            };
+        };
+        responses: {
+            /** @description Note updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Note"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteNote: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Note UUID */
+                id: components["parameters"]["noteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Note deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSubmitters: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                sort?: "name" | "updated_at";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of submitters */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitterList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createSubmitter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitterCreate"];
+            };
+        };
+        responses: {
+            /** @description Submitter created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submitter"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getSubmitter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Submitter UUID */
+                id: components["parameters"]["submitterId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Submitter details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submitter"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateSubmitter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Submitter UUID */
+                id: components["parameters"]["submitterId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitterUpdate"];
+            };
+        };
+        responses: {
+            /** @description Submitter updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Submitter"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteSubmitter: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Submitter UUID */
+                id: components["parameters"]["submitterId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Submitter deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAssociations: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                sort?: "role" | "updated_at";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of associations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssociationList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createAssociation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssociationCreate"];
+            };
+        };
+        responses: {
+            /** @description Association created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Association"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getAssociation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Association UUID */
+                id: components["parameters"]["associationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Association details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Association"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAssociation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Association UUID */
+                id: components["parameters"]["associationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssociationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Association updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Association"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteAssociation: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Association UUID */
+                id: components["parameters"]["associationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Association deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAssociationsForPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of associations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Association"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listLDSOrdinances: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                sort?: "type" | "date" | "updated_at";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of LDS ordinances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LDSOrdinanceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createLDSOrdinance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LDSOrdinanceCreate"];
+            };
+        };
+        responses: {
+            /** @description LDS ordinance created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LDSOrdinance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getLDSOrdinance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description LDS Ordinance UUID */
+                id: components["parameters"]["ldsOrdinanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description LDS ordinance details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LDSOrdinance"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateLDSOrdinance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description LDS Ordinance UUID */
+                id: components["parameters"]["ldsOrdinanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LDSOrdinanceUpdate"];
+            };
+        };
+        responses: {
+            /** @description LDS ordinance updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LDSOrdinance"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteLDSOrdinance: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description LDS Ordinance UUID */
+                id: components["parameters"]["ldsOrdinanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description LDS ordinance deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listLDSOrdinancesForPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of LDS ordinances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LDSOrdinance"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listLDSOrdinancesForFamily: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["familyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of LDS ordinances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LDSOrdinance"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
 }
