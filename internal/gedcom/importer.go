@@ -18,16 +18,20 @@ import (
 
 // ImportResult contains the results of a GEDCOM import operation.
 type ImportResult struct {
-	PersonsImported      int
-	FamiliesImported     int
-	SourcesImported      int
-	CitationsImported    int
-	MediaImported        int
-	RepositoriesImported int
-	EventsImported       int
-	AttributesImported   int
-	Warnings             []string
-	Errors               []string
+	PersonsImported       int
+	FamiliesImported      int
+	SourcesImported       int
+	CitationsImported     int
+	MediaImported         int
+	RepositoriesImported  int
+	EventsImported        int
+	AttributesImported    int
+	NotesImported         int
+	SubmittersImported    int
+	AssociationsImported  int
+	LDSOrdinancesImported int
+	Warnings              []string
+	Errors                []string
 
 	// Vendor is the detected vendor that created this GEDCOM file (e.g., "ancestry", "familysearch").
 	// Empty string if vendor could not be determined.
@@ -39,6 +43,8 @@ type ImportResult struct {
 	SourceXrefToID     map[string]uuid.UUID
 	MediaXrefToID      map[string]uuid.UUID
 	RepositoryXrefToID map[string]uuid.UUID
+	NoteXrefToID       map[string]uuid.UUID
+	SubmitterXrefToID  map[string]uuid.UUID
 }
 
 // PersonNameData contains parsed name data for a person.
@@ -170,8 +176,12 @@ type MediaData struct {
 	Title       string
 	MimeType    string
 	MediaType   domain.MediaType
-	FileRef     string // GEDCOM file reference (path or URL)
+	FileRef     string // GEDCOM file reference (path or URL) - backwards compat
 	Description string
+	// GEDCOM 7.0 enhanced fields
+	Files        []domain.MediaFile // Multiple file references (GEDCOM 7.0)
+	Format       string             // Primary format/MIME type (FORM)
+	Translations []string           // Translated titles (GEDCOM 7.0)
 }
 
 // EventData contains parsed life event data ready for creation.
@@ -184,6 +194,7 @@ type EventData struct {
 	Place       string
 	PlaceLat    *string // Latitude in GEDCOM format (e.g., "N42.3601")
 	PlaceLong   *string // Longitude in GEDCOM format (e.g., "W71.0589")
+	Address     *domain.Address
 	Description string
 	Cause       string // For death/burial events
 	Age         string // Age at event
@@ -199,6 +210,54 @@ type AttributeData struct {
 	Place    string
 }
 
+// NoteData contains parsed note data ready for creation.
+// GEDCOM supports two note styles:
+// - Inline notes: embedded directly in an entity (stored in entity's Notes field)
+// - Shared notes: top-level NOTE records that can be referenced by multiple entities via XRef
+type NoteData struct {
+	ID         uuid.UUID
+	GedcomXref string // Cross-reference ID (e.g., "@N1@")
+	Text       string // Full text with embedded newlines
+}
+
+// SubmitterData contains parsed submitter data ready for creation.
+// GEDCOM SUBM records track who created or submitted genealogical data.
+type SubmitterData struct {
+	ID         uuid.UUID
+	GedcomXref string          // Cross-reference ID (e.g., "@U1@")
+	Name       string          // Submitter's name (NAME)
+	Address    *domain.Address // Structured address (ADDR)
+	Phone      []string        // Phone numbers (PHON)
+	Email      []string        // Email addresses (EMAIL)
+	Language   string          // Preferred language (LANG) - only first is stored
+}
+
+// AssociationData contains parsed association data ready for creation.
+// GEDCOM ASSO records link individuals with specific roles like godparents, witnesses, etc.
+type AssociationData struct {
+	ID            uuid.UUID
+	PersonID      uuid.UUID // The person who has the association (from INDI record)
+	AssociateXref string    // The associated person's XREF (resolved after person pass)
+	AssociateID   uuid.UUID // Resolved UUID of the associate
+	Role          string    // Role: godparent, witness, or custom
+	Phrase        string    // GEDCOM 7.0 PHRASE - human-readable description
+	Notes         string    // Inline note text
+	NoteXrefs     []string  // Note XREFs (resolved after note pass)
+}
+
+// LDSOrdinanceData contains parsed LDS temple ordinance data ready for creation.
+// GEDCOM was originally developed by the LDS Church and includes tags for temple ordinances.
+type LDSOrdinanceData struct {
+	ID       uuid.UUID
+	Type     domain.LDSOrdinanceType // BAPL, CONL, ENDL, SLGC, SLGS
+	PersonID *uuid.UUID              // For individual ordinances (BAPL, CONL, ENDL, SLGC)
+	FamilyID *uuid.UUID              // For spouse sealing (SLGS)
+	Date     string                  // Ordinance date
+	Place    string                  // Ordinance place (optional)
+	Temple   string                  // Temple code (TEMP)
+	Status   string                  // Status: COMPLETED, BIC, CHILD, EXCLUDED, etc.
+}
+
 // Importer handles GEDCOM file parsing and conversion to domain events.
 type Importer struct{}
 
@@ -208,13 +267,15 @@ func NewImporter() *Importer {
 }
 
 // Import parses a GEDCOM file and returns structured data for import.
-func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, []RepositoryData, []EventData, []AttributeData, error) {
+func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, []RepositoryData, []EventData, []AttributeData, []NoteData, []SubmitterData, []AssociationData, []LDSOrdinanceData, []MediaData, error) {
 	result := &ImportResult{
 		PersonXrefToID:     make(map[string]uuid.UUID),
 		FamilyXrefToID:     make(map[string]uuid.UUID),
 		SourceXrefToID:     make(map[string]uuid.UUID),
 		MediaXrefToID:      make(map[string]uuid.UUID),
 		RepositoryXrefToID: make(map[string]uuid.UUID),
+		NoteXrefToID:       make(map[string]uuid.UUID),
+		SubmitterXrefToID:  make(map[string]uuid.UUID),
 	}
 
 	// Parse GEDCOM using cacack/gedcom-go decoder
@@ -224,7 +285,7 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 
 	doc, err := decoder.DecodeWithOptions(reader, opts)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
 	}
 
 	// Run gedcom-go validation to catch structural issues
@@ -293,6 +354,56 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		events = append(events, familyEvents...)
 	}
 
+	// Fifth pass: parse shared (top-level) NOTE records
+	// These are NOTE records that can be referenced by multiple entities via XRef
+	var notes []NoteData
+	for _, note := range doc.Notes() {
+		noteData := parseNote(note)
+		notes = append(notes, noteData)
+		result.NoteXrefToID[note.XRef] = noteData.ID
+	}
+
+	// Sixth pass: parse SUBM (submitter) records
+	// These track who created or submitted the genealogical data
+	var submitters []SubmitterData
+	for _, subm := range doc.Submitters() {
+		submitterData := parseSubmitter(subm)
+		submitters = append(submitters, submitterData)
+		result.SubmitterXrefToID[subm.XRef] = submitterData.ID
+	}
+
+	// Seventh pass: parse ASSO (association) records from individuals
+	// These are extracted after person XREFs are mapped so we can resolve associate references
+	var associations []AssociationData
+	for _, indi := range doc.Individuals() {
+		personID := result.PersonXrefToID[indi.XRef]
+		personAssocs := extractAssociationsFromIndividual(indi, personID, result)
+		associations = append(associations, personAssocs...)
+	}
+
+	// Eighth pass: parse LDS ordinance records from individuals and families
+	// GEDCOM was originally developed by the LDS Church and includes temple ordinance tags
+	var ldsOrdinances []LDSOrdinanceData
+	for _, indi := range doc.Individuals() {
+		personID := result.PersonXrefToID[indi.XRef]
+		personOrdinances := extractLDSOrdinancesFromIndividual(indi, personID)
+		ldsOrdinances = append(ldsOrdinances, personOrdinances...)
+	}
+	for _, fam := range doc.Families() {
+		familyID := result.FamilyXrefToID[fam.XRef]
+		familyOrdinances := extractLDSOrdinancesFromFamily(fam, familyID)
+		ldsOrdinances = append(ldsOrdinances, familyOrdinances...)
+	}
+
+	// Ninth pass: parse OBJE (media object) records
+	// These contain full media metadata including multiple files and translations
+	var mediaObjects []MediaData
+	for _, media := range doc.MediaObjects() {
+		mediaData := parseMediaObject(media, result)
+		mediaObjects = append(mediaObjects, mediaData)
+		result.MediaXrefToID[media.XRef] = mediaData.ID
+	}
+
 	result.PersonsImported = len(persons)
 	result.FamiliesImported = len(families)
 	result.SourcesImported = len(sources)
@@ -300,8 +411,13 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 	result.RepositoriesImported = len(repositories)
 	result.EventsImported = len(events)
 	result.AttributesImported = len(attributes)
+	result.NotesImported = len(notes)
+	result.SubmittersImported = len(submitters)
+	result.AssociationsImported = len(associations)
+	result.LDSOrdinancesImported = len(ldsOrdinances)
+	result.MediaImported = len(mediaObjects)
 
-	return result, persons, families, sources, citations, repositories, events, attributes, nil
+	return result, persons, families, sources, citations, repositories, events, attributes, notes, submitters, associations, ldsOrdinances, mediaObjects, nil
 }
 
 // parseIndividual converts a GEDCOM individual record to PersonData.
@@ -629,6 +745,39 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 	return repository
 }
 
+// parseNote converts a GEDCOM note record to NoteData.
+// gedcom-go handles CONT/CONC lines automatically - FullText() returns the complete text.
+func parseNote(note *gedcom.Note) NoteData {
+	return NoteData{
+		ID:         uuid.New(),
+		GedcomXref: note.XRef,
+		Text:       note.FullText(),
+	}
+}
+
+// parseSubmitter converts a GEDCOM submitter record to SubmitterData.
+func parseSubmitter(subm *gedcom.Submitter) SubmitterData {
+	submitter := SubmitterData{
+		ID:         uuid.New(),
+		GedcomXref: subm.XRef,
+		Name:       subm.Name,
+		Phone:      subm.Phone,
+		Email:      subm.Email,
+	}
+
+	// Convert address if present
+	if subm.Address != nil {
+		submitter.Address = convertGedcomAddress(subm.Address)
+	}
+
+	// GEDCOM allows multiple languages, we store only the first
+	if len(subm.Language) > 0 {
+		submitter.Language = subm.Language[0]
+	}
+
+	return submitter
+}
+
 // extractCitationsFromIndividual extracts all citations from individual events.
 // TODO: result parameter reserved for future error/warning tracking
 func extractCitationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID, _ *ImportResult) []CitationData {
@@ -845,10 +994,37 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 				eventData.PlaceLong = &long
 			}
 		}
+		// Extract structured address if available
+		if event.Address != nil {
+			eventData.Address = convertGedcomAddress(event.Address)
+		}
 		events = append(events, eventData)
 	}
 
 	return events
+}
+
+// convertGedcomAddress converts a gedcom.Address to a domain.Address.
+func convertGedcomAddress(addr *gedcom.Address) *domain.Address {
+	if addr == nil {
+		return nil
+	}
+	domainAddr := &domain.Address{
+		Line1:      addr.Line1,
+		Line2:      addr.Line2,
+		Line3:      addr.Line3,
+		City:       addr.City,
+		State:      addr.State,
+		PostalCode: addr.PostalCode,
+		Country:    addr.Country,
+		Phone:      addr.Phone,
+		Email:      addr.Email,
+		Website:    addr.Website,
+	}
+	if domainAddr.IsEmpty() {
+		return nil
+	}
+	return domainAddr
 }
 
 // extractAttributesFromIndividual extracts all attributes from an individual.
@@ -922,6 +1098,69 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 	return attributes
 }
 
+// extractAssociationsFromIndividual extracts all ASSO records from an individual.
+// GEDCOM associations link individuals with specific roles like godparents, witnesses, etc.
+func extractAssociationsFromIndividual(indi *gedcom.Individual, personID uuid.UUID, result *ImportResult) []AssociationData {
+	var associations []AssociationData
+
+	for _, assoc := range indi.Associations {
+		// Skip if no associate reference
+		if assoc.IndividualXRef == "" {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Individual %s: association without IndividualXRef, skipping", indi.XRef))
+			continue
+		}
+
+		// Look up the associate's UUID
+		associateID, found := result.PersonXrefToID[assoc.IndividualXRef]
+		if !found {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Individual %s: association references unknown individual %s, skipping", indi.XRef, assoc.IndividualXRef))
+			continue
+		}
+
+		// Map GEDCOM role to lowercase
+		role := mapAssociationRole(assoc.Role)
+		if role == "" {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Individual %s: association without role, using 'unknown'", indi.XRef))
+			role = "unknown"
+		}
+
+		associationData := AssociationData{
+			ID:            uuid.New(),
+			PersonID:      personID,
+			AssociateXref: assoc.IndividualXRef,
+			AssociateID:   associateID,
+			Role:          role,
+			Phrase:        assoc.Phrase,
+		}
+
+		// Combine notes into a single string
+		if len(assoc.Notes) > 0 {
+			associationData.Notes = strings.Join(assoc.Notes, "\n")
+		}
+
+		associations = append(associations, associationData)
+	}
+
+	return associations
+}
+
+// mapAssociationRole converts GEDCOM RELA values to lowercase role names.
+// GODP -> godparent, WITN -> witness, custom values -> lowercase.
+func mapAssociationRole(gedcomRole string) string {
+	switch strings.ToUpper(gedcomRole) {
+	case "GODP":
+		return domain.RoleGodparent
+	case "WITN":
+		return domain.RoleWitness
+	default:
+		// Custom role: lowercase and trim
+		return strings.ToLower(strings.TrimSpace(gedcomRole))
+	}
+}
+
 // extractEventsFromFamily extracts all life events from a family.
 // Marriage is excluded as it is stored on Family directly.
 func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData {
@@ -972,6 +1211,10 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 				eventData.PlaceLong = &long
 			}
 		}
+		// Extract structured address if available
+		if event.Address != nil {
+			eventData.Address = convertGedcomAddress(event.Address)
+		}
 		events = append(events, eventData)
 	}
 
@@ -996,5 +1239,140 @@ func mapNameType(gedcomType string) domain.NameType {
 	default:
 		// Return empty for unknown types (valid per NameType.IsValid)
 		return ""
+	}
+}
+
+// extractLDSOrdinancesFromIndividual extracts LDS ordinance records from an individual.
+// Individual ordinances: BAPL (Baptism), CONL (Confirmation), ENDL (Endowment), SLGC (Sealing to Parents)
+func extractLDSOrdinancesFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []LDSOrdinanceData {
+	var ordinances []LDSOrdinanceData
+
+	for _, ord := range indi.LDSOrdinances {
+		// Map gedcom ordinance type to domain type
+		var ordType domain.LDSOrdinanceType
+		switch ord.Type {
+		case gedcom.LDSBaptism:
+			ordType = domain.LDSBaptism
+		case gedcom.LDSConfirmation:
+			ordType = domain.LDSConfirmation
+		case gedcom.LDSEndowment:
+			ordType = domain.LDSEndowment
+		case gedcom.LDSSealingChild:
+			ordType = domain.LDSSealingChild
+		default:
+			// Skip unknown ordinance types
+			continue
+		}
+
+		ordinances = append(ordinances, LDSOrdinanceData{
+			ID:       uuid.New(),
+			Type:     ordType,
+			PersonID: &personID,
+			Date:     ord.Date,
+			Place:    ord.Place,
+			Temple:   ord.Temple,
+			Status:   ord.Status,
+		})
+	}
+
+	return ordinances
+}
+
+// extractLDSOrdinancesFromFamily extracts LDS ordinance records from a family.
+// Family ordinance: SLGS (Sealing to Spouse)
+func extractLDSOrdinancesFromFamily(fam *gedcom.Family, familyID uuid.UUID) []LDSOrdinanceData {
+	var ordinances []LDSOrdinanceData
+
+	// Extract SLGS (Sealing to Spouse) from family's LDS ordinances
+	for _, ord := range fam.LDSOrdinances {
+		if ord.Type == gedcom.LDSSealingSpouse {
+			ordinances = append(ordinances, LDSOrdinanceData{
+				ID:       uuid.New(),
+				Type:     domain.LDSSealingSpouse,
+				FamilyID: &familyID,
+				Date:     ord.Date,
+				Place:    ord.Place,
+				Temple:   ord.Temple,
+				Status:   ord.Status,
+			})
+		}
+	}
+
+	return ordinances
+}
+
+// parseMediaObject converts a GEDCOM media object (OBJE) record to MediaData.
+// Note: This parses top-level OBJE records. Entity-specific media links are resolved
+// during entity import by referencing the MediaXrefToID mapping.
+// TODO: result parameter reserved for future error/warning tracking
+func parseMediaObject(media *gedcom.MediaObject, _ *ImportResult) MediaData {
+	mediaData := MediaData{
+		ID:         uuid.New(),
+		GedcomXref: media.XRef,
+	}
+
+	// Parse all files from the OBJE record
+	for i, file := range media.Files {
+		domainFile := domain.MediaFile{
+			Path:      file.FileRef,
+			Format:    file.Form,
+			MediaType: file.MediaType,
+			Title:     file.Title,
+		}
+
+		// Parse translations for this file
+		for _, trans := range file.Translations {
+			domainFile.Translations = append(domainFile.Translations, domain.MediaTranslation{
+				Path:   trans.FileRef,
+				Format: trans.Form,
+			})
+		}
+
+		mediaData.Files = append(mediaData.Files, domainFile)
+
+		// First file's data is used for legacy single-file fields
+		if i == 0 {
+			mediaData.FileRef = file.FileRef
+			mediaData.MimeType = file.Form
+			mediaData.Format = file.Form
+			if file.Title != "" {
+				mediaData.Title = file.Title
+			}
+			// Map GEDCOM media type (MEDI) to domain MediaType
+			mediaData.MediaType = mapGedcomMediaType(file.MediaType)
+		}
+	}
+
+	// Fallback title from the first file or XRef
+	if mediaData.Title == "" {
+		if len(media.Files) > 0 && media.Files[0].Title != "" {
+			mediaData.Title = media.Files[0].Title
+		} else {
+			mediaData.Title = media.XRef // Use XRef as fallback
+		}
+	}
+
+	return mediaData
+}
+
+// mapGedcomMediaType converts GEDCOM MEDI values to domain MediaType.
+// GEDCOM 7.0 MEDI types: AUDIO, BOOK, CARD, ELECTRONIC, FICHE, FILM, MAGAZINE,
+// MANUSCRIPT, MAP, NEWSPAPER, PHOTO, TOMBSTONE, VIDEO
+func mapGedcomMediaType(medi string) domain.MediaType {
+	switch strings.ToUpper(medi) {
+	case "PHOTO", "PHOTOGRAPH":
+		return domain.MediaPhoto
+	case "AUDIO":
+		return domain.MediaAudio
+	case "VIDEO":
+		return domain.MediaVideo
+	case "BOOK", "MAGAZINE", "NEWSPAPER", "MANUSCRIPT":
+		return domain.MediaDocument
+	case "ELECTRONIC", "FICHE", "FILM":
+		return domain.MediaDocument
+	case "CARD", "MAP", "TOMBSTONE":
+		return domain.MediaPhoto // Treat as photos/images
+	default:
+		return domain.MediaDocument // Default to document
 	}
 }

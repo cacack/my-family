@@ -693,6 +693,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 		evidenceType  domain.EvidenceType
 		informantType domain.InformantType
 		wantQuality   string
+		wantNoQuality bool // QUAY 0 is not output (it's the default)
 		factType      domain.FactType
 	}{
 		{
@@ -715,10 +716,10 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 			factType:     domain.FactPersonBirth,
 		},
 		{
-			name:         "negative evidence",
-			evidenceType: domain.EvidenceNegative,
-			wantQuality:  "3 QUAY 0",
-			factType:     domain.FactPersonDeath,
+			name:          "negative evidence",
+			evidenceType:  domain.EvidenceNegative,
+			wantNoQuality: true, // QUAY 0 is the default, not output per GEDCOM spec
+			factType:      domain.FactPersonDeath,
 		},
 	}
 
@@ -758,7 +759,12 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 			}
 
 			output := buf.String()
-			if !strings.Contains(output, tt.wantQuality) {
+			if tt.wantNoQuality {
+				// QUAY 0 should NOT be in output (it's the default)
+				if strings.Contains(output, "QUAY") {
+					t.Errorf("Output should not contain QUAY tag for quality 0, got:\n%s", output)
+				}
+			} else if !strings.Contains(output, tt.wantQuality) {
 				t.Errorf("Output should contain %s, got:\n%s", tt.wantQuality, output)
 			}
 		})
@@ -1895,6 +1901,428 @@ func TestExport_PlaceWithoutCoordinates(t *testing.T) {
 		lines := strings.Split(nextSection, "\n")
 		if len(lines) > 0 && strings.HasPrefix(lines[0], "3 MAP") {
 			t.Error("Output should NOT contain MAP tag when coordinates are missing")
+		}
+	}
+}
+
+// Progress callback tests
+
+func TestExportWithProgress_CallsCallback(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	setupExportTestData(t, readStore)
+
+	exporter := gedcom.NewExporter(readStore)
+	ctx := context.Background()
+
+	// Track progress callbacks
+	var progressCalls []gedcom.ExportProgress
+	callback := func(progress gedcom.ExportProgress) error {
+		progressCalls = append(progressCalls, progress)
+		return nil
+	}
+
+	buf := &bytes.Buffer{}
+	result, err := exporter.ExportWithProgress(ctx, buf, callback)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify export succeeded
+	if result.PersonsExported != 3 {
+		t.Errorf("PersonsExported = %d, want 3", result.PersonsExported)
+	}
+
+	// Verify progress callbacks were called
+	if len(progressCalls) == 0 {
+		t.Fatal("Expected progress callbacks to be called")
+	}
+
+	// Verify we got callbacks for different phases
+	phases := make(map[string]bool)
+	for _, p := range progressCalls {
+		phases[p.Phase] = true
+	}
+
+	// Should have persons and families phases (sources might be empty)
+	if !phases["persons"] {
+		t.Error("Expected 'persons' phase in progress callbacks")
+	}
+	if !phases["families"] {
+		t.Error("Expected 'families' phase in progress callbacks")
+	}
+	if !phases["complete"] {
+		t.Error("Expected 'complete' phase in progress callbacks")
+	}
+
+	// Last callback should be complete with 100%
+	lastProgress := progressCalls[len(progressCalls)-1]
+	if lastProgress.Phase != "complete" {
+		t.Errorf("Last phase = %s, want 'complete'", lastProgress.Phase)
+	}
+	if lastProgress.Percentage != 100.0 {
+		t.Errorf("Final percentage = %f, want 100.0", lastProgress.Percentage)
+	}
+}
+
+func TestExportWithProgress_NoCallback(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	setupExportTestData(t, readStore)
+
+	exporter := gedcom.NewExporter(readStore)
+	ctx := context.Background()
+
+	buf := &bytes.Buffer{}
+	result, err := exporter.ExportWithProgress(ctx, buf, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify export still works without callback
+	if result.PersonsExported != 3 {
+		t.Errorf("PersonsExported = %d, want 3", result.PersonsExported)
+	}
+}
+
+func TestExportWithProgress_CallbackCancellation(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	setupExportTestData(t, readStore)
+
+	exporter := gedcom.NewExporter(readStore)
+	ctx := context.Background()
+
+	// Callback that returns an error to cancel export
+	callCount := 0
+	cancelErr := context.Canceled
+	callback := func(_ gedcom.ExportProgress) error {
+		callCount++
+		if callCount >= 2 {
+			return cancelErr
+		}
+		return nil
+	}
+
+	buf := &bytes.Buffer{}
+	_, err := exporter.ExportWithProgress(ctx, buf, callback)
+
+	// Should return the cancellation error
+	if err != cancelErr {
+		t.Errorf("Expected cancellation error, got %v", err)
+	}
+}
+
+func TestExportWithProgress_ProgressPercentage(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Add more data for better progress tracking
+	for i := 0; i < 30; i++ {
+		person := &repository.PersonReadModel{
+			ID:        uuid.New(),
+			GivenName: "Person",
+			Surname:   "Test",
+		}
+		readStore.SavePerson(ctx, person)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+
+	var lastPercentage float64 = -1
+	callback := func(progress gedcom.ExportProgress) error {
+		// Percentage should be monotonically increasing or equal
+		if progress.Percentage < lastPercentage {
+			t.Errorf("Percentage decreased from %f to %f", lastPercentage, progress.Percentage)
+		}
+		// Percentage should be in valid range
+		if progress.Percentage < 0 || progress.Percentage > 100 {
+			t.Errorf("Percentage %f out of range [0, 100]", progress.Percentage)
+		}
+		lastPercentage = progress.Percentage
+		return nil
+	}
+
+	buf := &bytes.Buffer{}
+	_, err := exporter.ExportWithProgress(ctx, buf, callback)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExport_LDSOrdinances(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a person
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Gender:    domain.GenderMale,
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create individual LDS ordinances
+	baptism := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSBaptism,
+		TypeLabel: "Baptism (LDS)",
+		PersonID:  &personID,
+		DateRaw:   "15 JAN 1880",
+		Temple:    "SL",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, baptism); err != nil {
+		t.Fatal(err)
+	}
+
+	confirmation := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSConfirmation,
+		TypeLabel: "Confirmation (LDS)",
+		PersonID:  &personID,
+		DateRaw:   "15 JAN 1880",
+		Temple:    "SL",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, confirmation); err != nil {
+		t.Fatal(err)
+	}
+
+	endowment := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSEndowment,
+		TypeLabel: "Endowment",
+		PersonID:  &personID,
+		DateRaw:   "20 FEB 1885",
+		Temple:    "LOGAN",
+		Status:    "COMPLETED",
+		Place:     "Logan, Utah",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, endowment); err != nil {
+		t.Fatal(err)
+	}
+
+	sealingChild := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSSealingChild,
+		TypeLabel: "Sealing to Parents",
+		PersonID:  &personID,
+		DateRaw:   "20 MAR 1885",
+		Temple:    "MANTI",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, sealingChild); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a family for spouse sealing
+	familyID := uuid.New()
+	partner2ID := uuid.New()
+	partner2 := &repository.PersonReadModel{
+		ID:        partner2ID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+		Gender:    domain.GenderFemale,
+	}
+	if err := readStore.SavePerson(ctx, partner2); err != nil {
+		t.Fatal(err)
+	}
+
+	family := &repository.FamilyReadModel{
+		ID:               familyID,
+		Partner1ID:       &personID,
+		Partner1Name:     "John Doe",
+		Partner2ID:       &partner2ID,
+		Partner2Name:     "Jane Smith",
+		RelationshipType: domain.RelationMarriage,
+	}
+	if err := readStore.SaveFamily(ctx, family); err != nil {
+		t.Fatal(err)
+	}
+
+	sealingSpouse := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSSealingSpouse,
+		TypeLabel: "Sealing to Spouse",
+		FamilyID:  &familyID,
+		DateRaw:   "25 DEC 1885",
+		Temple:    "SL",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, sealingSpouse); err != nil {
+		t.Fatal(err)
+	}
+
+	// Export
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	// Verify ordinances were exported
+	if result.LDSOrdinancesExported != 5 {
+		t.Errorf("LDSOrdinancesExported = %d, want 5", result.LDSOrdinancesExported)
+	}
+
+	output := buf.String()
+
+	// Verify individual ordinances in output
+	if !strings.Contains(output, "1 BAPL") {
+		t.Error("Output should contain BAPL tag")
+	}
+	if !strings.Contains(output, "1 CONL") {
+		t.Error("Output should contain CONL tag")
+	}
+	if !strings.Contains(output, "1 ENDL") {
+		t.Error("Output should contain ENDL tag")
+	}
+	if !strings.Contains(output, "1 SLGC") {
+		t.Error("Output should contain SLGC tag")
+	}
+
+	// Verify family ordinance in output
+	if !strings.Contains(output, "1 SLGS") {
+		t.Error("Output should contain SLGS tag")
+	}
+
+	// Verify specific date and temple codes
+	if !strings.Contains(output, "2 DATE 15 JAN 1880") {
+		t.Error("Output should contain baptism date")
+	}
+	if !strings.Contains(output, "2 TEMP SL") {
+		t.Error("Output should contain SL temple code")
+	}
+	if !strings.Contains(output, "2 TEMP LOGAN") {
+		t.Error("Output should contain LOGAN temple code")
+	}
+	if !strings.Contains(output, "2 TEMP MANTI") {
+		t.Error("Output should contain MANTI temple code")
+	}
+	if !strings.Contains(output, "2 STAT COMPLETED") {
+		t.Error("Output should contain COMPLETED status")
+	}
+}
+
+func TestExport_LDSOrdinances_RoundTrip(t *testing.T) {
+	// Test that LDS ordinances survive import->export round trip
+	inputGedcom := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BAPL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 CONL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 ENDL
+2 DATE 20 FEB 1885
+2 TEMP LOGAN
+2 STAT COMPLETED
+1 SLGC
+2 DATE 20 MAR 1885
+2 TEMP MANTI
+2 STAT COMPLETED
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 SLGS
+2 DATE 25 DEC 1885
+2 TEMP SL
+2 STAT COMPLETED
+0 TRLR
+`
+
+	// Import
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+	result, persons, families, _, _, _, _, _, _, _, _, ldsOrdinances, _, err := importer.Import(ctx, strings.NewReader(inputGedcom))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if result.LDSOrdinancesImported != 5 {
+		t.Errorf("LDSOrdinancesImported = %d, want 5", result.LDSOrdinancesImported)
+	}
+
+	// Build read store from imported data
+	readStore := memory.NewReadModelStore()
+	for _, p := range persons {
+		person := &repository.PersonReadModel{
+			ID:        p.ID,
+			GivenName: p.GivenName,
+			Surname:   p.Surname,
+			FullName:  p.GivenName + " " + p.Surname,
+			Gender:    p.Gender,
+		}
+		readStore.SavePerson(ctx, person)
+	}
+
+	for _, f := range families {
+		fam := &repository.FamilyReadModel{
+			ID:         f.ID,
+			Partner1ID: f.Partner1ID,
+			Partner2ID: f.Partner2ID,
+		}
+		readStore.SaveFamily(ctx, fam)
+	}
+
+	for _, ord := range ldsOrdinances {
+		ldsOrd := &repository.LDSOrdinanceReadModel{
+			ID:        ord.ID,
+			Type:      ord.Type,
+			TypeLabel: ord.Type.Label(),
+			PersonID:  ord.PersonID,
+			FamilyID:  ord.FamilyID,
+			DateRaw:   ord.Date,
+			Temple:    ord.Temple,
+			Status:    ord.Status,
+			Place:     ord.Place,
+		}
+		readStore.SaveLDSOrdinance(ctx, ldsOrd)
+	}
+
+	// Export
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	exportResult, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	if exportResult.LDSOrdinancesExported != 5 {
+		t.Errorf("LDSOrdinancesExported = %d, want 5", exportResult.LDSOrdinancesExported)
+	}
+
+	output := buf.String()
+
+	// Verify all ordinance types are present
+	expectedTags := []string{"1 BAPL", "1 CONL", "1 ENDL", "1 SLGC", "1 SLGS"}
+	for _, tag := range expectedTags {
+		if !strings.Contains(output, tag) {
+			t.Errorf("Output should contain %s tag", tag)
+		}
+	}
+
+	// Verify temple codes preserved
+	expectedTemples := []string{"TEMP SL", "TEMP LOGAN", "TEMP MANTI"}
+	for _, temple := range expectedTemples {
+		if !strings.Contains(output, temple) {
+			t.Errorf("Output should contain %s", temple)
 		}
 	}
 }

@@ -49,7 +49,7 @@ func TestImportBasicGedcom(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
+	result, persons, families, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(sampleGedcom))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestImportApproximateDates(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestImportMissingNames(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestImportSingleParentFamily(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestImportMissingReference(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, families, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestImportDateRanges(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestImportSources(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, sources, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestImportCitationsForMultipleEvents(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, _, sources, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestImportFamilyCitations(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, sources, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -500,7 +500,7 @@ func TestImportNameComponents(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -572,7 +572,7 @@ func TestImportPedigreeTypes(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -626,7 +626,7 @@ func TestImportRepositories(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, _, sources, _, repositories, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, _, sources, _, repositories, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -693,7 +693,7 @@ func TestImportBurialEvent(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, sources, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -743,7 +743,7 @@ func TestImportBaptismEvent(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -779,7 +779,7 @@ func TestImportCensusEvent(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -813,7 +813,7 @@ func TestImportImmigrationEvent(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -849,7 +849,7 @@ func TestImportOccupationAttribute(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -882,7 +882,7 @@ func TestImportResidenceAttribute(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -922,7 +922,7 @@ func TestImportFamilyMarriageBann(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -964,7 +964,7 @@ func TestImportFamilyAnnulment(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, families, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, families, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1019,7 +1019,7 @@ func TestImportMultipleEventsAndAttributes(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, sources, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, sources, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1096,7 +1096,7 @@ func TestImportChristeningEvent(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1133,7 +1133,7 @@ func TestImportEmigrationEvent(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1170,7 +1170,7 @@ func TestImportNaturalizationEvent(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1220,7 +1220,7 @@ func TestImportEventsExtraction(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, _, _, _, _, events, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1289,7 +1289,7 @@ func TestImportAttributesExtraction(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, _, _, _, _, _, attributes, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, _, _, _, _, _, attributes, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1355,7 +1355,7 @@ func TestImportFamilyEventsExtraction(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, _, _, _, _, events, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1415,7 +1415,7 @@ func TestImportEventsCitations(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, _, _, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1486,7 +1486,7 @@ func TestImportAncestryVendor(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, _, _, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1569,7 +1569,7 @@ func TestImportFamilySearchVendor(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1647,7 +1647,7 @@ func TestImportAncestryFamilyCitations(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, _, _, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1688,7 +1688,7 @@ func TestImportUnknownVendor(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	result, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	result, _, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1720,7 +1720,7 @@ func TestImportCitationWithoutAPID(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, _, _, _, citations, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, _, _, _, citations, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1760,7 +1760,7 @@ func TestImportMultipleNames(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1872,7 +1872,7 @@ func TestImportMultipleNamesWithImmigrantType(t *testing.T) {
 	importer := gedcom.NewImporter()
 	ctx := context.Background()
 
-	_, persons, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
 	}
@@ -1930,5 +1930,590 @@ func TestImportMultipleNamesWithImmigrantType(t *testing.T) {
 	}
 	if p.Names[3].NameType != domain.NameTypeProfessional {
 		t.Errorf("Names[3].NameType = %q, want %q", p.Names[3].NameType, domain.NameTypeProfessional)
+	}
+}
+
+func TestImportEventWithStructuredAddress(t *testing.T) {
+	// Test GEDCOM with structured address on a BAPM event (baptism)
+	// BAPM goes through extractEventsFromIndividual, not as an attribute
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Smith/
+1 SEX M
+1 BIRT
+2 DATE 1850
+1 BAPM
+2 DATE 15 JAN 1850
+2 PLAC First Methodist Church
+2 ADDR 123 Church Street
+3 ADR1 123 Church Street
+3 ADR2 Building A
+3 CITY Chicago
+3 STAE IL
+3 POST 60601
+3 CTRY USA
+1 BURI
+2 DATE 1920
+2 PLAC Oak Cemetery
+2 ADDR
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	// Should have two events: BAPM and BURI
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+
+	// Find the baptism event
+	var bapmEvent *gedcom.EventData
+	for i := range events {
+		if events[i].FactType == domain.FactPersonBaptism {
+			bapmEvent = &events[i]
+			break
+		}
+	}
+	if bapmEvent == nil {
+		t.Fatal("Baptism event not found")
+	}
+
+	// Check address was parsed
+	if bapmEvent.Address == nil {
+		t.Fatal("Baptism event address should not be nil")
+	}
+	if bapmEvent.Address.Line1 != "123 Church Street" {
+		t.Errorf("Address.Line1 = %s, want '123 Church Street'", bapmEvent.Address.Line1)
+	}
+	if bapmEvent.Address.Line2 != "Building A" {
+		t.Errorf("Address.Line2 = %s, want 'Building A'", bapmEvent.Address.Line2)
+	}
+	if bapmEvent.Address.City != "Chicago" {
+		t.Errorf("Address.City = %s, want 'Chicago'", bapmEvent.Address.City)
+	}
+	if bapmEvent.Address.State != "IL" {
+		t.Errorf("Address.State = %s, want 'IL'", bapmEvent.Address.State)
+	}
+
+	person := persons[0]
+	if person.GivenName != "John" {
+		t.Errorf("GivenName = %s, want John", person.GivenName)
+	}
+}
+
+func TestImportFamilyEventWithAddress(t *testing.T) {
+	// Test GEDCOM with family event that has an address
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Smith/
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Doe/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 10 JUN 1880
+2 PLAC First Baptist Church
+1 DIV
+2 DATE 1890
+2 PLAC City Court
+2 ADDR 100 Court Street
+3 ADR1 100 Court Street
+3 CITY Springfield
+3 STAE IL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should have one family event (DIV - divorce)
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+
+	event := events[0]
+	if event.FactType != domain.FactFamilyDivorce {
+		t.Errorf("FactType = %s, want %s", event.FactType, domain.FactFamilyDivorce)
+	}
+
+	// Check address was parsed
+	if event.Address == nil {
+		t.Fatal("Event address should not be nil")
+	}
+	if event.Address.Line1 != "100 Court Street" {
+		t.Errorf("Address.Line1 = %s, want '100 Court Street'", event.Address.Line1)
+	}
+	if event.Address.City != "Springfield" {
+		t.Errorf("Address.City = %s, want 'Springfield'", event.Address.City)
+	}
+}
+
+func TestImportRepositoryWithAddress(t *testing.T) {
+	// Test GEDCOM with repository containing structured address
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @R1@ REPO
+1 NAME Family History Library
+1 ADDR 35 N West Temple St
+2 ADR1 35 N West Temple St
+2 ADR2 Suite 100
+2 CITY Salt Lake City
+2 STAE UT
+2 POST 84150
+2 CTRY USA
+1 PHON 801-240-2584
+1 EMAIL familyhistory@familysearch.org
+1 WWW https://www.familysearch.org
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, _, _, repos, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(repos) != 1 {
+		t.Fatalf("len(repos) = %d, want 1", len(repos))
+	}
+
+	repo := repos[0]
+	if repo.Name != "Family History Library" {
+		t.Errorf("Name = %s, want 'Family History Library'", repo.Name)
+	}
+	// Address should be combined from ADR1 and ADR2
+	if repo.Address != "35 N West Temple St, Suite 100" {
+		t.Errorf("Address = %s, want '35 N West Temple St, Suite 100'", repo.Address)
+	}
+	if repo.City != "Salt Lake City" {
+		t.Errorf("City = %s, want 'Salt Lake City'", repo.City)
+	}
+	if repo.State != "UT" {
+		t.Errorf("State = %s, want 'UT'", repo.State)
+	}
+	if repo.PostalCode != "84150" {
+		t.Errorf("PostalCode = %s, want '84150'", repo.PostalCode)
+	}
+	if repo.Country != "USA" {
+		t.Errorf("Country = %s, want 'USA'", repo.Country)
+	}
+	if repo.Phone != "801-240-2584" {
+		t.Errorf("Phone = %s, want '801-240-2584'", repo.Phone)
+	}
+	if repo.Email != "familyhistory@familysearch.org" {
+		t.Errorf("Email = %s, want 'familyhistory@familysearch.org'", repo.Email)
+	}
+	if repo.Website != "https://www.familysearch.org" {
+		t.Errorf("Website = %s, want 'https://www.familysearch.org'", repo.Website)
+	}
+}
+
+func TestImportMediaObject(t *testing.T) {
+	// Test GEDCOM with OBJE (media object) records
+	// Note: In GEDCOM, MEDI is a child of FORM, not a sibling like TYPE would be
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @M1@ OBJE
+1 FILE /photos/family_portrait.jpg
+2 FORM image/jpeg
+3 MEDI PHOTO
+2 TITL Family Portrait 1920
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, _, _, _, _, _, media, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should have 1 media object
+	if result.MediaImported != 1 {
+		t.Errorf("MediaImported = %d, want 1", result.MediaImported)
+	}
+	if len(media) != 1 {
+		t.Fatalf("len(media) = %d, want 1", len(media))
+	}
+
+	m := media[0]
+	if m.GedcomXref != "@M1@" {
+		t.Errorf("GedcomXref = %s, want @M1@", m.GedcomXref)
+	}
+	// Title comes from FILE-level TITL since there's no OBJE-level title parsing
+	if m.Title != "Family Portrait 1920" {
+		t.Errorf("Title = %s, want 'Family Portrait 1920'", m.Title)
+	}
+	if m.MediaType != domain.MediaPhoto {
+		t.Errorf("MediaType = %s, want %s", m.MediaType, domain.MediaPhoto)
+	}
+	if m.Format != "image/jpeg" {
+		t.Errorf("Format = %s, want 'image/jpeg'", m.Format)
+	}
+
+	// Check files slice
+	if len(m.Files) != 1 {
+		t.Fatalf("len(Files) = %d, want 1", len(m.Files))
+	}
+	if m.Files[0].Path != "/photos/family_portrait.jpg" {
+		t.Errorf("Files[0].Path = %s, want '/photos/family_portrait.jpg'", m.Files[0].Path)
+	}
+	if m.Files[0].Format != "image/jpeg" {
+		t.Errorf("Files[0].Format = %s, want 'image/jpeg'", m.Files[0].Format)
+	}
+	if m.Files[0].Title != "Family Portrait 1920" {
+		t.Errorf("Files[0].Title = %s, want 'Family Portrait 1920'", m.Files[0].Title)
+	}
+	if m.Files[0].MediaType != "PHOTO" {
+		t.Errorf("Files[0].MediaType = %s, want 'PHOTO'", m.Files[0].MediaType)
+	}
+}
+
+func TestImportMediaObjectWithMultipleFiles(t *testing.T) {
+	// Test GEDCOM with OBJE that has multiple FILE records (GEDCOM 7.0 style)
+	// Note: MEDI is a child of FORM, not a sibling like TYPE
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @M1@ OBJE
+1 FILE /photos/highres.jpg
+2 FORM image/jpeg
+3 MEDI PHOTO
+2 TITL High Resolution
+1 FILE /photos/thumbnail.jpg
+2 FORM image/jpeg
+3 MEDI PHOTO
+2 TITL Thumbnail
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, _, _, _, _, _, _, _, _, _, media, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(media) != 1 {
+		t.Fatalf("len(media) = %d, want 1", len(media))
+	}
+
+	m := media[0]
+	// Title comes from first file since there's no top-level TITL parsing
+	if m.Title != "High Resolution" {
+		t.Errorf("Title = %s, want 'High Resolution'", m.Title)
+	}
+
+	// Should have 2 files
+	if len(m.Files) != 2 {
+		t.Fatalf("len(Files) = %d, want 2", len(m.Files))
+	}
+
+	// First file (high resolution)
+	if m.Files[0].Path != "/photos/highres.jpg" {
+		t.Errorf("Files[0].Path = %s, want '/photos/highres.jpg'", m.Files[0].Path)
+	}
+	if m.Files[0].Title != "High Resolution" {
+		t.Errorf("Files[0].Title = %s, want 'High Resolution'", m.Files[0].Title)
+	}
+
+	// Second file (thumbnail)
+	if m.Files[1].Path != "/photos/thumbnail.jpg" {
+		t.Errorf("Files[1].Path = %s, want '/photos/thumbnail.jpg'", m.Files[1].Path)
+	}
+	if m.Files[1].Title != "Thumbnail" {
+		t.Errorf("Files[1].Title = %s, want 'Thumbnail'", m.Files[1].Title)
+	}
+}
+
+func TestImportMediaObjectMediaTypes(t *testing.T) {
+	// Test mapping of GEDCOM MEDI values to domain MediaType
+	// Note: In GEDCOM, MEDI is a child of FORM (level 3), not a sibling of FILE (level 2)
+	testCases := []struct {
+		medi     string
+		expected domain.MediaType
+	}{
+		{"PHOTO", domain.MediaPhoto},
+		{"photo", domain.MediaPhoto},
+		{"AUDIO", domain.MediaAudio},
+		{"audio", domain.MediaAudio},
+		{"VIDEO", domain.MediaVideo},
+		{"video", domain.MediaVideo},
+		{"DOCUMENT", domain.MediaDocument},
+		{"document", domain.MediaDocument},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.medi, func(t *testing.T) {
+			gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @M1@ OBJE
+1 FILE /test.jpg
+2 FORM image/jpeg
+3 MEDI ` + tc.medi + `
+2 TITL Test
+0 TRLR
+`
+			importer := gedcom.NewImporter()
+			ctx := context.Background()
+
+			_, _, _, _, _, _, _, _, _, _, _, _, media, err := importer.Import(ctx, strings.NewReader(gedcomData))
+			if err != nil {
+				t.Fatalf("Import failed: %v", err)
+			}
+
+			if len(media) != 1 {
+				t.Fatalf("len(media) = %d, want 1", len(media))
+			}
+
+			if media[0].MediaType != tc.expected {
+				t.Errorf("MediaType = %s, want %s", media[0].MediaType, tc.expected)
+			}
+		})
+	}
+}
+
+func TestImportLDSOrdinances(t *testing.T) {
+	// Test GEDCOM with LDS temple ordinance records (BAPL, CONL, ENDL, SLGC, SLGS)
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1860
+1 BAPL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 CONL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 ENDL
+2 DATE 20 FEB 1885
+2 TEMP LOGAN
+2 STAT COMPLETED
+2 PLAC Logan, Utah
+1 SLGC
+2 DATE 20 MAR 1885
+2 TEMP MANTI
+2 STAT COMPLETED
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+1 BIRT
+2 DATE ABT 1862
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 10 JUN 1880
+1 SLGS
+2 DATE 25 DEC 1885
+2 TEMP SL
+2 STAT COMPLETED
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, _, _, _, _, ldsOrdinances, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should import 5 LDS ordinances: BAPL, CONL, ENDL, SLGC (person), SLGS (family)
+	if result.LDSOrdinancesImported != 5 {
+		t.Errorf("LDSOrdinancesImported = %d, want 5", result.LDSOrdinancesImported)
+	}
+
+	if len(ldsOrdinances) != 5 {
+		t.Fatalf("len(ldsOrdinances) = %d, want 5", len(ldsOrdinances))
+	}
+
+	// Verify individual ordinances
+	ordinancesByType := make(map[domain.LDSOrdinanceType]gedcom.LDSOrdinanceData)
+	for _, ord := range ldsOrdinances {
+		ordinancesByType[ord.Type] = ord
+	}
+
+	// Verify BAPL (Baptism)
+	if bapl, ok := ordinancesByType[domain.LDSBaptism]; ok {
+		if bapl.Date != "15 JAN 1880" {
+			t.Errorf("BAPL Date = %s, want '15 JAN 1880'", bapl.Date)
+		}
+		if bapl.Temple != "SL" {
+			t.Errorf("BAPL Temple = %s, want 'SL'", bapl.Temple)
+		}
+		if bapl.Status != "COMPLETED" {
+			t.Errorf("BAPL Status = %s, want 'COMPLETED'", bapl.Status)
+		}
+		if bapl.PersonID == nil {
+			t.Error("BAPL PersonID should not be nil")
+		}
+	} else {
+		t.Error("BAPL ordinance not found")
+	}
+
+	// Verify CONL (Confirmation)
+	if conl, ok := ordinancesByType[domain.LDSConfirmation]; ok {
+		if conl.Date != "15 JAN 1880" {
+			t.Errorf("CONL Date = %s, want '15 JAN 1880'", conl.Date)
+		}
+		if conl.PersonID == nil {
+			t.Error("CONL PersonID should not be nil")
+		}
+	} else {
+		t.Error("CONL ordinance not found")
+	}
+
+	// Verify ENDL (Endowment)
+	if endl, ok := ordinancesByType[domain.LDSEndowment]; ok {
+		if endl.Date != "20 FEB 1885" {
+			t.Errorf("ENDL Date = %s, want '20 FEB 1885'", endl.Date)
+		}
+		if endl.Temple != "LOGAN" {
+			t.Errorf("ENDL Temple = %s, want 'LOGAN'", endl.Temple)
+		}
+		if endl.Place != "Logan, Utah" {
+			t.Errorf("ENDL Place = %s, want 'Logan, Utah'", endl.Place)
+		}
+		if endl.PersonID == nil {
+			t.Error("ENDL PersonID should not be nil")
+		}
+	} else {
+		t.Error("ENDL ordinance not found")
+	}
+
+	// Verify SLGC (Sealing to Parents)
+	if slgc, ok := ordinancesByType[domain.LDSSealingChild]; ok {
+		if slgc.Date != "20 MAR 1885" {
+			t.Errorf("SLGC Date = %s, want '20 MAR 1885'", slgc.Date)
+		}
+		if slgc.Temple != "MANTI" {
+			t.Errorf("SLGC Temple = %s, want 'MANTI'", slgc.Temple)
+		}
+		if slgc.PersonID == nil {
+			t.Error("SLGC PersonID should not be nil")
+		}
+	} else {
+		t.Error("SLGC ordinance not found")
+	}
+
+	// Verify SLGS (Sealing to Spouse)
+	if slgs, ok := ordinancesByType[domain.LDSSealingSpouse]; ok {
+		if slgs.Date != "25 DEC 1885" {
+			t.Errorf("SLGS Date = %s, want '25 DEC 1885'", slgs.Date)
+		}
+		if slgs.Temple != "SL" {
+			t.Errorf("SLGS Temple = %s, want 'SL'", slgs.Temple)
+		}
+		if slgs.FamilyID == nil {
+			t.Error("SLGS FamilyID should not be nil")
+		}
+		if slgs.PersonID != nil {
+			t.Error("SLGS PersonID should be nil (family ordinance)")
+		}
+	} else {
+		t.Error("SLGS ordinance not found")
+	}
+}
+
+func TestImportLDSOrdinances_PartialData(t *testing.T) {
+	// Test LDS ordinances with only some fields populated
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BAPL
+2 DATE 15 JAN 1880
+1 ENDL
+2 TEMP SL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, _, _, _, _, ldsOrdinances, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if result.LDSOrdinancesImported != 2 {
+		t.Errorf("LDSOrdinancesImported = %d, want 2", result.LDSOrdinancesImported)
+	}
+
+	if len(ldsOrdinances) != 2 {
+		t.Fatalf("len(ldsOrdinances) = %d, want 2", len(ldsOrdinances))
+	}
+
+	// Find BAPL - has date but no temple
+	var bapl, endl *gedcom.LDSOrdinanceData
+	for i := range ldsOrdinances {
+		if ldsOrdinances[i].Type == domain.LDSBaptism {
+			bapl = &ldsOrdinances[i]
+		}
+		if ldsOrdinances[i].Type == domain.LDSEndowment {
+			endl = &ldsOrdinances[i]
+		}
+	}
+
+	if bapl == nil {
+		t.Fatal("BAPL ordinance not found")
+	}
+	if bapl.Date != "15 JAN 1880" {
+		t.Errorf("BAPL Date = %s, want '15 JAN 1880'", bapl.Date)
+	}
+	if bapl.Temple != "" {
+		t.Errorf("BAPL Temple = %s, want empty", bapl.Temple)
+	}
+
+	if endl == nil {
+		t.Fatal("ENDL ordinance not found")
+	}
+	if endl.Date != "" {
+		t.Errorf("ENDL Date = %s, want empty", endl.Date)
+	}
+	if endl.Temple != "SL" {
+		t.Errorf("ENDL Temple = %s, want 'SL'", endl.Temple)
 	}
 }

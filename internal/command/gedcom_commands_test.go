@@ -377,7 +377,7 @@ func TestImportFamily_ErrorPaths(t *testing.T) {
 	mockStore.appendError = nil
 	reader := strings.NewReader(minimalGedcom)
 	importer := gedcom.NewImporter()
-	_, persons, families, _, _, _, _, _, _ := importer.Import(ctx, reader)
+	_, persons, families, _, _, _, _, _, _, _, _, _, _, _ := importer.Import(ctx, reader)
 
 	// Import persons manually first
 	for _, p := range persons {
@@ -1021,7 +1021,7 @@ func TestImportGedcom_CitationImportError(t *testing.T) {
 	// Parse with gedcom importer to get the data
 	importer := gedcom.NewImporter()
 	reader := strings.NewReader(gedcomInvalidCitation)
-	_, _, _, sources, citations, _, _, _, _ := importer.Import(ctx, reader)
+	_, _, _, sources, citations, _, _, _, _, _, _, _, _, _ := importer.Import(ctx, reader)
 
 	// Import sources first so they exist
 	for _, s := range sources {

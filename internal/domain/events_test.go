@@ -940,7 +940,7 @@ func TestMediaDeleted_RoundTrip(t *testing.T) {
 
 func TestRepositoryCreated_RoundTrip(t *testing.T) {
 	r := NewRepository("National Archives")
-	r.Address = "700 Pennsylvania Avenue NW"
+	r.StreetAddress = "700 Pennsylvania Avenue NW"
 	r.City = "Washington"
 	r.State = "DC"
 	r.PostalCode = "20408"
@@ -977,8 +977,8 @@ func TestRepositoryCreated_RoundTrip(t *testing.T) {
 	if decoded.Name != "National Archives" {
 		t.Errorf("Name = %v, want National Archives", decoded.Name)
 	}
-	if decoded.Address != "700 Pennsylvania Avenue NW" {
-		t.Errorf("Address = %v, want 700 Pennsylvania Avenue NW", decoded.Address)
+	if decoded.StreetAddress != "700 Pennsylvania Avenue NW" {
+		t.Errorf("StreetAddress = %v, want 700 Pennsylvania Avenue NW", decoded.StreetAddress)
 	}
 	if decoded.City != "Washington" {
 		t.Errorf("City = %v, want Washington", decoded.City)
@@ -1353,5 +1353,108 @@ func TestEventAggregateIDs(t *testing.T) {
 				t.Error("OccurredAt() returned zero time")
 			}
 		})
+	}
+}
+
+func TestNoteCreated_RoundTrip(t *testing.T) {
+	n := NewNote("This is a test note with important genealogy information.")
+	n.SetGedcomXref("@N1@")
+
+	event := NewNoteCreated(n)
+
+	// Verify event type
+	if event.EventType() != "NoteCreated" {
+		t.Errorf("EventType() = %v, want NoteCreated", event.EventType())
+	}
+
+	// Verify aggregate ID
+	if event.AggregateID() != n.ID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), n.ID)
+	}
+
+	// JSON round-trip
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded NoteCreated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.NoteID != event.NoteID {
+		t.Errorf("NoteID = %v, want %v", decoded.NoteID, event.NoteID)
+	}
+	if decoded.Text != event.Text {
+		t.Errorf("Text = %v, want %v", decoded.Text, event.Text)
+	}
+	if decoded.GedcomXref != event.GedcomXref {
+		t.Errorf("GedcomXref = %v, want %v", decoded.GedcomXref, event.GedcomXref)
+	}
+}
+
+func TestNoteUpdated_RoundTrip(t *testing.T) {
+	noteID := uuid.New()
+	changes := map[string]any{
+		"text": "Updated note content",
+	}
+
+	event := NewNoteUpdated(noteID, changes)
+
+	if event.EventType() != "NoteUpdated" {
+		t.Errorf("EventType() = %v, want NoteUpdated", event.EventType())
+	}
+
+	if event.AggregateID() != noteID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), noteID)
+	}
+
+	// JSON round-trip
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded NoteUpdated
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.NoteID != noteID {
+		t.Errorf("NoteID = %v, want %v", decoded.NoteID, noteID)
+	}
+	if decoded.Changes["text"] != "Updated note content" {
+		t.Errorf("Changes[text] = %v, want Updated note content", decoded.Changes["text"])
+	}
+}
+
+func TestNoteDeleted_RoundTrip(t *testing.T) {
+	noteID := uuid.New()
+	event := NewNoteDeleted(noteID, "No longer needed")
+
+	if event.EventType() != "NoteDeleted" {
+		t.Errorf("EventType() = %v, want NoteDeleted", event.EventType())
+	}
+
+	if event.AggregateID() != noteID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), noteID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded NoteDeleted
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.NoteID != noteID {
+		t.Errorf("NoteID = %v, want %v", decoded.NoteID, noteID)
+	}
+	if decoded.Reason != "No longer needed" {
+		t.Errorf("Reason = %v, want No longer needed", decoded.Reason)
 	}
 }

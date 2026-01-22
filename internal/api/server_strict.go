@@ -624,6 +624,26 @@ func (ss *StrictServer) ExportTree(ctx context.Context, _ ExportTreeRequestObjec
 	}, nil
 }
 
+// GetExportEstimate implements StrictServerInterface.
+func (ss *StrictServer) GetExportEstimate(ctx context.Context, _ GetExportEstimateRequestObject) (GetExportEstimateResponseObject, error) {
+	estimate, err := ss.server.exportService.GetEstimate(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetExportEstimate200JSONResponse{
+		PersonCount:    estimate.PersonCount,
+		FamilyCount:    estimate.FamilyCount,
+		SourceCount:    estimate.SourceCount,
+		CitationCount:  estimate.CitationCount,
+		EventCount:     estimate.EventCount,
+		NoteCount:      estimate.NoteCount,
+		TotalRecords:   estimate.TotalRecords,
+		EstimatedBytes: estimate.EstimatedBytes,
+		IsLargeExport:  estimate.IsLargeExport,
+	}, nil
+}
+
 // ============================================================================
 // Family endpoints
 // ============================================================================
@@ -3441,4 +3461,959 @@ func (ss *StrictServer) GetRelationship(ctx context.Context, request GetRelation
 		IsRelated: &isRelated,
 		Summary:   &summary,
 	}, nil
+}
+
+// ============================================================================
+// Note endpoints
+// ============================================================================
+
+// ListNotes implements StrictServerInterface.
+func (ss *StrictServer) ListNotes(ctx context.Context, request ListNotesRequestObject) (ListNotesResponseObject, error) {
+	limit := 20
+	offset := 0
+	order := "desc"
+
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+	if request.Params.Order != nil {
+		order = string(*request.Params.Order)
+	}
+
+	result, err := ss.server.noteService.ListNotes(ctx, query.ListNotesInput{
+		Limit:     limit,
+		Offset:    offset,
+		SortOrder: order,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	notes := make([]Note, len(result.Notes))
+	for i, n := range result.Notes {
+		notes[i] = convertQueryNoteToGenerated(n)
+	}
+
+	limitVal := result.Limit
+	offsetVal := result.Offset
+	return ListNotes200JSONResponse{
+		Notes:  notes,
+		Total:  result.Total,
+		Limit:  &limitVal,
+		Offset: &offsetVal,
+	}, nil
+}
+
+// CreateNote implements StrictServerInterface.
+func (ss *StrictServer) CreateNote(ctx context.Context, request CreateNoteRequestObject) (CreateNoteResponseObject, error) {
+	input := command.CreateNoteInput{
+		Text: request.Body.Text,
+	}
+	if request.Body.GedcomXref != nil {
+		input.GedcomXref = *request.Body.GedcomXref
+	}
+
+	result, err := ss.server.commandHandler.CreateNote(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrInvalidInput) {
+			return CreateNote400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	// Fetch the created note
+	note, err := ss.server.noteService.GetNote(ctx, result.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateNote201JSONResponse(convertQueryNoteToGenerated(*note)), nil
+}
+
+// GetNote implements StrictServerInterface.
+func (ss *StrictServer) GetNote(ctx context.Context, request GetNoteRequestObject) (GetNoteResponseObject, error) {
+	note, err := ss.server.noteService.GetNote(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return GetNote404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Note not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return GetNote200JSONResponse(convertQueryNoteToGenerated(*note)), nil
+}
+
+// UpdateNote implements StrictServerInterface.
+func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteRequestObject) (UpdateNoteResponseObject, error) {
+	input := command.UpdateNoteInput{
+		ID:      request.Id,
+		Version: request.Body.Version,
+	}
+	if request.Body.Text != nil {
+		input.Text = request.Body.Text
+	}
+
+	result, err := ss.server.commandHandler.UpdateNote(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrNoteNotFound) {
+			return UpdateNote404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Note not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return UpdateNote409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict",
+			}}, nil
+		}
+		if errors.Is(err, command.ErrInvalidInput) {
+			return UpdateNote400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	// Fetch the updated note
+	note, err := ss.server.noteService.GetNote(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = result // Used for version check above
+	return UpdateNote200JSONResponse(convertQueryNoteToGenerated(*note)), nil
+}
+
+// DeleteNote implements StrictServerInterface.
+func (ss *StrictServer) DeleteNote(ctx context.Context, request DeleteNoteRequestObject) (DeleteNoteResponseObject, error) {
+	version := int64(0)
+	if request.Params.Version != nil {
+		version = *request.Params.Version
+	}
+
+	err := ss.server.commandHandler.DeleteNote(ctx, request.Id, version, "")
+	if err != nil {
+		if errors.Is(err, command.ErrNoteNotFound) {
+			return DeleteNote404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Note not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return DeleteNote409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return DeleteNote204Response{}, nil
+}
+
+// convertQueryNoteToGenerated converts a query.Note to the generated Note type.
+func convertQueryNoteToGenerated(n query.Note) Note {
+	resp := Note{
+		Id:        n.ID,
+		Text:      n.Text,
+		Version:   n.Version,
+		UpdatedAt: &n.UpdatedAt,
+	}
+
+	if n.GedcomXref != nil {
+		resp.GedcomXref = n.GedcomXref
+	}
+
+	return resp
+}
+
+// ============================================================================
+// Submitter endpoints
+// ============================================================================
+
+// ListSubmitters implements StrictServerInterface.
+func (ss *StrictServer) ListSubmitters(ctx context.Context, request ListSubmittersRequestObject) (ListSubmittersResponseObject, error) {
+	limit := 20
+	offset := 0
+	sort := "updated_at"
+	order := "desc"
+
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+	if request.Params.Sort != nil {
+		sort = string(*request.Params.Sort)
+	}
+	if request.Params.Order != nil {
+		order = string(*request.Params.Order)
+	}
+
+	result, err := ss.server.submitterService.ListSubmitters(ctx, query.ListSubmittersInput{
+		Limit:     limit,
+		Offset:    offset,
+		Sort:      sort,
+		SortOrder: order,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	submitters := make([]Submitter, len(result.Submitters))
+	for i, s := range result.Submitters {
+		submitters[i] = convertQuerySubmitterToGenerated(s)
+	}
+
+	limitVal := result.Limit
+	offsetVal := result.Offset
+	return ListSubmitters200JSONResponse{
+		Submitters: submitters,
+		Total:      result.Total,
+		Limit:      &limitVal,
+		Offset:     &offsetVal,
+	}, nil
+}
+
+// CreateSubmitter implements StrictServerInterface.
+func (ss *StrictServer) CreateSubmitter(ctx context.Context, request CreateSubmitterRequestObject) (CreateSubmitterResponseObject, error) {
+	input := command.CreateSubmitterInput{
+		Name: request.Body.Name,
+	}
+	if request.Body.Address != nil {
+		input.Address = convertGeneratedAddressToDomain(request.Body.Address)
+	}
+	if request.Body.Phone != nil {
+		input.Phone = *request.Body.Phone
+	}
+	if request.Body.Email != nil {
+		input.Email = *request.Body.Email
+	}
+	if request.Body.Language != nil {
+		input.Language = *request.Body.Language
+	}
+	if request.Body.MediaId != nil {
+		id := *request.Body.MediaId
+		input.MediaID = &id
+	}
+	if request.Body.GedcomXref != nil {
+		input.GedcomXref = *request.Body.GedcomXref
+	}
+
+	result, err := ss.server.commandHandler.CreateSubmitter(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrInvalidInput) {
+			return CreateSubmitter400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	// Fetch the created submitter
+	submitter, err := ss.server.submitterService.GetSubmitter(ctx, result.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateSubmitter201JSONResponse(convertQuerySubmitterToGenerated(*submitter)), nil
+}
+
+// GetSubmitter implements StrictServerInterface.
+func (ss *StrictServer) GetSubmitter(ctx context.Context, request GetSubmitterRequestObject) (GetSubmitterResponseObject, error) {
+	submitter, err := ss.server.submitterService.GetSubmitter(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return GetSubmitter404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Submitter not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return GetSubmitter200JSONResponse(convertQuerySubmitterToGenerated(*submitter)), nil
+}
+
+// UpdateSubmitter implements StrictServerInterface.
+func (ss *StrictServer) UpdateSubmitter(ctx context.Context, request UpdateSubmitterRequestObject) (UpdateSubmitterResponseObject, error) {
+	input := command.UpdateSubmitterInput{
+		ID:      request.Id,
+		Version: request.Body.Version,
+	}
+	if request.Body.Name != nil {
+		input.Name = request.Body.Name
+	}
+	if request.Body.Address != nil {
+		input.Address = convertGeneratedAddressToDomain(request.Body.Address)
+	}
+	if request.Body.Phone != nil {
+		input.Phone = *request.Body.Phone
+	}
+	if request.Body.Email != nil {
+		input.Email = *request.Body.Email
+	}
+	if request.Body.Language != nil {
+		input.Language = request.Body.Language
+	}
+	if request.Body.MediaId != nil {
+		id := *request.Body.MediaId
+		input.MediaID = &id
+	}
+
+	result, err := ss.server.commandHandler.UpdateSubmitter(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrSubmitterNotFound) {
+			return UpdateSubmitter404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Submitter not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return UpdateSubmitter409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict",
+			}}, nil
+		}
+		if errors.Is(err, command.ErrInvalidInput) {
+			return UpdateSubmitter400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	// Fetch the updated submitter
+	submitter, err := ss.server.submitterService.GetSubmitter(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = result // Used for version check above
+	return UpdateSubmitter200JSONResponse(convertQuerySubmitterToGenerated(*submitter)), nil
+}
+
+// DeleteSubmitter implements StrictServerInterface.
+func (ss *StrictServer) DeleteSubmitter(ctx context.Context, request DeleteSubmitterRequestObject) (DeleteSubmitterResponseObject, error) {
+	version := int64(0)
+	if request.Params.Version != nil {
+		version = *request.Params.Version
+	}
+
+	err := ss.server.commandHandler.DeleteSubmitter(ctx, request.Id, version, "")
+	if err != nil {
+		if errors.Is(err, command.ErrSubmitterNotFound) {
+			return DeleteSubmitter404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Submitter not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return DeleteSubmitter409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return DeleteSubmitter204Response{}, nil
+}
+
+// convertQuerySubmitterToGenerated converts a query.Submitter to the generated Submitter type.
+func convertQuerySubmitterToGenerated(s query.Submitter) Submitter {
+	resp := Submitter{
+		Id:        s.ID,
+		Name:      s.Name,
+		Version:   s.Version,
+		UpdatedAt: &s.UpdatedAt,
+	}
+
+	if s.Address != nil {
+		resp.Address = convertDomainAddressToGenerated(s.Address)
+	}
+	if len(s.Phone) > 0 {
+		resp.Phone = &s.Phone
+	}
+	if len(s.Email) > 0 {
+		resp.Email = &s.Email
+	}
+	if s.Language != nil {
+		resp.Language = s.Language
+	}
+	if s.MediaID != nil {
+		mediaID := *s.MediaID
+		resp.MediaId = &mediaID
+	}
+	if s.GedcomXref != nil {
+		resp.GedcomXref = s.GedcomXref
+	}
+
+	return resp
+}
+
+// convertDomainAddressToGenerated converts a domain.Address to the generated Address type.
+func convertDomainAddressToGenerated(a *domain.Address) *Address {
+	if a == nil {
+		return nil
+	}
+	return &Address{
+		Line1:      &a.Line1,
+		Line2:      &a.Line2,
+		Line3:      &a.Line3,
+		City:       &a.City,
+		State:      &a.State,
+		PostalCode: &a.PostalCode,
+		Country:    &a.Country,
+		Phone:      &a.Phone,
+		Email:      &a.Email,
+		Fax:        &a.Fax,
+		Website:    &a.Website,
+	}
+}
+
+// Association endpoints
+// ---------------------
+
+// ListAssociations implements StrictServerInterface.
+func (ss *StrictServer) ListAssociations(ctx context.Context, request ListAssociationsRequestObject) (ListAssociationsResponseObject, error) {
+	opts := repository.ListOptions{
+		Limit:  20,
+		Offset: 0,
+	}
+	if request.Params.Limit != nil {
+		opts.Limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		opts.Offset = *request.Params.Offset
+	}
+	if request.Params.Sort != nil {
+		opts.Sort = string(*request.Params.Sort)
+	}
+	if request.Params.Order != nil {
+		opts.Order = string(*request.Params.Order)
+	}
+
+	associations, total, err := ss.server.associationService.ListAssociations(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]Association, len(associations))
+	for i, a := range associations {
+		items[i] = convertReadModelAssociationToGenerated(a)
+	}
+
+	return ListAssociations200JSONResponse{
+		Associations: items,
+		Total:        total,
+		Limit:        &opts.Limit,
+		Offset:       &opts.Offset,
+	}, nil
+}
+
+// CreateAssociation implements StrictServerInterface.
+func (ss *StrictServer) CreateAssociation(ctx context.Context, request CreateAssociationRequestObject) (CreateAssociationResponseObject, error) {
+	input := command.CreateAssociationInput{
+		PersonID:    request.Body.PersonId,
+		AssociateID: request.Body.AssociateId,
+		Role:        request.Body.Role,
+	}
+
+	if request.Body.Phrase != nil {
+		input.Phrase = *request.Body.Phrase
+	}
+	if request.Body.Notes != nil {
+		input.Notes = *request.Body.Notes
+	}
+	if request.Body.NoteIds != nil {
+		input.NoteIDs = make([]uuid.UUID, len(*request.Body.NoteIds))
+		copy(input.NoteIDs, *request.Body.NoteIds)
+	}
+
+	result, err := ss.server.commandHandler.CreateAssociation(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrInvalidInput) {
+			return CreateAssociation400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	association, err := ss.server.associationService.GetAssociation(ctx, result.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateAssociation201JSONResponse(convertReadModelAssociationToGenerated(*association)), nil
+}
+
+// GetAssociation implements StrictServerInterface.
+func (ss *StrictServer) GetAssociation(ctx context.Context, request GetAssociationRequestObject) (GetAssociationResponseObject, error) {
+	association, err := ss.server.associationService.GetAssociation(ctx, request.Id)
+	if err != nil || association == nil {
+		return GetAssociation404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Association not found",
+		}}, nil
+	}
+
+	return GetAssociation200JSONResponse(convertReadModelAssociationToGenerated(*association)), nil
+}
+
+// UpdateAssociation implements StrictServerInterface.
+func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error) {
+	input := command.UpdateAssociationInput{
+		ID:      request.Id,
+		Version: request.Body.Version,
+	}
+
+	if request.Body.Role != nil {
+		input.Role = request.Body.Role
+	}
+	if request.Body.Phrase != nil {
+		input.Phrase = request.Body.Phrase
+	}
+	if request.Body.Notes != nil {
+		input.Notes = request.Body.Notes
+	}
+	if request.Body.NoteIds != nil {
+		noteIDs := make([]uuid.UUID, len(*request.Body.NoteIds))
+		copy(noteIDs, *request.Body.NoteIds)
+		input.NoteIDs = &noteIDs
+	}
+
+	_, err := ss.server.commandHandler.UpdateAssociation(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrAssociationNotFound) {
+			return UpdateAssociation404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Association not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return UpdateAssociation409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict - association was modified by another request",
+			}}, nil
+		}
+		if errors.Is(err, command.ErrInvalidInput) {
+			return UpdateAssociation400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	association, err := ss.server.associationService.GetAssociation(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	return UpdateAssociation200JSONResponse(convertReadModelAssociationToGenerated(*association)), nil
+}
+
+// DeleteAssociation implements StrictServerInterface.
+func (ss *StrictServer) DeleteAssociation(ctx context.Context, request DeleteAssociationRequestObject) (DeleteAssociationResponseObject, error) {
+	var version int64
+	if request.Params.Version != nil {
+		version = *request.Params.Version
+	}
+
+	err := ss.server.commandHandler.DeleteAssociation(ctx, request.Id, version, "")
+	if err != nil {
+		if errors.Is(err, command.ErrAssociationNotFound) {
+			return DeleteAssociation404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Association not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return DeleteAssociation409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict - association was modified by another request",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return DeleteAssociation204Response{}, nil
+}
+
+// ListAssociationsForPerson implements StrictServerInterface.
+func (ss *StrictServer) ListAssociationsForPerson(ctx context.Context, request ListAssociationsForPersonRequestObject) (ListAssociationsForPersonResponseObject, error) {
+	// First check if person exists
+	person, err := ss.server.personService.GetPerson(ctx, request.Id)
+	if err != nil || person == nil {
+		return ListAssociationsForPerson404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Person not found",
+		}}, nil
+	}
+
+	associations, err := ss.server.associationService.ListAssociationsForPerson(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]Association, len(associations))
+	for i, a := range associations {
+		items[i] = convertReadModelAssociationToGenerated(a)
+	}
+
+	return ListAssociationsForPerson200JSONResponse(items), nil
+}
+
+// convertReadModelAssociationToGenerated converts a repository.AssociationReadModel to the generated Association type.
+func convertReadModelAssociationToGenerated(a repository.AssociationReadModel) Association {
+	resp := Association{
+		Id:          a.ID,
+		PersonId:    a.PersonID,
+		AssociateId: a.AssociateID,
+		Role:        a.Role,
+		Version:     a.Version,
+		UpdatedAt:   &a.UpdatedAt,
+	}
+
+	if a.PersonName != "" {
+		resp.PersonName = &a.PersonName
+	}
+	if a.AssociateName != "" {
+		resp.AssociateName = &a.AssociateName
+	}
+	if a.Phrase != "" {
+		resp.Phrase = &a.Phrase
+	}
+	if a.Notes != "" {
+		resp.Notes = &a.Notes
+	}
+	if len(a.NoteIDs) > 0 {
+		noteIDs := make([]openapi_types.UUID, len(a.NoteIDs))
+		copy(noteIDs, a.NoteIDs)
+		resp.NoteIds = &noteIDs
+	}
+	if a.GedcomXref != "" {
+		resp.GedcomXref = &a.GedcomXref
+	}
+
+	return resp
+}
+
+// convertGeneratedAddressToDomain converts a generated Address to domain.Address.
+func convertGeneratedAddressToDomain(a *Address) *domain.Address {
+	if a == nil {
+		return nil
+	}
+	addr := &domain.Address{}
+	if a.Line1 != nil {
+		addr.Line1 = *a.Line1
+	}
+	if a.Line2 != nil {
+		addr.Line2 = *a.Line2
+	}
+	if a.Line3 != nil {
+		addr.Line3 = *a.Line3
+	}
+	if a.City != nil {
+		addr.City = *a.City
+	}
+	if a.State != nil {
+		addr.State = *a.State
+	}
+	if a.PostalCode != nil {
+		addr.PostalCode = *a.PostalCode
+	}
+	if a.Country != nil {
+		addr.Country = *a.Country
+	}
+	if a.Phone != nil {
+		addr.Phone = *a.Phone
+	}
+	if a.Email != nil {
+		addr.Email = *a.Email
+	}
+	if a.Fax != nil {
+		addr.Fax = *a.Fax
+	}
+	if a.Website != nil {
+		addr.Website = *a.Website
+	}
+	return addr
+}
+
+// ============================================================================
+// LDS Ordinance endpoints
+// ============================================================================
+
+// ListLDSOrdinances implements StrictServerInterface.
+func (ss *StrictServer) ListLDSOrdinances(ctx context.Context, request ListLDSOrdinancesRequestObject) (ListLDSOrdinancesResponseObject, error) {
+	input := query.ListLDSOrdinancesInput{
+		Limit:  20,
+		Offset: 0,
+	}
+	if request.Params.Limit != nil {
+		input.Limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		input.Offset = *request.Params.Offset
+	}
+	if request.Params.Sort != nil {
+		input.Sort = string(*request.Params.Sort)
+	}
+	if request.Params.Order != nil {
+		input.SortOrder = string(*request.Params.Order)
+	}
+
+	result, err := ss.server.ldsOrdinanceService.ListLDSOrdinances(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]LDSOrdinance, len(result.LDSOrdinances))
+	for i, o := range result.LDSOrdinances {
+		items[i] = convertQueryLDSOrdinanceToGenerated(o)
+	}
+
+	return ListLDSOrdinances200JSONResponse{
+		LdsOrdinances: items,
+		Total:         result.Total,
+		Limit:         &result.Limit,
+		Offset:        &result.Offset,
+	}, nil
+}
+
+// CreateLDSOrdinance implements StrictServerInterface.
+func (ss *StrictServer) CreateLDSOrdinance(ctx context.Context, request CreateLDSOrdinanceRequestObject) (CreateLDSOrdinanceResponseObject, error) {
+	input := command.CreateLDSOrdinanceInput{
+		Type: domain.LDSOrdinanceType(request.Body.Type),
+	}
+
+	if request.Body.PersonId != nil {
+		id := *request.Body.PersonId
+		input.PersonID = &id
+	}
+	if request.Body.FamilyId != nil {
+		id := *request.Body.FamilyId
+		input.FamilyID = &id
+	}
+	if request.Body.Date != nil {
+		input.Date = *request.Body.Date
+	}
+	if request.Body.Place != nil {
+		input.Place = *request.Body.Place
+	}
+	if request.Body.Temple != nil {
+		input.Temple = *request.Body.Temple
+	}
+	if request.Body.Status != nil {
+		input.Status = *request.Body.Status
+	}
+
+	result, err := ss.server.commandHandler.CreateLDSOrdinance(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrInvalidInput) {
+			return CreateLDSOrdinance400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	ordinance, err := ss.server.ldsOrdinanceService.GetLDSOrdinance(ctx, result.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateLDSOrdinance201JSONResponse(convertQueryLDSOrdinanceToGenerated(*ordinance)), nil
+}
+
+// GetLDSOrdinance implements StrictServerInterface.
+func (ss *StrictServer) GetLDSOrdinance(ctx context.Context, request GetLDSOrdinanceRequestObject) (GetLDSOrdinanceResponseObject, error) {
+	ordinance, err := ss.server.ldsOrdinanceService.GetLDSOrdinance(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return GetLDSOrdinance404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "LDS ordinance not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return GetLDSOrdinance200JSONResponse(convertQueryLDSOrdinanceToGenerated(*ordinance)), nil
+}
+
+// UpdateLDSOrdinance implements StrictServerInterface.
+func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLDSOrdinanceRequestObject) (UpdateLDSOrdinanceResponseObject, error) {
+	input := command.UpdateLDSOrdinanceInput{
+		ID:      request.Id,
+		Version: request.Body.Version,
+	}
+
+	if request.Body.Date != nil {
+		input.Date = request.Body.Date
+	}
+	if request.Body.Place != nil {
+		input.Place = request.Body.Place
+	}
+	if request.Body.Temple != nil {
+		input.Temple = request.Body.Temple
+	}
+	if request.Body.Status != nil {
+		input.Status = request.Body.Status
+	}
+
+	_, err := ss.server.commandHandler.UpdateLDSOrdinance(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrLDSOrdinanceNotFound) {
+			return UpdateLDSOrdinance404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "LDS ordinance not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return UpdateLDSOrdinance409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict - LDS ordinance was modified by another request",
+			}}, nil
+		}
+		if errors.Is(err, command.ErrInvalidInput) {
+			return UpdateLDSOrdinance400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	ordinance, err := ss.server.ldsOrdinanceService.GetLDSOrdinance(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	return UpdateLDSOrdinance200JSONResponse(convertQueryLDSOrdinanceToGenerated(*ordinance)), nil
+}
+
+// DeleteLDSOrdinance implements StrictServerInterface.
+func (ss *StrictServer) DeleteLDSOrdinance(ctx context.Context, request DeleteLDSOrdinanceRequestObject) (DeleteLDSOrdinanceResponseObject, error) {
+	var version int64
+	if request.Params.Version != nil {
+		version = *request.Params.Version
+	}
+
+	err := ss.server.commandHandler.DeleteLDSOrdinance(ctx, request.Id, version, "")
+	if err != nil {
+		if errors.Is(err, command.ErrLDSOrdinanceNotFound) {
+			return DeleteLDSOrdinance404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "LDS ordinance not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return DeleteLDSOrdinance409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict - LDS ordinance was modified by another request",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return DeleteLDSOrdinance204Response{}, nil
+}
+
+// ListLDSOrdinancesForPerson implements StrictServerInterface.
+func (ss *StrictServer) ListLDSOrdinancesForPerson(ctx context.Context, request ListLDSOrdinancesForPersonRequestObject) (ListLDSOrdinancesForPersonResponseObject, error) {
+	ordinances, err := ss.server.ldsOrdinanceService.ListLDSOrdinancesForPerson(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return ListLDSOrdinancesForPerson404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Person not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	items := make([]LDSOrdinance, len(ordinances))
+	for i, o := range ordinances {
+		items[i] = convertQueryLDSOrdinanceToGenerated(o)
+	}
+
+	return ListLDSOrdinancesForPerson200JSONResponse(items), nil
+}
+
+// ListLDSOrdinancesForFamily implements StrictServerInterface.
+func (ss *StrictServer) ListLDSOrdinancesForFamily(ctx context.Context, request ListLDSOrdinancesForFamilyRequestObject) (ListLDSOrdinancesForFamilyResponseObject, error) {
+	ordinances, err := ss.server.ldsOrdinanceService.ListLDSOrdinancesForFamily(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return ListLDSOrdinancesForFamily404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Family not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	items := make([]LDSOrdinance, len(ordinances))
+	for i, o := range ordinances {
+		items[i] = convertQueryLDSOrdinanceToGenerated(o)
+	}
+
+	return ListLDSOrdinancesForFamily200JSONResponse(items), nil
+}
+
+// convertQueryLDSOrdinanceToGenerated converts a query.LDSOrdinance to the generated LDSOrdinance type.
+func convertQueryLDSOrdinanceToGenerated(o query.LDSOrdinance) LDSOrdinance {
+	resp := LDSOrdinance{
+		Id:        o.ID,
+		Type:      LDSOrdinanceType(o.Type),
+		TypeLabel: o.TypeLabel,
+		Version:   o.Version,
+		UpdatedAt: o.UpdatedAt,
+	}
+
+	if o.PersonID != nil {
+		pid := *o.PersonID
+		resp.PersonId = &pid
+	}
+	if o.PersonName != "" {
+		resp.PersonName = &o.PersonName
+	}
+	if o.FamilyID != nil {
+		fid := *o.FamilyID
+		resp.FamilyId = &fid
+	}
+	if o.Date != nil {
+		resp.Date = convertDomainGenDateToGenerated(o.Date)
+	}
+	if o.Place != "" {
+		resp.Place = &o.Place
+	}
+	if o.Temple != "" {
+		resp.Temple = &o.Temple
+	}
+	if o.Status != "" {
+		resp.Status = &o.Status
+	}
+
+	return resp
 }

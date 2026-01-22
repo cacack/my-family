@@ -2929,3 +2929,589 @@ func TestProjector_PersonMerged_GenderUpdate(t *testing.T) {
 		t.Errorf("Gender = %s, want male", survivorRM.Gender)
 	}
 }
+
+// LDS Ordinance Projection Tests
+
+func TestProjector_LDSOrdinanceCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person first (for individual ordinances)
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Create LDS ordinance
+	ordinance := domain.NewLDSOrdinance(domain.LDSBaptism)
+	ordinance.SetPersonID(person.ID)
+	ordinance.SetDate("15 JAN 1880")
+	ordinance.SetTemple("SL")
+	ordinance.SetStatus("COMPLETED")
+	ordinance.SetPlace("Salt Lake City, Utah")
+
+	event := domain.NewLDSOrdinanceCreated(ordinance)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project LDSOrdinanceCreated failed: %v", err)
+	}
+
+	// Verify ordinance in read model
+	rm, err := readStore.GetLDSOrdinance(ctx, ordinance.ID)
+	if err != nil {
+		t.Fatalf("GetLDSOrdinance failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("LDS ordinance not found in read model")
+	}
+	if rm.Type != domain.LDSBaptism {
+		t.Errorf("Type = %s, want BAPL", rm.Type)
+	}
+	if rm.TypeLabel != "Baptism (LDS)" {
+		t.Errorf("TypeLabel = %s, want 'Baptism (LDS)'", rm.TypeLabel)
+	}
+	if rm.PersonID == nil || *rm.PersonID != person.ID {
+		t.Errorf("PersonID = %v, want %v", rm.PersonID, person.ID)
+	}
+	if rm.PersonName != "John Doe" {
+		t.Errorf("PersonName = %s, want 'John Doe'", rm.PersonName)
+	}
+	if rm.Temple != "SL" {
+		t.Errorf("Temple = %s, want 'SL'", rm.Temple)
+	}
+	if rm.Status != "COMPLETED" {
+		t.Errorf("Status = %s, want 'COMPLETED'", rm.Status)
+	}
+	if rm.Place != "Salt Lake City, Utah" {
+		t.Errorf("Place = %s, want 'Salt Lake City, Utah'", rm.Place)
+	}
+	if rm.DateRaw != "15 JAN 1880" {
+		t.Errorf("DateRaw = %s, want '15 JAN 1880'", rm.DateRaw)
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+}
+
+func TestProjector_LDSOrdinanceCreated_SpouseSealing(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a family (for spouse sealing)
+	partner1 := domain.NewPerson("John", "Doe")
+	partner2 := domain.NewPerson("Jane", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(partner1), 1)
+	projector.Project(ctx, domain.NewPersonCreated(partner2), 1)
+
+	family := domain.NewFamilyWithPartners(&partner1.ID, &partner2.ID)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+
+	// Create spouse sealing ordinance
+	ordinance := domain.NewLDSOrdinance(domain.LDSSealingSpouse)
+	ordinance.SetFamilyID(family.ID)
+	ordinance.SetDate("20 MAR 1882")
+	ordinance.SetTemple("LOGAN")
+
+	event := domain.NewLDSOrdinanceCreated(ordinance)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project LDSOrdinanceCreated for spouse sealing failed: %v", err)
+	}
+
+	// Verify ordinance in read model
+	rm, err := readStore.GetLDSOrdinance(ctx, ordinance.ID)
+	if err != nil {
+		t.Fatalf("GetLDSOrdinance failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("LDS ordinance not found in read model")
+	}
+	if rm.Type != domain.LDSSealingSpouse {
+		t.Errorf("Type = %s, want SLGS", rm.Type)
+	}
+	if rm.TypeLabel != "Sealing to Spouse" {
+		t.Errorf("TypeLabel = %s, want 'Sealing to Spouse'", rm.TypeLabel)
+	}
+	if rm.FamilyID == nil || *rm.FamilyID != family.ID {
+		t.Errorf("FamilyID = %v, want %v", rm.FamilyID, family.ID)
+	}
+	if rm.PersonID != nil {
+		t.Errorf("PersonID should be nil for spouse sealing, got %v", rm.PersonID)
+	}
+}
+
+func TestProjector_LDSOrdinanceUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person and ordinance first
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	ordinance := domain.NewLDSOrdinance(domain.LDSEndowment)
+	ordinance.SetPersonID(person.ID)
+	ordinance.SetDate("1 JAN 1885")
+	createEvent := domain.NewLDSOrdinanceCreated(ordinance)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Update ordinance - test all fields
+	tests := []struct {
+		name     string
+		changes  map[string]any
+		validate func(t *testing.T, rm *repository.LDSOrdinanceReadModel)
+	}{
+		{
+			name: "update date",
+			changes: map[string]any{
+				"date": "15 FEB 1885",
+			},
+			validate: func(t *testing.T, rm *repository.LDSOrdinanceReadModel) {
+				if rm.DateRaw != "15 FEB 1885" {
+					t.Errorf("DateRaw = %s, want '15 FEB 1885'", rm.DateRaw)
+				}
+			},
+		},
+		{
+			name: "update temple and status",
+			changes: map[string]any{
+				"temple": "MANTI",
+				"status": "COMPLETED",
+			},
+			validate: func(t *testing.T, rm *repository.LDSOrdinanceReadModel) {
+				if rm.Temple != "MANTI" {
+					t.Errorf("Temple = %s, want 'MANTI'", rm.Temple)
+				}
+				if rm.Status != "COMPLETED" {
+					t.Errorf("Status = %s, want 'COMPLETED'", rm.Status)
+				}
+			},
+		},
+		{
+			name: "update place",
+			changes: map[string]any{
+				"place": "Manti, Utah",
+			},
+			validate: func(t *testing.T, rm *repository.LDSOrdinanceReadModel) {
+				if rm.Place != "Manti, Utah" {
+					t.Errorf("Place = %s, want 'Manti, Utah'", rm.Place)
+				}
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateEvent := domain.NewLDSOrdinanceUpdated(ordinance.ID, tt.changes)
+			err := projector.Project(ctx, updateEvent, int64(i+2))
+			if err != nil {
+				t.Fatalf("Project update failed: %v", err)
+			}
+
+			rm, err := readStore.GetLDSOrdinance(ctx, ordinance.ID)
+			if err != nil {
+				t.Fatalf("GetLDSOrdinance failed: %v", err)
+			}
+			tt.validate(t, rm)
+		})
+	}
+}
+
+func TestProjector_LDSOrdinanceUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to update a non-existent ordinance (should not error, just skip)
+	updateEvent := domain.NewLDSOrdinanceUpdated(uuid.New(), map[string]any{"temple": "SL"})
+	err := projector.Project(ctx, updateEvent, 1)
+	if err != nil {
+		t.Fatalf("Project update should not fail for non-existent ordinance: %v", err)
+	}
+}
+
+func TestProjector_LDSOrdinanceDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person and ordinance first
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	ordinance := domain.NewLDSOrdinance(domain.LDSConfirmation)
+	ordinance.SetPersonID(person.ID)
+	createEvent := domain.NewLDSOrdinanceCreated(ordinance)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Delete ordinance
+	deleteEvent := domain.NewLDSOrdinanceDeleted(ordinance.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify deletion
+	rm, _ := readStore.GetLDSOrdinance(ctx, ordinance.ID)
+	if rm != nil {
+		t.Error("LDS ordinance should be deleted")
+	}
+}
+
+// Association Projection Tests
+
+func TestProjector_AssociationCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create two persons first
+	person := domain.NewPerson("John", "Doe")
+	associate := domain.NewPerson("Jane", "Smith")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(associate), 1)
+
+	// Create association
+	association := domain.NewAssociation(person.ID, associate.ID, "godparent")
+	association.Phrase = "Jane was the godmother"
+	association.Notes = "Church record notes"
+
+	event := domain.NewAssociationCreated(association)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project AssociationCreated failed: %v", err)
+	}
+
+	// Verify association in read model
+	rm, err := readStore.GetAssociation(ctx, association.ID)
+	if err != nil {
+		t.Fatalf("GetAssociation failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Association not found in read model")
+	}
+	if rm.PersonID != person.ID {
+		t.Errorf("PersonID = %v, want %v", rm.PersonID, person.ID)
+	}
+	if rm.PersonName != "John Doe" {
+		t.Errorf("PersonName = %s, want 'John Doe'", rm.PersonName)
+	}
+	if rm.AssociateID != associate.ID {
+		t.Errorf("AssociateID = %v, want %v", rm.AssociateID, associate.ID)
+	}
+	if rm.AssociateName != "Jane Smith" {
+		t.Errorf("AssociateName = %s, want 'Jane Smith'", rm.AssociateName)
+	}
+	if rm.Role != "godparent" {
+		t.Errorf("Role = %s, want 'godparent'", rm.Role)
+	}
+	if rm.Phrase != "Jane was the godmother" {
+		t.Errorf("Phrase = %s, want 'Jane was the godmother'", rm.Phrase)
+	}
+	if rm.Notes != "Church record notes" {
+		t.Errorf("Notes = %s, want 'Church record notes'", rm.Notes)
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+}
+
+func TestProjector_AssociationUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons and association first
+	person := domain.NewPerson("John", "Doe")
+	associate := domain.NewPerson("Jane", "Smith")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(associate), 1)
+
+	association := domain.NewAssociation(person.ID, associate.ID, "witness")
+	createEvent := domain.NewAssociationCreated(association)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Update association - test all fields
+	tests := []struct {
+		name     string
+		changes  map[string]any
+		validate func(t *testing.T, rm *repository.AssociationReadModel)
+	}{
+		{
+			name: "update role",
+			changes: map[string]any{
+				"role": "godfather",
+			},
+			validate: func(t *testing.T, rm *repository.AssociationReadModel) {
+				if rm.Role != "godfather" {
+					t.Errorf("Role = %s, want 'godfather'", rm.Role)
+				}
+			},
+		},
+		{
+			name: "update phrase and notes",
+			changes: map[string]any{
+				"phrase": "Served as godfather at baptism",
+				"notes":  "From parish records",
+			},
+			validate: func(t *testing.T, rm *repository.AssociationReadModel) {
+				if rm.Phrase != "Served as godfather at baptism" {
+					t.Errorf("Phrase = %s, want 'Served as godfather at baptism'", rm.Phrase)
+				}
+				if rm.Notes != "From parish records" {
+					t.Errorf("Notes = %s, want 'From parish records'", rm.Notes)
+				}
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateEvent := domain.NewAssociationUpdated(association.ID, tt.changes)
+			err := projector.Project(ctx, updateEvent, int64(i+2))
+			if err != nil {
+				t.Fatalf("Project update failed: %v", err)
+			}
+
+			rm, err := readStore.GetAssociation(ctx, association.ID)
+			if err != nil {
+				t.Fatalf("GetAssociation failed: %v", err)
+			}
+			tt.validate(t, rm)
+		})
+	}
+}
+
+func TestProjector_AssociationUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Try to update a non-existent association (should not error, just skip)
+	updateEvent := domain.NewAssociationUpdated(uuid.New(), map[string]any{"role": "witness"})
+	err := projector.Project(ctx, updateEvent, 1)
+	if err != nil {
+		t.Fatalf("Project update should not fail for non-existent association: %v", err)
+	}
+}
+
+func TestProjector_AssociationDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons and association first
+	person := domain.NewPerson("John", "Doe")
+	associate := domain.NewPerson("Jane", "Smith")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(associate), 1)
+
+	association := domain.NewAssociation(person.ID, associate.ID, "witness")
+	createEvent := domain.NewAssociationCreated(association)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// Delete association
+	deleteEvent := domain.NewAssociationDeleted(association.ID, "test deletion")
+	err := projector.Project(ctx, deleteEvent, 2)
+	if err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	// Verify deletion
+	rm, _ := readStore.GetAssociation(ctx, association.ID)
+	if rm != nil {
+		t.Error("Association should be deleted")
+	}
+}
+
+// Name Projection Tests
+
+func TestProjector_NameAdded(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person first
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Add an alternate name
+	name := domain.NewPersonName(person.ID, "Johnny", "Doe")
+	name.NameType = domain.NameTypeAKA
+	name.Nickname = "Johnny Boy"
+	name.IsPrimary = false
+
+	event := domain.NewNameAdded(name)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project NameAdded failed: %v", err)
+	}
+
+	// Verify name in read model
+	rm, err := readStore.GetPersonName(ctx, name.ID)
+	if err != nil {
+		t.Fatalf("GetPersonName failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Name not found in read model")
+	}
+	if rm.PersonID != person.ID {
+		t.Errorf("PersonID = %v, want %v", rm.PersonID, person.ID)
+	}
+	if rm.GivenName != "Johnny" {
+		t.Errorf("GivenName = %s, want 'Johnny'", rm.GivenName)
+	}
+	if rm.Surname != "Doe" {
+		t.Errorf("Surname = %s, want 'Doe'", rm.Surname)
+	}
+	if rm.NameType != domain.NameTypeAKA {
+		t.Errorf("NameType = %s, want 'nickname'", rm.NameType)
+	}
+	if rm.Nickname != "Johnny Boy" {
+		t.Errorf("Nickname = %s, want 'Johnny Boy'", rm.Nickname)
+	}
+	if rm.IsPrimary {
+		t.Error("IsPrimary should be false")
+	}
+}
+
+func TestProjector_NameAdded_WithPrefixes(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person first
+	person := domain.NewPerson("Ludwig", "Beethoven")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	// Add a formal name with prefixes
+	name := domain.NewPersonName(person.ID, "Ludwig", "Beethoven")
+	name.NamePrefix = "Dr."
+	name.NameSuffix = "Jr."
+	name.SurnamePrefix = "van"
+	name.NameType = domain.NameTypeBirth
+	name.IsPrimary = true
+
+	event := domain.NewNameAdded(name)
+
+	err := projector.Project(ctx, event, 2)
+	if err != nil {
+		t.Fatalf("Project NameAdded failed: %v", err)
+	}
+
+	// Verify name in read model
+	rm, err := readStore.GetPersonName(ctx, name.ID)
+	if err != nil {
+		t.Fatalf("GetPersonName failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Name not found in read model")
+	}
+	if rm.NamePrefix != "Dr." {
+		t.Errorf("NamePrefix = %s, want 'Dr.'", rm.NamePrefix)
+	}
+	if rm.NameSuffix != "Jr." {
+		t.Errorf("NameSuffix = %s, want 'Jr.'", rm.NameSuffix)
+	}
+	if rm.SurnamePrefix != "van" {
+		t.Errorf("SurnamePrefix = %s, want 'van'", rm.SurnamePrefix)
+	}
+	// Full name should include prefix components
+	if rm.FullName != "Dr. Ludwig van Beethoven Jr." {
+		t.Errorf("FullName = %s, want 'Dr. Ludwig van Beethoven Jr.'", rm.FullName)
+	}
+}
+
+func TestProjector_NameUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person and add a name first
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	name := domain.NewPersonName(person.ID, "John", "Doe")
+	name.IsPrimary = true
+	addEvent := domain.NewNameAdded(name)
+	if err := projector.Project(ctx, addEvent, 2); err != nil {
+		t.Fatalf("Project add failed: %v", err)
+	}
+
+	// Update the name
+	name.GivenName = "Jonathan"
+	name.Surname = "Doe-Smith"
+	name.NameType = domain.NameTypeMarried
+
+	updateEvent := domain.NewNameUpdated(name)
+	err := projector.Project(ctx, updateEvent, 3)
+	if err != nil {
+		t.Fatalf("Project NameUpdated failed: %v", err)
+	}
+
+	// Verify updated name
+	rm, err := readStore.GetPersonName(ctx, name.ID)
+	if err != nil {
+		t.Fatalf("GetPersonName failed: %v", err)
+	}
+	if rm.GivenName != "Jonathan" {
+		t.Errorf("GivenName = %s, want 'Jonathan'", rm.GivenName)
+	}
+	if rm.Surname != "Doe-Smith" {
+		t.Errorf("Surname = %s, want 'Doe-Smith'", rm.Surname)
+	}
+	if rm.NameType != domain.NameTypeMarried {
+		t.Errorf("NameType = %s, want 'married'", rm.NameType)
+	}
+	if rm.FullName != "Jonathan Doe-Smith" {
+		t.Errorf("FullName = %s, want 'Jonathan Doe-Smith'", rm.FullName)
+	}
+}
+
+func TestProjector_NameRemoved(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create a person and add a name first
+	person := domain.NewPerson("John", "Doe")
+	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+
+	name := domain.NewPersonName(person.ID, "Johnny", "Doe")
+	name.NameType = domain.NameTypeAKA
+	addEvent := domain.NewNameAdded(name)
+	if err := projector.Project(ctx, addEvent, 2); err != nil {
+		t.Fatalf("Project add failed: %v", err)
+	}
+
+	// Verify name exists
+	rm, _ := readStore.GetPersonName(ctx, name.ID)
+	if rm == nil {
+		t.Fatal("Name should exist before removal")
+	}
+
+	// Remove the name
+	removeEvent := domain.NewNameRemoved(person.ID, name.ID)
+	err := projector.Project(ctx, removeEvent, 3)
+	if err != nil {
+		t.Fatalf("Project NameRemoved failed: %v", err)
+	}
+
+	// Verify deletion
+	rm, _ = readStore.GetPersonName(ctx, name.ID)
+	if rm != nil {
+		t.Error("Name should be deleted")
+	}
+}

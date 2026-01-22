@@ -16,6 +16,7 @@ type LifeEvent struct {
 	FactType       FactType       `json:"fact_type"`
 	Date           *GenDate       `json:"date,omitempty"`            // when it occurred
 	Place          string         `json:"place,omitempty"`           // where it occurred
+	Address        *Address       `json:"address,omitempty"`         // structured address (RESI, etc.)
 	Description    string         `json:"description,omitempty"`     // additional details
 	Cause          string         `json:"cause,omitempty"`           // cause of event (e.g., death cause)
 	Age            string         `json:"age,omitempty"`             // age at time of event

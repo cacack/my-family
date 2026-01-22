@@ -78,6 +78,30 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectNameRemoved(ctx, e, version)
 	case domain.PersonMerged:
 		return p.projectPersonMerged(ctx, e, version)
+	case domain.NoteCreated:
+		return p.projectNoteCreated(ctx, e, version)
+	case domain.NoteUpdated:
+		return p.projectNoteUpdated(ctx, e, version)
+	case domain.NoteDeleted:
+		return p.projectNoteDeleted(ctx, e)
+	case domain.SubmitterCreated:
+		return p.projectSubmitterCreated(ctx, e, version)
+	case domain.SubmitterUpdated:
+		return p.projectSubmitterUpdated(ctx, e, version)
+	case domain.SubmitterDeleted:
+		return p.projectSubmitterDeleted(ctx, e)
+	case domain.AssociationCreated:
+		return p.projectAssociationCreated(ctx, e, version)
+	case domain.AssociationUpdated:
+		return p.projectAssociationUpdated(ctx, e, version)
+	case domain.AssociationDeleted:
+		return p.projectAssociationDeleted(ctx, e)
+	case domain.LDSOrdinanceCreated:
+		return p.projectLDSOrdinanceCreated(ctx, e, version)
+	case domain.LDSOrdinanceUpdated:
+		return p.projectLDSOrdinanceUpdated(ctx, e, version)
+	case domain.LDSOrdinanceDeleted:
+		return p.projectLDSOrdinanceDeleted(ctx, e)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
@@ -678,6 +702,10 @@ func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreat
 		Version:       version,
 		CreatedAt:     e.OccurredAt(),
 		UpdatedAt:     e.OccurredAt(),
+		// GEDCOM 7.0 enhanced fields
+		Files:        e.Files,
+		Format:       e.Format,
+		Translations: e.Translations,
 	}
 
 	return p.readStore.SaveMedia(ctx, media)
@@ -723,6 +751,18 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 			if v, ok := value.(int); ok {
 				media.CropHeight = &v
 			}
+		case "files":
+			if v, ok := value.([]domain.MediaFile); ok {
+				media.Files = v
+			}
+		case "format":
+			if v, ok := value.(string); ok {
+				media.Format = v
+			}
+		case "translations":
+			if v, ok := value.([]string); ok {
+				media.Translations = v
+			}
 		}
 	}
 
@@ -767,6 +807,7 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 		DateRaw:     dateRaw,
 		DateSort:    dateSort,
 		Place:       e.Place,
+		Address:     e.Address,
 		Description: e.Description,
 		Cause:       e.Cause,
 		Age:         e.Age,
@@ -1150,4 +1191,276 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 
 	// 9. Delete merged person from read model
 	return p.readStore.DeletePerson(ctx, e.MergedID)
+}
+
+// Note projections
+
+func (p *Projector) projectNoteCreated(ctx context.Context, e domain.NoteCreated, version int64) error {
+	note := &NoteReadModel{
+		ID:         e.NoteID,
+		Text:       e.Text,
+		GedcomXref: e.GedcomXref,
+		Version:    version,
+		UpdatedAt:  e.OccurredAt(),
+	}
+
+	return p.readStore.SaveNote(ctx, note)
+}
+
+func (p *Projector) projectNoteUpdated(ctx context.Context, e domain.NoteUpdated, version int64) error {
+	note, err := p.readStore.GetNote(ctx, e.NoteID)
+	if err != nil {
+		return err
+	}
+	if note == nil {
+		return nil // Note doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		if key == "text" {
+			if v, ok := value.(string); ok {
+				note.Text = v
+			}
+		}
+	}
+
+	note.Version = version
+	note.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveNote(ctx, note)
+}
+
+func (p *Projector) projectNoteDeleted(ctx context.Context, e domain.NoteDeleted) error {
+	return p.readStore.DeleteNote(ctx, e.NoteID)
+}
+
+// Submitter projections
+
+func (p *Projector) projectSubmitterCreated(ctx context.Context, e domain.SubmitterCreated, version int64) error {
+	submitter := &SubmitterReadModel{
+		ID:         e.SubmitterID,
+		Name:       e.Name,
+		Address:    e.Address,
+		Phone:      e.Phone,
+		Email:      e.Email,
+		Language:   e.Language,
+		MediaID:    e.MediaID,
+		GedcomXref: e.GedcomXref,
+		Version:    version,
+		UpdatedAt:  e.OccurredAt(),
+	}
+
+	return p.readStore.SaveSubmitter(ctx, submitter)
+}
+
+func (p *Projector) projectSubmitterUpdated(ctx context.Context, e domain.SubmitterUpdated, version int64) error {
+	submitter, err := p.readStore.GetSubmitter(ctx, e.SubmitterID)
+	if err != nil {
+		return err
+	}
+	if submitter == nil {
+		return nil // Submitter doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		switch key {
+		case "name":
+			if v, ok := value.(string); ok {
+				submitter.Name = v
+			}
+		case "address":
+			if v, ok := value.(*domain.Address); ok {
+				submitter.Address = v
+			}
+		case "phone":
+			if v, ok := value.([]string); ok {
+				submitter.Phone = v
+			}
+		case "email":
+			if v, ok := value.([]string); ok {
+				submitter.Email = v
+			}
+		case "language":
+			if v, ok := value.(string); ok {
+				submitter.Language = v
+			}
+		case "media_id":
+			if v, ok := value.(*uuid.UUID); ok {
+				submitter.MediaID = v
+			}
+		}
+	}
+
+	submitter.Version = version
+	submitter.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveSubmitter(ctx, submitter)
+}
+
+func (p *Projector) projectSubmitterDeleted(ctx context.Context, e domain.SubmitterDeleted) error {
+	return p.readStore.DeleteSubmitter(ctx, e.SubmitterID)
+}
+
+// Association projections
+
+func (p *Projector) projectAssociationCreated(ctx context.Context, e domain.AssociationCreated, version int64) error {
+	// Look up person names for denormalization
+	personName := ""
+	associateName := ""
+
+	if person, err := p.readStore.GetPerson(ctx, e.PersonID); err == nil && person != nil {
+		personName = person.FullName
+	}
+	if associate, err := p.readStore.GetPerson(ctx, e.AssociateID); err == nil && associate != nil {
+		associateName = associate.FullName
+	}
+
+	association := &AssociationReadModel{
+		ID:            e.AssociationID,
+		PersonID:      e.PersonID,
+		PersonName:    personName,
+		AssociateID:   e.AssociateID,
+		AssociateName: associateName,
+		Role:          e.Role,
+		Phrase:        e.Phrase,
+		Notes:         e.Notes,
+		NoteIDs:       e.NoteIDs,
+		GedcomXref:    e.GedcomXref,
+		Version:       version,
+		UpdatedAt:     e.OccurredAt(),
+	}
+
+	return p.readStore.SaveAssociation(ctx, association)
+}
+
+func (p *Projector) projectAssociationUpdated(ctx context.Context, e domain.AssociationUpdated, version int64) error {
+	association, err := p.readStore.GetAssociation(ctx, e.AssociationID)
+	if err != nil {
+		return err
+	}
+	if association == nil {
+		return nil // Association doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		switch key {
+		case "role":
+			if v, ok := value.(string); ok {
+				association.Role = v
+			}
+		case "phrase":
+			if v, ok := value.(string); ok {
+				association.Phrase = v
+			}
+		case "notes":
+			if v, ok := value.(string); ok {
+				association.Notes = v
+			}
+		case "note_ids":
+			if v, ok := value.([]uuid.UUID); ok {
+				association.NoteIDs = v
+			}
+		}
+	}
+
+	association.Version = version
+	association.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveAssociation(ctx, association)
+}
+
+func (p *Projector) projectAssociationDeleted(ctx context.Context, e domain.AssociationDeleted) error {
+	return p.readStore.DeleteAssociation(ctx, e.AssociationID)
+}
+
+// LDS Ordinance projections
+
+func (p *Projector) projectLDSOrdinanceCreated(ctx context.Context, e domain.LDSOrdinanceCreated, version int64) error {
+	var dateSort *time.Time
+	var dateRaw string
+
+	if e.Date != nil {
+		dateRaw = e.Date.Raw
+		t := e.Date.ToTime()
+		if !t.IsZero() {
+			dateSort = &t
+		}
+	}
+
+	// Look up person name for denormalization
+	personName := ""
+	if e.PersonID != nil {
+		if person, err := p.readStore.GetPerson(ctx, *e.PersonID); err == nil && person != nil {
+			personName = person.FullName
+		}
+	}
+
+	ordinance := &LDSOrdinanceReadModel{
+		ID:         e.OrdinanceID,
+		Type:       e.Type,
+		TypeLabel:  e.Type.Label(),
+		PersonID:   e.PersonID,
+		PersonName: personName,
+		FamilyID:   e.FamilyID,
+		DateRaw:    dateRaw,
+		DateSort:   dateSort,
+		Place:      e.Place,
+		Temple:     e.Temple,
+		Status:     e.Status,
+		Version:    version,
+		UpdatedAt:  e.OccurredAt(),
+	}
+
+	return p.readStore.SaveLDSOrdinance(ctx, ordinance)
+}
+
+func (p *Projector) projectLDSOrdinanceUpdated(ctx context.Context, e domain.LDSOrdinanceUpdated, version int64) error {
+	ordinance, err := p.readStore.GetLDSOrdinance(ctx, e.OrdinanceID)
+	if err != nil {
+		return err
+	}
+	if ordinance == nil {
+		return nil // Ordinance doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		switch key {
+		case "date":
+			if v, ok := value.(string); ok {
+				ordinance.DateRaw = v
+				gd := domain.ParseGenDate(v)
+				t := gd.ToTime()
+				if !t.IsZero() {
+					ordinance.DateSort = &t
+				} else {
+					ordinance.DateSort = nil
+				}
+			}
+		case "place":
+			if v, ok := value.(string); ok {
+				ordinance.Place = v
+			}
+		case "temple":
+			if v, ok := value.(string); ok {
+				ordinance.Temple = v
+			}
+		case "status":
+			if v, ok := value.(string); ok {
+				ordinance.Status = v
+			}
+		}
+	}
+
+	ordinance.Version = version
+	ordinance.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveLDSOrdinance(ctx, ordinance)
+}
+
+func (p *Projector) projectLDSOrdinanceDeleted(ctx context.Context, e domain.LDSOrdinanceDeleted) error {
+	return p.readStore.DeleteLDSOrdinance(ctx, e.OrdinanceID)
 }

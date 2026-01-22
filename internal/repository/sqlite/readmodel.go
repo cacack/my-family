@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -173,7 +174,11 @@ func (s *ReadModelStore) createTables() error {
 			gedcom_xref TEXT,
 			version INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
-			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			-- GEDCOM 7.0 enhanced fields
+			files TEXT,        -- JSON array of file references
+			format TEXT,       -- Primary format/MIME type
+			translations TEXT  -- JSON array of translated titles
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_media_entity ON media(entity_type, entity_id);
@@ -198,6 +203,55 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_person_names_person ON person_names(person_id);
 		CREATE INDEX IF NOT EXISTS idx_person_names_primary ON person_names(person_id, is_primary);
+
+		-- Notes table (shared GEDCOM NOTE records)
+		CREATE TABLE IF NOT EXISTS notes (
+			id TEXT PRIMARY KEY,
+			text TEXT NOT NULL,
+			gedcom_xref TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_notes_gedcom_xref ON notes(gedcom_xref);
+
+		-- Submitters table (GEDCOM SUBM records for file provenance)
+		CREATE TABLE IF NOT EXISTS submitters (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			address TEXT,
+			phone TEXT,
+			email TEXT,
+			language TEXT,
+			media_id TEXT,
+			gedcom_xref TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_submitters_gedcom_xref ON submitters(gedcom_xref);
+
+		-- Associations table (GEDCOM ASSO records for non-family relationships)
+		CREATE TABLE IF NOT EXISTS associations (
+			id TEXT PRIMARY KEY,
+			person_id TEXT NOT NULL,
+			person_name TEXT,
+			associate_id TEXT NOT NULL,
+			associate_name TEXT,
+			role TEXT NOT NULL,
+			phrase TEXT,
+			notes TEXT,
+			note_ids TEXT,
+			gedcom_xref TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE,
+			FOREIGN KEY (associate_id) REFERENCES persons(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_associations_person ON associations(person_id);
+		CREATE INDEX IF NOT EXISTS idx_associations_associate ON associations(associate_id);
+		CREATE INDEX IF NOT EXISTS idx_associations_role ON associations(role);
 	`)
 	if err != nil {
 		return err
@@ -1502,7 +1556,8 @@ func (s *ReadModelStore) GetMedia(ctx context.Context, id uuid.UUID) (*repositor
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
 			   filename, file_size, crop_left, crop_top, crop_width, crop_height,
-			   gedcom_xref, version, created_at, updated_at
+			   gedcom_xref, version, created_at, updated_at,
+			   files, format, translations
 		FROM media WHERE id = ?
 	`, id.String())
 
@@ -1515,7 +1570,8 @@ func (s *ReadModelStore) GetMediaWithData(ctx context.Context, id uuid.UUID) (*r
 		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
 			   filename, file_size, file_data, thumbnail_data,
 			   crop_left, crop_top, crop_width, crop_height,
-			   gedcom_xref, version, created_at, updated_at
+			   gedcom_xref, version, created_at, updated_at,
+			   files, format, translations
 		FROM media WHERE id = ?
 	`, id.String())
 
@@ -1550,7 +1606,8 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
 			   filename, file_size, crop_left, crop_top, crop_width, crop_height,
-			   gedcom_xref, version, created_at, updated_at
+			   gedcom_xref, version, created_at, updated_at,
+			   files, format, translations
 		FROM media
 		WHERE entity_type = ? AND entity_id = ?
 		ORDER BY created_at DESC
@@ -1575,12 +1632,23 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 
 // SaveMedia saves or updates a media record.
 func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaReadModel) error {
-	_, err := s.db.ExecContext(ctx, `
+	// Serialize JSON fields
+	filesJSON, err := domain.MarshalFilesToJSON(media.Files)
+	if err != nil {
+		return fmt.Errorf("marshal files: %w", err)
+	}
+	translationsJSON, err := domain.MarshalTranslationsToJSON(media.Translations)
+	if err != nil {
+		return fmt.Errorf("marshal translations: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO media (id, entity_type, entity_id, title, description, mime_type, media_type,
 						  filename, file_size, file_data, thumbnail_data,
 						  crop_left, crop_top, crop_width, crop_height,
-						  gedcom_xref, version, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						  gedcom_xref, version, created_at, updated_at,
+						  files, format, translations)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			entity_type = excluded.entity_type,
 			entity_id = excluded.entity_id,
@@ -1598,14 +1666,18 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaR
 			crop_height = excluded.crop_height,
 			gedcom_xref = excluded.gedcom_xref,
 			version = excluded.version,
-			updated_at = excluded.updated_at
+			updated_at = excluded.updated_at,
+			files = excluded.files,
+			format = excluded.format,
+			translations = excluded.translations
 	`, media.ID.String(), media.EntityType, media.EntityID.String(), media.Title,
 		nullableString(media.Description), media.MimeType, string(media.MediaType),
 		media.Filename, media.FileSize, media.FileData, media.ThumbnailData,
 		nullableInt(media.CropLeft), nullableInt(media.CropTop),
 		nullableInt(media.CropWidth), nullableInt(media.CropHeight),
 		nullableString(media.GedcomXref), media.Version,
-		formatTimestamp(media.CreatedAt), formatTimestamp(media.UpdatedAt))
+		formatTimestamp(media.CreatedAt), formatTimestamp(media.UpdatedAt),
+		nullableBytes(filesJSON), nullableString(media.Format), nullableBytes(translationsJSON))
 
 	return err
 }
@@ -1628,12 +1700,16 @@ func scanMediaMetadata(row rowScanner) (*repository.MediaReadModel, error) {
 		cropLeft, cropTop              sql.NullInt64
 		cropWidth, cropHeight          sql.NullInt64
 		createdAt, updatedAt           string
+		// GEDCOM 7.0 enhanced fields
+		filesJSON, translationsJSON sql.NullString
+		format                      sql.NullString
 	)
 
 	err := row.Scan(&idStr, &entityType, &entityIDStr, &title, &description,
 		&mimeType, &mediaType, &filename, &fileSize,
 		&cropLeft, &cropTop, &cropWidth, &cropHeight,
-		&gedcomXref, &version, &createdAt, &updatedAt)
+		&gedcomXref, &version, &createdAt, &updatedAt,
+		&filesJSON, &format, &translationsJSON)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1645,18 +1721,31 @@ func scanMediaMetadata(row rowScanner) (*repository.MediaReadModel, error) {
 	id, _ := uuid.Parse(idStr)
 	entityID, _ := uuid.Parse(entityIDStr)
 
+	// Deserialize JSON fields
+	files, err := domain.UnmarshalFilesFromJSON([]byte(filesJSON.String))
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal files: %w", err)
+	}
+	translations, err := domain.UnmarshalTranslationsFromJSON([]byte(translationsJSON.String))
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal translations: %w", err)
+	}
+
 	m := &repository.MediaReadModel{
-		ID:          id,
-		EntityType:  entityType,
-		EntityID:    entityID,
-		Title:       title,
-		Description: description.String,
-		MimeType:    mimeType,
-		MediaType:   domain.MediaType(mediaType),
-		Filename:    filename,
-		FileSize:    fileSize,
-		GedcomXref:  gedcomXref.String,
-		Version:     version,
+		ID:           id,
+		EntityType:   entityType,
+		EntityID:     entityID,
+		Title:        title,
+		Description:  description.String,
+		MimeType:     mimeType,
+		MediaType:    domain.MediaType(mediaType),
+		Filename:     filename,
+		FileSize:     fileSize,
+		GedcomXref:   gedcomXref.String,
+		Version:      version,
+		Files:        files,
+		Format:       format.String,
+		Translations: translations,
 	}
 
 	if cropLeft.Valid {
@@ -1701,12 +1790,16 @@ func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
 		cropLeft, cropTop              sql.NullInt64
 		cropWidth, cropHeight          sql.NullInt64
 		createdAt, updatedAt           string
+		// GEDCOM 7.0 enhanced fields
+		filesJSON, translationsJSON sql.NullString
+		format                      sql.NullString
 	)
 
 	err := row.Scan(&idStr, &entityType, &entityIDStr, &title, &description,
 		&mimeType, &mediaType, &filename, &fileSize, &fileData, &thumbnailData,
 		&cropLeft, &cropTop, &cropWidth, &cropHeight,
-		&gedcomXref, &version, &createdAt, &updatedAt)
+		&gedcomXref, &version, &createdAt, &updatedAt,
+		&filesJSON, &format, &translationsJSON)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1717,6 +1810,16 @@ func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
 
 	id, _ := uuid.Parse(idStr)
 	entityID, _ := uuid.Parse(entityIDStr)
+
+	// Deserialize JSON fields
+	files, err := domain.UnmarshalFilesFromJSON([]byte(filesJSON.String))
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal files: %w", err)
+	}
+	translations, err := domain.UnmarshalTranslationsFromJSON([]byte(translationsJSON.String))
+	if err != nil {
+		return nil, fmt.Errorf("unmarshal translations: %w", err)
+	}
 
 	m := &repository.MediaReadModel{
 		ID:            id,
@@ -1732,6 +1835,9 @@ func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
 		ThumbnailData: thumbnailData,
 		GedcomXref:    gedcomXref.String,
 		Version:       version,
+		Files:         files,
+		Format:        format.String,
+		Translations:  translations,
 	}
 
 	if cropLeft.Valid {
@@ -2013,4 +2119,1023 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	}
 
 	return persons, total, rows.Err()
+}
+
+// GetNote retrieves a note by ID.
+func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, text, gedcom_xref, version, updated_at
+		FROM notes WHERE id = ?
+	`, id.String())
+
+	var note repository.NoteReadModel
+	var idStr string
+	var gedcomXref sql.NullString
+	var updatedAtStr string
+
+	err := row.Scan(
+		&idStr,
+		&note.Text,
+		&gedcomXref,
+		&note.Version,
+		&updatedAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan note: %w", err)
+	}
+
+	note.ID, _ = uuid.Parse(idStr)
+	if gedcomXref.Valid {
+		note.GedcomXref = gedcomXref.String
+	}
+	if t, err := parseTimestamp(updatedAtStr); err == nil {
+		note.UpdatedAt = t
+	}
+
+	return &note, nil
+}
+
+// ListNotes returns a paginated list of notes.
+func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOptions) ([]repository.NoteReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notes").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count notes: %w", err)
+	}
+
+	// Build order clause
+	orderColumn := "updated_at"
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, text, gedcom_xref, version, updated_at
+		FROM notes
+		ORDER BY %s %s
+		LIMIT ? OFFSET ?
+	`, orderColumn, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query notes: %w", err)
+	}
+	defer rows.Close()
+
+	var notes []repository.NoteReadModel
+	for rows.Next() {
+		var note repository.NoteReadModel
+		var idStr string
+		var gedcomXref sql.NullString
+		var updatedAtStr string
+
+		if err := rows.Scan(
+			&idStr,
+			&note.Text,
+			&gedcomXref,
+			&note.Version,
+			&updatedAtStr,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan note: %w", err)
+		}
+
+		note.ID, _ = uuid.Parse(idStr)
+		if gedcomXref.Valid {
+			note.GedcomXref = gedcomXref.String
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			note.UpdatedAt = t
+		}
+		notes = append(notes, note)
+	}
+
+	return notes, total, rows.Err()
+}
+
+// SaveNote saves or updates a note.
+func (s *ReadModelStore) SaveNote(ctx context.Context, note *repository.NoteReadModel) error {
+	var gedcomXref any
+	if note.GedcomXref != "" {
+		gedcomXref = note.GedcomXref
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO notes (id, text, gedcom_xref, version, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			text = excluded.text,
+			gedcom_xref = excluded.gedcom_xref,
+			version = excluded.version,
+			updated_at = excluded.updated_at
+	`, note.ID.String(), note.Text, gedcomXref, note.Version, note.UpdatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("save note: %w", err)
+	}
+	return nil
+}
+
+// DeleteNote deletes a note by ID.
+func (s *ReadModelStore) DeleteNote(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM notes WHERE id = ?", id.String())
+	if err != nil {
+		return fmt.Errorf("delete note: %w", err)
+	}
+	return nil
+}
+
+// GetSubmitter retrieves a submitter by ID.
+func (s *ReadModelStore) GetSubmitter(ctx context.Context, id uuid.UUID) (*repository.SubmitterReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, name, address, phone, email, language, media_id, gedcom_xref, version, updated_at
+		FROM submitters WHERE id = ?
+	`, id.String())
+
+	var submitter repository.SubmitterReadModel
+	var idStr string
+	var addressJSON, phoneJSON, emailJSON []byte
+	var gedcomXref sql.NullString
+	var mediaID sql.NullString
+	var language sql.NullString
+	var updatedAtStr string
+
+	err := row.Scan(
+		&idStr,
+		&submitter.Name,
+		&addressJSON,
+		&phoneJSON,
+		&emailJSON,
+		&language,
+		&mediaID,
+		&gedcomXref,
+		&submitter.Version,
+		&updatedAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan submitter: %w", err)
+	}
+
+	submitter.ID, _ = uuid.Parse(idStr)
+	if gedcomXref.Valid {
+		submitter.GedcomXref = gedcomXref.String
+	}
+	if language.Valid {
+		submitter.Language = language.String
+	}
+	if mediaID.Valid {
+		if id, err := uuid.Parse(mediaID.String); err == nil {
+			submitter.MediaID = &id
+		}
+	}
+	if len(addressJSON) > 0 {
+		var addr domain.Address
+		if err := json.Unmarshal(addressJSON, &addr); err == nil {
+			submitter.Address = &addr
+		}
+	}
+	if len(phoneJSON) > 0 {
+		_ = json.Unmarshal(phoneJSON, &submitter.Phone)
+	}
+	if len(emailJSON) > 0 {
+		_ = json.Unmarshal(emailJSON, &submitter.Email)
+	}
+	if t, err := parseTimestamp(updatedAtStr); err == nil {
+		submitter.UpdatedAt = t
+	}
+
+	return &submitter, nil
+}
+
+// ListSubmitters returns a paginated list of submitters.
+func (s *ReadModelStore) ListSubmitters(ctx context.Context, opts repository.ListOptions) ([]repository.SubmitterReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM submitters").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count submitters: %w", err)
+	}
+
+	// Build order clause
+	orderColumn := "updated_at"
+	if opts.Sort == "name" {
+		orderColumn = "name"
+	}
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, name, address, phone, email, language, media_id, gedcom_xref, version, updated_at
+		FROM submitters
+		ORDER BY %s %s
+		LIMIT ? OFFSET ?
+	`, orderColumn, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query submitters: %w", err)
+	}
+	defer rows.Close()
+
+	var submitters []repository.SubmitterReadModel
+	for rows.Next() {
+		var submitter repository.SubmitterReadModel
+		var idStr string
+		var addressJSON, phoneJSON, emailJSON []byte
+		var gedcomXref sql.NullString
+		var mediaID sql.NullString
+		var language sql.NullString
+		var updatedAtStr string
+
+		if err := rows.Scan(
+			&idStr,
+			&submitter.Name,
+			&addressJSON,
+			&phoneJSON,
+			&emailJSON,
+			&language,
+			&mediaID,
+			&gedcomXref,
+			&submitter.Version,
+			&updatedAtStr,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan submitter: %w", err)
+		}
+
+		submitter.ID, _ = uuid.Parse(idStr)
+		if gedcomXref.Valid {
+			submitter.GedcomXref = gedcomXref.String
+		}
+		if language.Valid {
+			submitter.Language = language.String
+		}
+		if mediaID.Valid {
+			if id, err := uuid.Parse(mediaID.String); err == nil {
+				submitter.MediaID = &id
+			}
+		}
+		if len(addressJSON) > 0 {
+			var addr domain.Address
+			if err := json.Unmarshal(addressJSON, &addr); err == nil {
+				submitter.Address = &addr
+			}
+		}
+		if len(phoneJSON) > 0 {
+			_ = json.Unmarshal(phoneJSON, &submitter.Phone)
+		}
+		if len(emailJSON) > 0 {
+			_ = json.Unmarshal(emailJSON, &submitter.Email)
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			submitter.UpdatedAt = t
+		}
+		submitters = append(submitters, submitter)
+	}
+
+	return submitters, total, rows.Err()
+}
+
+// SaveSubmitter saves or updates a submitter.
+func (s *ReadModelStore) SaveSubmitter(ctx context.Context, submitter *repository.SubmitterReadModel) error {
+	var addressJSON, phoneJSON, emailJSON []byte
+	var err error
+
+	if submitter.Address != nil {
+		addressJSON, err = json.Marshal(submitter.Address)
+		if err != nil {
+			return fmt.Errorf("marshal address: %w", err)
+		}
+	}
+	if len(submitter.Phone) > 0 {
+		phoneJSON, err = json.Marshal(submitter.Phone)
+		if err != nil {
+			return fmt.Errorf("marshal phone: %w", err)
+		}
+	}
+	if len(submitter.Email) > 0 {
+		emailJSON, err = json.Marshal(submitter.Email)
+		if err != nil {
+			return fmt.Errorf("marshal email: %w", err)
+		}
+	}
+
+	var mediaID any
+	if submitter.MediaID != nil {
+		mediaID = submitter.MediaID.String()
+	}
+	var language any
+	if submitter.Language != "" {
+		language = submitter.Language
+	}
+	var gedcomXref any
+	if submitter.GedcomXref != "" {
+		gedcomXref = submitter.GedcomXref
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO submitters (id, name, address, phone, email, language, media_id, gedcom_xref, version, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			name = excluded.name,
+			address = excluded.address,
+			phone = excluded.phone,
+			email = excluded.email,
+			language = excluded.language,
+			media_id = excluded.media_id,
+			gedcom_xref = excluded.gedcom_xref,
+			version = excluded.version,
+			updated_at = excluded.updated_at
+	`, submitter.ID.String(), submitter.Name, addressJSON, phoneJSON, emailJSON,
+		language, mediaID, gedcomXref, submitter.Version, submitter.UpdatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("save submitter: %w", err)
+	}
+	return nil
+}
+
+// DeleteSubmitter deletes a submitter by ID.
+func (s *ReadModelStore) DeleteSubmitter(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM submitters WHERE id = ?", id.String())
+	if err != nil {
+		return fmt.Errorf("delete submitter: %w", err)
+	}
+	return nil
+}
+
+// GetAssociation retrieves an association by ID.
+func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, person_id, person_name, associate_id, associate_name,
+		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
+		FROM associations WHERE id = ?
+	`, id.String())
+
+	var assoc repository.AssociationReadModel
+	var idStr, personIDStr, associateIDStr string
+	var personName, associateName, phrase, notes sql.NullString
+	var noteIDsJSON sql.NullString
+	var gedcomXref sql.NullString
+	var updatedAtStr string
+	err := row.Scan(
+		&idStr,
+		&personIDStr,
+		&personName,
+		&associateIDStr,
+		&associateName,
+		&assoc.Role,
+		&phrase,
+		&notes,
+		&noteIDsJSON,
+		&gedcomXref,
+		&assoc.Version,
+		&updatedAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan association: %w", err)
+	}
+	assoc.ID, _ = uuid.Parse(idStr)
+	assoc.PersonID, _ = uuid.Parse(personIDStr)
+	assoc.AssociateID, _ = uuid.Parse(associateIDStr)
+	if personName.Valid {
+		assoc.PersonName = personName.String
+	}
+	if associateName.Valid {
+		assoc.AssociateName = associateName.String
+	}
+	if phrase.Valid {
+		assoc.Phrase = phrase.String
+	}
+	if notes.Valid {
+		assoc.Notes = notes.String
+	}
+	if gedcomXref.Valid {
+		assoc.GedcomXref = gedcomXref.String
+	}
+	if noteIDsJSON.Valid && noteIDsJSON.String != "" {
+		_ = json.Unmarshal([]byte(noteIDsJSON.String), &assoc.NoteIDs)
+	}
+	if t, err := parseTimestamp(updatedAtStr); err == nil {
+		assoc.UpdatedAt = t
+	}
+	return &assoc, nil
+}
+
+// ListAssociations returns a paginated list of associations.
+func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM associations").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count associations: %w", err)
+	}
+
+	// Build order clause
+	orderColumn := "updated_at"
+	if opts.Sort == "role" {
+		orderColumn = "role"
+	}
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, person_id, person_name, associate_id, associate_name,
+		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
+		FROM associations
+		ORDER BY %s %s
+		LIMIT ? OFFSET ?
+	`, orderColumn, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query associations: %w", err)
+	}
+	defer rows.Close()
+
+	var associations []repository.AssociationReadModel
+	for rows.Next() {
+		var assoc repository.AssociationReadModel
+		var idStr, personIDStr, associateIDStr string
+		var personName, associateName, phrase, notes sql.NullString
+		var noteIDsJSON sql.NullString
+		var gedcomXref sql.NullString
+		var updatedAtStr string
+		if err := rows.Scan(
+			&idStr,
+			&personIDStr,
+			&personName,
+			&associateIDStr,
+			&associateName,
+			&assoc.Role,
+			&phrase,
+			&notes,
+			&noteIDsJSON,
+			&gedcomXref,
+			&assoc.Version,
+			&updatedAtStr,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan association: %w", err)
+		}
+		assoc.ID, _ = uuid.Parse(idStr)
+		assoc.PersonID, _ = uuid.Parse(personIDStr)
+		assoc.AssociateID, _ = uuid.Parse(associateIDStr)
+		if personName.Valid {
+			assoc.PersonName = personName.String
+		}
+		if associateName.Valid {
+			assoc.AssociateName = associateName.String
+		}
+		if phrase.Valid {
+			assoc.Phrase = phrase.String
+		}
+		if notes.Valid {
+			assoc.Notes = notes.String
+		}
+		if gedcomXref.Valid {
+			assoc.GedcomXref = gedcomXref.String
+		}
+		if noteIDsJSON.Valid && noteIDsJSON.String != "" {
+			_ = json.Unmarshal([]byte(noteIDsJSON.String), &assoc.NoteIDs)
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			assoc.UpdatedAt = t
+		}
+		associations = append(associations, assoc)
+	}
+
+	return associations, total, rows.Err()
+}
+
+// ListAssociationsForPerson returns all associations for a given person.
+func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, person_id, person_name, associate_id, associate_name,
+		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
+		FROM associations
+		WHERE person_id = ? OR associate_id = ?
+		ORDER BY role, updated_at DESC
+	`, personID.String(), personID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query associations for person: %w", err)
+	}
+	defer rows.Close()
+
+	var associations []repository.AssociationReadModel
+	for rows.Next() {
+		var assoc repository.AssociationReadModel
+		var idStr, personIDStr, associateIDStr string
+		var personName, associateName, phrase, notes sql.NullString
+		var noteIDsJSON sql.NullString
+		var gedcomXref sql.NullString
+		var updatedAtStr string
+		if err := rows.Scan(
+			&idStr,
+			&personIDStr,
+			&personName,
+			&associateIDStr,
+			&associateName,
+			&assoc.Role,
+			&phrase,
+			&notes,
+			&noteIDsJSON,
+			&gedcomXref,
+			&assoc.Version,
+			&updatedAtStr,
+		); err != nil {
+			return nil, fmt.Errorf("scan association: %w", err)
+		}
+		assoc.ID, _ = uuid.Parse(idStr)
+		assoc.PersonID, _ = uuid.Parse(personIDStr)
+		assoc.AssociateID, _ = uuid.Parse(associateIDStr)
+		if personName.Valid {
+			assoc.PersonName = personName.String
+		}
+		if associateName.Valid {
+			assoc.AssociateName = associateName.String
+		}
+		if phrase.Valid {
+			assoc.Phrase = phrase.String
+		}
+		if notes.Valid {
+			assoc.Notes = notes.String
+		}
+		if gedcomXref.Valid {
+			assoc.GedcomXref = gedcomXref.String
+		}
+		if noteIDsJSON.Valid && noteIDsJSON.String != "" {
+			_ = json.Unmarshal([]byte(noteIDsJSON.String), &assoc.NoteIDs)
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			assoc.UpdatedAt = t
+		}
+		associations = append(associations, assoc)
+	}
+
+	return associations, rows.Err()
+}
+
+// SaveAssociation saves or updates an association.
+func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.AssociationReadModel) error {
+	var noteIDsJSON any
+	if len(assoc.NoteIDs) > 0 {
+		jsonBytes, err := json.Marshal(assoc.NoteIDs)
+		if err != nil {
+			return fmt.Errorf("marshal note_ids: %w", err)
+		}
+		noteIDsJSON = string(jsonBytes)
+	}
+
+	var personName, associateName, phrase, notes, gedcomXref any
+	if assoc.PersonName != "" {
+		personName = assoc.PersonName
+	}
+	if assoc.AssociateName != "" {
+		associateName = assoc.AssociateName
+	}
+	if assoc.Phrase != "" {
+		phrase = assoc.Phrase
+	}
+	if assoc.Notes != "" {
+		notes = assoc.Notes
+	}
+	if assoc.GedcomXref != "" {
+		gedcomXref = assoc.GedcomXref
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO associations (id, person_id, person_name, associate_id, associate_name,
+		                         role, phrase, notes, note_ids, gedcom_xref, version, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			person_id = excluded.person_id,
+			person_name = excluded.person_name,
+			associate_id = excluded.associate_id,
+			associate_name = excluded.associate_name,
+			role = excluded.role,
+			phrase = excluded.phrase,
+			notes = excluded.notes,
+			note_ids = excluded.note_ids,
+			gedcom_xref = excluded.gedcom_xref,
+			version = excluded.version,
+			updated_at = excluded.updated_at
+	`, assoc.ID.String(), assoc.PersonID.String(), personName, assoc.AssociateID.String(), associateName,
+		assoc.Role, phrase, notes, noteIDsJSON, gedcomXref, assoc.Version, assoc.UpdatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("save association: %w", err)
+	}
+	return nil
+}
+
+// DeleteAssociation deletes an association by ID.
+func (s *ReadModelStore) DeleteAssociation(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM associations WHERE id = ?", id.String())
+	if err != nil {
+		return fmt.Errorf("delete association: %w", err)
+	}
+	return nil
+}
+
+// GetLDSOrdinance retrieves an LDS ordinance by ID.
+func (s *ReadModelStore) GetLDSOrdinance(ctx context.Context, id uuid.UUID) (*repository.LDSOrdinanceReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, type, type_label, person_id, person_name, family_id,
+		       date_raw, date_sort, place, temple, status, version, updated_at
+		FROM lds_ordinances WHERE id = ?
+	`, id.String())
+
+	var ordinance repository.LDSOrdinanceReadModel
+	var idStr string
+	var personID, familyID sql.NullString
+	var personName, dateRaw, place, temple, status sql.NullString
+	var dateSort sql.NullString
+	var updatedAtStr string
+
+	err := row.Scan(
+		&idStr,
+		&ordinance.Type,
+		&ordinance.TypeLabel,
+		&personID,
+		&personName,
+		&familyID,
+		&dateRaw,
+		&dateSort,
+		&place,
+		&temple,
+		&status,
+		&ordinance.Version,
+		&updatedAtStr,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan lds_ordinance: %w", err)
+	}
+
+	ordinance.ID, _ = uuid.Parse(idStr)
+	if personID.Valid {
+		id, _ := uuid.Parse(personID.String)
+		ordinance.PersonID = &id
+	}
+	if familyID.Valid {
+		id, _ := uuid.Parse(familyID.String)
+		ordinance.FamilyID = &id
+	}
+	if personName.Valid {
+		ordinance.PersonName = personName.String
+	}
+	if dateRaw.Valid {
+		ordinance.DateRaw = dateRaw.String
+	}
+	if dateSort.Valid {
+		if t, err := parseTimestamp(dateSort.String); err == nil {
+			ordinance.DateSort = &t
+		}
+	}
+	if place.Valid {
+		ordinance.Place = place.String
+	}
+	if temple.Valid {
+		ordinance.Temple = temple.String
+	}
+	if status.Valid {
+		ordinance.Status = status.String
+	}
+	if t, err := parseTimestamp(updatedAtStr); err == nil {
+		ordinance.UpdatedAt = t
+	}
+	return &ordinance, nil
+}
+
+// ListLDSOrdinances returns a paginated list of LDS ordinances.
+func (s *ReadModelStore) ListLDSOrdinances(ctx context.Context, opts repository.ListOptions) ([]repository.LDSOrdinanceReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM lds_ordinances").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count lds_ordinances: %w", err)
+	}
+
+	// Build order clause
+	orderColumn := "updated_at"
+	switch opts.Sort {
+	case "type":
+		orderColumn = "type"
+	case "date":
+		orderColumn = "date_sort"
+	}
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, type, type_label, person_id, person_name, family_id,
+		       date_raw, date_sort, place, temple, status, version, updated_at
+		FROM lds_ordinances
+		ORDER BY %s %s
+		LIMIT ? OFFSET ?
+	`, orderColumn, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query lds_ordinances: %w", err)
+	}
+	defer rows.Close()
+
+	var ordinances []repository.LDSOrdinanceReadModel
+	for rows.Next() {
+		var ordinance repository.LDSOrdinanceReadModel
+		var idStr string
+		var personID, familyID sql.NullString
+		var personName, dateRaw, place, temple, status sql.NullString
+		var dateSort sql.NullString
+		var updatedAtStr string
+		if err := rows.Scan(
+			&idStr,
+			&ordinance.Type,
+			&ordinance.TypeLabel,
+			&personID,
+			&personName,
+			&familyID,
+			&dateRaw,
+			&dateSort,
+			&place,
+			&temple,
+			&status,
+			&ordinance.Version,
+			&updatedAtStr,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan lds_ordinance: %w", err)
+		}
+		ordinance.ID, _ = uuid.Parse(idStr)
+		if personID.Valid {
+			id, _ := uuid.Parse(personID.String)
+			ordinance.PersonID = &id
+		}
+		if familyID.Valid {
+			id, _ := uuid.Parse(familyID.String)
+			ordinance.FamilyID = &id
+		}
+		if personName.Valid {
+			ordinance.PersonName = personName.String
+		}
+		if dateRaw.Valid {
+			ordinance.DateRaw = dateRaw.String
+		}
+		if dateSort.Valid {
+			if t, err := parseTimestamp(dateSort.String); err == nil {
+				ordinance.DateSort = &t
+			}
+		}
+		if place.Valid {
+			ordinance.Place = place.String
+		}
+		if temple.Valid {
+			ordinance.Temple = temple.String
+		}
+		if status.Valid {
+			ordinance.Status = status.String
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			ordinance.UpdatedAt = t
+		}
+		ordinances = append(ordinances, ordinance)
+	}
+
+	return ordinances, total, rows.Err()
+}
+
+// ListLDSOrdinancesForPerson returns all LDS ordinances for a given person.
+func (s *ReadModelStore) ListLDSOrdinancesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.LDSOrdinanceReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, type, type_label, person_id, person_name, family_id,
+		       date_raw, date_sort, place, temple, status, version, updated_at
+		FROM lds_ordinances
+		WHERE person_id = ?
+		ORDER BY type, date_sort
+	`, personID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query lds_ordinances for person: %w", err)
+	}
+	defer rows.Close()
+
+	var ordinances []repository.LDSOrdinanceReadModel
+	for rows.Next() {
+		var ordinance repository.LDSOrdinanceReadModel
+		var idStr string
+		var personIDNull, familyID sql.NullString
+		var personName, dateRaw, place, temple, status sql.NullString
+		var dateSort sql.NullString
+		var updatedAtStr string
+		if err := rows.Scan(
+			&idStr,
+			&ordinance.Type,
+			&ordinance.TypeLabel,
+			&personIDNull,
+			&personName,
+			&familyID,
+			&dateRaw,
+			&dateSort,
+			&place,
+			&temple,
+			&status,
+			&ordinance.Version,
+			&updatedAtStr,
+		); err != nil {
+			return nil, fmt.Errorf("scan lds_ordinance: %w", err)
+		}
+		ordinance.ID, _ = uuid.Parse(idStr)
+		if personIDNull.Valid {
+			id, _ := uuid.Parse(personIDNull.String)
+			ordinance.PersonID = &id
+		}
+		if familyID.Valid {
+			id, _ := uuid.Parse(familyID.String)
+			ordinance.FamilyID = &id
+		}
+		if personName.Valid {
+			ordinance.PersonName = personName.String
+		}
+		if dateRaw.Valid {
+			ordinance.DateRaw = dateRaw.String
+		}
+		if dateSort.Valid {
+			if t, err := parseTimestamp(dateSort.String); err == nil {
+				ordinance.DateSort = &t
+			}
+		}
+		if place.Valid {
+			ordinance.Place = place.String
+		}
+		if temple.Valid {
+			ordinance.Temple = temple.String
+		}
+		if status.Valid {
+			ordinance.Status = status.String
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			ordinance.UpdatedAt = t
+		}
+		ordinances = append(ordinances, ordinance)
+	}
+
+	return ordinances, rows.Err()
+}
+
+// ListLDSOrdinancesForFamily returns all LDS ordinances for a given family.
+func (s *ReadModelStore) ListLDSOrdinancesForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.LDSOrdinanceReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, type, type_label, person_id, person_name, family_id,
+		       date_raw, date_sort, place, temple, status, version, updated_at
+		FROM lds_ordinances
+		WHERE family_id = ?
+		ORDER BY type, date_sort
+	`, familyID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query lds_ordinances for family: %w", err)
+	}
+	defer rows.Close()
+
+	var ordinances []repository.LDSOrdinanceReadModel
+	for rows.Next() {
+		var ordinance repository.LDSOrdinanceReadModel
+		var idStr string
+		var personID, familyIDNull sql.NullString
+		var personName, dateRaw, place, temple, status sql.NullString
+		var dateSort sql.NullString
+		var updatedAtStr string
+		if err := rows.Scan(
+			&idStr,
+			&ordinance.Type,
+			&ordinance.TypeLabel,
+			&personID,
+			&personName,
+			&familyIDNull,
+			&dateRaw,
+			&dateSort,
+			&place,
+			&temple,
+			&status,
+			&ordinance.Version,
+			&updatedAtStr,
+		); err != nil {
+			return nil, fmt.Errorf("scan lds_ordinance: %w", err)
+		}
+		ordinance.ID, _ = uuid.Parse(idStr)
+		if personID.Valid {
+			id, _ := uuid.Parse(personID.String)
+			ordinance.PersonID = &id
+		}
+		if familyIDNull.Valid {
+			id, _ := uuid.Parse(familyIDNull.String)
+			ordinance.FamilyID = &id
+		}
+		if personName.Valid {
+			ordinance.PersonName = personName.String
+		}
+		if dateRaw.Valid {
+			ordinance.DateRaw = dateRaw.String
+		}
+		if dateSort.Valid {
+			if t, err := parseTimestamp(dateSort.String); err == nil {
+				ordinance.DateSort = &t
+			}
+		}
+		if place.Valid {
+			ordinance.Place = place.String
+		}
+		if temple.Valid {
+			ordinance.Temple = temple.String
+		}
+		if status.Valid {
+			ordinance.Status = status.String
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			ordinance.UpdatedAt = t
+		}
+		ordinances = append(ordinances, ordinance)
+	}
+
+	return ordinances, rows.Err()
+}
+
+// SaveLDSOrdinance saves or updates an LDS ordinance.
+func (s *ReadModelStore) SaveLDSOrdinance(ctx context.Context, ordinance *repository.LDSOrdinanceReadModel) error {
+	var personID, familyID interface{}
+	if ordinance.PersonID != nil {
+		personID = ordinance.PersonID.String()
+	}
+	if ordinance.FamilyID != nil {
+		familyID = ordinance.FamilyID.String()
+	}
+
+	var personName, dateRaw, dateSort, place, temple, status interface{}
+	if ordinance.PersonName != "" {
+		personName = ordinance.PersonName
+	}
+	if ordinance.DateRaw != "" {
+		dateRaw = ordinance.DateRaw
+	}
+	if ordinance.DateSort != nil {
+		dateSort = ordinance.DateSort.Format(time.RFC3339)
+	}
+	if ordinance.Place != "" {
+		place = ordinance.Place
+	}
+	if ordinance.Temple != "" {
+		temple = ordinance.Temple
+	}
+	if ordinance.Status != "" {
+		status = ordinance.Status
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO lds_ordinances (id, type, type_label, person_id, person_name, family_id,
+		                           date_raw, date_sort, place, temple, status, version, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			type = excluded.type,
+			type_label = excluded.type_label,
+			person_id = excluded.person_id,
+			person_name = excluded.person_name,
+			family_id = excluded.family_id,
+			date_raw = excluded.date_raw,
+			date_sort = excluded.date_sort,
+			place = excluded.place,
+			temple = excluded.temple,
+			status = excluded.status,
+			version = excluded.version,
+			updated_at = excluded.updated_at
+	`, ordinance.ID.String(), ordinance.Type, ordinance.TypeLabel, personID, personName, familyID,
+		dateRaw, dateSort, place, temple, status, ordinance.Version, ordinance.UpdatedAt.Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("save lds_ordinance: %w", err)
+	}
+	return nil
+}
+
+// DeleteLDSOrdinance deletes an LDS ordinance by ID.
+func (s *ReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM lds_ordinances WHERE id = ?", id.String())
+	if err != nil {
+		return fmt.Errorf("delete lds_ordinance: %w", err)
+	}
+	return nil
 }

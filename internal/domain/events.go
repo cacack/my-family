@@ -448,6 +448,10 @@ type MediaCreated struct {
 	FileData      []byte    `json:"file_data"`
 	ThumbnailData []byte    `json:"thumbnail_data,omitempty"`
 	GedcomXref    string    `json:"gedcom_xref,omitempty"`
+	// GEDCOM 7.0 enhanced fields
+	Files        []MediaFile `json:"files,omitempty"`        // Multiple file references
+	Format       string      `json:"format,omitempty"`       // Primary format/MIME type
+	Translations []string    `json:"translations,omitempty"` // Translated titles
 }
 
 func (e MediaCreated) EventType() string      { return "MediaCreated" }
@@ -469,6 +473,9 @@ func NewMediaCreated(m *Media) MediaCreated {
 		FileData:      m.FileData,
 		ThumbnailData: m.ThumbnailData,
 		GedcomXref:    m.GedcomXref,
+		Files:         m.Files,
+		Format:        m.Format,
+		Translations:  m.Translations,
 	}
 }
 
@@ -513,18 +520,18 @@ func NewMediaDeleted(mediaID uuid.UUID, reason string) MediaDeleted {
 // RepositoryCreated event is emitted when a new repository is created.
 type RepositoryCreated struct {
 	BaseEvent
-	RepositoryID uuid.UUID `json:"repository_id"`
-	Name         string    `json:"name"`
-	Address      string    `json:"address,omitempty"`
-	City         string    `json:"city,omitempty"`
-	State        string    `json:"state,omitempty"`
-	PostalCode   string    `json:"postal_code,omitempty"`
-	Country      string    `json:"country,omitempty"`
-	Phone        string    `json:"phone,omitempty"`
-	Email        string    `json:"email,omitempty"`
-	Website      string    `json:"website,omitempty"`
-	Notes        string    `json:"notes,omitempty"`
-	GedcomXref   string    `json:"gedcom_xref,omitempty"`
+	RepositoryID  uuid.UUID `json:"repository_id"`
+	Name          string    `json:"name"`
+	StreetAddress string    `json:"street_address,omitempty"`
+	City          string    `json:"city,omitempty"`
+	State         string    `json:"state,omitempty"`
+	PostalCode    string    `json:"postal_code,omitempty"`
+	Country       string    `json:"country,omitempty"`
+	Phone         string    `json:"phone,omitempty"`
+	Email         string    `json:"email,omitempty"`
+	Website       string    `json:"website,omitempty"`
+	Notes         string    `json:"notes,omitempty"`
+	GedcomXref    string    `json:"gedcom_xref,omitempty"`
 }
 
 func (e RepositoryCreated) EventType() string      { return "RepositoryCreated" }
@@ -533,19 +540,19 @@ func (e RepositoryCreated) AggregateID() uuid.UUID { return e.RepositoryID }
 // NewRepositoryCreated creates a RepositoryCreated event from a Repository.
 func NewRepositoryCreated(r *Repository) RepositoryCreated {
 	return RepositoryCreated{
-		BaseEvent:    NewBaseEvent(),
-		RepositoryID: r.ID,
-		Name:         r.Name,
-		Address:      r.Address,
-		City:         r.City,
-		State:        r.State,
-		PostalCode:   r.PostalCode,
-		Country:      r.Country,
-		Phone:        r.Phone,
-		Email:        r.Email,
-		Website:      r.Website,
-		Notes:        r.Notes,
-		GedcomXref:   r.GedcomXref,
+		BaseEvent:     NewBaseEvent(),
+		RepositoryID:  r.ID,
+		Name:          r.Name,
+		StreetAddress: r.StreetAddress,
+		City:          r.City,
+		State:         r.State,
+		PostalCode:    r.PostalCode,
+		Country:       r.Country,
+		Phone:         r.Phone,
+		Email:         r.Email,
+		Website:       r.Website,
+		Notes:         r.Notes,
+		GedcomXref:    r.GedcomXref,
 	}
 }
 
@@ -596,6 +603,7 @@ type LifeEventCreated struct {
 	FactType    FactType   `json:"fact_type"`
 	Date        *GenDate   `json:"date,omitempty"`
 	Place       string     `json:"place,omitempty"`
+	Address     *Address   `json:"address,omitempty"` // Structured address (RESI, etc.)
 	Description string     `json:"description,omitempty"`
 	Cause       string     `json:"cause,omitempty"` // For death/burial events
 	Age         string     `json:"age,omitempty"`   // Age at event
@@ -615,6 +623,7 @@ func NewLifeEventCreatedFromModel(le *LifeEvent) LifeEventCreated {
 		FactType:    le.FactType,
 		Date:        le.Date,
 		Place:       le.Place,
+		Address:     le.Address,
 		Description: le.Description,
 		Cause:       le.Cause,
 		Age:         le.Age,
@@ -874,5 +883,271 @@ func NewPersonMerged(
 		TransferredNameIDs:   transferredNames,
 		TransferredEventIDs:  transferredEvents,
 		TransferredMediaIDs:  transferredMedia,
+	}
+}
+
+// NoteCreated event is emitted when a new note is created.
+type NoteCreated struct {
+	BaseEvent
+	NoteID     uuid.UUID `json:"note_id"`
+	Text       string    `json:"text"`
+	GedcomXref string    `json:"gedcom_xref,omitempty"`
+}
+
+func (e NoteCreated) EventType() string      { return "NoteCreated" }
+func (e NoteCreated) AggregateID() uuid.UUID { return e.NoteID }
+
+// NewNoteCreated creates a NoteCreated event from a Note.
+func NewNoteCreated(n *Note) NoteCreated {
+	return NoteCreated{
+		BaseEvent:  NewBaseEvent(),
+		NoteID:     n.ID,
+		Text:       n.Text,
+		GedcomXref: n.GedcomXref,
+	}
+}
+
+// NoteUpdated event is emitted when a note is updated.
+type NoteUpdated struct {
+	BaseEvent
+	NoteID  uuid.UUID      `json:"note_id"`
+	Changes map[string]any `json:"changes"`
+}
+
+func (e NoteUpdated) EventType() string      { return "NoteUpdated" }
+func (e NoteUpdated) AggregateID() uuid.UUID { return e.NoteID }
+
+// NewNoteUpdated creates a NoteUpdated event.
+func NewNoteUpdated(noteID uuid.UUID, changes map[string]any) NoteUpdated {
+	return NoteUpdated{
+		BaseEvent: NewBaseEvent(),
+		NoteID:    noteID,
+		Changes:   changes,
+	}
+}
+
+// NoteDeleted event is emitted when a note is deleted.
+type NoteDeleted struct {
+	BaseEvent
+	NoteID uuid.UUID `json:"note_id"`
+	Reason string    `json:"reason,omitempty"`
+}
+
+func (e NoteDeleted) EventType() string      { return "NoteDeleted" }
+func (e NoteDeleted) AggregateID() uuid.UUID { return e.NoteID }
+
+// NewNoteDeleted creates a NoteDeleted event.
+func NewNoteDeleted(noteID uuid.UUID, reason string) NoteDeleted {
+	return NoteDeleted{
+		BaseEvent: NewBaseEvent(),
+		NoteID:    noteID,
+		Reason:    reason,
+	}
+}
+
+// SubmitterCreated event is emitted when a new submitter is created.
+type SubmitterCreated struct {
+	BaseEvent
+	SubmitterID uuid.UUID  `json:"submitter_id"`
+	Name        string     `json:"name"`
+	Address     *Address   `json:"address,omitempty"`
+	Phone       []string   `json:"phone,omitempty"`
+	Email       []string   `json:"email,omitempty"`
+	Language    string     `json:"language,omitempty"`
+	MediaID     *uuid.UUID `json:"media_id,omitempty"`
+	GedcomXref  string     `json:"gedcom_xref,omitempty"`
+}
+
+func (e SubmitterCreated) EventType() string      { return "SubmitterCreated" }
+func (e SubmitterCreated) AggregateID() uuid.UUID { return e.SubmitterID }
+
+// NewSubmitterCreated creates a SubmitterCreated event from a Submitter.
+func NewSubmitterCreated(s *Submitter) SubmitterCreated {
+	return SubmitterCreated{
+		BaseEvent:   NewBaseEvent(),
+		SubmitterID: s.ID,
+		Name:        s.Name,
+		Address:     s.Address,
+		Phone:       s.Phone,
+		Email:       s.Email,
+		Language:    s.Language,
+		MediaID:     s.MediaID,
+		GedcomXref:  s.GedcomXref,
+	}
+}
+
+// SubmitterUpdated event is emitted when a submitter is updated.
+type SubmitterUpdated struct {
+	BaseEvent
+	SubmitterID uuid.UUID      `json:"submitter_id"`
+	Changes     map[string]any `json:"changes"`
+}
+
+func (e SubmitterUpdated) EventType() string      { return "SubmitterUpdated" }
+func (e SubmitterUpdated) AggregateID() uuid.UUID { return e.SubmitterID }
+
+// NewSubmitterUpdated creates a SubmitterUpdated event.
+func NewSubmitterUpdated(submitterID uuid.UUID, changes map[string]any) SubmitterUpdated {
+	return SubmitterUpdated{
+		BaseEvent:   NewBaseEvent(),
+		SubmitterID: submitterID,
+		Changes:     changes,
+	}
+}
+
+// SubmitterDeleted event is emitted when a submitter is deleted.
+type SubmitterDeleted struct {
+	BaseEvent
+	SubmitterID uuid.UUID `json:"submitter_id"`
+	Reason      string    `json:"reason,omitempty"`
+}
+
+func (e SubmitterDeleted) EventType() string      { return "SubmitterDeleted" }
+func (e SubmitterDeleted) AggregateID() uuid.UUID { return e.SubmitterID }
+
+// NewSubmitterDeleted creates a SubmitterDeleted event.
+func NewSubmitterDeleted(submitterID uuid.UUID, reason string) SubmitterDeleted {
+	return SubmitterDeleted{
+		BaseEvent:   NewBaseEvent(),
+		SubmitterID: submitterID,
+		Reason:      reason,
+	}
+}
+
+// AssociationCreated event is emitted when a new association is created.
+type AssociationCreated struct {
+	BaseEvent
+	AssociationID uuid.UUID   `json:"association_id"`
+	PersonID      uuid.UUID   `json:"person_id"`
+	AssociateID   uuid.UUID   `json:"associate_id"`
+	Role          string      `json:"role"`
+	Phrase        string      `json:"phrase,omitempty"`
+	Notes         string      `json:"notes,omitempty"`
+	NoteIDs       []uuid.UUID `json:"note_ids,omitempty"`
+	GedcomXref    string      `json:"gedcom_xref,omitempty"`
+}
+
+func (e AssociationCreated) EventType() string      { return "AssociationCreated" }
+func (e AssociationCreated) AggregateID() uuid.UUID { return e.AssociationID }
+
+// NewAssociationCreated creates an AssociationCreated event from an Association.
+func NewAssociationCreated(a *Association) AssociationCreated {
+	return AssociationCreated{
+		BaseEvent:     NewBaseEvent(),
+		AssociationID: a.ID,
+		PersonID:      a.PersonID,
+		AssociateID:   a.AssociateID,
+		Role:          a.Role,
+		Phrase:        a.Phrase,
+		Notes:         a.Notes,
+		NoteIDs:       a.NoteIDs,
+		GedcomXref:    a.GedcomXref,
+	}
+}
+
+// AssociationUpdated event is emitted when an association is updated.
+type AssociationUpdated struct {
+	BaseEvent
+	AssociationID uuid.UUID      `json:"association_id"`
+	Changes       map[string]any `json:"changes"`
+}
+
+func (e AssociationUpdated) EventType() string      { return "AssociationUpdated" }
+func (e AssociationUpdated) AggregateID() uuid.UUID { return e.AssociationID }
+
+// NewAssociationUpdated creates an AssociationUpdated event.
+func NewAssociationUpdated(associationID uuid.UUID, changes map[string]any) AssociationUpdated {
+	return AssociationUpdated{
+		BaseEvent:     NewBaseEvent(),
+		AssociationID: associationID,
+		Changes:       changes,
+	}
+}
+
+// AssociationDeleted event is emitted when an association is deleted.
+type AssociationDeleted struct {
+	BaseEvent
+	AssociationID uuid.UUID `json:"association_id"`
+	Reason        string    `json:"reason,omitempty"`
+}
+
+func (e AssociationDeleted) EventType() string      { return "AssociationDeleted" }
+func (e AssociationDeleted) AggregateID() uuid.UUID { return e.AssociationID }
+
+// NewAssociationDeleted creates an AssociationDeleted event.
+func NewAssociationDeleted(associationID uuid.UUID, reason string) AssociationDeleted {
+	return AssociationDeleted{
+		BaseEvent:     NewBaseEvent(),
+		AssociationID: associationID,
+		Reason:        reason,
+	}
+}
+
+// LDSOrdinanceCreated event is emitted when a new LDS ordinance is created.
+type LDSOrdinanceCreated struct {
+	BaseEvent
+	OrdinanceID uuid.UUID        `json:"ordinance_id"`
+	Type        LDSOrdinanceType `json:"type"`
+	PersonID    *uuid.UUID       `json:"person_id,omitempty"` // For individual ordinances
+	FamilyID    *uuid.UUID       `json:"family_id,omitempty"` // For SLGS (sealing to spouse)
+	Date        *GenDate         `json:"date,omitempty"`
+	Place       string           `json:"place,omitempty"`
+	Temple      string           `json:"temple,omitempty"` // Temple code (TEMP)
+	Status      string           `json:"status,omitempty"` // COMPLETED, BIC, etc.
+}
+
+func (e LDSOrdinanceCreated) EventType() string      { return "LDSOrdinanceCreated" }
+func (e LDSOrdinanceCreated) AggregateID() uuid.UUID { return e.OrdinanceID }
+
+// NewLDSOrdinanceCreated creates a LDSOrdinanceCreated event from an LDSOrdinance.
+func NewLDSOrdinanceCreated(o *LDSOrdinance) LDSOrdinanceCreated {
+	return LDSOrdinanceCreated{
+		BaseEvent:   NewBaseEvent(),
+		OrdinanceID: o.ID,
+		Type:        o.Type,
+		PersonID:    o.PersonID,
+		FamilyID:    o.FamilyID,
+		Date:        o.Date,
+		Place:       o.Place,
+		Temple:      o.Temple,
+		Status:      o.Status,
+	}
+}
+
+// LDSOrdinanceUpdated event is emitted when an LDS ordinance is updated.
+type LDSOrdinanceUpdated struct {
+	BaseEvent
+	OrdinanceID uuid.UUID      `json:"ordinance_id"`
+	Changes     map[string]any `json:"changes"`
+}
+
+func (e LDSOrdinanceUpdated) EventType() string      { return "LDSOrdinanceUpdated" }
+func (e LDSOrdinanceUpdated) AggregateID() uuid.UUID { return e.OrdinanceID }
+
+// NewLDSOrdinanceUpdated creates a LDSOrdinanceUpdated event.
+func NewLDSOrdinanceUpdated(ordinanceID uuid.UUID, changes map[string]any) LDSOrdinanceUpdated {
+	return LDSOrdinanceUpdated{
+		BaseEvent:   NewBaseEvent(),
+		OrdinanceID: ordinanceID,
+		Changes:     changes,
+	}
+}
+
+// LDSOrdinanceDeleted event is emitted when an LDS ordinance is deleted.
+type LDSOrdinanceDeleted struct {
+	BaseEvent
+	OrdinanceID uuid.UUID `json:"ordinance_id"`
+	Reason      string    `json:"reason,omitempty"`
+}
+
+func (e LDSOrdinanceDeleted) EventType() string      { return "LDSOrdinanceDeleted" }
+func (e LDSOrdinanceDeleted) AggregateID() uuid.UUID { return e.OrdinanceID }
+
+// NewLDSOrdinanceDeleted creates a LDSOrdinanceDeleted event.
+func NewLDSOrdinanceDeleted(ordinanceID uuid.UUID, reason string) LDSOrdinanceDeleted {
+	return LDSOrdinanceDeleted{
+		BaseEvent:   NewBaseEvent(),
+		OrdinanceID: ordinanceID,
+		Reason:      reason,
 	}
 }
