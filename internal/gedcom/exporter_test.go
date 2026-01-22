@@ -2046,3 +2046,283 @@ func TestExportWithProgress_ProgressPercentage(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExport_LDSOrdinances(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a person
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Gender:    domain.GenderMale,
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create individual LDS ordinances
+	baptism := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSBaptism,
+		TypeLabel: "Baptism (LDS)",
+		PersonID:  &personID,
+		DateRaw:   "15 JAN 1880",
+		Temple:    "SL",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, baptism); err != nil {
+		t.Fatal(err)
+	}
+
+	confirmation := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSConfirmation,
+		TypeLabel: "Confirmation (LDS)",
+		PersonID:  &personID,
+		DateRaw:   "15 JAN 1880",
+		Temple:    "SL",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, confirmation); err != nil {
+		t.Fatal(err)
+	}
+
+	endowment := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSEndowment,
+		TypeLabel: "Endowment",
+		PersonID:  &personID,
+		DateRaw:   "20 FEB 1885",
+		Temple:    "LOGAN",
+		Status:    "COMPLETED",
+		Place:     "Logan, Utah",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, endowment); err != nil {
+		t.Fatal(err)
+	}
+
+	sealingChild := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSSealingChild,
+		TypeLabel: "Sealing to Parents",
+		PersonID:  &personID,
+		DateRaw:   "20 MAR 1885",
+		Temple:    "MANTI",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, sealingChild); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a family for spouse sealing
+	familyID := uuid.New()
+	partner2ID := uuid.New()
+	partner2 := &repository.PersonReadModel{
+		ID:        partner2ID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+		Gender:    domain.GenderFemale,
+	}
+	if err := readStore.SavePerson(ctx, partner2); err != nil {
+		t.Fatal(err)
+	}
+
+	family := &repository.FamilyReadModel{
+		ID:               familyID,
+		Partner1ID:       &personID,
+		Partner1Name:     "John Doe",
+		Partner2ID:       &partner2ID,
+		Partner2Name:     "Jane Smith",
+		RelationshipType: domain.RelationMarriage,
+	}
+	if err := readStore.SaveFamily(ctx, family); err != nil {
+		t.Fatal(err)
+	}
+
+	sealingSpouse := &repository.LDSOrdinanceReadModel{
+		ID:        uuid.New(),
+		Type:      domain.LDSSealingSpouse,
+		TypeLabel: "Sealing to Spouse",
+		FamilyID:  &familyID,
+		DateRaw:   "25 DEC 1885",
+		Temple:    "SL",
+		Status:    "COMPLETED",
+	}
+	if err := readStore.SaveLDSOrdinance(ctx, sealingSpouse); err != nil {
+		t.Fatal(err)
+	}
+
+	// Export
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	// Verify ordinances were exported
+	if result.LDSOrdinancesExported != 5 {
+		t.Errorf("LDSOrdinancesExported = %d, want 5", result.LDSOrdinancesExported)
+	}
+
+	output := buf.String()
+
+	// Verify individual ordinances in output
+	if !strings.Contains(output, "1 BAPL") {
+		t.Error("Output should contain BAPL tag")
+	}
+	if !strings.Contains(output, "1 CONL") {
+		t.Error("Output should contain CONL tag")
+	}
+	if !strings.Contains(output, "1 ENDL") {
+		t.Error("Output should contain ENDL tag")
+	}
+	if !strings.Contains(output, "1 SLGC") {
+		t.Error("Output should contain SLGC tag")
+	}
+
+	// Verify family ordinance in output
+	if !strings.Contains(output, "1 SLGS") {
+		t.Error("Output should contain SLGS tag")
+	}
+
+	// Verify specific date and temple codes
+	if !strings.Contains(output, "2 DATE 15 JAN 1880") {
+		t.Error("Output should contain baptism date")
+	}
+	if !strings.Contains(output, "2 TEMP SL") {
+		t.Error("Output should contain SL temple code")
+	}
+	if !strings.Contains(output, "2 TEMP LOGAN") {
+		t.Error("Output should contain LOGAN temple code")
+	}
+	if !strings.Contains(output, "2 TEMP MANTI") {
+		t.Error("Output should contain MANTI temple code")
+	}
+	if !strings.Contains(output, "2 STAT COMPLETED") {
+		t.Error("Output should contain COMPLETED status")
+	}
+}
+
+func TestExport_LDSOrdinances_RoundTrip(t *testing.T) {
+	// Test that LDS ordinances survive import->export round trip
+	inputGedcom := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BAPL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 CONL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 ENDL
+2 DATE 20 FEB 1885
+2 TEMP LOGAN
+2 STAT COMPLETED
+1 SLGC
+2 DATE 20 MAR 1885
+2 TEMP MANTI
+2 STAT COMPLETED
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 SLGS
+2 DATE 25 DEC 1885
+2 TEMP SL
+2 STAT COMPLETED
+0 TRLR
+`
+
+	// Import
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+	result, persons, families, _, _, _, _, _, _, _, _, ldsOrdinances, _, err := importer.Import(ctx, strings.NewReader(inputGedcom))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if result.LDSOrdinancesImported != 5 {
+		t.Errorf("LDSOrdinancesImported = %d, want 5", result.LDSOrdinancesImported)
+	}
+
+	// Build read store from imported data
+	readStore := memory.NewReadModelStore()
+	for _, p := range persons {
+		person := &repository.PersonReadModel{
+			ID:        p.ID,
+			GivenName: p.GivenName,
+			Surname:   p.Surname,
+			FullName:  p.GivenName + " " + p.Surname,
+			Gender:    p.Gender,
+		}
+		readStore.SavePerson(ctx, person)
+	}
+
+	for _, f := range families {
+		fam := &repository.FamilyReadModel{
+			ID:         f.ID,
+			Partner1ID: f.Partner1ID,
+			Partner2ID: f.Partner2ID,
+		}
+		readStore.SaveFamily(ctx, fam)
+	}
+
+	for _, ord := range ldsOrdinances {
+		ldsOrd := &repository.LDSOrdinanceReadModel{
+			ID:        ord.ID,
+			Type:      ord.Type,
+			TypeLabel: ord.Type.Label(),
+			PersonID:  ord.PersonID,
+			FamilyID:  ord.FamilyID,
+			DateRaw:   ord.Date,
+			Temple:    ord.Temple,
+			Status:    ord.Status,
+			Place:     ord.Place,
+		}
+		readStore.SaveLDSOrdinance(ctx, ldsOrd)
+	}
+
+	// Export
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	exportResult, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	if exportResult.LDSOrdinancesExported != 5 {
+		t.Errorf("LDSOrdinancesExported = %d, want 5", exportResult.LDSOrdinancesExported)
+	}
+
+	output := buf.String()
+
+	// Verify all ordinance types are present
+	expectedTags := []string{"1 BAPL", "1 CONL", "1 ENDL", "1 SLGC", "1 SLGS"}
+	for _, tag := range expectedTags {
+		if !strings.Contains(output, tag) {
+			t.Errorf("Output should contain %s tag", tag)
+		}
+	}
+
+	// Verify temple codes preserved
+	expectedTemples := []string{"TEMP SL", "TEMP LOGAN", "TEMP MANTI"}
+	for _, temple := range expectedTemples {
+		if !strings.Contains(output, temple) {
+			t.Errorf("Output should contain %s", temple)
+		}
+	}
+}

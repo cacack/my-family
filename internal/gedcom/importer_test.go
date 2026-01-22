@@ -2305,3 +2305,215 @@ func TestImportMediaObjectMediaTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestImportLDSOrdinances(t *testing.T) {
+	// Test GEDCOM with LDS temple ordinance records (BAPL, CONL, ENDL, SLGC, SLGS)
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BIRT
+2 DATE 1 JAN 1860
+1 BAPL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 CONL
+2 DATE 15 JAN 1880
+2 TEMP SL
+2 STAT COMPLETED
+1 ENDL
+2 DATE 20 FEB 1885
+2 TEMP LOGAN
+2 STAT COMPLETED
+2 PLAC Logan, Utah
+1 SLGC
+2 DATE 20 MAR 1885
+2 TEMP MANTI
+2 STAT COMPLETED
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+1 BIRT
+2 DATE ABT 1862
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 MARR
+2 DATE 10 JUN 1880
+1 SLGS
+2 DATE 25 DEC 1885
+2 TEMP SL
+2 STAT COMPLETED
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, _, _, _, _, ldsOrdinances, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Should import 5 LDS ordinances: BAPL, CONL, ENDL, SLGC (person), SLGS (family)
+	if result.LDSOrdinancesImported != 5 {
+		t.Errorf("LDSOrdinancesImported = %d, want 5", result.LDSOrdinancesImported)
+	}
+
+	if len(ldsOrdinances) != 5 {
+		t.Fatalf("len(ldsOrdinances) = %d, want 5", len(ldsOrdinances))
+	}
+
+	// Verify individual ordinances
+	ordinancesByType := make(map[domain.LDSOrdinanceType]gedcom.LDSOrdinanceData)
+	for _, ord := range ldsOrdinances {
+		ordinancesByType[ord.Type] = ord
+	}
+
+	// Verify BAPL (Baptism)
+	if bapl, ok := ordinancesByType[domain.LDSBaptism]; ok {
+		if bapl.Date != "15 JAN 1880" {
+			t.Errorf("BAPL Date = %s, want '15 JAN 1880'", bapl.Date)
+		}
+		if bapl.Temple != "SL" {
+			t.Errorf("BAPL Temple = %s, want 'SL'", bapl.Temple)
+		}
+		if bapl.Status != "COMPLETED" {
+			t.Errorf("BAPL Status = %s, want 'COMPLETED'", bapl.Status)
+		}
+		if bapl.PersonID == nil {
+			t.Error("BAPL PersonID should not be nil")
+		}
+	} else {
+		t.Error("BAPL ordinance not found")
+	}
+
+	// Verify CONL (Confirmation)
+	if conl, ok := ordinancesByType[domain.LDSConfirmation]; ok {
+		if conl.Date != "15 JAN 1880" {
+			t.Errorf("CONL Date = %s, want '15 JAN 1880'", conl.Date)
+		}
+		if conl.PersonID == nil {
+			t.Error("CONL PersonID should not be nil")
+		}
+	} else {
+		t.Error("CONL ordinance not found")
+	}
+
+	// Verify ENDL (Endowment)
+	if endl, ok := ordinancesByType[domain.LDSEndowment]; ok {
+		if endl.Date != "20 FEB 1885" {
+			t.Errorf("ENDL Date = %s, want '20 FEB 1885'", endl.Date)
+		}
+		if endl.Temple != "LOGAN" {
+			t.Errorf("ENDL Temple = %s, want 'LOGAN'", endl.Temple)
+		}
+		if endl.Place != "Logan, Utah" {
+			t.Errorf("ENDL Place = %s, want 'Logan, Utah'", endl.Place)
+		}
+		if endl.PersonID == nil {
+			t.Error("ENDL PersonID should not be nil")
+		}
+	} else {
+		t.Error("ENDL ordinance not found")
+	}
+
+	// Verify SLGC (Sealing to Parents)
+	if slgc, ok := ordinancesByType[domain.LDSSealingChild]; ok {
+		if slgc.Date != "20 MAR 1885" {
+			t.Errorf("SLGC Date = %s, want '20 MAR 1885'", slgc.Date)
+		}
+		if slgc.Temple != "MANTI" {
+			t.Errorf("SLGC Temple = %s, want 'MANTI'", slgc.Temple)
+		}
+		if slgc.PersonID == nil {
+			t.Error("SLGC PersonID should not be nil")
+		}
+	} else {
+		t.Error("SLGC ordinance not found")
+	}
+
+	// Verify SLGS (Sealing to Spouse)
+	if slgs, ok := ordinancesByType[domain.LDSSealingSpouse]; ok {
+		if slgs.Date != "25 DEC 1885" {
+			t.Errorf("SLGS Date = %s, want '25 DEC 1885'", slgs.Date)
+		}
+		if slgs.Temple != "SL" {
+			t.Errorf("SLGS Temple = %s, want 'SL'", slgs.Temple)
+		}
+		if slgs.FamilyID == nil {
+			t.Error("SLGS FamilyID should not be nil")
+		}
+		if slgs.PersonID != nil {
+			t.Error("SLGS PersonID should be nil (family ordinance)")
+		}
+	} else {
+		t.Error("SLGS ordinance not found")
+	}
+}
+
+func TestImportLDSOrdinances_PartialData(t *testing.T) {
+	// Test LDS ordinances with only some fields populated
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BAPL
+2 DATE 15 JAN 1880
+1 ENDL
+2 TEMP SL
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, _, _, _, _, ldsOrdinances, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if result.LDSOrdinancesImported != 2 {
+		t.Errorf("LDSOrdinancesImported = %d, want 2", result.LDSOrdinancesImported)
+	}
+
+	if len(ldsOrdinances) != 2 {
+		t.Fatalf("len(ldsOrdinances) = %d, want 2", len(ldsOrdinances))
+	}
+
+	// Find BAPL - has date but no temple
+	var bapl, endl *gedcom.LDSOrdinanceData
+	for i := range ldsOrdinances {
+		if ldsOrdinances[i].Type == domain.LDSBaptism {
+			bapl = &ldsOrdinances[i]
+		}
+		if ldsOrdinances[i].Type == domain.LDSEndowment {
+			endl = &ldsOrdinances[i]
+		}
+	}
+
+	if bapl == nil {
+		t.Fatal("BAPL ordinance not found")
+	}
+	if bapl.Date != "15 JAN 1880" {
+		t.Errorf("BAPL Date = %s, want '15 JAN 1880'", bapl.Date)
+	}
+	if bapl.Temple != "" {
+		t.Errorf("BAPL Temple = %s, want empty", bapl.Temple)
+	}
+
+	if endl == nil {
+		t.Fatal("ENDL ordinance not found")
+	}
+	if endl.Date != "" {
+		t.Errorf("ENDL Date = %s, want empty", endl.Date)
+	}
+	if endl.Temple != "SL" {
+		t.Errorf("ENDL Temple = %s, want 'SL'", endl.Temple)
+	}
+}
