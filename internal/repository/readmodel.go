@@ -274,6 +274,7 @@ type ReadModelStore interface {
 
 	// Citation operations
 	GetCitation(ctx context.Context, id uuid.UUID) (*CitationReadModel, error)
+	ListCitations(ctx context.Context, opts ListOptions) ([]CitationReadModel, int, error)
 	GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]CitationReadModel, error)
 	GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]CitationReadModel, error)
 	GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
@@ -290,6 +291,7 @@ type ReadModelStore interface {
 
 	// Event operations
 	GetEvent(ctx context.Context, id uuid.UUID) (*EventReadModel, error)
+	ListEvents(ctx context.Context, opts ListOptions) ([]EventReadModel, int, error)
 	ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]EventReadModel, error)
 	ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]EventReadModel, error)
 	SaveEvent(ctx context.Context, event *EventReadModel) error
@@ -297,6 +299,7 @@ type ReadModelStore interface {
 
 	// Attribute operations
 	GetAttribute(ctx context.Context, id uuid.UUID) (*AttributeReadModel, error)
+	ListAttributes(ctx context.Context, opts ListOptions) ([]AttributeReadModel, int, error)
 	ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]AttributeReadModel, error)
 	SaveAttribute(ctx context.Context, attribute *AttributeReadModel) error
 	DeleteAttribute(ctx context.Context, id uuid.UUID) error

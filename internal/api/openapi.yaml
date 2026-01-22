@@ -1603,6 +1603,55 @@ paths:
                   total:
                     type: integer
 
+  /export/sources:
+    get:
+      operationId: exportSources
+      summary: Export sources data
+      description: Export all sources data in a structured format
+      tags: [export]
+      responses:
+        '200':
+          description: Sources data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sources:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Source'
+                  total:
+                    type: integer
+
+  /export/events:
+    get:
+      operationId: exportEvents
+      summary: Export events data
+      description: Export all life events data in a structured format
+      tags: [export]
+      responses:
+        '200':
+          description: Events data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsExportResponse'
+
+  /export/attributes:
+    get:
+      operationId: exportAttributes
+      summary: Export attributes data
+      description: Export all person attributes data in a structured format
+      tags: [export]
+      responses:
+        '200':
+          description: Attributes data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttributesExportResponse'
+
   /export/estimate:
     get:
       operationId: getExportEstimate
@@ -5083,4 +5132,94 @@ components:
         limit:
           type: integer
         offset:
+          type: integer
+
+    # Export schemas for events and attributes
+    EventExport:
+      type: object
+      description: Life event data for export
+      required: [id, owner_type, owner_id, fact_type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_type:
+          type: string
+          description: Either person or family
+        owner_id:
+          type: string
+          format: uuid
+        fact_type:
+          type: string
+          description: Type of event (BIRTH, DEATH, CENSUS, etc.)
+        date:
+          type: string
+          description: Date in GEDCOM format
+        place:
+          type: string
+        description:
+          type: string
+        cause:
+          type: string
+          description: Cause (for death events)
+        age:
+          type: string
+          description: Age at event
+        research_status:
+          $ref: '#/components/schemas/ResearchStatus'
+        version:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+
+    EventsExportResponse:
+      type: object
+      required: [events, total]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventExport'
+        total:
+          type: integer
+
+    AttributeExport:
+      type: object
+      description: Person attribute data for export
+      required: [id, person_id, fact_type, value]
+      properties:
+        id:
+          type: string
+          format: uuid
+        person_id:
+          type: string
+          format: uuid
+        fact_type:
+          type: string
+          description: Type of attribute (OCCUPATION, RESIDENCE, etc.)
+        value:
+          type: string
+        date:
+          type: string
+          description: Date in GEDCOM format
+        place:
+          type: string
+        version:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+
+    AttributesExportResponse:
+      type: object
+      required: [attributes, total]
+      properties:
+        attributes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttributeExport'
+        total:
           type: integer

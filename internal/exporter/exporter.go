@@ -22,9 +22,13 @@ const (
 type EntityType string
 
 const (
-	EntityTypePersons  EntityType = "persons"
-	EntityTypeFamilies EntityType = "families"
-	EntityTypeAll      EntityType = "all" // JSON only: exports complete tree
+	EntityTypePersons    EntityType = "persons"
+	EntityTypeFamilies   EntityType = "families"
+	EntityTypeSources    EntityType = "sources"
+	EntityTypeCitations  EntityType = "citations"
+	EntityTypeEvents     EntityType = "events"
+	EntityTypeAttributes EntityType = "attributes"
+	EntityTypeAll        EntityType = "all" // JSON only: exports complete tree
 )
 
 // ExportOptions configures an export operation.
@@ -44,9 +48,13 @@ type ExportOptions struct {
 
 // ExportResult contains statistics from an export operation.
 type ExportResult struct {
-	BytesWritten     int64
-	PersonsExported  int
-	FamiliesExported int
+	BytesWritten       int64
+	PersonsExported    int
+	FamiliesExported   int
+	SourcesExported    int
+	CitationsExported  int
+	EventsExported     int
+	AttributesExported int
 }
 
 // Exporter provides data export functionality.

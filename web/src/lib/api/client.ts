@@ -767,6 +767,57 @@ class ApiClient {
 		return response.text();
 	}
 
+	async exportSources(format: 'json' | 'csv', fields?: string[]): Promise<string> {
+		const params = new URLSearchParams({ format });
+		if (fields?.length) params.set('fields', fields.join(','));
+
+		const response = await fetch(`${API_BASE}/export/sources?${params}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			throw error;
+		}
+
+		return response.text();
+	}
+
+	async exportEvents(format: 'json' | 'csv', fields?: string[]): Promise<string> {
+		const params = new URLSearchParams({ format });
+		if (fields?.length) params.set('fields', fields.join(','));
+
+		const response = await fetch(`${API_BASE}/export/events?${params}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			throw error;
+		}
+
+		return response.text();
+	}
+
+	async exportAttributes(format: 'json' | 'csv', fields?: string[]): Promise<string> {
+		const params = new URLSearchParams({ format });
+		if (fields?.length) params.set('fields', fields.join(','));
+
+		const response = await fetch(`${API_BASE}/export/attributes?${params}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			throw error;
+		}
+
+		return response.text();
+	}
+
 	async getExportEstimate(): Promise<ExportEstimate> {
 		return this.request<ExportEstimate>('GET', '/export/estimate');
 	}

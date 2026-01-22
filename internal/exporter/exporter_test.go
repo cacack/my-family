@@ -248,6 +248,20 @@ func TestJSONExporter_InvalidEntityType(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported entity type")
 }
 
+func TestCSVExporter_InvalidEntityType(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: "invalid",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported entity type")
+}
+
 // CSV Exporter Tests
 
 func TestCSVExporter_ExportPersons_Empty(t *testing.T) {
@@ -747,6 +761,829 @@ func TestExporter_BytesWrittenAccurate(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(buf.Len()), result.BytesWritten)
+}
+
+// Sources Export Tests
+
+func createTestSource(t *testing.T, store *memory.ReadModelStore, title, author string) repository.SourceReadModel {
+	t.Helper()
+	now := time.Now()
+	source := repository.SourceReadModel{
+		ID:             uuid.New(),
+		SourceType:     domain.SourceBook,
+		Title:          title,
+		Author:         author,
+		Publisher:      "Test Publisher",
+		PublishDateRaw: "1995",
+		URL:            "https://example.com/source",
+		RepositoryName: "Library of Congress",
+		CollectionName: "US Census",
+		CallNumber:     "ABC-123",
+		Notes:          "Test notes",
+		CitationCount:  5,
+		Version:        1,
+		UpdatedAt:      now,
+	}
+	err := store.SaveSource(context.Background(), &source)
+	require.NoError(t, err)
+	return source
+}
+
+func createTestCitation(t *testing.T, store *memory.ReadModelStore, source *repository.SourceReadModel, factOwnerID uuid.UUID) repository.CitationReadModel {
+	t.Helper()
+	now := time.Now()
+	citation := repository.CitationReadModel{
+		ID:            uuid.New(),
+		SourceID:      source.ID,
+		SourceTitle:   source.Title,
+		FactType:      domain.FactPersonBirth,
+		FactOwnerID:   factOwnerID,
+		Page:          "p. 42",
+		Volume:        "Vol 1",
+		SourceQuality: domain.SourceOriginal,
+		InformantType: domain.InformantPrimary,
+		EvidenceType:  domain.EvidenceDirect,
+		QuotedText:    "Born on this date",
+		Analysis:      "This appears reliable",
+		Version:       1,
+		CreatedAt:     now,
+	}
+	err := store.SaveCitation(context.Background(), &citation)
+	require.NoError(t, err)
+	return citation
+}
+
+func createTestEvent(t *testing.T, store *memory.ReadModelStore, ownerType string, ownerID uuid.UUID) repository.EventReadModel {
+	t.Helper()
+	now := time.Now()
+	event := repository.EventReadModel{
+		ID:             uuid.New(),
+		OwnerType:      ownerType,
+		OwnerID:        ownerID,
+		FactType:       domain.FactPersonOccupation,
+		DateRaw:        "1890",
+		Place:          "Springfield, IL",
+		Description:    "Worked as a farmer",
+		Cause:          "",
+		Age:            "25",
+		ResearchStatus: domain.ResearchStatusCertain,
+		Version:        1,
+		CreatedAt:      now,
+	}
+	err := store.SaveEvent(context.Background(), &event)
+	require.NoError(t, err)
+	return event
+}
+
+func createTestAttribute(t *testing.T, store *memory.ReadModelStore, personID uuid.UUID) repository.AttributeReadModel {
+	t.Helper()
+	now := time.Now()
+	attr := repository.AttributeReadModel{
+		ID:        uuid.New(),
+		PersonID:  personID,
+		FactType:  domain.FactPersonOccupation,
+		Value:     "Farmer",
+		DateRaw:   "1890",
+		Place:     "Springfield, IL",
+		Version:   1,
+		CreatedAt: now,
+	}
+	err := store.SaveAttribute(context.Background(), &attr)
+	require.NoError(t, err)
+	return attr
+}
+
+func TestJSONExporter_ExportSources_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeSources,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.SourcesExported)
+
+	var data []repository.SourceReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Empty(t, data)
+}
+
+func TestJSONExporter_ExportSources_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	_ = createTestSource(t, store, "Family History Book", "John Author")
+	_ = createTestSource(t, store, "Census Records", "Jane Compiler")
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeSources,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.SourcesExported)
+
+	var data []repository.SourceReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Len(t, data, 2)
+}
+
+func TestJSONExporter_ExportCitations_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeCitations,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.CitationsExported)
+
+	var data []repository.CitationReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Empty(t, data)
+}
+
+func TestJSONExporter_ExportCitations_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	source := createTestSource(t, store, "Family History", "Author")
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestCitation(t, store, &source, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeCitations,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CitationsExported)
+
+	var data []repository.CitationReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Len(t, data, 1)
+}
+
+func TestJSONExporter_ExportEvents_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeEvents,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.EventsExported)
+
+	var data []repository.EventReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Empty(t, data)
+}
+
+func TestJSONExporter_ExportEvents_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestEvent(t, store, "person", person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeEvents,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.EventsExported)
+
+	var data []repository.EventReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Len(t, data, 1)
+}
+
+func TestJSONExporter_ExportAttributes_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeAttributes,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.AttributesExported)
+
+	var data []repository.AttributeReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Empty(t, data)
+}
+
+func TestJSONExporter_ExportAttributes_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestAttribute(t, store, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeAttributes,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.AttributesExported)
+
+	var data []repository.AttributeReadModel
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Len(t, data, 1)
+}
+
+// CSV Sources Export Tests
+
+func TestCSVExporter_ExportSources_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeSources,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.SourcesExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 1) // Headers only
+	assert.Equal(t, exporter.DefaultSourceFields, records[0])
+}
+
+func TestCSVExporter_ExportSources_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	_ = createTestSource(t, store, "Family History Book", "John Author")
+	_ = createTestSource(t, store, "Census Records", "Jane Compiler")
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeSources,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.SourcesExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 3) // Header + 2 data rows
+
+	allData := buf.String()
+	assert.Contains(t, allData, "Family History Book")
+	assert.Contains(t, allData, "Census Records")
+}
+
+func TestCSVExporter_ExportSources_CustomFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	_ = createTestSource(t, store, "Test Source", "Test Author")
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	customFields := []string{"id", "title", "author", "publisher"}
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeSources,
+		Fields:     customFields,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.SourcesExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+	assert.Equal(t, customFields, records[0])
+	assert.Len(t, records[1], 4)
+}
+
+func TestCSVExporter_ExportSources_InvalidField(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeSources,
+		Fields:     []string{"id", "invalid_field"},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid fields")
+}
+
+func TestCSVExporter_ExportSources_AllFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	source := createTestSource(t, store, "Complete Source", "Full Author")
+
+	exp := exporter.NewDataExporter(store)
+
+	allFields := []string{
+		"id", "source_type", "title", "author", "publisher",
+		"publish_date", "url", "repository_name", "collection_name",
+		"call_number", "notes", "citation_count", "version", "updated_at",
+	}
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeSources,
+		Fields:     allFields,
+	})
+
+	require.NoError(t, err)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+
+	row := records[1]
+	assert.Equal(t, source.ID.String(), row[0])
+	assert.Equal(t, "book", row[1])
+	assert.Equal(t, "Complete Source", row[2])
+	assert.Equal(t, "Full Author", row[3])
+	assert.Equal(t, "Test Publisher", row[4])
+	assert.Equal(t, "1995", row[5])
+	assert.Equal(t, "https://example.com/source", row[6])
+	assert.Equal(t, "Library of Congress", row[7])
+	assert.Equal(t, "US Census", row[8])
+	assert.Equal(t, "ABC-123", row[9])
+	assert.Equal(t, "Test notes", row[10])
+	assert.Equal(t, "5", row[11])
+}
+
+// CSV Citations Export Tests
+
+func TestCSVExporter_ExportCitations_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeCitations,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.CitationsExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 1)
+	assert.Equal(t, exporter.DefaultCitationFields, records[0])
+}
+
+func TestCSVExporter_ExportCitations_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	source := createTestSource(t, store, "Family History", "Author")
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestCitation(t, store, &source, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeCitations,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CitationsExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+
+	allData := buf.String()
+	assert.Contains(t, allData, "Family History")
+	assert.Contains(t, allData, "p. 42")
+}
+
+func TestCSVExporter_ExportCitations_CustomFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	source := createTestSource(t, store, "Source", "Author")
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestCitation(t, store, &source, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	customFields := []string{"id", "source_title", "page", "volume"}
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeCitations,
+		Fields:     customFields,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CitationsExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Equal(t, customFields, records[0])
+	assert.Len(t, records[1], 4)
+}
+
+func TestCSVExporter_ExportCitations_InvalidField(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeCitations,
+		Fields:     []string{"id", "bad_field"},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid fields")
+}
+
+func TestCSVExporter_ExportCitations_AllFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	source := createTestSource(t, store, "Source Title", "Author")
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	citation := createTestCitation(t, store, &source, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	allFields := []string{
+		"id", "source_id", "source_title", "fact_type", "fact_owner_id",
+		"page", "volume", "source_quality", "informant_type", "evidence_type",
+		"quoted_text", "analysis", "version", "created_at",
+	}
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeCitations,
+		Fields:     allFields,
+	})
+
+	require.NoError(t, err)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+
+	row := records[1]
+	assert.Equal(t, citation.ID.String(), row[0])
+	assert.Equal(t, source.ID.String(), row[1])
+	assert.Equal(t, "Source Title", row[2])
+	assert.Equal(t, "person_birth", row[3])
+	assert.Equal(t, person.ID.String(), row[4])
+	assert.Equal(t, "p. 42", row[5])
+	assert.Equal(t, "Vol 1", row[6])
+	assert.Equal(t, "original", row[7])
+	assert.Equal(t, "primary", row[8])
+	assert.Equal(t, "direct", row[9])
+	assert.Equal(t, "Born on this date", row[10])
+	assert.Equal(t, "This appears reliable", row[11])
+}
+
+// CSV Events Export Tests
+
+func TestCSVExporter_ExportEvents_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeEvents,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.EventsExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 1)
+	assert.Equal(t, exporter.DefaultEventFields, records[0])
+}
+
+func TestCSVExporter_ExportEvents_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestEvent(t, store, "person", person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeEvents,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.EventsExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+
+	allData := buf.String()
+	assert.Contains(t, allData, "person")
+	assert.Contains(t, allData, "Springfield, IL")
+}
+
+func TestCSVExporter_ExportEvents_CustomFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestEvent(t, store, "person", person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	customFields := []string{"id", "owner_type", "fact_type", "place"}
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeEvents,
+		Fields:     customFields,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.EventsExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Equal(t, customFields, records[0])
+	assert.Len(t, records[1], 4)
+}
+
+func TestCSVExporter_ExportEvents_InvalidField(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeEvents,
+		Fields:     []string{"id", "nonexistent"},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid fields")
+}
+
+func TestCSVExporter_ExportEvents_AllFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	event := createTestEvent(t, store, "person", person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	allFields := []string{
+		"id", "owner_type", "owner_id", "fact_type", "date", "place",
+		"description", "cause", "age", "research_status", "version", "created_at",
+	}
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeEvents,
+		Fields:     allFields,
+	})
+
+	require.NoError(t, err)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+
+	row := records[1]
+	assert.Equal(t, event.ID.String(), row[0])
+	assert.Equal(t, "person", row[1])
+	assert.Equal(t, person.ID.String(), row[2])
+	assert.Equal(t, "person_occupation", row[3])
+	assert.Equal(t, "1890", row[4])
+	assert.Equal(t, "Springfield, IL", row[5])
+	assert.Equal(t, "Worked as a farmer", row[6])
+	assert.Equal(t, "", row[7]) // cause
+	assert.Equal(t, "25", row[8])
+	assert.Equal(t, "certain", row[9])
+}
+
+// CSV Attributes Export Tests
+
+func TestCSVExporter_ExportAttributes_Empty(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeAttributes,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.AttributesExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 1)
+	assert.Equal(t, exporter.DefaultAttributeFields, records[0])
+}
+
+func TestCSVExporter_ExportAttributes_WithData(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestAttribute(t, store, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeAttributes,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.AttributesExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+
+	allData := buf.String()
+	assert.Contains(t, allData, "Farmer")
+	assert.Contains(t, allData, "Springfield, IL")
+}
+
+func TestCSVExporter_ExportAttributes_CustomFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	_ = createTestAttribute(t, store, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	customFields := []string{"id", "person_id", "fact_type", "value"}
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeAttributes,
+		Fields:     customFields,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.AttributesExported)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Equal(t, customFields, records[0])
+	assert.Len(t, records[1], 4)
+}
+
+func TestCSVExporter_ExportAttributes_InvalidField(t *testing.T) {
+	store := setupTestStore(t)
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeAttributes,
+		Fields:     []string{"id", "wrong_field"},
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid fields")
+}
+
+func TestCSVExporter_ExportAttributes_AllFields(t *testing.T) {
+	store := setupTestStore(t)
+
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	attr := createTestAttribute(t, store, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	allFields := []string{
+		"id", "person_id", "fact_type", "value", "date", "place", "version", "created_at",
+	}
+
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeAttributes,
+		Fields:     allFields,
+	})
+
+	require.NoError(t, err)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	assert.Len(t, records, 2)
+
+	row := records[1]
+	assert.Equal(t, attr.ID.String(), row[0])
+	assert.Equal(t, person.ID.String(), row[1])
+	assert.Equal(t, "person_occupation", row[2])
+	assert.Equal(t, "Farmer", row[3])
+	assert.Equal(t, "1890", row[4])
+	assert.Equal(t, "Springfield, IL", row[5])
+}
+
+// Tree Export with All Entity Types Tests
+
+func TestJSONExporter_ExportTree_WithAllEntities(t *testing.T) {
+	store := setupTestStore(t)
+
+	// Create test data
+	person := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	person2 := createTestPerson(t, store, "Jane", "Smith", domain.GenderFemale)
+	_ = createTestFamily(t, store, &person, &person2)
+	source := createTestSource(t, store, "Family History", "Author")
+	_ = createTestCitation(t, store, &source, person.ID)
+	_ = createTestEvent(t, store, "person", person.ID)
+	_ = createTestAttribute(t, store, person.ID)
+
+	exp := exporter.NewDataExporter(store)
+
+	var buf bytes.Buffer
+	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatJSON,
+		EntityType: exporter.EntityTypeAll,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.PersonsExported)
+	assert.Equal(t, 1, result.FamiliesExported)
+	assert.Equal(t, 1, result.SourcesExported)
+	assert.Equal(t, 1, result.CitationsExported)
+	assert.Equal(t, 1, result.EventsExported)
+	assert.Equal(t, 1, result.AttributesExported)
+
+	var data exporter.TreeExport
+	err = json.Unmarshal(buf.Bytes(), &data)
+	require.NoError(t, err)
+	assert.Len(t, data.Persons, 2)
+	assert.Len(t, data.Families, 1)
+	assert.Len(t, data.Sources, 1)
+	assert.Len(t, data.Citations, 1)
+	assert.Len(t, data.Events, 1)
+	assert.Len(t, data.Attributes, 1)
 }
 
 // Multiple Entities Tests
