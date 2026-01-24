@@ -10,7 +10,7 @@
 	let dragOver = $state(false);
 
 	// Export state
-	type EntityType = 'tree' | 'persons' | 'families';
+	type EntityType = 'tree' | 'persons' | 'families' | 'sources' | 'events' | 'attributes';
 	type ExportFormat = 'json' | 'csv';
 
 	let exportEntityType: EntityType = $state('tree');
@@ -42,43 +42,138 @@
 		{ id: 'child_count', label: 'Child Count' }
 	];
 
+	const sourceFields = [
+		{ id: 'id', label: 'ID' },
+		{ id: 'source_type', label: 'Type' },
+		{ id: 'title', label: 'Title' },
+		{ id: 'author', label: 'Author' },
+		{ id: 'publisher', label: 'Publisher' },
+		{ id: 'publish_date', label: 'Publish Date' },
+		{ id: 'url', label: 'URL' },
+		{ id: 'repository_name', label: 'Repository' },
+		{ id: 'collection_name', label: 'Collection' },
+		{ id: 'call_number', label: 'Call Number' },
+		{ id: 'citation_count', label: 'Citation Count' },
+		{ id: 'notes', label: 'Notes' }
+	];
+
+	const eventFields = [
+		{ id: 'id', label: 'ID' },
+		{ id: 'owner_type', label: 'Owner Type' },
+		{ id: 'owner_id', label: 'Owner ID' },
+		{ id: 'fact_type', label: 'Event Type' },
+		{ id: 'date', label: 'Date' },
+		{ id: 'place', label: 'Place' },
+		{ id: 'description', label: 'Description' },
+		{ id: 'cause', label: 'Cause' },
+		{ id: 'age', label: 'Age' },
+		{ id: 'research_status', label: 'Research Status' }
+	];
+
+	const attributeFields = [
+		{ id: 'id', label: 'ID' },
+		{ id: 'person_id', label: 'Person ID' },
+		{ id: 'fact_type', label: 'Attribute Type' },
+		{ id: 'value', label: 'Value' },
+		{ id: 'date', label: 'Date' },
+		{ id: 'place', label: 'Place' }
+	];
+
 	// Selected fields (default all selected)
 	let selectedPersonFields: Set<string> = $state(new Set(personFields.map((f) => f.id)));
 	let selectedFamilyFields: Set<string> = $state(new Set(familyFields.map((f) => f.id)));
+	let selectedSourceFields: Set<string> = $state(new Set(sourceFields.map((f) => f.id)));
+	let selectedEventFields: Set<string> = $state(new Set(eventFields.map((f) => f.id)));
+	let selectedAttributeFields: Set<string> = $state(new Set(attributeFields.map((f) => f.id)));
 
-	function toggleField(fieldId: string, isPersonField: boolean) {
-		if (isPersonField) {
+	function toggleField(fieldId: string, entityType: EntityType) {
+		if (entityType === 'persons') {
 			const newSet = new Set(selectedPersonFields);
-			if (newSet.has(fieldId)) {
-				newSet.delete(fieldId);
-			} else {
-				newSet.add(fieldId);
-			}
+			if (newSet.has(fieldId)) newSet.delete(fieldId);
+			else newSet.add(fieldId);
 			selectedPersonFields = newSet;
-		} else {
+		} else if (entityType === 'families') {
 			const newSet = new Set(selectedFamilyFields);
-			if (newSet.has(fieldId)) {
-				newSet.delete(fieldId);
-			} else {
-				newSet.add(fieldId);
-			}
+			if (newSet.has(fieldId)) newSet.delete(fieldId);
+			else newSet.add(fieldId);
 			selectedFamilyFields = newSet;
+		} else if (entityType === 'sources') {
+			const newSet = new Set(selectedSourceFields);
+			if (newSet.has(fieldId)) newSet.delete(fieldId);
+			else newSet.add(fieldId);
+			selectedSourceFields = newSet;
+		} else if (entityType === 'events') {
+			const newSet = new Set(selectedEventFields);
+			if (newSet.has(fieldId)) newSet.delete(fieldId);
+			else newSet.add(fieldId);
+			selectedEventFields = newSet;
+		} else if (entityType === 'attributes') {
+			const newSet = new Set(selectedAttributeFields);
+			if (newSet.has(fieldId)) newSet.delete(fieldId);
+			else newSet.add(fieldId);
+			selectedAttributeFields = newSet;
 		}
 	}
 
-	function selectAllFields(isPersonField: boolean) {
-		if (isPersonField) {
+	function selectAllFields(entityType: EntityType) {
+		if (entityType === 'persons') {
 			selectedPersonFields = new Set(personFields.map((f) => f.id));
-		} else {
+		} else if (entityType === 'families') {
 			selectedFamilyFields = new Set(familyFields.map((f) => f.id));
+		} else if (entityType === 'sources') {
+			selectedSourceFields = new Set(sourceFields.map((f) => f.id));
+		} else if (entityType === 'events') {
+			selectedEventFields = new Set(eventFields.map((f) => f.id));
+		} else if (entityType === 'attributes') {
+			selectedAttributeFields = new Set(attributeFields.map((f) => f.id));
 		}
 	}
 
-	function selectNoFields(isPersonField: boolean) {
-		if (isPersonField) {
+	function selectNoFields(entityType: EntityType) {
+		if (entityType === 'persons') {
 			selectedPersonFields = new Set();
-		} else {
+		} else if (entityType === 'families') {
 			selectedFamilyFields = new Set();
+		} else if (entityType === 'sources') {
+			selectedSourceFields = new Set();
+		} else if (entityType === 'events') {
+			selectedEventFields = new Set();
+		} else if (entityType === 'attributes') {
+			selectedAttributeFields = new Set();
+		}
+	}
+
+	function getFieldsForEntityType(entityType: EntityType) {
+		switch (entityType) {
+			case 'persons': return personFields;
+			case 'families': return familyFields;
+			case 'sources': return sourceFields;
+			case 'events': return eventFields;
+			case 'attributes': return attributeFields;
+			default: return [];
+		}
+	}
+
+	function getSelectedFieldsForEntityType(entityType: EntityType): Set<string> {
+		switch (entityType) {
+			case 'persons': return selectedPersonFields;
+			case 'families': return selectedFamilyFields;
+			case 'sources': return selectedSourceFields;
+			case 'events': return selectedEventFields;
+			case 'attributes': return selectedAttributeFields;
+			default: return new Set();
+		}
+	}
+
+	function getEntityLabel(entityType: EntityType): string {
+		switch (entityType) {
+			case 'tree': return 'Tree';
+			case 'persons': return 'People';
+			case 'families': return 'Families';
+			case 'sources': return 'Sources';
+			case 'events': return 'Events';
+			case 'attributes': return 'Attributes';
+			default: return '';
 		}
 	}
 
@@ -155,12 +250,32 @@
 				data = await api.exportPersons(exportFormat, fields);
 				filename = `persons.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
-			} else {
+			} else if (exportEntityType === 'families') {
 				const fields =
 					exportFormat === 'csv' ? Array.from(selectedFamilyFields) : undefined;
 				data = await api.exportFamilies(exportFormat, fields);
 				filename = `families.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
+			} else if (exportEntityType === 'sources') {
+				const fields =
+					exportFormat === 'csv' ? Array.from(selectedSourceFields) : undefined;
+				data = await api.exportSources(exportFormat, fields);
+				filename = `sources.${exportFormat}`;
+				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
+			} else if (exportEntityType === 'events') {
+				const fields =
+					exportFormat === 'csv' ? Array.from(selectedEventFields) : undefined;
+				data = await api.exportEvents(exportFormat, fields);
+				filename = `events.${exportFormat}`;
+				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
+			} else if (exportEntityType === 'attributes') {
+				const fields =
+					exportFormat === 'csv' ? Array.from(selectedAttributeFields) : undefined;
+				data = await api.exportAttributes(exportFormat, fields);
+				filename = `attributes.${exportFormat}`;
+				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
+			} else {
+				throw new Error(`Unknown entity type: ${exportEntityType}`);
 			}
 
 			const blob = new Blob([data], { type: contentType });
@@ -323,7 +438,7 @@
 				<!-- Entity Type Selector -->
 				<div class="form-group">
 					<span class="form-label" id="export-entity-type-label">What to export</span>
-					<div class="radio-group" role="radiogroup" aria-labelledby="export-entity-type-label">
+					<div class="radio-group radio-group-wrap" role="radiogroup" aria-labelledby="export-entity-type-label">
 						<label class="radio-label">
 							<input
 								type="radio"
@@ -350,6 +465,33 @@
 								bind:group={exportEntityType}
 							/>
 							<span>Families</span>
+						</label>
+						<label class="radio-label">
+							<input
+								type="radio"
+								name="entityType"
+								value="sources"
+								bind:group={exportEntityType}
+							/>
+							<span>Sources</span>
+						</label>
+						<label class="radio-label">
+							<input
+								type="radio"
+								name="entityType"
+								value="events"
+								bind:group={exportEntityType}
+							/>
+							<span>Events</span>
+						</label>
+						<label class="radio-label">
+							<input
+								type="radio"
+								name="entityType"
+								value="attributes"
+								bind:group={exportEntityType}
+							/>
+							<span>Attributes</span>
 						</label>
 					</div>
 				</div>
@@ -389,43 +531,30 @@
 									<button
 										type="button"
 										class="btn-text"
-										onclick={() => selectAllFields(exportEntityType === 'persons')}
+										onclick={() => selectAllFields(exportEntityType)}
 									>
 										Select All
 									</button>
 									<button
 										type="button"
 										class="btn-text"
-										onclick={() => selectNoFields(exportEntityType === 'persons')}
+										onclick={() => selectNoFields(exportEntityType)}
 									>
 										Select None
 									</button>
 								</div>
 							</div>
 							<div class="field-picker" role="group" aria-labelledby="export-fields-label">
-								{#if exportEntityType === 'persons'}
-									{#each personFields as field}
-										<label class="checkbox-label">
-											<input
-												type="checkbox"
-												checked={selectedPersonFields.has(field.id)}
-												onchange={() => toggleField(field.id, true)}
-											/>
-											<span>{field.label}</span>
-										</label>
-									{/each}
-								{:else}
-									{#each familyFields as field}
-										<label class="checkbox-label">
-											<input
-												type="checkbox"
-												checked={selectedFamilyFields.has(field.id)}
-												onchange={() => toggleField(field.id, false)}
-											/>
-											<span>{field.label}</span>
-										</label>
-									{/each}
-								{/if}
+								{#each getFieldsForEntityType(exportEntityType) as field}
+									<label class="checkbox-label">
+										<input
+											type="checkbox"
+											checked={getSelectedFieldsForEntityType(exportEntityType).has(field.id)}
+											onchange={() => toggleField(field.id, exportEntityType)}
+										/>
+										<span>{field.label}</span>
+									</label>
+								{/each}
 							</div>
 						</div>
 					{/if}
@@ -445,7 +574,7 @@
 							<polyline points="7 10 12 15 17 10" />
 							<line x1="12" y1="15" x2="12" y2="3" />
 						</svg>
-						Export {exportEntityType === 'tree' ? 'Tree' : exportEntityType === 'persons' ? 'People' : 'Families'} as {exportEntityType === 'tree' ? 'JSON' : exportFormat.toUpperCase()}
+						Export {getEntityLabel(exportEntityType)} as {exportEntityType === 'tree' ? 'JSON' : exportFormat.toUpperCase()}
 					{/if}
 				</button>
 			</div>

@@ -644,6 +644,124 @@ func (ss *StrictServer) GetExportEstimate(ctx context.Context, _ GetExportEstima
 	}, nil
 }
 
+// ExportSources implements StrictServerInterface.
+func (ss *StrictServer) ExportSources(ctx context.Context, _ ExportSourcesRequestObject) (ExportSourcesResponseObject, error) {
+	result, err := ss.server.sourceService.ListSources(ctx, query.ListSourcesInput{
+		Limit: 100000, // Export all
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sources := make([]Source, len(result.Sources))
+	for i, s := range result.Sources {
+		sources[i] = convertQuerySourceToGenerated(s)
+	}
+
+	total := len(sources)
+	return ExportSources200JSONResponse{
+		Sources: &sources,
+		Total:   &total,
+	}, nil
+}
+
+// ExportEvents implements StrictServerInterface.
+func (ss *StrictServer) ExportEvents(ctx context.Context, _ ExportEventsRequestObject) (ExportEventsResponseObject, error) {
+	events, _, err := ss.server.readStore.ListEvents(ctx, repository.ListOptions{
+		Limit: 100000, // Export all
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	exportEvents := make([]EventExport, len(events))
+	for i, e := range events {
+		exportEvents[i] = convertEventToExport(e)
+	}
+
+	total := len(exportEvents)
+	return ExportEvents200JSONResponse{
+		Events: exportEvents,
+		Total:  total,
+	}, nil
+}
+
+// ExportAttributes implements StrictServerInterface.
+func (ss *StrictServer) ExportAttributes(ctx context.Context, _ ExportAttributesRequestObject) (ExportAttributesResponseObject, error) {
+	attributes, _, err := ss.server.readStore.ListAttributes(ctx, repository.ListOptions{
+		Limit: 100000, // Export all
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	exportAttrs := make([]AttributeExport, len(attributes))
+	for i, a := range attributes {
+		exportAttrs[i] = convertAttributeToExport(a)
+	}
+
+	total := len(exportAttrs)
+	return ExportAttributes200JSONResponse{
+		Attributes: exportAttrs,
+		Total:      total,
+	}, nil
+}
+
+// convertEventToExport converts an EventReadModel to EventExport.
+func convertEventToExport(e repository.EventReadModel) EventExport {
+	event := EventExport{
+		Id:        e.ID,
+		OwnerType: e.OwnerType,
+		OwnerId:   e.OwnerID,
+		FactType:  string(e.FactType),
+	}
+
+	if e.DateRaw != "" {
+		event.Date = &e.DateRaw
+	}
+	if e.Place != "" {
+		event.Place = &e.Place
+	}
+	if e.Description != "" {
+		event.Description = &e.Description
+	}
+	if e.Cause != "" {
+		event.Cause = &e.Cause
+	}
+	if e.Age != "" {
+		event.Age = &e.Age
+	}
+	if e.ResearchStatus != "" {
+		rs := ResearchStatus(e.ResearchStatus)
+		event.ResearchStatus = &rs
+	}
+	event.Version = &e.Version
+	event.CreatedAt = &e.CreatedAt
+
+	return event
+}
+
+// convertAttributeToExport converts an AttributeReadModel to AttributeExport.
+func convertAttributeToExport(a repository.AttributeReadModel) AttributeExport {
+	attr := AttributeExport{
+		Id:       a.ID,
+		PersonId: a.PersonID,
+		FactType: string(a.FactType),
+		Value:    a.Value,
+	}
+
+	if a.DateRaw != "" {
+		attr.Date = &a.DateRaw
+	}
+	if a.Place != "" {
+		attr.Place = &a.Place
+	}
+	attr.Version = &a.Version
+	attr.CreatedAt = &a.CreatedAt
+
+	return attr
+}
+
 // ============================================================================
 // Family endpoints
 // ============================================================================

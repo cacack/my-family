@@ -162,6 +162,9 @@ func (m *mockReadModelStore) SaveSource(ctx context.Context, source *repository.
 func (m *mockReadModelStore) DeleteSource(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
+func (m *mockReadModelStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
+	return nil, 0, nil
+}
 func (m *mockReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
 	return nil, nil
 }
@@ -202,6 +205,9 @@ func (m *mockReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) erro
 func (m *mockReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
+	return nil, 0, nil
+}
 func (m *mockReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
 	return nil, nil
 }
@@ -218,6 +224,9 @@ func (m *mockReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) erro
 // Attribute stub methods
 func (m *mockReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
 	return nil, nil
+}
+func (m *mockReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
+	return nil, 0, nil
 }
 func (m *mockReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
 	return nil, nil

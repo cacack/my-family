@@ -923,6 +923,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/export/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export sources data
+         * @description Export all sources data in a structured format
+         */
+        get: operations["exportSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/export/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export events data
+         * @description Export all life events data in a structured format
+         */
+        get: operations["exportEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/export/attributes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export attributes data
+         * @description Export all person attributes data in a structured format
+         */
+        get: operations["exportAttributes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/export/estimate": {
         parameters: {
             query?: never;
@@ -3033,6 +3093,55 @@ export interface components {
             limit?: number;
             offset?: number;
         };
+        /** @description Life event data for export */
+        EventExport: {
+            /** Format: uuid */
+            id: string;
+            /** @description Either person or family */
+            owner_type: string;
+            /** Format: uuid */
+            owner_id: string;
+            /** @description Type of event (BIRTH, DEATH, CENSUS, etc.) */
+            fact_type: string;
+            /** @description Date in GEDCOM format */
+            date?: string;
+            place?: string;
+            description?: string;
+            /** @description Cause (for death events) */
+            cause?: string;
+            /** @description Age at event */
+            age?: string;
+            research_status?: components["schemas"]["ResearchStatus"];
+            /** Format: int64 */
+            version?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        EventsExportResponse: {
+            events: components["schemas"]["EventExport"][];
+            total: number;
+        };
+        /** @description Person attribute data for export */
+        AttributeExport: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            person_id: string;
+            /** @description Type of attribute (OCCUPATION, RESIDENCE, etc.) */
+            fact_type: string;
+            value: string;
+            /** @description Date in GEDCOM format */
+            date?: string;
+            place?: string;
+            /** Format: int64 */
+            version?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        AttributesExportResponse: {
+            attributes: components["schemas"]["AttributeExport"][];
+            total: number;
+        };
     };
     responses: {
         /** @description Invalid request */
@@ -4792,6 +4901,69 @@ export interface operations {
                         families?: components["schemas"]["Family"][];
                         total?: number;
                     };
+                };
+            };
+        };
+    };
+    exportSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sources data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sources?: components["schemas"]["Source"][];
+                        total?: number;
+                    };
+                };
+            };
+        };
+    };
+    exportEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Events data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsExportResponse"];
+                };
+            };
+        };
+    };
+    exportAttributes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attributes data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributesExportResponse"];
                 };
             };
         };

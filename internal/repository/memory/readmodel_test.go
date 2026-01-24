@@ -2909,3 +2909,214 @@ func TestReadModelStore_GetPersonsByPlace(t *testing.T) {
 		t.Errorf("len(persons) = %d, want 3", len(persons))
 	}
 }
+
+// Global List methods for export
+
+func TestReadModelStore_ListEvents(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	familyID := uuid.New()
+
+	// Create some events for different owners
+	events := []*repository.EventReadModel{
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBurial,
+			DateRaw:   "15 JAN 1920",
+			Place:     "Springfield Cemetery",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBaptism,
+			DateRaw:   "25 DEC 1850",
+			Place:     "St. Mary's Church",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "family",
+			OwnerID:   familyID,
+			FactType:  domain.FactFamilyMarriage,
+			DateRaw:   "10 JUN 1875",
+			Place:     "Springfield, IL",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+	}
+
+	for _, e := range events {
+		err := store.SaveEvent(ctx, e)
+		if err != nil {
+			t.Fatalf("SaveEvent() failed: %v", err)
+		}
+	}
+
+	// Test ListEvents returns all events
+	results, total, err := store.ListEvents(ctx, repository.ListOptions{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListEvents() failed: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+
+	// Test with limit
+	results, total, err = store.ListEvents(ctx, repository.ListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListEvents() with limit failed: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("total with limit = %d, want 3", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("len(results) with limit = %d, want 2", len(results))
+	}
+}
+
+func TestReadModelStore_ListCitations(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	personID := uuid.New()
+
+	// Create some citations
+	citations := []*repository.CitationReadModel{
+		{
+			ID:          uuid.New(),
+			SourceID:    sourceID,
+			SourceTitle: "Census 1850",
+			FactType:    domain.FactPersonBirth,
+			FactOwnerID: personID,
+			Page:        "p. 42",
+			Version:     1,
+			CreatedAt:   time.Now(),
+		},
+		{
+			ID:          uuid.New(),
+			SourceID:    sourceID,
+			SourceTitle: "Census 1850",
+			FactType:    domain.FactPersonDeath,
+			FactOwnerID: personID,
+			Page:        "p. 100",
+			Version:     1,
+			CreatedAt:   time.Now(),
+		},
+	}
+
+	for _, c := range citations {
+		err := store.SaveCitation(ctx, c)
+		if err != nil {
+			t.Fatalf("SaveCitation() failed: %v", err)
+		}
+	}
+
+	// Test ListCitations returns all citations
+	results, total, err := store.ListCitations(ctx, repository.ListOptions{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListCitations() failed: %v", err)
+	}
+
+	if total != 2 {
+		t.Errorf("total = %d, want 2", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("len(results) = %d, want 2", len(results))
+	}
+
+	// Test with limit
+	results, total, err = store.ListCitations(ctx, repository.ListOptions{Limit: 1})
+	if err != nil {
+		t.Fatalf("ListCitations() with limit failed: %v", err)
+	}
+
+	if total != 2 {
+		t.Errorf("total with limit = %d, want 2", total)
+	}
+	if len(results) != 1 {
+		t.Errorf("len(results) with limit = %d, want 1", len(results))
+	}
+}
+
+func TestReadModelStore_ListAttributes(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	person2ID := uuid.New()
+
+	// Create some attributes for different persons
+	attributes := []*repository.AttributeReadModel{
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			FactType:  domain.FactPersonOccupation,
+			Value:     "Farmer",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			PersonID:  personID,
+			FactType:  domain.FactPersonReligion,
+			Value:     "Methodist",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			PersonID:  person2ID,
+			FactType:  domain.FactPersonOccupation,
+			Value:     "Merchant",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+	}
+
+	for _, a := range attributes {
+		err := store.SaveAttribute(ctx, a)
+		if err != nil {
+			t.Fatalf("SaveAttribute() failed: %v", err)
+		}
+	}
+
+	// Test ListAttributes returns all attributes
+	results, total, err := store.ListAttributes(ctx, repository.ListOptions{Limit: 100})
+	if err != nil {
+		t.Fatalf("ListAttributes() failed: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+
+	// Test with limit
+	results, total, err = store.ListAttributes(ctx, repository.ListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListAttributes() with limit failed: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("total with limit = %d, want 3", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("len(results) with limit = %d, want 2", len(results))
+	}
+}

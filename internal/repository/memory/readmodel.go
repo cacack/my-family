@@ -631,6 +631,46 @@ func (s *ReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*reposi
 	return &result, nil
 }
 
+// ListCitations returns all citations with pagination.
+func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	citations := make([]repository.CitationReadModel, 0, len(s.citations))
+	for _, cit := range s.citations {
+		citations = append(citations, *cit)
+	}
+
+	// Sort by source title, then by fact type, then by ID for deterministic ordering
+	sort.Slice(citations, func(i, j int) bool {
+		cmp := strings.Compare(citations[i].SourceTitle, citations[j].SourceTitle)
+		if cmp == 0 {
+			cmp = strings.Compare(string(citations[i].FactType), string(citations[j].FactType))
+		}
+		if cmp == 0 {
+			cmp = strings.Compare(citations[i].ID.String(), citations[j].ID.String())
+		}
+		if opts.Order == "desc" {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+
+	total := len(citations)
+
+	// Paginate
+	start := opts.Offset
+	if start > len(citations) {
+		start = len(citations)
+	}
+	end := start + opts.Limit
+	if end > len(citations) {
+		end = len(citations)
+	}
+
+	return citations[start:end], total, nil
+}
+
 // GetCitationsForSource returns all citations for a source.
 func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
 	s.mu.RLock()
@@ -831,6 +871,54 @@ func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.
 	return results, nil
 }
 
+// ListEvents returns all events with pagination.
+func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	events := make([]repository.EventReadModel, 0, len(s.events))
+	for _, e := range s.events {
+		events = append(events, *e)
+	}
+
+	// Sort by fact type, then by date, then by ID for deterministic ordering
+	sort.Slice(events, func(i, j int) bool {
+		cmp := strings.Compare(string(events[i].FactType), string(events[j].FactType))
+		if cmp == 0 {
+			// Sort by date if same fact type
+			if events[i].DateSort != nil && events[j].DateSort != nil {
+				cmp = events[i].DateSort.Compare(*events[j].DateSort)
+			} else if events[i].DateSort == nil && events[j].DateSort != nil {
+				cmp = 1 // nil dates sort after non-nil
+			} else if events[i].DateSort != nil && events[j].DateSort == nil {
+				cmp = -1
+			}
+			// Both nil: cmp stays 0
+		}
+		if cmp == 0 {
+			cmp = strings.Compare(events[i].ID.String(), events[j].ID.String())
+		}
+		if opts.Order == "desc" {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+
+	total := len(events)
+
+	// Paginate
+	start := opts.Offset
+	if start > len(events) {
+		start = len(events)
+	}
+	end := start + opts.Limit
+	if end > len(events) {
+		end = len(events)
+	}
+
+	return events[start:end], total, nil
+}
+
 // SaveEvent saves or updates an event.
 func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
 	s.mu.Lock()
@@ -875,6 +963,46 @@ func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID u
 		}
 	}
 	return results, nil
+}
+
+// ListAttributes returns all attributes with pagination.
+func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	attributes := make([]repository.AttributeReadModel, 0, len(s.attributes))
+	for _, a := range s.attributes {
+		attributes = append(attributes, *a)
+	}
+
+	// Sort by fact type, then by value, then by ID for deterministic ordering
+	sort.Slice(attributes, func(i, j int) bool {
+		cmp := strings.Compare(string(attributes[i].FactType), string(attributes[j].FactType))
+		if cmp == 0 {
+			cmp = strings.Compare(attributes[i].Value, attributes[j].Value)
+		}
+		if cmp == 0 {
+			cmp = strings.Compare(attributes[i].ID.String(), attributes[j].ID.String())
+		}
+		if opts.Order == "desc" {
+			return cmp > 0
+		}
+		return cmp < 0
+	})
+
+	total := len(attributes)
+
+	// Paginate
+	start := opts.Offset
+	if start > len(attributes) {
+		start = len(attributes)
+	}
+	end := start + opts.Limit
+	if end > len(attributes) {
+		end = len(attributes)
+	}
+
+	return attributes[start:end], total, nil
 }
 
 // SaveAttribute saves or updates an attribute.

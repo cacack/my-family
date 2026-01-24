@@ -546,6 +546,28 @@ type AssociationUpdate struct {
 	Version int64 `json:"version"`
 }
 
+// AttributeExport Person attribute data for export
+type AttributeExport struct {
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// Date Date in GEDCOM format
+	Date *string `json:"date,omitempty"`
+
+	// FactType Type of attribute (OCCUPATION, RESIDENCE, etc.)
+	FactType string             `json:"fact_type"`
+	Id       openapi_types.UUID `json:"id"`
+	PersonId openapi_types.UUID `json:"person_id"`
+	Place    *string            `json:"place,omitempty"`
+	Value    string             `json:"value"`
+	Version  *int64             `json:"version,omitempty"`
+}
+
+// AttributesExportResponse defines model for AttributesExportResponse.
+type AttributesExportResponse struct {
+	Attributes []AttributeExport `json:"attributes"`
+	Total      int               `json:"total"`
+}
+
 // BatchDismissRequest Request to dismiss multiple duplicate pairs
 type BatchDismissRequest struct {
 	// Dismissals List of duplicate pairs to dismiss
@@ -829,6 +851,39 @@ type Error struct {
 
 	// Message Human-readable error message
 	Message string `json:"message"`
+}
+
+// EventExport Life event data for export
+type EventExport struct {
+	// Age Age at event
+	Age *string `json:"age,omitempty"`
+
+	// Cause Cause (for death events)
+	Cause     *string    `json:"cause,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// Date Date in GEDCOM format
+	Date        *string `json:"date,omitempty"`
+	Description *string `json:"description,omitempty"`
+
+	// FactType Type of event (BIRTH, DEATH, CENSUS, etc.)
+	FactType string             `json:"fact_type"`
+	Id       openapi_types.UUID `json:"id"`
+	OwnerId  openapi_types.UUID `json:"owner_id"`
+
+	// OwnerType Either person or family
+	OwnerType string  `json:"owner_type"`
+	Place     *string `json:"place,omitempty"`
+
+	// ResearchStatus Confidence level of genealogical data per GPS standards
+	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
+	Version        *int64          `json:"version,omitempty"`
+}
+
+// EventsExportResponse defines model for EventsExportResponse.
+type EventsExportResponse struct {
+	Events []EventExport `json:"events"`
+	Total  int           `json:"total"`
 }
 
 // ExportEstimate defines model for ExportEstimate.
@@ -2649,15 +2704,24 @@ type ServerInterface interface {
 	// Get descendancy tree for a person
 	// (GET /descendancy/{id})
 	GetDescendancy(ctx echo.Context, id PersonId, params GetDescendancyParams) error
+	// Export attributes data
+	// (GET /export/attributes)
+	ExportAttributes(ctx echo.Context) error
 	// Get export size estimation
 	// (GET /export/estimate)
 	GetExportEstimate(ctx echo.Context) error
+	// Export events data
+	// (GET /export/events)
+	ExportEvents(ctx echo.Context) error
 	// Export families data
 	// (GET /export/families)
 	ExportFamilies(ctx echo.Context) error
 	// Export persons data
 	// (GET /export/persons)
 	ExportPersons(ctx echo.Context) error
+	// Export sources data
+	// (GET /export/sources)
+	ExportSources(ctx echo.Context) error
 	// Export full family tree
 	// (GET /export/tree)
 	ExportTree(ctx echo.Context) error
@@ -3284,12 +3348,30 @@ func (w *ServerInterfaceWrapper) GetDescendancy(ctx echo.Context) error {
 	return err
 }
 
+// ExportAttributes converts echo context to params.
+func (w *ServerInterfaceWrapper) ExportAttributes(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ExportAttributes(ctx)
+	return err
+}
+
 // GetExportEstimate converts echo context to params.
 func (w *ServerInterfaceWrapper) GetExportEstimate(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetExportEstimate(ctx)
+	return err
+}
+
+// ExportEvents converts echo context to params.
+func (w *ServerInterfaceWrapper) ExportEvents(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ExportEvents(ctx)
 	return err
 }
 
@@ -3308,6 +3390,15 @@ func (w *ServerInterfaceWrapper) ExportPersons(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ExportPersons(ctx)
+	return err
+}
+
+// ExportSources converts echo context to params.
+func (w *ServerInterfaceWrapper) ExportSources(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ExportSources(ctx)
 	return err
 }
 
@@ -4944,9 +5035,12 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/citations/:id/restore-points", wrapper.GetCitationRestorePoints)
 	router.POST(baseURL+"/citations/:id/rollback", wrapper.RollbackCitation)
 	router.GET(baseURL+"/descendancy/:id", wrapper.GetDescendancy)
+	router.GET(baseURL+"/export/attributes", wrapper.ExportAttributes)
 	router.GET(baseURL+"/export/estimate", wrapper.GetExportEstimate)
+	router.GET(baseURL+"/export/events", wrapper.ExportEvents)
 	router.GET(baseURL+"/export/families", wrapper.ExportFamilies)
 	router.GET(baseURL+"/export/persons", wrapper.ExportPersons)
+	router.GET(baseURL+"/export/sources", wrapper.ExportSources)
 	router.GET(baseURL+"/export/tree", wrapper.ExportTree)
 	router.GET(baseURL+"/families", wrapper.ListFamilies)
 	router.POST(baseURL+"/families", wrapper.CreateFamily)
@@ -5551,6 +5645,22 @@ func (response GetDescendancy404JSONResponse) VisitGetDescendancyResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ExportAttributesRequestObject struct {
+}
+
+type ExportAttributesResponseObject interface {
+	VisitExportAttributesResponse(w http.ResponseWriter) error
+}
+
+type ExportAttributes200JSONResponse AttributesExportResponse
+
+func (response ExportAttributes200JSONResponse) VisitExportAttributesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetExportEstimateRequestObject struct {
 }
 
@@ -5561,6 +5671,22 @@ type GetExportEstimateResponseObject interface {
 type GetExportEstimate200JSONResponse ExportEstimate
 
 func (response GetExportEstimate200JSONResponse) VisitGetExportEstimateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportEventsRequestObject struct {
+}
+
+type ExportEventsResponseObject interface {
+	VisitExportEventsResponse(w http.ResponseWriter) error
+}
+
+type ExportEvents200JSONResponse EventsExportResponse
+
+func (response ExportEvents200JSONResponse) VisitExportEventsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
@@ -5599,6 +5725,25 @@ type ExportPersons200JSONResponse struct {
 }
 
 func (response ExportPersons200JSONResponse) VisitExportPersonsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportSourcesRequestObject struct {
+}
+
+type ExportSourcesResponseObject interface {
+	VisitExportSourcesResponse(w http.ResponseWriter) error
+}
+
+type ExportSources200JSONResponse struct {
+	Sources *[]Source `json:"sources,omitempty"`
+	Total   *int      `json:"total,omitempty"`
+}
+
+func (response ExportSources200JSONResponse) VisitExportSourcesResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
@@ -8130,15 +8275,24 @@ type StrictServerInterface interface {
 	// Get descendancy tree for a person
 	// (GET /descendancy/{id})
 	GetDescendancy(ctx context.Context, request GetDescendancyRequestObject) (GetDescendancyResponseObject, error)
+	// Export attributes data
+	// (GET /export/attributes)
+	ExportAttributes(ctx context.Context, request ExportAttributesRequestObject) (ExportAttributesResponseObject, error)
 	// Get export size estimation
 	// (GET /export/estimate)
 	GetExportEstimate(ctx context.Context, request GetExportEstimateRequestObject) (GetExportEstimateResponseObject, error)
+	// Export events data
+	// (GET /export/events)
+	ExportEvents(ctx context.Context, request ExportEventsRequestObject) (ExportEventsResponseObject, error)
 	// Export families data
 	// (GET /export/families)
 	ExportFamilies(ctx context.Context, request ExportFamiliesRequestObject) (ExportFamiliesResponseObject, error)
 	// Export persons data
 	// (GET /export/persons)
 	ExportPersons(ctx context.Context, request ExportPersonsRequestObject) (ExportPersonsResponseObject, error)
+	// Export sources data
+	// (GET /export/sources)
+	ExportSources(ctx context.Context, request ExportSourcesRequestObject) (ExportSourcesResponseObject, error)
 	// Export full family tree
 	// (GET /export/tree)
 	ExportTree(ctx context.Context, request ExportTreeRequestObject) (ExportTreeResponseObject, error)
@@ -8854,6 +9008,29 @@ func (sh *strictHandler) GetDescendancy(ctx echo.Context, id PersonId, params Ge
 	return nil
 }
 
+// ExportAttributes operation middleware
+func (sh *strictHandler) ExportAttributes(ctx echo.Context) error {
+	var request ExportAttributesRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportAttributes(ctx.Request().Context(), request.(ExportAttributesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportAttributes")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ExportAttributesResponseObject); ok {
+		return validResponse.VisitExportAttributesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // GetExportEstimate operation middleware
 func (sh *strictHandler) GetExportEstimate(ctx echo.Context) error {
 	var request GetExportEstimateRequestObject
@@ -8871,6 +9048,29 @@ func (sh *strictHandler) GetExportEstimate(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(GetExportEstimateResponseObject); ok {
 		return validResponse.VisitGetExportEstimateResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ExportEvents operation middleware
+func (sh *strictHandler) ExportEvents(ctx echo.Context) error {
+	var request ExportEventsRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportEvents(ctx.Request().Context(), request.(ExportEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportEvents")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ExportEventsResponseObject); ok {
+		return validResponse.VisitExportEventsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -8917,6 +9117,29 @@ func (sh *strictHandler) ExportPersons(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(ExportPersonsResponseObject); ok {
 		return validResponse.VisitExportPersonsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ExportSources operation middleware
+func (sh *strictHandler) ExportSources(ctx echo.Context) error {
+	var request ExportSourcesRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportSources(ctx.Request().Context(), request.(ExportSourcesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportSources")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ExportSourcesResponseObject); ok {
+		return validResponse.VisitExportSourcesResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
