@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.7.0](https://github.com/cacack/my-family/compare/v0.6.0...v0.7.0) (2026-01-24)
+
+
+### Features
+
+* add export support for sources, events, and attributes ([487e2b5](https://github.com/cacack/my-family/commit/487e2b5256a12e167de551b126b0c46d6cacc0ba)), closes [#139](https://github.com/cacack/my-family/issues/139) [#154](https://github.com/cacack/my-family/issues/154)
+* implement v0.7 milestone - Quick Wins ([0eeae2c](https://github.com/cacack/my-family/commit/0eeae2c35f16598cb9d6fc63011288d412b182c3))
+
+
+### Bug Fixes
+
+* address CodeRabbit review comments ([c8928ca](https://github.com/cacack/my-family/commit/c8928ca31281df6aa470e79f2c1c16468ad3511f))
+* **api:** populate missing fields in family page partner and children data ([677f3f1](https://github.com/cacack/my-family/commit/677f3f194afdbb782c4a3ee6e73f000e3bf3b66a))
+* regenerate types and add LDS ordinance tests for CI ([1540cdd](https://github.com/cacack/my-family/commit/1540cdd8aeaa4ae2a47dedf8d2c2f0706c558df5))
+
 ## [0.6.0](https://github.com/cacack/my-family/compare/v0.5.0...v0.6.0) (2026-01-19)
 
 
