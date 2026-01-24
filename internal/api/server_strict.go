@@ -709,15 +709,11 @@ func (ss *StrictServer) ExportAttributes(ctx context.Context, _ ExportAttributes
 
 // convertEventToExport converts an EventReadModel to EventExport.
 func convertEventToExport(e repository.EventReadModel) EventExport {
-	id := openapi_types.UUID(e.ID)
-	ownerID := openapi_types.UUID(e.OwnerID)
-	factType := string(e.FactType)
-
 	event := EventExport{
-		Id:        id,
+		Id:        e.ID,
 		OwnerType: e.OwnerType,
-		OwnerId:   ownerID,
-		FactType:  factType,
+		OwnerId:   e.OwnerID,
+		FactType:  string(e.FactType),
 	}
 
 	if e.DateRaw != "" {
@@ -747,14 +743,10 @@ func convertEventToExport(e repository.EventReadModel) EventExport {
 
 // convertAttributeToExport converts an AttributeReadModel to AttributeExport.
 func convertAttributeToExport(a repository.AttributeReadModel) AttributeExport {
-	id := openapi_types.UUID(a.ID)
-	personID := openapi_types.UUID(a.PersonID)
-	factType := string(a.FactType)
-
 	attr := AttributeExport{
-		Id:       id,
-		PersonId: personID,
-		FactType: factType,
+		Id:       a.ID,
+		PersonId: a.PersonID,
+		FactType: string(a.FactType),
 		Value:    a.Value,
 	}
 

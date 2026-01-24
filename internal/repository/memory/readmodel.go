@@ -641,11 +641,14 @@ func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.List
 		citations = append(citations, *cit)
 	}
 
-	// Sort by source title, then by fact type
+	// Sort by source title, then by fact type, then by ID for deterministic ordering
 	sort.Slice(citations, func(i, j int) bool {
 		cmp := strings.Compare(citations[i].SourceTitle, citations[j].SourceTitle)
 		if cmp == 0 {
 			cmp = strings.Compare(string(citations[i].FactType), string(citations[j].FactType))
+		}
+		if cmp == 0 {
+			cmp = strings.Compare(citations[i].ID.String(), citations[j].ID.String())
 		}
 		if opts.Order == "desc" {
 			return cmp > 0
@@ -878,21 +881,22 @@ func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOpt
 		events = append(events, *e)
 	}
 
-	// Sort by fact type, then by date
+	// Sort by fact type, then by date, then by ID for deterministic ordering
 	sort.Slice(events, func(i, j int) bool {
 		cmp := strings.Compare(string(events[i].FactType), string(events[j].FactType))
 		if cmp == 0 {
 			// Sort by date if same fact type
-			if events[i].DateSort == nil && events[j].DateSort == nil {
-				return false
+			if events[i].DateSort != nil && events[j].DateSort != nil {
+				cmp = events[i].DateSort.Compare(*events[j].DateSort)
+			} else if events[i].DateSort == nil && events[j].DateSort != nil {
+				cmp = 1 // nil dates sort after non-nil
+			} else if events[i].DateSort != nil && events[j].DateSort == nil {
+				cmp = -1
 			}
-			if events[i].DateSort == nil {
-				return true
-			}
-			if events[j].DateSort == nil {
-				return false
-			}
-			cmp = events[i].DateSort.Compare(*events[j].DateSort)
+			// Both nil: cmp stays 0
+		}
+		if cmp == 0 {
+			cmp = strings.Compare(events[i].ID.String(), events[j].ID.String())
 		}
 		if opts.Order == "desc" {
 			return cmp > 0
@@ -971,11 +975,14 @@ func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.Lis
 		attributes = append(attributes, *a)
 	}
 
-	// Sort by fact type, then by value
+	// Sort by fact type, then by value, then by ID for deterministic ordering
 	sort.Slice(attributes, func(i, j int) bool {
 		cmp := strings.Compare(string(attributes[i].FactType), string(attributes[j].FactType))
 		if cmp == 0 {
 			cmp = strings.Compare(attributes[i].Value, attributes[j].Value)
+		}
+		if cmp == 0 {
+			cmp = strings.Compare(attributes[i].ID.String(), attributes[j].ID.String())
 		}
 		if opts.Order == "desc" {
 			return cmp > 0
