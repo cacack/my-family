@@ -3,7 +3,7 @@ module github.com/cacack/my-family
 go 1.25
 
 require (
-	github.com/cacack/gedcom-go v1.0.0
+	github.com/cacack/gedcom-go v1.1.0
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.0
