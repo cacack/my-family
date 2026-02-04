@@ -129,10 +129,10 @@
 			await api.updatePersonName(personId, editingId, {
 				given_name: formData.given_name.trim(),
 				surname: formData.surname.trim(),
-				name_prefix: formData.name_prefix.trim() || undefined,
-				name_suffix: formData.name_suffix.trim() || undefined,
-				surname_prefix: formData.surname_prefix.trim() || undefined,
-				nickname: formData.nickname.trim() || undefined,
+				name_prefix: formData.name_prefix.trim(),
+				name_suffix: formData.name_suffix.trim(),
+				surname_prefix: formData.surname_prefix.trim(),
+				nickname: formData.nickname.trim(),
 				name_type: formData.name_type,
 				is_primary: formData.is_primary
 			});
@@ -146,12 +146,16 @@
 	}
 
 	async function deleteName(name: PersonName) {
+		saving = true;
+		error = null;
 		try {
 			await api.deletePersonName(personId, name.id);
 			deleteConfirm = null;
 			loadNames();
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to delete name';
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -159,6 +163,7 @@
 		const parts: string[] = [];
 		if (name.name_prefix) parts.push(name.name_prefix);
 		parts.push(name.given_name);
+		if (name.nickname) parts.push(`"${name.nickname}"`);
 		if (name.surname_prefix) parts.push(name.surname_prefix);
 		parts.push(name.surname);
 		if (name.name_suffix) parts.push(name.name_suffix);
@@ -186,6 +191,10 @@
 
 	$effect(() => {
 		if (personId) {
+			showAddForm = false;
+			editingId = null;
+			deleteConfirm = null;
+			resetForm();
 			loadNames();
 		}
 	});
@@ -345,18 +354,14 @@
 							</div>
 						</form>
 					{:else}
+						{@const badgeInfo = nameTypeBadgeInfo(name.name_type)}
 						<div class="name-header">
-							<span class="name-display">
-								{formatDisplayName(name)}
-								{#if name.nickname}
-									<span class="nickname">"{name.nickname}"</span>
-								{/if}
-							</span>
+							<span class="name-display">{formatDisplayName(name)}</span>
 							<span
 								class="name-type-badge"
-								style="background: {nameTypeBadgeInfo(name.name_type).bg}; color: {nameTypeBadgeInfo(name.name_type).color};"
+								style="background: {badgeInfo.bg}; color: {badgeInfo.color};"
 							>
-								{nameTypeBadgeInfo(name.name_type).label}
+								{badgeInfo.label}
 							</span>
 							{#if name.is_primary}
 								<span class="primary-badge">Primary</span>
@@ -366,7 +371,7 @@
 						<div class="name-actions">
 							{#if deleteConfirm === name.id}
 								<span class="delete-confirm">Delete this name?</span>
-								<button class="btn btn-small btn-danger" onclick={() => deleteName(name)}>Yes, Delete</button>
+								<button class="btn btn-small btn-danger" onclick={() => deleteName(name)} disabled={saving}>Yes, Delete</button>
 								<button class="btn btn-small" onclick={() => deleteConfirm = null}>Cancel</button>
 							{:else}
 								<button class="btn btn-small btn-text" onclick={() => startEdit(name)}>Edit</button>
@@ -596,11 +601,6 @@
 		font-size: 0.9375rem;
 		font-weight: 500;
 		color: #1e293b;
-	}
-
-	.nickname {
-		color: #64748b;
-		font-weight: 400;
 	}
 
 	.name-type-badge {
