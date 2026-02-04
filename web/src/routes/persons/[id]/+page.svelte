@@ -5,6 +5,7 @@
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import MediaGallery from '$lib/components/MediaGallery.svelte';
 	import CitationSection from '$lib/components/CitationSection.svelte';
+	import NameSection from '$lib/components/NameSection.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 
@@ -332,6 +333,8 @@
 				</div>
 
 				<CitationSection personId={person.id} />
+
+				<NameSection personId={person.id} />
 
 				<div class="history-section">
 					<button class="history-header" onclick={toggleHistory}>
