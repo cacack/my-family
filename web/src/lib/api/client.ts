@@ -414,6 +414,50 @@ export interface UpdateCitationRequest {
 	version: number;
 }
 
+// PersonName types
+export type NameType = 'birth' | 'married' | 'aka' | 'immigrant' | 'religious' | 'professional';
+
+export interface PersonName {
+	id: string;
+	person_id: string;
+	given_name: string;
+	surname: string;
+	readonly full_name?: string;
+	name_prefix?: string;
+	name_suffix?: string;
+	surname_prefix?: string;
+	nickname?: string;
+	name_type: NameType;
+	is_primary: boolean;
+}
+
+export interface PersonNameCreate {
+	given_name: string;
+	surname: string;
+	name_prefix?: string;
+	name_suffix?: string;
+	surname_prefix?: string;
+	nickname?: string;
+	name_type: NameType;
+	is_primary: boolean;
+}
+
+export interface PersonNameUpdate {
+	given_name?: string;
+	surname?: string;
+	name_prefix?: string;
+	name_suffix?: string;
+	surname_prefix?: string;
+	nickname?: string;
+	name_type?: NameType;
+	is_primary?: boolean;
+}
+
+export interface PersonNameList {
+	items: PersonName[];
+	total: number;
+}
+
 // Media types
 export interface Media {
 	id: string;
@@ -880,6 +924,23 @@ class ApiClient {
 
 	async deleteCitation(id: string, version: number): Promise<void> {
 		return this.request<void>('DELETE', `/citations/${id}?version=${version}`);
+	}
+
+	// PersonName endpoints
+	async getPersonNames(personId: string): Promise<PersonNameList> {
+		return this.request<PersonNameList>('GET', `/persons/${personId}/names`);
+	}
+
+	async addPersonName(personId: string, data: PersonNameCreate): Promise<PersonName> {
+		return this.request<PersonName>('POST', `/persons/${personId}/names`, data);
+	}
+
+	async updatePersonName(personId: string, nameId: string, data: PersonNameUpdate): Promise<PersonName> {
+		return this.request<PersonName>('PUT', `/persons/${personId}/names/${nameId}`, data);
+	}
+
+	async deletePersonName(personId: string, nameId: string): Promise<void> {
+		return this.request<void>('DELETE', `/persons/${personId}/names/${nameId}`);
 	}
 
 	// Media endpoints
