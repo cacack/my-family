@@ -10,8 +10,8 @@ github.com/RaveNoX/go-jsoncommentstrip v1.0.0/go.mod h1:78ihd09MekBnJnxpICcwzCMz
 github.com/apapsch/go-jsonmerge/v2 v2.0.0 h1:axGnT1gRIfimI7gJifB699GoE/oq+F2MU7Dml6nw9rQ=
 github.com/apapsch/go-jsonmerge/v2 v2.0.0/go.mod h1:lvDnEdqiQrp0O42VQGgmlKpxL1AP2+08jFMw88y4klk=
 github.com/bmatcuk/doublestar v1.1.1/go.mod h1:UD6OnuiIn0yFxxA2le/rnRU1G4RaI4UvFv1sNto9p6w=
-github.com/cacack/gedcom-go v1.0.0 h1:ZGTVSGDwS0NHL4XcUB8beoKBUUb3rVwyDZ47KCHcTrk=
-github.com/cacack/gedcom-go v1.0.0/go.mod h1:6wyMzgGKtvSXblDbjDCJmq1o40W3vlpDChkUaWsqpuo=
+github.com/cacack/gedcom-go v1.1.0 h1:Q+eW1rxVY1K0l16rRRoy3Tx3gK3lXaIjVYaXSbYBNHU=
+github.com/cacack/gedcom-go v1.1.0/go.mod h1:ZpeOC6pOGkLSNgxBYKs5Xc67Gzc0PYRNLHn9RQuJRNo=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
