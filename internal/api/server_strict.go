@@ -1139,12 +1139,25 @@ func (ss *StrictServer) ImportGedcom(ctx context.Context, request ImportGedcomRe
 		}
 	}
 
-	return ImportGedcom200JSONResponse{
+	importErrors := make([]ImportError, len(result.Errors))
+	for i, e := range result.Errors {
+		importErrors[i] = ImportError{
+			Line:    0,
+			Message: e,
+		}
+	}
+
+	response := ImportGedcom200JSONResponse{
 		FamiliesImported: result.FamiliesImported,
 		PersonsImported:  result.PersonsImported,
 		Success:          true,
 		Warnings:         &warnings,
-	}, nil
+	}
+	if len(importErrors) > 0 {
+		response.Errors = &importErrors
+	}
+
+	return response, nil
 }
 
 // ============================================================================

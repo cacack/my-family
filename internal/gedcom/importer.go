@@ -278,14 +278,32 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 		SubmitterXrefToID:  make(map[string]uuid.UUID),
 	}
 
-	// Parse GEDCOM using cacack/gedcom-go decoder
+	// Parse GEDCOM using cacack/gedcom-go decoder with lenient mode
 	// The decoder handles encoding detection (UTF-8, ANSEL, Windows-1252, ISO-8859-1) automatically
+	// Lenient mode collects parse errors as diagnostics instead of failing
 	opts := decoder.DefaultOptions()
 	opts.Context = ctx
 
-	doc, err := decoder.DecodeWithOptions(reader, opts)
+	decodeResult, err := decoder.DecodeWithDiagnostics(reader, opts)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
+		// If we got no usable results, fail immediately
+		if decodeResult == nil || decodeResult.Document == nil || len(decodeResult.Document.Records) == 0 {
+			return nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to parse GEDCOM: %w", err)
+		}
+		// Partial parse succeeded; add the fatal error as an import error
+		result.Errors = append(result.Errors, fmt.Sprintf("GEDCOM parse error: %v", err))
+	}
+
+	doc := decodeResult.Document
+
+	// Map decoder diagnostics to import warnings/errors
+	for _, d := range decodeResult.Diagnostics {
+		switch d.Severity {
+		case decoder.SeverityError:
+			result.Errors = append(result.Errors, d.String())
+		default:
+			result.Warnings = append(result.Warnings, d.String())
+		}
 	}
 
 	// Run gedcom-go validation to catch structural issues
