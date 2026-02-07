@@ -8,9 +8,9 @@ Self-hosted genealogy software written in Go. A premier self-hosted genealogy pl
 
 ## Strategic Context
 
-- [Project Ethos](./docs/ETHOS.md) - Vision, principles, success factors
+- [Project Ethos](./docs/ETHOS.md) - Vision, principles, success factors (note phase markers: Phase 1 = now)
 - [GitHub Issues](https://github.com/cacack/my-family/issues) - Planned features and work
-- [Conventions](./docs/CONVENTIONS.md) - Code patterns and standards
+- [Conventions](./docs/CONVENTIONS.md) - **Canonical source** for code patterns, commit types, and standards
 - [Architecture Decisions](./docs/adr/) - Key technical decisions with rationale
 - [Contributing Guide](./CONTRIBUTING.md) - Development workflow
 
@@ -18,58 +18,54 @@ Self-hosted genealogy software written in Go. A premier self-hosted genealogy pl
 
 When adding new features, consult these docs to ensure proper integration:
 
-- [Integration Matrix](./docs/INTEGRATION-MATRIX.md) - What features must integrate with (checklists by category)
-- [Architectural Invariants](./docs/ARCHITECTURAL-INVARIANTS.md) - 40 rules that must always hold
+- [Integration Matrix](./docs/INTEGRATION-MATRIX.md) - What features must integrate with (checklists by category), includes **entity status matrix** showing current completion
+- [Architectural Invariants](./docs/ARCHITECTURAL-INVARIANTS.md) - Rules that must always hold
 - [Testing Strategy](./docs/TESTING-STRATEGY.md) - Cross-feature test scenarios
 
 **New entity types** require integration across 7 layers (domain, events, commands, projections, read model, API, GEDCOM). Use the 20-item checklist in the Integration Matrix.
 
-## Build Commands
+## Build & Run
 
 ```bash
-go build ./...          # Build all packages
-go test ./...           # Run all tests
-go test -v ./... -run TestName  # Run a specific test
-go fmt ./...            # Format code
-go vet ./...            # Static analysis
+make help               # Show all available targets
+make run                # Run backend server (go run ./cmd/myfamily serve)
+make dev-frontend       # Run Svelte dev server with hot reload
+make build              # Build all Go packages
+make test               # Run all tests (Go + frontend)
 make check-coverage     # Verify coverage thresholds (85% per-package)
-make setup              # Install tools and hooks
+make lint               # Run golangci-lint
+make generate           # Regenerate Go + TypeScript from OpenAPI spec
+make setup              # Install tools and git hooks
 ```
+
+Run specific Go tests: `go test -v ./... -run TestName`
 
 **Important**: When adding new code, always run `make check-coverage` before declaring tests complete. CI enforces 85% per-package coverage.
 
 ## Commit Conventions
 
-Use conventional commits with these types only:
-
-| Type | Use for |
-|------|---------|
-| `feat` | New user-facing features |
-| `fix` | User-facing bug fixes (not build/tooling) |
-| `perf` | Performance improvements |
-| `docs` | Documentation only |
-| `refactor` | Code restructuring |
-| `ci` | CI/CD and tooling |
-| `chore` | Maintenance, formatting, deps, build fixes |
-
-PR titles use descriptive format (not conventional commits). See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+Use conventional commits. Types and format are defined in [CONVENTIONS.md](./docs/CONVENTIONS.md#commit-messages) (single source of truth). PR titles use descriptive format, not conventional commits, to avoid duplicate changelog entries.
 
 ## Architecture
 
-The application uses event sourcing with CQRS-lite for a full audit trail (see [ADR-001](./docs/adr/001-event-sourcing-cqrs.md)):
+Event sourcing with CQRS-lite for a full audit trail (see [ADR-001](./docs/adr/001-event-sourcing-cqrs.md)):
 
 ```
 internal/
-├── domain/         # Pure domain types (Person, Family, events)
+├── domain/         # Pure domain types (Person, Family, events, enums)
 ├── command/        # Command handlers (CQRS write side)
 ├── query/          # Query services (CQRS read side)
-├── repository/     # Event store and read model persistence
+├── repository/     # Interfaces (EventStore, ReadModelStore) + shared code
 │   ├── postgres/   # PostgreSQL implementation
-│   └── sqlite/     # SQLite implementation
-├── api/            # HTTP handlers and OpenAPI server
+│   ├── sqlite/     # SQLite implementation
+│   └── memory/     # In-memory implementation (tests)
+├── api/            # HTTP handlers, OpenAPI spec, generated server code
 ├── gedcom/         # GEDCOM import/export
-└── config/         # Configuration
-web/                # Svelte frontend
+├── exporter/       # JSON/CSV export
+├── media/          # Thumbnail generation
+├── config/         # Configuration
+└── web/            # Embedded frontend (embed.go for prod, embed_dev.go for dev)
+web/                # Svelte 5 frontend (SvelteKit)
 ```
 
 Key architectural decisions:
@@ -78,16 +74,39 @@ Key architectural decisions:
 - [Synchronous Projections](./docs/adr/003-synchronous-projections.md) - Immediate consistency for MVP
 - [Single Binary](./docs/adr/004-single-binary-deployment.md) - Embedded frontend for easy deployment
 
+## Generated Code
+
+The API layer uses code generation from `internal/api/openapi.yaml`:
+
+- **Go server**: `internal/api/generated.go` - generated by oapi-codegen via `make generate-api`
+- **TypeScript types**: `web/src/lib/api/types.generated.ts` - generated via `make generate-types`
+- **Config**: `internal/api/oapi-codegen.yaml` controls Go generation
+
+**Never hand-edit generated files.** Change `openapi.yaml` then run `make generate`. Use `make verify-generated` to check if generated code is in sync.
+
 ## Active Technologies
-- Go 1.25+ + Echo (HTTP router), Ent (data layer), oapi-codegen (OpenAPI), github.com/cacack/gedcom-go (GEDCOM processing), Svelte 5 + Vite + D3.js + Tailwind CSS (frontend)
-- PostgreSQL (primary, required for future pgvector/PostGIS), SQLite (local/demo fallback)
+
+- **Backend**: Go 1.25+, Echo (HTTP router), oapi-codegen (OpenAPI), `github.com/cacack/gedcom-go` (GEDCOM processing)
+- **Data**: Event store + read model projections (not ORM). PostgreSQL primary, SQLite fallback
+- **Frontend**: Svelte 5 + SvelteKit + Vite + D3.js + Tailwind CSS
 
 ## Linked Library Development
 
-This project uses `github.com/cacack/gedcom-go` via a `replace` directive pointing to `/Users/chris/devel/home/gedcom-go`. When changes to gedcom-go are needed:
+This project uses `github.com/cacack/gedcom-go`. For local development, uncomment the `replace` directive in `go.mod` to point to your local checkout at `/Users/chris/devel/home/gedcom-go`.
 
-1. **Keep changes atomic**: Each gedcom-go enhancement should be a single logical unit (e.g., "add entity parsing", not mixed with unrelated fixes)
+When changes to gedcom-go are needed:
+
+1. **Keep changes atomic**: Each gedcom-go enhancement should be a single logical unit
 2. **Always add tests**: Any new gedcom-go functionality must include tests in that repo
 3. **Run both test suites**: After gedcom-go changes, run `go test ./...` in both repos
-4. **Commit separately**: gedcom-go changes should be committed to that repo independently, with their own descriptive commit message
-5. **Document the dependency**: If adding new gedcom-go features, note what my-family feature required them
+4. **Commit separately**: gedcom-go changes should be committed to that repo independently
+5. **Document the dependency**: Note what my-family feature required the gedcom-go change
+
+## Gotchas
+
+- **Both database implementations must stay in sync**: When adding read model operations, implement in both `postgres/` and `sqlite/`. Run shared test suites against both.
+- **Events are append-only**: Never add Update/Delete methods to EventStore. This is an architectural invariant (ES-002).
+- **Run `make generate` after changing `openapi.yaml`**: Both Go server code and TypeScript types must be regenerated. CI will catch drift via `make verify-generated`.
+- **Projection handlers must cover all event types**: When adding new events, add corresponding cases in `repository/projection.go` (invariant PR-004).
+- **`DecodeEvent()` switch must cover all event types**: When adding new events, add a case in `repository/eventstore.go` (invariant ES-007).
+- **Pre-commit hooks run tests**: If commits seem slow, that's the pre-commit hook running `go fmt`, `go vet`, lint, and tests. Pre-push checks coverage thresholds.

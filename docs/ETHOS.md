@@ -10,49 +10,62 @@ A premier self-hosted genealogy platform that combines **research rigor** with *
 
 ---
 
+## Phase Guide
+
+Features and capabilities are organized into phases to focus effort. **Phase 1 is the current priority** - resist the temptation to jump ahead.
+
+| Phase | Focus | Principle |
+|-------|-------|-----------|
+| **Phase 1 (Now)** | Core data, import/export, basic UI, self-hosting | Nail the Basics First |
+| **Phase 2 (Near-term)** | Research workflows, collaboration, richer visualizations | Dogfood Relentlessly |
+| **Phase 3 (Future)** | AI features, plugins, community ecosystem | Start Small, Ship Often |
+
+---
+
 ## Core Differentiators
 
 ### 1. Research Rigor (GPS-Compliant)
 Align with the [Genealogical Proof Standard](https://bcgcertification.org/ethics-standards/) from the Board for Certification of Genealogists:
-- **Reasonably exhaustive search** - Track what you've searched, including negative results
-- **Complete citations** - Every fact tied to a source, Evidence Explained style
-- **Analysis & correlation** - Separate evidence (what sources say) from conclusions (what you believe)
-- **Conflict resolution** - Surface contradictions, require resolution
-- **Written conclusions** - Proof summaries for non-obvious conclusions
+- **Complete citations** - Every fact tied to a source, Evidence Explained style `Phase 1`
+- **Uncertain data markers** - Distinguish facts from speculation `Phase 1`
+- **Reasonably exhaustive search** - Track what you've searched, including negative results `Phase 2`
+- **Analysis & correlation** - Separate evidence (what sources say) from conclusions (what you believe) `Phase 2`
+- **Conflict resolution** - Surface contradictions, require resolution `Phase 2`
+- **Written conclusions** - Proof summaries for non-obvious conclusions `Phase 3`
 
 ### 2. Git-Inspired Workflow
 Treat genealogy research like code - versioned, branched, collaborative:
-- **Full audit trail** - Who changed what, when, and why
-- **Research branches** - Explore hypotheses without polluting main tree
-- **Merge with review** - Bring proven research into main tree with diff view
-- **Rollback capability** - Mistakes are recoverable
-- **Collaborative forks** - Others can propose changes via pull request workflow
-- **Tags/snapshots** - Mark milestones ("Pre-DNA results", "After courthouse trip")
+- **Full audit trail** - Who changed what, when, and why `Phase 1`
+- **Tags/snapshots** - Mark milestones ("Pre-DNA results", "After courthouse trip") `Phase 1`
+- **Rollback capability** - Mistakes are recoverable `Phase 1`
+- **Research branches** - Explore hypotheses without polluting main tree `Phase 2`
+- **Merge with review** - Bring proven research into main tree with diff view `Phase 2`
+- **Collaborative forks** - Others can propose changes via pull request workflow `Phase 3`
 
 ### 3. Bringing History to Life
 Make ancestors feel like real people, not just names and dates:
-- **Auto-generated narratives** - Prose stories from structured data
-- **Historical context** - What was happening in the world during their lives
-- **"A Day in Their Life"** - What was daily life like for their occupation/era?
-- **Interactive timelines** - Zoomable, with historical events interwoven
-- **Migration maps** - Animated paths showing family movements
-- **Memory capture** - Oral histories, family stories attached to people
+- **Interactive timelines** - Zoomable, with historical events interwoven `Phase 2`
+- **Migration maps** - Animated paths showing family movements `Phase 2`
+- **Memory capture** - Oral histories, family stories attached to people `Phase 2`
+- **Auto-generated narratives** - Prose stories from structured data `Phase 3`
+- **Historical context** - What was happening in the world during their lives `Phase 3`
+- **"A Day in Their Life"** - What was daily life like for their occupation/era? `Phase 3`
 
 ### 4. Personalization & Extensibility
 Your genealogy tool, your way:
-- **Theming engine** - Colors, fonts, layouts
-- **Plugin architecture** - Community extensions
-- **Custom fields** - Add your own data types
-- **Customizable dashboards** - See what matters to you
-- **Report templates** - Output in your preferred format
+- **Report templates** - Output in your preferred format `Phase 2`
+- **Custom fields** - Add your own data types `Phase 2`
+- **Theming engine** - Colors, fonts, layouts `Phase 3`
+- **Plugin architecture** - Community extensions `Phase 3`
+- **Customizable dashboards** - See what matters to you `Phase 3`
 
 ### 5. Fun & Engaging
 Research should be enjoyable, not a chore:
-- **Achievements & badges** - Celebrate milestones
-- **Completeness scores** - Gamify filling in gaps
-- **Brick wall tracker** - Track and celebrate breakthroughs
-- **Discovery feed** - Suggestions to explore
-- **Shareable spotlights** - Social media cards for sharing discoveries
+- **Completeness scores** - Gamify filling in gaps `Phase 1`
+- **Brick wall tracker** - Track and celebrate breakthroughs `Phase 2`
+- **Discovery feed** - Suggestions to explore `Phase 3`
+- **Achievements & badges** - Celebrate milestones `Phase 3`
+- **Shareable spotlights** - Social media cards for sharing discoveries `Phase 3`
 
 ---
 
@@ -60,51 +73,51 @@ Research should be enjoyable, not a chore:
 
 ### Technical Foundation
 
-| Factor | Why It Matters |
-|--------|----------------|
-| **Performance at scale** | Trees with 50,000+ people must stay fast |
-| **Offline-first / PWA** | Researchers work in archives without internet |
-| **Mobile experience** | Quick lookups at cemeteries, courthouses, reunions |
-| **Easy self-hosting** | Docker one-liner, not a 20-step guide |
-| **Automatic backups** | Data loss is catastrophic for genealogists |
-| **Data integrity** | ACID transactions, referential integrity |
-| **API-first architecture** | Everything accessible programmatically |
+| Factor | Why It Matters | Phase |
+|--------|----------------|-------|
+| **Data integrity** | ACID transactions, referential integrity | 1 |
+| **Easy self-hosting** | Docker one-liner, not a 20-step guide | 1 |
+| **API-first architecture** | Everything accessible programmatically | 1 |
+| **Performance at scale** | Trees with 50,000+ people must stay fast | 2 |
+| **Mobile experience** | Quick lookups at cemeteries, courthouses, reunions | 2 |
+| **Automatic backups** | Data loss is catastrophic for genealogists | 2 |
+| **Offline-first / PWA** | Researchers work in archives without internet | 3 |
 
 ### User Experience & Adoption
 
-| Factor | Why It Matters |
-|--------|----------------|
-| **Exceptional onboarding** | First 5 minutes determine retention |
-| **Demo/sandbox mode** | Try before committing (no install required) |
-| **Import from everywhere** | Not just GEDCOM - Ancestry, FamilySearch, Gramps |
-| **Guided workflows** | Wizards for common tasks, not empty forms |
-| **Keyboard shortcuts** | Power users need speed |
-| **Accessibility (a11y)** | Older users, screen readers, motor impairments |
-| **"Quick capture" mode** | Fast entry at courthouse, enrich later |
+| Factor | Why It Matters | Phase |
+|--------|----------------|-------|
+| **Keyboard shortcuts** | Power users need speed | 1 |
+| **Accessibility (a11y)** | Older users, screen readers, motor impairments | 1 |
+| **Import from everywhere** | Not just GEDCOM - Ancestry, FamilySearch, Gramps | 1-2 |
+| **Exceptional onboarding** | First 5 minutes determine retention | 2 |
+| **Demo/sandbox mode** | Try before committing (no install required) | 2 |
+| **Guided workflows** | Wizards for common tasks, not empty forms | 2 |
+| **"Quick capture" mode** | Fast entry at courthouse, enrich later | 3 |
 
 ### Data & Interoperability
 
-| Factor | Why It Matters |
-|--------|----------------|
-| **Lossless GEDCOM 7.0** | Modern standard with proper extensions |
-| **Import from proprietary formats** | Ancestry exports lose DNA, photo tags, hints |
-| **Bulk operations** | Mass edit, find/replace across tree |
-| **Data validation tools** | Find inconsistencies, duplicates, errors |
-| **Export flexibility** | JSON, CSV, GEDCOM, custom formats |
-| **No vendor lock-in** | Your data is always yours |
+| Factor | Why It Matters | Phase |
+|--------|----------------|-------|
+| **No vendor lock-in** | Your data is always yours | 1 |
+| **Export flexibility** | JSON, CSV, GEDCOM, custom formats | 1 |
+| **Data validation tools** | Find inconsistencies, duplicates, errors | 1 |
+| **Lossless GEDCOM 7.0** | Modern standard with proper extensions | 2 |
+| **Bulk operations** | Mass edit, find/replace across tree | 2 |
+| **Import from proprietary formats** | Ancestry exports lose DNA, photo tags, hints | 3 |
 
 ### Research Integrity
 
-| Factor | Why It Matters |
-|--------|----------------|
-| **Uncertain data markers** | Distinguish facts from speculation |
-| **Multiple name handling** | Maiden names, aliases, spelling variants |
-| **Flexible dates** | "about 1842", "between 1840-1845", "before 1850" |
-| **Historical place context** | "Prussia" maps to modern Germany |
-| **Relationship qualifiers** | Biological, adopted, step, foster |
-| **Inclusive relationships** | Same-sex couples, modern family structures |
+| Factor | Why It Matters | Phase |
+|--------|----------------|-------|
+| **Flexible dates** | "about 1842", "between 1840-1845", "before 1850" | 1 |
+| **Multiple name handling** | Maiden names, aliases, spelling variants | 1 |
+| **Relationship qualifiers** | Biological, adopted, step, foster | 1 |
+| **Inclusive relationships** | Same-sex couples, modern family structures | 1 |
+| **Uncertain data markers** | Distinguish facts from speculation | 1 |
+| **Historical place context** | "Prussia" maps to modern Germany | 2 |
 
-### AI/LLM Integration (Modern Differentiator)
+### AI/LLM Integration (Modern Differentiator) `Phase 3`
 
 | Capability | Description |
 |------------|-------------|
@@ -116,28 +129,28 @@ Research should be enjoyable, not a chore:
 | **Conflict analysis** | Explain why sources might disagree |
 | **Natural language search** | "Who lived in Ohio in 1850?" |
 
-### Community & Ecosystem
+### Community & Ecosystem `Phase 2-3`
 
-| Factor | Why It Matters |
-|--------|----------------|
-| **Clear contribution guide** | How to help, what's needed |
-| **Plugin SDK + documentation** | Enable community extensions |
-| **Theme SDK + documentation** | Let designers contribute |
-| **Public roadmap** | Transparency builds trust |
-| **Discussion forum/Discord** | Community needs a home |
-| **Showcase/testimonials** | Social proof matters |
-| **Regular releases** | Activity signals project health |
+| Factor | Why It Matters | Phase |
+|--------|----------------|-------|
+| **Clear contribution guide** | How to help, what's needed | 1 |
+| **Public roadmap** | Transparency builds trust | 1 |
+| **Regular releases** | Activity signals project health | 1 |
+| **Discussion forum/Discord** | Community needs a home | 2 |
+| **Plugin SDK + documentation** | Enable community extensions | 3 |
+| **Theme SDK + documentation** | Let designers contribute | 3 |
+| **Showcase/testimonials** | Social proof matters | 3 |
 
-### Adoption & Go-to-Market
+### Adoption & Go-to-Market `Phase 2-3`
 
-| Factor | Why It Matters |
-|--------|----------------|
-| **Hosted demo instance** | Try without installing anything |
-| **Comparison page** | "my-family vs Gramps vs TNG vs..." |
-| **Migration guides** | Step-by-step from Ancestry, FamilySearch |
-| **Video tutorials** | YouTube is how people learn |
-| **Genealogy society outreach** | Built-in audience of serious researchers |
-| **Browser extension** | Capture from Ancestry/FamilySearch |
+| Factor | Why It Matters | Phase |
+|--------|----------------|-------|
+| **Hosted demo instance** | Try without installing anything | 2 |
+| **Migration guides** | Step-by-step from Ancestry, FamilySearch | 2 |
+| **Comparison page** | "my-family vs Gramps vs TNG vs..." | 2 |
+| **Video tutorials** | YouTube is how people learn | 2 |
+| **Genealogy society outreach** | Built-in audience of serious researchers | 3 |
+| **Browser extension** | Capture from Ancestry/FamilySearch | 3 |
 
 ---
 

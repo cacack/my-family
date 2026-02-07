@@ -36,31 +36,31 @@ This split keeps commits fast while catching coverage issues before CI.
 If not using `make setup`:
 
 ```bash
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 go install github.com/vladopajic/go-test-coverage/v2@latest
 ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 ln -sf ../../scripts/pre-push .git/hooks/pre-push
 ```
 
-## Development Standards
+## Code Standards
 
-These standards guide all development work. See [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) for detailed code patterns.
+Follow the patterns documented in [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) - this is the **canonical source** for:
+- Commit message format and types
+- Go code style and naming
+- Package organization
+- API design patterns
+- Testing conventions
+- Database patterns
+- Branch naming
 
-### Code Quality
+### Key Points
 
 - Code MUST pass `go vet` and `go fmt` without warnings or changes
 - All exported functions, types, and packages MUST have documentation comments
-- Functions MUST have a single, clear responsibility
-- Error handling MUST be explicit; never ignore returned errors
+- Error handling MUST be explicit with wrapped context; never ignore returned errors
 - Dependencies MUST be minimal and justified; prefer standard library
-
-### Testing Standards
-
-- Unit tests MUST cover core business logic (models, services)
-- Integration tests MUST verify data persistence and retrieval
+- Coverage target: 85% for core packages (enforced by CI)
 - Tests MUST be deterministic and not depend on external services
-- Test names MUST describe the scenario being tested (e.g., `TestPerson_AddChild_DuplicateReturnsError`)
-- Coverage target: 85% for core packages
 
 ### Performance Requirements
 
@@ -68,54 +68,6 @@ These standards guide all development work. See [docs/CONVENTIONS.md](./docs/CON
 - Bulk imports (1000 records): <10 seconds
 - Search operations: <500ms for databases up to 10,000 individuals
 - Memory usage: <100MB for typical family trees (<5000 individuals)
-
-### Documentation Requirements
-
-- README.md MUST stay current with installation and usage instructions
-- Breaking changes MUST be documented in a changelog
-- API changes MUST update relevant documentation before merge
-
-## Code Standards
-
-Follow the patterns documented in [docs/CONVENTIONS.md](./docs/CONVENTIONS.md):
-- Go: standard formatting (`go fmt`), idiomatic error handling
-- Git: conventional commits, feature branches
-- API: OpenAPI-first design
-- Frontend: Svelte 5 patterns, Tailwind CSS
-
-### Commit Conventions
-
-We use conventional commits to maintain clear project history and automate changelog generation.
-
-#### Commit Types
-
-| Type | Use for | Appears in Changelog? |
-|------|---------|----------------------|
-| `feat` | New user-facing features | Yes |
-| `fix` | Bug fixes | Yes |
-| `perf` | Performance improvements | Yes |
-| `docs` | Documentation only | No |
-| `refactor` | Code restructuring (no behavior change) | No |
-| `ci` | CI/CD, dev infrastructure, tooling | No |
-| `chore` | Maintenance, formatting, dependencies | No |
-
-**Note**: Only these 7 types are used. `feat` and `fix` are reserved for user-facing changes.
-
-Examples:
-- `feat(source): add citation confidence levels` (user-facing feature)
-- `fix(gedcom): handle malformed DATE tags` (user-facing bug fix)
-- `ci(deps): update golangci-lint to v1.55` (tooling, won't appear in changelog)
-
-#### Commit Messages vs PR Titles
-
-To avoid duplicate changelog entries, use different formats:
-
-| Where | Format | Example |
-|-------|--------|---------|
-| Commit messages | `type(scope): description` | `feat(parser): add date support` |
-| PR titles | Descriptive (NOT conventional commit) | `Add date support` |
-
-**Why?** Release-please uses merge commits for semi-linear history. Using conventional commit format in both PR titles and commit messages creates duplicate changelog entries.
 
 ## Feature Development Workflow
 
@@ -126,22 +78,16 @@ When implementing a feature from [GitHub Issues](https://github.com/cacack/my-fa
 ```bash
 git checkout main
 git pull origin main
-git checkout -b NNN-feature-name
+git checkout -b feat/NNN-feature-name
 ```
 
 ### 2. Implement and Test
 
 ```bash
-# Develop the feature
-go build ./...
-go test ./...
-
-# Check coverage
-make check-coverage
-
-# Format and lint
-go fmt ./...
-go vet ./...
+make build              # Build
+make test               # Run all tests
+make check-coverage     # Verify coverage thresholds
+make lint               # Lint
 ```
 
 ### 3. Commit and Push
@@ -149,7 +95,7 @@ go vet ./...
 ```bash
 git add .
 git commit -m "feat(scope): description"
-git push -u origin NNN-feature-name
+git push -u origin feat/NNN-feature-name
 ```
 
 ### 4. Create Pull Request
@@ -157,6 +103,8 @@ git push -u origin NNN-feature-name
 ```bash
 gh pr create
 ```
+
+**PR titles** use descriptive format (NOT conventional commits) to avoid duplicate changelog entries. See [CONVENTIONS.md](./docs/CONVENTIONS.md#commit-messages) for details.
 
 ## Architecture Decision Records
 
