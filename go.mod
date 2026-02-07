@@ -1,6 +1,6 @@
 module github.com/cacack/my-family
 
-go 1.25
+go 1.25.7
 
 require (
 	github.com/cacack/gedcom-go v1.1.0
