@@ -27,6 +27,7 @@
 			showOnboarding = stats.persons === 0 && !onboardingState.completed;
 		} catch (e) {
 			console.error('Failed to load dashboard:', e);
+			showOnboarding = !onboardingState.completed;
 		} finally {
 			loading = false;
 		}

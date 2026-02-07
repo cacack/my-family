@@ -15,12 +15,7 @@
 	let currentStep: WizardStep = $state('welcome');
 	let completionData = $state<{ personCount?: number; personId?: string; personName?: string }>({});
 
-	function handleSkip() {
-		setOnboardingCompleted(true);
-		onComplete();
-	}
-
-	function handleFinish() {
+	function finishOnboarding() {
 		setOnboardingCompleted(true);
 		onComplete();
 	}
@@ -32,7 +27,7 @@
 			<WelcomeStep
 				onSelectImport={() => { currentStep = 'import'; }}
 				onSelectCreate={() => { currentStep = 'create-person'; }}
-				onSkip={handleSkip}
+				onSkip={finishOnboarding}
 			/>
 		{:else if currentStep === 'import'}
 			<ImportStep
@@ -53,7 +48,7 @@
 		{:else if currentStep === 'completion'}
 			<CompletionStep
 				{completionData}
-				onFinish={handleFinish}
+				onFinish={finishOnboarding}
 			/>
 		{/if}
 	</div>

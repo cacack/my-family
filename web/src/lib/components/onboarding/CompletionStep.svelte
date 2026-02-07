@@ -17,7 +17,7 @@
 
 	<h2>You're All Set!</h2>
 
-	{#if completionData.personCount}
+	{#if completionData.personCount != null}
 		<p class="summary">Successfully imported {completionData.personCount} {completionData.personCount === 1 ? 'person' : 'people'} into your family tree.</p>
 	{:else if completionData.personName}
 		<p class="summary">Successfully created {completionData.personName} as your first person.</p>

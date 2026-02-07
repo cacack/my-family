@@ -17,9 +17,15 @@
 	function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
 		if (input.files && input.files.length > 0) {
-			file = input.files[0];
-			result = null;
-			error = null;
+			const selected = input.files[0];
+			const name = selected.name.toLowerCase();
+			if (name.endsWith('.ged') || name.endsWith('.gedcom')) {
+				file = selected;
+				result = null;
+				error = null;
+			} else {
+				error = 'Please select a GEDCOM file (.ged or .gedcom)';
+			}
 		}
 	}
 

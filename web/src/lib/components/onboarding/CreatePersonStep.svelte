@@ -77,7 +77,7 @@
 			<label>
 				Gender
 				<select bind:value={formData.gender}>
-					<option value={undefined}>Unknown</option>
+					<option value="">Unknown</option>
 					<option value="male">Male</option>
 					<option value="female">Female</option>
 				</select>
