@@ -2,15 +2,18 @@
 
 Code patterns, standards, and practices for my-family development.
 
+This file is the **canonical source** for conventions. CLAUDE.md and CONTRIBUTING.md reference this file rather than duplicating details.
+
 ## Branch Naming
 
 ```
-NNN-feature-name
+feat/NNN-feature-name    # Feature branches (NNN = GitHub issue number)
+fix/NNN-bug-description  # Bug fix branches
 ```
 
-- `NNN` = Three-digit feature number from backlog (e.g., `001`, `002`)
-- `feature-name` = Kebab-case short description
-- Examples: `001-genealogy-mvp`, `002-media-management`, `003-source-citations`
+- `NNN` = GitHub issue number
+- Use kebab-case short description
+- Examples: `feat/91-name-variants-ui`, `fix/142-date-parsing`
 
 ## Commit Messages
 
@@ -24,20 +27,28 @@ type(scope): description
 [optional footer]
 ```
 
-**Types:**
-- `feat` - New feature
-- `fix` - Bug fix
-- `docs` - Documentation only
-- `refactor` - Code change that neither fixes a bug nor adds a feature
-- `test` - Adding or correcting tests
-- `chore` - Build process, dependencies, tooling
+**Types** (only these 7 are used):
+
+| Type | Use for | In Changelog? |
+|------|---------|---------------|
+| `feat` | New user-facing features | Yes |
+| `fix` | User-facing bug fixes (not build/tooling) | Yes |
+| `perf` | Performance improvements | Yes |
+| `docs` | Documentation only | No |
+| `refactor` | Code restructuring (no behavior change) | No |
+| `ci` | CI/CD, dev infrastructure, tooling | No |
+| `chore` | Maintenance, formatting, deps, build fixes | No |
+
+**Note**: `feat` and `fix` are reserved for user-facing changes.
+
+**PR titles** use descriptive format (NOT conventional commits) to avoid duplicate changelog entries with release-please.
 
 **Examples:**
 ```
 feat(gedcom): add support for GEDCOM 7.0 media cropping
 fix(api): handle empty surname in person creation
-refactor(ent): extract date parsing to shared utility
-test(import): add integration test for large GEDCOM files
+refactor(query): extract date parsing to shared utility
+chore(deps): bump svelte from 5.48.3 to 5.49.1
 ```
 
 ## Go Code Style
@@ -83,12 +94,19 @@ func NewPersonService() *PersonService {}
 
 ```
 internal/
-├── api/          # HTTP handlers, OpenAPI-generated code
-├── ent/          # Ent schema and generated code
-│   └── schema/   # Entity definitions
-├── gedcom/       # GEDCOM processing (uses gedcom-go library)
-├── service/      # Business logic layer
-└── repository/   # Data access (if separating from Ent)
+├── api/            # HTTP handlers, OpenAPI spec, generated server code
+├── command/        # Command handlers (CQRS write side)
+├── config/         # Configuration
+├── domain/         # Pure domain types (Person, Family, events, enums)
+├── exporter/       # JSON/CSV export
+├── gedcom/         # GEDCOM import/export (uses gedcom-go library)
+├── media/          # Thumbnail generation
+├── query/          # Query services (CQRS read side)
+├── repository/     # Interfaces (EventStore, ReadModelStore) + shared code
+│   ├── memory/     # In-memory implementation (tests)
+│   ├── postgres/   # PostgreSQL implementation
+│   └── sqlite/     # SQLite implementation
+└── web/            # Embedded frontend assets
 ```
 
 ## API Design
@@ -127,6 +145,13 @@ internal/
 }
 ```
 
+### OpenAPI Spec
+
+- `internal/api/openapi.yaml` is the source of truth for the API contract
+- Go server code generated via `make generate-api` (oapi-codegen)
+- TypeScript types generated via `make generate-types`
+- Never hand-edit `internal/api/generated.go` or `web/src/lib/api/types.generated.ts`
+
 ## Frontend (Svelte)
 
 ### Component Organization
@@ -135,10 +160,9 @@ internal/
 web/src/
 ├── lib/
 │   ├── components/    # Reusable UI components
-│   │   ├── ui/        # Generic (Button, Input, Modal)
-│   │   └── genealogy/ # Domain-specific (PersonCard, FamilyTree)
-│   ├── stores/        # Svelte stores for state
-│   ├── api/           # API client functions
+│   │   ├── export/    # Export-related components
+│   │   └── ...        # Domain components (PersonCard, FamilyCard, etc.)
+│   ├── api/           # API client + generated types
 │   └── utils/         # Helper functions
 ├── routes/            # SvelteKit routes (pages)
 └── app.css            # Global styles (Tailwind)
@@ -147,14 +171,12 @@ web/src/
 ### Naming
 
 - Components: PascalCase (`PersonCard.svelte`)
-- Stores: camelCase with `$` prefix convention (`$personStore`)
 - Utilities: camelCase (`formatDate.ts`)
 
 ### State Management
 
 - Use Svelte stores for shared state
 - Keep component state local when possible
-- API state: consider using TanStack Query or similar
 
 ## Testing
 
@@ -193,23 +215,20 @@ func TestParseDate(t *testing.T) {
 
 ## Database
 
-### Ent Schema Conventions
+### Event Store + Read Model Pattern
 
-```go
-// Fields: use descriptive names, add comments
-field.String("given_name").
-    Comment("First/given name(s)").
-    Optional(),
+This project does **not** use an ORM. Data access follows the event sourcing pattern:
 
-// Edges: name from the perspective of the entity
-edge.To("children", Person.Type),
-edge.From("parents", Person.Type).Ref("children"),
-```
+- **EventStore** interface (`repository/eventstore.go`): Append-only event storage with optimistic concurrency
+- **ReadModelStore** interface (`repository/readmodel.go`): Denormalized read models projected from events
+- **Projections** (`repository/projection.go`): Synchronous handlers that update read models when events are appended
+
+Both PostgreSQL and SQLite implement these interfaces identically. The `memory/` implementation is for tests.
 
 ### Migrations
 
-- Ent auto-migration for development
-- Versioned migrations for production (Atlas or manual)
+- Schema DDL is embedded in each database implementation
+- Both implementations must pass the same shared test suite (invariant DB-001)
 
 ## Documentation
 
@@ -219,19 +238,13 @@ edge.From("parents", Person.Type).Ref("children"),
 - All exported functions need doc comments
 - Use `// TODO:` for future work (with context)
 
-### API Documentation
-
-- OpenAPI spec is the source of truth
-- Keep `openapi.yaml` in sync with implementation
-- Generate handlers with oapi-codegen
-
 ## Git Workflow
 
 ### Feature Development
 
-1. Branch from `main`: `git checkout -b NNN-feature-name`
+1. Branch from `main`: `git checkout -b feat/NNN-feature-name`
 2. Develop with atomic commits
-3. Ensure tests pass: `go test ./...`
+3. Ensure tests pass: `make test`
 4. Create PR when ready
 5. Squash merge to main
 
@@ -240,8 +253,9 @@ edge.From("parents", Person.Type).Ref("children"),
 - [ ] Tests added/updated
 - [ ] Documentation updated if needed
 - [ ] No commented-out code
-- [ ] Linter passes (`go vet ./...`)
-- [ ] Build succeeds (`go build ./...`)
+- [ ] Linter passes (`make lint`)
+- [ ] Build succeeds (`make build`)
+- [ ] Coverage meets thresholds (`make check-coverage`)
 
 ---
 

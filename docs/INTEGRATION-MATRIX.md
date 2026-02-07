@@ -161,9 +161,13 @@ Current implementation status for tracking completeness.
 | Source | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Repository | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Partial |
+| Note | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
+| Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
+| Association | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
+| LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
 | LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
 | Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
+| Repository | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Partial |
 | Snapshot | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | N/A | Partial |
 
 Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing
