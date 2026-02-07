@@ -1917,7 +1917,6 @@ func TestImportGedcom_RepositoryWithFullDetails(t *testing.T) {
 	}
 }
 
-
 // GEDCOM with multiple name variants for testing version tracking
 const gedcomWithMultipleNames = `0 HEAD
 1 SOUR TestApp
