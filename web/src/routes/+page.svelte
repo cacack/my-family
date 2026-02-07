@@ -2,11 +2,14 @@
 	import { api, type Person, type FamilyDetail } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
+	import { onboardingState } from '$lib/stores/onboardingSettings.svelte';
+	import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
 
 	let recentPersons: Person[] = $state([]);
 	let recentFamilies: FamilyDetail[] = $state([]);
 	let stats = $state({ persons: 0, families: 0 });
 	let loading = $state(true);
+	let showOnboarding = $state(false);
 
 	async function loadDashboard() {
 		loading = true;
@@ -21,6 +24,7 @@
 				persons: personsRes.total,
 				families: familiesRes.total
 			};
+			showOnboarding = stats.persons === 0 && !onboardingState.completed;
 		} catch (e) {
 			console.error('Failed to load dashboard:', e);
 		} finally {
@@ -37,6 +41,9 @@
 	<title>My Family | Genealogy</title>
 </svelte:head>
 
+{#if showOnboarding}
+	<OnboardingWizard onComplete={() => { showOnboarding = false; loadDashboard(); }} />
+{:else}
 <div class="dashboard">
 	<section class="hero">
 		<h1>My Family</h1>
@@ -124,6 +131,7 @@
 		</section>
 	{/if}
 </div>
+{/if}
 
 <style>
 	.dashboard {
