@@ -873,3 +873,517 @@ func TestReadModelStore_SearchPersons_SpecialCharacters(t *testing.T) {
 		t.Logf("Query %q returned %d results", query, len(results))
 	}
 }
+
+func TestReadModelStore_ListCitations(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a source first (citations reference sources)
+	sourceID := uuid.New()
+	source := &repository.SourceReadModel{
+		ID:         sourceID,
+		SourceType: "book",
+		Title:      "Test Source",
+		Version:    1,
+		UpdatedAt:  time.Now(),
+	}
+	if err := store.SaveSource(ctx, source); err != nil {
+		t.Fatalf("save source: %v", err)
+	}
+
+	// Create multiple citations
+	citations := []struct {
+		sourceTitle string
+		factType    domain.FactType
+	}{
+		{"Test Source", "person_birth"},
+		{"Test Source", "person_death"},
+		{"Test Source", "person_birth"},
+	}
+
+	for _, c := range citations {
+		cit := &repository.CitationReadModel{
+			ID:          uuid.New(),
+			SourceID:    sourceID,
+			SourceTitle: c.sourceTitle,
+			FactType:    c.factType,
+			FactOwnerID: uuid.New(),
+			Version:     1,
+			CreatedAt:   time.Now(),
+		}
+		if err := store.SaveCitation(ctx, cit); err != nil {
+			t.Fatalf("save citation: %v", err)
+		}
+	}
+
+	// List all citations
+	opts := repository.DefaultListOptions()
+	opts.Limit = 10
+	results, total, err := store.ListCitations(ctx, opts)
+	if err != nil {
+		t.Fatalf("list citations: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("expected total 3, got %d", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("expected 3 results, got %d", len(results))
+	}
+
+	// Verify sort order: source_title ASC, fact_type ASC
+	// All same source_title, so should be sorted by fact_type: person_birth, person_birth, person_death
+	if len(results) >= 3 {
+		if results[0].FactType != "person_birth" {
+			t.Errorf("expected first fact_type person_birth, got %s", results[0].FactType)
+		}
+		if results[2].FactType != "person_death" {
+			t.Errorf("expected last fact_type person_death, got %s", results[2].FactType)
+		}
+	}
+
+	// Test pagination
+	opts.Limit = 2
+	opts.Offset = 1
+	results, total, err = store.ListCitations(ctx, opts)
+	if err != nil {
+		t.Fatalf("list citations with offset: %v", err)
+	}
+
+	if total != 3 {
+		t.Errorf("expected total 3, got %d", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+	}
+}
+
+func TestReadModelStore_EventCRUD(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	eventID := uuid.New()
+	personID := uuid.New()
+	birthDate := time.Date(1990, 1, 15, 0, 0, 0, 0, time.UTC)
+	lat := "40.7128"
+	long := "-74.0060"
+
+	event := &repository.EventReadModel{
+		ID:        eventID,
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  "person_birth",
+		DateRaw:   "15 JAN 1990",
+		DateSort:  &birthDate,
+		Place:     "New York, NY",
+		PlaceLat:  &lat,
+		PlaceLong: &long,
+		Address: &domain.Address{
+			City:    "New York",
+			State:   "NY",
+			Country: "USA",
+		},
+		Description:    "Born at hospital",
+		ResearchStatus: "certain",
+		Version:        1,
+		CreatedAt:      time.Now(),
+	}
+
+	// Save
+	err := store.SaveEvent(ctx, event)
+	if err != nil {
+		t.Fatalf("save event: %v", err)
+	}
+
+	// Get
+	got, err := store.GetEvent(ctx, eventID)
+	if err != nil {
+		t.Fatalf("get event: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected event, got nil")
+	}
+	if got.ID != eventID {
+		t.Errorf("expected ID %s, got %s", eventID, got.ID)
+	}
+	if got.OwnerType != "person" {
+		t.Errorf("expected owner_type person, got %s", got.OwnerType)
+	}
+	if got.OwnerID != personID {
+		t.Errorf("expected owner_id %s, got %s", personID, got.OwnerID)
+	}
+	if got.FactType != "person_birth" {
+		t.Errorf("expected fact_type person_birth, got %s", got.FactType)
+	}
+	if got.DateRaw != "15 JAN 1990" {
+		t.Errorf("expected date_raw '15 JAN 1990', got '%s'", got.DateRaw)
+	}
+	if got.DateSort == nil {
+		t.Error("expected date_sort to be set")
+	}
+	if got.Place != "New York, NY" {
+		t.Errorf("expected place 'New York, NY', got '%s'", got.Place)
+	}
+	if got.PlaceLat == nil || *got.PlaceLat != "40.7128" {
+		t.Error("expected place_lat to be 40.7128")
+	}
+	if got.PlaceLong == nil || *got.PlaceLong != "-74.0060" {
+		t.Error("expected place_long to be -74.0060")
+	}
+	if got.Address == nil || got.Address.City != "New York" {
+		t.Error("expected address with city New York")
+	}
+	if got.Description != "Born at hospital" {
+		t.Errorf("expected description 'Born at hospital', got '%s'", got.Description)
+	}
+	if got.ResearchStatus != "certain" {
+		t.Errorf("expected research_status certain, got %s", got.ResearchStatus)
+	}
+
+	// Update
+	event.Description = "Updated description"
+	event.Version = 2
+	err = store.SaveEvent(ctx, event)
+	if err != nil {
+		t.Fatalf("update event: %v", err)
+	}
+
+	got, err = store.GetEvent(ctx, eventID)
+	if err != nil {
+		t.Fatalf("get updated event: %v", err)
+	}
+	if got.Description != "Updated description" {
+		t.Errorf("expected updated description, got '%s'", got.Description)
+	}
+	if got.Version != 2 {
+		t.Errorf("expected version 2, got %d", got.Version)
+	}
+
+	// Delete
+	err = store.DeleteEvent(ctx, eventID)
+	if err != nil {
+		t.Fatalf("delete event: %v", err)
+	}
+
+	got, err = store.GetEvent(ctx, eventID)
+	if err != nil {
+		t.Fatalf("get deleted event: %v", err)
+	}
+	if got != nil {
+		t.Error("expected nil after delete")
+	}
+}
+
+func TestReadModelStore_ListEvents(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	personID := uuid.New()
+	familyID := uuid.New()
+
+	date1 := time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC)
+	date2 := time.Date(2020, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	events := []struct {
+		ownerType string
+		ownerID   uuid.UUID
+		factType  domain.FactType
+		dateSort  *time.Time
+	}{
+		{"person", personID, "person_birth", &date1},
+		{"person", personID, "person_death", &date2},
+		{"family", familyID, "family_marriage", &date2},
+		{"person", personID, "person_birth", nil}, // No date
+	}
+
+	for _, e := range events {
+		event := &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: e.ownerType,
+			OwnerID:   e.ownerID,
+			FactType:  e.factType,
+			DateSort:  e.dateSort,
+			Version:   1,
+			CreatedAt: time.Now(),
+		}
+		if err := store.SaveEvent(ctx, event); err != nil {
+			t.Fatalf("save event: %v", err)
+		}
+	}
+
+	// List all events
+	opts := repository.DefaultListOptions()
+	opts.Limit = 10
+	results, total, err := store.ListEvents(ctx, opts)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+
+	if total != 4 {
+		t.Errorf("expected total 4, got %d", total)
+	}
+	if len(results) != 4 {
+		t.Errorf("expected 4 results, got %d", len(results))
+	}
+
+	// Test pagination
+	opts.Limit = 2
+	opts.Offset = 0
+	results, total, err = store.ListEvents(ctx, opts)
+	if err != nil {
+		t.Fatalf("list events paginated: %v", err)
+	}
+	if total != 4 {
+		t.Errorf("expected total 4, got %d", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+	}
+
+	// ListEventsForPerson
+	personEvents, err := store.ListEventsForPerson(ctx, personID)
+	if err != nil {
+		t.Fatalf("list events for person: %v", err)
+	}
+	if len(personEvents) != 3 {
+		t.Errorf("expected 3 person events, got %d", len(personEvents))
+	}
+
+	// ListEventsForFamily
+	familyEvents, err := store.ListEventsForFamily(ctx, familyID)
+	if err != nil {
+		t.Fatalf("list events for family: %v", err)
+	}
+	if len(familyEvents) != 1 {
+		t.Errorf("expected 1 family event, got %d", len(familyEvents))
+	}
+	if len(familyEvents) > 0 && familyEvents[0].FactType != "family_marriage" {
+		t.Errorf("expected family_marriage, got %s", familyEvents[0].FactType)
+	}
+}
+
+func TestReadModelStore_AttributeCRUD(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a person first (attributes reference persons)
+	personID := uuid.New()
+	person := &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Version:   1,
+		UpdatedAt: time.Now(),
+	}
+	if err := store.SavePerson(ctx, person); err != nil {
+		t.Fatalf("save person: %v", err)
+	}
+
+	attrID := uuid.New()
+	attrDate := time.Date(1990, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	attr := &repository.AttributeReadModel{
+		ID:        attrID,
+		PersonID:  personID,
+		FactType:  "person_occupation",
+		Value:     "Software Engineer",
+		DateRaw:   "1990",
+		DateSort:  &attrDate,
+		Place:     "San Francisco, CA",
+		Version:   1,
+		CreatedAt: time.Now(),
+	}
+
+	// Save
+	err := store.SaveAttribute(ctx, attr)
+	if err != nil {
+		t.Fatalf("save attribute: %v", err)
+	}
+
+	// Get
+	got, err := store.GetAttribute(ctx, attrID)
+	if err != nil {
+		t.Fatalf("get attribute: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected attribute, got nil")
+	}
+	if got.ID != attrID {
+		t.Errorf("expected ID %s, got %s", attrID, got.ID)
+	}
+	if got.PersonID != personID {
+		t.Errorf("expected person_id %s, got %s", personID, got.PersonID)
+	}
+	if got.FactType != "person_occupation" {
+		t.Errorf("expected fact_type person_occupation, got %s", got.FactType)
+	}
+	if got.Value != "Software Engineer" {
+		t.Errorf("expected value 'Software Engineer', got '%s'", got.Value)
+	}
+	if got.DateRaw != "1990" {
+		t.Errorf("expected date_raw '1990', got '%s'", got.DateRaw)
+	}
+	if got.DateSort == nil {
+		t.Error("expected date_sort to be set")
+	}
+	if got.Place != "San Francisco, CA" {
+		t.Errorf("expected place 'San Francisco, CA', got '%s'", got.Place)
+	}
+
+	// Update
+	attr.Value = "Senior Engineer"
+	attr.Version = 2
+	err = store.SaveAttribute(ctx, attr)
+	if err != nil {
+		t.Fatalf("update attribute: %v", err)
+	}
+
+	got, err = store.GetAttribute(ctx, attrID)
+	if err != nil {
+		t.Fatalf("get updated attribute: %v", err)
+	}
+	if got.Value != "Senior Engineer" {
+		t.Errorf("expected updated value, got '%s'", got.Value)
+	}
+	if got.Version != 2 {
+		t.Errorf("expected version 2, got %d", got.Version)
+	}
+
+	// Delete
+	err = store.DeleteAttribute(ctx, attrID)
+	if err != nil {
+		t.Fatalf("delete attribute: %v", err)
+	}
+
+	got, err = store.GetAttribute(ctx, attrID)
+	if err != nil {
+		t.Fatalf("get deleted attribute: %v", err)
+	}
+	if got != nil {
+		t.Error("expected nil after delete")
+	}
+}
+
+func TestReadModelStore_ListAttributes(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a person first
+	personID1 := uuid.New()
+	person1 := &repository.PersonReadModel{
+		ID:        personID1,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Version:   1,
+		UpdatedAt: time.Now(),
+	}
+	if err := store.SavePerson(ctx, person1); err != nil {
+		t.Fatalf("save person: %v", err)
+	}
+
+	personID2 := uuid.New()
+	person2 := &repository.PersonReadModel{
+		ID:        personID2,
+		GivenName: "Jane",
+		Surname:   "Doe",
+		FullName:  "Jane Doe",
+		Version:   1,
+		UpdatedAt: time.Now(),
+	}
+	if err := store.SavePerson(ctx, person2); err != nil {
+		t.Fatalf("save person: %v", err)
+	}
+
+	// Create attributes for both persons
+	attributes := []struct {
+		personID uuid.UUID
+		factType domain.FactType
+		value    string
+	}{
+		{personID1, "person_occupation", "Engineer"},
+		{personID1, "person_occupation", "Architect"},
+		{personID1, "person_religion", "None"},
+		{personID2, "person_occupation", "Doctor"},
+	}
+
+	for _, a := range attributes {
+		attr := &repository.AttributeReadModel{
+			ID:        uuid.New(),
+			PersonID:  a.personID,
+			FactType:  a.factType,
+			Value:     a.value,
+			Version:   1,
+			CreatedAt: time.Now(),
+		}
+		if err := store.SaveAttribute(ctx, attr); err != nil {
+			t.Fatalf("save attribute: %v", err)
+		}
+	}
+
+	// List all attributes
+	opts := repository.DefaultListOptions()
+	opts.Limit = 10
+	results, total, err := store.ListAttributes(ctx, opts)
+	if err != nil {
+		t.Fatalf("list attributes: %v", err)
+	}
+
+	if total != 4 {
+		t.Errorf("expected total 4, got %d", total)
+	}
+	if len(results) != 4 {
+		t.Errorf("expected 4 results, got %d", len(results))
+	}
+
+	// Verify sort order: fact_type ASC, value ASC
+	// person_occupation (Architect, Doctor, Engineer), person_religion (None)
+	if len(results) >= 4 {
+		if results[0].FactType != "person_occupation" || results[0].Value != "Architect" {
+			t.Errorf("expected first: person_occupation/Architect, got %s/%s", results[0].FactType, results[0].Value)
+		}
+		if results[3].FactType != "person_religion" {
+			t.Errorf("expected last fact_type person_religion, got %s", results[3].FactType)
+		}
+	}
+
+	// Test pagination
+	opts.Limit = 2
+	opts.Offset = 1
+	results, total, err = store.ListAttributes(ctx, opts)
+	if err != nil {
+		t.Fatalf("list attributes with offset: %v", err)
+	}
+	if total != 4 {
+		t.Errorf("expected total 4, got %d", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(results))
+	}
+
+	// ListAttributesForPerson
+	person1Attrs, err := store.ListAttributesForPerson(ctx, personID1)
+	if err != nil {
+		t.Fatalf("list attributes for person: %v", err)
+	}
+	if len(person1Attrs) != 3 {
+		t.Errorf("expected 3 attributes for person1, got %d", len(person1Attrs))
+	}
+
+	person2Attrs, err := store.ListAttributesForPerson(ctx, personID2)
+	if err != nil {
+		t.Fatalf("list attributes for person2: %v", err)
+	}
+	if len(person2Attrs) != 1 {
+		t.Errorf("expected 1 attribute for person2, got %d", len(person2Attrs))
+	}
+}
