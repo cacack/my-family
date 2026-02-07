@@ -394,7 +394,6 @@ func DefaultListOptions() ListOptions {
 	}
 }
 
-
 // ListAll fetches all records using pagination to avoid truncation from hard-coded limits.
 func ListAll[T any](ctx context.Context, pageSize int, listFn func(ctx context.Context, opts ListOptions) ([]T, int, error)) ([]T, error) {
 	var all []T
