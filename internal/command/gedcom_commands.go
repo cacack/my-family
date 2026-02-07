@@ -266,6 +266,8 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	}
 
 	// Emit NameAdded events for all names from GEDCOM
+	// Track version to keep read model in sync with event stream
+	currentVersion := int64(1) // PersonCreated was version 1
 	for _, nameData := range p.Names {
 		personName := domain.NewPersonName(person.ID, nameData.GivenName, nameData.Surname)
 		personName.NamePrefix = nameData.NamePrefix
@@ -277,14 +279,15 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 
 		nameEvent := domain.NewNameAdded(personName)
 
-		// Append name event to person stream
-		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, -1)
+		// Append name event to person stream with version tracking
+		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, currentVersion)
 		if err != nil {
 			return err
 		}
+		currentVersion++
 
-		// Project to read model
-		if err := h.projector.Apply(ctx, nameEvent); err != nil {
+		// Project to read model with correct version
+		if err := h.projector.Project(ctx, nameEvent, currentVersion); err != nil {
 			return err
 		}
 	}

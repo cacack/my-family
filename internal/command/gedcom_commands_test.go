@@ -1916,3 +1916,134 @@ func TestImportGedcom_RepositoryWithFullDetails(t *testing.T) {
 		t.Errorf("RepositoriesImported = %d, want 1", result.RepositoriesImported)
 	}
 }
+
+
+// GEDCOM with multiple name variants for testing version tracking
+const gedcomWithMultipleNames = `0 HEAD
+1 SOUR TestApp
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Maria /Schmidt/
+2 GIVN Maria
+2 SURN Schmidt
+2 TYPE birth
+1 NAME Mary /Smith/
+2 GIVN Mary
+2 SURN Smith
+2 TYPE married
+1 SEX F
+1 BIRT
+2 DATE 1 JAN 1850
+0 TRLR
+`
+
+// TestImportGedcom_ThenAddName verifies that adding a name to an imported
+// person succeeds. This is a regression test for issue #228 where the read
+// model version was out of sync with the event stream, causing 409 conflicts.
+func TestImportGedcom_ThenAddName(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	reader := strings.NewReader(gedcomWithMultipleNames)
+	input := command.ImportGedcomInput{
+		Filename: "multiname.ged",
+		FileSize: int64(len(gedcomWithMultipleNames)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	if result.PersonsImported != 1 {
+		t.Fatalf("PersonsImported = %d, want 1", result.PersonsImported)
+	}
+
+	// Get the imported person to find their ID
+	persons, _, err := readStore.ListPersons(ctx, repository.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListPersons failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	personID := persons[0].ID
+
+	// This should succeed - previously it would fail with 409 Conflict
+	// because the read model version was stuck at 1 while the event
+	// stream was at version 3 (PersonCreated + 2 NameAdded events)
+	addResult, err := handler.AddName(ctx, command.AddNameInput{
+		PersonID:  personID,
+		GivenName: "Marie",
+		Surname:   "Schmidt",
+		NameType:  "aka",
+	})
+	if err != nil {
+		t.Fatalf("AddName after GEDCOM import failed: %v", err)
+	}
+
+	if addResult.PersonID != personID {
+		t.Errorf("AddName result PersonID = %v, want %v", addResult.PersonID, personID)
+	}
+}
+
+// TestImportGedcom_PersonVersionMatchesStreamVersion verifies that after
+// importing a person with multiple names, the read model version matches
+// the event stream version exactly.
+func TestImportGedcom_PersonVersionMatchesStreamVersion(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	reader := strings.NewReader(gedcomWithMultipleNames)
+	input := command.ImportGedcomInput{
+		Filename: "multiname.ged",
+		FileSize: int64(len(gedcomWithMultipleNames)),
+		Reader:   reader,
+	}
+
+	result, err := handler.ImportGedcom(ctx, input)
+	if err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	if result.PersonsImported != 1 {
+		t.Fatalf("PersonsImported = %d, want 1", result.PersonsImported)
+	}
+
+	// Get the imported person
+	persons, _, err := readStore.ListPersons(ctx, repository.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListPersons failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	person := persons[0]
+
+	// Get the event stream version
+	streamVersion, err := eventStore.GetStreamVersion(ctx, person.ID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+
+	// Person has 1 PersonCreated + 2 NameAdded = 3 events
+	expectedVersion := int64(3)
+	if streamVersion != expectedVersion {
+		t.Errorf("stream version = %d, want %d", streamVersion, expectedVersion)
+	}
+
+	// Read model version should match stream version
+	if person.Version != streamVersion {
+		t.Errorf("read model version = %d, stream version = %d; they should match",
+			person.Version, streamVersion)
+	}
+}
