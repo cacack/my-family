@@ -195,7 +195,17 @@
 		} catch (e) {
 			if (isConflictError(e)) {
 				conflictError = true;
-				retryAction = () => deleteCitation(citation);
+				retryAction = async () => {
+					const result = await api.getPersonCitations(personId);
+					const fresh = result.citations.find((c) => c.id === citation.id);
+					if (!fresh) {
+						deleteConfirm = null;
+						conflictError = false;
+						citations = result.citations;
+						return;
+					}
+					await deleteCitation(fresh);
+				};
 			} else {
 				error = (e as { message?: string }).message || 'Failed to delete citation';
 			}

@@ -81,7 +81,8 @@
 				retryAction = async () => {
 					deletingId = media.id;
 					try {
-						await api.deleteMedia(media.id, media.version);
+						const fresh = await api.getMedia(media.id);
+						await api.deleteMedia(media.id, fresh.version);
 						mediaItems = mediaItems.filter((m) => m.id !== media.id);
 						conflictError = false;
 					} finally {
@@ -106,13 +107,15 @@
 <div class="media-gallery">
 	<MediaUpload {personId} onUpload={handleUpload} />
 
+	{#if conflictError}
+		<ConflictError onRetry={handleRetry} {retrying} />
+	{/if}
+
 	{#if loading}
 		<div class="loading-state" role="status" aria-live="polite">
 			<span class="spinner" aria-hidden="true"></span>
 			Loading media...
 		</div>
-	{:else if conflictError}
-		<ConflictError onRetry={handleRetry} {retrying} />
 	{:else if error}
 		<div class="error-state" role="alert">
 			<p>{error}</p>

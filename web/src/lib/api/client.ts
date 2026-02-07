@@ -1167,7 +1167,7 @@ class ApiClient {
 
 export const api = new ApiClient();
 
-/** Check if an error is a version conflict that failed auto-retry */
+/** Check if an error is a version conflict (409). For endpoints using requestWithConflictRetry, auto-retry has already been attempted. */
 export function isConflictError(error: unknown): boolean {
 	const apiError = error as ApiError;
 	return (
