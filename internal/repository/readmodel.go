@@ -393,3 +393,23 @@ func DefaultListOptions() ListOptions {
 		Order:  "asc",
 	}
 }
+
+
+// ListAll fetches all records using pagination to avoid truncation from hard-coded limits.
+func ListAll[T any](ctx context.Context, pageSize int, listFn func(ctx context.Context, opts ListOptions) ([]T, int, error)) ([]T, error) {
+	var all []T
+	for offset := 0; ; offset += pageSize {
+		page, total, err := listFn(ctx, ListOptions{Limit: pageSize, Offset: offset})
+		if err != nil {
+			return nil, err
+		}
+		if offset == 0 && total > 0 {
+			all = make([]T, 0, total)
+		}
+		all = append(all, page...)
+		if len(all) >= total || len(page) < pageSize {
+			break
+		}
+	}
+	return all, nil
+}
