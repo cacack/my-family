@@ -3,6 +3,7 @@ package media
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -27,7 +28,8 @@ func makePNG(w, h int) []byte {
 
 // makeGIF creates a minimal valid GIF image.
 func makeGIF(w, h int) []byte {
-	img := image.NewPaletted(image.Rect(0, 0, w, h), nil)
+	palette := []color.Color{color.Black, color.White}
+	img := image.NewPaletted(image.Rect(0, 0, w, h), palette)
 	var buf bytes.Buffer
 	_ = gif.Encode(&buf, img, nil)
 	return buf.Bytes()

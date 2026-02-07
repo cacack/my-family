@@ -77,11 +77,16 @@ jobs:
         go-version: '1.25'
 
     - name: Set up Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6
       with:
         node-version: '22'
         cache: 'npm'
         cache-dependency-path: web/package-lock.json
+
+    - name: Create placeholder for embedded files
+      run: |
+        mkdir -p internal/web/dist
+        echo "placeholder" > internal/web/dist/.gitkeep
 
     - name: Install frontend dependencies
       run: cd web && npm ci
@@ -113,7 +118,7 @@ jobs:
 
     - name: Trivy filesystem scan
       uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # 0.33.1
-      continue-on-error: true
+      continue-on-error: true # Findings go to SARIF/Security tab; don't fail the job
       with:
         scan-type: 'fs'
         scan-ref: '.'
