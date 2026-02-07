@@ -33,6 +33,7 @@
 			<ImportStep
 				onComplete={(data) => {
 					completionData = { personCount: data.personCount };
+					setOnboardingCompleted(true);
 					currentStep = 'completion';
 				}}
 				onBack={() => { currentStep = 'welcome'; }}
@@ -41,6 +42,7 @@
 			<CreatePersonStep
 				onComplete={(data) => {
 					completionData = { personId: data.personId, personName: data.personName };
+					setOnboardingCompleted(true);
 					currentStep = 'completion';
 				}}
 				onBack={() => { currentStep = 'welcome'; }}

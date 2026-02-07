@@ -39,7 +39,7 @@
 				result = null;
 				error = null;
 			} else {
-				error = 'Please select a GEDCOM file (.ged)';
+				error = 'Please select a GEDCOM file (.ged or .gedcom)';
 			}
 		}
 	}

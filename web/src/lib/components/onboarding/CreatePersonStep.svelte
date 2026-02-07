@@ -14,7 +14,7 @@
 	let formData = $state<PersonCreate>({
 		given_name: '',
 		surname: '',
-		gender: '',
+		gender: undefined,
 		birth_date: '',
 		birth_place: ''
 	});
@@ -77,7 +77,7 @@
 			<label>
 				Gender
 				<select bind:value={formData.gender}>
-					<option value="">Unknown</option>
+					<option value="unknown">Unknown</option>
 					<option value="male">Male</option>
 					<option value="female">Female</option>
 				</select>
