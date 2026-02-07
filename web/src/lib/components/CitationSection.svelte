@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { api, type Citation, type Source } from '$lib/api/client';
+	import { api, isConflictError, type Citation, type Source } from '$lib/api/client';
+	import ConflictError from './ConflictError.svelte';
 
 	interface Props {
 		personId: string;
@@ -15,6 +16,11 @@
 	let showAddForm = $state(false);
 	let saving = $state(false);
 	let deleteConfirm: string | null = $state(null);
+
+	// Conflict retry state
+	let conflictError = $state(false);
+	let retryAction: (() => Promise<void>) | null = $state(null);
+	let retrying = $state(false);
 
 	// Source search state
 	let sourceSearchQuery = $state('');
@@ -102,6 +108,24 @@
 		}, 200);
 	}
 
+	async function handleRetry() {
+		if (!retryAction) return;
+		retrying = true;
+		conflictError = false;
+		error = null;
+		try {
+			await retryAction();
+		} catch (e) {
+			if (isConflictError(e)) {
+				conflictError = true;
+			} else {
+				error = (e as { message?: string }).message || 'Operation failed';
+			}
+		} finally {
+			retrying = false;
+		}
+	}
+
 	function openAddForm() {
 		newCitation = {
 			source_id: '',
@@ -148,9 +172,15 @@
 				analysis: newCitation.analysis.trim() || undefined
 			});
 			showAddForm = false;
+			conflictError = false;
 			loadCitations();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to create citation';
+			if (isConflictError(e)) {
+				conflictError = true;
+				retryAction = () => saveNewCitation();
+			} else {
+				error = (e as { message?: string }).message || 'Failed to create citation';
+			}
 		} finally {
 			saving = false;
 		}
@@ -160,9 +190,25 @@
 		try {
 			await api.deleteCitation(citation.id, citation.version);
 			deleteConfirm = null;
+			conflictError = false;
 			loadCitations();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to delete citation';
+			if (isConflictError(e)) {
+				conflictError = true;
+				retryAction = async () => {
+					const result = await api.getPersonCitations(personId);
+					const fresh = result.citations.find((c) => c.id === citation.id);
+					if (!fresh) {
+						deleteConfirm = null;
+						conflictError = false;
+						citations = result.citations;
+						return;
+					}
+					await deleteCitation(fresh);
+				};
+			} else {
+				error = (e as { message?: string }).message || 'Failed to delete citation';
+			}
 		}
 	}
 
@@ -185,7 +231,9 @@
 		{/if}
 	</div>
 
-	{#if error}
+	{#if conflictError}
+		<ConflictError onRetry={handleRetry} {retrying} />
+	{:else if error}
 		<div class="section-error" role="alert">{error}</div>
 	{/if}
 

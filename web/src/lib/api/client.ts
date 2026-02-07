@@ -302,6 +302,7 @@ export interface ApiError {
 	code: string;
 	message: string;
 	details?: Record<string, unknown>;
+	status?: number;
 }
 
 // Source types
@@ -595,6 +596,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -603,6 +605,40 @@ class ApiClient {
 		}
 
 		return response.json();
+	}
+
+	/**
+	 * Execute a request with automatic retry on 409 Conflict.
+	 * Person sub-resources share the Person aggregate's version counter,
+	 * so conflicts between unrelated operations are common. A simple
+	 * retry usually succeeds because the backend re-reads the current version.
+	 */
+	private async requestWithConflictRetry<T>(
+		method: string,
+		path: string,
+		body?: unknown,
+		headers?: Record<string, string>
+	): Promise<T> {
+		try {
+			return await this.request<T>(method, path, body, headers);
+		} catch (error) {
+			const apiError = error as ApiError;
+			if (apiError.status === 409) {
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				try {
+					return await this.request<T>(method, path, body, headers);
+				} catch (retryError) {
+					const retryApiError = retryError as ApiError;
+					if (retryApiError.status === 409) {
+						retryApiError.message =
+							'This record was modified by another operation. Please try again.';
+						retryApiError.code = 'CONFLICT_RETRY_FAILED';
+					}
+					throw retryApiError;
+				}
+			}
+			throw error;
+		}
 	}
 
 	// Person endpoints
@@ -702,6 +738,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -743,6 +780,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -757,6 +795,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -771,6 +810,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -788,6 +828,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -805,6 +846,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -822,6 +864,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -839,6 +882,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -856,6 +900,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -932,15 +977,15 @@ class ApiClient {
 	}
 
 	async addPersonName(personId: string, data: PersonNameCreate): Promise<PersonName> {
-		return this.request<PersonName>('POST', `/persons/${personId}/names`, data);
+		return this.requestWithConflictRetry<PersonName>('POST', `/persons/${personId}/names`, data);
 	}
 
 	async updatePersonName(personId: string, nameId: string, data: PersonNameUpdate): Promise<PersonName> {
-		return this.request<PersonName>('PUT', `/persons/${personId}/names/${nameId}`, data);
+		return this.requestWithConflictRetry<PersonName>('PUT', `/persons/${personId}/names/${nameId}`, data);
 	}
 
 	async deletePersonName(personId: string, nameId: string): Promise<void> {
-		return this.request<void>('DELETE', `/persons/${personId}/names/${nameId}`);
+		return this.requestWithConflictRetry<void>('DELETE', `/persons/${personId}/names/${nameId}`);
 	}
 
 	// Media endpoints
@@ -979,6 +1024,7 @@ class ApiClient {
 				code: 'UNKNOWN_ERROR',
 				message: response.statusText
 			}));
+			error.status = response.status;
 			throw error;
 		}
 
@@ -1120,6 +1166,12 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+
+/** Check if an error is a version conflict (409). For endpoints using requestWithConflictRetry, auto-retry has already been attempted. */
+export function isConflictError(error: unknown): boolean {
+	const apiError = error as ApiError;
+	return apiError?.status === 409 || apiError?.code === 'CONFLICT_RETRY_FAILED';
+}
 
 // Utility functions for formatting
 export function formatGenDate(date?: GenDate): string {

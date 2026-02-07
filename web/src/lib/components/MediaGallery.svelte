@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { api, type Media } from '$lib/api/client';
+	import { api, isConflictError, type Media } from '$lib/api/client';
 	import MediaUpload from './MediaUpload.svelte';
 	import MediaLightbox from './MediaLightbox.svelte';
+	import ConflictError from './ConflictError.svelte';
 
 	interface Props {
 		personId: string;
@@ -15,6 +16,11 @@
 	let error: string | null = $state(null);
 	let lightboxMedia: Media | null = $state(null);
 	let deletingId: string | null = $state(null);
+
+	// Conflict retry state
+	let conflictError = $state(false);
+	let retryAction: (() => Promise<void>) | null = $state(null);
+	let retrying = $state(false);
 
 	async function loadMedia() {
 		loading = true;
@@ -42,6 +48,24 @@
 		lightboxMedia = null;
 	}
 
+	async function handleRetry() {
+		if (!retryAction) return;
+		retrying = true;
+		conflictError = false;
+		error = null;
+		try {
+			await retryAction();
+		} catch (e) {
+			if (isConflictError(e)) {
+				conflictError = true;
+			} else {
+				error = (e as { message?: string }).message || 'Operation failed';
+			}
+		} finally {
+			retrying = false;
+		}
+	}
+
 	async function deleteMedia(media: Media, e: MouseEvent) {
 		e.stopPropagation();
 		if (!confirm(`Delete "${media.title}"? This cannot be undone.`)) return;
@@ -50,8 +74,24 @@
 		try {
 			await api.deleteMedia(media.id, media.version);
 			mediaItems = mediaItems.filter((m) => m.id !== media.id);
+			conflictError = false;
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to delete media';
+			if (isConflictError(e)) {
+				conflictError = true;
+				retryAction = async () => {
+					deletingId = media.id;
+					try {
+						const fresh = await api.getMedia(media.id);
+						await api.deleteMedia(media.id, fresh.version);
+						mediaItems = mediaItems.filter((m) => m.id !== media.id);
+						conflictError = false;
+					} finally {
+						deletingId = null;
+					}
+				};
+			} else {
+				error = (e as { message?: string }).message || 'Failed to delete media';
+			}
 		} finally {
 			deletingId = null;
 		}
@@ -66,6 +106,10 @@
 
 <div class="media-gallery">
 	<MediaUpload {personId} onUpload={handleUpload} />
+
+	{#if conflictError}
+		<ConflictError onRetry={handleRetry} {retrying} />
+	{/if}
 
 	{#if loading}
 		<div class="loading-state" role="status" aria-live="polite">
