@@ -14,7 +14,7 @@
 	let formData = $state<PersonCreate>({
 		given_name: '',
 		surname: '',
-		gender: undefined,
+		gender: '',
 		birth_date: '',
 		birth_place: ''
 	});

@@ -34,7 +34,7 @@
 		dragOver = false;
 		if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
 			const droppedFile = e.dataTransfer.files[0];
-			if (droppedFile.name.toLowerCase().endsWith('.ged')) {
+			if (droppedFile.name.toLowerCase().endsWith('.ged') || droppedFile.name.toLowerCase().endsWith('.gedcom')) {
 				file = droppedFile;
 				result = null;
 				error = null;
