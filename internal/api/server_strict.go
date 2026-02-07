@@ -1486,9 +1486,13 @@ func (ss *StrictServer) ListPersons(ctx context.Context, request ListPersonsRequ
 
 // CreatePerson implements StrictServerInterface.
 func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRequestObject) (CreatePersonResponseObject, error) {
+	var surname string
+	if request.Body.Surname != nil {
+		surname = *request.Body.Surname
+	}
 	input := command.CreatePersonInput{
 		GivenName: request.Body.GivenName,
-		Surname:   request.Body.Surname,
+		Surname:   surname,
 	}
 	if request.Body.Gender != nil {
 		input.Gender = string(*request.Body.Gender)
@@ -1521,7 +1525,7 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 	_, _ = ss.server.commandHandler.AddName(ctx, command.AddNameInput{
 		PersonID:  result.ID,
 		GivenName: request.Body.GivenName,
-		Surname:   request.Body.Surname,
+		Surname:   surname,
 		IsPrimary: true,
 	})
 

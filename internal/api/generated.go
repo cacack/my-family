@@ -1544,7 +1544,7 @@ type PersonCreate struct {
 
 	// ResearchStatus Confidence level of genealogical data per GPS standards
 	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
-	Surname        string          `json:"surname"`
+	Surname        *string         `json:"surname,omitempty"`
 }
 
 // PersonCreateGender defines model for PersonCreate.Gender.

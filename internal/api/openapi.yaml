@@ -2794,7 +2794,7 @@ components:
 
     PersonCreate:
       type: object
-      required: [given_name, surname]
+      required: [given_name]
       properties:
         given_name:
           type: string
@@ -2802,7 +2802,6 @@ components:
           maxLength: 100
         surname:
           type: string
-          minLength: 1
           maxLength: 100
         gender:
           type: string

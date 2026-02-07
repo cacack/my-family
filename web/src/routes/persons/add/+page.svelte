@@ -70,6 +70,10 @@
 		<h1>Add Person</h1>
 	</header>
 
+	<div class="quick-capture-hint">
+		Need to add many people quickly? Try <a href="/persons/quick">Quick Capture mode</a>
+	</div>
+
 	{#if error}
 		<div class="error">{error}</div>
 	{/if}
@@ -259,5 +263,23 @@
 		margin-top: 1.5rem;
 		padding-top: 1rem;
 		border-top: 1px solid #e2e8f0;
+	}
+
+	.quick-capture-hint {
+		font-size: 0.8125rem;
+		color: #64748b;
+		margin-bottom: 1rem;
+		padding: 0.5rem 0.75rem;
+		background: #f8fafc;
+		border-radius: 6px;
+	}
+
+	.quick-capture-hint a {
+		color: #3b82f6;
+		text-decoration: none;
+	}
+
+	.quick-capture-hint a:hover {
+		text-decoration: underline;
 	}
 </style>

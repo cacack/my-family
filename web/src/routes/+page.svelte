@@ -128,6 +128,12 @@
 					</svg>
 					Add Family
 				</a>
+				<a href="/persons/quick" class="action-btn accent">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+					</svg>
+					Quick Capture
+				</a>
 			</div>
 		</section>
 	{/if}
@@ -308,5 +314,16 @@
 	.action-btn svg {
 		width: 1.25rem;
 		height: 1.25rem;
+	}
+
+	.action-btn.accent {
+		background: #f0f9ff;
+		border-color: #7dd3fc;
+		color: #0369a1;
+	}
+
+	.action-btn.accent:hover {
+		background: #e0f2fe;
+		border-color: #38bdf8;
 	}
 </style>

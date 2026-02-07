@@ -41,8 +41,8 @@ type CreatePersonResult struct {
 // CreatePerson creates a new person record.
 func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*CreatePersonResult, error) {
 	// Validate required fields
-	if input.GivenName == "" || input.Surname == "" {
-		return nil, fmt.Errorf("%w: given_name and surname are required", ErrInvalidInput)
+	if input.GivenName == "" {
+		return nil, fmt.Errorf("%w: given_name is required", ErrInvalidInput)
 	}
 
 	// Create person entity

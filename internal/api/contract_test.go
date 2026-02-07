@@ -275,13 +275,13 @@ func TestContractPersons(t *testing.T) {
 			wantStatus:  http.StatusCreated,
 		},
 		{
-			name:           "CreatePerson_BadRequest_MissingSurname",
-			method:         http.MethodPost,
-			path:           "/api/v1/persons",
-			body:           `{"given_name":"John"}`,
-			contentType:    "application/json",
-			wantStatus:     http.StatusBadRequest,
-			skipRequestVal: true, // intentionally invalid request
+			name:            "CreatePerson_Success_WithoutSurname",
+			method:          http.MethodPost,
+			path:            "/api/v1/persons",
+			body:            `{"given_name":"Madonna"}`,
+			contentType:     "application/json",
+			wantStatus:      http.StatusCreated,
+			skipResponseVal: true,
 		},
 		{
 			name:   "GetPerson_Success",
