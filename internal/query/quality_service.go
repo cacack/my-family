@@ -74,16 +74,13 @@ type GenderDistribution struct {
 
 // GetQualityOverview returns aggregate quality metrics for all persons.
 func (s *QualityService) GetQualityOverview(ctx context.Context) (*QualityOverview, error) {
-	// Get all persons
-	opts := repository.ListOptions{
-		Limit:  10000, // Large limit to get all persons
-		Offset: 0,
-	}
-	persons, total, err := s.readStore.ListPersons(ctx, opts)
+	// Get all persons using pagination to avoid truncation
+	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
 	if err != nil {
 		return nil, err
 	}
 
+	total := len(persons)
 	if total == 0 {
 		return &QualityOverview{
 			TotalPersons:        0,
@@ -167,25 +164,19 @@ func (s *QualityService) GetPersonQuality(ctx context.Context, id uuid.UUID) (*P
 
 // GetStatistics returns tree-wide statistics.
 func (s *QualityService) GetStatistics(ctx context.Context) (*Statistics, error) {
-	// Get all persons for statistics
-	personOpts := repository.ListOptions{
-		Limit:  10000,
-		Offset: 0,
-	}
-	persons, totalPersons, err := s.readStore.ListPersons(ctx, personOpts)
+	// Get all persons for statistics using pagination to avoid truncation
+	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
 	if err != nil {
 		return nil, err
 	}
+	totalPersons := len(persons)
 
 	// Get all families
-	familyOpts := repository.ListOptions{
-		Limit:  10000,
-		Offset: 0,
-	}
-	_, totalFamilies, err := s.readStore.ListFamilies(ctx, familyOpts)
+	families, err := repository.ListAll(ctx, 1000, s.readStore.ListFamilies)
 	if err != nil {
 		return nil, err
 	}
+	totalFamilies := len(families)
 
 	// Calculate statistics in a single pass
 	var earliestYear, latestYear *int

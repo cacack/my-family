@@ -78,40 +78,30 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 	}
 
 	// Get all persons
-	persons, _, err := exp.readStore.ListPersons(ctx, repository.ListOptions{
-		Limit: 100000, // Large limit to get all
-	})
+	persons, err := repository.ListAll(ctx, 1000, exp.readStore.ListPersons)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list persons: %w", err)
 	}
 
 	// Get all families
-	families, _, err := exp.readStore.ListFamilies(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	families, err := repository.ListAll(ctx, 1000, exp.readStore.ListFamilies)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list families: %w", err)
 	}
 
 	// Get all sources
-	sources, _, err := exp.readStore.ListSources(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	sources, err := repository.ListAll(ctx, 1000, exp.readStore.ListSources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sources: %w", err)
 	}
 
 	// Get notes and submitters counts for progress calculation
-	notes, _, err := exp.readStore.ListNotes(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	notes, err := repository.ListAll(ctx, 1000, exp.readStore.ListNotes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list notes: %w", err)
 	}
 
-	submitters, _, err := exp.readStore.ListSubmitters(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	submitters, err := repository.ListAll(ctx, 1000, exp.readStore.ListSubmitters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list submitters: %w", err)
 	}

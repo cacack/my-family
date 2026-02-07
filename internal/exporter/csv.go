@@ -235,9 +235,7 @@ func (e *DataExporter) exportCSVPersons(ctx context.Context, cw *countingWriter,
 	}
 
 	// Get all persons
-	persons, _, err := e.readStore.ListPersons(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	persons, err := repository.ListAll(ctx, 1000, e.readStore.ListPersons)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list persons: %w", err)
 	}
@@ -323,9 +321,7 @@ func (e *DataExporter) exportCSVFamilies(ctx context.Context, cw *countingWriter
 	}
 
 	// Get all families
-	families, _, err := e.readStore.ListFamilies(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	families, err := repository.ListAll(ctx, 1000, e.readStore.ListFamilies)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list families: %w", err)
 	}
@@ -412,9 +408,7 @@ func (e *DataExporter) exportCSVSources(ctx context.Context, cw *countingWriter,
 		return nil, err
 	}
 
-	sources, _, err := e.readStore.ListSources(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	sources, err := repository.ListAll(ctx, 1000, e.readStore.ListSources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sources: %w", err)
 	}
@@ -497,9 +491,7 @@ func (e *DataExporter) exportCSVCitations(ctx context.Context, cw *countingWrite
 		return nil, err
 	}
 
-	citations, _, err := e.readStore.ListCitations(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	citations, err := repository.ListAll(ctx, 1000, e.readStore.ListCitations)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list citations: %w", err)
 	}
@@ -582,9 +574,7 @@ func (e *DataExporter) exportCSVEvents(ctx context.Context, cw *countingWriter, 
 		return nil, err
 	}
 
-	events, _, err := e.readStore.ListEvents(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	events, err := repository.ListAll(ctx, 1000, e.readStore.ListEvents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list events: %w", err)
 	}
@@ -663,9 +653,7 @@ func (e *DataExporter) exportCSVAttributes(ctx context.Context, cw *countingWrit
 		return nil, err
 	}
 
-	attributes, _, err := e.readStore.ListAttributes(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	attributes, err := repository.ListAll(ctx, 1000, e.readStore.ListAttributes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attributes: %w", err)
 	}

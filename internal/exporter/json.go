@@ -48,49 +48,37 @@ func (e *DataExporter) exportJSON(ctx context.Context, w io.Writer, opts ExportO
 // exportJSONTree exports the complete tree (all entities) as JSON.
 func (e *DataExporter) exportJSONTree(ctx context.Context, cw *countingWriter, result *ExportResult) (*ExportResult, error) {
 	// Get all persons
-	persons, _, err := e.readStore.ListPersons(ctx, repository.ListOptions{
-		Limit: 100000, // Large limit to get all
-	})
+	persons, err := repository.ListAll(ctx, 1000, e.readStore.ListPersons)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list persons: %w", err)
 	}
 
 	// Get all families
-	families, _, err := e.readStore.ListFamilies(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	families, err := repository.ListAll(ctx, 1000, e.readStore.ListFamilies)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list families: %w", err)
 	}
 
 	// Get all sources
-	sources, _, err := e.readStore.ListSources(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	sources, err := repository.ListAll(ctx, 1000, e.readStore.ListSources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sources: %w", err)
 	}
 
 	// Get all citations
-	citations, _, err := e.readStore.ListCitations(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	citations, err := repository.ListAll(ctx, 1000, e.readStore.ListCitations)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list citations: %w", err)
 	}
 
 	// Get all events
-	events, _, err := e.readStore.ListEvents(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	events, err := repository.ListAll(ctx, 1000, e.readStore.ListEvents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list events: %w", err)
 	}
 
 	// Get all attributes
-	attributes, _, err := e.readStore.ListAttributes(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	attributes, err := repository.ListAll(ctx, 1000, e.readStore.ListAttributes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attributes: %w", err)
 	}
@@ -145,9 +133,7 @@ func (e *DataExporter) exportJSONTree(ctx context.Context, cw *countingWriter, r
 
 // exportJSONPersons exports only persons as a JSON array.
 func (e *DataExporter) exportJSONPersons(ctx context.Context, cw *countingWriter, result *ExportResult) (*ExportResult, error) {
-	persons, _, err := e.readStore.ListPersons(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	persons, err := repository.ListAll(ctx, 1000, e.readStore.ListPersons)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list persons: %w", err)
 	}
@@ -171,9 +157,7 @@ func (e *DataExporter) exportJSONPersons(ctx context.Context, cw *countingWriter
 
 // exportJSONFamilies exports only families as a JSON array.
 func (e *DataExporter) exportJSONFamilies(ctx context.Context, cw *countingWriter, result *ExportResult) (*ExportResult, error) {
-	families, _, err := e.readStore.ListFamilies(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	families, err := repository.ListAll(ctx, 1000, e.readStore.ListFamilies)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list families: %w", err)
 	}
@@ -197,9 +181,7 @@ func (e *DataExporter) exportJSONFamilies(ctx context.Context, cw *countingWrite
 
 // exportJSONSources exports only sources as a JSON array.
 func (e *DataExporter) exportJSONSources(ctx context.Context, cw *countingWriter, result *ExportResult) (*ExportResult, error) {
-	sources, _, err := e.readStore.ListSources(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	sources, err := repository.ListAll(ctx, 1000, e.readStore.ListSources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list sources: %w", err)
 	}
@@ -223,9 +205,7 @@ func (e *DataExporter) exportJSONSources(ctx context.Context, cw *countingWriter
 
 // exportJSONCitations exports only citations as a JSON array.
 func (e *DataExporter) exportJSONCitations(ctx context.Context, cw *countingWriter, result *ExportResult) (*ExportResult, error) {
-	citations, _, err := e.readStore.ListCitations(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	citations, err := repository.ListAll(ctx, 1000, e.readStore.ListCitations)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list citations: %w", err)
 	}
@@ -249,9 +229,7 @@ func (e *DataExporter) exportJSONCitations(ctx context.Context, cw *countingWrit
 
 // exportJSONEvents exports only events as a JSON array.
 func (e *DataExporter) exportJSONEvents(ctx context.Context, cw *countingWriter, result *ExportResult) (*ExportResult, error) {
-	events, _, err := e.readStore.ListEvents(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	events, err := repository.ListAll(ctx, 1000, e.readStore.ListEvents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list events: %w", err)
 	}
@@ -275,9 +253,7 @@ func (e *DataExporter) exportJSONEvents(ctx context.Context, cw *countingWriter,
 
 // exportJSONAttributes exports only attributes as a JSON array.
 func (e *DataExporter) exportJSONAttributes(ctx context.Context, cw *countingWriter, result *ExportResult) (*ExportResult, error) {
-	attributes, _, err := e.readStore.ListAttributes(ctx, repository.ListOptions{
-		Limit: 100000,
-	})
+	attributes, err := repository.ListAll(ctx, 1000, e.readStore.ListAttributes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list attributes: %w", err)
 	}

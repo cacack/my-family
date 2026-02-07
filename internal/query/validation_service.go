@@ -220,32 +220,20 @@ func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFil
 // buildGedcomDocument reconstructs a gedcom.Document from read model data.
 // Returns the document and a map of XRef -> UUID for reverse lookup.
 func (s *ValidationService) buildGedcomDocument(ctx context.Context) (*gedcom.Document, map[string]uuid.UUID, error) {
-	// Load all persons
-	personOpts := repository.ListOptions{
-		Limit:  10000, // Large limit to get all persons
-		Offset: 0,
-	}
-	persons, _, err := s.readStore.ListPersons(ctx, personOpts)
+	// Load all persons using pagination to avoid truncation
+	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// Load all families
-	familyOpts := repository.ListOptions{
-		Limit:  10000,
-		Offset: 0,
-	}
-	families, _, err := s.readStore.ListFamilies(ctx, familyOpts)
+	families, err := repository.ListAll(ctx, 1000, s.readStore.ListFamilies)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// Load all sources
-	sourceOpts := repository.ListOptions{
-		Limit:  10000,
-		Offset: 0,
-	}
-	sources, _, err := s.readStore.ListSources(ctx, sourceOpts)
+	sources, err := repository.ListAll(ctx, 1000, s.readStore.ListSources)
 	if err != nil {
 		return nil, nil, err
 	}
