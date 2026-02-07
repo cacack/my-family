@@ -2517,3 +2517,64 @@ func TestImportLDSOrdinances_PartialData(t *testing.T) {
 		t.Errorf("ENDL Temple = %s, want 'SL'", endl.Temple)
 	}
 }
+
+func TestImportLenientMode_SyntaxErrorsProduceWarnings(t *testing.T) {
+	// GEDCOM with syntax errors (invalid lines mixed with valid data)
+	// The lenient parser should skip bad lines and still import valid records
+	malformedGedcom := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 BIRT
+2 DATE 15 JAN 1850
+THIS IS NOT A VALID GEDCOM LINE
+ANOTHER BAD LINE WITHOUT LEVEL
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(malformedGedcom))
+	if err != nil {
+		t.Fatalf("Import should succeed in lenient mode, got error: %v", err)
+	}
+
+	// Should have imported both valid persons
+	if result.PersonsImported != 2 {
+		t.Errorf("PersonsImported = %d, want 2", result.PersonsImported)
+	}
+
+	if len(persons) != 2 {
+		t.Fatalf("len(persons) = %d, want 2", len(persons))
+	}
+
+	// Should have warnings or errors about the bad lines
+	totalDiagnostics := len(result.Warnings) + len(result.Errors)
+	if totalDiagnostics == 0 {
+		t.Error("Expected warnings or errors about malformed lines, got none")
+	}
+}
+
+func TestImportLenientMode_CompletelyInvalidInputFails(t *testing.T) {
+	// Completely invalid input with no valid GEDCOM structure at all
+	invalidInput := `this is not gedcom data at all
+just random text
+more garbage
+`
+
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(invalidInput))
+	if err == nil {
+		t.Error("Expected error for completely invalid input, got nil")
+	}
+}

@@ -343,3 +343,77 @@ func TestImportGedcom_NoContentType(t *testing.T) {
 		t.Fatalf("Expected status 500, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestImportGedcom_MalformedWithWarnings(t *testing.T) {
+	server := setupImportTestServer(t)
+
+	// GEDCOM with syntax errors that should still partially import
+	malformedGedcom := `0 HEAD
+1 SOUR Test
+1 GEDC
+2 VERS 5.5
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+THIS IS NOT A VALID GEDCOM LINE
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 TRLR
+`
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, err := writer.CreateFormFile("file", "malformed.ged")
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.WriteString(part, malformedGedcom)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected status 200 for malformed GEDCOM (lenient mode), got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	// Should have imported persons despite syntax errors
+	personsImported := int(result["persons_imported"].(float64))
+	if personsImported != 2 {
+		t.Errorf("Expected 2 persons imported, got %d", personsImported)
+	}
+
+	// Should have success flag
+	if result["success"] != true {
+		t.Error("Response should include success: true")
+	}
+
+	// Should have diagnostics (warnings or errors) about the bad line
+	hasWarnings := false
+	hasErrors := false
+	if w, ok := result["warnings"]; ok && w != nil {
+		warnings := w.([]interface{})
+		if len(warnings) > 0 {
+			hasWarnings = true
+		}
+	}
+	if e, ok := result["errors"]; ok && e != nil {
+		errs := e.([]interface{})
+		if len(errs) > 0 {
+			hasErrors = true
+		}
+	}
+	if !hasWarnings && !hasErrors {
+		t.Error("Expected warnings or errors about malformed GEDCOM lines")
+	}
+}
