@@ -73,8 +73,8 @@ func TestCreatePerson(t *testing.T) {
 
 func TestCreatePerson_ValidationError(t *testing.T) {
 	server := setupTestServer()
-	// Missing required surname
-	body := `{"given_name":"John"}`
+	// Missing required given_name
+	body := `{"surname":"Doe"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -83,6 +83,18 @@ func TestCreatePerson_ValidationError(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCreatePerson_WithoutSurname(t *testing.T) {
+	server := setupTestServer()
+	body := `{"given_name":"Madonna"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusCreated)
 	}
 }
 

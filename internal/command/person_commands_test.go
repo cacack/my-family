@@ -60,14 +60,35 @@ func TestCreatePerson_Validation(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for empty given name")
 	}
+}
 
-	// Missing surname
-	_, err = handler.CreatePerson(ctx, command.CreatePersonInput{
-		GivenName: "John",
-		Surname:   "",
+func TestCreatePerson_EmptySurname(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	result, err := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName:      "Madonna",
+		Surname:        "",
+		Gender:         "female",
+		ResearchStatus: "possible",
 	})
-	if err == nil {
-		t.Error("Expected error for empty surname")
+	if err != nil {
+		t.Fatalf("CreatePerson with empty surname failed: %v", err)
+	}
+	if result.ID == uuid.Nil {
+		t.Error("Expected non-nil ID")
+	}
+	person, _ := readStore.GetPerson(ctx, result.ID)
+	if person == nil {
+		t.Fatal("Person not found in read model")
+	}
+	if person.GivenName != "Madonna" {
+		t.Errorf("GivenName = %s, want Madonna", person.GivenName)
+	}
+	if person.Surname != "" {
+		t.Errorf("Surname = %s, want empty", person.Surname)
 	}
 }
 

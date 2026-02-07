@@ -77,6 +77,24 @@
 <div class="persons-page">
 	<header class="page-header">
 		<h1>People</h1>
+		<div class="header-actions">
+			<a href="/persons/add" class="btn">Add Person</a>
+			<a href="/persons/quick" class="btn btn-accent">Quick Capture</a>
+		</div>
+	</header>
+
+	<div class="toolbar">
+		<button
+			class="chip"
+			class:chip-active={researchStatusFilter === 'possible'}
+			onclick={() => {
+				researchStatusFilter = researchStatusFilter === 'possible' ? '' : 'possible';
+				currentPage = 1;
+				loadPersons();
+			}}
+		>
+			Quick Captures
+		</button>
 		<div class="controls">
 			<label>
 				Confidence:
@@ -110,7 +128,7 @@
 				{/if}
 			</button>
 		</div>
-	</header>
+	</div>
 
 	{#if loading}
 		<div class="loading">Loading...</div>
@@ -262,5 +280,65 @@
 	.pagination span {
 		font-size: 0.875rem;
 		color: #64748b;
+	}
+
+	.header-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.btn {
+		padding: 0.5rem 1rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 6px;
+		background: white;
+		font-size: 0.875rem;
+		cursor: pointer;
+		text-decoration: none;
+		color: #475569;
+	}
+
+	.btn:hover {
+		background: #f1f5f9;
+	}
+
+	.btn-accent {
+		background: #f0f9ff;
+		border-color: #7dd3fc;
+		color: #0369a1;
+	}
+
+	.btn-accent:hover {
+		background: #e0f2fe;
+	}
+
+	.toolbar {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+		flex-wrap: wrap;
+	}
+
+	.chip {
+		padding: 0.375rem 0.75rem;
+		border: 1px solid #e2e8f0;
+		border-radius: 9999px;
+		background: white;
+		font-size: 0.8125rem;
+		cursor: pointer;
+		color: #64748b;
+		transition: all 0.15s;
+	}
+
+	.chip:hover {
+		border-color: #cbd5e1;
+		background: #f8fafc;
+	}
+
+	.chip-active {
+		background: #fef3c7;
+		border-color: #fbbf24;
+		color: #92400e;
 	}
 </style>

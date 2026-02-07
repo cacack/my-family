@@ -43,7 +43,7 @@ export interface Person {
 
 export interface PersonCreate {
 	given_name: string;
-	surname: string;
+	surname?: string;
 	gender?: 'male' | 'female' | 'unknown';
 	birth_date?: string;
 	birth_place?: string;

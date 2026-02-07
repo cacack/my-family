@@ -1674,7 +1674,7 @@ export interface components {
         };
         PersonCreate: {
             given_name: string;
-            surname: string;
+            surname?: string;
             /** @enum {string} */
             gender?: "male" | "female" | "unknown";
             /**
