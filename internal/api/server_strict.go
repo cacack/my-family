@@ -548,17 +548,14 @@ func (ss *StrictServer) RollbackCitation(ctx context.Context, request RollbackCi
 
 // ExportFamilies implements StrictServerInterface.
 func (ss *StrictServer) ExportFamilies(ctx context.Context, _ ExportFamiliesRequestObject) (ExportFamiliesResponseObject, error) {
-	// List all families from the read store
-	result, err := ss.server.familyService.ListFamilies(ctx, query.ListFamiliesInput{
-		Limit: 10000, // Export all
-	})
+	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListFamilies)
 	if err != nil {
 		return nil, err
 	}
 
-	families := make([]Family, len(result.Items))
-	for i, f := range result.Items {
-		families[i] = convertQueryFamilyToGenerated(f)
+	families := make([]Family, len(readModels))
+	for i, rm := range readModels {
+		families[i] = convertReadModelFamilyToGenerated(rm)
 	}
 
 	total := len(families)
@@ -570,17 +567,14 @@ func (ss *StrictServer) ExportFamilies(ctx context.Context, _ ExportFamiliesRequ
 
 // ExportPersons implements StrictServerInterface.
 func (ss *StrictServer) ExportPersons(ctx context.Context, _ ExportPersonsRequestObject) (ExportPersonsResponseObject, error) {
-	// List all persons from the read store
-	result, err := ss.server.personService.ListPersons(ctx, query.ListPersonsInput{
-		Limit: 10000, // Export all
-	})
+	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListPersons)
 	if err != nil {
 		return nil, err
 	}
 
-	persons := make([]Person, len(result.Items))
-	for i, p := range result.Items {
-		persons[i] = convertQueryPersonToGenerated(p)
+	persons := make([]Person, len(readModels))
+	for i, rm := range readModels {
+		persons[i] = convertReadModelPersonToGenerated(rm)
 	}
 
 	total := len(persons)
@@ -592,30 +586,24 @@ func (ss *StrictServer) ExportPersons(ctx context.Context, _ ExportPersonsReques
 
 // ExportTree implements StrictServerInterface.
 func (ss *StrictServer) ExportTree(ctx context.Context, _ ExportTreeRequestObject) (ExportTreeResponseObject, error) {
-	// Get all persons
-	personsResult, err := ss.server.personService.ListPersons(ctx, query.ListPersonsInput{
-		Limit: 10000,
-	})
+	personModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListPersons)
 	if err != nil {
 		return nil, err
 	}
 
-	persons := make([]Person, len(personsResult.Items))
-	for i, p := range personsResult.Items {
-		persons[i] = convertQueryPersonToGenerated(p)
+	persons := make([]Person, len(personModels))
+	for i, rm := range personModels {
+		persons[i] = convertReadModelPersonToGenerated(rm)
 	}
 
-	// Get all families
-	familiesResult, err := ss.server.familyService.ListFamilies(ctx, query.ListFamiliesInput{
-		Limit: 10000,
-	})
+	familyModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListFamilies)
 	if err != nil {
 		return nil, err
 	}
 
-	families := make([]Family, len(familiesResult.Items))
-	for i, f := range familiesResult.Items {
-		families[i] = convertQueryFamilyToGenerated(f)
+	families := make([]Family, len(familyModels))
+	for i, rm := range familyModels {
+		families[i] = convertReadModelFamilyToGenerated(rm)
 	}
 
 	return ExportTree200JSONResponse{
@@ -646,16 +634,14 @@ func (ss *StrictServer) GetExportEstimate(ctx context.Context, _ GetExportEstima
 
 // ExportSources implements StrictServerInterface.
 func (ss *StrictServer) ExportSources(ctx context.Context, _ ExportSourcesRequestObject) (ExportSourcesResponseObject, error) {
-	result, err := ss.server.sourceService.ListSources(ctx, query.ListSourcesInput{
-		Limit: 100000, // Export all
-	})
+	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListSources)
 	if err != nil {
 		return nil, err
 	}
 
-	sources := make([]Source, len(result.Sources))
-	for i, s := range result.Sources {
-		sources[i] = convertQuerySourceToGenerated(s)
+	sources := make([]Source, len(readModels))
+	for i, rm := range readModels {
+		sources[i] = convertReadModelSourceToGenerated(rm)
 	}
 
 	total := len(sources)
@@ -667,9 +653,7 @@ func (ss *StrictServer) ExportSources(ctx context.Context, _ ExportSourcesReques
 
 // ExportEvents implements StrictServerInterface.
 func (ss *StrictServer) ExportEvents(ctx context.Context, _ ExportEventsRequestObject) (ExportEventsResponseObject, error) {
-	events, _, err := ss.server.readStore.ListEvents(ctx, repository.ListOptions{
-		Limit: 100000, // Export all
-	})
+	events, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListEvents)
 	if err != nil {
 		return nil, err
 	}
@@ -688,9 +672,7 @@ func (ss *StrictServer) ExportEvents(ctx context.Context, _ ExportEventsRequestO
 
 // ExportAttributes implements StrictServerInterface.
 func (ss *StrictServer) ExportAttributes(ctx context.Context, _ ExportAttributesRequestObject) (ExportAttributesResponseObject, error) {
-	attributes, _, err := ss.server.readStore.ListAttributes(ctx, repository.ListOptions{
-		Limit: 100000, // Export all
-	})
+	attributes, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -4533,5 +4515,90 @@ func convertQueryLDSOrdinanceToGenerated(o query.LDSOrdinance) LDSOrdinance {
 		resp.Status = &o.Status
 	}
 
+	return resp
+}
+
+// convertReadModelPersonToGenerated converts a repository.PersonReadModel to the generated Person type.
+func convertReadModelPersonToGenerated(rm repository.PersonReadModel) Person {
+	resp := Person{
+		Id:        rm.ID,
+		GivenName: rm.GivenName,
+		Surname:   rm.Surname,
+		Version:   rm.Version,
+	}
+	if rm.Gender != "" {
+		g := PersonGender(rm.Gender)
+		resp.Gender = &g
+	}
+	if rm.BirthDateRaw != "" {
+		gd := domain.ParseGenDate(rm.BirthDateRaw)
+		resp.BirthDate = convertDomainGenDateToGenerated(&gd)
+	}
+	if rm.BirthPlace != "" {
+		resp.BirthPlace = &rm.BirthPlace
+	}
+	if rm.DeathDateRaw != "" {
+		gd := domain.ParseGenDate(rm.DeathDateRaw)
+		resp.DeathDate = convertDomainGenDateToGenerated(&gd)
+	}
+	if rm.DeathPlace != "" {
+		resp.DeathPlace = &rm.DeathPlace
+	}
+	if rm.Notes != "" {
+		resp.Notes = &rm.Notes
+	}
+	if rm.ResearchStatus != "" {
+		rs := ResearchStatus(rm.ResearchStatus)
+		resp.ResearchStatus = &rs
+	}
+	return resp
+}
+
+// convertReadModelFamilyToGenerated converts a repository.FamilyReadModel to the generated Family type.
+func convertReadModelFamilyToGenerated(rm repository.FamilyReadModel) Family {
+	resp := Family{
+		Id:      rm.ID,
+		Version: rm.Version,
+	}
+	if rm.Partner1ID != nil {
+		resp.Partner1Id = rm.Partner1ID
+	}
+	if rm.Partner2ID != nil {
+		resp.Partner2Id = rm.Partner2ID
+	}
+	if rm.RelationshipType != "" {
+		rt := FamilyRelationshipType(rm.RelationshipType)
+		resp.RelationshipType = &rt
+	}
+	if rm.MarriageDateRaw != "" {
+		gd := domain.ParseGenDate(rm.MarriageDateRaw)
+		resp.MarriageDate = convertDomainGenDateToGenerated(&gd)
+	}
+	if rm.MarriagePlace != "" {
+		resp.MarriagePlace = &rm.MarriagePlace
+	}
+	return resp
+}
+
+// convertReadModelSourceToGenerated converts a repository.SourceReadModel to the generated Source type.
+func convertReadModelSourceToGenerated(rm repository.SourceReadModel) Source {
+	resp := Source{
+		Id:         rm.ID,
+		Title:      rm.Title,
+		SourceType: string(rm.SourceType),
+		Version:    rm.Version,
+	}
+	if rm.Author != "" {
+		resp.Author = &rm.Author
+	}
+	if rm.Publisher != "" {
+		resp.Publisher = &rm.Publisher
+	}
+	if rm.URL != "" {
+		resp.Url = &rm.URL
+	}
+	if rm.Notes != "" {
+		resp.Notes = &rm.Notes
+	}
 	return resp
 }
