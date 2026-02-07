@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, formatGenDate, formatPersonName } from '$lib/api/client';
+	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
+	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
+	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
+	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
 	import MediaGallery from '$lib/components/MediaGallery.svelte';
 	import CitationSection from '$lib/components/CitationSection.svelte';
 	import NameSection from '$lib/components/NameSection.svelte';
@@ -15,8 +18,13 @@
 	let editing = $state(false);
 	let saving = $state(false);
 	let historyExpanded = $state(false);
+	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
 	let mediaCount: number | null = $state(null);
+
+	// Rollback state
+	let rollbackDialog = $state({ open: false, targetVersion: 0, targetSummary: '' });
+	let rollbackSuccess: { show: boolean; message: string; changes?: Record<string, unknown> } = $state({ show: false, message: '' });
 
 	// Form state
 	let formData = $state({
@@ -53,6 +61,31 @@
 
 	function toggleHistory() {
 		historyExpanded = !historyExpanded;
+	}
+
+	function handleSelectVersion(version: number, summary: string) {
+		rollbackDialog = { open: true, targetVersion: version, targetSummary: summary };
+	}
+
+	async function handleRollbackConfirm(response: RollbackResponse) {
+		rollbackDialog = { open: false, targetVersion: 0, targetSummary: '' };
+		rollbackSuccess = {
+			show: true,
+			message: response.message || 'Successfully restored to version ' + response.new_version,
+			changes: response.changes
+		};
+		if (person) {
+			await loadPerson(person.id);
+		}
+		historyTab = 'history';
+	}
+
+	function handleRollbackCancel() {
+		rollbackDialog = { open: false, targetVersion: 0, targetSummary: '' };
+	}
+
+	function dismissRollbackSuccess() {
+		rollbackSuccess = { show: false, message: '' };
 	}
 
 	function handleMediaAdded(media: Media) {
@@ -336,6 +369,14 @@
 
 				<NameSection personId={person.id} />
 
+				{#if rollbackSuccess.show}
+					<RollbackSuccessBanner
+						message={rollbackSuccess.message}
+						changes={rollbackSuccess.changes}
+						onDismiss={dismissRollbackSuccess}
+					/>
+				{/if}
+
 				<div class="history-section">
 					<button class="history-header" onclick={toggleHistory}>
 						<h2>
@@ -347,11 +388,48 @@
 						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
 					</button>
 					{#if historyExpanded}
+						<div class="history-tabs">
+							<button
+								class="tab-btn"
+								class:active={historyTab === 'history'}
+								onclick={() => historyTab = 'history'}
+							>
+								Change Log
+							</button>
+							<button
+								class="tab-btn"
+								class:active={historyTab === 'restore'}
+								onclick={() => historyTab = 'restore'}
+							>
+								Restore
+							</button>
+						</div>
 						<div class="history-content">
-							<ChangeHistory entityType="person" entityId={person.id} />
+							{#if historyTab === 'history'}
+								<ChangeHistory entityType="person" entityId={person.id} />
+							{:else}
+								<RestorePointBrowser
+									entityType="person"
+									entityId={person.id}
+									currentVersion={person.version}
+									onSelectVersion={handleSelectVersion}
+								/>
+							{/if}
 						</div>
 					{/if}
 				</div>
+
+				<RollbackConfirmDialog
+					open={rollbackDialog.open}
+					entityType="person"
+					entityId={person.id}
+					entityName={formatPersonName(person)}
+					currentVersion={person.version}
+					targetVersion={rollbackDialog.targetVersion}
+					targetSummary={rollbackDialog.targetSummary}
+					onConfirm={handleRollbackConfirm}
+					onCancel={handleRollbackCancel}
+				/>
 			</div>
 		{/if}
 	{/if}
@@ -699,5 +777,36 @@
 		margin-top: 1.5rem;
 		padding-top: 1rem;
 		border-top: 1px solid #e2e8f0;
+	}
+
+	/* History tab styles */
+	.history-tabs {
+		display: flex;
+		gap: 0;
+		margin-top: 0.75rem;
+		margin-bottom: 0.75rem;
+		border-bottom: 2px solid #e2e8f0;
+	}
+
+	.tab-btn {
+		padding: 0.5rem 1rem;
+		border: none;
+		background: none;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: #64748b;
+		cursor: pointer;
+		border-bottom: 2px solid transparent;
+		margin-bottom: -2px;
+		transition: color 0.15s, border-color 0.15s;
+	}
+
+	.tab-btn:hover {
+		color: #475569;
+	}
+
+	.tab-btn.active {
+		color: #3b82f6;
+		border-bottom-color: #3b82f6;
 	}
 </style>

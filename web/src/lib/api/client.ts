@@ -11,6 +11,12 @@ export type AhnentafelResponse = components['schemas']['AhnentafelResponse'];
 export type AhnentafelEntry = components['schemas']['AhnentafelEntry'];
 export type AhnentafelSubject = components['schemas']['AhnentafelSubject'];
 
+// Re-export Rollback types from generated file
+export type RestorePoint = components['schemas']['RestorePoint'];
+export type RestorePointsResponse = components['schemas']['RestorePointsResponse'];
+export type RollbackRequest = components['schemas']['RollbackRequest'];
+export type RollbackResponse = components['schemas']['RollbackResponse'];
+
 const API_BASE = '/api/v1';
 
 // Types based on OpenAPI schemas
@@ -1162,6 +1168,91 @@ class ApiClient {
 			'GET',
 			`/relationship/${encodeURIComponent(personId1)}/${encodeURIComponent(personId2)}`
 		);
+	}
+
+	// Rollback endpoints
+	async getPersonRestorePoints(
+		personId: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<RestorePointsResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<RestorePointsResponse>(
+			'GET',
+			`/persons/${personId}/restore-points${query ? `?${query}` : ''}`
+		);
+	}
+
+	async rollbackPerson(personId: string, targetVersion: number): Promise<RollbackResponse> {
+		return this.request<RollbackResponse>('POST', `/persons/${personId}/rollback`, {
+			target_version: targetVersion
+		});
+	}
+
+	async getFamilyRestorePoints(
+		familyId: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<RestorePointsResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<RestorePointsResponse>(
+			'GET',
+			`/families/${familyId}/restore-points${query ? `?${query}` : ''}`
+		);
+	}
+
+	async rollbackFamily(familyId: string, targetVersion: number): Promise<RollbackResponse> {
+		return this.request<RollbackResponse>('POST', `/families/${familyId}/rollback`, {
+			target_version: targetVersion
+		});
+	}
+
+	async getSourceRestorePoints(
+		sourceId: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<RestorePointsResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<RestorePointsResponse>(
+			'GET',
+			`/sources/${sourceId}/restore-points${query ? `?${query}` : ''}`
+		);
+	}
+
+	async rollbackSource(sourceId: string, targetVersion: number): Promise<RollbackResponse> {
+		return this.request<RollbackResponse>('POST', `/sources/${sourceId}/rollback`, {
+			target_version: targetVersion
+		});
+	}
+
+	async getCitationRestorePoints(
+		citationId: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<RestorePointsResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<RestorePointsResponse>(
+			'GET',
+			`/citations/${citationId}/restore-points${query ? `?${query}` : ''}`
+		);
+	}
+
+	async rollbackCitation(citationId: string, targetVersion: number): Promise<RollbackResponse> {
+		return this.request<RollbackResponse>('POST', `/citations/${citationId}/rollback`, {
+			target_version: targetVersion
+		});
 	}
 }
 
