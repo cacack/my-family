@@ -111,7 +111,8 @@ go vet ./...
 
 ## Documentation
 
-- [ETHOS.md](./docs/ETHOS.md) - Project vision, principles, and success factors
+- [ETHOS.md](./docs/ETHOS.md) - Project vision and guiding principles
+- [ROADMAP.md](./docs/ROADMAP.md) - Phased feature plan and success factors
 - [CONVENTIONS.md](./docs/CONVENTIONS.md) - Code patterns and standards
 - [Architecture Decisions](./docs/adr/) - Key technical decisions with rationale
 - [FEATURES.md](./FEATURES.md) - Complete feature list
