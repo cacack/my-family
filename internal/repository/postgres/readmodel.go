@@ -1814,16 +1814,16 @@ func scanCitationRows(rows *sql.Rows) (*repository.CitationReadModel, error) {
 
 func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 	var (
-		id, ownerID                    uuid.UUID
-		ownerType, factType            string
-		dateRaw, place                 sql.NullString
-		dateSort                       sql.NullTime
-		placeLat, placeLong            sql.NullString
-		addressJSON                    []byte
-		description, cause, age        sql.NullString
-		researchStatus                 sql.NullString
-		version                        int64
-		createdAt                      time.Time
+		id, ownerID             uuid.UUID
+		ownerType, factType     string
+		dateRaw, place          sql.NullString
+		dateSort                sql.NullTime
+		placeLat, placeLong     sql.NullString
+		addressJSON             []byte
+		description, cause, age sql.NullString
+		researchStatus          sql.NullString
+		version                 int64
+		createdAt               time.Time
 	)
 
 	err := row.Scan(&id, &ownerType, &ownerID, &factType, &dateRaw, &dateSort,
@@ -1881,12 +1881,12 @@ func scanEventRows(rows *sql.Rows) (*repository.EventReadModel, error) {
 
 func scanAttributeRow(row rowScanner) (*repository.AttributeReadModel, error) {
 	var (
-		id, personID      uuid.UUID
-		factType, value   string
-		dateRaw, place    sql.NullString
-		dateSort          sql.NullTime
-		version           int64
-		createdAt         time.Time
+		id, personID    uuid.UUID
+		factType, value string
+		dateRaw, place  sql.NullString
+		dateSort        sql.NullTime
+		version         int64
+		createdAt       time.Time
 	)
 
 	err := row.Scan(&id, &personID, &factType, &value, &dateRaw, &dateSort,

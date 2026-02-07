@@ -874,7 +874,6 @@ func TestReadModelStore_SearchPersons_SpecialCharacters(t *testing.T) {
 	}
 }
 
-
 func TestReadModelStore_ListCitations(t *testing.T) {
 	store, cleanup := setupTestReadModelDB(t)
 	defer cleanup()
