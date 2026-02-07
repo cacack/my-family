@@ -21,7 +21,7 @@ Use the Task tool to launch each of these as separate subagents. Each skill runs
 
 3. **Test Quality** - Invoke the `check-tests` skill: Edge case coverage, assertion quality, table-driven patterns, dual database coverage, missing test files, GEDCOM round-trip tests. Report PASS/WARN/FAIL.
 
-4. **Phase Alignment** - Invoke the `check-phase` skill: Last 20 commits vs ETHOS.md phases, Integration Matrix priorities, partial entity completion order, premature Phase 3 work. Brief alignment assessment.
+4. **Phase Alignment** - Invoke the `check-phase` skill: Last 20 commits vs ROADMAP.md phases, Integration Matrix priorities, partial entity completion order, premature Phase 3 work. Brief alignment assessment.
 
 5. **Technical Debt** - Invoke the `check-debt` skill: TODO comments by package, partial entities from matrix, HACK/FIXME/XXX comments, long functions, packages with no tests. Debt summary.
 

@@ -8,7 +8,8 @@ Self-hosted genealogy software written in Go. A premier self-hosted genealogy pl
 
 ## Strategic Context
 
-- [Project Ethos](./docs/ETHOS.md) - Vision, principles, success factors (note phase markers: Phase 1 = now)
+- [Project Ethos](./docs/ETHOS.md) - Vision, principles, and differentiators
+- [Roadmap](./docs/ROADMAP.md) - Phased feature plan (Phase 1 = now)
 - [GitHub Issues](https://github.com/cacack/my-family/issues) - Planned features and work
 - [Conventions](./docs/CONVENTIONS.md) - **Canonical source** for code patterns, commit types, and standards
 - [Architecture Decisions](./docs/adr/) - Key technical decisions with rationale
