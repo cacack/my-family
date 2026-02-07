@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { api, type PersonName, type NameType } from '$lib/api/client';
+	import { api, isConflictError, type PersonName, type NameType } from '$lib/api/client';
+	import ConflictError from './ConflictError.svelte';
 
 	interface Props {
 		personId: string;
@@ -16,6 +17,11 @@
 	let saving = $state(false);
 	let deleteConfirm: string | null = $state(null);
 	let editingId: string | null = $state(null);
+
+	// Conflict retry state
+	let conflictError = $state(false);
+	let retryAction: (() => Promise<void>) | null = $state(null);
+	let retrying = $state(false);
 
 	// Form state for add/edit
 	let formData = $state({
@@ -53,6 +59,24 @@
 			name_type: 'birth',
 			is_primary: false
 		};
+	}
+
+	async function handleRetry() {
+		if (!retryAction) return;
+		retrying = true;
+		conflictError = false;
+		error = null;
+		try {
+			await retryAction();
+		} catch (e) {
+			if (isConflictError(e)) {
+				conflictError = true;
+			} else {
+				error = (e as { message?: string }).message || 'Operation failed';
+			}
+		} finally {
+			retrying = false;
+		}
 	}
 
 	function openAddForm() {
@@ -108,9 +132,15 @@
 				is_primary: formData.is_primary
 			});
 			showAddForm = false;
+			conflictError = false;
 			loadNames();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to add name';
+			if (isConflictError(e)) {
+				conflictError = true;
+				retryAction = () => saveNewName();
+			} else {
+				error = (e as { message?: string }).message || 'Failed to add name';
+			}
 		} finally {
 			saving = false;
 		}
@@ -137,9 +167,15 @@
 				is_primary: formData.is_primary
 			});
 			editingId = null;
+			conflictError = false;
 			loadNames();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to update name';
+			if (isConflictError(e)) {
+				conflictError = true;
+				retryAction = () => saveEdit();
+			} else {
+				error = (e as { message?: string }).message || 'Failed to update name';
+			}
 		} finally {
 			saving = false;
 		}
@@ -151,9 +187,15 @@
 		try {
 			await api.deletePersonName(personId, name.id);
 			deleteConfirm = null;
+			conflictError = false;
 			loadNames();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to delete name';
+			if (isConflictError(e)) {
+				conflictError = true;
+				retryAction = () => deleteName(name);
+			} else {
+				error = (e as { message?: string }).message || 'Failed to delete name';
+			}
 		} finally {
 			saving = false;
 		}
@@ -208,7 +250,9 @@
 		{/if}
 	</div>
 
-	{#if error}
+	{#if conflictError}
+		<ConflictError onRetry={handleRetry} {retrying} />
+	{:else if error}
 		<div class="section-error" role="alert">{error}</div>
 	{/if}
 

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { api, type Media } from '$lib/api/client';
+	import { api, isConflictError, type Media } from '$lib/api/client';
+	import ConflictError from './ConflictError.svelte';
 
 	interface Props {
 		personId: string;
@@ -16,6 +17,11 @@
 	let uploading = $state(false);
 	let error: string | null = $state(null);
 	let success = $state(false);
+
+	// Conflict retry state
+	let conflictError = $state(false);
+	let retryAction: (() => Promise<void>) | null = $state(null);
+	let retrying = $state(false);
 
 	const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 	const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -108,6 +114,7 @@
 				mediaType
 			);
 			success = true;
+			conflictError = false;
 			onUpload?.(media);
 			// Reset form for next upload
 			file = null;
@@ -115,9 +122,32 @@
 			description = '';
 			mediaType = 'photo';
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Upload failed. Please try again.';
+			if (isConflictError(e)) {
+				conflictError = true;
+				retryAction = () => uploadFile();
+			} else {
+				error = (e as { message?: string }).message || 'Upload failed. Please try again.';
+			}
 		} finally {
 			uploading = false;
+		}
+	}
+
+	async function handleRetry() {
+		if (!retryAction) return;
+		retrying = true;
+		conflictError = false;
+		error = null;
+		try {
+			await retryAction();
+		} catch (e) {
+			if (isConflictError(e)) {
+				conflictError = true;
+			} else {
+				error = (e as { message?: string }).message || 'Operation failed';
+			}
+		} finally {
+			retrying = false;
 		}
 	}
 
@@ -220,7 +250,9 @@
 		</div>
 	{/if}
 
-	{#if error}
+	{#if conflictError}
+		<ConflictError onRetry={handleRetry} {retrying} />
+	{:else if error}
 		<div class="message error-message" role="alert">{error}</div>
 	{/if}
 
