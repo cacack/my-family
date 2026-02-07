@@ -252,6 +252,67 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_associations_person ON associations(person_id);
 		CREATE INDEX IF NOT EXISTS idx_associations_associate ON associations(associate_id);
 		CREATE INDEX IF NOT EXISTS idx_associations_role ON associations(role);
+
+		-- Events table (life events for persons and families)
+		CREATE TABLE IF NOT EXISTS events (
+			id TEXT PRIMARY KEY,
+			owner_type TEXT NOT NULL,
+			owner_id TEXT NOT NULL,
+			fact_type TEXT NOT NULL,
+			date_raw TEXT,
+			date_sort TEXT,
+			place TEXT,
+			place_lat TEXT,
+			place_long TEXT,
+			address TEXT,
+			description TEXT,
+			cause TEXT,
+			age TEXT,
+			research_status TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_events_owner ON events(owner_type, owner_id);
+		CREATE INDEX IF NOT EXISTS idx_events_fact_type ON events(fact_type);
+
+		-- Attributes table (person attributes)
+		CREATE TABLE IF NOT EXISTS attributes (
+			id TEXT PRIMARY KEY,
+			person_id TEXT NOT NULL,
+			fact_type TEXT NOT NULL,
+			value TEXT NOT NULL DEFAULT '',
+			date_raw TEXT,
+			date_sort TEXT,
+			place TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (person_id) REFERENCES persons(id)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_attributes_person ON attributes(person_id);
+		CREATE INDEX IF NOT EXISTS idx_attributes_fact_type ON attributes(fact_type);
+
+		-- LDS Ordinances table
+		CREATE TABLE IF NOT EXISTS lds_ordinances (
+			id TEXT PRIMARY KEY,
+			type TEXT NOT NULL,
+			type_label TEXT NOT NULL,
+			person_id TEXT,
+			person_name TEXT,
+			family_id TEXT,
+			date_raw TEXT,
+			date_sort TEXT,
+			place TEXT,
+			temple TEXT,
+			status TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_lds_ordinances_person ON lds_ordinances(person_id);
+		CREATE INDEX IF NOT EXISTS idx_lds_ordinances_family ON lds_ordinances(family_id);
+		CREATE INDEX IF NOT EXISTS idx_lds_ordinances_type ON lds_ordinances(type);
 	`)
 	if err != nil {
 		return err
@@ -1404,6 +1465,43 @@ func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, factType domai
 	return citations, rows.Err()
 }
 
+// ListCitations returns a paginated list of citations.
+func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM citations").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count citations: %w", err)
+	}
+
+	// Sort by source_title ASC, fact_type ASC, id ASC for deterministic ordering
+	query := `
+		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+			   source_quality, informant_type, evidence_type, quoted_text, analysis,
+			   template_id, gedcom_xref, version, created_at
+		FROM citations
+		ORDER BY source_title ASC, fact_type ASC, id ASC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query citations: %w", err)
+	}
+	defer rows.Close()
+
+	var citations []repository.CitationReadModel
+	for rows.Next() {
+		cit, err := scanCitationRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		citations = append(citations, *cit)
+	}
+
+	return citations, total, rows.Err()
+}
+
 // SaveCitation saves or updates a citation.
 func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.CitationReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
@@ -1439,6 +1537,286 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.
 func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM citations WHERE id = ?", id.String())
 	return err
+}
+
+// GetEvent retrieves an event by ID.
+func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		       place, place_lat, place_long, address, description, cause,
+		       age, research_status, version, created_at
+		FROM events WHERE id = ?
+	`, id.String())
+
+	return scanEvent(row)
+}
+
+// ListEvents returns a paginated list of events.
+func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count events: %w", err)
+	}
+
+	// Sort by fact_type ASC, date_sort ASC NULLS LAST, id ASC for deterministic ordering
+	query := `
+		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		       place, place_lat, place_long, address, description, cause,
+		       age, research_status, version, created_at
+		FROM events
+		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []repository.EventReadModel
+	for rows.Next() {
+		event, err := scanEventRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		events = append(events, *event)
+	}
+
+	return events, total, rows.Err()
+}
+
+// ListEventsForPerson returns all events for a given person.
+func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		       place, place_lat, place_long, address, description, cause,
+		       age, research_status, version, created_at
+		FROM events
+		WHERE owner_type = 'person' AND owner_id = ?
+		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
+	`, personID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query events for person: %w", err)
+	}
+	defer rows.Close()
+
+	var events []repository.EventReadModel
+	for rows.Next() {
+		event, err := scanEventRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, *event)
+	}
+
+	return events, rows.Err()
+}
+
+// ListEventsForFamily returns all events for a given family.
+func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		       place, place_lat, place_long, address, description, cause,
+		       age, research_status, version, created_at
+		FROM events
+		WHERE owner_type = 'family' AND owner_id = ?
+		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
+	`, familyID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query events for family: %w", err)
+	}
+	defer rows.Close()
+
+	var events []repository.EventReadModel
+	for rows.Next() {
+		event, err := scanEventRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, *event)
+	}
+
+	return events, rows.Err()
+}
+
+// SaveEvent saves or updates an event.
+func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
+	var dateSort, placeLat, placeLong, addressJSON interface{}
+	var description, cause, age, researchStatus interface{}
+
+	if event.DateSort != nil {
+		dateSort = event.DateSort.Format(time.RFC3339)
+	}
+	if event.PlaceLat != nil {
+		placeLat = *event.PlaceLat
+	}
+	if event.PlaceLong != nil {
+		placeLong = *event.PlaceLong
+	}
+	if event.Address != nil {
+		if data, err := json.Marshal(event.Address); err == nil {
+			addressJSON = string(data)
+		}
+	}
+	if event.Description != "" {
+		description = event.Description
+	}
+	if event.Cause != "" {
+		cause = event.Cause
+	}
+	if event.Age != "" {
+		age = event.Age
+	}
+	if event.ResearchStatus != "" {
+		researchStatus = string(event.ResearchStatus)
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO events (id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		                    place, place_lat, place_long, address, description, cause,
+		                    age, research_status, version, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			owner_type = excluded.owner_type,
+			owner_id = excluded.owner_id,
+			fact_type = excluded.fact_type,
+			date_raw = excluded.date_raw,
+			date_sort = excluded.date_sort,
+			place = excluded.place,
+			place_lat = excluded.place_lat,
+			place_long = excluded.place_long,
+			address = excluded.address,
+			description = excluded.description,
+			cause = excluded.cause,
+			age = excluded.age,
+			research_status = excluded.research_status,
+			version = excluded.version
+	`, event.ID.String(), event.OwnerType, event.OwnerID.String(), string(event.FactType),
+		event.DateRaw, dateSort, event.Place, placeLat, placeLong, addressJSON,
+		description, cause, age, researchStatus, event.Version,
+		formatTimestamp(event.CreatedAt))
+	if err != nil {
+		return fmt.Errorf("save event: %w", err)
+	}
+	return nil
+}
+
+// DeleteEvent deletes an event by ID.
+func (s *ReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE id = ?", id.String())
+	if err != nil {
+		return fmt.Errorf("delete event: %w", err)
+	}
+	return nil
+}
+
+// GetAttribute retrieves an attribute by ID.
+func (s *ReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
+		FROM attributes WHERE id = ?
+	`, id.String())
+
+	return scanAttribute(row)
+}
+
+// ListAttributes returns a paginated list of attributes.
+func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM attributes").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count attributes: %w", err)
+	}
+
+	// Sort by fact_type ASC, value ASC, id ASC for deterministic ordering
+	query := `
+		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
+		FROM attributes
+		ORDER BY fact_type ASC, value ASC, id ASC
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query attributes: %w", err)
+	}
+	defer rows.Close()
+
+	var attributes []repository.AttributeReadModel
+	for rows.Next() {
+		attr, err := scanAttributeRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		attributes = append(attributes, *attr)
+	}
+
+	return attributes, total, rows.Err()
+}
+
+// ListAttributesForPerson returns all attributes for a given person.
+func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
+		FROM attributes
+		WHERE person_id = ?
+		ORDER BY fact_type ASC, value ASC, id ASC
+	`, personID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query attributes for person: %w", err)
+	}
+	defer rows.Close()
+
+	var attributes []repository.AttributeReadModel
+	for rows.Next() {
+		attr, err := scanAttributeRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		attributes = append(attributes, *attr)
+	}
+
+	return attributes, rows.Err()
+}
+
+// SaveAttribute saves or updates an attribute.
+func (s *ReadModelStore) SaveAttribute(ctx context.Context, attribute *repository.AttributeReadModel) error {
+	var dateSort interface{}
+	if attribute.DateSort != nil {
+		dateSort = attribute.DateSort.Format(time.RFC3339)
+	}
+
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO attributes (id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (id) DO UPDATE SET
+			person_id = excluded.person_id,
+			fact_type = excluded.fact_type,
+			value = excluded.value,
+			date_raw = excluded.date_raw,
+			date_sort = excluded.date_sort,
+			place = excluded.place,
+			version = excluded.version
+	`, attribute.ID.String(), attribute.PersonID.String(), string(attribute.FactType),
+		attribute.Value, attribute.DateRaw, dateSort, attribute.Place,
+		attribute.Version, formatTimestamp(attribute.CreatedAt))
+	if err != nil {
+		return fmt.Errorf("save attribute: %w", err)
+	}
+	return nil
+}
+
+// DeleteAttribute deletes an attribute by ID.
+func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM attributes WHERE id = ?", id.String())
+	if err != nil {
+		return fmt.Errorf("delete attribute: %w", err)
+	}
+	return nil
 }
 
 // Scanning functions for sources and citations
@@ -1549,6 +1927,128 @@ func scanCitation(row rowScanner) (*repository.CitationReadModel, error) {
 
 func scanCitationRow(rows *sql.Rows) (*repository.CitationReadModel, error) {
 	return scanCitation(rows)
+}
+
+func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
+	var (
+		idStr, ownerType, ownerIDStr, factType string
+		dateRaw, place                         sql.NullString
+		dateSort                               sql.NullString
+		placeLat, placeLong                    sql.NullString
+		addressJSON                            []byte
+		description, cause, age                sql.NullString
+		researchStatus                         sql.NullString
+		version                                int64
+		createdAt                              string
+	)
+
+	err := row.Scan(&idStr, &ownerType, &ownerIDStr, &factType, &dateRaw, &dateSort,
+		&place, &placeLat, &placeLong, &addressJSON, &description, &cause,
+		&age, &researchStatus, &version, &createdAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan event: %w", err)
+	}
+
+	id, _ := uuid.Parse(idStr)
+	ownerID, _ := uuid.Parse(ownerIDStr)
+
+	event := &repository.EventReadModel{
+		ID:          id,
+		OwnerType:   ownerType,
+		OwnerID:     ownerID,
+		FactType:    domain.FactType(factType),
+		DateRaw:     dateRaw.String,
+		Place:       place.String,
+		Description: description.String,
+		Cause:       cause.String,
+		Age:         age.String,
+		Version:     version,
+	}
+
+	if dateSort.Valid {
+		if t, err := parseTimestamp(dateSort.String); err == nil {
+			event.DateSort = &t
+		}
+	}
+	if placeLat.Valid {
+		s := placeLat.String
+		event.PlaceLat = &s
+	}
+	if placeLong.Valid {
+		s := placeLong.String
+		event.PlaceLong = &s
+	}
+	if len(addressJSON) > 0 {
+		var addr domain.Address
+		if err := json.Unmarshal(addressJSON, &addr); err == nil {
+			event.Address = &addr
+		}
+	}
+	if researchStatus.Valid {
+		event.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+	}
+	if t, err := parseTimestamp(createdAt); err == nil {
+		event.CreatedAt = t
+	}
+
+	return event, nil
+}
+
+func scanEventRow(rows *sql.Rows) (*repository.EventReadModel, error) {
+	return scanEvent(rows)
+}
+
+func scanAttribute(row rowScanner) (*repository.AttributeReadModel, error) {
+	var (
+		idStr, personIDStr, factType string
+		value                        string
+		dateRaw, place               sql.NullString
+		dateSort                     sql.NullString
+		version                      int64
+		createdAt                    string
+	)
+
+	err := row.Scan(&idStr, &personIDStr, &factType, &value, &dateRaw, &dateSort,
+		&place, &version, &createdAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan attribute: %w", err)
+	}
+
+	id, _ := uuid.Parse(idStr)
+	personID, _ := uuid.Parse(personIDStr)
+
+	attr := &repository.AttributeReadModel{
+		ID:       id,
+		PersonID: personID,
+		FactType: domain.FactType(factType),
+		Value:    value,
+		DateRaw:  dateRaw.String,
+		Place:    place.String,
+		Version:  version,
+	}
+
+	if dateSort.Valid {
+		if t, err := parseTimestamp(dateSort.String); err == nil {
+			attr.DateSort = &t
+		}
+	}
+	if t, err := parseTimestamp(createdAt); err == nil {
+		attr.CreatedAt = t
+	}
+
+	return attr, nil
+}
+
+func scanAttributeRow(rows *sql.Rows) (*repository.AttributeReadModel, error) {
+	return scanAttribute(rows)
 }
 
 // GetMedia retrieves media metadata by ID (excludes FileData and ThumbnailData).
