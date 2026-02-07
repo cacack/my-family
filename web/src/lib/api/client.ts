@@ -1170,12 +1170,7 @@ export const api = new ApiClient();
 /** Check if an error is a version conflict (409). For endpoints using requestWithConflictRetry, auto-retry has already been attempted. */
 export function isConflictError(error: unknown): boolean {
 	const apiError = error as ApiError;
-	return (
-		apiError?.status === 409 ||
-		apiError?.code === 'CONFLICT_RETRY_FAILED' ||
-		apiError?.code === 'CONFLICT' ||
-		apiError?.code === 'conflict'
-	);
+	return apiError?.status === 409 || apiError?.code === 'CONFLICT_RETRY_FAILED';
 }
 
 // Utility functions for formatting
