@@ -6,10 +6,18 @@
 	import SearchBox from '$lib/components/SearchBox.svelte';
 	import KeyboardHelp from '$lib/components/KeyboardHelp.svelte';
 	import AccessibilityPanel from '$lib/components/AccessibilityPanel.svelte';
+	import DemoBanner from '$lib/components/DemoBanner.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
+	import { loadAppConfig, getAppConfig } from '$lib/stores/appConfig.svelte';
 	import type { SearchResult } from '$lib/api/client';
 
 	let { children } = $props();
+
+	const appConfig = getAppConfig();
+
+	$effect(() => {
+		loadAppConfig();
+	});
 
 	// Component refs
 	let searchBoxRef: SearchBox | undefined = $state();
@@ -55,6 +63,10 @@
 >
 	Skip to main content
 </a>
+
+{#if appConfig.demo_mode}
+	<DemoBanner />
+{/if}
 
 <div class="app-layout">
 	<header class="app-header" role="banner">

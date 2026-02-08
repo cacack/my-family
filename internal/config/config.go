@@ -4,6 +4,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds the application configuration.
@@ -16,6 +17,9 @@ type Config struct {
 	Port      int    // HTTP server port (default: 8080)
 	LogLevel  string // Logging level: debug, info, warn, error (default: info)
 	LogFormat string // Log format: text, json (default: text)
+
+	// Demo mode
+	DemoMode bool // Run with pre-loaded sample data (ephemeral)
 }
 
 // Load reads configuration from environment variables.
@@ -26,6 +30,7 @@ func Load() *Config {
 		Port:        getEnvIntOrDefault("PORT", 8080),
 		LogLevel:    getEnvOrDefault("LOG_LEVEL", "info"),
 		LogFormat:   getEnvOrDefault("LOG_FORMAT", "text"),
+		DemoMode:    getEnvBoolOrDefault("DEMO_MODE", false),
 	}
 	return cfg
 }
@@ -39,6 +44,19 @@ func (c *Config) UsePostgreSQL() bool {
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+// getEnvBoolOrDefault returns the environment variable as bool or a default.
+func getEnvBoolOrDefault(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		switch strings.ToLower(value) {
+		case "true", "1", "yes":
+			return true
+		case "false", "0", "no":
+			return false
+		}
 	}
 	return defaultValue
 }

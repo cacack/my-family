@@ -27,6 +27,10 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.LogFormat != "text" {
 		t.Errorf("expected LogFormat to be 'text', got %q", cfg.LogFormat)
 	}
+
+	if cfg.DemoMode {
+		t.Error("expected DemoMode to be false by default")
+	}
 }
 
 func TestLoad_AllEnvVarsSet(t *testing.T) {
@@ -152,5 +156,40 @@ func TestGetEnvIntOrDefault_EmptyString(t *testing.T) {
 
 	if result != 4321 {
 		t.Errorf("expected default value 4321, got %d", result)
+	}
+}
+
+func TestGetEnvBoolOrDefault_TrueValues(t *testing.T) {
+	for _, val := range []string{"true", "1", "yes", "TRUE", "Yes"} {
+		t.Setenv("TEST_BOOL", val)
+		if !getEnvBoolOrDefault("TEST_BOOL", false) {
+			t.Errorf("expected true for %q", val)
+		}
+	}
+}
+
+func TestGetEnvBoolOrDefault_FalseValues(t *testing.T) {
+	for _, val := range []string{"false", "0", "no", "FALSE", "No"} {
+		t.Setenv("TEST_BOOL", val)
+		if getEnvBoolOrDefault("TEST_BOOL", true) {
+			t.Errorf("expected false for %q", val)
+		}
+	}
+}
+
+func TestGetEnvBoolOrDefault_Default(t *testing.T) {
+	if getEnvBoolOrDefault("NONEXISTENT_BOOL", true) != true {
+		t.Error("expected default true")
+	}
+	if getEnvBoolOrDefault("NONEXISTENT_BOOL", false) != false {
+		t.Error("expected default false")
+	}
+}
+
+func TestLoad_DemoMode(t *testing.T) {
+	t.Setenv("DEMO_MODE", "true")
+	cfg := Load()
+	if !cfg.DemoMode {
+		t.Error("expected DemoMode to be true when DEMO_MODE=true")
 	}
 }
