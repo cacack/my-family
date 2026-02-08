@@ -2,6 +2,7 @@ package demo
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
@@ -58,10 +59,10 @@ func TestSeedDemoData(t *testing.T) {
 		t.Errorf("expected 2 citations, got %d", totalCitations)
 	}
 
-	// Verify all persons have [DEMO DATA] in notes
+	// Verify all persons have [DEMO DATA] marker in notes
 	for _, p := range persons {
-		if p.Notes == "" {
-			t.Errorf("person %q has empty notes, expected [DEMO DATA] marker", p.GivenName+" "+p.Surname)
+		if !strings.Contains(p.Notes, "[DEMO DATA]") {
+			t.Errorf("person %q notes missing [DEMO DATA] marker, got %q", p.GivenName+" "+p.Surname, p.Notes)
 		}
 	}
 
