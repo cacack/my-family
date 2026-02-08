@@ -45,6 +45,11 @@ override:
   - threshold: 65
     path: ^internal/repository/memory$
 
+  # internal/demo is sample data seeding code - error paths guard against
+  # store failures that can't occur with the in-memory backend
+  - threshold: 60
+    path: ^internal/demo$
+
 # Exclude packages from coverage checks
 exclude:
   paths:

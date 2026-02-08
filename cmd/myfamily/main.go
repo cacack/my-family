@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,7 +10,9 @@ import (
 	"syscall"
 
 	"github.com/cacack/my-family/internal/api"
+	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/demo"
 	"github.com/cacack/my-family/internal/repository/memory"
 	"github.com/cacack/my-family/internal/web"
 )
@@ -57,7 +60,8 @@ Environment Variables:
   SQLITE_PATH    SQLite database path (default: ./myfamily.db)
   PORT           HTTP server port (default: 8080)
   LOG_LEVEL      Log level: debug, info, warn, error (default: info)
-  LOG_FORMAT     Log format: text, json (default: text)`)
+  LOG_FORMAT     Log format: text, json (default: text)
+  DEMO_MODE      Run with sample data, no persistence (default: false)`)
 }
 
 func runServer() {
@@ -83,14 +87,32 @@ func runServer() {
 	} else {
 		log.Printf("Database: In-memory (SQLite path configured: %s)", cfg.SQLitePath)
 	}
+	if cfg.DemoMode {
+		log.Printf("Mode: DEMO (sample data, no persistence)")
+	}
 	if frontendFS != nil {
 		log.Printf("Frontend: Embedded")
 	} else {
 		log.Printf("Frontend: Not available (API only)")
 	}
 
+	// Seed demo data if demo mode is enabled
+	if cfg.DemoMode {
+		cmdHandler := command.NewHandler(eventStore, readStore)
+		if err := demo.SeedDemoData(context.Background(), cmdHandler); err != nil {
+			log.Fatalf("Failed to seed demo data: %v", err)
+		}
+		log.Printf("Demo data loaded: sample family tree ready")
+	}
+
+	// Build server options for demo mode
+	var serverOpts []api.ServerOption
+	if cfg.DemoMode {
+		serverOpts = append(serverOpts, api.WithDemoReset(eventStore, readStore, snapshotStore))
+	}
+
 	// Create and start server
-	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, frontendFS)
+	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, frontendFS, serverOpts...)
 
 	// Handle graceful shutdown
 	go func() {

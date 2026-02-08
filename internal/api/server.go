@@ -16,6 +16,32 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// Resetter can reset its state to empty.
+type Resetter interface {
+	Reset()
+}
+
+// demoResetter holds the stores that can be reset in demo mode.
+type demoResetter struct {
+	eventStore    Resetter
+	readStore     Resetter
+	snapshotStore Resetter
+}
+
+// ServerOption configures optional server behavior.
+type ServerOption func(*Server)
+
+// WithDemoReset enables the demo reset endpoint by providing resettable stores.
+func WithDemoReset(eventStore, readStore, snapshotStore Resetter) ServerOption {
+	return func(s *Server) {
+		s.demo = &demoResetter{
+			eventStore:    eventStore,
+			readStore:     readStore,
+			snapshotStore: snapshotStore,
+		}
+	}
+}
+
 // Server wraps the Echo server with application dependencies.
 type Server struct {
 	echo                *echo.Echo
@@ -41,6 +67,7 @@ type Server struct {
 	ldsOrdinanceService *query.LDSOrdinanceService
 	exportService       *query.ExportService
 	frontendFS          fs.FS
+	demo                *demoResetter // nil when not in demo mode
 }
 
 // NewServer creates a new API server with all dependencies.
@@ -50,6 +77,7 @@ func NewServer(
 	readStore repository.ReadModelStore,
 	snapshotStore repository.SnapshotStore,
 	frontendFS fs.FS,
+	opts ...ServerOption,
 ) *Server {
 	e := echo.New()
 	e.HideBanner = true
@@ -123,6 +151,11 @@ func NewServer(
 		frontendFS:          frontendFS,
 	}
 
+	// Apply options
+	for _, opt := range opts {
+		opt(server)
+	}
+
 	// Register routes
 	server.registerRoutes()
 
@@ -135,6 +168,14 @@ func (s *Server) registerRoutes() {
 
 	// Health check (outside generated routes)
 	api.GET("/health", s.healthCheck)
+
+	// App config (outside generated routes)
+	api.GET("/config", s.getAppConfig)
+
+	// Demo mode reset (outside generated routes)
+	if s.demo != nil {
+		api.POST("/demo/reset", s.resetDemo)
+	}
 
 	// API documentation (outside generated routes)
 	s.registerDocsRoutes(api)
@@ -189,6 +230,11 @@ func (s *Server) Shutdown() error {
 // Echo returns the underlying Echo instance (for testing).
 func (s *Server) Echo() *echo.Echo {
 	return s.echo
+}
+
+// CommandHandler returns the command handler (for testing/seeding).
+func (s *Server) CommandHandler() *command.Handler {
+	return s.commandHandler
 }
 
 // Health check handler.
