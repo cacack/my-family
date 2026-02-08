@@ -55,15 +55,15 @@
 
 	async function handleRollbackConfirm(response: RollbackResponse) {
 		rollbackDialog = { open: false, targetVersion: 0, targetSummary: '' };
+		if (family) {
+			await loadFamily(family.id);
+		}
+		historyTab = 'history';
 		rollbackSuccess = {
 			show: true,
 			message: response.message || 'Successfully restored to version ' + response.new_version,
 			changes: response.changes
 		};
-		if (family) {
-			await loadFamily(family.id);
-		}
-		historyTab = 'history';
 	}
 
 	function handleRollbackCancel() {
