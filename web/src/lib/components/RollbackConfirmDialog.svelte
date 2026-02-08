@@ -28,6 +28,12 @@
 	let rolling = $state(false);
 	let error: string | null = $state(null);
 
+	$effect(() => {
+		if (open) {
+			error = null;
+		}
+	});
+
 	async function performRollback() {
 		rolling = true;
 		error = null;
