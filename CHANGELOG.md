@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.8.0](https://github.com/cacack/my-family/compare/v0.7.0...v0.8.0) (2026-02-08)
+
+
+### Features
+
+* add 409 conflict auto-retry and user-friendly error UI ([d770fcf](https://github.com/cacack/my-family/commit/d770fcf3fdacb957cd61be3dbc07eb5fc622e673)), closes [#230](https://github.com/cacack/my-family/issues/230)
+* add demo/sandbox mode with sample family tree ([b3d2c1b](https://github.com/cacack/my-family/commit/b3d2c1bdca3ab8a22af25fd1ceb44bd82695a35b)), closes [#20](https://github.com/cacack/my-family/issues/20)
+* add ListAll pagination to server_strict.go export endpoints ([b175fe1](https://github.com/cacack/my-family/commit/b175fe14a5382bd9a3b2472af373f8ef60b56149))
+* add missing List methods to SQLite/PostgreSQL ReadModelStore ([be43556](https://github.com/cacack/my-family/commit/be4355661681f4587297f184d951d7dc90ac5e9d)), closes [#208](https://github.com/cacack/my-family/issues/208)
+* add name variants display/edit UI ([42c7091](https://github.com/cacack/my-family/commit/42c709141bfad63677de1c5388a37cd6df17b815))
+* add onboarding wizard for first-time setup ([723e242](https://github.com/cacack/my-family/commit/723e24255acb546d703af699c6cbc21f632cb75b)), closes [#24](https://github.com/cacack/my-family/issues/24)
+* add pagination to export endpoints to avoid truncation ([305b843](https://github.com/cacack/my-family/commit/305b84339038148314c70393a54950b223759179)), closes [#210](https://github.com/cacack/my-family/issues/210)
+* add quick capture mode for fast person data entry ([978b975](https://github.com/cacack/my-family/commit/978b9753fe397323ba9655a28686d573576c547d)), closes [#43](https://github.com/cacack/my-family/issues/43)
+* add rollback UI for browsing and restoring entity versions ([85f906a](https://github.com/cacack/my-family/commit/85f906a950eb329d9fd4a42880a7f28c09e18e2e)), closes [#88](https://github.com/cacack/my-family/issues/88)
+* adopt lenient parsing mode for robust GEDCOM import ([b7735d0](https://github.com/cacack/my-family/commit/b7735d0eee1943be62df1025258b258df86d2c02)), closes [#221](https://github.com/cacack/my-family/issues/221)
+
+
+### Bug Fixes
+
+* address CodeRabbit review feedback ([e8d4f16](https://github.com/cacack/my-family/commit/e8d4f16b7ee1f062458bd6f378a486389d3fd2d7))
+* address CodeRabbit review feedback for conflict UX ([1de2ee7](https://github.com/cacack/my-family/commit/1de2ee7fa0b565de0d65a4e65d9f71fc49aa8dd7))
+* address CodeRabbit review feedback for onboarding wizard ([9874741](https://github.com/cacack/my-family/commit/9874741102ddb8445759e01990235f5fac204148))
+* address CodeRabbit review feedback on NameSection ([4ae3cd3](https://github.com/cacack/my-family/commit/4ae3cd32a5df5f3e9ce801e5f158f23c9de250d6))
+* address CodeRabbit review feedback on rollback UI ([b23446c](https://github.com/cacack/my-family/commit/b23446c856eb240f7edd18d2eb4c5e96b816d3b2))
+* assert [DEMO DATA] marker in seeder test notes check ([0f64530](https://github.com/cacack/my-family/commit/0f645309ffe1fba3bbbda028a00fa02e5f289462))
+* clear stale error state when rollback dialog reopens ([1e4129e](https://github.com/cacack/my-family/commit/1e4129e7f0bbef0d2659a313f13495e885bc5436))
+* complete review fixes for onboarding wizard ([af3a102](https://github.com/cacack/my-family/commit/af3a102f03b0a13109b05760b127d044d2dffd3d))
+* resolve CI type error and round-2 review feedback ([1074500](https://github.com/cacack/my-family/commit/1074500c2f4cc360119d6fe47e660fcc85f41aa4))
+* track version correctly for GEDCOM-imported person names ([fd887e3](https://github.com/cacack/my-family/commit/fd887e3a1562d1a7617bcf9c1c7da517b6596f33)), closes [#228](https://github.com/cacack/my-family/issues/228)
+
 ## [0.7.0](https://github.com/cacack/my-family/compare/v0.6.0...v0.7.0) (2026-01-24)
 
 
