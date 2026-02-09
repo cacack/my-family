@@ -265,6 +265,18 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		return err
 	}
 
+	// Update read model with GEDCOM coordinates (not in event schema)
+	if p.BirthPlaceLat != nil || p.BirthPlaceLong != nil || p.DeathPlaceLat != nil || p.DeathPlaceLong != nil {
+		readModel, err := h.readStore.GetPerson(ctx, person.ID)
+		if err == nil && readModel != nil {
+			readModel.BirthPlaceLat = p.BirthPlaceLat
+			readModel.BirthPlaceLong = p.BirthPlaceLong
+			readModel.DeathPlaceLat = p.DeathPlaceLat
+			readModel.DeathPlaceLong = p.DeathPlaceLong
+			_ = h.readStore.SavePerson(ctx, readModel)
+		}
+	}
+
 	// Emit NameAdded events for all names from GEDCOM
 	// Track version to keep read model in sync with event stream
 	currentVersion := int64(1) // PersonCreated was version 1
@@ -526,7 +538,21 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	if err := h.projector.Project(ctx, event, 1); err != nil {
+		return err
+	}
+
+	// Update read model with GEDCOM coordinates (not in event schema)
+	if e.PlaceLat != nil || e.PlaceLong != nil {
+		readModel, err := h.readStore.GetEvent(ctx, e.ID)
+		if err == nil && readModel != nil {
+			readModel.PlaceLat = e.PlaceLat
+			readModel.PlaceLong = e.PlaceLong
+			_ = h.readStore.SaveEvent(ctx, readModel)
+		}
+	}
+
+	return nil
 }
 
 // importAttribute creates a person attribute from GEDCOM data.
