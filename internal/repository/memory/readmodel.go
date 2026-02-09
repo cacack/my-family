@@ -226,7 +226,7 @@ func (s *ReadModelStore) searchAlternateNames(queryLower string, opts repository
 			continue
 		}
 		for _, name := range names {
-			if nameMatchesQuery(name, queryLower) {
+			if altNameMatches(name, queryLower, opts.Soundex) {
 				if p, exists := s.persons[personID]; exists && !foundIDs[personID] && s.matchesSearchFilters(p, opts) {
 					*results = append(*results, *p)
 					foundIDs[personID] = true
@@ -235,6 +235,23 @@ func (s *ReadModelStore) searchAlternateNames(queryLower string, opts repository
 			}
 		}
 	}
+}
+
+// altNameMatches checks if a PersonNameReadModel matches via substring or Soundex.
+func altNameMatches(name repository.PersonNameReadModel, queryLower string, soundex bool) bool {
+	if nameMatchesQuery(name, queryLower) {
+		return true
+	}
+	if soundex {
+		for _, word := range strings.Fields(queryLower) {
+			if repository.SoundexMatch(word, name.GivenName) ||
+				repository.SoundexMatch(word, name.Surname) ||
+				repository.SoundexMatch(word, name.Nickname) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // nameMatchesQuery checks if a PersonNameReadModel matches the query.
