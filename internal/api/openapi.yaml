@@ -639,6 +639,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/PersonList'
 
+  /map/locations:
+    get:
+      operationId: getMapLocations
+      summary: Get geographic locations for map visualization
+      description: Returns aggregated birth and death locations with coordinates for map display
+      tags: [browse]
+      responses:
+        '200':
+          description: Geographic location data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MapLocationsResponse'
+
   /gedcom/import:
     post:
       operationId: importGedcom
@@ -3863,6 +3877,47 @@ components:
         count:
           type: integer
           description: Number of persons buried/cremated here
+
+    MapLocationsResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MapLocation'
+        total:
+          type: integer
+          description: Total number of locations with coordinates
+
+    MapLocation:
+      type: object
+      required: [place, latitude, longitude, event_type, count, person_ids]
+      properties:
+        place:
+          type: string
+          description: Place name
+        latitude:
+          type: number
+          format: double
+          description: Latitude in decimal degrees
+        longitude:
+          type: number
+          format: double
+          description: Longitude in decimal degrees
+        event_type:
+          type: string
+          enum: [birth, death]
+          description: Type of life event at this location
+        count:
+          type: integer
+          description: Number of persons at this location
+        person_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: IDs of persons at this location
 
     # Source schemas
     Source:

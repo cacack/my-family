@@ -339,6 +339,9 @@ type ReadModelStore interface {
 	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 	GetCemeteryIndex(ctx context.Context) ([]CemeteryEntry, error)
 	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
+
+	// Map operations
+	GetMapLocations(ctx context.Context) ([]MapLocation, error)
 }
 
 // SurnameEntry represents a surname with count.
@@ -357,6 +360,16 @@ type LetterCount struct {
 type CemeteryEntry struct {
 	Place string `json:"place"`
 	Count int    `json:"count"`
+}
+
+// MapLocation represents an aggregated geographic location for map display.
+type MapLocation struct {
+	Place     string      `json:"place"`
+	Latitude  float64     `json:"latitude"`
+	Longitude float64     `json:"longitude"`
+	EventType string      `json:"event_type"` // "birth" or "death"
+	Count     int         `json:"count"`
+	PersonIDs []uuid.UUID `json:"person_ids"`
 }
 
 // PlaceEntry represents a place with count and hierarchy info.

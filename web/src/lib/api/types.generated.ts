@@ -349,6 +349,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/map/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get geographic locations for map visualization
+         * @description Returns aggregated birth and death locations with coordinates for map display
+         */
+        get: operations["getMapLocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gedcom/import": {
         parameters: {
             query?: never;
@@ -2292,6 +2312,34 @@ export interface components {
             /** @description Number of persons buried/cremated here */
             count: number;
         };
+        MapLocationsResponse: {
+            items: components["schemas"]["MapLocation"][];
+            /** @description Total number of locations with coordinates */
+            total: number;
+        };
+        MapLocation: {
+            /** @description Place name */
+            place: string;
+            /**
+             * Format: double
+             * @description Latitude in decimal degrees
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in decimal degrees
+             */
+            longitude: number;
+            /**
+             * @description Type of life event at this location
+             * @enum {string}
+             */
+            event_type: "birth" | "death";
+            /** @description Number of persons at this location */
+            count: number;
+            /** @description IDs of persons at this location */
+            person_ids: string[];
+        };
         Source: {
             /** Format: uuid */
             id: string;
@@ -3851,6 +3899,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonList"];
+                };
+            };
+        };
+    };
+    getMapLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Geographic location data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapLocationsResponse"];
                 };
             };
         };

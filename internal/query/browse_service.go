@@ -314,3 +314,48 @@ func (s *BrowseService) GetPersonsByCemetery(ctx context.Context, input GetPerso
 		Offset: offset,
 	}, nil
 }
+
+// MapLocationsResult contains the map locations response.
+type MapLocationsResult struct {
+	Items []MapLocation `json:"items"`
+	Total int           `json:"total"`
+}
+
+// MapLocation represents a geographic location for map display.
+type MapLocation struct {
+	Place     string   `json:"place"`
+	Latitude  float64  `json:"latitude"`
+	Longitude float64  `json:"longitude"`
+	EventType string   `json:"event_type"`
+	Count     int      `json:"count"`
+	PersonIDs []string `json:"person_ids"`
+}
+
+// GetMapLocations returns aggregated geographic locations for map visualization.
+func (s *BrowseService) GetMapLocations(ctx context.Context) (*MapLocationsResult, error) {
+	locations, err := s.readStore.GetMapLocations(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]MapLocation, len(locations))
+	for i, loc := range locations {
+		personIDs := make([]string, len(loc.PersonIDs))
+		for j, id := range loc.PersonIDs {
+			personIDs[j] = id.String()
+		}
+		items[i] = MapLocation{
+			Place:     loc.Place,
+			Latitude:  loc.Latitude,
+			Longitude: loc.Longitude,
+			EventType: loc.EventType,
+			Count:     loc.Count,
+			PersonIDs: personIDs,
+		}
+	}
+
+	return &MapLocationsResult{
+		Items: items,
+		Total: len(items),
+	}, nil
+}
