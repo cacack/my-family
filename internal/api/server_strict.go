@@ -2429,18 +2429,62 @@ func (ss *StrictServer) BatchDismissDuplicates(ctx context.Context, request Batc
 // Search endpoint
 // ============================================================================
 
+// dateFromParam extracts a *time.Time from an openapi_types.Date pointer.
+func dateFromParam(d *openapi_types.Date) *time.Time {
+	if d == nil {
+		return nil
+	}
+	t := d.Time
+	return &t
+}
+
+// stringFromParam extracts a string from a string pointer, defaulting to "".
+func stringFromParam(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // SearchPersons implements StrictServerInterface.
 func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
-	if len(request.Params.Q) < 2 {
+	queryStr := stringFromParam(request.Params.Q)
+	birthPlace := stringFromParam(request.Params.BirthPlace)
+	deathPlace := stringFromParam(request.Params.DeathPlace)
+
+	birthDateFrom := dateFromParam(request.Params.BirthDateFrom)
+	birthDateTo := dateFromParam(request.Params.BirthDateTo)
+	deathDateFrom := dateFromParam(request.Params.DeathDateFrom)
+	deathDateTo := dateFromParam(request.Params.DeathDateTo)
+
+	// Validate: at least one search criterion must be provided
+	hasQuery := queryStr != ""
+	hasDateRange := birthDateFrom != nil || birthDateTo != nil || deathDateFrom != nil || deathDateTo != nil
+	hasPlace := birthPlace != "" || deathPlace != ""
+	if !hasQuery && !hasDateRange && !hasPlace {
+		return SearchPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "At least one search criterion is required: query, date range, or place",
+		}}, nil
+	}
+
+	if hasQuery && len(queryStr) < 2 {
 		return SearchPersons400JSONResponse{BadRequestJSONResponse{
 			Code:    "bad_request",
 			Message: "Search query must be at least 2 characters",
 		}}, nil
 	}
 
-	fuzzy := false
-	if request.Params.Fuzzy != nil {
-		fuzzy = *request.Params.Fuzzy
+	fuzzy := request.Params.Fuzzy != nil && *request.Params.Fuzzy
+	soundex := request.Params.Soundex != nil && *request.Params.Soundex
+
+	sortField := ""
+	if request.Params.Sort != nil {
+		sortField = string(*request.Params.Sort)
+	}
+	order := ""
+	if request.Params.Order != nil {
+		order = string(*request.Params.Order)
 	}
 
 	limit := 20
@@ -2449,9 +2493,18 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 	}
 
 	result, err := ss.server.personService.SearchPersons(ctx, query.SearchPersonsInput{
-		Query: request.Params.Q,
-		Fuzzy: fuzzy,
-		Limit: limit,
+		Query:         queryStr,
+		Fuzzy:         fuzzy,
+		Soundex:       soundex,
+		BirthDateFrom: birthDateFrom,
+		BirthDateTo:   birthDateTo,
+		DeathDateFrom: deathDateFrom,
+		DeathDateTo:   deathDateTo,
+		BirthPlace:    birthPlace,
+		DeathPlace:    deathPlace,
+		Sort:          sortField,
+		Order:         order,
+		Limit:         limit,
 	})
 	if err != nil {
 		return nil, err
@@ -2474,11 +2527,11 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 		}
 	}
 
-	queryStr := result.Query
+	resultQuery := result.Query
 	return SearchPersons200JSONResponse{
 		Items: items,
 		Total: result.Total,
-		Query: &queryStr,
+		Query: &resultQuery,
 	}, nil
 }
 

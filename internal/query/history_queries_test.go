@@ -90,7 +90,7 @@ func (m *mockReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*re
 func (m *mockReadModelStore) ListPersons(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]repository.PersonReadModel, error) {
+func (m *mockReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) SavePerson(ctx context.Context, person *repository.PersonReadModel) error {

@@ -158,62 +158,103 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 }
 
 // SearchPersons searches for persons by name, including alternate names.
-func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]repository.PersonReadModel, error) {
+func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	query = strings.ToLower(query)
+	queryLower := strings.ToLower(opts.Query)
 	foundIDs := make(map[uuid.UUID]bool)
 	var results []repository.PersonReadModel
 
 	// Search in main persons table
 	for _, p := range s.persons {
-		fullName := strings.ToLower(p.FullName)
-		givenName := strings.ToLower(p.GivenName)
-		surname := strings.ToLower(p.Surname)
-
-		// Simple contains matching
-		if strings.Contains(fullName, query) ||
-			strings.Contains(givenName, query) ||
-			strings.Contains(surname, query) {
-			if !foundIDs[p.ID] {
-				results = append(results, *p)
-				foundIDs[p.ID] = true
-				if len(results) >= limit {
-					return results, nil
-				}
+		if !s.matchesSearchFilters(p, opts) {
+			continue
+		}
+		if s.personMatchesQuery(p, queryLower, opts.Soundex) && !foundIDs[p.ID] {
+			results = append(results, *p)
+			foundIDs[p.ID] = true
+			if len(results) >= opts.Limit {
+				return results, nil
 			}
 		}
 	}
 
-	// Search in person_names table for alternate names
-	for personID, names := range s.personNames {
-		if foundIDs[personID] {
-			continue
-		}
-		for _, name := range names {
-			fullName := strings.ToLower(name.FullName)
-			givenName := strings.ToLower(name.GivenName)
-			surname := strings.ToLower(name.Surname)
-			nickname := strings.ToLower(name.Nickname)
-
-			if strings.Contains(fullName, query) ||
-				strings.Contains(givenName, query) ||
-				strings.Contains(surname, query) ||
-				strings.Contains(nickname, query) {
-				if p, exists := s.persons[personID]; exists && !foundIDs[personID] {
-					results = append(results, *p)
-					foundIDs[personID] = true
-					if len(results) >= limit {
-						return results, nil
-					}
-				}
-				break // Found match in one of the names, move to next person
-			}
-		}
+	// Search in person_names table for alternate names (only if text query provided)
+	if opts.Query != "" {
+		s.searchAlternateNames(queryLower, opts, foundIDs, &results)
 	}
 
 	return results, nil
+}
+
+// personMatchesQuery checks if a person matches the text query (or returns true if no query).
+func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, queryLower string, soundex bool) bool {
+	if queryLower == "" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(p.FullName), queryLower) ||
+		strings.Contains(strings.ToLower(p.GivenName), queryLower) ||
+		strings.Contains(strings.ToLower(p.Surname), queryLower) {
+		return true
+	}
+	if soundex {
+		for _, word := range strings.Fields(queryLower) {
+			if repository.SoundexMatch(word, p.GivenName) || repository.SoundexMatch(word, p.Surname) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// searchAlternateNames searches person_names for alternate name matches.
+func (s *ReadModelStore) searchAlternateNames(queryLower string, opts repository.SearchOptions, foundIDs map[uuid.UUID]bool, results *[]repository.PersonReadModel) {
+	for personID, names := range s.personNames {
+		if foundIDs[personID] || len(*results) >= opts.Limit {
+			break
+		}
+		for _, name := range names {
+			if nameMatchesQuery(name, queryLower) {
+				if p, exists := s.persons[personID]; exists && !foundIDs[personID] && s.matchesSearchFilters(p, opts) {
+					*results = append(*results, *p)
+					foundIDs[personID] = true
+				}
+				break
+			}
+		}
+	}
+}
+
+// nameMatchesQuery checks if a PersonNameReadModel matches the query.
+func nameMatchesQuery(name repository.PersonNameReadModel, queryLower string) bool {
+	return strings.Contains(strings.ToLower(name.FullName), queryLower) ||
+		strings.Contains(strings.ToLower(name.GivenName), queryLower) ||
+		strings.Contains(strings.ToLower(name.Surname), queryLower) ||
+		strings.Contains(strings.ToLower(name.Nickname), queryLower)
+}
+
+// matchesSearchFilters checks if a person matches the date/place filters in SearchOptions.
+func (s *ReadModelStore) matchesSearchFilters(p *repository.PersonReadModel, opts repository.SearchOptions) bool {
+	if opts.BirthDateFrom != nil && (p.BirthDateSort == nil || p.BirthDateSort.Before(*opts.BirthDateFrom)) {
+		return false
+	}
+	if opts.BirthDateTo != nil && (p.BirthDateSort == nil || p.BirthDateSort.After(*opts.BirthDateTo)) {
+		return false
+	}
+	if opts.DeathDateFrom != nil && (p.DeathDateSort == nil || p.DeathDateSort.Before(*opts.DeathDateFrom)) {
+		return false
+	}
+	if opts.DeathDateTo != nil && (p.DeathDateSort == nil || p.DeathDateSort.After(*opts.DeathDateTo)) {
+		return false
+	}
+	if opts.BirthPlace != "" && !strings.Contains(strings.ToLower(p.BirthPlace), strings.ToLower(opts.BirthPlace)) {
+		return false
+	}
+	if opts.DeathPlace != "" && !strings.Contains(strings.ToLower(p.DeathPlace), strings.ToLower(opts.DeathPlace)) {
+		return false
+	}
+	return true
 }
 
 // SavePerson saves or updates a person.

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +33,9 @@ func (s *ReadModelStore) createTables() error {
 	_, err := s.db.Exec(`
 		-- Enable pg_trgm extension for fuzzy search
 		CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+		-- Enable fuzzystrmatch extension for Soundex/metaphone search
+		CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
 
 		-- Persons table
 		CREATE TABLE IF NOT EXISTS persons (
@@ -448,97 +452,60 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	return persons, total, rows.Err()
 }
 
-// SearchPersons searches for persons by name using tsvector and trigram similarity.
-// Also searches in person_names table for alternate names.
-func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]repository.PersonReadModel, error) {
-	var rows *sql.Rows
-	var err error
+// searchQueryParams tracks parameterized query building state.
+type searchQueryParams struct {
+	args   []any
+	paramN int
+}
 
-	if fuzzy {
-		// Use trigram similarity for fuzzy matching across both tables
-		rows, err = s.db.QueryContext(ctx, `
-			WITH matched_persons AS (
-				-- Match in main persons table
-				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-					   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-					   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-					   p.notes, p.research_status, p.version, p.updated_at,
-					   TRUE as is_primary,
-					   GREATEST(
-						   similarity(p.given_name, $1),
-						   similarity(p.surname, $1),
-						   similarity(p.full_name, $1)
-					   ) as sim_score
-				FROM persons p
-				WHERE p.given_name % $1 OR p.surname % $1 OR p.full_name % $1
+func (p *searchQueryParams) add(val any) int {
+	n := p.paramN
+	p.args = append(p.args, val)
+	p.paramN++
+	return n
+}
 
-				UNION
+const personCols = `p.id, p.given_name, p.surname, p.full_name, p.gender,
+	p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+	p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+	p.notes, p.research_status, p.version, p.updated_at`
 
-				-- Match in person_names table
-				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-					   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-					   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-					   p.notes, p.research_status, p.version, p.updated_at,
-					   pn.is_primary,
-					   GREATEST(
-						   similarity(pn.given_name, $1),
-						   similarity(pn.surname, $1),
-						   similarity(pn.full_name, $1),
-						   similarity(COALESCE(pn.nickname, ''), $1)
-					   ) as sim_score
-				FROM persons p
-				JOIN person_names pn ON p.id = pn.person_id
-				WHERE pn.given_name % $1 OR pn.surname % $1 OR pn.full_name % $1
-				   OR pn.nickname % $1
-			)
-			SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
-				   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-				   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-				   notes, research_status, version, updated_at
-			FROM matched_persons
-			ORDER BY id, is_primary DESC, sim_score DESC
-			LIMIT $2
-		`, query, limit)
-	} else {
-		// Use full-text search with tsvector across both tables
-		rows, err = s.db.QueryContext(ctx, `
-			WITH matched_persons AS (
-				-- Match in main persons table
-				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-					   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-					   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-					   p.notes, p.research_status, p.version, p.updated_at,
-					   TRUE as is_primary,
-					   ts_rank(p.search_vector, plainto_tsquery('english', $1)) as search_rank
-				FROM persons p
-				WHERE p.search_vector @@ plainto_tsquery('english', $1)
-				   OR p.full_name ILIKE '%' || $1 || '%'
-
-				UNION
-
-				-- Match in person_names table
-				SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-					   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-					   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-					   p.notes, p.research_status, p.version, p.updated_at,
-					   pn.is_primary,
-					   ts_rank(pn.search_vector, plainto_tsquery('english', $1)) as search_rank
-				FROM persons p
-				JOIN person_names pn ON p.id = pn.person_id
-				WHERE pn.search_vector @@ plainto_tsquery('english', $1)
-				   OR pn.full_name ILIKE '%' || $1 || '%'
-				   OR pn.nickname ILIKE '%' || $1 || '%'
-			)
-			SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
-				   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-				   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-				   notes, research_status, version, updated_at
-			FROM matched_persons
-			ORDER BY id, is_primary DESC, search_rank DESC
-			LIMIT $2
-		`, query, limit)
+// SearchPersons searches for persons by name, date, and place using tsvector,
+// trigram similarity, and Soundex matching. Also searches person_names for alternate names.
+// All provided filters are ANDed together.
+func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
+	if opts.Limit <= 0 {
+		opts.Limit = 20
+	}
+	if opts.Limit > 100 {
+		opts.Limit = 100
 	}
 
+	hasQuery := strings.TrimSpace(opts.Query) != ""
+	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
+		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
+	hasPlaceFilter := strings.TrimSpace(opts.BirthPlace) != "" || strings.TrimSpace(opts.DeathPlace) != ""
+
+	if !hasQuery && !hasDateFilter && !hasPlaceFilter {
+		return nil, nil
+	}
+
+	var qb strings.Builder
+	params := &searchQueryParams{paramN: 1}
+
+	if hasQuery {
+		writeNameMatchCTE(&qb, opts, params)
+		writeDedupSelect(&qb)
+	} else {
+		fmt.Fprintf(&qb, `SELECT %s FROM persons p`, personCols)
+	}
+
+	writeDatePlaceFilters(&qb, opts, params)
+	writeOrderBy(&qb, opts, hasQuery)
+
+	fmt.Fprintf(&qb, " LIMIT $%d", params.add(opts.Limit))
+
+	rows, err := s.db.QueryContext(ctx, qb.String(), params.args...)
 	if err != nil {
 		return nil, fmt.Errorf("search persons: %w", err)
 	}
@@ -554,6 +521,139 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 	}
 
 	return persons, rows.Err()
+}
+
+// writeNameMatchCTE writes the CTE for name matching (fuzzy, soundex, or full-text).
+func writeNameMatchCTE(qb *strings.Builder, opts repository.SearchOptions, params *searchQueryParams) {
+	query := strings.TrimSpace(opts.Query)
+	n := params.add(query)
+
+	switch {
+	case opts.Fuzzy:
+		fmt.Fprintf(qb, `WITH matched_persons AS (
+			SELECT %s, TRUE as is_primary,
+				GREATEST(similarity(p.given_name, $%d), similarity(p.surname, $%d), similarity(p.full_name, $%d)) as rank_score
+			FROM persons p
+			WHERE p.given_name %% $%d OR p.surname %% $%d OR p.full_name %% $%d
+			UNION
+			SELECT %s, pn.is_primary,
+				GREATEST(similarity(pn.given_name, $%d), similarity(pn.surname, $%d), similarity(pn.full_name, $%d), similarity(COALESCE(pn.nickname, ''), $%d)) as rank_score
+			FROM persons p JOIN person_names pn ON p.id = pn.person_id
+			WHERE pn.given_name %% $%d OR pn.surname %% $%d OR pn.full_name %% $%d OR pn.nickname %% $%d
+		)`, personCols, n, n, n, n, n, n,
+			personCols, n, n, n, n, n, n, n, n)
+
+	case opts.Soundex:
+		fmt.Fprintf(qb, `WITH matched_persons AS (
+			SELECT %s, TRUE as is_primary,
+				GREATEST(difference(p.given_name, $%d), difference(p.surname, $%d))::float as rank_score
+			FROM persons p
+			WHERE difference(p.given_name, $%d) >= 3 OR difference(p.surname, $%d) >= 3
+			UNION
+			SELECT %s, pn.is_primary,
+				GREATEST(difference(pn.given_name, $%d), difference(pn.surname, $%d))::float as rank_score
+			FROM persons p JOIN person_names pn ON p.id = pn.person_id
+			WHERE difference(pn.given_name, $%d) >= 3 OR difference(pn.surname, $%d) >= 3
+		)`, personCols, n, n, n, n,
+			personCols, n, n, n, n)
+
+	default:
+		fmt.Fprintf(qb, `WITH matched_persons AS (
+			SELECT %s, TRUE as is_primary,
+				ts_rank(p.search_vector, plainto_tsquery('english', $%d)) as rank_score
+			FROM persons p
+			WHERE p.search_vector @@ plainto_tsquery('english', $%d) OR p.full_name ILIKE '%%' || $%d || '%%'
+			UNION
+			SELECT %s, pn.is_primary,
+				ts_rank(pn.search_vector, plainto_tsquery('english', $%d)) as rank_score
+			FROM persons p JOIN person_names pn ON p.id = pn.person_id
+			WHERE pn.search_vector @@ plainto_tsquery('english', $%d) OR pn.full_name ILIKE '%%' || $%d || '%%' OR pn.nickname ILIKE '%%' || $%d || '%%'
+		)`, personCols, n, n, n,
+			personCols, n, n, n, n)
+	}
+}
+
+// writeDedupSelect writes the deduplication CTE and final SELECT.
+func writeDedupSelect(qb *strings.Builder) {
+	qb.WriteString(`, deduped AS (
+		SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
+			birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+			notes, research_status, version, updated_at, rank_score
+		FROM matched_persons
+		ORDER BY id, is_primary DESC, rank_score DESC
+	)
+	SELECT id, given_name, surname, full_name, gender,
+		birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+		death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+		notes, research_status, version, updated_at
+	FROM deduped p`)
+}
+
+// writeDatePlaceFilters appends WHERE clauses for date and place filters.
+func writeDatePlaceFilters(qb *strings.Builder, opts repository.SearchOptions, params *searchQueryParams) {
+	var filters []string
+
+	if opts.BirthDateFrom != nil {
+		filters = append(filters, fmt.Sprintf("p.birth_date_sort >= $%d", params.add(*opts.BirthDateFrom)))
+	}
+	if opts.BirthDateTo != nil {
+		filters = append(filters, fmt.Sprintf("p.birth_date_sort <= $%d", params.add(*opts.BirthDateTo)))
+	}
+	if opts.DeathDateFrom != nil {
+		filters = append(filters, fmt.Sprintf("p.death_date_sort >= $%d", params.add(*opts.DeathDateFrom)))
+	}
+	if opts.DeathDateTo != nil {
+		filters = append(filters, fmt.Sprintf("p.death_date_sort <= $%d", params.add(*opts.DeathDateTo)))
+	}
+	if bp := strings.TrimSpace(opts.BirthPlace); bp != "" {
+		filters = append(filters, fmt.Sprintf("p.birth_place ILIKE '%%' || $%d || '%%'", params.add(bp)))
+	}
+	if dp := strings.TrimSpace(opts.DeathPlace); dp != "" {
+		filters = append(filters, fmt.Sprintf("p.death_place ILIKE '%%' || $%d || '%%'", params.add(dp)))
+	}
+
+	if len(filters) > 0 {
+		qb.WriteString(" WHERE " + strings.Join(filters, " AND "))
+	}
+}
+
+// writeOrderBy appends the ORDER BY clause based on sort options.
+func writeOrderBy(qb *strings.Builder, opts repository.SearchOptions, hasQuery bool) {
+	orderDir := strings.ToUpper(opts.Order)
+	if orderDir != "ASC" && orderDir != "DESC" {
+		orderDir = ""
+	}
+
+	switch opts.Sort {
+	case "name":
+		if orderDir == "" {
+			orderDir = "ASC"
+		}
+		fmt.Fprintf(qb, " ORDER BY p.surname %s, p.given_name %s", orderDir, orderDir)
+	case "birth_date":
+		if orderDir == "" {
+			orderDir = "ASC"
+		}
+		fmt.Fprintf(qb, " ORDER BY p.birth_date_sort %s NULLS LAST", orderDir)
+	case "death_date":
+		if orderDir == "" {
+			orderDir = "ASC"
+		}
+		fmt.Fprintf(qb, " ORDER BY p.death_date_sort %s NULLS LAST", orderDir)
+	default:
+		if hasQuery {
+			if orderDir == "" {
+				orderDir = "DESC"
+			}
+			fmt.Fprintf(qb, " ORDER BY rank_score %s", orderDir)
+		} else {
+			if orderDir == "" {
+				orderDir = "ASC"
+			}
+			fmt.Fprintf(qb, " ORDER BY p.surname %s, p.given_name %s", orderDir, orderDir)
+		}
+	}
 }
 
 // SavePerson saves or updates a person.

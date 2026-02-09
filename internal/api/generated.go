@@ -329,6 +329,20 @@ const (
 	GetValidationIssuesParamsSeverityWarning GetValidationIssuesParamsSeverity = "warning"
 )
 
+// Defines values for SearchPersonsParamsSort.
+const (
+	SearchPersonsParamsSortBirthDate SearchPersonsParamsSort = "birth_date"
+	SearchPersonsParamsSortDeathDate SearchPersonsParamsSort = "death_date"
+	SearchPersonsParamsSortName      SearchPersonsParamsSort = "name"
+	SearchPersonsParamsSortRelevance SearchPersonsParamsSort = "relevance"
+)
+
+// Defines values for SearchPersonsParamsOrder.
+const (
+	SearchPersonsParamsOrderAsc  SearchPersonsParamsOrder = "asc"
+	SearchPersonsParamsOrderDesc SearchPersonsParamsOrder = "desc"
+)
+
 // Defines values for ListSourcesParamsSort.
 const (
 	ListSourcesParamsSortCreatedAt  ListSourcesParamsSort = "created_at"
@@ -345,14 +359,14 @@ const (
 
 // Defines values for ListSubmittersParamsSort.
 const (
-	Name      ListSubmittersParamsSort = "name"
-	UpdatedAt ListSubmittersParamsSort = "updated_at"
+	ListSubmittersParamsSortName      ListSubmittersParamsSort = "name"
+	ListSubmittersParamsSortUpdatedAt ListSubmittersParamsSort = "updated_at"
 )
 
 // Defines values for ListSubmittersParamsOrder.
 const (
-	ListSubmittersParamsOrderAsc  ListSubmittersParamsOrder = "asc"
-	ListSubmittersParamsOrderDesc ListSubmittersParamsOrder = "desc"
+	Asc  ListSubmittersParamsOrder = "asc"
+	Desc ListSubmittersParamsOrder = "desc"
 )
 
 // AddChild defines model for AddChild.
@@ -2489,12 +2503,45 @@ type GetValidationIssuesParamsSeverity string
 // SearchPersonsParams defines parameters for SearchPersons.
 type SearchPersonsParams struct {
 	// Q Search query (name)
-	Q string `form:"q" json:"q"`
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Fuzzy Enable fuzzy matching for spelling variations
-	Fuzzy *bool       `form:"fuzzy,omitempty" json:"fuzzy,omitempty"`
-	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
+	Fuzzy *bool `form:"fuzzy,omitempty" json:"fuzzy,omitempty"`
+
+	// Soundex Enable Soundex phonetic matching for name variants
+	Soundex *bool `form:"soundex,omitempty" json:"soundex,omitempty"`
+
+	// BirthDateFrom Filter by birth date on or after this date
+	BirthDateFrom *openapi_types.Date `form:"birth_date_from,omitempty" json:"birth_date_from,omitempty"`
+
+	// BirthDateTo Filter by birth date on or before this date
+	BirthDateTo *openapi_types.Date `form:"birth_date_to,omitempty" json:"birth_date_to,omitempty"`
+
+	// DeathDateFrom Filter by death date on or after this date
+	DeathDateFrom *openapi_types.Date `form:"death_date_from,omitempty" json:"death_date_from,omitempty"`
+
+	// DeathDateTo Filter by death date on or before this date
+	DeathDateTo *openapi_types.Date `form:"death_date_to,omitempty" json:"death_date_to,omitempty"`
+
+	// BirthPlace Filter by birth place (partial match)
+	BirthPlace *string `form:"birth_place,omitempty" json:"birth_place,omitempty"`
+
+	// DeathPlace Filter by death place (partial match)
+	DeathPlace *string `form:"death_place,omitempty" json:"death_place,omitempty"`
+
+	// Sort Sort results by field
+	Sort *SearchPersonsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Order Sort order
+	Order *SearchPersonsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+	Limit *LimitParam               `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// SearchPersonsParamsSort defines parameters for SearchPersons.
+type SearchPersonsParamsSort string
+
+// SearchPersonsParamsOrder defines parameters for SearchPersons.
+type SearchPersonsParamsOrder string
 
 // ListSourcesParams defines parameters for ListSources.
 type ListSourcesParams struct {
@@ -4543,9 +4590,9 @@ func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params SearchPersonsParams
-	// ------------- Required query parameter "q" -------------
+	// ------------- Optional query parameter "q" -------------
 
-	err = runtime.BindQueryParameter("form", true, true, "q", ctx.QueryParams(), &params.Q)
+	err = runtime.BindQueryParameter("form", true, false, "q", ctx.QueryParams(), &params.Q)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter q: %s", err))
 	}
@@ -4555,6 +4602,69 @@ func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 	err = runtime.BindQueryParameter("form", true, false, "fuzzy", ctx.QueryParams(), &params.Fuzzy)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter fuzzy: %s", err))
+	}
+
+	// ------------- Optional query parameter "soundex" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "soundex", ctx.QueryParams(), &params.Soundex)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter soundex: %s", err))
+	}
+
+	// ------------- Optional query parameter "birth_date_from" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "birth_date_from", ctx.QueryParams(), &params.BirthDateFrom)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter birth_date_from: %s", err))
+	}
+
+	// ------------- Optional query parameter "birth_date_to" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "birth_date_to", ctx.QueryParams(), &params.BirthDateTo)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter birth_date_to: %s", err))
+	}
+
+	// ------------- Optional query parameter "death_date_from" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "death_date_from", ctx.QueryParams(), &params.DeathDateFrom)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter death_date_from: %s", err))
+	}
+
+	// ------------- Optional query parameter "death_date_to" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "death_date_to", ctx.QueryParams(), &params.DeathDateTo)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter death_date_to: %s", err))
+	}
+
+	// ------------- Optional query parameter "birth_place" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "birth_place", ctx.QueryParams(), &params.BirthPlace)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter birth_place: %s", err))
+	}
+
+	// ------------- Optional query parameter "death_place" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "death_place", ctx.QueryParams(), &params.DeathPlace)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter death_place: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", ctx.QueryParams(), &params.Sort)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "order", ctx.QueryParams(), &params.Order)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
 	}
 
 	// ------------- Optional query parameter "limit" -------------

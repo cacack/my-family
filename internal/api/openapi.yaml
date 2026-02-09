@@ -441,17 +441,69 @@ paths:
       parameters:
         - name: q
           in: query
-          required: true
           description: Search query (name)
           schema:
             type: string
-            minLength: 2
         - name: fuzzy
           in: query
           description: Enable fuzzy matching for spelling variations
           schema:
             type: boolean
             default: false
+        - name: soundex
+          in: query
+          description: Enable Soundex phonetic matching for name variants
+          schema:
+            type: boolean
+            default: false
+        - name: birth_date_from
+          in: query
+          description: Filter by birth date on or after this date
+          schema:
+            type: string
+            format: date
+        - name: birth_date_to
+          in: query
+          description: Filter by birth date on or before this date
+          schema:
+            type: string
+            format: date
+        - name: death_date_from
+          in: query
+          description: Filter by death date on or after this date
+          schema:
+            type: string
+            format: date
+        - name: death_date_to
+          in: query
+          description: Filter by death date on or before this date
+          schema:
+            type: string
+            format: date
+        - name: birth_place
+          in: query
+          description: Filter by birth place (partial match)
+          schema:
+            type: string
+        - name: death_place
+          in: query
+          description: Filter by death place (partial match)
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort results by field
+          schema:
+            type: string
+            enum: [relevance, name, birth_date, death_date]
+            default: relevance
+        - name: order
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
         - $ref: '#/components/parameters/limitParam'
       responses:
         '200':
