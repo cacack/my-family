@@ -1301,6 +1301,87 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return results, total, nil
 }
 
+// GetCemeteryIndex returns unique burial/cremation places with person counts.
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Count distinct persons per place for burial/cremation events
+	placePersons := make(map[string]map[uuid.UUID]struct{})
+	for _, e := range s.events {
+		if e.Place == "" {
+			continue
+		}
+		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
+			continue
+		}
+		if _, ok := placePersons[e.Place]; !ok {
+			placePersons[e.Place] = make(map[uuid.UUID]struct{})
+		}
+		placePersons[e.Place][e.OwnerID] = struct{}{}
+	}
+
+	entries := make([]repository.CemeteryEntry, 0, len(placePersons))
+	for place, persons := range placePersons {
+		entries = append(entries, repository.CemeteryEntry{
+			Place: place,
+			Count: len(persons),
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Place < entries[j].Place
+	})
+
+	return entries, nil
+}
+
+// GetPersonsByCemetery returns persons with burial/cremation events at the given place.
+func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Find distinct person IDs with matching burial/cremation events
+	placeLower := strings.ToLower(place)
+	matchedIDs := make(map[uuid.UUID]struct{})
+	for _, e := range s.events {
+		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
+			continue
+		}
+		if strings.EqualFold(e.Place, place) || strings.Contains(strings.ToLower(e.Place), placeLower) {
+			matchedIDs[e.OwnerID] = struct{}{}
+		}
+	}
+
+	var results []repository.PersonReadModel
+	for _, p := range s.persons {
+		if _, ok := matchedIDs[p.ID]; ok {
+			results = append(results, *p)
+		}
+	}
+
+	total := len(results)
+
+	// Sort by surname, then given name
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Surname != results[j].Surname {
+			return results[i].Surname < results[j].Surname
+		}
+		return results[i].GivenName < results[j].GivenName
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
 // GetNote retrieves a note by ID.
 func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
 	s.mu.RLock()

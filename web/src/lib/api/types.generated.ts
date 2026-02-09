@@ -309,6 +309,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/browse/cemeteries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get cemetery/burial place index with counts
+         * @description Returns unique burial and cremation places with person counts
+         */
+        get: operations["browseCemeteries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/browse/cemeteries/{place}/persons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The cemetery or burial place to get people for */
+                place: string;
+            };
+            cookie?: never;
+        };
+        /** Get persons buried or cremated at a place */
+        get: operations["getPersonsByCemetery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gedcom/import": {
         parameters: {
             query?: never;
@@ -2241,6 +2281,17 @@ export interface components {
             /** @description Whether this place has sub-locations */
             has_children?: boolean;
         };
+        CemeteryIndexResponse: {
+            items: components["schemas"]["CemeteryEntry"][];
+            /** @description Total number of unique burial/cremation places */
+            total: number;
+        };
+        CemeteryEntry: {
+            /** @description Cemetery or burial place name */
+            place: string;
+            /** @description Number of persons buried/cremated here */
+            count: number;
+        };
         Source: {
             /** Format: uuid */
             id: string;
@@ -3748,6 +3799,52 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description List of persons associated with the place */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonList"];
+                };
+            };
+        };
+    };
+    browseCemeteries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cemetery/burial place index */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CemeteryIndexResponse"];
+                };
+            };
+        };
+    };
+    getPersonsByCemetery: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+            };
+            header?: never;
+            path: {
+                /** @description The cemetery or burial place to get people for */
+                place: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of persons buried or cremated at the place */
             200: {
                 headers: {
                     [name: string]: unknown;

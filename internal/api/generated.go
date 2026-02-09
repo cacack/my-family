@@ -657,6 +657,23 @@ type BatchMergeResult struct {
 	SurvivorId openapi_types.UUID `json:"survivor_id"`
 }
 
+// CemeteryEntry defines model for CemeteryEntry.
+type CemeteryEntry struct {
+	// Count Number of persons buried/cremated here
+	Count int `json:"count"`
+
+	// Place Cemetery or burial place name
+	Place string `json:"place"`
+}
+
+// CemeteryIndexResponse defines model for CemeteryIndexResponse.
+type CemeteryIndexResponse struct {
+	Items []CemeteryEntry `json:"items"`
+
+	// Total Total number of unique burial/cremation places
+	Total int `json:"total"`
+}
+
 // ChangeEntry defines model for ChangeEntry.
 type ChangeEntry struct {
 	Action ChangeEntryAction `json:"action"`
@@ -2295,6 +2312,12 @@ type DeleteAssociationParams struct {
 	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
 }
 
+// GetPersonsByCemeteryParams defines parameters for GetPersonsByCemetery.
+type GetPersonsByCemeteryParams struct {
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // BrowsePlacesParams defines parameters for BrowsePlaces.
 type BrowsePlacesParams struct {
 	// Parent Parent place to get children for (empty for top-level)
@@ -2718,6 +2741,12 @@ type ServerInterface interface {
 	// Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx echo.Context, id AssociationId) error
+	// Get cemetery/burial place index with counts
+	// (GET /browse/cemeteries)
+	BrowseCemeteries(ctx echo.Context) error
+	// Get persons buried or cremated at a place
+	// (GET /browse/cemeteries/{place}/persons)
+	GetPersonsByCemetery(ctx echo.Context, place string, params GetPersonsByCemeteryParams) error
 	// Get place hierarchy with counts
 	// (GET /browse/places)
 	BrowsePlaces(ctx echo.Context, params BrowsePlacesParams) error
@@ -3153,6 +3182,47 @@ func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateAssociation(ctx, id)
+	return err
+}
+
+// BrowseCemeteries converts echo context to params.
+func (w *ServerInterfaceWrapper) BrowseCemeteries(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.BrowseCemeteries(ctx)
+	return err
+}
+
+// GetPersonsByCemetery converts echo context to params.
+func (w *ServerInterfaceWrapper) GetPersonsByCemetery(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "place" -------------
+	var place string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "place", ctx.Param("place"), &place, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter place: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPersonsByCemeteryParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", ctx.QueryParams(), &params.Offset)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetPersonsByCemetery(ctx, place, params)
 	return err
 }
 
@@ -5134,6 +5204,8 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.DELETE(baseURL+"/associations/:id", wrapper.DeleteAssociation)
 	router.GET(baseURL+"/associations/:id", wrapper.GetAssociation)
 	router.PUT(baseURL+"/associations/:id", wrapper.UpdateAssociation)
+	router.GET(baseURL+"/browse/cemeteries", wrapper.BrowseCemeteries)
+	router.GET(baseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery)
 	router.GET(baseURL+"/browse/places", wrapper.BrowsePlaces)
 	router.GET(baseURL+"/browse/places/:place/persons", wrapper.GetPersonsByPlace)
 	router.GET(baseURL+"/browse/surnames", wrapper.BrowseSurnames)
@@ -5441,6 +5513,40 @@ type UpdateAssociation409JSONResponse struct{ ConflictJSONResponse }
 func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BrowseCemeteriesRequestObject struct {
+}
+
+type BrowseCemeteriesResponseObject interface {
+	VisitBrowseCemeteriesResponse(w http.ResponseWriter) error
+}
+
+type BrowseCemeteries200JSONResponse CemeteryIndexResponse
+
+func (response BrowseCemeteries200JSONResponse) VisitBrowseCemeteriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetPersonsByCemeteryRequestObject struct {
+	Place  string `json:"place"`
+	Params GetPersonsByCemeteryParams
+}
+
+type GetPersonsByCemeteryResponseObject interface {
+	VisitGetPersonsByCemeteryResponse(w http.ResponseWriter) error
+}
+
+type GetPersonsByCemetery200JSONResponse PersonList
+
+func (response GetPersonsByCemetery200JSONResponse) VisitGetPersonsByCemeteryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -8352,6 +8458,12 @@ type StrictServerInterface interface {
 	// Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error)
+	// Get cemetery/burial place index with counts
+	// (GET /browse/cemeteries)
+	BrowseCemeteries(ctx context.Context, request BrowseCemeteriesRequestObject) (BrowseCemeteriesResponseObject, error)
+	// Get persons buried or cremated at a place
+	// (GET /browse/cemeteries/{place}/persons)
+	GetPersonsByCemetery(ctx context.Context, request GetPersonsByCemeteryRequestObject) (GetPersonsByCemeteryResponseObject, error)
 	// Get place hierarchy with counts
 	// (GET /browse/places)
 	BrowsePlaces(ctx context.Context, request BrowsePlacesRequestObject) (BrowsePlacesResponseObject, error)
@@ -8816,6 +8928,55 @@ func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId) e
 		return err
 	} else if validResponse, ok := response.(UpdateAssociationResponseObject); ok {
 		return validResponse.VisitUpdateAssociationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// BrowseCemeteries operation middleware
+func (sh *strictHandler) BrowseCemeteries(ctx echo.Context) error {
+	var request BrowseCemeteriesRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.BrowseCemeteries(ctx.Request().Context(), request.(BrowseCemeteriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BrowseCemeteries")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(BrowseCemeteriesResponseObject); ok {
+		return validResponse.VisitBrowseCemeteriesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetPersonsByCemetery operation middleware
+func (sh *strictHandler) GetPersonsByCemetery(ctx echo.Context, place string, params GetPersonsByCemeteryParams) error {
+	var request GetPersonsByCemeteryRequestObject
+
+	request.Place = place
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPersonsByCemetery(ctx.Request().Context(), request.(GetPersonsByCemeteryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPersonsByCemetery")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetPersonsByCemeteryResponseObject); ok {
+		return validResponse.VisitGetPersonsByCemeteryResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

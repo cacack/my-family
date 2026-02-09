@@ -254,6 +254,12 @@ func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, parent strin
 func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
+func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	return nil, 0, nil
+}
 
 // Note stub methods
 func (m *mockReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {

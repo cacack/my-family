@@ -236,3 +236,81 @@ func (s *BrowseService) GetPersonsByPlace(ctx context.Context, input GetPersonsB
 		Offset: offset,
 	}, nil
 }
+
+// CemeteryIndexResult contains the cemetery index response.
+type CemeteryIndexResult struct {
+	Items []CemeteryEntry `json:"items"`
+	Total int             `json:"total"`
+}
+
+// CemeteryEntry represents a burial/cremation place with person count.
+type CemeteryEntry struct {
+	Place string `json:"place"`
+	Count int    `json:"count"`
+}
+
+// GetCemeteryIndex returns the cemetery/burial place index.
+func (s *BrowseService) GetCemeteryIndex(ctx context.Context) (*CemeteryIndexResult, error) {
+	entries, err := s.readStore.GetCemeteryIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]CemeteryEntry, len(entries))
+	for i, e := range entries {
+		items[i] = CemeteryEntry{
+			Place: e.Place,
+			Count: e.Count,
+		}
+	}
+
+	return &CemeteryIndexResult{
+		Items: items,
+		Total: len(items),
+	}, nil
+}
+
+// GetPersonsByCemeteryInput contains the input for GetPersonsByCemetery.
+type GetPersonsByCemeteryInput struct {
+	Place  string
+	Limit  int
+	Offset int
+}
+
+// GetPersonsByCemetery returns persons with burial/cremation events at the given place.
+func (s *BrowseService) GetPersonsByCemetery(ctx context.Context, input GetPersonsByCemeteryInput) (*PersonListResult, error) {
+	// Apply defaults
+	limit := input.Limit
+	if limit <= 0 {
+		limit = 20
+	} else if limit > 100 {
+		limit = 100
+	}
+
+	offset := input.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	opts := repository.ListOptions{
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	persons, total, err := s.readStore.GetPersonsByCemetery(ctx, input.Place, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]Person, len(persons))
+	for i, p := range persons {
+		items[i] = convertReadModelToPerson(p)
+	}
+
+	return &PersonListResult{
+		Items:  items,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	}, nil
+}
