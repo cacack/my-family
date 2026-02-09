@@ -236,7 +236,7 @@ type ReadModelStore interface {
 	// Person operations
 	GetPerson(ctx context.Context, id uuid.UUID) (*PersonReadModel, error)
 	ListPersons(ctx context.Context, opts ListOptions) ([]PersonReadModel, int, error)
-	SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]PersonReadModel, error)
+	SearchPersons(ctx context.Context, opts SearchOptions) ([]PersonReadModel, error)
 	SavePerson(ctx context.Context, person *PersonReadModel) error
 	DeletePerson(ctx context.Context, id uuid.UUID) error
 
@@ -382,6 +382,74 @@ type ListOptions struct {
 	Sort           string
 	Order          string  // "asc" or "desc"
 	ResearchStatus *string // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
+}
+
+// SearchOptions contains options for advanced person search.
+type SearchOptions struct {
+	Query         string
+	Fuzzy         bool
+	Soundex       bool
+	BirthDateFrom *time.Time
+	BirthDateTo   *time.Time
+	DeathDateFrom *time.Time
+	DeathDateTo   *time.Time
+	BirthPlace    string
+	DeathPlace    string
+	Sort          string // "relevance", "name", "birth_date", "death_date"
+	Order         string // "asc", "desc"
+	Limit         int
+}
+
+// Soundex returns the American Soundex code for a string.
+// Returns "" for empty or non-alpha input.
+func Soundex(s string) string {
+	var letters []byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'a' && c <= 'z' {
+			c -= 32
+		}
+		if c >= 'A' && c <= 'Z' {
+			letters = append(letters, c)
+		}
+	}
+	if len(letters) == 0 {
+		return ""
+	}
+
+	mapping := [26]byte{
+		0, '1', '2', '3', 0, '1', '2', 0, 0, '2', '2', '4', '5',
+		'5', 0, '1', '2', '6', '2', '3', 0, '1', 0, '2', 0, '2',
+	}
+
+	result := make([]byte, 0, 4)
+	result = append(result, letters[0])
+
+	lastCode := mapping[letters[0]-'A']
+	for i := 1; i < len(letters) && len(result) < 4; i++ {
+		ch := letters[i]
+		code := mapping[ch-'A']
+		if code != 0 {
+			if code != lastCode {
+				result = append(result, code)
+			}
+			lastCode = code
+		} else if ch != 'H' && ch != 'W' {
+			// Vowels and Y reset lastCode; H and W are transparent
+			lastCode = 0
+		}
+	}
+
+	for len(result) < 4 {
+		result = append(result, '0')
+	}
+	return string(result)
+}
+
+// SoundexMatch returns true if two strings have the same Soundex code.
+func SoundexMatch(a, b string) bool {
+	sa, sb := Soundex(a), Soundex(b)
+	return sa != "" && sb != "" && sa == sb
 }
 
 // DefaultListOptions returns sensible defaults for list queries.

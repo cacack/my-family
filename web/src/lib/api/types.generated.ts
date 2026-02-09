@@ -3617,11 +3617,29 @@ export interface operations {
     };
     searchPersons: {
         parameters: {
-            query: {
+            query?: {
                 /** @description Search query (name) */
-                q: string;
+                q?: string;
                 /** @description Enable fuzzy matching for spelling variations */
                 fuzzy?: boolean;
+                /** @description Enable Soundex phonetic matching for name variants */
+                soundex?: boolean;
+                /** @description Filter by birth date on or after this date */
+                birth_date_from?: string;
+                /** @description Filter by birth date on or before this date */
+                birth_date_to?: string;
+                /** @description Filter by death date on or after this date */
+                death_date_from?: string;
+                /** @description Filter by death date on or before this date */
+                death_date_to?: string;
+                /** @description Filter by birth place (partial match) */
+                birth_place?: string;
+                /** @description Filter by death place (partial match) */
+                death_place?: string;
+                /** @description Sort results by field */
+                sort?: "relevance" | "name" | "birth_date" | "death_date";
+                /** @description Sort order */
+                order?: "asc" | "desc";
                 limit?: components["parameters"]["limitParam"];
             };
             header?: never;

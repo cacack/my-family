@@ -176,9 +176,18 @@ func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDet
 
 // SearchPersonsInput contains options for searching persons.
 type SearchPersonsInput struct {
-	Query string
-	Fuzzy bool
-	Limit int
+	Query         string
+	Fuzzy         bool
+	Soundex       bool
+	BirthDateFrom *time.Time
+	BirthDateTo   *time.Time
+	DeathDateFrom *time.Time
+	DeathDateTo   *time.Time
+	BirthPlace    string
+	DeathPlace    string
+	Sort          string
+	Order         string
+	Limit         int
 }
 
 // SearchResult represents a search result with relevance score.
@@ -203,7 +212,22 @@ func (s *PersonService) SearchPersons(ctx context.Context, input SearchPersonsIn
 		input.Limit = 100
 	}
 
-	readModels, err := s.readStore.SearchPersons(ctx, input.Query, input.Fuzzy, input.Limit)
+	opts := repository.SearchOptions{
+		Query:         input.Query,
+		Fuzzy:         input.Fuzzy,
+		Soundex:       input.Soundex,
+		BirthDateFrom: input.BirthDateFrom,
+		BirthDateTo:   input.BirthDateTo,
+		DeathDateFrom: input.DeathDateFrom,
+		DeathDateTo:   input.DeathDateTo,
+		BirthPlace:    input.BirthPlace,
+		DeathPlace:    input.DeathPlace,
+		Sort:          input.Sort,
+		Order:         input.Order,
+		Limit:         input.Limit,
+	}
+
+	readModels, err := s.readStore.SearchPersons(ctx, opts)
 	if err != nil {
 		return nil, err
 	}

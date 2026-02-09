@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -504,32 +505,77 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	return persons, total, rows.Err()
 }
 
-// SearchPersons searches for persons by name using FTS5, including alternate names.
-func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy bool, limit int) ([]repository.PersonReadModel, error) {
-	// Escape and prepare FTS5 query
-	ftsQuery := escapeFTS5Query(query)
+// SearchPersons searches for persons using FTS5, Soundex, date ranges, and place filters.
+func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
+	// Normalize limit
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
 
-	// For fuzzy matching, use prefix matching
-	if fuzzy {
+	hasQuery := opts.Query != ""
+	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
+		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
+	hasPlaceFilter := opts.BirthPlace != "" || opts.DeathPlace != ""
+
+	// Soundex: fetch candidates with SQL filters, then post-filter in Go
+	if hasQuery && opts.Soundex {
+		return s.searchPersonsSoundex(ctx, opts, limit)
+	}
+
+	// FTS5 or LIKE name matching combined with date/place SQL filters
+	if hasQuery {
+		return s.searchPersonsFTS(ctx, opts, limit)
+	}
+
+	// No text query — filter only by date/place
+	if hasDateFilter || hasPlaceFilter {
+		return s.searchPersonsFiltersOnly(ctx, opts, limit)
+	}
+
+	// No criteria at all — return empty
+	return nil, nil
+}
+
+// searchPersonsFTS uses FTS5 (with LIKE fallback) combined with date/place SQL filters.
+func (s *ReadModelStore) searchPersonsFTS(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+	// Build date/place filter conditions for the WHERE clause on p.*
+	filterSQL, filterArgs := buildDatePlaceFilters(opts)
+
+	ftsQuery := escapeFTS5Query(opts.Query)
+	if opts.Fuzzy {
 		ftsQuery += "*"
 	}
 
-	// Search both persons table and person_names table, returning distinct persons
-	// Primary names rank higher (is_primary DESC puts 1 before 0)
-	rows, err := s.db.QueryContext(ctx, `
+	orderClause := searchOrderClause(opts, "", true)
+
+	// Build the CTE query with optional date/place filters
+	var sb strings.Builder
+	var args []any
+
+	sb.WriteString(`
 		WITH matched_persons AS (
-			-- Match in main persons table
 			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 				   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 				   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 				   p.notes, p.research_status, p.version, p.updated_at, 1 as is_primary, rank as search_rank
 			FROM persons p
 			JOIN persons_fts fts ON p.rowid = fts.rowid
-			WHERE persons_fts MATCH ?
+			WHERE persons_fts MATCH ?`)
+	args = append(args, ftsQuery)
+
+	if filterSQL != "" {
+		sb.WriteString(" AND " + filterSQL)
+		args = append(args, filterArgs...)
+	}
+
+	sb.WriteString(`
 
 			UNION
 
-			-- Match in person_names table
 			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 				   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 				   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
@@ -537,60 +583,373 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, query string, fuzzy 
 			FROM persons p
 			JOIN person_names pn ON p.id = pn.person_id
 			JOIN person_names_fts nfts ON pn.rowid = nfts.rowid
-			WHERE person_names_fts MATCH ?
+			WHERE person_names_fts MATCH ?`)
+	args = append(args, ftsQuery)
+
+	if filterSQL != "" {
+		sb.WriteString(" AND " + filterSQL)
+		args = append(args, filterArgs...)
+	}
+
+	sb.WriteString(`
 		)
 		SELECT DISTINCT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, version, updated_at
 		FROM matched_persons
-		ORDER BY is_primary DESC, search_rank
-		LIMIT ?
-	`, ftsQuery, ftsQuery, limit)
+		ORDER BY ` + orderClause + `
+		LIMIT ?`)
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
 		// Fallback to LIKE if FTS5 query fails (e.g., for special characters)
-		return s.searchPersonsLike(ctx, query, limit)
+		return s.searchPersonsLike(ctx, opts, limit)
 	}
 	defer rows.Close()
 
-	var persons []repository.PersonReadModel
-	for rows.Next() {
-		p, err := scanPersonRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		persons = append(persons, *p)
+	persons, err := scanPersonRows(rows)
+	if err != nil {
+		return nil, err
 	}
 
 	// If no FTS results and fuzzy, try LIKE fallback
-	if len(persons) == 0 && fuzzy {
-		return s.searchPersonsLike(ctx, query, limit)
+	if len(persons) == 0 && opts.Fuzzy {
+		return s.searchPersonsLike(ctx, opts, limit)
 	}
 
-	return persons, rows.Err()
+	return persons, nil
 }
 
-// searchPersonsLike is a fallback search using LIKE, including person_names.
-func (s *ReadModelStore) searchPersonsLike(ctx context.Context, query string, limit int) ([]repository.PersonReadModel, error) {
-	likeQuery := "%" + strings.ToLower(query) + "%"
+// searchPersonsLike is a fallback search using LIKE, including person_names and date/place filters.
+func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+	likeQuery := "%" + strings.ToLower(opts.Query) + "%"
+	filterSQL, filterArgs := buildDatePlaceFilters(opts)
+	orderClause := searchOrderClause(opts, "p.", false)
 
-	rows, err := s.db.QueryContext(ctx, `
+	var sb strings.Builder
+	var args []any
+
+	sb.WriteString(`
 		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.research_status, p.version, p.updated_at
 		FROM persons p
 		LEFT JOIN person_names pn ON p.id = pn.person_id
-		WHERE LOWER(p.full_name) LIKE ? OR LOWER(p.given_name) LIKE ? OR LOWER(p.surname) LIKE ?
+		WHERE (LOWER(p.full_name) LIKE ? OR LOWER(p.given_name) LIKE ? OR LOWER(p.surname) LIKE ?
 		   OR LOWER(pn.full_name) LIKE ? OR LOWER(pn.given_name) LIKE ? OR LOWER(pn.surname) LIKE ?
-		   OR LOWER(pn.nickname) LIKE ?
-		LIMIT ?
-	`, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, limit)
+		   OR LOWER(pn.nickname) LIKE ?)`)
+	args = append(args, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery)
+
+	if filterSQL != "" {
+		sb.WriteString(" AND " + filterSQL)
+		args = append(args, filterArgs...)
+	}
+
+	sb.WriteString(" ORDER BY " + orderClause + " LIMIT ?")
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("search persons: %w", err)
 	}
 	defer rows.Close()
 
+	return scanPersonRows(rows)
+}
+
+// searchPersonsSoundex fetches candidates filtered by date/place, then post-filters using Soundex in Go.
+func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+	filterSQL, filterArgs := buildDatePlaceFilters(opts)
+
+	// Fetch a large candidate set (up to 1000) narrowed by date/place filters
+	candidateLimit := 1000
+
+	var sb strings.Builder
+	var args []any
+
+	sb.WriteString(`
+		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+			   p.notes, p.research_status, p.version, p.updated_at
+		FROM persons p`)
+
+	if filterSQL != "" {
+		sb.WriteString(" WHERE " + filterSQL)
+		args = append(args, filterArgs...)
+	}
+
+	sb.WriteString(" LIMIT ?")
+	args = append(args, candidateLimit)
+
+	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("search persons soundex: %w", err)
+	}
+	defer rows.Close()
+
+	candidates, err := scanPersonRows(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// Split query into words for soundex comparison
+	queryWords := strings.Fields(opts.Query)
+
+	// Also load person_names for Soundex matching on alternate names
+	namesByPerson := make(map[string][]nameEntry)
+	if len(candidates) > 0 {
+		var err error
+		namesByPerson, err = s.loadPersonNamesForSoundex(ctx, candidates)
+		if err != nil {
+			return nil, fmt.Errorf("load person names for soundex: %w", err)
+		}
+	}
+
+	// Post-filter: keep persons where any query word Soundex-matches given_name or surname
+	var results []repository.PersonReadModel
+	for _, p := range candidates {
+		if personMatchesSoundex(p, queryWords, namesByPerson[p.ID.String()]) {
+			results = append(results, p)
+		}
+	}
+
+	// Sort before applying limit
+	sortPersonResults(results, opts)
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	return results, nil
+}
+
+// nameEntry holds name fields for Soundex comparison.
+type nameEntry struct {
+	GivenName string
+	Surname   string
+	Nickname  string
+}
+
+// loadPersonNamesForSoundex loads alternate names for a set of persons.
+// Batches queries to stay within SQLite's 999 parameter limit.
+func (s *ReadModelStore) loadPersonNamesForSoundex(ctx context.Context, persons []repository.PersonReadModel) (map[string][]nameEntry, error) {
+	if len(persons) == 0 {
+		return nil, nil
+	}
+
+	const batchSize = 900 // Stay well under SQLite's 999 parameter limit
+	result := make(map[string][]nameEntry)
+
+	for start := 0; start < len(persons); start += batchSize {
+		end := start + batchSize
+		if end > len(persons) {
+			end = len(persons)
+		}
+		batch := persons[start:end]
+
+		var sb strings.Builder
+		var args []any
+		sb.WriteString("SELECT person_id, given_name, surname, nickname FROM person_names WHERE person_id IN (")
+		for i, p := range batch {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			args = append(args, p.ID.String())
+		}
+		sb.WriteString(")")
+
+		rows, err := s.db.QueryContext(ctx, sb.String(), args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for rows.Next() {
+			var personID, givenName, surname string
+			var nickname sql.NullString
+			if err := rows.Scan(&personID, &givenName, &surname, &nickname); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[personID] = append(result[personID], nameEntry{
+				GivenName: givenName,
+				Surname:   surname,
+				Nickname:  nickname.String,
+			})
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
+}
+
+// personMatchesSoundex checks if any query word Soundex-matches a person's names.
+func personMatchesSoundex(p repository.PersonReadModel, queryWords []string, altNames []nameEntry) bool {
+	for _, word := range queryWords {
+		if repository.SoundexMatch(word, p.GivenName) || repository.SoundexMatch(word, p.Surname) {
+			return true
+		}
+		for _, name := range altNames {
+			if repository.SoundexMatch(word, name.GivenName) || repository.SoundexMatch(word, name.Surname) || repository.SoundexMatch(word, name.Nickname) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// searchPersonsFiltersOnly searches using only date/place filters (no text query).
+func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+	filterSQL, filterArgs := buildDatePlaceFilters(opts)
+	orderClause := searchOrderClause(opts, "p.", false)
+
+	var sb strings.Builder
+	var args []any
+
+	sb.WriteString(`
+		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+			   p.notes, p.research_status, p.version, p.updated_at
+		FROM persons p`)
+
+	if filterSQL != "" {
+		sb.WriteString(" WHERE " + filterSQL)
+		args = append(args, filterArgs...)
+	}
+
+	sb.WriteString(" ORDER BY " + orderClause + " LIMIT ?")
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("search persons filters: %w", err)
+	}
+	defer rows.Close()
+
+	return scanPersonRows(rows)
+}
+
+// buildDatePlaceFilters builds SQL WHERE conditions for date range and place filters.
+// Returns the SQL fragment (without leading WHERE/AND) and args.
+func buildDatePlaceFilters(opts repository.SearchOptions) (string, []any) {
+	var conditions []string
+	var args []any
+
+	if opts.BirthDateFrom != nil {
+		conditions = append(conditions, "p.birth_date_sort >= ?")
+		args = append(args, opts.BirthDateFrom.Format("2006-01-02"))
+	}
+	if opts.BirthDateTo != nil {
+		conditions = append(conditions, "p.birth_date_sort <= ?")
+		args = append(args, opts.BirthDateTo.Format("2006-01-02"))
+	}
+	if opts.DeathDateFrom != nil {
+		conditions = append(conditions, "p.death_date_sort >= ?")
+		args = append(args, opts.DeathDateFrom.Format("2006-01-02"))
+	}
+	if opts.DeathDateTo != nil {
+		conditions = append(conditions, "p.death_date_sort <= ?")
+		args = append(args, opts.DeathDateTo.Format("2006-01-02"))
+	}
+	if opts.BirthPlace != "" {
+		conditions = append(conditions, "p.birth_place LIKE '%' || ? || '%' COLLATE NOCASE")
+		args = append(args, opts.BirthPlace)
+	}
+	if opts.DeathPlace != "" {
+		conditions = append(conditions, "p.death_place LIKE '%' || ? || '%' COLLATE NOCASE")
+		args = append(args, opts.DeathPlace)
+	}
+
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	return strings.Join(conditions, " AND "), args
+}
+
+// searchOrderClause returns the SQL ORDER BY columns for search results.
+// prefix is the table alias prefix (e.g., "p." for JOINed queries, "" for CTEs).
+// hasFTSRank indicates whether FTS rank columns are available.
+func searchOrderClause(opts repository.SearchOptions, prefix string, hasFTSRank bool) string {
+	dir := "ASC"
+	if strings.EqualFold(opts.Order, "desc") {
+		dir = "DESC"
+	}
+
+	switch opts.Sort {
+	case "name":
+		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir
+	case "birth_date":
+		return prefix + "birth_date_sort " + dir
+	case "death_date":
+		return prefix + "death_date_sort " + dir
+	case "relevance":
+		if hasFTSRank {
+			return "is_primary DESC, search_rank"
+		}
+		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir
+	default:
+		if hasFTSRank {
+			return "is_primary DESC, search_rank"
+		}
+		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir
+	}
+}
+
+// sortPersonResults sorts person results in-place for Soundex (Go-level sorting).
+func sortPersonResults(persons []repository.PersonReadModel, opts repository.SearchOptions) {
+	if len(persons) <= 1 {
+		return
+	}
+
+	less := func(i, j int) bool {
+		a, b := persons[i], persons[j]
+		switch opts.Sort {
+		case "birth_date":
+			if a.BirthDateSort == nil && b.BirthDateSort == nil {
+				return false
+			}
+			if a.BirthDateSort == nil {
+				return false
+			}
+			if b.BirthDateSort == nil {
+				return true
+			}
+			return a.BirthDateSort.Before(*b.BirthDateSort)
+		case "death_date":
+			if a.DeathDateSort == nil && b.DeathDateSort == nil {
+				return false
+			}
+			if a.DeathDateSort == nil {
+				return false
+			}
+			if b.DeathDateSort == nil {
+				return true
+			}
+			return a.DeathDateSort.Before(*b.DeathDateSort)
+		default: // "name", "relevance", or empty
+			if a.Surname != b.Surname {
+				return a.Surname < b.Surname
+			}
+			return a.GivenName < b.GivenName
+		}
+	}
+
+	if strings.EqualFold(opts.Order, "desc") {
+		sort.Slice(persons, func(i, j int) bool { return less(j, i) })
+	} else {
+		sort.Slice(persons, less)
+	}
+}
+
+// scanPersonRows scans all rows into PersonReadModel slice.
+func scanPersonRows(rows *sql.Rows) ([]repository.PersonReadModel, error) {
 	var persons []repository.PersonReadModel
 	for rows.Next() {
 		p, err := scanPersonRow(rows)
@@ -599,7 +958,6 @@ func (s *ReadModelStore) searchPersonsLike(ctx context.Context, query string, li
 		}
 		persons = append(persons, *p)
 	}
-
 	return persons, rows.Err()
 }
 
@@ -1258,6 +1616,10 @@ func escapeFTS5Query(query string) string {
 	}
 	return result
 }
+
+// soundex computes the American Soundex code for a string.
+// Returns a 4-character code (letter + 3 digits), or "" for empty input.
+// Soundex and SoundexMatch are in the shared repository package.
 
 // GetSource retrieves a source by ID.
 func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {

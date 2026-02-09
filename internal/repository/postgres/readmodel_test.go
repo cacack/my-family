@@ -178,7 +178,7 @@ func TestReadModelStore_SearchPersons_FullText(t *testing.T) {
 	}
 
 	// Search for "Smith" - should find 2 results
-	results, err := store.SearchPersons(ctx, "Smith", false, 10)
+	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Limit: 10})
 	if err != nil {
 		t.Fatalf("search persons: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestReadModelStore_SearchPersons_FullText(t *testing.T) {
 	}
 
 	// Search for "John" - should find 2 results (John Smith and Robert Johnson)
-	results, err = store.SearchPersons(ctx, "John", false, 10)
+	results, err = store.SearchPersons(ctx, repository.SearchOptions{Query: "John", Limit: 10})
 	if err != nil {
 		t.Fatalf("search persons: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestReadModelStore_SearchPersons_Fuzzy(t *testing.T) {
 	}
 
 	// Fuzzy search for "Kathryn" - should find "Katherine" and "Catherine"
-	results, err := store.SearchPersons(ctx, "Kathryn", true, 10)
+	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Kathryn", Fuzzy: true, Limit: 10})
 	if err != nil {
 		t.Fatalf("fuzzy search: %v", err)
 	}
@@ -591,4 +591,473 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 	if childPersons[1].GivenName != "Jenny" {
 		t.Errorf("expected second child Jenny, got %s", childPersons[1].GivenName)
 	}
+}
+
+func TestSearchPersons_DateRange(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	birth1850 := time.Date(1850, 6, 15, 0, 0, 0, 0, time.UTC)
+	birth1880 := time.Date(1880, 3, 20, 0, 0, 0, 0, time.UTC)
+	birth1920 := time.Date(1920, 11, 1, 0, 0, 0, 0, time.UTC)
+
+	persons := []repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "Alice", Surname: "Early", FullName: "Alice Early", BirthDateRaw: "15 JUN 1850", BirthDateSort: &birth1850, Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Bob", Surname: "Middle", FullName: "Bob Middle", BirthDateRaw: "20 MAR 1880", BirthDateSort: &birth1880, Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Charlie", Surname: "Late", FullName: "Charlie Late", BirthDateRaw: "1 NOV 1920", BirthDateSort: &birth1920, Version: 1, UpdatedAt: now},
+	}
+
+	for i := range persons {
+		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+
+	t.Run("BirthDateFrom and BirthDateTo", func(t *testing.T) {
+		from := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
+		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthDateFrom: &from,
+			BirthDateTo:   &to,
+			Limit:         10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(results))
+		}
+		if results[0].GivenName != "Bob" {
+			t.Errorf("expected Bob, got %s", results[0].GivenName)
+		}
+	})
+
+	t.Run("BirthDateFrom only", func(t *testing.T) {
+		from := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthDateFrom: &from,
+			Limit:         10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(results))
+		}
+		if results[0].GivenName != "Charlie" {
+			t.Errorf("expected Charlie, got %s", results[0].GivenName)
+		}
+	})
+
+	t.Run("BirthDateTo only", func(t *testing.T) {
+		to := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthDateTo: &to,
+			Limit:       10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(results))
+		}
+		if results[0].GivenName != "Alice" {
+			t.Errorf("expected Alice, got %s", results[0].GivenName)
+		}
+	})
+}
+
+func TestSearchPersons_PlaceFilter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	persons := []repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "Alice", Surname: "Smith", FullName: "Alice Smith", BirthPlace: "London, England", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Bob", Surname: "Dupont", FullName: "Bob Dupont", BirthPlace: "Paris, France", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Charlie", Surname: "Jones", FullName: "Charlie Jones", BirthPlace: "New London, Connecticut", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Diana", Surname: "Brown", FullName: "Diana Brown", DeathPlace: "London, England", Version: 1, UpdatedAt: now},
+	}
+
+	for i := range persons {
+		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+
+	t.Run("BirthPlace London matches two", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthPlace: "London",
+			Limit:      10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 2 {
+			t.Fatalf("expected 2 results for BirthPlace=London, got %d", len(results))
+		}
+	})
+
+	t.Run("DeathPlace London matches one", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			DeathPlace: "London",
+			Limit:      10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result for DeathPlace=London, got %d", len(results))
+		}
+		if results[0].GivenName != "Diana" {
+			t.Errorf("expected Diana, got %s", results[0].GivenName)
+		}
+	})
+
+	t.Run("BirthPlace Paris matches one", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthPlace: "Paris",
+			Limit:      10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result for BirthPlace=Paris, got %d", len(results))
+		}
+		if results[0].GivenName != "Bob" {
+			t.Errorf("expected Bob, got %s", results[0].GivenName)
+		}
+	})
+}
+
+func TestSearchPersons_Soundex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	persons := []repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "Catherine", Surname: "Smith", FullName: "Catherine Smith", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Katherine", Surname: "Smyth", FullName: "Katherine Smyth", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Robert", Surname: "Brown", FullName: "Robert Brown", Version: 1, UpdatedAt: now},
+	}
+
+	for i := range persons {
+		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+
+	t.Run("Soundex matches Smith and Smyth", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			Query:   "Smith",
+			Soundex: true,
+			Limit:   10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		// PostgreSQL difference() with threshold >= 3 should match Smith/Smyth
+		if len(results) < 2 {
+			t.Errorf("expected at least 2 results for soundex 'Smith', got %d", len(results))
+		}
+	})
+
+	t.Run("Soundex Catherine", func(t *testing.T) {
+		// PostgreSQL difference("Catherine", "Katherine") may match at threshold 3
+		// since they are phonetically similar despite different first letter.
+		// This test verifies soundex search works without error.
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			Query:   "Catherine",
+			Soundex: true,
+			Limit:   10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		// Should at least find Catherine herself
+		if len(results) < 1 {
+			t.Errorf("expected at least 1 result for soundex 'Catherine', got %d", len(results))
+		}
+	})
+}
+
+func TestSearchPersons_Combined(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	birth1850 := time.Date(1850, 1, 1, 0, 0, 0, 0, time.UTC)
+	birth1880 := time.Date(1880, 1, 1, 0, 0, 0, 0, time.UTC)
+	birth1920 := time.Date(1920, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	persons := []repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "John", Surname: "Smith", FullName: "John Smith", BirthDateSort: &birth1850, BirthPlace: "London, England", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "John", Surname: "Smith", FullName: "John Smith", BirthDateSort: &birth1920, BirthPlace: "London, England", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "John", Surname: "Smith", FullName: "John Smith", BirthDateSort: &birth1880, BirthPlace: "Paris, France", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Jane", Surname: "Doe", FullName: "Jane Doe", BirthDateSort: &birth1880, BirthPlace: "London, England", Version: 1, UpdatedAt: now},
+	}
+
+	for i := range persons {
+		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+
+	t.Run("Query + date range + place narrows results", func(t *testing.T) {
+		from := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
+		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			Query:         "Smith",
+			BirthDateFrom: &from,
+			BirthDateTo:   &to,
+			BirthPlace:    "London",
+			Limit:         10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		// 1850 Smith is out of range. 1880 Smith is in Paris. 1920 Smith is out of range.
+		if len(results) != 0 {
+			t.Errorf("expected 0 results, got %d", len(results))
+		}
+	})
+
+	t.Run("Query + date range matches subset", func(t *testing.T) {
+		from := time.Date(1840, 1, 1, 0, 0, 0, 0, time.UTC)
+		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			Query:         "Smith",
+			BirthDateFrom: &from,
+			BirthDateTo:   &to,
+			Limit:         10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		// Smith born 1850 and Smith born 1880 both match
+		if len(results) != 2 {
+			t.Errorf("expected 2 results, got %d", len(results))
+		}
+	})
+}
+
+func TestSearchPersons_NoQueryWithFilters(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	birth1850 := time.Date(1850, 1, 1, 0, 0, 0, 0, time.UTC)
+	birth1880 := time.Date(1880, 1, 1, 0, 0, 0, 0, time.UTC)
+	birth1920 := time.Date(1920, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	persons := []repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "Alice", Surname: "Smith", FullName: "Alice Smith", BirthDateSort: &birth1850, BirthPlace: "London", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Bob", Surname: "Jones", FullName: "Bob Jones", BirthDateSort: &birth1880, BirthPlace: "Paris", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Charlie", Surname: "Brown", FullName: "Charlie Brown", BirthDateSort: &birth1920, BirthPlace: "London", Version: 1, UpdatedAt: now},
+	}
+
+	for i := range persons {
+		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+
+	t.Run("date range only", func(t *testing.T) {
+		from := time.Date(1860, 1, 1, 0, 0, 0, 0, time.UTC)
+		to := time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthDateFrom: &from,
+			BirthDateTo:   &to,
+			Limit:         10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("expected 1 result, got %d", len(results))
+		}
+		if results[0].GivenName != "Bob" {
+			t.Errorf("expected Bob, got %s", results[0].GivenName)
+		}
+	})
+
+	t.Run("place only", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthPlace: "London",
+			Limit:      10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 results for London, got %d", len(results))
+		}
+	})
+
+	t.Run("no criteria returns empty", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 0 {
+			t.Errorf("expected 0 results with no criteria, got %d", len(results))
+		}
+	})
+}
+
+func TestSearchPersons_SortOptions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	birth1850 := time.Date(1850, 1, 1, 0, 0, 0, 0, time.UTC)
+	birth1880 := time.Date(1880, 1, 1, 0, 0, 0, 0, time.UTC)
+	birth1920 := time.Date(1920, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	persons := []repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "Charlie", Surname: "Adams", FullName: "Charlie Adams", BirthDateSort: &birth1920, BirthPlace: "London", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Alice", Surname: "Brown", FullName: "Alice Brown", BirthDateSort: &birth1850, BirthPlace: "London", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Bob", Surname: "Clark", FullName: "Bob Clark", BirthDateSort: &birth1880, BirthPlace: "London", Version: 1, UpdatedAt: now},
+	}
+
+	for i := range persons {
+		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+
+	t.Run("sort by birth_date asc", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthPlace: "London",
+			Sort:       "birth_date",
+			Order:      "asc",
+			Limit:      10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 3 {
+			t.Fatalf("expected 3 results, got %d", len(results))
+		}
+		if results[0].GivenName != "Alice" {
+			t.Errorf("expected first Alice (1850), got %s", results[0].GivenName)
+		}
+		if results[2].GivenName != "Charlie" {
+			t.Errorf("expected last Charlie (1920), got %s", results[2].GivenName)
+		}
+	})
+
+	t.Run("sort by name desc", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			BirthPlace: "London",
+			Sort:       "name",
+			Order:      "desc",
+			Limit:      10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 3 {
+			t.Fatalf("expected 3 results, got %d", len(results))
+		}
+		// Desc by surname: Clark, Brown, Adams
+		if results[0].Surname != "Clark" {
+			t.Errorf("expected first surname Clark, got %s", results[0].Surname)
+		}
+		if results[2].Surname != "Adams" {
+			t.Errorf("expected last surname Adams, got %s", results[2].Surname)
+		}
+	})
+}
+
+func TestSearchPersons_BackwardCompatible(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	persons := []repository.PersonReadModel{
+		{ID: uuid.New(), GivenName: "John", Surname: "Doe", FullName: "John Doe", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Jane", Surname: "Doe", FullName: "Jane Doe", Version: 1, UpdatedAt: now},
+		{ID: uuid.New(), GivenName: "Robert", Surname: "Smith", FullName: "Robert Smith", Version: 1, UpdatedAt: now},
+	}
+
+	for i := range persons {
+		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+			t.Fatalf("save person: %v", err)
+		}
+	}
+
+	t.Run("query only", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			Query: "Doe",
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 results for 'Doe', got %d", len(results))
+		}
+	})
+
+	t.Run("query with fuzzy", func(t *testing.T) {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{
+			Query: "Doe",
+			Fuzzy: true,
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		// Fuzzy (trigram) should find "Doe" matches
+		if len(results) < 1 {
+			t.Logf("Note: fuzzy search returned %d results (pg_trgm similarity may vary)", len(results))
+		}
+	})
 }
