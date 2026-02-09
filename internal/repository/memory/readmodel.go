@@ -182,15 +182,20 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		if s.personMatchesQuery(p, queryLower, opts.Soundex) && !foundIDs[p.ID] {
 			results = append(results, *p)
 			foundIDs[p.ID] = true
-			if len(results) >= opts.Limit {
-				return results, nil
-			}
 		}
 	}
 
 	// Search in person_names table for alternate names (only if text query provided)
 	if opts.Query != "" {
 		s.searchAlternateNames(queryLower, opts, foundIDs, &results)
+	}
+
+	// Sort results to match postgres/sqlite behavior
+	sortSearchResults(results, opts)
+
+	// Apply limit after sorting
+	if opts.Limit > 0 && len(results) > opts.Limit {
+		results = results[:opts.Limit]
 	}
 
 	return results, nil
@@ -252,6 +257,49 @@ func altNameMatches(name repository.PersonNameReadModel, queryLower string, soun
 		}
 	}
 	return false
+}
+
+// sortSearchResults sorts results by the requested field and direction.
+func sortSearchResults(results []repository.PersonReadModel, opts repository.SearchOptions) {
+	if opts.Sort == "" || opts.Sort == "relevance" {
+		return // keep insertion order for relevance
+	}
+	desc := strings.EqualFold(opts.Order, "desc")
+	sort.SliceStable(results, func(i, j int) bool {
+		var less bool
+		switch opts.Sort {
+		case "name":
+			if results[i].Surname != results[j].Surname {
+				less = results[i].Surname < results[j].Surname
+			} else {
+				less = results[i].GivenName < results[j].GivenName
+			}
+		case "birth_date":
+			less = timeBefore(results[i].BirthDateSort, results[j].BirthDateSort)
+		case "death_date":
+			less = timeBefore(results[i].DeathDateSort, results[j].DeathDateSort)
+		default:
+			return false
+		}
+		if desc {
+			return !less
+		}
+		return less
+	})
+}
+
+// timeBefore compares two nullable times. Nil values sort last.
+func timeBefore(a, b *time.Time) bool {
+	if a == nil && b == nil {
+		return false
+	}
+	if a == nil {
+		return false // nil sorts last
+	}
+	if b == nil {
+		return true // non-nil before nil
+	}
+	return a.Before(*b)
 }
 
 // nameMatchesQuery checks if a PersonNameReadModel matches the query.
