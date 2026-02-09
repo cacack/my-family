@@ -1340,14 +1340,13 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Find distinct person IDs with matching burial/cremation events
-	placeLower := strings.ToLower(place)
+	// Find distinct person IDs with matching burial/cremation events (exact case-insensitive match)
 	matchedIDs := make(map[uuid.UUID]struct{})
 	for _, e := range s.events {
 		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
 			continue
 		}
-		if strings.EqualFold(e.Place, place) || strings.Contains(strings.ToLower(e.Place), placeLower) {
+		if strings.EqualFold(e.Place, place) {
 			matchedIDs[e.OwnerID] = struct{}{}
 		}
 	}

@@ -3014,8 +3014,10 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	// Count total distinct persons
 	var total int
 	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(DISTINCT e.owner_id) FROM events e
-		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) LIKE '%' || LOWER(?) || '%'
+		SELECT COUNT(DISTINCT p.id)
+		FROM persons p
+		INNER JOIN events e ON e.owner_id = p.id
+		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
 	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by cemetery: %w", err)
@@ -3028,7 +3030,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 			   p.notes, p.research_status, p.version, p.updated_at
 		FROM persons p
 		INNER JOIN events e ON e.owner_id = p.id
-		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) LIKE '%' || LOWER(?) || '%'
+		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
 		ORDER BY p.surname ASC, p.given_name ASC
 		LIMIT ? OFFSET ?
 	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place, opts.Limit, opts.Offset)

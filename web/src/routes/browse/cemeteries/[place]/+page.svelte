@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { untrack } from 'svelte';
 	import { api, type Person } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 
@@ -41,8 +42,12 @@
 	}
 
 	$effect(() => {
-		currentPage = 1;
-		loadPersons();
+		// Subscribe only to place changes
+		void place;
+		untrack(() => {
+			currentPage = 1;
+			loadPersons();
+		});
 	});
 
 	const totalPages = $derived(Math.ceil(total / pageSize));
