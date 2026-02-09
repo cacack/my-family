@@ -266,40 +266,39 @@ func sortSearchResults(results []repository.PersonReadModel, opts repository.Sea
 	}
 	desc := strings.EqualFold(opts.Order, "desc")
 	sort.SliceStable(results, func(i, j int) bool {
-		var less bool
+		var cmp int
 		switch opts.Sort {
 		case "name":
-			if results[i].Surname != results[j].Surname {
-				less = results[i].Surname < results[j].Surname
-			} else {
-				less = results[i].GivenName < results[j].GivenName
+			cmp = strings.Compare(results[i].Surname, results[j].Surname)
+			if cmp == 0 {
+				cmp = strings.Compare(results[i].GivenName, results[j].GivenName)
 			}
 		case "birth_date":
-			less = timeBefore(results[i].BirthDateSort, results[j].BirthDateSort)
+			cmp = compareTimePtr(results[i].BirthDateSort, results[j].BirthDateSort)
 		case "death_date":
-			less = timeBefore(results[i].DeathDateSort, results[j].DeathDateSort)
+			cmp = compareTimePtr(results[i].DeathDateSort, results[j].DeathDateSort)
 		default:
 			return false
 		}
 		if desc {
-			return !less
+			return cmp > 0
 		}
-		return less
+		return cmp < 0
 	})
 }
 
-// timeBefore compares two nullable times. Nil values sort last.
-func timeBefore(a, b *time.Time) bool {
+// compareTimePtr does a three-way comparison of nullable times. Nil sorts last.
+func compareTimePtr(a, b *time.Time) int {
 	if a == nil && b == nil {
-		return false
+		return 0
 	}
 	if a == nil {
-		return false // nil sorts last
+		return 1 // nil sorts last
 	}
 	if b == nil {
-		return true // non-nil before nil
+		return -1
 	}
-	return a.Before(*b)
+	return a.Compare(*b)
 }
 
 // nameMatchesQuery checks if a PersonNameReadModel matches the query.
