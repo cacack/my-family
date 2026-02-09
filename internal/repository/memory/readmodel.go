@@ -1381,6 +1381,75 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	return results, total, nil
 }
 
+// GetMapLocations returns aggregated geographic locations from person birth/death coordinates.
+func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapLocation, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Key by "place|eventType" to aggregate
+	type locKey struct {
+		place     string
+		eventType string
+	}
+	type locData struct {
+		lat       float64
+		lon       float64
+		personIDs []uuid.UUID
+	}
+
+	agg := make(map[locKey]*locData)
+
+	for _, p := range s.persons {
+		// Birth location
+		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
+			lat, errLat := domain.ParseGEDCOMCoordinate(*p.BirthPlaceLat)
+			lon, errLon := domain.ParseGEDCOMCoordinate(*p.BirthPlaceLong)
+			if errLat == nil && errLon == nil {
+				key := locKey{place: p.BirthPlace, eventType: "birth"}
+				if d, ok := agg[key]; ok {
+					d.personIDs = append(d.personIDs, p.ID)
+				} else {
+					agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{p.ID}}
+				}
+			}
+		}
+		// Death location
+		if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
+			lat, errLat := domain.ParseGEDCOMCoordinate(*p.DeathPlaceLat)
+			lon, errLon := domain.ParseGEDCOMCoordinate(*p.DeathPlaceLong)
+			if errLat == nil && errLon == nil {
+				key := locKey{place: p.DeathPlace, eventType: "death"}
+				if d, ok := agg[key]; ok {
+					d.personIDs = append(d.personIDs, p.ID)
+				} else {
+					agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{p.ID}}
+				}
+			}
+		}
+	}
+
+	results := make([]repository.MapLocation, 0, len(agg))
+	for key, data := range agg {
+		results = append(results, repository.MapLocation{
+			Place:     key.place,
+			Latitude:  data.lat,
+			Longitude: data.lon,
+			EventType: key.eventType,
+			Count:     len(data.personIDs),
+			PersonIDs: data.personIDs,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Place != results[j].Place {
+			return results[i].Place < results[j].Place
+		}
+		return results[i].EventType < results[j].EventType
+	})
+
+	return results, nil
+}
+
 // GetNote retrieves a note by ID.
 func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
 	s.mu.RLock()

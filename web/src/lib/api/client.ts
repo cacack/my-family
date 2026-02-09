@@ -549,6 +549,20 @@ export interface CemeteryEntry {
 	count: number;
 }
 
+export interface MapLocationsResponse {
+	items: MapLocation[];
+	total: number;
+}
+
+export interface MapLocation {
+	place: string;
+	latitude: number;
+	longitude: number;
+	event_type: 'birth' | 'death';
+	count: number;
+	person_ids: string[];
+}
+
 export interface MediaUpdate {
 	title?: string;
 	description?: string;
@@ -1189,6 +1203,11 @@ class ApiClient {
 			'GET',
 			`/browse/cemeteries/${encodeURIComponent(place)}/persons${query ? `?${query}` : ''}`
 		);
+	}
+
+	// Map endpoints
+	async getMapLocations(): Promise<MapLocationsResponse> {
+		return this.request<MapLocationsResponse>('GET', '/map/locations');
 	}
 
 	// Relationship endpoint

@@ -3,6 +3,7 @@ package memory_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -3288,6 +3289,189 @@ func TestReadModelStore_GetPersonsByCemetery_Empty(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Errorf("len(results) = %d, want 0", len(results))
+	}
+}
+
+// Map location tests
+
+func TestReadModelStore_GetMapLocations_Empty(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	results, err := store.GetMapLocations(ctx)
+	if err != nil {
+		t.Fatalf("GetMapLocations() failed: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("len(results) = %d, want 0", len(results))
+	}
+}
+
+func TestReadModelStore_GetMapLocations_BirthOnly(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	lat := "N42.3601"
+	lon := "W71.0589"
+	person := &repository.PersonReadModel{
+		ID:             uuid.New(),
+		GivenName:      "John",
+		Surname:        "Smith",
+		FullName:       "John Smith",
+		BirthPlace:     "Boston, Massachusetts, USA",
+		BirthPlaceLat:  &lat,
+		BirthPlaceLong: &lon,
+		Version:        1,
+		UpdatedAt:      time.Now(),
+	}
+	if err := store.SavePerson(ctx, person); err != nil {
+		t.Fatalf("SavePerson() failed: %v", err)
+	}
+
+	results, err := store.GetMapLocations(ctx)
+	if err != nil {
+		t.Fatalf("GetMapLocations() failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Place != "Boston, Massachusetts, USA" {
+		t.Errorf("Place = %q, want %q", results[0].Place, "Boston, Massachusetts, USA")
+	}
+	if results[0].EventType != "birth" {
+		t.Errorf("EventType = %q, want %q", results[0].EventType, "birth")
+	}
+	if results[0].Latitude != 42.3601 {
+		t.Errorf("Latitude = %v, want %v", results[0].Latitude, 42.3601)
+	}
+	if results[0].Longitude != -71.0589 {
+		t.Errorf("Longitude = %v, want %v", results[0].Longitude, -71.0589)
+	}
+	if results[0].Count != 1 {
+		t.Errorf("Count = %d, want 1", results[0].Count)
+	}
+	if len(results[0].PersonIDs) != 1 || results[0].PersonIDs[0] != person.ID {
+		t.Errorf("PersonIDs = %v, want [%v]", results[0].PersonIDs, person.ID)
+	}
+}
+
+func TestReadModelStore_GetMapLocations_BirthAndDeath(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	bLat, bLon := "N42.3601", "W71.0589"
+	dLat, dLon := "N40.7128", "W74.0060"
+	person := &repository.PersonReadModel{
+		ID:             uuid.New(),
+		GivenName:      "Jane",
+		Surname:        "Doe",
+		FullName:       "Jane Doe",
+		BirthPlace:     "Boston, MA",
+		BirthPlaceLat:  &bLat,
+		BirthPlaceLong: &bLon,
+		DeathPlace:     "New York, NY",
+		DeathPlaceLat:  &dLat,
+		DeathPlaceLong: &dLon,
+		Version:        1,
+		UpdatedAt:      time.Now(),
+	}
+	if err := store.SavePerson(ctx, person); err != nil {
+		t.Fatalf("SavePerson() failed: %v", err)
+	}
+
+	results, err := store.GetMapLocations(ctx)
+	if err != nil {
+		t.Fatalf("GetMapLocations() failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d, want 2 (one birth, one death)", len(results))
+	}
+
+	// Results should be sorted by place then event type
+	birthFound, deathFound := false, false
+	for _, r := range results {
+		if r.EventType == "birth" {
+			birthFound = true
+			if r.Place != "Boston, MA" {
+				t.Errorf("birth Place = %q, want %q", r.Place, "Boston, MA")
+			}
+		}
+		if r.EventType == "death" {
+			deathFound = true
+			if r.Place != "New York, NY" {
+				t.Errorf("death Place = %q, want %q", r.Place, "New York, NY")
+			}
+		}
+	}
+	if !birthFound {
+		t.Error("birth location not found")
+	}
+	if !deathFound {
+		t.Error("death location not found")
+	}
+}
+
+func TestReadModelStore_GetMapLocations_Aggregation(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	lat, lon := "N42.3601", "W71.0589"
+	for i := 0; i < 3; i++ {
+		p := &repository.PersonReadModel{
+			ID:             uuid.New(),
+			GivenName:      fmt.Sprintf("Person%d", i),
+			Surname:        "Test",
+			FullName:       fmt.Sprintf("Person%d Test", i),
+			BirthPlace:     "Boston, MA",
+			BirthPlaceLat:  &lat,
+			BirthPlaceLong: &lon,
+			Version:        1,
+			UpdatedAt:      time.Now(),
+		}
+		if err := store.SavePerson(ctx, p); err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	results, err := store.GetMapLocations(ctx)
+	if err != nil {
+		t.Fatalf("GetMapLocations() failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1 (aggregated)", len(results))
+	}
+	if results[0].Count != 3 {
+		t.Errorf("Count = %d, want 3", results[0].Count)
+	}
+	if len(results[0].PersonIDs) != 3 {
+		t.Errorf("len(PersonIDs) = %d, want 3", len(results[0].PersonIDs))
+	}
+}
+
+func TestReadModelStore_GetMapLocations_NoCoordinates(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Person without coordinates should be excluded
+	person := &repository.PersonReadModel{
+		ID:         uuid.New(),
+		GivenName:  "No",
+		Surname:    "Coords",
+		FullName:   "No Coords",
+		BirthPlace: "Unknown Place",
+		Version:    1,
+		UpdatedAt:  time.Now(),
+	}
+	if err := store.SavePerson(ctx, person); err != nil {
+		t.Fatalf("SavePerson() failed: %v", err)
+	}
+
+	results, err := store.GetMapLocations(ctx)
+	if err != nil {
+		t.Fatalf("GetMapLocations() failed: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("len(results) = %d, want 0 (no coordinates)", len(results))
 	}
 }
 

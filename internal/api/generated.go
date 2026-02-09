@@ -124,6 +124,12 @@ const (
 	SLGS LDSOrdinanceType = "SLGS"
 )
 
+// Defines values for MapLocationEventType.
+const (
+	MapLocationEventTypeBirth MapLocationEventType = "birth"
+	MapLocationEventTypeDeath MapLocationEventType = "death"
+)
+
 // Defines values for MediaEntityType.
 const (
 	MediaEntityTypeFamily MediaEntityType = "family"
@@ -198,12 +204,12 @@ const (
 
 // Defines values for PersonNameUpdateNameType.
 const (
-	Aka          PersonNameUpdateNameType = "aka"
-	Birth        PersonNameUpdateNameType = "birth"
-	Immigrant    PersonNameUpdateNameType = "immigrant"
-	Married      PersonNameUpdateNameType = "married"
-	Professional PersonNameUpdateNameType = "professional"
-	Religious    PersonNameUpdateNameType = "religious"
+	PersonNameUpdateNameTypeAka          PersonNameUpdateNameType = "aka"
+	PersonNameUpdateNameTypeBirth        PersonNameUpdateNameType = "birth"
+	PersonNameUpdateNameTypeImmigrant    PersonNameUpdateNameType = "immigrant"
+	PersonNameUpdateNameTypeMarried      PersonNameUpdateNameType = "married"
+	PersonNameUpdateNameTypeProfessional PersonNameUpdateNameType = "professional"
+	PersonNameUpdateNameTypeReligious    PersonNameUpdateNameType = "religious"
 )
 
 // Defines values for PersonUpdateGender.
@@ -1301,6 +1307,38 @@ type LetterCount struct {
 
 	// Letter A-Z letter
 	Letter string `json:"letter"`
+}
+
+// MapLocation defines model for MapLocation.
+type MapLocation struct {
+	// Count Number of persons at this location
+	Count int `json:"count"`
+
+	// EventType Type of life event at this location
+	EventType MapLocationEventType `json:"event_type"`
+
+	// Latitude Latitude in decimal degrees
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in decimal degrees
+	Longitude float64 `json:"longitude"`
+
+	// PersonIds IDs of persons at this location
+	PersonIds []openapi_types.UUID `json:"person_ids"`
+
+	// Place Place name
+	Place string `json:"place"`
+}
+
+// MapLocationEventType Type of life event at this location
+type MapLocationEventType string
+
+// MapLocationsResponse defines model for MapLocationsResponse.
+type MapLocationsResponse struct {
+	Items []MapLocation `json:"items"`
+
+	// Total Total number of locations with coordinates
+	Total int `json:"total"`
 }
 
 // Media defines model for Media.
@@ -2861,6 +2899,9 @@ type ServerInterface interface {
 	// Update an LDS ordinance
 	// (PUT /lds-ordinances/{id})
 	UpdateLDSOrdinance(ctx echo.Context, id LdsOrdinanceId) error
+	// Get geographic locations for map visualization
+	// (GET /map/locations)
+	GetMapLocations(ctx echo.Context) error
 	// Delete media
 	// (DELETE /media/{id})
 	DeleteMedia(ctx echo.Context, id openapi_types.UUID, params DeleteMediaParams) error
@@ -3928,6 +3969,15 @@ func (w *ServerInterfaceWrapper) UpdateLDSOrdinance(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateLDSOrdinance(ctx, id)
+	return err
+}
+
+// GetMapLocations converts echo context to params.
+func (w *ServerInterfaceWrapper) GetMapLocations(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetMapLocations(ctx)
 	return err
 }
 
@@ -5244,6 +5294,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.DELETE(baseURL+"/lds-ordinances/:id", wrapper.DeleteLDSOrdinance)
 	router.GET(baseURL+"/lds-ordinances/:id", wrapper.GetLDSOrdinance)
 	router.PUT(baseURL+"/lds-ordinances/:id", wrapper.UpdateLDSOrdinance)
+	router.GET(baseURL+"/map/locations", wrapper.GetMapLocations)
 	router.DELETE(baseURL+"/media/:id", wrapper.DeleteMedia)
 	router.GET(baseURL+"/media/:id", wrapper.GetMedia)
 	router.PUT(baseURL+"/media/:id", wrapper.UpdateMedia)
@@ -6575,6 +6626,22 @@ type UpdateLDSOrdinance409JSONResponse struct{ ConflictJSONResponse }
 func (response UpdateLDSOrdinance409JSONResponse) VisitUpdateLDSOrdinanceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetMapLocationsRequestObject struct {
+}
+
+type GetMapLocationsResponseObject interface {
+	VisitGetMapLocationsResponse(w http.ResponseWriter) error
+}
+
+type GetMapLocations200JSONResponse MapLocationsResponse
+
+func (response GetMapLocations200JSONResponse) VisitGetMapLocationsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -8578,6 +8645,9 @@ type StrictServerInterface interface {
 	// Update an LDS ordinance
 	// (PUT /lds-ordinances/{id})
 	UpdateLDSOrdinance(ctx context.Context, request UpdateLDSOrdinanceRequestObject) (UpdateLDSOrdinanceResponseObject, error)
+	// Get geographic locations for map visualization
+	// (GET /map/locations)
+	GetMapLocations(ctx context.Context, request GetMapLocationsRequestObject) (GetMapLocationsResponseObject, error)
 	// Delete media
 	// (DELETE /media/{id})
 	DeleteMedia(ctx context.Context, request DeleteMediaRequestObject) (DeleteMediaResponseObject, error)
@@ -9972,6 +10042,29 @@ func (sh *strictHandler) UpdateLDSOrdinance(ctx echo.Context, id LdsOrdinanceId)
 		return err
 	} else if validResponse, ok := response.(UpdateLDSOrdinanceResponseObject); ok {
 		return validResponse.VisitUpdateLDSOrdinanceResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetMapLocations operation middleware
+func (sh *strictHandler) GetMapLocations(ctx echo.Context) error {
+	var request GetMapLocationsRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMapLocations(ctx.Request().Context(), request.(GetMapLocationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMapLocations")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetMapLocationsResponseObject); ok {
+		return validResponse.VisitGetMapLocationsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
