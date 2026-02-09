@@ -702,7 +702,11 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 	// Also load person_names for Soundex matching on alternate names
 	namesByPerson := make(map[string][]nameEntry)
 	if len(candidates) > 0 {
-		namesByPerson, _ = s.loadPersonNamesForSoundex(ctx, candidates)
+		var err error
+		namesByPerson, err = s.loadPersonNamesForSoundex(ctx, candidates)
+		if err != nil {
+			return nil, fmt.Errorf("load person names for soundex: %w", err)
+		}
 	}
 
 	// Post-filter: keep persons where any query word Soundex-matches given_name or surname
@@ -710,14 +714,14 @@ func (s *ReadModelStore) searchPersonsSoundex(ctx context.Context, opts reposito
 	for _, p := range candidates {
 		if personMatchesSoundex(p, queryWords, namesByPerson[p.ID.String()]) {
 			results = append(results, p)
-			if len(results) >= limit {
-				break
-			}
 		}
 	}
 
-	// Sort results
+	// Sort before applying limit
 	sortPersonResults(results, opts)
+	if len(results) > limit {
+		results = results[:limit]
+	}
 
 	return results, nil
 }
@@ -730,44 +734,59 @@ type nameEntry struct {
 }
 
 // loadPersonNamesForSoundex loads alternate names for a set of persons.
+// Batches queries to stay within SQLite's 999 parameter limit.
 func (s *ReadModelStore) loadPersonNamesForSoundex(ctx context.Context, persons []repository.PersonReadModel) (map[string][]nameEntry, error) {
 	if len(persons) == 0 {
 		return nil, nil
 	}
 
-	// Build IN clause
-	var sb strings.Builder
-	var args []any
-	sb.WriteString("SELECT person_id, given_name, surname, nickname FROM person_names WHERE person_id IN (")
-	for i, p := range persons {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString("?")
-		args = append(args, p.ID.String())
-	}
-	sb.WriteString(")")
-
-	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
+	const batchSize = 900 // Stay well under SQLite's 999 parameter limit
 	result := make(map[string][]nameEntry)
-	for rows.Next() {
-		var personID, givenName, surname string
-		var nickname sql.NullString
-		if err := rows.Scan(&personID, &givenName, &surname, &nickname); err != nil {
+
+	for start := 0; start < len(persons); start += batchSize {
+		end := start + batchSize
+		if end > len(persons) {
+			end = len(persons)
+		}
+		batch := persons[start:end]
+
+		var sb strings.Builder
+		var args []any
+		sb.WriteString("SELECT person_id, given_name, surname, nickname FROM person_names WHERE person_id IN (")
+		for i, p := range batch {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			args = append(args, p.ID.String())
+		}
+		sb.WriteString(")")
+
+		rows, err := s.db.QueryContext(ctx, sb.String(), args...)
+		if err != nil {
 			return nil, err
 		}
-		result[personID] = append(result[personID], nameEntry{
-			GivenName: givenName,
-			Surname:   surname,
-			Nickname:  nickname.String,
-		})
+
+		for rows.Next() {
+			var personID, givenName, surname string
+			var nickname sql.NullString
+			if err := rows.Scan(&personID, &givenName, &surname, &nickname); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[personID] = append(result[personID], nameEntry{
+				GivenName: givenName,
+				Surname:   surname,
+				Nickname:  nickname.String,
+			})
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
-	return result, rows.Err()
+
+	return result, nil
 }
 
 // personMatchesSoundex checks if any query word Soundex-matches a person's names.

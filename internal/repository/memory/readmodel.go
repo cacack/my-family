@@ -162,6 +162,14 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	hasQuery := strings.TrimSpace(opts.Query) != ""
+	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
+		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
+	hasPlaceFilter := strings.TrimSpace(opts.BirthPlace) != "" || strings.TrimSpace(opts.DeathPlace) != ""
+	if !hasQuery && !hasDateFilter && !hasPlaceFilter {
+		return nil, nil
+	}
+
 	queryLower := strings.ToLower(opts.Query)
 	foundIDs := make(map[uuid.UUID]bool)
 	var results []repository.PersonReadModel
@@ -211,8 +219,11 @@ func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, query
 // searchAlternateNames searches person_names for alternate name matches.
 func (s *ReadModelStore) searchAlternateNames(queryLower string, opts repository.SearchOptions, foundIDs map[uuid.UUID]bool, results *[]repository.PersonReadModel) {
 	for personID, names := range s.personNames {
-		if foundIDs[personID] || len(*results) >= opts.Limit {
+		if len(*results) >= opts.Limit {
 			break
+		}
+		if foundIDs[personID] {
+			continue
 		}
 		for _, name := range names {
 			if nameMatchesQuery(name, queryLower) {

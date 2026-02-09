@@ -17,7 +17,7 @@ func TestSoundex(t *testing.T) {
 		{"Johnson", "J525"},
 		{"Jonson", "J525"},
 		{"Williams", "W452"},
-		{"Ashcraft", "A226"},
+		{"Ashcraft", "A261"},
 		{"123", ""},
 	}
 

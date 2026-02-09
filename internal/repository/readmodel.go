@@ -427,11 +427,17 @@ func Soundex(s string) string {
 
 	lastCode := mapping[letters[0]-'A']
 	for i := 1; i < len(letters) && len(result) < 4; i++ {
-		code := mapping[letters[i]-'A']
-		if code != 0 && code != lastCode {
-			result = append(result, code)
+		ch := letters[i]
+		code := mapping[ch-'A']
+		if code != 0 {
+			if code != lastCode {
+				result = append(result, code)
+			}
+			lastCode = code
+		} else if ch != 'H' && ch != 'W' {
+			// Vowels and Y reset lastCode; H and W are transparent
+			lastCode = 0
 		}
-		lastCode = code
 	}
 
 	for len(result) < 4 {
