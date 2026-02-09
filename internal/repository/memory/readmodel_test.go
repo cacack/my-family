@@ -2910,6 +2910,387 @@ func TestReadModelStore_GetPersonsByPlace(t *testing.T) {
 	}
 }
 
+func TestReadModelStore_GetCemeteryIndex_Empty(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	entries, err := store.GetCemeteryIndex(ctx)
+	if err != nil {
+		t.Fatalf("GetCemeteryIndex() failed: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("len(entries) = %d, want 0", len(entries))
+	}
+}
+
+func TestReadModelStore_GetCemeteryIndex(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person1 := uuid.New()
+	person2 := uuid.New()
+	person3 := uuid.New()
+
+	// Save persons so they can be looked up
+	for _, id := range []uuid.UUID{person1, person2, person3} {
+		err := store.SavePerson(ctx, &repository.PersonReadModel{
+			ID:        id,
+			GivenName: "Person",
+			Surname:   "Test",
+			FullName:  "Person Test",
+			Version:   1,
+			UpdatedAt: time.Now(),
+		})
+		if err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	// Create burial/cremation events at various places
+	events := []*repository.EventReadModel{
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   person1,
+			FactType:  domain.FactPersonBurial,
+			Place:     "Oakwood Cemetery, Springfield, IL",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   person2,
+			FactType:  domain.FactPersonBurial,
+			Place:     "Oakwood Cemetery, Springfield, IL",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   person3,
+			FactType:  domain.FactPersonCremation,
+			Place:     "Rose Hills Memorial Park",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		// A non-burial event should not appear
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   person1,
+			FactType:  domain.FactPersonBaptism,
+			Place:     "St. Mary's Church",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+		// A burial event with empty place should not appear
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   person1,
+			FactType:  domain.FactPersonBurial,
+			Place:     "",
+			Version:   1,
+			CreatedAt: time.Now(),
+		},
+	}
+
+	for _, e := range events {
+		if err := store.SaveEvent(ctx, e); err != nil {
+			t.Fatalf("SaveEvent() failed: %v", err)
+		}
+	}
+
+	entries, err := store.GetCemeteryIndex(ctx)
+	if err != nil {
+		t.Fatalf("GetCemeteryIndex() failed: %v", err)
+	}
+
+	if len(entries) != 2 {
+		t.Fatalf("len(entries) = %d, want 2", len(entries))
+	}
+
+	// Should be sorted alphabetically
+	if entries[0].Place != "Oakwood Cemetery, Springfield, IL" {
+		t.Errorf("entries[0].Place = %q, want %q", entries[0].Place, "Oakwood Cemetery, Springfield, IL")
+	}
+	if entries[0].Count != 2 {
+		t.Errorf("entries[0].Count = %d, want 2", entries[0].Count)
+	}
+	if entries[1].Place != "Rose Hills Memorial Park" {
+		t.Errorf("entries[1].Place = %q, want %q", entries[1].Place, "Rose Hills Memorial Park")
+	}
+	if entries[1].Count != 1 {
+		t.Errorf("entries[1].Count = %d, want 1", entries[1].Count)
+	}
+}
+
+func TestReadModelStore_GetCemeteryIndex_DistinctPersons(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	err := store.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Version:   1,
+		UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("SavePerson() failed: %v", err)
+	}
+
+	// Same person has both burial and cremation at the same place
+	for _, ft := range []domain.FactType{domain.FactPersonBurial, domain.FactPersonCremation} {
+		err := store.SaveEvent(ctx, &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  ft,
+			Place:     "Green Lawn Cemetery",
+			Version:   1,
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			t.Fatalf("SaveEvent() failed: %v", err)
+		}
+	}
+
+	entries, err := store.GetCemeteryIndex(ctx)
+	if err != nil {
+		t.Fatalf("GetCemeteryIndex() failed: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	// Count should be 1 (distinct person), not 2 (two events)
+	if entries[0].Count != 1 {
+		t.Errorf("entries[0].Count = %d, want 1 (distinct persons)", entries[0].Count)
+	}
+}
+
+func TestReadModelStore_GetPersonsByCemetery(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person1 := uuid.New()
+	person2 := uuid.New()
+	person3 := uuid.New()
+
+	// Save persons
+	persons := []struct {
+		id      uuid.UUID
+		given   string
+		surname string
+	}{
+		{person1, "Alice", "Smith"},
+		{person2, "Bob", "Jones"},
+		{person3, "Charlie", "Brown"},
+	}
+	for _, p := range persons {
+		err := store.SavePerson(ctx, &repository.PersonReadModel{
+			ID:        p.id,
+			GivenName: p.given,
+			Surname:   p.surname,
+			FullName:  p.given + " " + p.surname,
+			Version:   1,
+			UpdatedAt: time.Now(),
+		})
+		if err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+	}
+
+	// person1 and person2 buried at same cemetery
+	for _, pid := range []uuid.UUID{person1, person2} {
+		err := store.SaveEvent(ctx, &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   pid,
+			FactType:  domain.FactPersonBurial,
+			Place:     "Oakwood Cemetery",
+			Version:   1,
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			t.Fatalf("SaveEvent() failed: %v", err)
+		}
+	}
+
+	// person3 cremated elsewhere
+	err := store.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   person3,
+		FactType:  domain.FactPersonCremation,
+		Place:     "Rose Hills Memorial Park",
+		Version:   1,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("SaveEvent() failed: %v", err)
+	}
+
+	// Query for Oakwood Cemetery
+	opts := repository.ListOptions{Limit: 10}
+	results, total, err := store.GetPersonsByCemetery(ctx, "Oakwood Cemetery", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsByCemetery() failed: %v", err)
+	}
+
+	if total != 2 {
+		t.Errorf("total = %d, want 2", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("len(results) = %d, want 2", len(results))
+	}
+
+	// Should be sorted by surname: Jones before Smith
+	if len(results) == 2 {
+		if results[0].Surname != "Jones" {
+			t.Errorf("results[0].Surname = %q, want %q", results[0].Surname, "Jones")
+		}
+		if results[1].Surname != "Smith" {
+			t.Errorf("results[1].Surname = %q, want %q", results[1].Surname, "Smith")
+		}
+	}
+}
+
+func TestReadModelStore_GetPersonsByCemetery_CaseInsensitive(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	err := store.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Version:   1,
+		UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("SavePerson() failed: %v", err)
+	}
+
+	err = store.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonBurial,
+		Place:     "Oakwood Cemetery",
+		Version:   1,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("SaveEvent() failed: %v", err)
+	}
+
+	// Search with different case
+	opts := repository.ListOptions{Limit: 10}
+	results, total, err := store.GetPersonsByCemetery(ctx, "oakwood cemetery", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsByCemetery() failed: %v", err)
+	}
+
+	if total != 1 {
+		t.Errorf("total = %d, want 1 (case-insensitive)", total)
+	}
+	if len(results) != 1 {
+		t.Errorf("len(results) = %d, want 1", len(results))
+	}
+}
+
+func TestReadModelStore_GetPersonsByCemetery_Pagination(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create 5 persons all buried at the same cemetery
+	for i := 0; i < 5; i++ {
+		pid := uuid.New()
+		err := store.SavePerson(ctx, &repository.PersonReadModel{
+			ID:        pid,
+			GivenName: "Person",
+			Surname:   "Test",
+			FullName:  "Person Test",
+			Version:   1,
+			UpdatedAt: time.Now(),
+		})
+		if err != nil {
+			t.Fatalf("SavePerson() failed: %v", err)
+		}
+
+		err = store.SaveEvent(ctx, &repository.EventReadModel{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   pid,
+			FactType:  domain.FactPersonBurial,
+			Place:     "Central Cemetery",
+			Version:   1,
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			t.Fatalf("SaveEvent() failed: %v", err)
+		}
+	}
+
+	// First page
+	opts := repository.ListOptions{Limit: 2, Offset: 0}
+	results, total, err := store.GetPersonsByCemetery(ctx, "Central Cemetery", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsByCemetery() page 1 failed: %v", err)
+	}
+	if total != 5 {
+		t.Errorf("total = %d, want 5", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("page 1 len(results) = %d, want 2", len(results))
+	}
+
+	// Second page
+	opts = repository.ListOptions{Limit: 2, Offset: 2}
+	results, _, err = store.GetPersonsByCemetery(ctx, "Central Cemetery", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsByCemetery() page 2 failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("page 2 len(results) = %d, want 2", len(results))
+	}
+
+	// Third page (last one, 1 remaining)
+	opts = repository.ListOptions{Limit: 2, Offset: 4}
+	results, _, err = store.GetPersonsByCemetery(ctx, "Central Cemetery", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsByCemetery() page 3 failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("page 3 len(results) = %d, want 1", len(results))
+	}
+}
+
+func TestReadModelStore_GetPersonsByCemetery_Empty(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	opts := repository.ListOptions{Limit: 10}
+	results, total, err := store.GetPersonsByCemetery(ctx, "Nonexistent Cemetery", opts)
+	if err != nil {
+		t.Fatalf("GetPersonsByCemetery() failed: %v", err)
+	}
+
+	if total != 0 {
+		t.Errorf("total = %d, want 0", total)
+	}
+	if len(results) != 0 {
+		t.Errorf("len(results) = %d, want 0", len(results))
+	}
+}
+
 // Global List methods for export
 
 func TestReadModelStore_ListEvents(t *testing.T) {

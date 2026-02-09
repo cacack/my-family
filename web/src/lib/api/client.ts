@@ -539,6 +539,16 @@ export interface PlaceEntry {
 	has_children: boolean;
 }
 
+export interface CemeteryIndexResponse {
+	items: CemeteryEntry[];
+	total: number;
+}
+
+export interface CemeteryEntry {
+	place: string;
+	count: number;
+}
+
 export interface MediaUpdate {
 	title?: string;
 	description?: string;
@@ -1159,6 +1169,25 @@ class ApiClient {
 		return this.request<PersonList>(
 			'GET',
 			`/browse/places/${encodeURIComponent(place)}/persons${query ? `?${query}` : ''}`
+		);
+	}
+
+	async getCemeteryIndex(): Promise<CemeteryIndexResponse> {
+		return this.request<CemeteryIndexResponse>('GET', '/browse/cemeteries');
+	}
+
+	async getPersonsByCemetery(
+		place: string,
+		params?: { limit?: number; offset?: number }
+	): Promise<PersonList> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<PersonList>(
+			'GET',
+			`/browse/cemeteries/${encodeURIComponent(place)}/persons${query ? `?${query}` : ''}`
 		);
 	}
 

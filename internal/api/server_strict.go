@@ -314,6 +314,68 @@ func (ss *StrictServer) GetPersonsBySurname(ctx context.Context, request GetPers
 	}, nil
 }
 
+// BrowseCemeteries implements StrictServerInterface.
+func (ss *StrictServer) BrowseCemeteries(ctx context.Context, request BrowseCemeteriesRequestObject) (BrowseCemeteriesResponseObject, error) {
+	result, err := ss.server.browseService.GetCemeteryIndex(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	response := CemeteryIndexResponse{
+		Items: make([]CemeteryEntry, len(result.Items)),
+		Total: result.Total,
+	}
+
+	for i, item := range result.Items {
+		response.Items[i] = CemeteryEntry{
+			Place: item.Place,
+			Count: item.Count,
+		}
+	}
+
+	return BrowseCemeteries200JSONResponse(response), nil
+}
+
+// GetPersonsByCemetery implements StrictServerInterface.
+func (ss *StrictServer) GetPersonsByCemetery(ctx context.Context, request GetPersonsByCemeteryRequestObject) (GetPersonsByCemeteryResponseObject, error) {
+	place, err := url.PathUnescape(request.Place)
+	if err != nil {
+		return nil, err
+	}
+
+	limit := 20
+	offset := 0
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+
+	result, err := ss.server.browseService.GetPersonsByCemetery(ctx, query.GetPersonsByCemeteryInput{
+		Place:  place,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]Person, len(result.Items))
+	for i, p := range result.Items {
+		items[i] = convertQueryPersonToGenerated(p)
+	}
+
+	limitVal := result.Limit
+	offsetVal := result.Offset
+	return GetPersonsByCemetery200JSONResponse{
+		Items:  items,
+		Total:  result.Total,
+		Limit:  &limitVal,
+		Offset: &offsetVal,
+	}, nil
+}
+
 // ============================================================================
 // Citation endpoints
 // ============================================================================

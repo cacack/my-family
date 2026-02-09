@@ -337,6 +337,8 @@ type ReadModelStore interface {
 	GetPersonsBySurname(ctx context.Context, surname string, opts ListOptions) ([]PersonReadModel, int, error)
 	GetPlaceHierarchy(ctx context.Context, parent string) ([]PlaceEntry, error)
 	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
+	GetCemeteryIndex(ctx context.Context) ([]CemeteryEntry, error)
+	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 }
 
 // SurnameEntry represents a surname with count.
@@ -349,6 +351,12 @@ type SurnameEntry struct {
 type LetterCount struct {
 	Letter string `json:"letter"`
 	Count  int    `json:"count"`
+}
+
+// CemeteryEntry represents a burial/cremation place with person count.
+type CemeteryEntry struct {
+	Place string `json:"place"`
+	Count int    `json:"count"`
 }
 
 // PlaceEntry represents a place with count and hierarchy info.

@@ -2572,6 +2572,74 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return persons, total, rows.Err()
 }
 
+// GetCemeteryIndex returns unique burial/cremation places with person counts.
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT place, COUNT(DISTINCT owner_id) as count
+		FROM events
+		WHERE fact_type IN ($1, $2) AND place != '' AND place IS NOT NULL
+		GROUP BY place
+		ORDER BY place ASC
+	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation))
+	if err != nil {
+		return nil, fmt.Errorf("query cemetery index: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []repository.CemeteryEntry
+	for rows.Next() {
+		var entry repository.CemeteryEntry
+		if err := rows.Scan(&entry.Place, &entry.Count); err != nil {
+			return nil, fmt.Errorf("scan cemetery entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, rows.Err()
+}
+
+// GetPersonsByCemetery returns persons with burial/cremation events at the given place.
+func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	// Count total distinct persons
+	var total int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT p.id)
+		FROM persons p
+		INNER JOIN events e ON e.owner_id = p.id
+		WHERE e.fact_type IN ($1, $2) AND LOWER(e.place) = LOWER($3)
+	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count persons by cemetery: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
+			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
+			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
+			   p.notes, p.research_status, p.version, p.updated_at
+		FROM persons p
+		INNER JOIN events e ON e.owner_id = p.id
+		WHERE e.fact_type IN ($1, $2) AND LOWER(e.place) = LOWER($3)
+		ORDER BY p.surname ASC, p.given_name ASC
+		LIMIT $4 OFFSET $5
+	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query persons by cemetery: %w", err)
+	}
+	defer rows.Close()
+
+	var persons []repository.PersonReadModel
+	for rows.Next() {
+		p, err := scanPersonRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		persons = append(persons, *p)
+	}
+
+	return persons, total, rows.Err()
+}
+
 // GetNote retrieves a note by ID.
 func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `

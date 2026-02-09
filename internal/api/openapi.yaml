@@ -602,6 +602,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/PersonList'
 
+  /browse/cemeteries:
+    get:
+      operationId: browseCemeteries
+      summary: Get cemetery/burial place index with counts
+      description: Returns unique burial and cremation places with person counts
+      tags: [browse]
+      responses:
+        '200':
+          description: Cemetery/burial place index
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CemeteryIndexResponse'
+
+  /browse/cemeteries/{place}/persons:
+    parameters:
+      - name: place
+        in: path
+        required: true
+        description: The cemetery or burial place to get people for
+        schema:
+          type: string
+    get:
+      operationId: getPersonsByCemetery
+      summary: Get persons buried or cremated at a place
+      tags: [browse]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+      responses:
+        '200':
+          description: List of persons buried or cremated at the place
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonList'
+
   /gedcom/import:
     post:
       operationId: importGedcom
@@ -3803,6 +3840,29 @@ components:
         has_children:
           type: boolean
           description: Whether this place has sub-locations
+
+    CemeteryIndexResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CemeteryEntry'
+        total:
+          type: integer
+          description: Total number of unique burial/cremation places
+
+    CemeteryEntry:
+      type: object
+      required: [place, count]
+      properties:
+        place:
+          type: string
+          description: Cemetery or burial place name
+        count:
+          type: integer
+          description: Number of persons buried/cremated here
 
     # Source schemas
     Source:
