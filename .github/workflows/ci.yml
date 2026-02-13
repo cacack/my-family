@@ -260,26 +260,29 @@ jobs:
         run: cd web && npm audit --audit-level=moderate
 
       # SAST: Go security issues
+      # Pinned to v2.22.11 — v2.23.0 produces invalid SARIF (securego/gosec#877)
       - name: Go security scan (gosec)
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.22.11
           gosec -exclude=G104 -exclude-generated -fmt sarif -out gosec-results.sarif ./...
 
       - name: Upload gosec results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
-        if: success() || failure()
+        if: (success() || failure()) && hashFiles('gosec-results.sarif') != ''
         with:
           sarif_file: gosec-results.sarif
           category: gosec
 
       # Secret detection
       - name: Detect secrets (gitleaks)
+        if: success() || failure()
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Trivy: Filesystem vulnerability and misconfiguration scanning
       - name: Trivy filesystem scan
+        if: success() || failure()
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
@@ -290,21 +293,21 @@ jobs:
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
-        if: success() || failure()
+        if: (success() || failure()) && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: trivy-results.sarif
           category: trivy
 
       # Semgrep: Rule-based static analysis
       - name: Semgrep scan
+        if: success() || failure()
         uses: docker://semgrep/semgrep:latest
         with:
           args: semgrep scan --config p/security-audit --config p/secrets --config p/golang --config p/typescript --sarif --output semgrep.sarif .
-        continue-on-error: true
 
       - name: Upload Semgrep results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: (success() || failure()) && hashFiles('semgrep.sarif') != ''
         with:
           sarif_file: semgrep.sarif
           category: semgrep
