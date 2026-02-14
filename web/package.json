@@ -19,7 +19,7 @@
 		"generate:types": "openapi-typescript ../internal/api/openapi.yaml -o src/lib/api/types.generated.ts"
 	},
 	"devDependencies": {
-		"@sveltejs/adapter-auto": "^7.0.0",
+		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-static": "^3.0.0",
 		"@sveltejs/kit": "^2.51.0",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
