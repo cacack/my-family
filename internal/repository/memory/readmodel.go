@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -1402,8 +1403,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 	for _, p := range s.persons {
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
-			lat, errLat := domain.ParseGEDCOMCoordinate(*p.BirthPlaceLat)
-			lon, errLon := domain.ParseGEDCOMCoordinate(*p.BirthPlaceLong)
+			lat, errLat := gedcom.ParseGEDCOMCoordinate(*p.BirthPlaceLat)
+			lon, errLon := gedcom.ParseGEDCOMCoordinate(*p.BirthPlaceLong)
 			if errLat == nil && errLon == nil {
 				key := locKey{place: p.BirthPlace, eventType: "birth"}
 				if d, ok := agg[key]; ok {
@@ -1415,8 +1416,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 		}
 		// Death location
 		if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
-			lat, errLat := domain.ParseGEDCOMCoordinate(*p.DeathPlaceLat)
-			lon, errLon := domain.ParseGEDCOMCoordinate(*p.DeathPlaceLong)
+			lat, errLat := gedcom.ParseGEDCOMCoordinate(*p.DeathPlaceLat)
+			lon, errLon := gedcom.ParseGEDCOMCoordinate(*p.DeathPlaceLong)
 			if errLat == nil && errLon == nil {
 				key := locKey{place: p.DeathPlace, eventType: "death"}
 				if d, ok := agg[key]; ok {

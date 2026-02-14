@@ -118,7 +118,13 @@
 						tooltipEl.style.display = 'block';
 						tooltipEl.style.left = `${event.offsetX + 12}px`;
 						tooltipEl.style.top = `${event.offsetY - 10}px`;
-						tooltipEl.innerHTML = `<strong>${d.place}</strong><br/>${d.count} ${d.count === 1 ? 'person' : 'persons'} (${d.event_type})`;
+						tooltipEl.replaceChildren();
+						const title = document.createElement('strong');
+						title.textContent = d.place;
+						const meta = document.createTextNode(
+							`${d.count} ${d.count === 1 ? 'person' : 'persons'} (${d.event_type})`
+						);
+						tooltipEl.append(title, document.createElement('br'), meta);
 					})
 					.on('mousemove', (event: MouseEvent) => {
 						if (!tooltipEl) return;
