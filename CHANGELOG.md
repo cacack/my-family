@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0](https://github.com/cacack/my-family/compare/v0.8.0...v0.9.0) (2026-02-14)
+
+
+### Features
+
+* add cemetery/burial browser for browsing persons by burial location ([62b6697](https://github.com/cacack/my-family/commit/62b66979389175dcd2ffe4b367d34c3644039b7f))
+* **search:** add advanced search with date ranges, place filtering, and Soundex ([8586df7](https://github.com/cacack/my-family/commit/8586df7441dbed81b7dcf3c78ac39a822f8d28ae))
+
+
+### Bug Fixes
+
+* apply Soundex matching to alternate names in memory store ([1784233](https://github.com/cacack/my-family/commit/178423366b052c66800b6e544d709e160164cc9b))
+* **ci:** check PR author instead of event actor for dependabot automerge ([5b80cdb](https://github.com/cacack/my-family/commit/5b80cdb2e00258e66cebc5876fe0af0ec4a0ac34))
+* **ci:** repair security job and dependabot PR title failures ([763bf48](https://github.com/cacack/my-family/commit/763bf48ec30c459bbee5d1286a1f2aa63fd5b3ed))
+* **ci:** skip commit signature verification for dependabot automerge ([06afea3](https://github.com/cacack/my-family/commit/06afea370d8f36468011623bba23e4cde3aa96a2))
+* **ci:** use pull_request_target for dependabot automerge ([beae1e0](https://github.com/cacack/my-family/commit/beae1e01cc191d6c01be96d26436860f41467bca))
+* **ci:** use pull_request_target for dependabot automerge workflow ([aa8ff1e](https://github.com/cacack/my-family/commit/aa8ff1e0586e6eee04722d3b8a8d1fab4633d293))
+* **search:** address CodeRabbit review findings ([ef35524](https://github.com/cacack/my-family/commit/ef35524a339528c276ae6efee881fff5ef413e35))
+* sort search results in memory store to match SQL backends ([986a457](https://github.com/cacack/my-family/commit/986a4574ba4b34206e357128934a23dbe87fb0b9))
+* use exact match for cemetery drill-down and fix pagination reactivity ([6c14b45](https://github.com/cacack/my-family/commit/6c14b454908d38ebe7eac0aae958d2240be7a9b6))
+* use three-way comparison in sortSearchResults for strict weak ordering ([5abbe70](https://github.com/cacack/my-family/commit/5abbe7089d9dd1f900feb31982bfd5afdfbd4e86))
+
 ## [0.8.0](https://github.com/cacack/my-family/compare/v0.7.0...v0.8.0) (2026-02-08)
 
 
