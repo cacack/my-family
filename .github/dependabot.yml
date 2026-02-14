@@ -9,7 +9,8 @@ updates:
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
     commit-message:
-      prefix: "deps"
+      prefix: "chore"
+      include: "scope"
     labels:
       - "dependencies"
       - "go"
@@ -23,7 +24,8 @@ updates:
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
     commit-message:
-      prefix: "deps"
+      prefix: "chore"
+      include: "scope"
     labels:
       - "dependencies"
       - "ci"
@@ -37,7 +39,8 @@ updates:
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
     commit-message:
-      prefix: "deps"
+      prefix: "chore"
+      include: "scope"
     labels:
       - "dependencies"
       - "frontend"
