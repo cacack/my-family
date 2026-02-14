@@ -268,12 +268,17 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	// Update read model with GEDCOM coordinates (not in event schema)
 	if p.BirthPlaceLat != nil || p.BirthPlaceLong != nil || p.DeathPlaceLat != nil || p.DeathPlaceLong != nil {
 		readModel, err := h.readStore.GetPerson(ctx, person.ID)
-		if err == nil && readModel != nil {
+		if err != nil {
+			return fmt.Errorf("failed to get person read model for coordinate update: %w", err)
+		}
+		if readModel != nil {
 			readModel.BirthPlaceLat = p.BirthPlaceLat
 			readModel.BirthPlaceLong = p.BirthPlaceLong
 			readModel.DeathPlaceLat = p.DeathPlaceLat
 			readModel.DeathPlaceLong = p.DeathPlaceLong
-			_ = h.readStore.SavePerson(ctx, readModel)
+			if err := h.readStore.SavePerson(ctx, readModel); err != nil {
+				return fmt.Errorf("failed to save person coordinates: %w", err)
+			}
 		}
 	}
 
@@ -545,10 +550,15 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	// Update read model with GEDCOM coordinates (not in event schema)
 	if e.PlaceLat != nil || e.PlaceLong != nil {
 		readModel, err := h.readStore.GetEvent(ctx, e.ID)
-		if err == nil && readModel != nil {
+		if err != nil {
+			return fmt.Errorf("failed to get event read model for coordinate update: %w", err)
+		}
+		if readModel != nil {
 			readModel.PlaceLat = e.PlaceLat
 			readModel.PlaceLong = e.PlaceLong
-			_ = h.readStore.SaveEvent(ctx, readModel)
+			if err := h.readStore.SaveEvent(ctx, readModel); err != nil {
+				return fmt.Errorf("failed to save event coordinates: %w", err)
+			}
 		}
 	}
 

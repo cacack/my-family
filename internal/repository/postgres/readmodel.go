@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -2673,8 +2674,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 		if err := rows.Scan(&personID, &place, &latStr, &lonStr); err != nil {
 			return nil, fmt.Errorf("scan birth map location: %w", err)
 		}
-		lat, errLat := domain.ParseGEDCOMCoordinate(latStr)
-		lon, errLon := domain.ParseGEDCOMCoordinate(lonStr)
+		lat, errLat := gedcom.ParseGEDCOMCoordinate(latStr)
+		lon, errLon := gedcom.ParseGEDCOMCoordinate(lonStr)
 		if errLat != nil || errLon != nil {
 			continue
 		}
@@ -2708,8 +2709,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 		if err := rows2.Scan(&personID, &place, &latStr, &lonStr); err != nil {
 			return nil, fmt.Errorf("scan death map location: %w", err)
 		}
-		lat, errLat := domain.ParseGEDCOMCoordinate(latStr)
-		lon, errLon := domain.ParseGEDCOMCoordinate(lonStr)
+		lat, errLat := gedcom.ParseGEDCOMCoordinate(latStr)
+		lon, errLon := gedcom.ParseGEDCOMCoordinate(lonStr)
 		if errLat != nil || errLon != nil {
 			continue
 		}
