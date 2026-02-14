@@ -26,6 +26,7 @@
 		"@tailwindcss/postcss": "^4.1.18",
 		"@testing-library/svelte": "^5.3.1",
 		"@types/d3": "^7.4.0",
+		"@types/topojson-client": "^3.1.5",
 		"autoprefixer": "^10.4.24",
 		"jsdom": "^28.0.0",
 		"openapi-typescript": "^7.13.0",
@@ -38,6 +39,8 @@
 		"vitest": "^4.0.18"
 	},
 	"dependencies": {
-		"d3": "^7.9.0"
+		"d3": "^7.9.0",
+		"topojson-client": "^3.1.0",
+		"world-atlas": "^2.0.2"
 	}
 }
