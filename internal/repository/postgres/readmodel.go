@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -2638,6 +2640,110 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	}
 
 	return persons, total, rows.Err()
+}
+
+// GetMapLocations returns aggregated geographic locations from person birth/death coordinates.
+func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapLocation, error) {
+	// Query birth locations — individual rows, aggregate in Go
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, birth_place, birth_place_lat, birth_place_long
+		FROM persons
+		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
+		  AND birth_place_lat != '' AND birth_place_long != ''
+		ORDER BY birth_place ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query birth map locations: %w", err)
+	}
+	defer rows.Close()
+
+	type locKey struct {
+		place     string
+		eventType string
+	}
+	type locData struct {
+		lat       float64
+		lon       float64
+		personIDs []uuid.UUID
+	}
+	agg := make(map[locKey]*locData)
+
+	for rows.Next() {
+		var personID uuid.UUID
+		var place, latStr, lonStr string
+		if err := rows.Scan(&personID, &place, &latStr, &lonStr); err != nil {
+			return nil, fmt.Errorf("scan birth map location: %w", err)
+		}
+		lat, errLat := gedcom.ParseGEDCOMCoordinate(latStr)
+		lon, errLon := gedcom.ParseGEDCOMCoordinate(lonStr)
+		if errLat != nil || errLon != nil {
+			continue
+		}
+		key := locKey{place: place, eventType: "birth"}
+		if d, ok := agg[key]; ok {
+			d.personIDs = append(d.personIDs, personID)
+		} else {
+			agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{personID}}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Query death locations
+	rows2, err := s.db.QueryContext(ctx, `
+		SELECT id, death_place, death_place_lat, death_place_long
+		FROM persons
+		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
+		  AND death_place_lat != '' AND death_place_long != ''
+		ORDER BY death_place ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query death map locations: %w", err)
+	}
+	defer rows2.Close()
+
+	for rows2.Next() {
+		var personID uuid.UUID
+		var place, latStr, lonStr string
+		if err := rows2.Scan(&personID, &place, &latStr, &lonStr); err != nil {
+			return nil, fmt.Errorf("scan death map location: %w", err)
+		}
+		lat, errLat := gedcom.ParseGEDCOMCoordinate(latStr)
+		lon, errLon := gedcom.ParseGEDCOMCoordinate(lonStr)
+		if errLat != nil || errLon != nil {
+			continue
+		}
+		key := locKey{place: place, eventType: "death"}
+		if d, ok := agg[key]; ok {
+			d.personIDs = append(d.personIDs, personID)
+		} else {
+			agg[key] = &locData{lat: lat, lon: lon, personIDs: []uuid.UUID{personID}}
+		}
+	}
+	if err := rows2.Err(); err != nil {
+		return nil, err
+	}
+
+	results := make([]repository.MapLocation, 0, len(agg))
+	for key, data := range agg {
+		results = append(results, repository.MapLocation{
+			Place:     key.place,
+			Latitude:  data.lat,
+			Longitude: data.lon,
+			EventType: key.eventType,
+			Count:     len(data.personIDs),
+			PersonIDs: data.personIDs,
+		})
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Place != results[j].Place {
+			return results[i].Place < results[j].Place
+		}
+		return results[i].EventType < results[j].EventType
+	})
+
+	return results, nil
 }
 
 // GetNote retrieves a note by ID.

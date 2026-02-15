@@ -376,6 +376,40 @@ func (ss *StrictServer) GetPersonsByCemetery(ctx context.Context, request GetPer
 	}, nil
 }
 
+// GetMapLocations implements StrictServerInterface.
+func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocationsRequestObject) (GetMapLocationsResponseObject, error) {
+	result, err := ss.server.browseService.GetMapLocations(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	response := MapLocationsResponse{
+		Items: make([]MapLocation, len(result.Items)),
+		Total: result.Total,
+	}
+
+	for i, item := range result.Items {
+		personIDs := make([]openapi_types.UUID, 0, len(item.PersonIDs))
+		for _, idStr := range item.PersonIDs {
+			parsed, err := uuid.Parse(idStr)
+			if err != nil {
+				continue
+			}
+			personIDs = append(personIDs, parsed)
+		}
+		response.Items[i] = MapLocation{
+			Place:     item.Place,
+			Latitude:  item.Latitude,
+			Longitude: item.Longitude,
+			EventType: MapLocationEventType(item.EventType),
+			Count:     item.Count,
+			PersonIds: personIDs,
+		}
+	}
+
+	return GetMapLocations200JSONResponse(response), nil
+}
+
 // ============================================================================
 // Citation endpoints
 // ============================================================================

@@ -15,6 +15,7 @@ A genealogy platform designed for research rigor and data ownership.
 - **GEDCOM 5.5 import/export** - Full round-trip fidelity with your existing data
 - **Flexible date handling** - Supports exact, approximate, ranges, and "before/after"
 - **Family relationships** - Biological, adopted, step, and foster qualifiers
+- **Geographic heat map** - Interactive world map showing family locations with zoom/pan
 - **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation
 - **Full-text search** - Fast fuzzy matching with keyboard-navigable results
 - **Keyboard shortcuts** - Power user navigation (press `?` for help)
@@ -84,6 +85,7 @@ Environment variables:
 - `POST /api/v1/families/{id}/children` - Add child to family
 - `DELETE /api/v1/families/{id}/children/{personId}` - Remove child
 - `GET /api/v1/pedigree/{id}` - Get pedigree chart data
+- `GET /api/v1/map/locations` - Get geographic locations for map
 - `GET /api/v1/search?q=...` - Search persons
 - `POST /api/v1/gedcom/import` - Import GEDCOM file
 - `GET /api/v1/gedcom/export` - Export as GEDCOM
