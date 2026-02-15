@@ -69,7 +69,10 @@
 
 		// Load world data
 		fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-			.then((res) => res.json())
+			.then((res) => {
+				if (!res.ok) throw new Error(`Failed to load map data: ${res.status}`);
+				return res.json();
+			})
 			.then((world: Topology) => {
 				const countries = topojson.feature(
 					world,
@@ -137,6 +140,9 @@
 					.on('click', (_event: MouseEvent, d: MapLocation) => {
 						selectedLocation = selectedLocation?.place === d.place && selectedLocation?.event_type === d.event_type ? null : d;
 					});
+			})
+			.catch((e) => {
+				error = e instanceof Error ? e.message : 'Failed to load world map data';
 			});
 	}
 </script>
