@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.9.0](https://github.com/cacack/my-family/compare/v0.8.0...v0.9.0) (2026-02-16)
+
+
+### Features
+
+* add cemetery/burial browser for browsing persons by burial location ([62b6697](https://github.com/cacack/my-family/commit/62b66979389175dcd2ffe4b367d34c3644039b7f))
+* add geographic heat map for family location visualization ([0e26e67](https://github.com/cacack/my-family/commit/0e26e67e274ced04a6e6d9bacd30d7e792e94042))
+* **search:** add advanced search UI with filters and sortable results ([e4e069d](https://github.com/cacack/my-family/commit/e4e069d5697e12bf0e801a3330dff7a318aa60fc)), closes [#158](https://github.com/cacack/my-family/issues/158)
+* **search:** add advanced search with date ranges, place filtering, and Soundex ([8586df7](https://github.com/cacack/my-family/commit/8586df7441dbed81b7dcf3c78ac39a822f8d28ae))
+* **search:** add brick wall tracker and discovery feed ([19df2e1](https://github.com/cacack/my-family/commit/19df2e1acbf81834d6e12d3f51092574043d8ec6)), closes [#61](https://github.com/cacack/my-family/issues/61)
+
+
+### Bug Fixes
+
+* add error handling for world map CDN fetch ([6dea2a1](https://github.com/cacack/my-family/commit/6dea2a1791c039aea1eb801bede842ddef23ab35))
+* address CodeRabbit nitpicks ([71b1c80](https://github.com/cacack/my-family/commit/71b1c809a79553ff6f52d014901896fea0a4ead4))
+* address CodeRabbit review feedback ([5632b00](https://github.com/cacack/my-family/commit/5632b0060e40fd0ddf77c428415a55a66d745d51))
+* address CodeRabbit review feedback ([a63fe19](https://github.com/cacack/my-family/commit/a63fe19b21e844c654d9bcf752a24375dc33a8c6))
+* address CodeRabbit review feedback for geographic heat map ([18c2f08](https://github.com/cacack/my-family/commit/18c2f08c6780f78e6eaf3425154c96c87e152e0d))
+* address second round of CodeRabbit review feedback ([e627ce0](https://github.com/cacack/my-family/commit/e627ce0d4e988d97da3a4fe3ec638ec6be8b1cba))
+* address second round of CodeRabbit review feedback ([003e740](https://github.com/cacack/my-family/commit/003e7402ed1df448b165a1f85b41bbe7620d346a))
+* apply Soundex matching to alternate names in memory store ([1784233](https://github.com/cacack/my-family/commit/178423366b052c66800b6e544d709e160164cc9b))
+* **ci:** check PR author instead of event actor for dependabot automerge ([5b80cdb](https://github.com/cacack/my-family/commit/5b80cdb2e00258e66cebc5876fe0af0ec4a0ac34))
+* **ci:** repair security job and dependabot PR title failures ([763bf48](https://github.com/cacack/my-family/commit/763bf48ec30c459bbee5d1286a1f2aa63fd5b3ed))
+* **ci:** skip commit signature verification for dependabot automerge ([06afea3](https://github.com/cacack/my-family/commit/06afea370d8f36468011623bba23e4cde3aa96a2))
+* **ci:** use pull_request_target for dependabot automerge ([beae1e0](https://github.com/cacack/my-family/commit/beae1e01cc191d6c01be96d26436860f41467bca))
+* **ci:** use pull_request_target for dependabot automerge workflow ([aa8ff1e](https://github.com/cacack/my-family/commit/aa8ff1e0586e6eee04722d3b8a8d1fab4633d293))
+* pass GEDCOM coordinates through to read model during import ([fbc4e96](https://github.com/cacack/my-family/commit/fbc4e968a2008a15cbb43949c90b5db7617cd26a))
+* replace fragile onblur+setTimeout with mousedown prevention ([7c6dfa1](https://github.com/cacack/my-family/commit/7c6dfa1a7c64e599f56c2472e1b4e8be363ab3de))
+* **search:** address CodeRabbit review findings ([ef35524](https://github.com/cacack/my-family/commit/ef35524a339528c276ae6efee881fff5ef413e35))
+* sort search results in memory store to match SQL backends ([986a457](https://github.com/cacack/my-family/commit/986a4574ba4b34206e357128934a23dbe87fb0b9))
+* use exact match for cemetery drill-down and fix pagination reactivity ([6c14b45](https://github.com/cacack/my-family/commit/6c14b454908d38ebe7eac0aae958d2240be7a9b6))
+* use three-way comparison in sortSearchResults for strict weak ordering ([5abbe70](https://github.com/cacack/my-family/commit/5abbe7089d9dd1f900feb31982bfd5afdfbd4e86))
+
 ## [0.8.0](https://github.com/cacack/my-family/compare/v0.7.0...v0.8.0) (2026-02-08)
 
 
