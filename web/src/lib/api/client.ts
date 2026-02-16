@@ -816,13 +816,31 @@ class ApiClient {
 
 	// Search endpoint
 	async searchPersons(params: {
-		q: string;
+		q?: string;
 		fuzzy?: boolean;
+		soundex?: boolean;
+		birth_date_from?: string;
+		birth_date_to?: string;
+		death_date_from?: string;
+		death_date_to?: string;
+		birth_place?: string;
+		death_place?: string;
+		sort?: 'relevance' | 'name' | 'birth_date' | 'death_date';
+		order?: 'asc' | 'desc';
 		limit?: number;
 	}): Promise<SearchResults> {
 		const searchParams = new URLSearchParams();
-		searchParams.set('q', params.q);
+		if (params.q) searchParams.set('q', params.q);
 		if (params.fuzzy) searchParams.set('fuzzy', 'true');
+		if (params.soundex) searchParams.set('soundex', 'true');
+		if (params.birth_date_from) searchParams.set('birth_date_from', params.birth_date_from);
+		if (params.birth_date_to) searchParams.set('birth_date_to', params.birth_date_to);
+		if (params.death_date_from) searchParams.set('death_date_from', params.death_date_from);
+		if (params.death_date_to) searchParams.set('death_date_to', params.death_date_to);
+		if (params.birth_place) searchParams.set('birth_place', params.birth_place);
+		if (params.death_place) searchParams.set('death_place', params.death_place);
+		if (params.sort) searchParams.set('sort', params.sort);
+		if (params.order) searchParams.set('order', params.order);
 		if (params.limit) searchParams.set('limit', params.limit.toString());
 
 		return this.request<SearchResults>('GET', `/search?${searchParams.toString()}`);

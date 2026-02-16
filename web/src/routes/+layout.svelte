@@ -36,6 +36,7 @@
 		'go-people': () => goto('/persons'),
 		'go-families': () => goto('/families'),
 		'go-sources': () => goto('/sources'),
+		'go-search': () => goto('/search'),
 		'focus-search': () => searchBoxRef?.focus(),
 		'show-help': () => {
 			helpOpen = !helpOpen;
@@ -94,6 +95,7 @@
 			<a href="/analytics" class:active={$page.url.pathname.startsWith('/analytics')}>Analytics</a>
 			<a href="/relationship" class:active={$page.url.pathname.startsWith('/relationship')}>Relationship</a>
 			<a href="/import" class:active={$page.url.pathname === '/import'}>Import</a>
+			<a href="/search" class:active={$page.url.pathname.startsWith('/search')}>Search</a>
 		</nav>
 		<div class="header-controls">
 			<div class="search-wrapper">

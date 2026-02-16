@@ -65,6 +65,12 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		description: 'Go to sources',
 		context: 'global'
 	},
+	{
+		keys: ['g', '/'],
+		action: 'go-search',
+		description: 'Go to advanced search',
+		context: 'global'
+	},
 
 	// Search shortcuts (global)
 	{
