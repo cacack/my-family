@@ -264,6 +264,17 @@ func (m *mockReadModelStore) GetMapLocations(ctx context.Context) ([]repository.
 	return nil, nil
 }
 
+// Brick wall stub methods
+func (m *mockReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
+	return nil
+}
+func (m *mockReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
+	return nil
+}
+func (m *mockReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
+	return nil, nil
+}
+
 // Note stub methods
 func (m *mockReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
 	return nil, nil

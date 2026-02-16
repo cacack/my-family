@@ -85,6 +85,7 @@
 					<a href="/browse/surnames">By Surname</a>
 					<a href="/browse/places">By Place</a>
 					<a href="/browse/cemeteries">By Cemetery</a>
+					<a href="/browse/brick-walls">Brick Walls</a>
 				</div>
 			</div>
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>

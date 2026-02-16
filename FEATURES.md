@@ -29,6 +29,8 @@ Completed features in my-family genealogy software.
 - **Confidence Filtering** - Filter person lists by research status
 - **Research Status Analytics** - Dashboard showing distribution of confidence levels across the database
 - **Data Quality Scores** - Analytics page showing records needing attention with actionable issues
+- **Brick Wall Tracker** - Mark research dead ends, add notes, and celebrate breakthroughs with resolution tracking and browse page
+- **Discovery Feed** - Prioritized research suggestions on the dashboard identifying missing data, orphaned records, unassessed persons, and quality gaps
 
 ## Data Validation & Cleanup
 

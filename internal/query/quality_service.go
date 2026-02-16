@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"time"
@@ -70,6 +71,198 @@ type GenderDistribution struct {
 	Male    int `json:"male"`
 	Female  int `json:"female"`
 	Unknown int `json:"unknown"`
+}
+
+// DiscoverySuggestion represents an actionable research suggestion.
+type DiscoverySuggestion struct {
+	Type        string `json:"type"`                  // missing_data, orphan, unassessed, quality_gap, brick_wall_resolved
+	Title       string `json:"title"`                 // Short title for the suggestion
+	Description string `json:"description"`           // Detailed description with context
+	PersonID    string `json:"person_id,omitempty"`   // Related person (if applicable)
+	PersonName  string `json:"person_name,omitempty"` // For display
+	ActionURL   string `json:"action_url"`            // Frontend URL to take action
+	Priority    int    `json:"priority"`              // 1=high, 2=medium, 3=low
+}
+
+// DiscoveryFeed contains the discovery feed results.
+type DiscoveryFeed struct {
+	Items []DiscoverySuggestion `json:"items"`
+	Total int                   `json:"total"`
+}
+
+// GetDiscoveryFeed returns a prioritized list of research suggestions.
+func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*DiscoveryFeed, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	// Get all persons using pagination to avoid truncation
+	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(persons) == 0 {
+		return &DiscoveryFeed{
+			Items: []DiscoverySuggestion{},
+			Total: 0,
+		}, nil
+	}
+
+	var items []DiscoverySuggestion
+
+	// Cap orphan checks to avoid N+1 query issues
+	const orphanCheckLimit = 50
+	orphanChecked := 0
+
+	for _, person := range persons {
+		items = append(items, s.missingDateSuggestions(person)...)
+
+		if orphanChecked < orphanCheckLimit {
+			suggestion, orphanErr := s.orphanSuggestion(ctx, person)
+			if orphanErr != nil {
+				return nil, orphanErr
+			}
+			orphanChecked++
+			if suggestion != nil {
+				items = append(items, *suggestion)
+			}
+		}
+
+		if suggestion := s.unassessedSuggestion(person); suggestion != nil {
+			items = append(items, *suggestion)
+		}
+
+		// Recently resolved brick walls (priority 1) depend on BrickWallResolvedAt
+		// from prompt 008, which may not exist yet. Skipped gracefully.
+
+		if suggestion := s.qualityGapSuggestion(ctx, person); suggestion != nil {
+			items = append(items, *suggestion)
+		}
+	}
+
+	// Sort by priority ascending, then by person name within same priority
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Priority != items[j].Priority {
+			return items[i].Priority < items[j].Priority
+		}
+		return items[i].PersonName < items[j].PersonName
+	})
+
+	total := len(items)
+	if len(items) > limit {
+		items = items[:limit]
+	}
+
+	return &DiscoveryFeed{
+		Items: items,
+		Total: total,
+	}, nil
+}
+
+// missingDateSuggestions returns missing_data suggestions for assessed persons missing key dates.
+func (s *QualityService) missingDateSuggestions(person repository.PersonReadModel) []DiscoverySuggestion {
+	if person.ResearchStatus == domain.ResearchStatusUnknown || person.ResearchStatus == "" {
+		return nil
+	}
+
+	name := person.FullName
+	idStr := person.ID.String()
+	actionURL := "/persons/" + idStr
+	var suggestions []DiscoverySuggestion
+
+	if person.BirthDateRaw == "" {
+		suggestions = append(suggestions, DiscoverySuggestion{
+			Type:        "missing_data",
+			Title:       fmt.Sprintf("Add birth date for %s", name),
+			Description: fmt.Sprintf("%s has been assessed but is missing a birth date. Check vital records, census, or family sources.", name),
+			PersonID:    idStr,
+			PersonName:  name,
+			ActionURL:   actionURL,
+			Priority:    1,
+		})
+	}
+
+	if person.DeathDateRaw == "" {
+		var birthYear *int
+		if person.BirthDateRaw != "" {
+			gd := domain.ParseGenDate(person.BirthDateRaw)
+			birthYear = gd.Year
+		}
+		if birthYear != nil && time.Now().Year()-*birthYear > 100 {
+			suggestions = append(suggestions, DiscoverySuggestion{
+				Type:        "missing_data",
+				Title:       fmt.Sprintf("Add death date for %s", name),
+				Description: fmt.Sprintf("%s has been assessed and is likely deceased but is missing a death date. Search death records or obituaries.", name),
+				PersonID:    idStr,
+				PersonName:  name,
+				ActionURL:   actionURL,
+				Priority:    1,
+			})
+		}
+	}
+
+	return suggestions
+}
+
+// orphanSuggestion returns an orphan suggestion if the person has no family connections.
+func (s *QualityService) orphanSuggestion(ctx context.Context, person repository.PersonReadModel) (*DiscoverySuggestion, error) {
+	isOrphan, err := s.isOrphaned(ctx, person.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !isOrphan {
+		return nil, nil
+	}
+	name := person.FullName
+	idStr := person.ID.String()
+	return &DiscoverySuggestion{
+		Type:        "orphan",
+		Title:       fmt.Sprintf("Connect %s to a family", name),
+		Description: fmt.Sprintf("%s has no family connections. This may indicate a data import issue or they need to be linked to existing families.", name),
+		PersonID:    idStr,
+		PersonName:  name,
+		ActionURL:   "/persons/" + idStr,
+		Priority:    2,
+	}, nil
+}
+
+// unassessedSuggestion returns an unassessed suggestion if the person has not been reviewed.
+func (s *QualityService) unassessedSuggestion(person repository.PersonReadModel) *DiscoverySuggestion {
+	if person.ResearchStatus != domain.ResearchStatusUnknown && person.ResearchStatus != "" {
+		return nil
+	}
+	name := person.FullName
+	idStr := person.ID.String()
+	return &DiscoverySuggestion{
+		Type:        "unassessed",
+		Title:       fmt.Sprintf("Review research status for %s", name),
+		Description: fmt.Sprintf("%s has not been assessed yet. Review available data and set an appropriate research status.", name),
+		PersonID:    idStr,
+		PersonName:  name,
+		ActionURL:   "/persons/" + idStr,
+		Priority:    3,
+	}
+}
+
+// qualityGapSuggestion returns a quality_gap suggestion if the person has low completeness.
+func (s *QualityService) qualityGapSuggestion(ctx context.Context, person repository.PersonReadModel) *DiscoverySuggestion {
+	score, _ := s.computePersonScore(ctx, person)
+	hasSomeData := person.BirthDateRaw != "" || person.BirthPlace != "" || person.DeathDateRaw != "" || person.DeathPlace != ""
+	if score >= 50 || !hasSomeData {
+		return nil
+	}
+	name := person.FullName
+	idStr := person.ID.String()
+	return &DiscoverySuggestion{
+		Type:        "quality_gap",
+		Title:       fmt.Sprintf("Improve record for %s (%d%% complete)", name, int(score)),
+		Description: fmt.Sprintf("%s has a low completeness score of %d%%. Consider adding missing dates, places, or other details.", name, int(score)),
+		PersonID:    idStr,
+		PersonName:  name,
+		ActionURL:   "/persons/" + idStr,
+		Priority:    2,
+	}
 }
 
 // GetQualityOverview returns aggregate quality metrics for all persons.

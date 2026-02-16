@@ -653,6 +653,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/MapLocationsResponse'
 
+  /browse/brick-walls:
+    get:
+      operationId: getBrickWalls
+      summary: List brick wall research blocks
+      tags: [browse]
+      parameters:
+        - name: include_resolved
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Brick wall list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrickWallsResponse'
+
+  /persons/{id}/brick-wall:
+    parameters:
+      - $ref: '#/components/parameters/personId'
+    put:
+      operationId: setPersonBrickWall
+      summary: Mark person as a brick wall
+      tags: [persons]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  description: Description of the research block
+      responses:
+        '204':
+          description: Brick wall set
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: resolvePersonBrickWall
+      summary: Resolve a brick wall (mark as broken through)
+      tags: [persons]
+      responses:
+        '204':
+          description: Brick wall resolved
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /gedcom/import:
     post:
       operationId: importGedcom
@@ -2006,6 +2058,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/Statistics'
 
+  /analytics/discovery:
+    get:
+      operationId: getDiscoveryFeed
+      summary: Get discovery feed suggestions
+      description: Returns prioritized research suggestions based on data quality analysis
+      tags: [quality]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Discovery feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscoveryFeedResponse'
+
   # Snapshot endpoints
 
   /snapshots:
@@ -2890,6 +2962,14 @@ components:
           type: string
         research_status:
           $ref: '#/components/schemas/ResearchStatus'
+        brick_wall_note:
+          type: string
+        brick_wall_since:
+          type: string
+          format: date-time
+        brick_wall_resolved_at:
+          type: string
+          format: date-time
         version:
           type: integer
           format: int64
@@ -3919,6 +3999,37 @@ components:
             format: uuid
           description: IDs of persons at this location
 
+    BrickWallsResponse:
+      type: object
+      required: [items, active_count, resolved_count]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BrickWallEntry'
+        active_count:
+          type: integer
+        resolved_count:
+          type: integer
+
+    BrickWallEntry:
+      type: object
+      required: [person_id, person_name, note, since]
+      properties:
+        person_id:
+          type: string
+          format: uuid
+        person_name:
+          type: string
+        note:
+          type: string
+        since:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+
     # Source schemas
     Source:
       type: object
@@ -4319,6 +4430,38 @@ components:
           items:
             type: string
           description: Suggested improvements
+
+    DiscoveryFeedResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscoverySuggestion'
+        total:
+          type: integer
+
+    DiscoverySuggestion:
+      type: object
+      required: [type, title, description, action_url, priority]
+      properties:
+        type:
+          type: string
+          enum: [missing_data, orphan, unassessed, quality_gap, brick_wall_resolved]
+        title:
+          type: string
+        description:
+          type: string
+        person_id:
+          type: string
+          format: uuid
+        person_name:
+          type: string
+        action_url:
+          type: string
+        priority:
+          type: integer
 
     QualityReport:
       type: object

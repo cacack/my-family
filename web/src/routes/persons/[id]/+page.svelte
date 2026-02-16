@@ -22,6 +22,13 @@
 	let historyCount: number | null = $state(null);
 	let mediaCount: number | null = $state(null);
 
+	// Brick wall state
+	let showBrickWallForm = $state(false);
+	let brickWallNote = $state('');
+	let brickWallSaving = $state(false);
+	let brickWallCelebrating = $state(false);
+	let brickWallToast = $state('');
+
 	// Rollback state
 	let rollbackDialog = $state({ open: false, targetVersion: 0, targetSummary: '' });
 	let rollbackSuccess: { show: boolean; message: string; changes?: Record<string, unknown> } = $state({ show: false, message: '' });
@@ -92,6 +99,65 @@
 		if (mediaCount !== null) {
 			mediaCount++;
 		}
+	}
+
+	async function markBrickWall() {
+		if (!person || !brickWallNote.trim()) return;
+		brickWallSaving = true;
+		try {
+			await api.setPersonBrickWall(person.id, brickWallNote.trim());
+			await loadPerson(person.id);
+			showBrickWallForm = false;
+			brickWallNote = '';
+		} catch (e) {
+			error = (e as { message?: string }).message || 'Failed to mark brick wall';
+		} finally {
+			brickWallSaving = false;
+		}
+	}
+
+	async function resolveBrickWall() {
+		if (!person) return;
+		brickWallSaving = true;
+		try {
+			await api.resolvePersonBrickWall(person.id);
+			brickWallCelebrating = true;
+			brickWallToast = 'Brick wall broken! Great research breakthrough!';
+			await loadPerson(person.id);
+			setTimeout(() => {
+				brickWallCelebrating = false;
+				brickWallToast = '';
+			}, 3000);
+		} catch (e) {
+			error = (e as { message?: string }).message || 'Failed to resolve brick wall';
+		} finally {
+			brickWallSaving = false;
+		}
+	}
+
+	function cancelBrickWallForm() {
+		showBrickWallForm = false;
+		brickWallNote = '';
+	}
+
+	function formatBrickWallDate(dateStr: string): string {
+		return new Date(dateStr).toLocaleDateString();
+	}
+
+	function formatBrickWallDuration(dateStr: string): string {
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+		if (diffDays === 0) return 'today';
+		if (diffDays === 1) return '1 day ago';
+		if (diffDays < 30) return `${diffDays} days ago`;
+		const diffMonths = Math.floor(diffDays / 30);
+		if (diffMonths === 1) return '1 month ago';
+		if (diffMonths < 12) return `${diffMonths} months ago`;
+		const diffYears = Math.floor(diffMonths / 12);
+		if (diffYears === 1) return '1 year ago';
+		return `${diffYears} years ago`;
 	}
 
 	function resetForm() {
@@ -317,6 +383,84 @@
 							<dd>{person.death_place || '—'}</dd>
 						</dl>
 					</div>
+				</div>
+
+				<!-- Brick Wall Section -->
+				<div class="brick-wall-section" class:celebrating={brickWallCelebrating}>
+					{#if brickWallToast}
+						<div class="brick-wall-toast" role="status" aria-live="polite">
+							{brickWallToast}
+						</div>
+					{/if}
+
+					{#if person.brick_wall_note && !person.brick_wall_resolved_at}
+						<!-- Active brick wall -->
+						<div class="brick-wall-indicator active">
+							<div class="brick-wall-header">
+								<span class="brick-wall-badge badge-active">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="brick-wall-badge-icon">
+										<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+									</svg>
+									Brick Wall
+								</span>
+								{#if person.brick_wall_since}
+									<span class="brick-wall-since">Since {formatBrickWallDuration(person.brick_wall_since)}</span>
+								{/if}
+							</div>
+							<p class="brick-wall-note">{person.brick_wall_note}</p>
+							<button
+								class="btn btn-resolve"
+								onclick={resolveBrickWall}
+								disabled={brickWallSaving}
+							>
+								{brickWallSaving ? 'Resolving...' : 'Resolve Brick Wall'}
+							</button>
+						</div>
+					{:else if person.brick_wall_resolved_at}
+						<!-- Resolved brick wall -->
+						<div class="brick-wall-indicator resolved">
+							<div class="brick-wall-header">
+								<span class="brick-wall-badge badge-resolved">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="brick-wall-badge-icon">
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
+									Resolved
+								</span>
+								<span class="brick-wall-since">Resolved {formatBrickWallDate(person.brick_wall_resolved_at)}</span>
+							</div>
+							{#if person.brick_wall_note}
+								<p class="brick-wall-note">{person.brick_wall_note}</p>
+							{/if}
+						</div>
+					{:else}
+						<!-- No brick wall — show Mark button -->
+						{#if showBrickWallForm}
+							<div class="brick-wall-form">
+								<label class="brick-wall-form-label">
+									Brick wall note
+									<textarea
+										bind:value={brickWallNote}
+										placeholder="Describe the research obstacle..."
+										rows="3"
+									></textarea>
+								</label>
+								<div class="brick-wall-form-actions">
+									<button class="btn" onclick={cancelBrickWallForm} disabled={brickWallSaving}>Cancel</button>
+									<button
+										class="btn btn-mark"
+										onclick={markBrickWall}
+										disabled={brickWallSaving || !brickWallNote.trim()}
+									>
+										{brickWallSaving ? 'Saving...' : 'Mark as Brick Wall'}
+									</button>
+								</div>
+							</div>
+						{:else}
+							<button class="btn btn-subtle" onclick={() => showBrickWallForm = true}>
+								Mark as Brick Wall
+							</button>
+						{/if}
+					{/if}
 				</div>
 
 				{#if person.notes}
@@ -808,5 +952,160 @@
 	.tab-btn.active {
 		color: #3b82f6;
 		border-bottom-color: #3b82f6;
+	}
+
+	/* Brick Wall styles */
+	.brick-wall-section {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid #e2e8f0;
+	}
+
+	.brick-wall-toast {
+		padding: 0.75rem 1rem;
+		margin-bottom: 1rem;
+		background: #dcfce7;
+		border: 1px solid #86efac;
+		border-radius: 8px;
+		color: #15803d;
+		font-size: 0.875rem;
+		font-weight: 500;
+		text-align: center;
+	}
+
+	.brick-wall-indicator {
+		padding: 1rem;
+		border-radius: 8px;
+		border: 1px solid #e2e8f0;
+	}
+
+	.brick-wall-indicator.active {
+		border-left: 4px solid #f59e0b;
+		background: #fffbeb;
+	}
+
+	.brick-wall-indicator.resolved {
+		border-left: 4px solid #22c55e;
+		background: #f0fdf4;
+	}
+
+	.brick-wall-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.brick-wall-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.125rem 0.5rem;
+		border-radius: 9999px;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+	}
+
+	.brick-wall-badge-icon {
+		width: 0.75rem;
+		height: 0.75rem;
+	}
+
+	.brick-wall-badge.badge-active {
+		background: #fef3c7;
+		color: #b45309;
+	}
+
+	.brick-wall-badge.badge-resolved {
+		background: #dcfce7;
+		color: #15803d;
+	}
+
+	.brick-wall-since {
+		font-size: 0.75rem;
+		color: #94a3b8;
+	}
+
+	.brick-wall-note {
+		margin: 0 0 0.75rem;
+		font-size: 0.8125rem;
+		color: #475569;
+		line-height: 1.5;
+	}
+
+	.btn-resolve {
+		background: #f59e0b;
+		border-color: #f59e0b;
+		color: white;
+		font-weight: 500;
+	}
+
+	.btn-resolve:hover {
+		background: #d97706;
+		border-color: #d97706;
+	}
+
+	.btn-subtle {
+		color: #94a3b8;
+		border-color: #e2e8f0;
+		font-size: 0.8125rem;
+	}
+
+	.btn-subtle:hover {
+		color: #64748b;
+		background: #f8fafc;
+		border-color: #cbd5e1;
+	}
+
+	.btn-mark {
+		background: #f59e0b;
+		border-color: #f59e0b;
+		color: white;
+		font-weight: 500;
+	}
+
+	.btn-mark:hover {
+		background: #d97706;
+		border-color: #d97706;
+	}
+
+	.btn-mark:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.brick-wall-form {
+		padding: 1rem;
+		background: #f8fafc;
+		border-radius: 8px;
+		border: 1px solid #e2e8f0;
+	}
+
+	.brick-wall-form-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		font-size: 0.875rem;
+		color: #475569;
+	}
+
+	.brick-wall-form-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+	}
+
+	/* Celebration animation */
+	@keyframes celebrate {
+		0% { transform: scale(1); }
+		50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(34, 197, 94, 0.5); }
+		100% { transform: scale(1); }
+	}
+
+	.celebrating {
+		animation: celebrate 0.6s ease-out;
 	}
 </style>

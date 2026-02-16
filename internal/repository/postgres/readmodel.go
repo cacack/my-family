@@ -366,6 +366,12 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS death_place_long VARCHAR(20)`)
 	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS marriage_place_lat VARCHAR(20)`)
 	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS marriage_place_long VARCHAR(20)`)
+
+	// Add brick wall columns for research tracking (issue #61)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS brick_wall_note TEXT DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS brick_wall_since TIMESTAMPTZ`)
+	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS brick_wall_resolved_at TIMESTAMPTZ`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_brick_wall ON persons(brick_wall_since) WHERE brick_wall_since IS NOT NULL`)
 }
 
 // GetPerson retrieves a person by ID.
@@ -374,7 +380,8 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*reposito
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, version, updated_at
+			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   version, updated_at
 		FROM persons WHERE id = $1
 	`, id)
 
@@ -427,7 +434,8 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, version, updated_at
+			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   version, updated_at
 		FROM persons
 		%s
 		ORDER BY %s %s NULLS LAST, given_name %s
@@ -470,7 +478,8 @@ func (p *searchQueryParams) add(val any) int {
 const personCols = `p.id, p.given_name, p.surname, p.full_name, p.gender,
 	p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 	p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-	p.notes, p.research_status, p.version, p.updated_at`
+	p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+	p.version, p.updated_at`
 
 // SearchPersons searches for persons by name, date, and place using tsvector,
 // trigram similarity, and Soundex matching. Also searches person_names for alternate names.
@@ -581,14 +590,16 @@ func writeDedupSelect(qb *strings.Builder) {
 		SELECT DISTINCT ON (id) id, given_name, surname, full_name, gender,
 			birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			notes, research_status, version, updated_at, rank_score
+			notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			version, updated_at, rank_score
 		FROM matched_persons
 		ORDER BY id, is_primary DESC, rank_score DESC
 	)
 	SELECT id, given_name, surname, full_name, gender,
 		birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 		death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-		notes, research_status, version, updated_at
+		notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+		version, updated_at
 	FROM deduped p`)
 }
 
@@ -663,8 +674,10 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO persons (id, given_name, surname, gender, birth_date_raw, birth_date_sort, birth_place,
 							 birth_place_lat, birth_place_long, death_date_raw, death_date_sort, death_place,
-							 death_place_lat, death_place_long, notes, research_status, version, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+							 death_place_lat, death_place_long, notes, research_status,
+							 brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+							 version, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 		ON CONFLICT(id) DO UPDATE SET
 			given_name = EXCLUDED.given_name,
 			surname = EXCLUDED.surname,
@@ -681,6 +694,9 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 			death_place_long = EXCLUDED.death_place_long,
 			notes = EXCLUDED.notes,
 			research_status = EXCLUDED.research_status,
+			brick_wall_note = EXCLUDED.brick_wall_note,
+			brick_wall_since = EXCLUDED.brick_wall_since,
+			brick_wall_resolved_at = EXCLUDED.brick_wall_resolved_at,
 			version = EXCLUDED.version,
 			updated_at = EXCLUDED.updated_at
 	`, person.ID, person.GivenName, person.Surname, nullableGender(person.Gender),
@@ -688,7 +704,9 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 		nullableStringPtr(person.BirthPlaceLat), nullableStringPtr(person.BirthPlaceLong),
 		nullableString(person.DeathDateRaw), nullableTime(person.DeathDateSort), nullableString(person.DeathPlace),
 		nullableStringPtr(person.DeathPlaceLat), nullableStringPtr(person.DeathPlaceLong),
-		nullableString(person.Notes), nullableString(string(person.ResearchStatus)), person.Version, person.UpdatedAt)
+		nullableString(person.Notes), nullableString(string(person.ResearchStatus)),
+		nullableString(person.BrickWallNote), nullableTime(person.BrickWallSince), nullableTime(person.BrickWallResolvedAt),
+		person.Version, person.UpdatedAt)
 
 	return err
 }
@@ -969,7 +987,8 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.version, p.updated_at
+			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.version, p.updated_at
 		FROM persons p
 		JOIN family_children fc ON p.id = fc.person_id
 		WHERE fc.family_id = $1
@@ -1104,6 +1123,9 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 		deathDateRaw, deathPlace, notes  sql.NullString
 		deathPlaceLat, deathPlaceLong    sql.NullString
 		researchStatus                   sql.NullString
+		brickWallNote                    sql.NullString
+		brickWallSince                   sql.NullTime
+		brickWallResolvedAt              sql.NullTime
 		birthDateSort, deathDateSort     sql.NullTime
 		version                          int64
 		updatedAt                        time.Time
@@ -1112,7 +1134,8 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	err := row.Scan(&id, &givenName, &surname, &fullName, &gender,
 		&birthDateRaw, &birthDateSort, &birthPlace, &birthPlaceLat, &birthPlaceLong,
 		&deathDateRaw, &deathDateSort, &deathPlace, &deathPlaceLat, &deathPlaceLong,
-		&notes, &researchStatus, &version, &updatedAt)
+		&notes, &researchStatus, &brickWallNote, &brickWallSince, &brickWallResolvedAt,
+		&version, &updatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1133,6 +1156,7 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 		DeathPlace:     deathPlace.String,
 		Notes:          notes.String,
 		ResearchStatus: domain.ResearchStatus(researchStatus.String),
+		BrickWallNote:  brickWallNote.String,
 		Version:        version,
 		UpdatedAt:      updatedAt,
 	}
@@ -1156,6 +1180,12 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 	}
 	if deathDateSort.Valid {
 		p.DeathDateSort = &deathDateSort.Time
+	}
+	if brickWallSince.Valid {
+		p.BrickWallSince = &brickWallSince.Time
+	}
+	if brickWallResolvedAt.Valid {
+		p.BrickWallResolvedAt = &brickWallResolvedAt.Time
 	}
 
 	return p, nil
@@ -2410,9 +2440,10 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
-			   notes, research_status, version, updated_at
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   version, updated_at
 		FROM persons
 		WHERE LOWER(surname) = LOWER($1)
 		ORDER BY given_name ASC
@@ -2549,9 +2580,10 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place,
-			   death_date_raw, death_date_sort, death_place,
-			   notes, research_status, version, updated_at
+			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+			   version, updated_at
 		FROM persons
 		WHERE birth_place ILIKE '%' || $1 || '%' OR death_place ILIKE '%' || $1 || '%'
 		ORDER BY surname ASC, given_name ASC
@@ -2618,7 +2650,8 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.version, p.updated_at
+			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
+			   p.version, p.updated_at
 		FROM persons p
 		INNER JOIN events e ON e.owner_id = p.id
 		WHERE e.fact_type IN ($1, $2) AND LOWER(e.place) = LOWER($3)
@@ -2744,6 +2777,68 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 	})
 
 	return results, nil
+}
+
+// SetBrickWall marks a person as a brick wall with a note.
+func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE persons SET brick_wall_note = $1, brick_wall_since = NOW(), brick_wall_resolved_at = NULL
+		WHERE id = $2
+	`, note, personID)
+	return err
+}
+
+// ResolveBrickWall marks a brick wall as resolved.
+func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE persons SET brick_wall_resolved_at = NOW()
+		WHERE id = $1
+	`, personID)
+	return err
+}
+
+// GetBrickWalls returns persons with brick wall status.
+func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
+	query := `
+		SELECT id, full_name, brick_wall_note, brick_wall_since, brick_wall_resolved_at
+		FROM persons
+		WHERE brick_wall_since IS NOT NULL`
+	if !includeResolved {
+		query += ` AND brick_wall_resolved_at IS NULL`
+	}
+	query += ` ORDER BY brick_wall_since DESC`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query brick walls: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []repository.BrickWallEntry
+	for rows.Next() {
+		var (
+			id         uuid.UUID
+			fullName   string
+			note       sql.NullString
+			since      time.Time
+			resolvedAt sql.NullTime
+		)
+		if err := rows.Scan(&id, &fullName, &note, &since, &resolvedAt); err != nil {
+			return nil, fmt.Errorf("scan brick wall: %w", err)
+		}
+		entry := repository.BrickWallEntry{
+			PersonID:   id,
+			PersonName: fullName,
+			Note:       note.String,
+			Since:      since,
+		}
+		if resolvedAt.Valid {
+			entry.ResolvedAt = &resolvedAt.Time
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, rows.Err()
 }
 
 // GetNote retrieves a note by ID.

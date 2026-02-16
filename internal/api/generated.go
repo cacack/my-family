@@ -47,6 +47,15 @@ const (
 	ChangeEntryEntityTypeSource   ChangeEntryEntityType = "source"
 )
 
+// Defines values for DiscoverySuggestionType.
+const (
+	BrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
+	MissingData       DiscoverySuggestionType = "missing_data"
+	Orphan            DiscoverySuggestionType = "orphan"
+	QualityGap        DiscoverySuggestionType = "quality_gap"
+	Unassessed        DiscoverySuggestionType = "unassessed"
+)
+
 // Defines values for FamilyRelationshipType.
 const (
 	FamilyRelationshipTypeMarriage    FamilyRelationshipType = "marriage"
@@ -663,6 +672,22 @@ type BatchMergeResult struct {
 	SurvivorId openapi_types.UUID `json:"survivor_id"`
 }
 
+// BrickWallEntry defines model for BrickWallEntry.
+type BrickWallEntry struct {
+	Note       string             `json:"note"`
+	PersonId   openapi_types.UUID `json:"person_id"`
+	PersonName string             `json:"person_name"`
+	ResolvedAt *time.Time         `json:"resolved_at,omitempty"`
+	Since      time.Time          `json:"since"`
+}
+
+// BrickWallsResponse defines model for BrickWallsResponse.
+type BrickWallsResponse struct {
+	ActiveCount   int              `json:"active_count"`
+	Items         []BrickWallEntry `json:"items"`
+	ResolvedCount int              `json:"resolved_count"`
+}
+
 // CemeteryEntry defines model for CemeteryEntry.
 type CemeteryEntry struct {
 	// Count Number of persons buried/cremated here
@@ -831,6 +856,26 @@ type DescendancyNode struct {
 	Spouses    *[]SpouseInfo      `json:"spouses,omitempty"`
 	Surname    *string            `json:"surname,omitempty"`
 }
+
+// DiscoveryFeedResponse defines model for DiscoveryFeedResponse.
+type DiscoveryFeedResponse struct {
+	Items []DiscoverySuggestion `json:"items"`
+	Total int                   `json:"total"`
+}
+
+// DiscoverySuggestion defines model for DiscoverySuggestion.
+type DiscoverySuggestion struct {
+	ActionUrl   string                  `json:"action_url"`
+	Description string                  `json:"description"`
+	PersonId    *openapi_types.UUID     `json:"person_id,omitempty"`
+	PersonName  *string                 `json:"person_name,omitempty"`
+	Priority    int                     `json:"priority"`
+	Title       string                  `json:"title"`
+	Type        DiscoverySuggestionType `json:"type"`
+}
+
+// DiscoverySuggestionType defines model for DiscoverySuggestion.Type.
+type DiscoverySuggestionType string
 
 // DismissDuplicateRequest Request to dismiss a duplicate pair as false positive
 type DismissDuplicateRequest struct {
@@ -1571,7 +1616,10 @@ type Person struct {
 	BirthPlaceLatitude *string `json:"birth_place_latitude"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	BirthPlaceLongitude *string `json:"birth_place_longitude"`
+	BirthPlaceLongitude *string    `json:"birth_place_longitude"`
+	BrickWallNote       *string    `json:"brick_wall_note,omitempty"`
+	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at,omitempty"`
+	BrickWallSince      *time.Time `json:"brick_wall_since,omitempty"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
@@ -1629,7 +1677,10 @@ type PersonDetail struct {
 	BirthPlaceLatitude *string `json:"birth_place_latitude"`
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	BirthPlaceLongitude *string `json:"birth_place_longitude"`
+	BirthPlaceLongitude *string    `json:"birth_place_longitude"`
+	BrickWallNote       *string    `json:"brick_wall_note,omitempty"`
+	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at,omitempty"`
+	BrickWallSince      *time.Time `json:"brick_wall_since,omitempty"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
@@ -2330,6 +2381,11 @@ type GetAhnentafelParams struct {
 // GetAhnentafelParamsFormat defines parameters for GetAhnentafel.
 type GetAhnentafelParamsFormat string
 
+// GetDiscoveryFeedParams defines parameters for GetDiscoveryFeed.
+type GetDiscoveryFeedParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListAssociationsParams defines parameters for ListAssociations.
 type ListAssociationsParams struct {
 	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -2348,6 +2404,11 @@ type ListAssociationsParamsOrder string
 type DeleteAssociationParams struct {
 	// Version Entity version for optimistic locking
 	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
+
+// GetBrickWallsParams defines parameters for GetBrickWalls.
+type GetBrickWallsParams struct {
+	IncludeResolved *bool `form:"include_resolved,omitempty" json:"include_resolved,omitempty"`
 }
 
 // GetPersonsByCemeteryParams defines parameters for GetPersonsByCemetery.
@@ -2514,6 +2575,12 @@ type GetPersonsDuplicatesParams struct {
 
 	// Offset Number of duplicate pairs to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// SetPersonBrickWallJSONBody defines parameters for SetPersonBrickWall.
+type SetPersonBrickWallJSONBody struct {
+	// Note Description of the research block
+	Note string `json:"note"`
 }
 
 // GetPersonHistoryParams defines parameters for GetPersonHistory.
@@ -2729,6 +2796,9 @@ type BatchMergePersonsJSONRequestBody = BatchMergeRequest
 // UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
 type UpdatePersonJSONRequestBody = PersonUpdate
 
+// SetPersonBrickWallJSONRequestBody defines body for SetPersonBrickWall for application/json ContentType.
+type SetPersonBrickWallJSONRequestBody SetPersonBrickWallJSONBody
+
 // UploadPersonMediaMultipartRequestBody defines body for UploadPersonMedia for multipart/form-data ContentType.
 type UploadPersonMediaMultipartRequestBody UploadPersonMediaMultipartBody
 
@@ -2764,6 +2834,9 @@ type ServerInterface interface {
 	// Get Ahnentafel (ancestor table) report for a person
 	// (GET /ahnentafel/{id})
 	GetAhnentafel(ctx echo.Context, id PersonId, params GetAhnentafelParams) error
+	// Get discovery feed suggestions
+	// (GET /analytics/discovery)
+	GetDiscoveryFeed(ctx echo.Context, params GetDiscoveryFeedParams) error
 	// List all associations
 	// (GET /associations)
 	ListAssociations(ctx echo.Context, params ListAssociationsParams) error
@@ -2779,6 +2852,9 @@ type ServerInterface interface {
 	// Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx echo.Context, id AssociationId) error
+	// List brick wall research blocks
+	// (GET /browse/brick-walls)
+	GetBrickWalls(ctx echo.Context, params GetBrickWallsParams) error
 	// Get cemetery/burial place index with counts
 	// (GET /browse/cemeteries)
 	BrowseCemeteries(ctx echo.Context) error
@@ -2968,6 +3044,12 @@ type ServerInterface interface {
 	// List associations for a person
 	// (GET /persons/{id}/associations)
 	ListAssociationsForPerson(ctx echo.Context, id PersonId) error
+	// Resolve a brick wall (mark as broken through)
+	// (DELETE /persons/{id}/brick-wall)
+	ResolvePersonBrickWall(ctx echo.Context, id PersonId) error
+	// Mark person as a brick wall
+	// (PUT /persons/{id}/brick-wall)
+	SetPersonBrickWall(ctx echo.Context, id PersonId) error
 	// Get citations for a person
 	// (GET /persons/{id}/citations)
 	GetCitationsForPerson(ctx echo.Context, id PersonId) error
@@ -3121,6 +3203,24 @@ func (w *ServerInterfaceWrapper) GetAhnentafel(ctx echo.Context) error {
 	return err
 }
 
+// GetDiscoveryFeed converts echo context to params.
+func (w *ServerInterfaceWrapper) GetDiscoveryFeed(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetDiscoveryFeedParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetDiscoveryFeed(ctx, params)
+	return err
+}
+
 // ListAssociations converts echo context to params.
 func (w *ServerInterfaceWrapper) ListAssociations(ctx echo.Context) error {
 	var err error
@@ -3223,6 +3323,24 @@ func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateAssociation(ctx, id)
+	return err
+}
+
+// GetBrickWalls converts echo context to params.
+func (w *ServerInterfaceWrapper) GetBrickWalls(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetBrickWallsParams
+	// ------------- Optional query parameter "include_resolved" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "include_resolved", ctx.QueryParams(), &params.IncludeResolved)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter include_resolved: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetBrickWalls(ctx, params)
 	return err
 }
 
@@ -4388,6 +4506,38 @@ func (w *ServerInterfaceWrapper) ListAssociationsForPerson(ctx echo.Context) err
 	return err
 }
 
+// ResolvePersonBrickWall converts echo context to params.
+func (w *ServerInterfaceWrapper) ResolvePersonBrickWall(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ResolvePersonBrickWall(ctx, id)
+	return err
+}
+
+// SetPersonBrickWall converts echo context to params.
+func (w *ServerInterfaceWrapper) SetPersonBrickWall(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SetPersonBrickWall(ctx, id)
+	return err
+}
+
 // GetCitationsForPerson converts echo context to params.
 func (w *ServerInterfaceWrapper) GetCitationsForPerson(ctx echo.Context) error {
 	var err error
@@ -5249,11 +5399,13 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	}
 
 	router.GET(baseURL+"/ahnentafel/:id", wrapper.GetAhnentafel)
+	router.GET(baseURL+"/analytics/discovery", wrapper.GetDiscoveryFeed)
 	router.GET(baseURL+"/associations", wrapper.ListAssociations)
 	router.POST(baseURL+"/associations", wrapper.CreateAssociation)
 	router.DELETE(baseURL+"/associations/:id", wrapper.DeleteAssociation)
 	router.GET(baseURL+"/associations/:id", wrapper.GetAssociation)
 	router.PUT(baseURL+"/associations/:id", wrapper.UpdateAssociation)
+	router.GET(baseURL+"/browse/brick-walls", wrapper.GetBrickWalls)
 	router.GET(baseURL+"/browse/cemeteries", wrapper.BrowseCemeteries)
 	router.GET(baseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery)
 	router.GET(baseURL+"/browse/places", wrapper.BrowsePlaces)
@@ -5317,6 +5469,8 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/persons/:id", wrapper.GetPerson)
 	router.PUT(baseURL+"/persons/:id", wrapper.UpdatePerson)
 	router.GET(baseURL+"/persons/:id/associations", wrapper.ListAssociationsForPerson)
+	router.DELETE(baseURL+"/persons/:id/brick-wall", wrapper.ResolvePersonBrickWall)
+	router.PUT(baseURL+"/persons/:id/brick-wall", wrapper.SetPersonBrickWall)
 	router.GET(baseURL+"/persons/:id/citations", wrapper.GetCitationsForPerson)
 	router.GET(baseURL+"/persons/:id/history", wrapper.GetPersonHistory)
 	router.GET(baseURL+"/persons/:id/lds-ordinances", wrapper.ListLDSOrdinancesForPerson)
@@ -5406,6 +5560,23 @@ type GetAhnentafel404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetAhnentafel404JSONResponse) VisitGetAhnentafelResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetDiscoveryFeedRequestObject struct {
+	Params GetDiscoveryFeedParams
+}
+
+type GetDiscoveryFeedResponseObject interface {
+	VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error
+}
+
+type GetDiscoveryFeed200JSONResponse DiscoveryFeedResponse
+
+func (response GetDiscoveryFeed200JSONResponse) VisitGetDiscoveryFeedResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -5564,6 +5735,23 @@ type UpdateAssociation409JSONResponse struct{ ConflictJSONResponse }
 func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetBrickWallsRequestObject struct {
+	Params GetBrickWallsParams
+}
+
+type GetBrickWallsResponseObject interface {
+	VisitGetBrickWallsResponse(w http.ResponseWriter) error
+}
+
+type GetBrickWalls200JSONResponse BrickWallsResponse
+
+func (response GetBrickWalls200JSONResponse) VisitGetBrickWallsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -7417,6 +7605,57 @@ func (response ListAssociationsForPerson404JSONResponse) VisitListAssociationsFo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ResolvePersonBrickWallRequestObject struct {
+	Id PersonId `json:"id"`
+}
+
+type ResolvePersonBrickWallResponseObject interface {
+	VisitResolvePersonBrickWallResponse(w http.ResponseWriter) error
+}
+
+type ResolvePersonBrickWall204Response struct {
+}
+
+func (response ResolvePersonBrickWall204Response) VisitResolvePersonBrickWallResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ResolvePersonBrickWall404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResolvePersonBrickWall404JSONResponse) VisitResolvePersonBrickWallResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SetPersonBrickWallRequestObject struct {
+	Id   PersonId `json:"id"`
+	Body *SetPersonBrickWallJSONRequestBody
+}
+
+type SetPersonBrickWallResponseObject interface {
+	VisitSetPersonBrickWallResponse(w http.ResponseWriter) error
+}
+
+type SetPersonBrickWall204Response struct {
+}
+
+func (response SetPersonBrickWall204Response) VisitSetPersonBrickWallResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetPersonBrickWall404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetPersonBrickWall404JSONResponse) VisitSetPersonBrickWallResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetCitationsForPersonRequestObject struct {
 	Id PersonId `json:"id"`
 }
@@ -8510,6 +8749,9 @@ type StrictServerInterface interface {
 	// Get Ahnentafel (ancestor table) report for a person
 	// (GET /ahnentafel/{id})
 	GetAhnentafel(ctx context.Context, request GetAhnentafelRequestObject) (GetAhnentafelResponseObject, error)
+	// Get discovery feed suggestions
+	// (GET /analytics/discovery)
+	GetDiscoveryFeed(ctx context.Context, request GetDiscoveryFeedRequestObject) (GetDiscoveryFeedResponseObject, error)
 	// List all associations
 	// (GET /associations)
 	ListAssociations(ctx context.Context, request ListAssociationsRequestObject) (ListAssociationsResponseObject, error)
@@ -8525,6 +8767,9 @@ type StrictServerInterface interface {
 	// Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error)
+	// List brick wall research blocks
+	// (GET /browse/brick-walls)
+	GetBrickWalls(ctx context.Context, request GetBrickWallsRequestObject) (GetBrickWallsResponseObject, error)
 	// Get cemetery/burial place index with counts
 	// (GET /browse/cemeteries)
 	BrowseCemeteries(ctx context.Context, request BrowseCemeteriesRequestObject) (BrowseCemeteriesResponseObject, error)
@@ -8714,6 +8959,12 @@ type StrictServerInterface interface {
 	// List associations for a person
 	// (GET /persons/{id}/associations)
 	ListAssociationsForPerson(ctx context.Context, request ListAssociationsForPersonRequestObject) (ListAssociationsForPersonResponseObject, error)
+	// Resolve a brick wall (mark as broken through)
+	// (DELETE /persons/{id}/brick-wall)
+	ResolvePersonBrickWall(ctx context.Context, request ResolvePersonBrickWallRequestObject) (ResolvePersonBrickWallResponseObject, error)
+	// Mark person as a brick wall
+	// (PUT /persons/{id}/brick-wall)
+	SetPersonBrickWall(ctx context.Context, request SetPersonBrickWallRequestObject) (SetPersonBrickWallResponseObject, error)
 	// Get citations for a person
 	// (GET /persons/{id}/citations)
 	GetCitationsForPerson(ctx context.Context, request GetCitationsForPersonRequestObject) (GetCitationsForPersonResponseObject, error)
@@ -8868,6 +9119,31 @@ func (sh *strictHandler) GetAhnentafel(ctx echo.Context, id PersonId, params Get
 	return nil
 }
 
+// GetDiscoveryFeed operation middleware
+func (sh *strictHandler) GetDiscoveryFeed(ctx echo.Context, params GetDiscoveryFeedParams) error {
+	var request GetDiscoveryFeedRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDiscoveryFeed(ctx.Request().Context(), request.(GetDiscoveryFeedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDiscoveryFeed")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetDiscoveryFeedResponseObject); ok {
+		return validResponse.VisitGetDiscoveryFeedResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // ListAssociations operation middleware
 func (sh *strictHandler) ListAssociations(ctx echo.Context, params ListAssociationsParams) error {
 	var request ListAssociationsRequestObject
@@ -8998,6 +9274,31 @@ func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId) e
 		return err
 	} else if validResponse, ok := response.(UpdateAssociationResponseObject); ok {
 		return validResponse.VisitUpdateAssociationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetBrickWalls operation middleware
+func (sh *strictHandler) GetBrickWalls(ctx echo.Context, params GetBrickWallsParams) error {
+	var request GetBrickWallsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBrickWalls(ctx.Request().Context(), request.(GetBrickWallsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBrickWalls")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetBrickWallsResponseObject); ok {
+		return validResponse.VisitGetBrickWallsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -10663,6 +10964,62 @@ func (sh *strictHandler) ListAssociationsForPerson(ctx echo.Context, id PersonId
 		return err
 	} else if validResponse, ok := response.(ListAssociationsForPersonResponseObject); ok {
 		return validResponse.VisitListAssociationsForPersonResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ResolvePersonBrickWall operation middleware
+func (sh *strictHandler) ResolvePersonBrickWall(ctx echo.Context, id PersonId) error {
+	var request ResolvePersonBrickWallRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolvePersonBrickWall(ctx.Request().Context(), request.(ResolvePersonBrickWallRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolvePersonBrickWall")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ResolvePersonBrickWallResponseObject); ok {
+		return validResponse.VisitResolvePersonBrickWallResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// SetPersonBrickWall operation middleware
+func (sh *strictHandler) SetPersonBrickWall(ctx echo.Context, id PersonId) error {
+	var request SetPersonBrickWallRequestObject
+
+	request.Id = id
+
+	var body SetPersonBrickWallJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPersonBrickWall(ctx.Request().Context(), request.(SetPersonBrickWallRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPersonBrickWall")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(SetPersonBrickWallResponseObject); ok {
+		return validResponse.VisitSetPersonBrickWallResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

@@ -410,6 +410,72 @@ func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocat
 	return GetMapLocations200JSONResponse(response), nil
 }
 
+// GetBrickWalls implements StrictServerInterface.
+func (ss *StrictServer) GetBrickWalls(ctx context.Context, request GetBrickWallsRequestObject) (GetBrickWallsResponseObject, error) {
+	includeResolved := false
+	if request.Params.IncludeResolved != nil {
+		includeResolved = *request.Params.IncludeResolved
+	}
+
+	result, err := ss.server.browseService.GetBrickWalls(ctx, includeResolved)
+	if err != nil {
+		return nil, err
+	}
+
+	apiItems := make([]BrickWallEntry, len(result.Items))
+	for i, item := range result.Items {
+		apiItems[i] = BrickWallEntry{
+			PersonId:   item.PersonID,
+			PersonName: item.PersonName,
+			Note:       item.Note,
+			Since:      item.Since,
+			ResolvedAt: item.ResolvedAt,
+		}
+	}
+
+	return GetBrickWalls200JSONResponse(BrickWallsResponse{
+		Items:         apiItems,
+		ActiveCount:   result.ActiveCount,
+		ResolvedCount: result.ResolvedCount,
+	}), nil
+}
+
+// SetPersonBrickWall implements StrictServerInterface.
+func (ss *StrictServer) SetPersonBrickWall(ctx context.Context, request SetPersonBrickWallRequestObject) (SetPersonBrickWallResponseObject, error) {
+	// Check person exists
+	rm, err := ss.server.readStore.GetPerson(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if rm == nil {
+		return SetPersonBrickWall404JSONResponse{NotFoundJSONResponse{Message: "person not found"}}, nil
+	}
+
+	if err := ss.server.browseService.SetBrickWall(ctx, request.Id, request.Body.Note); err != nil {
+		return nil, err
+	}
+
+	return SetPersonBrickWall204Response{}, nil
+}
+
+// ResolvePersonBrickWall implements StrictServerInterface.
+func (ss *StrictServer) ResolvePersonBrickWall(ctx context.Context, request ResolvePersonBrickWallRequestObject) (ResolvePersonBrickWallResponseObject, error) {
+	// Check person exists
+	rm, err := ss.server.readStore.GetPerson(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if rm == nil {
+		return ResolvePersonBrickWall404JSONResponse{NotFoundJSONResponse{Message: "person not found"}}, nil
+	}
+
+	if err := ss.server.browseService.ResolveBrickWall(ctx, request.Id); err != nil {
+		return nil, err
+	}
+
+	return ResolvePersonBrickWall204Response{}, nil
+}
+
 // ============================================================================
 // Citation endpoints
 // ============================================================================
@@ -2159,6 +2225,45 @@ func (ss *StrictServer) GetPersonQuality(ctx context.Context, request GetPersonQ
 	}, nil
 }
 
+// GetDiscoveryFeed implements StrictServerInterface.
+func (ss *StrictServer) GetDiscoveryFeed(ctx context.Context, request GetDiscoveryFeedRequestObject) (GetDiscoveryFeedResponseObject, error) {
+	limit := 20
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+
+	result, err := ss.server.qualityService.GetDiscoveryFeed(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	apiItems := make([]DiscoverySuggestion, len(result.Items))
+	for i, item := range result.Items {
+		apiItems[i] = DiscoverySuggestion{
+			Type:        DiscoverySuggestionType(item.Type),
+			Title:       item.Title,
+			Description: item.Description,
+			ActionUrl:   item.ActionURL,
+			Priority:    item.Priority,
+		}
+		if item.PersonID != "" {
+			id, parseErr := uuid.Parse(item.PersonID)
+			if parseErr == nil {
+				apiItems[i].PersonId = &id
+			}
+		}
+		if item.PersonName != "" {
+			name := item.PersonName
+			apiItems[i].PersonName = &name
+		}
+	}
+
+	return GetDiscoveryFeed200JSONResponse{
+		Items: apiItems,
+		Total: result.Total,
+	}, nil
+}
+
 // GetQualityReport implements StrictServerInterface.
 func (ss *StrictServer) GetQualityReport(ctx context.Context, request GetQualityReportRequestObject) (GetQualityReportResponseObject, error) {
 	result, err := ss.server.validationService.GetQualityReport(ctx)
@@ -3085,6 +3190,15 @@ func convertQueryPersonToGenerated(p query.Person) Person {
 		rs := ResearchStatus(*p.ResearchStatus)
 		resp.ResearchStatus = &rs
 	}
+	if p.BrickWallNote != nil {
+		resp.BrickWallNote = p.BrickWallNote
+	}
+	if p.BrickWallSince != nil {
+		resp.BrickWallSince = p.BrickWallSince
+	}
+	if p.BrickWallResolvedAt != nil {
+		resp.BrickWallResolvedAt = p.BrickWallResolvedAt
+	}
 
 	return resp
 }
@@ -3120,6 +3234,15 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 	if pd.ResearchStatus != nil {
 		rs := ResearchStatus(*pd.ResearchStatus)
 		resp.ResearchStatus = &rs
+	}
+	if pd.BrickWallNote != nil {
+		resp.BrickWallNote = pd.BrickWallNote
+	}
+	if pd.BrickWallSince != nil {
+		resp.BrickWallSince = pd.BrickWallSince
+	}
+	if pd.BrickWallResolvedAt != nil {
+		resp.BrickWallResolvedAt = pd.BrickWallResolvedAt
 	}
 
 	if len(pd.Names) > 0 {

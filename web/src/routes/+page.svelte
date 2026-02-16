@@ -2,6 +2,7 @@
 	import { api, type Person, type FamilyDetail } from '$lib/api/client';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
+	import DiscoveryFeed from '$lib/components/DiscoveryFeed.svelte';
 	import { onboardingState } from '$lib/stores/onboardingSettings.svelte';
 	import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
 
@@ -10,6 +11,7 @@
 	let stats = $state({ persons: 0, families: 0 });
 	let loading = $state(true);
 	let showOnboarding = $state(false);
+	let hasSuggestions = $state(false);
 
 	async function loadDashboard() {
 		loading = true;
@@ -25,6 +27,16 @@
 				families: familiesRes.total
 			};
 			showOnboarding = stats.persons === 0 && !onboardingState.completed;
+
+			// Check if there are discovery suggestions (only if we have data)
+			if (stats.persons > 0) {
+				try {
+					const discoveryRes = await api.getDiscoveryFeed(1);
+					hasSuggestions = discoveryRes.total > 0;
+				} catch {
+					hasSuggestions = false;
+				}
+			}
 		} catch (e) {
 			console.error('Failed to load dashboard:', e);
 			showOnboarding = !onboardingState.completed;
@@ -64,6 +76,13 @@
 				<span class="stat-label">Families</span>
 			</div>
 		</section>
+
+		{#if hasSuggestions}
+			<section class="suggestions-section">
+				<h2>Research Suggestions</h2>
+				<DiscoveryFeed />
+			</section>
+		{/if}
 
 		<div class="content-grid">
 			<section class="panel">
@@ -314,6 +333,21 @@
 	.action-btn svg {
 		width: 1.25rem;
 		height: 1.25rem;
+	}
+
+	.suggestions-section {
+		background: white;
+		border-radius: 12px;
+		border: 1px solid #e2e8f0;
+		padding: 1.25rem;
+		margin-bottom: 2rem;
+	}
+
+	.suggestions-section h2 {
+		margin: 0 0 1rem;
+		font-size: 1rem;
+		font-weight: 600;
+		color: #1e293b;
 	}
 
 	.action-btn.accent {

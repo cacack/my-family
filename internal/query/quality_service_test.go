@@ -859,3 +859,381 @@ func TestGetStatistics_TopSurnamesLimit(t *testing.T) {
 		t.Errorf("TopSurnames should be limited to 10, got %d", len(result.TopSurnames))
 	}
 }
+
+// ============================================================================
+// Discovery Feed tests
+// ============================================================================
+
+func withResearchStatus(status domain.ResearchStatus) func(*repository.PersonReadModel) {
+	return func(p *repository.PersonReadModel) {
+		p.ResearchStatus = status
+	}
+}
+
+// TestGetDiscoveryFeed_EmptyTree tests the feed with no persons
+func TestGetDiscoveryFeed_EmptyTree(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	if result.Total != 0 {
+		t.Errorf("Total = %d, want 0", result.Total)
+	}
+	if len(result.Items) != 0 {
+		t.Errorf("Items length = %d, want 0", len(result.Items))
+	}
+}
+
+// TestGetDiscoveryFeed_MissingBirthDate tests that assessed persons missing birth dates generate suggestions
+func TestGetDiscoveryFeed_MissingBirthDate(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	// Create a person that has been assessed (research_status != "unknown") but is missing birth date
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "John", "Doe",
+		withResearchStatus(domain.ResearchStatusProbable),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should have a missing_data suggestion for birth date
+	foundMissingData := false
+	for _, item := range result.Items {
+		if item.Type == "missing_data" && item.PersonID == personID.String() {
+			foundMissingData = true
+			if item.Priority != 1 {
+				t.Errorf("missing_data priority = %d, want 1", item.Priority)
+			}
+			break
+		}
+	}
+	if !foundMissingData {
+		t.Error("Expected missing_data suggestion for assessed person missing birth date")
+	}
+}
+
+// TestGetDiscoveryFeed_OrphanedPerson tests that orphaned persons generate suggestions
+func TestGetDiscoveryFeed_OrphanedPerson(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	// Create a person with no family connections
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Lone", "Person",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should have an orphan suggestion
+	foundOrphan := false
+	for _, item := range result.Items {
+		if item.Type == "orphan" && item.PersonID == personID.String() {
+			foundOrphan = true
+			if item.Priority != 2 {
+				t.Errorf("orphan priority = %d, want 2", item.Priority)
+			}
+			break
+		}
+	}
+	if !foundOrphan {
+		t.Error("Expected orphan suggestion for person with no family connections")
+	}
+}
+
+// TestGetDiscoveryFeed_UnassessedPerson tests that unassessed persons generate suggestions
+func TestGetDiscoveryFeed_UnassessedPerson(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	// Create a person with default research_status (unknown)
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Unknown", "Status",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should have an unassessed suggestion
+	foundUnassessed := false
+	for _, item := range result.Items {
+		if item.Type == "unassessed" && item.PersonID == personID.String() {
+			foundUnassessed = true
+			if item.Priority != 3 {
+				t.Errorf("unassessed priority = %d, want 3", item.Priority)
+			}
+			break
+		}
+	}
+	if !foundUnassessed {
+		t.Error("Expected unassessed suggestion for person with unknown research status")
+	}
+}
+
+// TestGetDiscoveryFeed_QualityGap tests that low-quality persons generate suggestions
+func TestGetDiscoveryFeed_QualityGap(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	deceasedBirthYear := currentYear - 150
+
+	// Create a person with low completeness (has birth date but missing everything else for a deceased person)
+	// Birth date: 20, Birth place: 0, Death date: 0, Death place: 0 = 20/70 = 28.6%
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Incomplete", "Record",
+		withBirthDate("1875", deceasedBirthYear),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should have a quality_gap suggestion (score is ~28.6%)
+	foundQualityGap := false
+	for _, item := range result.Items {
+		if item.Type == "quality_gap" && item.PersonID == personID.String() {
+			foundQualityGap = true
+			if item.Priority != 2 {
+				t.Errorf("quality_gap priority = %d, want 2", item.Priority)
+			}
+			break
+		}
+	}
+	if !foundQualityGap {
+		t.Error("Expected quality_gap suggestion for person with low completeness score")
+	}
+}
+
+// TestGetDiscoveryFeed_PriorityOrdering tests that items are sorted by priority
+func TestGetDiscoveryFeed_PriorityOrdering(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	deceasedBirthYear := currentYear - 150
+
+	// Create a person that generates priority 1 (missing_data) suggestions
+	p1ID := uuid.New()
+	p1 := createPersonReadModel(p1ID, "Alice", "Priority1",
+		withResearchStatus(domain.ResearchStatusCertain),
+		// Missing birth date -> priority 1 missing_data
+	)
+	_ = readStore.SavePerson(ctx, &p1)
+
+	// Create a person that generates priority 3 (unassessed) suggestion
+	p2ID := uuid.New()
+	p2 := createPersonReadModel(p2ID, "Bob", "Priority3",
+		withBirthDate("1990", currentYear-35),
+		withBirthPlace("Boston, MA"),
+		// research_status defaults to unknown -> priority 3 unassessed
+	)
+	_ = readStore.SavePerson(ctx, &p2)
+
+	// Create a person that generates priority 2 (quality_gap) suggestion
+	p3ID := uuid.New()
+	p3 := createPersonReadModel(p3ID, "Charlie", "Priority2",
+		withBirthDate("1875", deceasedBirthYear),
+		withResearchStatus(domain.ResearchStatusPossible),
+		// Low score, has some data -> priority 2 quality_gap
+	)
+	_ = readStore.SavePerson(ctx, &p3)
+
+	result, err := service.GetDiscoveryFeed(ctx, 100)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Verify priority ordering: all priority 1 before priority 2 before priority 3
+	lastPriority := 0
+	for _, item := range result.Items {
+		if item.Priority < lastPriority {
+			t.Errorf("Items not sorted by priority: found priority %d after %d", item.Priority, lastPriority)
+			break
+		}
+		lastPriority = item.Priority
+	}
+}
+
+// TestGetDiscoveryFeed_LimitParameter tests that the limit parameter works
+func TestGetDiscoveryFeed_LimitParameter(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	// Create several persons to generate many suggestions
+	for i := 0; i < 10; i++ {
+		p := createPersonReadModel(uuid.New(), "Person", strconv.Itoa(i))
+		_ = readStore.SavePerson(ctx, &p)
+	}
+
+	// Request with limit of 3
+	result, err := service.GetDiscoveryFeed(ctx, 3)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	if len(result.Items) > 3 {
+		t.Errorf("Items length = %d, want <= 3", len(result.Items))
+	}
+	// Total should reflect all available suggestions, not just the limited set
+	if result.Total <= 3 {
+		t.Errorf("Total = %d, expected more than 3 (total available)", result.Total)
+	}
+}
+
+// TestGetDiscoveryFeed_DefaultLimit tests that zero limit defaults to 20
+func TestGetDiscoveryFeed_DefaultLimit(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	// Create 25 persons to exceed default limit
+	for i := 0; i < 25; i++ {
+		p := createPersonReadModel(uuid.New(), "Person", strconv.Itoa(i))
+		_ = readStore.SavePerson(ctx, &p)
+	}
+
+	// Request with limit of 0 (should default to 20)
+	result, err := service.GetDiscoveryFeed(ctx, 0)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	if len(result.Items) > 20 {
+		t.Errorf("Items length = %d, want <= 20 (default limit)", len(result.Items))
+	}
+}
+
+// TestGetDiscoveryFeed_NoQualityGapForEmptyPerson tests that fully empty persons don't get quality_gap
+func TestGetDiscoveryFeed_NoQualityGapForEmptyPerson(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	// Create person with no data at all (hasSomeData = false)
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Empty", "Person")
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should NOT have a quality_gap suggestion for completely empty person
+	for _, item := range result.Items {
+		if item.Type == "quality_gap" && item.PersonID == personID.String() {
+			t.Error("Should not generate quality_gap for person with no data at all")
+		}
+	}
+}
+
+// TestGetDiscoveryFeed_NotOrphanedInFamily tests that persons with families don't get orphan suggestions
+func TestGetDiscoveryFeed_NotOrphanedInFamily(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	// Create person
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Connected", "Person",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Create a family with this person
+	familyID := uuid.New()
+	family := repository.FamilyReadModel{
+		ID:         familyID,
+		Partner1ID: &personID,
+		UpdatedAt:  time.Now(),
+	}
+	_ = readStore.SaveFamily(ctx, &family)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should NOT have an orphan suggestion
+	for _, item := range result.Items {
+		if item.Type == "orphan" && item.PersonID == personID.String() {
+			t.Error("Person in a family should not get an orphan suggestion")
+		}
+	}
+}
+
+// TestGetDiscoveryFeed_MissingDeathDateForDeceased tests that assessed deceased persons missing death dates get suggestions
+func TestGetDiscoveryFeed_MissingDeathDateForDeceased(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	deceasedBirthYear := currentYear - 150
+
+	// Create an assessed person born >100 years ago with no death date
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Old", "Person",
+		withBirthDate("1875", deceasedBirthYear),
+		withResearchStatus(domain.ResearchStatusProbable),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 20)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should have a missing_data suggestion for death date
+	foundDeathDateSuggestion := false
+	for _, item := range result.Items {
+		if item.Type == "missing_data" && item.PersonID == personID.String() {
+			if item.Title == "Add death date for Old Person" {
+				foundDeathDateSuggestion = true
+				break
+			}
+		}
+	}
+	if !foundDeathDateSuggestion {
+		t.Error("Expected missing_data suggestion for death date of assessed deceased person")
+	}
+}
