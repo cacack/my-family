@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { api, type DiscoverySuggestion } from '$lib/api/client';
 
 	let suggestions: DiscoverySuggestion[] = $state([]);
@@ -44,7 +45,7 @@
 		}
 	}
 
-	$effect(() => {
+	onMount(() => {
 		loadFeed();
 	});
 

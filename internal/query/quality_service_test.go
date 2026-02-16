@@ -1077,14 +1077,17 @@ func TestGetDiscoveryFeed_PriorityOrdering(t *testing.T) {
 		t.Fatalf("GetDiscoveryFeed failed: %v", err)
 	}
 
-	// Verify priority ordering: all priority 1 before priority 2 before priority 3
-	lastPriority := 0
-	for _, item := range result.Items {
-		if item.Priority < lastPriority {
-			t.Errorf("Items not sorted by priority: found priority %d after %d", item.Priority, lastPriority)
+	// Verify priority ordering: ascending priority, then alphabetical by name within same priority
+	for i := 1; i < len(result.Items); i++ {
+		prev, curr := result.Items[i-1], result.Items[i]
+		if curr.Priority < prev.Priority {
+			t.Errorf("Items not sorted by priority: found priority %d after %d", curr.Priority, prev.Priority)
 			break
 		}
-		lastPriority = item.Priority
+		if curr.Priority == prev.Priority && curr.PersonName < prev.PersonName {
+			t.Errorf("Items not sorted by name within priority %d: %q after %q", curr.Priority, curr.PersonName, prev.PersonName)
+			break
+		}
 	}
 }
 

@@ -1617,9 +1617,9 @@ type Person struct {
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
 	BirthPlaceLongitude *string    `json:"birth_place_longitude"`
-	BrickWallNote       *string    `json:"brick_wall_note,omitempty"`
-	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at,omitempty"`
-	BrickWallSince      *time.Time `json:"brick_wall_since,omitempty"`
+	BrickWallNote       *string    `json:"brick_wall_note"`
+	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at"`
+	BrickWallSince      *time.Time `json:"brick_wall_since"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`
@@ -1678,9 +1678,9 @@ type PersonDetail struct {
 
 	// BirthPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
 	BirthPlaceLongitude *string    `json:"birth_place_longitude"`
-	BrickWallNote       *string    `json:"brick_wall_note,omitempty"`
-	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at,omitempty"`
-	BrickWallSince      *time.Time `json:"brick_wall_since,omitempty"`
+	BrickWallNote       *string    `json:"brick_wall_note"`
+	BrickWallResolvedAt *time.Time `json:"brick_wall_resolved_at"`
+	BrickWallSince      *time.Time `json:"brick_wall_since"`
 
 	// DeathDate Genealogical date with flexible precision
 	DeathDate  *GenDate `json:"death_date,omitempty"`

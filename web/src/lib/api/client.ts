@@ -1354,7 +1354,7 @@ class ApiClient {
 
 	// Discovery feed endpoint
 	async getDiscoveryFeed(limit?: number): Promise<DiscoveryFeedResponse> {
-		const params = limit ? `?limit=${limit}` : '';
+		const params = limit != null ? `?limit=${limit}` : '';
 		return this.request<DiscoveryFeedResponse>('GET', `/analytics/discovery${params}`);
 	}
 }

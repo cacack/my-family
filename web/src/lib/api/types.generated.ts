@@ -1783,11 +1783,11 @@ export interface components {
             death_place_longitude?: string | null;
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
-            brick_wall_note?: string;
+            brick_wall_note?: string | null;
             /** Format: date-time */
-            brick_wall_since?: string;
+            brick_wall_since?: string | null;
             /** Format: date-time */
-            brick_wall_resolved_at?: string;
+            brick_wall_resolved_at?: string | null;
             /**
              * Format: int64
              * @description Optimistic locking version
