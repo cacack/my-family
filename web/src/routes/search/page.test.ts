@@ -106,7 +106,7 @@ describe('Advanced Search Page', () => {
 		});
 
 		it('renders Fuzzy toggle in inactive state', async () => {
-			const { container } = render(SearchPage);
+			render(SearchPage);
 			await vi.advanceTimersByTimeAsync(0);
 			const fuzzyBtn = screen.getByText('Fuzzy').closest('button');
 			expect(fuzzyBtn).toBeDefined();
@@ -598,7 +598,13 @@ describe('Advanced Search Page', () => {
 		// Use real timers here to avoid conflicts between waitFor and fake timers.
 		beforeEach(() => {
 			vi.useRealTimers();
-			vi.mocked(apiModule.api.getPlaceHierarchy).mockResolvedValue(mockPlaces);
+			vi.mocked(apiModule.api.getPlaceHierarchy).mockImplementation(async (parent?: string) => {
+				if (parent) {
+					// Child call — return empty (no further sub-places)
+					return { items: [], total: 0 };
+				}
+				return mockPlaces;
+			});
 		});
 
 		afterEach(() => {

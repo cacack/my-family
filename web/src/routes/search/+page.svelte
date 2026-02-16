@@ -77,7 +77,18 @@
 	async function loadPlaces() {
 		try {
 			const result = await api.getPlaceHierarchy();
-			allPlaces = result.items;
+			allPlaces = [...result.items];
+			// Also load child places for each top-level to enable sub-place search
+			for (const place of result.items) {
+				if (place.has_children) {
+					try {
+						const children = await api.getPlaceHierarchy(place.full_name || place.name);
+						allPlaces = [...allPlaces, ...children.items];
+					} catch {
+						// Skip — partial data is fine
+					}
+				}
+			}
 		} catch {
 			// Silently fail — autocomplete is optional
 		}
@@ -165,10 +176,15 @@
 		if (query.trim()) params.q = query.trim();
 		if (fuzzy) params.fuzzy = true;
 		if (soundex) params.soundex = true;
-		if (birthYearFrom.trim()) params.birth_date_from = `${birthYearFrom.trim()}-01-01`;
-		if (birthYearTo.trim()) params.birth_date_to = `${birthYearTo.trim()}-12-31`;
-		if (deathYearFrom.trim()) params.death_date_from = `${deathYearFrom.trim()}-01-01`;
-		if (deathYearTo.trim()) params.death_date_to = `${deathYearTo.trim()}-12-31`;
+		const isYear = (v: string) => /^\d{1,4}$/.test(v);
+		if (birthYearFrom.trim() && isYear(birthYearFrom.trim()))
+			params.birth_date_from = `${birthYearFrom.trim()}-01-01`;
+		if (birthYearTo.trim() && isYear(birthYearTo.trim()))
+			params.birth_date_to = `${birthYearTo.trim()}-12-31`;
+		if (deathYearFrom.trim() && isYear(deathYearFrom.trim()))
+			params.death_date_from = `${deathYearFrom.trim()}-01-01`;
+		if (deathYearTo.trim() && isYear(deathYearTo.trim()))
+			params.death_date_to = `${deathYearTo.trim()}-12-31`;
 		if (birthPlace.trim()) params.birth_place = birthPlace.trim();
 		if (deathPlace.trim()) params.death_place = deathPlace.trim();
 		if (sort !== 'relevance') params.sort = sort;
