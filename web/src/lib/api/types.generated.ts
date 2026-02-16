@@ -369,6 +369,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/browse/brick-walls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List brick wall research blocks */
+        get: operations["getBrickWalls"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/persons/{id}/brick-wall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark person as a brick wall */
+        put: operations["setPersonBrickWall"];
+        post?: never;
+        /** Resolve a brick wall (mark as broken through) */
+        delete: operations["resolvePersonBrickWall"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/gedcom/import": {
         parameters: {
             query?: never;
@@ -1279,6 +1316,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/analytics/discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get discovery feed suggestions
+         * @description Returns prioritized research suggestions based on data quality analysis
+         */
+        get: operations["getDiscoveryFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/snapshots": {
         parameters: {
             query?: never;
@@ -1726,6 +1783,11 @@ export interface components {
             death_place_longitude?: string | null;
             notes?: string;
             research_status?: components["schemas"]["ResearchStatus"];
+            brick_wall_note?: string | null;
+            /** Format: date-time */
+            brick_wall_since?: string | null;
+            /** Format: date-time */
+            brick_wall_resolved_at?: string | null;
             /**
              * Format: int64
              * @description Optimistic locking version
@@ -2340,6 +2402,21 @@ export interface components {
             /** @description IDs of persons at this location */
             person_ids: string[];
         };
+        BrickWallsResponse: {
+            items: components["schemas"]["BrickWallEntry"][];
+            active_count: number;
+            resolved_count: number;
+        };
+        BrickWallEntry: {
+            /** Format: uuid */
+            person_id: string;
+            person_name: string;
+            note: string;
+            /** Format: date-time */
+            since: string;
+            /** Format: date-time */
+            resolved_at?: string;
+        };
         Source: {
             /** Format: uuid */
             id: string;
@@ -2555,6 +2632,22 @@ export interface components {
             issues: string[];
             /** @description Suggested improvements */
             suggestions: string[];
+        };
+        DiscoveryFeedResponse: {
+            items: components["schemas"]["DiscoverySuggestion"][];
+            total: number;
+        };
+        DiscoverySuggestion: {
+            /** @enum {string} */
+            type: "missing_data" | "orphan" | "unassessed" | "quality_gap" | "brick_wall_resolved";
+            title: string;
+            description: string;
+            /** Format: uuid */
+            person_id?: string;
+            person_name?: string;
+            action_url: string;
+            /** @description Priority score (1=high, 2=medium, 3=low) */
+            priority: number;
         };
         /** @description Comprehensive data quality report with coverage metrics and issue aggregation */
         QualityReport: {
@@ -3921,6 +4014,77 @@ export interface operations {
                     "application/json": components["schemas"]["MapLocationsResponse"];
                 };
             };
+        };
+    };
+    getBrickWalls: {
+        parameters: {
+            query?: {
+                include_resolved?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Brick wall list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrickWallsResponse"];
+                };
+            };
+        };
+    };
+    setPersonBrickWall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Description of the research block */
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Brick wall set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resolvePersonBrickWall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["personId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Brick wall resolved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     importGedcom: {
@@ -5415,6 +5579,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Statistics"];
+                };
+            };
+        };
+    };
+    getDiscoveryFeed: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Discovery feed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryFeedResponse"];
                 };
             };
         };

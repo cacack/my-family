@@ -3,6 +3,9 @@ package query
 import (
 	"context"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/repository"
 )
@@ -358,4 +361,70 @@ func (s *BrowseService) GetMapLocations(ctx context.Context) (*MapLocationsResul
 		Items: items,
 		Total: len(items),
 	}, nil
+}
+
+// BrickWallsResult contains the brick wall list response.
+type BrickWallsResult struct {
+	Items         []BrickWallItem `json:"items"`
+	ActiveCount   int             `json:"active_count"`
+	ResolvedCount int             `json:"resolved_count"`
+}
+
+// BrickWallItem represents a person with a brick wall status.
+type BrickWallItem struct {
+	PersonID   uuid.UUID  `json:"person_id"`
+	PersonName string     `json:"person_name"`
+	Note       string     `json:"note"`
+	Since      time.Time  `json:"since"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+}
+
+// GetBrickWalls returns brick wall entries.
+func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool) (*BrickWallsResult, error) {
+	// Always fetch all entries so counts are accurate regardless of filter
+	entries, err := s.readStore.GetBrickWalls(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+
+	activeCount := 0
+	resolvedCount := 0
+	var filtered []repository.BrickWallEntry
+	for _, e := range entries {
+		if e.ResolvedAt != nil {
+			resolvedCount++
+		} else {
+			activeCount++
+		}
+		if includeResolved || e.ResolvedAt == nil {
+			filtered = append(filtered, e)
+		}
+	}
+
+	items := make([]BrickWallItem, len(filtered))
+	for i, e := range filtered {
+		items[i] = BrickWallItem{
+			PersonID:   e.PersonID,
+			PersonName: e.PersonName,
+			Note:       e.Note,
+			Since:      e.Since,
+			ResolvedAt: e.ResolvedAt,
+		}
+	}
+
+	return &BrickWallsResult{
+		Items:         items,
+		ActiveCount:   activeCount,
+		ResolvedCount: resolvedCount,
+	}, nil
+}
+
+// SetBrickWall marks a person as a brick wall with a note.
+func (s *BrowseService) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
+	return s.readStore.SetBrickWall(ctx, personID, note)
+}
+
+// ResolveBrickWall resolves a brick wall (marks as broken through).
+func (s *BrowseService) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
+	return s.readStore.ResolveBrickWall(ctx, personID)
 }

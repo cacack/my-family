@@ -1451,6 +1451,64 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 	return results, nil
 }
 
+// SetBrickWall marks a person as a brick wall with a note.
+func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, exists := s.persons[personID]
+	if !exists {
+		return nil
+	}
+	now := time.Now()
+	p.BrickWallNote = note
+	p.BrickWallSince = &now
+	p.BrickWallResolvedAt = nil
+	return nil
+}
+
+// ResolveBrickWall marks a brick wall as resolved.
+func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, exists := s.persons[personID]
+	if !exists {
+		return nil
+	}
+	now := time.Now()
+	p.BrickWallResolvedAt = &now
+	return nil
+}
+
+// GetBrickWalls returns persons with brick wall status.
+func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var entries []repository.BrickWallEntry
+	for _, p := range s.persons {
+		if p.BrickWallSince == nil {
+			continue
+		}
+		if !includeResolved && p.BrickWallResolvedAt != nil {
+			continue
+		}
+		entries = append(entries, repository.BrickWallEntry{
+			PersonID:   p.ID,
+			PersonName: p.FullName,
+			Note:       p.BrickWallNote,
+			Since:      *p.BrickWallSince,
+			ResolvedAt: p.BrickWallResolvedAt,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Since.After(entries[j].Since)
+	})
+
+	return entries, nil
+}
+
 // GetNote retrieves a note by ID.
 func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
 	s.mu.RLock()

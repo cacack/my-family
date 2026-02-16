@@ -11,25 +11,28 @@ import (
 
 // PersonReadModel represents a person in the read model.
 type PersonReadModel struct {
-	ID             uuid.UUID             `json:"id"`
-	GivenName      string                `json:"given_name"`
-	Surname        string                `json:"surname"`
-	FullName       string                `json:"full_name"`
-	Gender         domain.Gender         `json:"gender,omitempty"`
-	BirthDateRaw   string                `json:"birth_date_raw,omitempty"`
-	BirthDateSort  *time.Time            `json:"birth_date_sort,omitempty"`
-	BirthPlace     string                `json:"birth_place,omitempty"`
-	BirthPlaceLat  *string               `json:"birth_place_lat,omitempty"`
-	BirthPlaceLong *string               `json:"birth_place_long,omitempty"`
-	DeathDateRaw   string                `json:"death_date_raw,omitempty"`
-	DeathDateSort  *time.Time            `json:"death_date_sort,omitempty"`
-	DeathPlace     string                `json:"death_place,omitempty"`
-	DeathPlaceLat  *string               `json:"death_place_lat,omitempty"`
-	DeathPlaceLong *string               `json:"death_place_long,omitempty"`
-	Notes          string                `json:"notes,omitempty"`
-	ResearchStatus domain.ResearchStatus `json:"research_status,omitempty"`
-	Version        int64                 `json:"version"`
-	UpdatedAt      time.Time             `json:"updated_at"`
+	ID                  uuid.UUID             `json:"id"`
+	GivenName           string                `json:"given_name"`
+	Surname             string                `json:"surname"`
+	FullName            string                `json:"full_name"`
+	Gender              domain.Gender         `json:"gender,omitempty"`
+	BirthDateRaw        string                `json:"birth_date_raw,omitempty"`
+	BirthDateSort       *time.Time            `json:"birth_date_sort,omitempty"`
+	BirthPlace          string                `json:"birth_place,omitempty"`
+	BirthPlaceLat       *string               `json:"birth_place_lat,omitempty"`
+	BirthPlaceLong      *string               `json:"birth_place_long,omitempty"`
+	DeathDateRaw        string                `json:"death_date_raw,omitempty"`
+	DeathDateSort       *time.Time            `json:"death_date_sort,omitempty"`
+	DeathPlace          string                `json:"death_place,omitempty"`
+	DeathPlaceLat       *string               `json:"death_place_lat,omitempty"`
+	DeathPlaceLong      *string               `json:"death_place_long,omitempty"`
+	Notes               string                `json:"notes,omitempty"`
+	ResearchStatus      domain.ResearchStatus `json:"research_status,omitempty"`
+	BrickWallNote       string                `json:"brick_wall_note,omitempty"`
+	BrickWallSince      *time.Time            `json:"brick_wall_since,omitempty"`
+	BrickWallResolvedAt *time.Time            `json:"brick_wall_resolved_at,omitempty"`
+	Version             int64                 `json:"version"`
+	UpdatedAt           time.Time             `json:"updated_at"`
 }
 
 // FamilyReadModel represents a family in the read model.
@@ -342,6 +345,11 @@ type ReadModelStore interface {
 
 	// Map operations
 	GetMapLocations(ctx context.Context) ([]MapLocation, error)
+
+	// Brick wall operations
+	SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error
+	ResolveBrickWall(ctx context.Context, personID uuid.UUID) error
+	GetBrickWalls(ctx context.Context, includeResolved bool) ([]BrickWallEntry, error)
 }
 
 // SurnameEntry represents a surname with count.
@@ -370,6 +378,15 @@ type MapLocation struct {
 	EventType string      `json:"event_type"` // "birth" or "death"
 	Count     int         `json:"count"`
 	PersonIDs []uuid.UUID `json:"person_ids"`
+}
+
+// BrickWallEntry represents a person with a brick wall status for browsing.
+type BrickWallEntry struct {
+	PersonID   uuid.UUID  `json:"person_id"`
+	PersonName string     `json:"person_name"`
+	Note       string     `json:"note"`
+	Since      time.Time  `json:"since"`
+	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
 }
 
 // PlaceEntry represents a place with count and hierarchy info.

@@ -44,6 +44,9 @@ export interface Person {
 	death_place?: string;
 	notes?: string;
 	research_status?: ResearchStatus;
+	brick_wall_note?: string | null;
+	brick_wall_since?: string | null;
+	brick_wall_resolved_at?: string | null;
 	version: number;
 }
 
@@ -561,6 +564,36 @@ export interface MapLocation {
 	event_type: 'birth' | 'death';
 	count: number;
 	person_ids: string[];
+}
+
+export interface BrickWallEntry {
+	person_id: string;
+	person_name: string;
+	note: string;
+	since: string;
+	resolved_at?: string;
+}
+
+export interface BrickWallsResponse {
+	items: BrickWallEntry[];
+	active_count: number;
+	resolved_count: number;
+}
+
+// Discovery feed types
+export interface DiscoverySuggestion {
+	type: 'missing_data' | 'orphan' | 'unassessed' | 'quality_gap' | 'brick_wall_resolved';
+	title: string;
+	description: string;
+	person_id?: string;
+	person_name?: string;
+	action_url: string;
+	priority: number;
+}
+
+export interface DiscoveryFeedResponse {
+	items: DiscoverySuggestion[];
+	total: number;
 }
 
 export interface MediaUpdate {
@@ -1210,6 +1243,22 @@ class ApiClient {
 		return this.request<MapLocationsResponse>('GET', '/map/locations');
 	}
 
+	// Brick wall endpoints
+	async getBrickWalls(includeResolved?: boolean): Promise<BrickWallsResponse> {
+		const params = includeResolved ? '?include_resolved=true' : '';
+		return this.request<BrickWallsResponse>('GET', `/browse/brick-walls${params}`);
+	}
+
+	async setPersonBrickWall(personId: string, note: string): Promise<void> {
+		return this.request<void>('PUT', `/persons/${encodeURIComponent(personId)}/brick-wall`, {
+			note
+		});
+	}
+
+	async resolvePersonBrickWall(personId: string): Promise<void> {
+		return this.request<void>('DELETE', `/persons/${encodeURIComponent(personId)}/brick-wall`);
+	}
+
 	// Relationship endpoint
 	async getRelationship(personId1: string, personId2: string): Promise<RelationshipResult> {
 		return this.request<RelationshipResult>(
@@ -1301,6 +1350,12 @@ class ApiClient {
 		return this.request<RollbackResponse>('POST', `/citations/${citationId}/rollback`, {
 			target_version: targetVersion
 		});
+	}
+
+	// Discovery feed endpoint
+	async getDiscoveryFeed(limit?: number): Promise<DiscoveryFeedResponse> {
+		const params = limit != null ? `?limit=${limit}` : '';
+		return this.request<DiscoveryFeedResponse>('GET', `/analytics/discovery${params}`);
 	}
 }
 
