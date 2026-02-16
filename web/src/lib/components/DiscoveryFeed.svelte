@@ -25,11 +25,9 @@
 		[...new Set(suggestions.map((s) => s.type))]
 	);
 
-	let displayedSuggestions = $derived(
-		filteredSuggestions.slice(0, 10)
-	);
+	let displayedSuggestions = $derived(filteredSuggestions);
 
-	let hasMore = $derived(filteredSuggestions.length > 10);
+	let hasMore = $derived(total > suggestions.length);
 
 	async function loadFeed() {
 		loading = true;
@@ -122,9 +120,9 @@
 
 		{#if hasMore}
 			<div class="view-more">
-				<button class="view-more-btn" onclick={() => activeFilter = null}>
-					View all {filteredSuggestions.length} suggestions
-				</button>
+				<span class="view-more-text">
+					Showing {suggestions.length} of {total} suggestions
+				</span>
 			</div>
 		{/if}
 	{/if}
@@ -278,20 +276,9 @@
 		margin-top: 1rem;
 	}
 
-	.view-more-btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		background: white;
+	.view-more-text {
 		font-size: 0.8125rem;
-		color: #3b82f6;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.view-more-btn:hover {
-		background: #f8fafc;
-		border-color: #3b82f6;
+		color: #64748b;
 	}
 
 	@media (max-width: 640px) {

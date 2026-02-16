@@ -111,22 +111,25 @@ func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*Disc
 
 	var items []DiscoverySuggestion
 
-	// Cap orphan checks to avoid N+1 query issues
-	const orphanCheckLimit = 50
-	orphanChecked := 0
+	// Build connected persons set in bulk to avoid N+1 orphan queries
+	connectedIDs, err := s.buildConnectedPersonIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, person := range persons {
 		items = append(items, s.missingDateSuggestions(person)...)
 
-		if orphanChecked < orphanCheckLimit {
-			suggestion, orphanErr := s.orphanSuggestion(ctx, person)
-			if orphanErr != nil {
-				return nil, orphanErr
-			}
-			orphanChecked++
-			if suggestion != nil {
-				items = append(items, *suggestion)
-			}
+		if !connectedIDs[person.ID] {
+			items = append(items, DiscoverySuggestion{
+				Type:        "orphan",
+				Title:       fmt.Sprintf("Connect %s to a family", person.FullName),
+				Description: fmt.Sprintf("%s has no family connections. This may indicate a data import issue or they need to be linked to existing families.", person.FullName),
+				PersonID:    person.ID.String(),
+				PersonName:  person.FullName,
+				ActionURL:   "/persons/" + person.ID.String(),
+				Priority:    2,
+			})
 		}
 
 		if suggestion := s.unassessedSuggestion(person); suggestion != nil {
@@ -203,28 +206,6 @@ func (s *QualityService) missingDateSuggestions(person repository.PersonReadMode
 	}
 
 	return suggestions
-}
-
-// orphanSuggestion returns an orphan suggestion if the person has no family connections.
-func (s *QualityService) orphanSuggestion(ctx context.Context, person repository.PersonReadModel) (*DiscoverySuggestion, error) {
-	isOrphan, err := s.isOrphaned(ctx, person.ID)
-	if err != nil {
-		return nil, err
-	}
-	if !isOrphan {
-		return nil, nil
-	}
-	name := person.FullName
-	idStr := person.ID.String()
-	return &DiscoverySuggestion{
-		Type:        "orphan",
-		Title:       fmt.Sprintf("Connect %s to a family", name),
-		Description: fmt.Sprintf("%s has no family connections. This may indicate a data import issue or they need to be linked to existing families.", name),
-		PersonID:    idStr,
-		PersonName:  name,
-		ActionURL:   "/persons/" + idStr,
-		Priority:    2,
-	}, nil
 }
 
 // unassessedSuggestion returns an unassessed suggestion if the person has not been reviewed.
@@ -501,6 +482,33 @@ func (s *QualityService) computePersonScore(_ context.Context, person repository
 	normalizedScore := (score / 70) * 100
 
 	return normalizedScore, issues
+}
+
+// buildConnectedPersonIDs returns a set of person IDs that have at least one family connection
+// (as partner or child). This is a bulk operation that avoids N+1 queries for orphan detection.
+func (s *QualityService) buildConnectedPersonIDs(ctx context.Context) (map[uuid.UUID]bool, error) {
+	families, err := repository.ListAll(ctx, 1000, s.readStore.ListFamilies)
+	if err != nil {
+		return nil, err
+	}
+
+	connected := make(map[uuid.UUID]bool)
+	for _, f := range families {
+		if f.Partner1ID != nil {
+			connected[*f.Partner1ID] = true
+		}
+		if f.Partner2ID != nil {
+			connected[*f.Partner2ID] = true
+		}
+		children, childErr := s.readStore.GetFamilyChildren(ctx, f.ID)
+		if childErr != nil {
+			return nil, childErr
+		}
+		for _, c := range children {
+			connected[c.PersonID] = true
+		}
+	}
+	return connected, nil
 }
 
 // isOrphaned checks if a person has no family connections.

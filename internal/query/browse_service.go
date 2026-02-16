@@ -381,26 +381,34 @@ type BrickWallItem struct {
 
 // GetBrickWalls returns brick wall entries.
 func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool) (*BrickWallsResult, error) {
-	entries, err := s.readStore.GetBrickWalls(ctx, includeResolved)
+	// Always fetch all entries so counts are accurate regardless of filter
+	entries, err := s.readStore.GetBrickWalls(ctx, true)
 	if err != nil {
 		return nil, err
 	}
 
-	items := make([]BrickWallItem, len(entries))
 	activeCount := 0
 	resolvedCount := 0
-	for i, e := range entries {
+	var filtered []repository.BrickWallEntry
+	for _, e := range entries {
+		if e.ResolvedAt != nil {
+			resolvedCount++
+		} else {
+			activeCount++
+		}
+		if includeResolved || e.ResolvedAt == nil {
+			filtered = append(filtered, e)
+		}
+	}
+
+	items := make([]BrickWallItem, len(filtered))
+	for i, e := range filtered {
 		items[i] = BrickWallItem{
 			PersonID:   e.PersonID,
 			PersonName: e.PersonName,
 			Note:       e.Note,
 			Since:      e.Since,
 			ResolvedAt: e.ResolvedAt,
-		}
-		if e.ResolvedAt != nil {
-			resolvedCount++
-		} else {
-			activeCount++
 		}
 	}
 
