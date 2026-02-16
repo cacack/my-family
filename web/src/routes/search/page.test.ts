@@ -620,10 +620,8 @@ describe('Advanced Search Page', () => {
 			// Wait for debounce (300ms) to populate suggestions
 			await new Promise(r => setTimeout(r, 500));
 
-			// Re-focus the input so the onfocus handler sees populated suggestions
+			// Re-focus to open dropdown (blur is now synchronous, no setTimeout race)
 			await fireEvent.blur(birthPlaceInput);
-			// Wait for the onblur setTimeout (200ms) to complete before re-focusing
-			await new Promise(r => setTimeout(r, 250));
 			await fireEvent.focus(birthPlaceInput);
 
 			await waitFor(() => {

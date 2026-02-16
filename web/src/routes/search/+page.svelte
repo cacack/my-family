@@ -387,7 +387,7 @@
 							onfocus={() => {
 								if (birthPlaceSuggestions.length > 0) showBirthPlaceDropdown = true;
 							}}
-							onblur={() => setTimeout(() => { showBirthPlaceDropdown = false; birthPlaceHighlight = -1; }, 200)}
+							onblur={() => { showBirthPlaceDropdown = false; birthPlaceHighlight = -1; }}
 							onkeydown={handleBirthPlaceKeydown}
 							placeholder="e.g., Springfield, IL"
 							role="combobox"
@@ -399,7 +399,8 @@
 							autocomplete="off"
 						/>
 						{#if showBirthPlaceDropdown && birthPlaceSuggestions.length > 0}
-							<div class="place-dropdown" role="listbox" id="birth-place-listbox" aria-label="Birth place suggestions">
+							<!-- svelte-ignore a11y_interactive_supports_focus -->
+						<div class="place-dropdown" role="listbox" id="birth-place-listbox" aria-label="Birth place suggestions" onmousedown={(e) => e.preventDefault()}>
 								{#each birthPlaceSuggestions as place, i}
 									<button
 										type="button"
@@ -428,7 +429,7 @@
 							onfocus={() => {
 								if (deathPlaceSuggestions.length > 0) showDeathPlaceDropdown = true;
 							}}
-							onblur={() => setTimeout(() => { showDeathPlaceDropdown = false; deathPlaceHighlight = -1; }, 200)}
+							onblur={() => { showDeathPlaceDropdown = false; deathPlaceHighlight = -1; }}
 							onkeydown={handleDeathPlaceKeydown}
 							placeholder="e.g., Springfield, IL"
 							role="combobox"
@@ -440,7 +441,8 @@
 							autocomplete="off"
 						/>
 						{#if showDeathPlaceDropdown && deathPlaceSuggestions.length > 0}
-							<div class="place-dropdown" role="listbox" id="death-place-listbox" aria-label="Death place suggestions">
+							<!-- svelte-ignore a11y_interactive_supports_focus -->
+						<div class="place-dropdown" role="listbox" id="death-place-listbox" aria-label="Death place suggestions" onmousedown={(e) => e.preventDefault()}>
 								{#each deathPlaceSuggestions as place, i}
 									<button
 										type="button"
