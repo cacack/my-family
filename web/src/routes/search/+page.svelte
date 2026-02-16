@@ -37,8 +37,6 @@
 	let showDeathPlaceDropdown = $state(false);
 	let birthPlaceHighlight = $state(-1);
 	let deathPlaceHighlight = $state(-1);
-	let birthPlaceDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-	let deathPlaceDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Derived state
 	let hasAnyCriteria = $derived(
@@ -59,61 +57,47 @@
 	// Debounced birth place filtering
 	$effect(() => {
 		const val = birthPlace;
-		if (birthPlaceDebounceTimer) clearTimeout(birthPlaceDebounceTimer);
-		birthPlaceDebounceTimer = setTimeout(() => {
-			filterBirthPlaces(val);
+		const timer = setTimeout(() => {
+			birthPlaceSuggestions = filterPlaces(val);
 		}, 300);
+		return () => clearTimeout(timer);
 	});
 
 	// Debounced death place filtering
 	$effect(() => {
 		const val = deathPlace;
-		if (deathPlaceDebounceTimer) clearTimeout(deathPlaceDebounceTimer);
-		deathPlaceDebounceTimer = setTimeout(() => {
-			filterDeathPlaces(val);
+		const timer = setTimeout(() => {
+			deathPlaceSuggestions = filterPlaces(val);
 		}, 300);
+		return () => clearTimeout(timer);
 	});
 
 	async function loadPlaces() {
 		try {
 			const result = await api.getPlaceHierarchy();
 			allPlaces = [...result.items];
-			// Also load child places for each top-level to enable sub-place search
-			for (const place of result.items) {
-				if (place.has_children) {
-					try {
-						const children = await api.getPlaceHierarchy(place.full_name || place.name);
-						allPlaces = [...allPlaces, ...children.items];
-					} catch {
-						// Skip — partial data is fine
-					}
-				}
-			}
+			// Load child places in parallel to avoid N+1 serial waterfall
+			const childPromises = result.items
+				.filter((place) => place.has_children)
+				.map((place) =>
+					api.getPlaceHierarchy(place.full_name || place.name).catch(() => ({ items: [] as PlaceEntry[] }))
+				);
+			const childResults = await Promise.all(childPromises);
+			allPlaces = [...allPlaces, ...childResults.flatMap((r) => r.items)];
 		} catch {
 			// Silently fail — autocomplete is optional
 		}
 	}
 
-	function filterBirthPlaces(input: string) {
-		if (!input.trim()) {
-			birthPlaceSuggestions = [];
-			return;
-		}
+	function filterPlaces(input: string): PlaceEntry[] {
+		if (!input.trim()) return [];
 		const lower = input.toLowerCase();
-		birthPlaceSuggestions = allPlaces.filter((p) =>
-			p.full_name.toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower)
-		).slice(0, 10);
-	}
-
-	function filterDeathPlaces(input: string) {
-		if (!input.trim()) {
-			deathPlaceSuggestions = [];
-			return;
-		}
-		const lower = input.toLowerCase();
-		deathPlaceSuggestions = allPlaces.filter((p) =>
-			p.full_name.toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower)
-		).slice(0, 10);
+		return allPlaces
+			.filter(
+				(p) =>
+					p.full_name.toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower)
+			)
+			.slice(0, 10);
 	}
 
 	function selectBirthPlace(place: PlaceEntry) {
@@ -187,10 +171,8 @@
 			params.death_date_to = `${deathYearTo.trim()}-12-31`;
 		if (birthPlace.trim()) params.birth_place = birthPlace.trim();
 		if (deathPlace.trim()) params.death_place = deathPlace.trim();
-		if (sort !== 'relevance') params.sort = sort;
-		else params.sort = 'relevance';
-		if (order !== 'desc') params.order = order;
-		else params.order = 'desc';
+		params.sort = sort;
+		params.order = order;
 		params.limit = limit;
 
 		return params;
@@ -498,7 +480,7 @@
 					{#if loading}
 						<span class="results-count" aria-live="polite">Searching...</span>
 					{:else}
-						<span class="results-count">Showing {results.length} of {total} results</span>
+						<span class="results-count" aria-live="polite">Showing {results.length} of {total} results</span>
 					{/if}
 					{#if soundex}
 						<span class="mode-badge">Phonetic</span>

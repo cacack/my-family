@@ -472,7 +472,7 @@ describe('Advanced Search Page', () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			await waitFor(() => {
-				const scoreBadges = container.querySelectorAll('.score-badge');
+				const scoreBadges = container.querySelectorAll('.results-table .score-badge');
 				// person-1 score=0.95 -> score-high
 				expect(scoreBadges[0].classList.contains('score-high')).toBe(true);
 				expect(scoreBadges[0].textContent).toBe('95%');
@@ -489,7 +489,7 @@ describe('Advanced Search Page', () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			await waitFor(() => {
-				const scoreBadges = container.querySelectorAll('.score-badge');
+				const scoreBadges = container.querySelectorAll('.results-table .score-badge');
 				// person-2 score=0.65 -> score-medium
 				expect(scoreBadges[1].classList.contains('score-medium')).toBe(true);
 				expect(scoreBadges[1].textContent).toBe('65%');
@@ -506,7 +506,7 @@ describe('Advanced Search Page', () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			await waitFor(() => {
-				const scoreBadges = container.querySelectorAll('.score-badge');
+				const scoreBadges = container.querySelectorAll('.results-table .score-badge');
 				// person-3 score=0.3 -> score-low
 				expect(scoreBadges[2].classList.contains('score-low')).toBe(true);
 				expect(scoreBadges[2].textContent).toBe('30%');
