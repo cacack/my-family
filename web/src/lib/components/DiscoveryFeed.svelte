@@ -2,13 +2,15 @@
 	import { onMount } from 'svelte';
 	import { api, type DiscoverySuggestion } from '$lib/api/client';
 
+	type SuggestionType = DiscoverySuggestion['type'];
+
 	let suggestions: DiscoverySuggestion[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
 	let error: string | null = $state(null);
-	let activeFilter: string | null = $state(null);
+	let activeFilter: SuggestionType | null = $state(null);
 
-	const typeLabels: Record<string, string> = {
+	const typeLabels: Record<SuggestionType, string> = {
 		missing_data: 'Missing Data',
 		orphan: 'Orphans',
 		unassessed: 'Unassessed',
@@ -49,7 +51,7 @@
 		loadFeed();
 	});
 
-	function toggleFilter(type: string) {
+	function toggleFilter(type: SuggestionType) {
 		if (activeFilter === type) {
 			activeFilter = null;
 		} else {
@@ -70,6 +72,7 @@
 			<div class="filter-chips" role="group" aria-label="Filter suggestions by type">
 				{#each availableTypes as type}
 					<button
+						type="button"
 						class="chip"
 						class:active={activeFilter === type}
 						onclick={() => toggleFilter(type)}

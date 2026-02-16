@@ -2646,6 +2646,7 @@ export interface components {
             person_id?: string;
             person_name?: string;
             action_url: string;
+            /** @description Priority score (1=high, 2=medium, 3=low) */
             priority: number;
         };
         /** @description Comprehensive data quality report with coverage metrics and issue aggregation */

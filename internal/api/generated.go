@@ -865,13 +865,15 @@ type DiscoveryFeedResponse struct {
 
 // DiscoverySuggestion defines model for DiscoverySuggestion.
 type DiscoverySuggestion struct {
-	ActionUrl   string                  `json:"action_url"`
-	Description string                  `json:"description"`
-	PersonId    *openapi_types.UUID     `json:"person_id,omitempty"`
-	PersonName  *string                 `json:"person_name,omitempty"`
-	Priority    int                     `json:"priority"`
-	Title       string                  `json:"title"`
-	Type        DiscoverySuggestionType `json:"type"`
+	ActionUrl   string              `json:"action_url"`
+	Description string              `json:"description"`
+	PersonId    *openapi_types.UUID `json:"person_id,omitempty"`
+	PersonName  *string             `json:"person_name,omitempty"`
+
+	// Priority Priority score (1=high, 2=medium, 3=low)
+	Priority int                     `json:"priority"`
+	Title    string                  `json:"title"`
+	Type     DiscoverySuggestionType `json:"type"`
 }
 
 // DiscoverySuggestionType defines model for DiscoverySuggestion.Type.

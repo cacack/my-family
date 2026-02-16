@@ -44,9 +44,9 @@ export interface Person {
 	death_place?: string;
 	notes?: string;
 	research_status?: ResearchStatus;
-	brick_wall_note?: string;
-	brick_wall_since?: string;
-	brick_wall_resolved_at?: string;
+	brick_wall_note?: string | null;
+	brick_wall_since?: string | null;
+	brick_wall_resolved_at?: string | null;
 	version: number;
 }
 

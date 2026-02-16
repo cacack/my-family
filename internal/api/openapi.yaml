@@ -689,6 +689,7 @@ paths:
               properties:
                 note:
                   type: string
+                  minLength: 1
                   maxLength: 2000
                   description: Description of the research block
       responses:
@@ -4468,6 +4469,8 @@ components:
           type: string
         priority:
           type: integer
+          minimum: 1
+          description: Priority score (1=high, 2=medium, 3=low)
 
     QualityReport:
       type: object
