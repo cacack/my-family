@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.0](https://github.com/cacack/my-family/compare/v0.9.0...v0.10.0) (2026-02-17)
+
+
+### Features
+
+* **domain:** support negative assertions (NO tag) in import/export ([c32189b](https://github.com/cacack/my-family/commit/c32189bd2328d20cc3046fa596fbd3ea3762d2a1))
+* **export:** add citations export endpoint and UI ([60b7f98](https://github.com/cacack/my-family/commit/60b7f9892763813e874deb947d12e48c2dc9e235))
+
+
+### Bug Fixes
+
+* add migration for is_negated column on existing databases ([ba0fbf0](https://github.com/cacack/my-family/commit/ba0fbf01b12c94d93930f6990caa2a75924d28a9))
+* address CodeRabbit review feedback on negative assertions ([b5bc577](https://github.com/cacack/my-family/commit/b5bc5775573a1aae08fbb218fa305853aa0c8787))
+
 ## [0.9.0](https://github.com/cacack/my-family/compare/v0.8.0...v0.9.0) (2026-02-16)
 
 
