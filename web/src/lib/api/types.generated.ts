@@ -1040,6 +1040,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/export/citations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export citations data
+         * @description Export all citations data in a structured format
+         */
+        get: operations["exportCitations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/export/events": {
         parameters: {
             query?: never;
@@ -5269,6 +5289,29 @@ export interface operations {
                 content: {
                     "application/json": {
                         sources?: components["schemas"]["Source"][];
+                        total?: number;
+                    };
+                };
+            };
+        };
+    };
+    exportCitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Citations data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        citations?: components["schemas"]["Citation"][];
                         total?: number;
                     };
                 };

@@ -2899,6 +2899,9 @@ type ServerInterface interface {
 	// Export attributes data
 	// (GET /export/attributes)
 	ExportAttributes(ctx echo.Context) error
+	// Export citations data
+	// (GET /export/citations)
+	ExportCitations(ctx echo.Context) error
 	// Get export size estimation
 	// (GET /export/estimate)
 	GetExportEstimate(ctx echo.Context) error
@@ -3632,6 +3635,15 @@ func (w *ServerInterfaceWrapper) ExportAttributes(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ExportAttributes(ctx)
+	return err
+}
+
+// ExportCitations converts echo context to params.
+func (w *ServerInterfaceWrapper) ExportCitations(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ExportCitations(ctx)
 	return err
 }
 
@@ -5422,6 +5434,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.POST(baseURL+"/citations/:id/rollback", wrapper.RollbackCitation)
 	router.GET(baseURL+"/descendancy/:id", wrapper.GetDescendancy)
 	router.GET(baseURL+"/export/attributes", wrapper.ExportAttributes)
+	router.GET(baseURL+"/export/citations", wrapper.ExportCitations)
 	router.GET(baseURL+"/export/estimate", wrapper.GetExportEstimate)
 	router.GET(baseURL+"/export/events", wrapper.ExportEvents)
 	router.GET(baseURL+"/export/families", wrapper.ExportFamilies)
@@ -6112,6 +6125,25 @@ type ExportAttributesResponseObject interface {
 type ExportAttributes200JSONResponse AttributesExportResponse
 
 func (response ExportAttributes200JSONResponse) VisitExportAttributesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportCitationsRequestObject struct {
+}
+
+type ExportCitationsResponseObject interface {
+	VisitExportCitationsResponse(w http.ResponseWriter) error
+}
+
+type ExportCitations200JSONResponse struct {
+	Citations *[]Citation `json:"citations,omitempty"`
+	Total     *int        `json:"total,omitempty"`
+}
+
+func (response ExportCitations200JSONResponse) VisitExportCitationsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
@@ -8814,6 +8846,9 @@ type StrictServerInterface interface {
 	// Export attributes data
 	// (GET /export/attributes)
 	ExportAttributes(ctx context.Context, request ExportAttributesRequestObject) (ExportAttributesResponseObject, error)
+	// Export citations data
+	// (GET /export/citations)
+	ExportCitations(ctx context.Context, request ExportCitationsRequestObject) (ExportCitationsResponseObject, error)
 	// Get export size estimation
 	// (GET /export/estimate)
 	GetExportEstimate(ctx context.Context, request GetExportEstimateRequestObject) (GetExportEstimateResponseObject, error)
@@ -9669,6 +9704,29 @@ func (sh *strictHandler) ExportAttributes(ctx echo.Context) error {
 		return err
 	} else if validResponse, ok := response.(ExportAttributesResponseObject); ok {
 		return validResponse.VisitExportAttributesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ExportCitations operation middleware
+func (sh *strictHandler) ExportCitations(ctx echo.Context) error {
+	var request ExportCitationsRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportCitations(ctx.Request().Context(), request.(ExportCitationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportCitations")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ExportCitationsResponseObject); ok {
+		return validResponse.VisitExportCitationsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

@@ -1781,6 +1781,27 @@ paths:
                   total:
                     type: integer
 
+  /export/citations:
+    get:
+      operationId: exportCitations
+      summary: Export citations data
+      description: Export all citations data in a structured format
+      tags: [export]
+      responses:
+        '200':
+          description: Citations data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  citations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Citation'
+                  total:
+                    type: integer
+
   /export/events:
     get:
       operationId: exportEvents
