@@ -2563,6 +2563,201 @@ ANOTHER BAD LINE WITHOUT LEVEL
 	}
 }
 
+func TestImportNegatedDeathEvent(t *testing.T) {
+	// NO DEAT means "this person is concluded to not have died" (i.e., still living
+	// as far as research indicates). It should be stored as a negated LifeEvent,
+	// NOT on the Person's death fields.
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Alice /Living/
+1 SEX F
+1 BIRT
+2 DATE 15 JAN 1990
+1 NO DEAT
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	// Person should NOT have death date/place set (it's a negated event)
+	if persons[0].DeathDate != "" {
+		t.Errorf("DeathDate should be empty for negated death, got %q", persons[0].DeathDate)
+	}
+	if persons[0].DeathPlace != "" {
+		t.Errorf("DeathPlace should be empty for negated death, got %q", persons[0].DeathPlace)
+	}
+
+	// Birth should still be stored on Person normally
+	if persons[0].BirthDate != "15 JAN 1990" {
+		t.Errorf("BirthDate = %q, want '15 JAN 1990'", persons[0].BirthDate)
+	}
+
+	// Should have 1 event: the negated death
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+
+	e := events[0]
+	if e.FactType != domain.FactPersonDeath {
+		t.Errorf("event FactType = %s, want %s", e.FactType, domain.FactPersonDeath)
+	}
+	if !e.IsNegated {
+		t.Error("event should be negated (IsNegated=true)")
+	}
+	if e.OwnerType != "person" {
+		t.Errorf("event OwnerType = %s, want 'person'", e.OwnerType)
+	}
+}
+
+func TestImportNegatedBirthEvent(t *testing.T) {
+	// NO BIRT is rare but valid (e.g., for a person whose birth record is explicitly
+	// concluded not to exist). Should be stored as a negated LifeEvent.
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Unknown /Person/
+1 NO BIRT
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Person should NOT have birth date/place set
+	if persons[0].BirthDate != "" {
+		t.Errorf("BirthDate should be empty for negated birth, got %q", persons[0].BirthDate)
+	}
+
+	// Should have 1 event: the negated birth
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+
+	if events[0].FactType != domain.FactPersonBirth {
+		t.Errorf("event FactType = %s, want %s", events[0].FactType, domain.FactPersonBirth)
+	}
+	if !events[0].IsNegated {
+		t.Error("event should be negated")
+	}
+}
+
+func TestImportNegatedMarriageEvent(t *testing.T) {
+	// NO MARR on a family means "this couple never married" (explicit research conclusion).
+	// Should be stored as a negated LifeEvent, not on Family's marriage fields.
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I1@
+1 WIFE @I2@
+1 NO MARR
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, families, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(families) != 1 {
+		t.Fatalf("len(families) = %d, want 1", len(families))
+	}
+
+	// Family should NOT have marriage date/place set
+	fam := families[0]
+	if fam.MarriageDate != "" {
+		t.Errorf("MarriageDate should be empty for negated marriage, got %q", fam.MarriageDate)
+	}
+	if fam.MarriagePlace != "" {
+		t.Errorf("MarriagePlace should be empty for negated marriage, got %q", fam.MarriagePlace)
+	}
+	// Relationship type should NOT be set to marriage
+	if fam.RelationshipType == domain.RelationMarriage {
+		t.Error("RelationshipType should not be 'marriage' for negated marriage event")
+	}
+
+	// Should have 1 event: the negated marriage
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+
+	e := events[0]
+	if e.FactType != domain.FactFamilyMarriage {
+		t.Errorf("event FactType = %s, want %s", e.FactType, domain.FactFamilyMarriage)
+	}
+	if !e.IsNegated {
+		t.Error("event should be negated (IsNegated=true)")
+	}
+	if e.OwnerType != "family" {
+		t.Errorf("event OwnerType = %s, want 'family'", e.OwnerType)
+	}
+}
+
+func TestImportNonNegatedBirthDeathStillOnPerson(t *testing.T) {
+	// Non-negated birth and death should still be stored on Person (not as LifeEvents).
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Normal /Person/
+1 BIRT
+2 DATE 1 JAN 1900
+2 PLAC Springfield
+1 DEAT
+2 DATE 31 DEC 1980
+2 PLAC Chicago
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Birth/death should be on Person
+	if persons[0].BirthDate != "1 JAN 1900" {
+		t.Errorf("BirthDate = %q, want '1 JAN 1900'", persons[0].BirthDate)
+	}
+	if persons[0].DeathDate != "31 DEC 1980" {
+		t.Errorf("DeathDate = %q, want '31 DEC 1980'", persons[0].DeathDate)
+	}
+
+	// No events should be created for non-negated birth/death
+	if len(events) != 0 {
+		t.Errorf("len(events) = %d, want 0 (non-negated birth/death go on Person)", len(events))
+	}
+}
+
 func TestImportLenientMode_CompletelyInvalidInputFails(t *testing.T) {
 	// Completely invalid input with no valid GEDCOM structure at all
 	invalidInput := `this is not gedcom data at all

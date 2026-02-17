@@ -627,6 +627,9 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 		Type: gedcom.EventType(tagName),
 	}
 
+	// Set negative assertion flag for GEDCOM 7.0 NO tags
+	ge.IsNegative = event.IsNegated
+
 	if event.DateRaw != "" {
 		ge.Date = event.DateRaw
 	}

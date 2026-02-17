@@ -171,6 +171,7 @@ export interface GroupSheetCitation {
 export interface GroupSheetEvent {
 	date?: string;
 	place?: string;
+	is_negated?: boolean;
 	citations?: GroupSheetCitation[];
 }
 

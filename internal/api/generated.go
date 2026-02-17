@@ -953,7 +953,10 @@ type EventExport struct {
 	// FactType Type of event (BIRTH, DEATH, CENSUS, etc.)
 	FactType string             `json:"fact_type"`
 	Id       openapi_types.UUID `json:"id"`
-	OwnerId  openapi_types.UUID `json:"owner_id"`
+
+	// IsNegated Whether this is a negative assertion (event did NOT occur)
+	IsNegated *bool              `json:"is_negated,omitempty"`
+	OwnerId   openapi_types.UUID `json:"owner_id"`
 
 	// OwnerType Either person or family
 	OwnerType string  `json:"owner_type"`
@@ -1193,8 +1196,11 @@ type GroupSheetEvent struct {
 	Citations *[]GroupSheetCitation `json:"citations,omitempty"`
 
 	// Date Formatted date string
-	Date  *string `json:"date,omitempty"`
-	Place *string `json:"place,omitempty"`
+	Date *string `json:"date,omitempty"`
+
+	// IsNegated Whether this is a negative assertion (event did NOT occur)
+	IsNegated *bool   `json:"is_negated,omitempty"`
+	Place     *string `json:"place,omitempty"`
 }
 
 // GroupSheetPerson Person details for group sheet display

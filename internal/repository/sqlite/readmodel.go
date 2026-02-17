@@ -271,6 +271,7 @@ func (s *ReadModelStore) createTables() error {
 			cause TEXT,
 			age TEXT,
 			research_status TEXT,
+			is_negated INTEGER NOT NULL DEFAULT 0,
 			version INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
@@ -1952,7 +1953,7 @@ func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repositor
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events WHERE id = ?
 	`, id.String())
 
@@ -1972,7 +1973,7 @@ func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOpt
 	query := `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events
 		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
 		LIMIT ? OFFSET ?
@@ -2001,7 +2002,7 @@ func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events
 		WHERE owner_type = 'person' AND owner_id = ?
 		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
@@ -2028,7 +2029,7 @@ func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events
 		WHERE owner_type = 'family' AND owner_id = ?
 		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
@@ -2085,8 +2086,8 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO events (id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, version, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                    age, research_status, is_negated, version, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			owner_type = excluded.owner_type,
 			owner_id = excluded.owner_id,
@@ -2101,10 +2102,11 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 			cause = excluded.cause,
 			age = excluded.age,
 			research_status = excluded.research_status,
+			is_negated = excluded.is_negated,
 			version = excluded.version
 	`, event.ID.String(), event.OwnerType, event.OwnerID.String(), string(event.FactType),
 		event.DateRaw, dateSort, event.Place, placeLat, placeLong, addressJSON,
-		description, cause, age, researchStatus, event.Version,
+		description, cause, age, researchStatus, event.IsNegated, event.Version,
 		formatTimestamp(event.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("save event: %w", err)
@@ -2346,13 +2348,14 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 		addressJSON                            []byte
 		description, cause, age                sql.NullString
 		researchStatus                         sql.NullString
+		isNegated                              bool
 		version                                int64
 		createdAt                              string
 	)
 
 	err := row.Scan(&idStr, &ownerType, &ownerIDStr, &factType, &dateRaw, &dateSort,
 		&place, &placeLat, &placeLong, &addressJSON, &description, &cause,
-		&age, &researchStatus, &version, &createdAt)
+		&age, &researchStatus, &isNegated, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -2374,6 +2377,7 @@ func scanEvent(row rowScanner) (*repository.EventReadModel, error) {
 		Description: description.String,
 		Cause:       cause.String,
 		Age:         age.String,
+		IsNegated:   isNegated,
 		Version:     version,
 	}
 

@@ -2326,3 +2326,202 @@ func TestExport_LDSOrdinances_RoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestExport_NegatedEvents(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Create a person
+	personID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:           personID,
+		GivenName:    "Alice",
+		Surname:      "Living",
+		FullName:     "Alice Living",
+		Gender:       domain.GenderFemale,
+		BirthDateRaw: "15 JAN 1990",
+	})
+
+	// Create a negated death event (NO DEAT)
+	negDeathID := uuid.New()
+	readStore.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        negDeathID,
+		OwnerType: "person",
+		OwnerID:   personID,
+		FactType:  domain.FactPersonDeath,
+		IsNegated: true,
+		Version:   1,
+	})
+
+	// Create persons for family
+	husbandID := uuid.New()
+	wifeID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        husbandID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Gender:    domain.GenderMale,
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        wifeID,
+		GivenName: "Jane",
+		Surname:   "Smith",
+		FullName:  "Jane Smith",
+		Gender:    domain.GenderFemale,
+	})
+
+	// Create a family
+	familyID := uuid.New()
+	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+		ID:               familyID,
+		Partner1ID:       &husbandID,
+		Partner2ID:       &wifeID,
+		RelationshipType: domain.RelationUnknown,
+	})
+
+	// Create a negated marriage event (NO MARR)
+	negMarrID := uuid.New()
+	readStore.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        negMarrID,
+		OwnerType: "family",
+		OwnerID:   familyID,
+		FactType:  domain.FactFamilyMarriage,
+		IsNegated: true,
+		Version:   1,
+	})
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have exported the negated events
+	if result.EventsExported != 2 {
+		t.Errorf("EventsExported = %d, want 2", result.EventsExported)
+	}
+
+	output := buf.String()
+
+	// Check for NO DEAT on the individual
+	if !strings.Contains(output, "1 NO DEAT\n") {
+		t.Error("Output should contain 'NO DEAT' for negated death event")
+	}
+
+	// Check for NO MARR on the family
+	if !strings.Contains(output, "1 NO MARR\n") {
+		t.Error("Output should contain 'NO MARR' for negated marriage event")
+	}
+}
+
+func TestExport_NegatedEventRoundTrip(t *testing.T) {
+	// Import GEDCOM with NO tags, then export and verify NO tags are preserved.
+	gedcomInput := `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Alice /Living/
+1 SEX F
+1 BIRT
+2 DATE 15 JAN 1990
+1 NO DEAT
+0 @I2@ INDI
+1 NAME John /Doe/
+1 SEX M
+0 @I3@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 @F1@ FAM
+1 HUSB @I2@
+1 WIFE @I3@
+1 NO MARR
+0 TRLR
+`
+	// Step 1: Import
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, families, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomInput))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// Verify import produced negated events
+	if len(events) != 2 {
+		t.Fatalf("Import should produce 2 negated events, got %d", len(events))
+	}
+
+	// Step 2: Store in read model
+	readStore := memory.NewReadModelStore()
+
+	for _, p := range persons {
+		pm := &repository.PersonReadModel{
+			ID:           p.ID,
+			GivenName:    p.GivenName,
+			Surname:      p.Surname,
+			FullName:     p.GivenName + " " + p.Surname,
+			Gender:       p.Gender,
+			BirthDateRaw: p.BirthDate,
+			BirthPlace:   p.BirthPlace,
+			DeathDateRaw: p.DeathDate,
+			DeathPlace:   p.DeathPlace,
+		}
+		readStore.SavePerson(ctx, pm)
+	}
+
+	for _, f := range families {
+		fm := &repository.FamilyReadModel{
+			ID:               f.ID,
+			Partner1ID:       f.Partner1ID,
+			Partner2ID:       f.Partner2ID,
+			RelationshipType: f.RelationshipType,
+			MarriageDateRaw:  f.MarriageDate,
+			MarriagePlace:    f.MarriagePlace,
+		}
+		readStore.SaveFamily(ctx, fm)
+	}
+
+	for _, e := range events {
+		em := &repository.EventReadModel{
+			ID:          e.ID,
+			OwnerType:   e.OwnerType,
+			OwnerID:     e.OwnerID,
+			FactType:    e.FactType,
+			DateRaw:     e.Date,
+			Place:       e.Place,
+			Description: e.Description,
+			IsNegated:   e.IsNegated,
+			Version:     1,
+		}
+		readStore.SaveEvent(ctx, em)
+	}
+
+	// Step 3: Export
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	_, err = exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// Step 4: Verify NO tags survived the round trip
+	if !strings.Contains(output, "1 NO DEAT\n") {
+		t.Error("Round-trip should preserve 'NO DEAT' tag")
+	}
+	if !strings.Contains(output, "1 NO MARR\n") {
+		t.Error("Round-trip should preserve 'NO MARR' tag")
+	}
+
+	// Verify normal birth still works
+	if !strings.Contains(output, "1 BIRT\n") {
+		t.Error("Round-trip should preserve normal BIRT event")
+	}
+	if !strings.Contains(output, "2 DATE 15 JAN 1990\n") {
+		t.Error("Round-trip should preserve birth date")
+	}
+}

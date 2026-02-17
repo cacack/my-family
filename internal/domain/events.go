@@ -605,8 +605,9 @@ type LifeEventCreated struct {
 	Place       string     `json:"place,omitempty"`
 	Address     *Address   `json:"address,omitempty"` // Structured address (RESI, etc.)
 	Description string     `json:"description,omitempty"`
-	Cause       string     `json:"cause,omitempty"` // For death/burial events
-	Age         string     `json:"age,omitempty"`   // Age at event
+	Cause       string     `json:"cause,omitempty"`        // For death/burial events
+	Age         string     `json:"age,omitempty"`           // Age at event
+	IsNegated   bool       `json:"is_negated,omitempty"`    // Negative assertion (GEDCOM 7.0 NO tag)
 	GedcomXref  string     `json:"gedcom_xref,omitempty"`
 }
 
@@ -627,6 +628,7 @@ func NewLifeEventCreatedFromModel(le *LifeEvent) LifeEventCreated {
 		Description: le.Description,
 		Cause:       le.Cause,
 		Age:         le.Age,
+		IsNegated:   le.IsNegated,
 		GedcomXref:  le.GedcomXref,
 	}
 }

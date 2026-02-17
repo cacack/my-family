@@ -13,10 +13,15 @@
 
 	function formatEventInfo(event: GroupSheetEvent | undefined): string {
 		if (!event) return '';
+		if (event.is_negated) return '';
 		const parts: string[] = [];
 		if (event.date) parts.push(event.date);
 		if (event.place) parts.push(event.place);
 		return parts.join(' - ');
+	}
+
+	function isNegated(event: GroupSheetEvent | undefined): boolean {
+		return !!event?.is_negated;
 	}
 
 	function hasCitations(event: GroupSheetEvent | undefined): boolean {
@@ -45,7 +50,11 @@
 					<div class="event-row">
 						<span class="event-label">Birth:</span>
 						<span class="event-value">
-							{formatEventInfo(data.husband.birth) || 'Unknown'}
+							{#if isNegated(data.husband.birth)}
+								<span class="negated-event">No birth recorded</span>
+							{:else}
+								{formatEventInfo(data.husband.birth) || 'Unknown'}
+							{/if}
 							{#if hasCitations(data.husband.birth)}
 								<span class="citation-indicator" title="Has citations">[{data.husband.birth?.citations?.length}]</span>
 							{/if}
@@ -54,7 +63,11 @@
 					<div class="event-row">
 						<span class="event-label">Death:</span>
 						<span class="event-value">
-							{formatEventInfo(data.husband.death) || 'Unknown'}
+							{#if isNegated(data.husband.death)}
+								<span class="negated-event">No death recorded</span>
+							{:else}
+								{formatEventInfo(data.husband.death) || 'Unknown'}
+							{/if}
 							{#if hasCitations(data.husband.death)}
 								<span class="citation-indicator" title="Has citations">[{data.husband.death?.citations?.length}]</span>
 							{/if}
@@ -104,7 +117,11 @@
 					<div class="event-row">
 						<span class="event-label">Birth:</span>
 						<span class="event-value">
-							{formatEventInfo(data.wife.birth) || 'Unknown'}
+							{#if isNegated(data.wife.birth)}
+								<span class="negated-event">No birth recorded</span>
+							{:else}
+								{formatEventInfo(data.wife.birth) || 'Unknown'}
+							{/if}
 							{#if hasCitations(data.wife.birth)}
 								<span class="citation-indicator" title="Has citations">[{data.wife.birth?.citations?.length}]</span>
 							{/if}
@@ -113,7 +130,11 @@
 					<div class="event-row">
 						<span class="event-label">Death:</span>
 						<span class="event-value">
-							{formatEventInfo(data.wife.death) || 'Unknown'}
+							{#if isNegated(data.wife.death)}
+								<span class="negated-event">No death recorded</span>
+							{:else}
+								{formatEventInfo(data.wife.death) || 'Unknown'}
+							{/if}
 							{#if hasCitations(data.wife.death)}
 								<span class="citation-indicator" title="Has citations">[{data.wife.death?.citations?.length}]</span>
 							{/if}
@@ -148,24 +169,33 @@
 	</section>
 
 	<!-- Marriage Section -->
-	<section class="marriage-section">
+	<section class="marriage-section" class:marriage-negated={isNegated(data.marriage)}>
 		<h2 class="section-title">Marriage</h2>
 		{#if data.marriage}
-			<div class="marriage-info">
-				<div class="event-row">
-					<span class="event-label">Date:</span>
-					<span class="event-value">{data.marriage.date || 'Unknown'}</span>
-				</div>
-				<div class="event-row">
-					<span class="event-label">Place:</span>
-					<span class="event-value">{data.marriage.place || 'Unknown'}</span>
-				</div>
+			{#if isNegated(data.marriage)}
+				<p class="negated-event">No marriage recorded</p>
 				{#if hasCitations(data.marriage)}
 					<div class="citations-row">
 						<span class="citation-indicator">[{data.marriage.citations?.length} citation(s)]</span>
 					</div>
 				{/if}
-			</div>
+			{:else}
+				<div class="marriage-info">
+					<div class="event-row">
+						<span class="event-label">Date:</span>
+						<span class="event-value">{data.marriage.date || 'Unknown'}</span>
+					</div>
+					<div class="event-row">
+						<span class="event-label">Place:</span>
+						<span class="event-value">{data.marriage.place || 'Unknown'}</span>
+					</div>
+					{#if hasCitations(data.marriage)}
+						<div class="citations-row">
+							<span class="citation-indicator">[{data.marriage.citations?.length} citation(s)]</span>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		{:else}
 			<p class="no-data">No marriage information recorded</p>
 		{/if}
@@ -198,13 +228,21 @@
 							</td>
 							<td class="col-gender">{child.gender === 'male' ? 'M' : child.gender === 'female' ? 'F' : '-'}</td>
 							<td class="col-birth">
-								{formatEventInfo(child.birth) || '-'}
+								{#if isNegated(child.birth)}
+									<span class="negated-event">No birth recorded</span>
+								{:else}
+									{formatEventInfo(child.birth) || '-'}
+								{/if}
 								{#if hasCitations(child.birth)}
 									<span class="citation-indicator">[{child.birth?.citations?.length}]</span>
 								{/if}
 							</td>
 							<td class="col-death">
-								{formatEventInfo(child.death) || '-'}
+								{#if isNegated(child.death)}
+									<span class="negated-event">No death recorded</span>
+								{:else}
+									{formatEventInfo(child.death) || '-'}
+								{/if}
 								{#if hasCitations(child.death)}
 									<span class="citation-indicator">[{child.death?.citations?.length}]</span>
 								{/if}
@@ -540,6 +578,17 @@
 		color: #94a3b8;
 		font-style: italic;
 		margin: 0;
+	}
+
+	.negated-event {
+		color: #94a3b8;
+		font-style: italic;
+		font-size: 0.8125rem;
+	}
+
+	.marriage-negated {
+		background: #f8fafc;
+		border-color: #e2e8f0;
 	}
 
 	/* Print styles */

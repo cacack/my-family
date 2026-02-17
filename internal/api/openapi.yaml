@@ -3316,6 +3316,10 @@ components:
           description: Formatted date string
         place:
           type: string
+        is_negated:
+          type: boolean
+          description: Whether this is a negative assertion (event did NOT occur)
+          default: false
         citations:
           type: array
           items:
@@ -5506,6 +5510,10 @@ components:
           description: Age at event
         research_status:
           $ref: '#/components/schemas/ResearchStatus'
+        is_negated:
+          type: boolean
+          description: Whether this is a negative assertion (event did NOT occur)
+          default: false
         version:
           type: integer
           format: int64

@@ -198,6 +198,7 @@ type EventData struct {
 	Description string
 	Cause       string // For death/burial events
 	Age         string // Age at event
+	IsNegated   bool   // Negative assertion (GEDCOM 7.0 NO tag)
 }
 
 // AttributeData contains parsed attribute data ready for creation.
@@ -502,7 +503,11 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 	}
 
 	// Parse events for birth and death with date validation
+	// Negated events (NO BIRT / NO DEAT) are handled as LifeEvents, not on Person fields
 	for _, event := range indi.Events {
+		if event.IsNegative {
+			continue
+		}
 		switch event.Type {
 		case gedcom.EventBirth:
 			person.BirthDate = event.Date
@@ -600,6 +605,10 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 	for _, event := range fam.Events {
 		switch event.Type {
 		case gedcom.EventMarriage:
+			// Negated marriage (NO MARR) is handled as a LifeEvent, not on Family fields
+			if event.IsNegative {
+				continue
+			}
 			family.RelationshipType = domain.RelationMarriage
 			family.MarriageDate = event.Date
 			family.MarriagePlace = event.Place
@@ -959,15 +968,56 @@ func ValidateImportData(persons []PersonData, families []FamilyData) error {
 }
 
 // extractEventsFromIndividual extracts all life events from an individual.
-// Birth and Death are excluded as they are stored on Person directly.
+// Birth and Death are excluded as they are stored on Person directly,
+// unless they are negated (NO BIRT / NO DEAT), which represent negative assertions
+// and must be stored as LifeEvents.
 func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []EventData {
 	var events []EventData
 
 	for _, event := range indi.Events {
 		var factType domain.FactType
+
+		// Negated birth/death events (NO BIRT / NO DEAT) are stored as LifeEvents,
+		// not on Person fields, because they represent "event did NOT occur".
+		if event.IsNegative && (event.Type == gedcom.EventBirth || event.Type == gedcom.EventDeath) {
+			switch event.Type {
+			case gedcom.EventBirth:
+				factType = domain.FactPersonBirth
+			case gedcom.EventDeath:
+				factType = domain.FactPersonDeath
+			}
+			eventData := EventData{
+				ID:          uuid.New(),
+				OwnerType:   "person",
+				OwnerID:     personID,
+				FactType:    factType,
+				Date:        event.Date,
+				Place:       event.Place,
+				Description: event.Description,
+				Cause:       event.Cause,
+				Age:         event.Age,
+				IsNegated:   true,
+			}
+			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+				if event.PlaceDetail.Coordinates.Latitude != "" {
+					lat := event.PlaceDetail.Coordinates.Latitude
+					eventData.PlaceLat = &lat
+				}
+				if event.PlaceDetail.Coordinates.Longitude != "" {
+					long := event.PlaceDetail.Coordinates.Longitude
+					eventData.PlaceLong = &long
+				}
+			}
+			if event.Address != nil {
+				eventData.Address = convertGedcomAddress(event.Address)
+			}
+			events = append(events, eventData)
+			continue
+		}
+
 		switch event.Type {
 		case gedcom.EventBirth, gedcom.EventDeath:
-			// Birth and death are stored on Person entity, skip
+			// Non-negated birth and death are stored on Person entity, skip
 			continue
 		case gedcom.EventBurial:
 			factType = domain.FactPersonBurial
@@ -1000,6 +1050,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 			Description: event.Description,
 			Cause:       event.Cause,
 			Age:         event.Age,
+			IsNegated:   event.IsNegative,
 		}
 		// Extract coordinates from PlaceDetail if available
 		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
@@ -1180,15 +1231,48 @@ func mapAssociationRole(gedcomRole string) string {
 }
 
 // extractEventsFromFamily extracts all life events from a family.
-// Marriage is excluded as it is stored on Family directly.
+// Marriage is excluded as it is stored on Family directly,
+// unless it is negated (NO MARR), which represents a negative assertion
+// and must be stored as a LifeEvent.
 func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData {
 	var events []EventData
 
 	for _, event := range fam.Events {
 		var factType domain.FactType
+
+		// Negated marriage events (NO MARR) are stored as LifeEvents,
+		// not on Family fields, because they represent "event did NOT occur".
+		if event.IsNegative && event.Type == gedcom.EventMarriage {
+			eventData := EventData{
+				ID:          uuid.New(),
+				OwnerType:   "family",
+				OwnerID:     familyID,
+				FactType:    domain.FactFamilyMarriage,
+				Date:        event.Date,
+				Place:       event.Place,
+				Description: event.Description,
+				IsNegated:   true,
+			}
+			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
+				if event.PlaceDetail.Coordinates.Latitude != "" {
+					lat := event.PlaceDetail.Coordinates.Latitude
+					eventData.PlaceLat = &lat
+				}
+				if event.PlaceDetail.Coordinates.Longitude != "" {
+					long := event.PlaceDetail.Coordinates.Longitude
+					eventData.PlaceLong = &long
+				}
+			}
+			if event.Address != nil {
+				eventData.Address = convertGedcomAddress(event.Address)
+			}
+			events = append(events, eventData)
+			continue
+		}
+
 		switch event.Type {
 		case gedcom.EventMarriage:
-			// Marriage is stored on Family entity, skip
+			// Non-negated marriage is stored on Family entity, skip
 			continue
 		case gedcom.EventDivorce:
 			factType = domain.FactFamilyDivorce
@@ -1217,6 +1301,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 			Date:        event.Date,
 			Place:       event.Place,
 			Description: event.Description,
+			IsNegated:   event.IsNegative,
 		}
 		// Extract coordinates from PlaceDetail if available
 		if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {

@@ -1980,6 +1980,11 @@ export interface components {
             /** @description Formatted date string */
             date?: string;
             place?: string;
+            /**
+             * @description Whether this is a negative assertion (event did NOT occur)
+             * @default false
+             */
+            is_negated: boolean;
             citations?: components["schemas"]["GroupSheetCitation"][];
         };
         /** @description Child entry in family group sheet */
@@ -3324,6 +3329,11 @@ export interface components {
             /** @description Age at event */
             age?: string;
             research_status?: components["schemas"]["ResearchStatus"];
+            /**
+             * @description Whether this is a negative assertion (event did NOT occur)
+             * @default false
+             */
+            is_negated: boolean;
             /** Format: int64 */
             version?: number;
             /** Format: date-time */

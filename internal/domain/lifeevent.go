@@ -21,6 +21,7 @@ type LifeEvent struct {
 	Cause          string         `json:"cause,omitempty"`           // cause of event (e.g., death cause)
 	Age            string         `json:"age,omitempty"`             // age at time of event
 	ResearchStatus ResearchStatus `json:"research_status,omitempty"` // Confidence level (GPS-compliant)
+	IsNegated      bool           `json:"is_negated,omitempty"`      // Negative assertion (GEDCOM 7.0 NO tag)
 	GedcomXref     string         `json:"gedcom_xref,omitempty"`     // for round-trip preservation
 	Version        int64          `json:"version"`                   // optimistic locking
 }

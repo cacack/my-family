@@ -3523,6 +3523,9 @@ func convertQueryGroupSheetEventToGenerated(e *query.GroupSheetEvent) *GroupShee
 	if e.Place != "" {
 		resp.Place = &e.Place
 	}
+	if e.IsNegated {
+		resp.IsNegated = &e.IsNegated
+	}
 	return resp
 }
 

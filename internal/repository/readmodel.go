@@ -154,6 +154,7 @@ type EventReadModel struct {
 	Cause          string                `json:"cause,omitempty"`           // For death/burial events
 	Age            string                `json:"age,omitempty"`             // Age at event
 	ResearchStatus domain.ResearchStatus `json:"research_status,omitempty"` // Confidence level
+	IsNegated      bool                  `json:"is_negated,omitempty"`      // Negative assertion (GEDCOM 7.0 NO tag)
 	Version        int64                 `json:"version"`
 	CreatedAt      time.Time             `json:"created_at"`
 }
