@@ -813,6 +813,25 @@ func (ss *StrictServer) ExportSources(ctx context.Context, _ ExportSourcesReques
 	}, nil
 }
 
+// ExportCitations implements StrictServerInterface.
+func (ss *StrictServer) ExportCitations(ctx context.Context, _ ExportCitationsRequestObject) (ExportCitationsResponseObject, error) {
+	readModels, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListCitations)
+	if err != nil {
+		return nil, err
+	}
+
+	citations := make([]Citation, len(readModels))
+	for i, rm := range readModels {
+		citations[i] = convertReadModelCitationToGenerated(rm)
+	}
+
+	total := len(citations)
+	return ExportCitations200JSONResponse{
+		Citations: &citations,
+		Total:     &total,
+	}, nil
+}
+
 // ExportEvents implements StrictServerInterface.
 func (ss *StrictServer) ExportEvents(ctx context.Context, _ ExportEventsRequestObject) (ExportEventsResponseObject, error) {
 	events, err := repository.ListAll(ctx, 1000, ss.server.readStore.ListEvents)
@@ -4888,6 +4907,45 @@ func convertReadModelSourceToGenerated(rm repository.SourceReadModel) Source {
 	}
 	if rm.Notes != "" {
 		resp.Notes = &rm.Notes
+	}
+	return resp
+}
+
+func convertReadModelCitationToGenerated(rm repository.CitationReadModel) Citation {
+	resp := Citation{
+		Id:          rm.ID,
+		SourceId:    rm.SourceID,
+		SourceTitle: rm.SourceTitle,
+		FactType:    string(rm.FactType),
+		FactOwnerId: rm.FactOwnerID,
+		Version:     rm.Version,
+	}
+	if rm.Page != "" {
+		resp.Page = &rm.Page
+	}
+	if rm.Volume != "" {
+		resp.Volume = &rm.Volume
+	}
+	if string(rm.SourceQuality) != "" {
+		sq := string(rm.SourceQuality)
+		resp.SourceQuality = &sq
+	}
+	if string(rm.InformantType) != "" {
+		it := string(rm.InformantType)
+		resp.InformantType = &it
+	}
+	if string(rm.EvidenceType) != "" {
+		et := string(rm.EvidenceType)
+		resp.EvidenceType = &et
+	}
+	if rm.QuotedText != "" {
+		resp.QuotedText = &rm.QuotedText
+	}
+	if rm.Analysis != "" {
+		resp.Analysis = &rm.Analysis
+	}
+	if rm.TemplateID != "" {
+		resp.TemplateId = &rm.TemplateID
 	}
 	return resp
 }

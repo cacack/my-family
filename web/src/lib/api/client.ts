@@ -952,6 +952,24 @@ class ApiClient {
 		return response.text();
 	}
 
+	async exportCitations(format: 'json' | 'csv', fields?: string[]): Promise<string> {
+		const params = new URLSearchParams({ format });
+		if (fields?.length) params.set('fields', fields.join(','));
+
+		const response = await fetch(`${API_BASE}/export/citations?${params}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			error.status = response.status;
+			throw error;
+		}
+
+		return response.text();
+	}
+
 	async exportEvents(format: 'json' | 'csv', fields?: string[]): Promise<string> {
 		const params = new URLSearchParams({ format });
 		if (fields?.length) params.set('fields', fields.join(','));

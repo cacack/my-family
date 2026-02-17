@@ -10,7 +10,7 @@
 	let dragOver = $state(false);
 
 	// Export state
-	type EntityType = 'tree' | 'persons' | 'families' | 'sources' | 'events' | 'attributes';
+	type EntityType = 'tree' | 'persons' | 'families' | 'sources' | 'citations' | 'events' | 'attributes';
 	type ExportFormat = 'json' | 'csv';
 
 	let exportEntityType: EntityType = $state('tree');
@@ -57,6 +57,21 @@
 		{ id: 'notes', label: 'Notes' }
 	];
 
+	const citationFields = [
+		{ id: 'id', label: 'ID' },
+		{ id: 'source_id', label: 'Source ID' },
+		{ id: 'source_title', label: 'Source Title' },
+		{ id: 'fact_type', label: 'Fact Type' },
+		{ id: 'fact_owner_id', label: 'Fact Owner' },
+		{ id: 'page', label: 'Page' },
+		{ id: 'volume', label: 'Volume' },
+		{ id: 'source_quality', label: 'Source Quality' },
+		{ id: 'informant_type', label: 'Informant Type' },
+		{ id: 'evidence_type', label: 'Evidence Type' },
+		{ id: 'quoted_text', label: 'Quoted Text' },
+		{ id: 'analysis', label: 'Analysis' }
+	];
+
 	const eventFields = [
 		{ id: 'id', label: 'ID' },
 		{ id: 'owner_type', label: 'Owner Type' },
@@ -83,6 +98,7 @@
 	let selectedPersonFields: Set<string> = $state(new Set(personFields.map((f) => f.id)));
 	let selectedFamilyFields: Set<string> = $state(new Set(familyFields.map((f) => f.id)));
 	let selectedSourceFields: Set<string> = $state(new Set(sourceFields.map((f) => f.id)));
+	let selectedCitationFields: Set<string> = $state(new Set(citationFields.map((f) => f.id)));
 	let selectedEventFields: Set<string> = $state(new Set(eventFields.map((f) => f.id)));
 	let selectedAttributeFields: Set<string> = $state(new Set(attributeFields.map((f) => f.id)));
 
@@ -102,6 +118,11 @@
 			if (newSet.has(fieldId)) newSet.delete(fieldId);
 			else newSet.add(fieldId);
 			selectedSourceFields = newSet;
+		} else if (entityType === 'citations') {
+			const newSet = new Set(selectedCitationFields);
+			if (newSet.has(fieldId)) newSet.delete(fieldId);
+			else newSet.add(fieldId);
+			selectedCitationFields = newSet;
 		} else if (entityType === 'events') {
 			const newSet = new Set(selectedEventFields);
 			if (newSet.has(fieldId)) newSet.delete(fieldId);
@@ -122,6 +143,8 @@
 			selectedFamilyFields = new Set(familyFields.map((f) => f.id));
 		} else if (entityType === 'sources') {
 			selectedSourceFields = new Set(sourceFields.map((f) => f.id));
+		} else if (entityType === 'citations') {
+			selectedCitationFields = new Set(citationFields.map((f) => f.id));
 		} else if (entityType === 'events') {
 			selectedEventFields = new Set(eventFields.map((f) => f.id));
 		} else if (entityType === 'attributes') {
@@ -136,6 +159,8 @@
 			selectedFamilyFields = new Set();
 		} else if (entityType === 'sources') {
 			selectedSourceFields = new Set();
+		} else if (entityType === 'citations') {
+			selectedCitationFields = new Set();
 		} else if (entityType === 'events') {
 			selectedEventFields = new Set();
 		} else if (entityType === 'attributes') {
@@ -148,6 +173,7 @@
 			case 'persons': return personFields;
 			case 'families': return familyFields;
 			case 'sources': return sourceFields;
+			case 'citations': return citationFields;
 			case 'events': return eventFields;
 			case 'attributes': return attributeFields;
 			default: return [];
@@ -159,6 +185,7 @@
 			case 'persons': return selectedPersonFields;
 			case 'families': return selectedFamilyFields;
 			case 'sources': return selectedSourceFields;
+			case 'citations': return selectedCitationFields;
 			case 'events': return selectedEventFields;
 			case 'attributes': return selectedAttributeFields;
 			default: return new Set();
@@ -171,6 +198,7 @@
 			case 'persons': return 'People';
 			case 'families': return 'Families';
 			case 'sources': return 'Sources';
+			case 'citations': return 'Citations';
 			case 'events': return 'Events';
 			case 'attributes': return 'Attributes';
 			default: return '';
@@ -261,6 +289,12 @@
 					exportFormat === 'csv' ? Array.from(selectedSourceFields) : undefined;
 				data = await api.exportSources(exportFormat, fields);
 				filename = `sources.${exportFormat}`;
+				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
+			} else if (exportEntityType === 'citations') {
+				const fields =
+					exportFormat === 'csv' ? Array.from(selectedCitationFields) : undefined;
+				data = await api.exportCitations(exportFormat, fields);
+				filename = `citations.${exportFormat}`;
 				contentType = exportFormat === 'csv' ? 'text/csv' : 'application/json';
 			} else if (exportEntityType === 'events') {
 				const fields =
@@ -474,6 +508,15 @@
 								bind:group={exportEntityType}
 							/>
 							<span>Sources</span>
+						</label>
+						<label class="radio-label">
+							<input
+								type="radio"
+								name="entityType"
+								value="citations"
+								bind:group={exportEntityType}
+							/>
+							<span>Citations</span>
 						</label>
 						<label class="radio-label">
 							<input
