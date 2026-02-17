@@ -373,6 +373,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS brick_wall_since TIMESTAMPTZ`)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS brick_wall_resolved_at TIMESTAMPTZ`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_brick_wall ON persons(brick_wall_since) WHERE brick_wall_since IS NOT NULL`)
+
+	// Add is_negated column for negative assertions / NO tags (issue #222)
+	_, _ = s.db.Exec(`ALTER TABLE events ADD COLUMN IF NOT EXISTS is_negated BOOLEAN NOT NULL DEFAULT FALSE`)
 }
 
 // GetPerson retrieves a person by ID.

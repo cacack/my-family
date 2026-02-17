@@ -349,6 +349,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN brick_wall_since TEXT`)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN brick_wall_resolved_at TEXT`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_brick_wall ON persons(brick_wall_since)`)
+
+	// Add is_negated column for negative assertions / NO tags (issue #222)
+	_, _ = s.db.Exec(`ALTER TABLE events ADD COLUMN is_negated INTEGER NOT NULL DEFAULT 0`)
 }
 
 // tryCreateFTS5 attempts to create FTS5 virtual table for full-text search.
