@@ -2641,6 +2641,10 @@ func TestImportNegatedBirthEvent(t *testing.T) {
 		t.Fatalf("Import failed: %v", err)
 	}
 
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
 	// Person should NOT have birth date/place set
 	if persons[0].BirthDate != "" {
 		t.Errorf("BirthDate should be empty for negated birth, got %q", persons[0].BirthDate)
@@ -2742,6 +2746,10 @@ func TestImportNonNegatedBirthDeathStillOnPerson(t *testing.T) {
 	_, persons, _, _, _, _, events, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
 	if err != nil {
 		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
 	}
 
 	// Birth/death should be on Person

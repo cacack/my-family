@@ -174,10 +174,10 @@ func convertReadModelToFamily(rm repository.FamilyReadModel) Family {
 
 // GroupSheetEvent represents an event with date, place, and citations.
 type GroupSheetEvent struct {
-	Date       string               `json:"date,omitempty"`
-	Place      string               `json:"place,omitempty"`
-	IsNegated  bool                 `json:"is_negated,omitempty"`
-	Citations  []GroupSheetCitation `json:"citations,omitempty"`
+	Date      string               `json:"date,omitempty"`
+	Place     string               `json:"place,omitempty"`
+	IsNegated bool                 `json:"is_negated,omitempty"`
+	Citations []GroupSheetCitation `json:"citations,omitempty"`
 }
 
 // GroupSheetCitation represents a citation reference for the group sheet.
