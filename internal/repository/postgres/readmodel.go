@@ -299,6 +299,7 @@ func (s *ReadModelStore) createTables() error {
 			cause TEXT,
 			age VARCHAR(50),
 			research_status VARCHAR(20),
+			is_negated BOOLEAN NOT NULL DEFAULT FALSE,
 			version BIGINT NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
@@ -372,6 +373,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS brick_wall_since TIMESTAMPTZ`)
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN IF NOT EXISTS brick_wall_resolved_at TIMESTAMPTZ`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_brick_wall ON persons(brick_wall_since) WHERE brick_wall_since IS NOT NULL`)
+
+	// Add is_negated column for negative assertions / NO tags (issue #222)
+	_, _ = s.db.Exec(`ALTER TABLE events ADD COLUMN IF NOT EXISTS is_negated BOOLEAN NOT NULL DEFAULT FALSE`)
 }
 
 // GetPerson retrieves a person by ID.
@@ -1591,7 +1595,7 @@ func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repositor
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events WHERE id = $1
 	`, id)
 
@@ -1611,7 +1615,7 @@ func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOpt
 	query := `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events
 		ORDER BY fact_type ASC, date_sort ASC NULLS LAST, id ASC
 		LIMIT $1 OFFSET $2
@@ -1640,7 +1644,7 @@ func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events
 		WHERE owner_type = 'person' AND owner_id = $1
 		ORDER BY fact_type ASC, date_sort ASC NULLS LAST, id ASC
@@ -1667,7 +1671,7 @@ func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, version, created_at
+		       age, research_status, is_negated, version, created_at
 		FROM events
 		WHERE owner_type = 'family' AND owner_id = $1
 		ORDER BY fact_type ASC, date_sort ASC NULLS LAST, id ASC
@@ -1701,9 +1705,9 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO events (id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, version, created_at)
+		                    age, research_status, is_negated, version, created_at)
 		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''),
-		        $10, NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), $15, $16)
+		        $10, NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), $15, $16, $17)
 		ON CONFLICT (id) DO UPDATE SET
 			owner_type = EXCLUDED.owner_type,
 			owner_id = EXCLUDED.owner_id,
@@ -1718,12 +1722,13 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 			cause = EXCLUDED.cause,
 			age = EXCLUDED.age,
 			research_status = EXCLUDED.research_status,
+			is_negated = EXCLUDED.is_negated,
 			version = EXCLUDED.version
 	`, event.ID, event.OwnerType, event.OwnerID, string(event.FactType),
 		event.DateRaw, nullableTime(event.DateSort), event.Place,
 		nullableStringPtr(event.PlaceLat), nullableStringPtr(event.PlaceLong),
 		addressJSON, event.Description, event.Cause, event.Age,
-		nullableString(string(event.ResearchStatus)), event.Version, event.CreatedAt)
+		nullableString(string(event.ResearchStatus)), event.IsNegated, event.Version, event.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("save event: %w", err)
 	}
@@ -1954,13 +1959,14 @@ func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 		addressJSON             []byte
 		description, cause, age sql.NullString
 		researchStatus          sql.NullString
+		isNegated               bool
 		version                 int64
 		createdAt               time.Time
 	)
 
 	err := row.Scan(&id, &ownerType, &ownerID, &factType, &dateRaw, &dateSort,
 		&place, &placeLat, &placeLong, &addressJSON, &description, &cause,
-		&age, &researchStatus, &version, &createdAt)
+		&age, &researchStatus, &isNegated, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1979,6 +1985,7 @@ func scanEventRow(row rowScanner) (*repository.EventReadModel, error) {
 		Description: description.String,
 		Cause:       cause.String,
 		Age:         age.String,
+		IsNegated:   isNegated,
 		Version:     version,
 		CreatedAt:   createdAt,
 	}

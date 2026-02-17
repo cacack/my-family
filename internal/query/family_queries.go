@@ -176,6 +176,7 @@ func convertReadModelToFamily(rm repository.FamilyReadModel) Family {
 type GroupSheetEvent struct {
 	Date      string               `json:"date,omitempty"`
 	Place     string               `json:"place,omitempty"`
+	IsNegated bool                 `json:"is_negated,omitempty"`
 	Citations []GroupSheetCitation `json:"citations,omitempty"`
 }
 
@@ -253,6 +254,9 @@ func (s *FamilyService) GetGroupSheet(ctx context.Context, familyID uuid.UUID) (
 		}
 	}
 
+	// Check for negated marriage events
+	s.applyNegatedFamilyEvents(ctx, familyID, &gs.Marriage)
+
 	// Get husband/partner1 details
 	if family.Partner1ID != nil {
 		husband, err := s.getGroupSheetPerson(ctx, *family.Partner1ID)
@@ -326,6 +330,9 @@ func (s *FamilyService) getGroupSheetPerson(ctx context.Context, personID uuid.U
 		}
 	}
 
+	// Check for negated birth/death events
+	s.applyNegatedPersonEvents(ctx, personID, &gsp.Birth, &gsp.Death)
+
 	// Get parents
 	edge, err := s.readStore.GetPedigreeEdge(ctx, personID)
 	if err == nil && edge != nil {
@@ -387,6 +394,9 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, child repository
 		}
 	}
 
+	// Check for negated birth/death events
+	s.applyNegatedPersonEvents(ctx, person.ID, &gsc.Birth, &gsc.Death)
+
 	// Get spouse (first partner family where this person is a partner)
 	families, err := s.readStore.GetFamiliesForPerson(ctx, person.ID)
 	if err == nil && len(families) > 0 {
@@ -406,6 +416,57 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, child repository
 	}
 
 	return gsc, nil
+}
+
+// applyNegatedPersonEvents checks the events table for negated birth/death events
+// and applies them to the group sheet person's events. This handles the case where
+// a negative assertion exists (e.g., "no birth recorded") but the person read model
+// has no birth date/place.
+func (s *FamilyService) applyNegatedPersonEvents(ctx context.Context, personID uuid.UUID, birth **GroupSheetEvent, death **GroupSheetEvent) {
+	events, err := s.readStore.ListEventsForPerson(ctx, personID)
+	if err != nil {
+		return
+	}
+	for _, evt := range events {
+		if !evt.IsNegated {
+			continue
+		}
+		switch evt.FactType {
+		case domain.FactPersonBirth:
+			if *birth == nil {
+				*birth = &GroupSheetEvent{IsNegated: true}
+			} else {
+				(*birth).IsNegated = true
+			}
+		case domain.FactPersonDeath:
+			if *death == nil {
+				*death = &GroupSheetEvent{IsNegated: true}
+			} else {
+				(*death).IsNegated = true
+			}
+		}
+	}
+}
+
+// applyNegatedFamilyEvents checks the events table for negated marriage events
+// and applies them to the group sheet marriage event.
+func (s *FamilyService) applyNegatedFamilyEvents(ctx context.Context, familyID uuid.UUID, marriage **GroupSheetEvent) {
+	events, err := s.readStore.ListEventsForFamily(ctx, familyID)
+	if err != nil {
+		return
+	}
+	for _, evt := range events {
+		if !evt.IsNegated {
+			continue
+		}
+		if evt.FactType == domain.FactFamilyMarriage {
+			if *marriage == nil {
+				*marriage = &GroupSheetEvent{IsNegated: true}
+			} else {
+				(*marriage).IsNegated = true
+			}
+		}
+	}
 }
 
 // convertCitationsToGroupSheet converts citation read models to group sheet citations.

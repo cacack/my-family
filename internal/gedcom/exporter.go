@@ -321,6 +321,11 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		}
 	}
 
+	// Bump to GEDCOM 7.0 if any negated events are present (NO tags require 7.0)
+	if hasNegatedEvents(doc) {
+		doc.Header.Version = gedcom.Version70
+	}
+
 	// Report encoding phase
 	if err := reportProgress("encoding", 0, 1, 99.0); err != nil {
 		return result, err
@@ -626,6 +631,9 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 	ge := &gedcom.Event{
 		Type: gedcom.EventType(tagName),
 	}
+
+	// Set negative assertion flag for GEDCOM 7.0 NO tags
+	ge.IsNegative = event.IsNegated
 
 	if event.DateRaw != "" {
 		ge.Date = event.DateRaw
@@ -940,4 +948,25 @@ func toGedcomLDSOrdinance(ord repository.LDSOrdinanceReadModel) *gedcom.LDSOrdin
 		Place:  ord.Place,
 		Status: ord.Status,
 	}
+}
+
+// hasNegatedEvents checks if any events in the document have IsNegative set.
+func hasNegatedEvents(doc *gedcom.Document) bool {
+	for _, rec := range doc.Records {
+		if indi, ok := rec.Entity.(*gedcom.Individual); ok {
+			for _, evt := range indi.Events {
+				if evt.IsNegative {
+					return true
+				}
+			}
+		}
+		if fam, ok := rec.Entity.(*gedcom.Family); ok {
+			for _, evt := range fam.Events {
+				if evt.IsNegative {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

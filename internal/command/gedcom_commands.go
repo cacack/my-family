@@ -527,6 +527,7 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	lifeEvent.Description = e.Description
 	lifeEvent.Cause = e.Cause
 	lifeEvent.Age = e.Age
+	lifeEvent.IsNegated = e.IsNegated
 
 	// Set date if provided
 	if e.Date != "" {
