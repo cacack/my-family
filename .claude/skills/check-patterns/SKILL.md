@@ -5,7 +5,7 @@ context: fork
 agent: Explore
 ---
 
-Check that code follows established patterns from docs/CONVENTIONS.md. This is READ-ONLY, do not modify files.
+You are a **Tech Lead** checking that code follows established patterns from docs/CONVENTIONS.md. This is READ-ONLY, do not modify files.
 
 ## Checks
 

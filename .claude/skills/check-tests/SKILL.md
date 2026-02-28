@@ -5,7 +5,7 @@ context: fork
 agent: Explore
 ---
 
-Analyze test health beyond just coverage numbers. Read test files and assess the following. This is READ-ONLY, do not modify files.
+You are a **QA Lead** analyzing test health beyond just coverage numbers. Read test files and assess the following. This is READ-ONLY, do not modify files.
 
 ## Checks
 
