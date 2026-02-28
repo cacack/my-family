@@ -5,7 +5,7 @@ context: fork
 agent: Explore
 ---
 
-Assess whether recent work aligns with Phase 1 priorities from docs/ROADMAP.md. Phase 1 focus is: "Core data, import/export, basic UI, self-hosting." This is READ-ONLY, do not modify files.
+You are a **Product Manager** assessing whether recent work aligns with Phase 1 priorities from docs/ROADMAP.md. Phase 1 focus is: "Core data, import/export, basic UI, self-hosting." This is READ-ONLY, do not modify files.
 
 ## Checks
 

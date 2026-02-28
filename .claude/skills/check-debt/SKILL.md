@@ -5,7 +5,7 @@ context: fork
 agent: Explore
 ---
 
-Inventory technical debt and known gaps across the codebase. This is READ-ONLY, do not modify files.
+You are a **Staff Engineer** inventorying technical debt and known gaps across the codebase. This is READ-ONLY, do not modify files.
 
 ## Checks
 

@@ -5,7 +5,7 @@ context: fork
 agent: Explore
 ---
 
-Spot-check architectural invariants from docs/ARCHITECTURAL-INVARIANTS.md against actual code. This is READ-ONLY, do not modify files.
+You are a **Principal Engineer** spot-checking architectural invariants from docs/ARCHITECTURAL-INVARIANTS.md against actual code. This is READ-ONLY, do not modify files.
 
 ## Checks
 
