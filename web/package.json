@@ -23,7 +23,7 @@
 		"@sveltejs/adapter-static": "^3.0.0",
 		"@sveltejs/kit": "^2.51.0",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
-		"@tailwindcss/postcss": "^4.1.18",
+		"@tailwindcss/postcss": "^4.2.1",
 		"@testing-library/svelte": "^5.3.1",
 		"@types/d3": "^7.4.0",
 		"@types/topojson-client": "^3.1.5",
