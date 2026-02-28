@@ -60,7 +60,6 @@ coverage.out
 internal/api/openapi_gen.go
 
 # Claude Code prompts (ephemeral, not committed)
-prompts/
-.prompts/
+/prompts/
+/.prompts/
 coverage.html
-.prompts/
