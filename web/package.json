@@ -27,7 +27,7 @@
 		"@testing-library/svelte": "^5.3.1",
 		"@types/d3": "^7.4.0",
 		"@types/topojson-client": "^3.1.5",
-		"autoprefixer": "^10.4.24",
+		"autoprefixer": "^10.4.27",
 		"jsdom": "^28.1.0",
 		"openapi-typescript": "^7.13.0",
 		"postcss": "^8.5.8",
