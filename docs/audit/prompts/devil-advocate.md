@@ -1,5 +1,5 @@
 ---
-model: openai/gpt-5-mini
+model: openai/gpt-5.2
 temperature: 0.3
 max_tokens: 8192
 docs:
