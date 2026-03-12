@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +58,7 @@ func (s *EventStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
 		CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
 		CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
+		CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
 	`)
 	return err
 }
@@ -243,27 +245,36 @@ func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit
 
 // ReadGlobalByTime returns paginated events filtered by time range and optional event types.
 func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
-	// Build query with conditional filters
+	var whereClauses []string
+	var args []interface{}
+	paramN := 1
+
+	if !fromTime.IsZero() {
+		whereClauses = append(whereClauses, fmt.Sprintf("timestamp >= $%d", paramN))
+		args = append(args, fromTime)
+		paramN++
+	}
+	if !toTime.IsZero() {
+		whereClauses = append(whereClauses, fmt.Sprintf("timestamp <= $%d", paramN))
+		args = append(args, toTime)
+		paramN++
+	}
+	if len(eventTypes) > 0 {
+		whereClauses = append(whereClauses, fmt.Sprintf("event_type = ANY($%d)", paramN))
+		args = append(args, pq.Array(eventTypes))
+		paramN++
+	}
+
 	query := `
 		SELECT
 			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
 			COUNT(*) OVER() as total_count
-		FROM events
-		WHERE timestamp >= $1 AND timestamp <= $2
-	`
-
-	args := []interface{}{fromTime, toTime}
-
-	// Add optional event type filter
-	if len(eventTypes) > 0 {
-		query += ` AND event_type = ANY($3)`
-		args = append(args, pq.Array(eventTypes))
-		query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-		args = append(args, limit, offset)
-	} else {
-		query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-		args = append(args, limit, offset)
+		FROM events`
+	if len(whereClauses) > 0 {
+		query += " WHERE " + strings.Join(whereClauses, " AND ")
 	}
+	query += fmt.Sprintf(` ORDER BY timestamp ASC, position ASC LIMIT $%d OFFSET $%d`, paramN, paramN+1)
+	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

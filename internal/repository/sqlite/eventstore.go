@@ -58,6 +58,7 @@ func (s *EventStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
 		CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
 		CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
+		CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
 	`)
 	return err
 }
@@ -368,7 +369,7 @@ func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time
 			COUNT(*) OVER() as total_count
 		FROM events
 		%s
-		ORDER BY timestamp ASC
+		ORDER BY timestamp ASC, position ASC
 		LIMIT ? OFFSET ?
 	`, whereClause)
 
