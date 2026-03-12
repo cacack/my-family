@@ -243,29 +243,29 @@ func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit
 
 // ReadGlobalByTime returns paginated events filtered by time range and optional event types.
 func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
-	// Build query with conditional filters
-	query := `
+	const queryWithTypes = `
+		SELECT
+			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			COUNT(*) OVER() as total_count
+		FROM events
+		WHERE timestamp >= $1 AND timestamp <= $2 AND event_type = ANY($3)
+		ORDER BY timestamp ASC LIMIT $4 OFFSET $5`
+
+	const queryAll = `
 		SELECT
 			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
 			COUNT(*) OVER() as total_count
 		FROM events
 		WHERE timestamp >= $1 AND timestamp <= $2
-	`
+		ORDER BY timestamp ASC LIMIT $3 OFFSET $4`
 
-	args := []interface{}{fromTime, toTime}
-
-	// Add optional event type filter
+	var rows *sql.Rows
+	var err error
 	if len(eventTypes) > 0 {
-		query += ` AND event_type = ANY($3)`
-		args = append(args, pq.Array(eventTypes))
-		query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-		args = append(args, limit, offset)
+		rows, err = s.db.QueryContext(ctx, queryWithTypes, fromTime, toTime, pq.Array(eventTypes), limit, offset)
 	} else {
-		query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
-		args = append(args, limit, offset)
+		rows, err = s.db.QueryContext(ctx, queryAll, fromTime, toTime, limit, offset)
 	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query events by time: %w", err)
 	}
