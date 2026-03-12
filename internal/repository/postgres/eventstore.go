@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -243,29 +244,38 @@ func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit
 
 // ReadGlobalByTime returns paginated events filtered by time range and optional event types.
 func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
-	const queryWithTypes = `
-		SELECT
-			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
-			COUNT(*) OVER() as total_count
-		FROM events
-		WHERE timestamp >= $1 AND timestamp <= $2 AND event_type = ANY($3)
-		ORDER BY timestamp ASC LIMIT $4 OFFSET $5`
+	var whereClauses []string
+	var args []interface{}
+	paramN := 1
 
-	const queryAll = `
-		SELECT
-			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
-			COUNT(*) OVER() as total_count
-		FROM events
-		WHERE timestamp >= $1 AND timestamp <= $2
-		ORDER BY timestamp ASC LIMIT $3 OFFSET $4`
-
-	var rows *sql.Rows
-	var err error
-	if len(eventTypes) > 0 {
-		rows, err = s.db.QueryContext(ctx, queryWithTypes, fromTime, toTime, pq.Array(eventTypes), limit, offset)
-	} else {
-		rows, err = s.db.QueryContext(ctx, queryAll, fromTime, toTime, limit, offset)
+	if !fromTime.IsZero() {
+		whereClauses = append(whereClauses, fmt.Sprintf("timestamp >= $%d", paramN))
+		args = append(args, fromTime)
+		paramN++
 	}
+	if !toTime.IsZero() {
+		whereClauses = append(whereClauses, fmt.Sprintf("timestamp <= $%d", paramN))
+		args = append(args, toTime)
+		paramN++
+	}
+	if len(eventTypes) > 0 {
+		whereClauses = append(whereClauses, fmt.Sprintf("event_type = ANY($%d)", paramN))
+		args = append(args, pq.Array(eventTypes))
+		paramN++
+	}
+
+	query := `
+		SELECT
+			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			COUNT(*) OVER() as total_count
+		FROM events`
+	if len(whereClauses) > 0 {
+		query += " WHERE " + strings.Join(whereClauses, " AND ")
+	}
+	query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, paramN, paramN+1) // nolint:gosec // paramN is not user input
+	args = append(args, limit, offset)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query events by time: %w", err)
 	}
