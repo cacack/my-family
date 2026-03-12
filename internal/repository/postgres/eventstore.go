@@ -58,6 +58,7 @@ func (s *EventStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
 		CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
 		CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
+		CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
 	`)
 	return err
 }
@@ -272,7 +273,7 @@ func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time
 	if len(whereClauses) > 0 {
 		query += " WHERE " + strings.Join(whereClauses, " AND ")
 	}
-	query += fmt.Sprintf(` ORDER BY timestamp ASC LIMIT $%d OFFSET $%d`, paramN, paramN+1) // nolint:gosec // paramN is not user input
+	query += fmt.Sprintf(` ORDER BY timestamp ASC, position ASC LIMIT $%d OFFSET $%d`, paramN, paramN+1)
 	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
