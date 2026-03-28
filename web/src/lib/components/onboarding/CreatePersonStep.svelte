@@ -249,7 +249,7 @@
 
 	:global(body.high-contrast) .edit-form {
 		background: var(--color-bg-secondary);
-		border-color: var(--color-border);
+		border-color: var(--a11y-color-border);
 	}
 
 	:global(body.high-contrast) label {
@@ -259,7 +259,7 @@
 	:global(body.high-contrast) input,
 	:global(body.high-contrast) select {
 		background: var(--color-bg);
-		border-color: var(--color-border);
+		border-color: var(--a11y-color-border);
 		color: var(--color-text);
 	}
 

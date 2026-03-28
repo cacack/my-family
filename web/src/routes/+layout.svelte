@@ -151,7 +151,7 @@
 		--color-bg-secondary: #1a1a1a;
 		--color-text: #fff;
 		--color-text-muted: #ccc;
-		--color-border: #666;
+		--a11y-color-border: #666;
 		--color-focus-ring: #ffff00;
 		background: var(--color-bg);
 		color: var(--color-text);
@@ -214,7 +214,7 @@
 
 	:global(body.high-contrast) .app-header {
 		background: var(--color-bg-secondary);
-		border-bottom-color: var(--color-border);
+		border-bottom-color: var(--a11y-color-border);
 	}
 
 	.logo {
@@ -253,7 +253,7 @@
 	}
 
 	:global(body.high-contrast) .nav a:hover {
-		background: var(--color-border);
+		background: var(--a11y-color-border);
 		color: var(--color-text);
 	}
 
@@ -305,7 +305,7 @@
 	}
 
 	:global(body.high-contrast) .nav-dropdown-toggle:hover {
-		background: var(--color-border);
+		background: var(--a11y-color-border);
 		color: var(--color-text);
 	}
 
@@ -353,7 +353,7 @@
 
 	:global(body.high-contrast) .nav-dropdown-menu {
 		background: var(--color-bg-secondary);
-		border-color: var(--color-border);
+		border-color: var(--a11y-color-border);
 	}
 
 	.nav-dropdown:hover .nav-dropdown-menu {
@@ -381,7 +381,7 @@
 	}
 
 	:global(body.high-contrast) .nav-dropdown-menu a:hover {
-		background: var(--color-border);
+		background: var(--a11y-color-border);
 		color: var(--color-text);
 	}
 
@@ -413,7 +413,7 @@
 
 	:global(body.high-contrast) .accessibility-btn {
 		background: var(--color-bg-secondary);
-		border-color: var(--color-border);
+		border-color: var(--a11y-color-border);
 		color: var(--color-text-muted);
 	}
 
@@ -424,7 +424,7 @@
 	}
 
 	:global(body.high-contrast) .accessibility-btn:hover {
-		background: var(--color-border);
+		background: var(--a11y-color-border);
 		color: var(--color-text);
 	}
 

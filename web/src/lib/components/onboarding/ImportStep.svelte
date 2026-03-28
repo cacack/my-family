@@ -424,7 +424,7 @@
 
 	:global(body.high-contrast) .drop-zone {
 		background: var(--color-bg-secondary);
-		border-color: var(--color-border);
+		border-color: var(--a11y-color-border);
 	}
 
 	:global(body.high-contrast) .drop-zone.drag-over {
@@ -445,7 +445,7 @@
 
 	:global(body.high-contrast) .result {
 		background: var(--color-bg-secondary);
-		border-color: var(--color-border);
+		border-color: var(--a11y-color-border);
 	}
 
 	:global(body.high-contrast) .result h3 {

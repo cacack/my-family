@@ -297,7 +297,7 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 1.25rem 1.5rem;
-		border-bottom: 1px solid var(--color-border, #e5e7eb);
+		border-bottom: 1px solid var(--a11y-color-border, #e5e7eb);
 	}
 
 	.dialog-header h2 {
@@ -392,7 +392,7 @@
 		flex: 1;
 		padding: 0.75rem 0.5rem;
 		background: var(--color-bg-secondary, #f9fafb);
-		border: 2px solid var(--color-border, #e5e7eb);
+		border: 2px solid var(--a11y-color-border, #e5e7eb);
 		border-radius: 8px;
 		cursor: pointer;
 		display: flex;
@@ -446,7 +446,7 @@
 		position: relative;
 		width: 44px;
 		height: 24px;
-		background: var(--color-border, #d1d5db);
+		background: var(--a11y-color-border, #d1d5db);
 		border-radius: 12px;
 		flex-shrink: 0;
 		transition: background var(--transition-duration, 0.15s);
@@ -493,7 +493,7 @@
 	/* Footer */
 	.dialog-footer {
 		padding: 0.75rem 1.5rem;
-		border-top: 1px solid var(--color-border, #e5e7eb);
+		border-top: 1px solid var(--a11y-color-border, #e5e7eb);
 		background: var(--color-bg-secondary, #f9fafb);
 	}
 
@@ -544,11 +544,11 @@
 
 	/* High contrast mode adjustments for this panel */
 	:global(body.high-contrast) .accessibility-dialog {
-		border: 2px solid var(--color-border);
+		border: 2px solid var(--a11y-color-border);
 	}
 
 	:global(body.high-contrast) .toggle-switch {
-		border: 2px solid var(--color-border);
+		border: 2px solid var(--a11y-color-border);
 	}
 
 	:global(body.high-contrast) .font-size-btn.selected {

@@ -89,7 +89,7 @@ The API layer uses code generation from `internal/api/openapi.yaml`:
 
 - **Backend**: Go 1.25+, Echo (HTTP router), oapi-codegen (OpenAPI), `github.com/cacack/gedcom-go` (GEDCOM processing)
 - **Data**: Event store + read model projections (not ORM). PostgreSQL primary, SQLite fallback
-- **Frontend**: Svelte 5 + SvelteKit + Vite + D3.js + Tailwind CSS
+- **Frontend**: Svelte 5 + SvelteKit + Vite + D3.js + Tailwind CSS + shadcn-svelte (Vega preset, component CLI: `npx shadcn-svelte@latest add <component>`)
 
 ## Linked Library Development
 
