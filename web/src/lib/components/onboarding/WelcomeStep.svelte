@@ -243,7 +243,7 @@
 
 	:global(body.high-contrast) .action-card {
 		background: var(--color-bg-secondary);
-		border-color: var(--color-border);
+		border-color: var(--a11y-color-border);
 		color: var(--color-text);
 	}
 
@@ -260,7 +260,7 @@
 	}
 
 	:global(body.high-contrast) .card-icon {
-		background: var(--color-border);
+		background: var(--a11y-color-border);
 		color: var(--color-focus-ring);
 	}
 
