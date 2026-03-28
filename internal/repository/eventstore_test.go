@@ -530,6 +530,76 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:      "RepositoryCreated",
+			event:     domain.NewRepositoryCreated(domain.NewRepository("National Archives")),
+			eventType: "RepositoryCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.RepositoryCreated)
+				if !ok {
+					t.Fatalf("Expected RepositoryCreated, got %T", decoded)
+				}
+				if e.Name != "National Archives" {
+					t.Errorf("Name = %s, want National Archives", e.Name)
+				}
+			},
+		},
+		{
+			name:      "RepositoryUpdated",
+			event:     domain.NewRepositoryUpdated(uuid.New(), map[string]any{"name": "Updated Archives"}),
+			eventType: "RepositoryUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.RepositoryUpdated)
+				if !ok {
+					t.Fatalf("Expected RepositoryUpdated, got %T", decoded)
+				}
+				if e.Changes["name"] != "Updated Archives" {
+					t.Errorf("Changes[name] = %v, want Updated Archives", e.Changes["name"])
+				}
+			},
+		},
+		{
+			name:      "RepositoryDeleted",
+			event:     domain.NewRepositoryDeleted(uuid.New(), "closed permanently"),
+			eventType: "RepositoryDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.RepositoryDeleted)
+				if !ok {
+					t.Fatalf("Expected RepositoryDeleted, got %T", decoded)
+				}
+				if e.Reason != "closed permanently" {
+					t.Errorf("Reason = %s, want closed permanently", e.Reason)
+				}
+			},
+		},
+		{
+			name:      "LifeEventUpdated",
+			event:     domain.NewLifeEventUpdated(uuid.New(), map[string]any{"place": "Springfield"}),
+			eventType: "LifeEventUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.LifeEventUpdated)
+				if !ok {
+					t.Fatalf("Expected LifeEventUpdated, got %T", decoded)
+				}
+				if e.Changes["place"] != "Springfield" {
+					t.Errorf("Changes[place] = %v, want Springfield", e.Changes["place"])
+				}
+			},
+		},
+		{
+			name:      "AttributeUpdated",
+			event:     domain.NewAttributeUpdated(uuid.New(), map[string]any{"value": "blue eyes"}),
+			eventType: "AttributeUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.AttributeUpdated)
+				if !ok {
+					t.Fatalf("Expected AttributeUpdated, got %T", decoded)
+				}
+				if e.Changes["value"] != "blue eyes" {
+					t.Errorf("Changes[value] = %v, want blue eyes", e.Changes["value"])
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
