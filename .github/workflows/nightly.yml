@@ -92,10 +92,12 @@ jobs:
       run: cd web && npm ci
 
     - name: Run govulncheck
-      run: |
-        go install golang.org/x/vuln/cmd/govulncheck@latest
-        govulncheck -format sarif ./... > govulncheck-results.sarif || true
-        govulncheck ./...
+      uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1
+      with:
+        go-version-file: go.mod
+        repo-checkout: false
+        output-format: sarif
+        output-file: govulncheck-results.sarif
 
     - name: Upload govulncheck results
       uses: github/codeql-action/upload-sarif@6bc82e05fd0ea64601dd4b465378bbcf57de0314 # v4
@@ -105,9 +107,9 @@ jobs:
         category: govulncheck-nightly
 
     - name: Run gosec
-      run: |
-        go install github.com/securego/gosec/v2/cmd/gosec@latest
-        gosec -exclude=G104 -exclude-generated -fmt sarif -out gosec-results.sarif ./...
+      uses: securego/gosec@844b1703bf4fd59b110600317422f515cac6d603 # master (docker: 2.25.0)
+      with:
+        args: '-no-fail -exclude=G104 -exclude-generated -fmt sarif -out gosec-results.sarif ./...'
 
     - name: Upload gosec results
       uses: github/codeql-action/upload-sarif@6bc82e05fd0ea64601dd4b465378bbcf57de0314 # v4
@@ -128,7 +130,7 @@ jobs:
 
     - name: Upload Trivy results
       uses: github/codeql-action/upload-sarif@6bc82e05fd0ea64601dd4b465378bbcf57de0314 # v4
-      if: success() || failure()
+      if: (success() || failure()) && hashFiles('trivy-results.sarif') != ''
       with:
         sarif_file: trivy-results.sarif
         category: trivy-nightly
