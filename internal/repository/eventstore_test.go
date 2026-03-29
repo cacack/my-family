@@ -600,6 +600,71 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "LifeEventCreated",
+			event: domain.NewLifeEventCreatedFromModel(&domain.LifeEvent{
+				ID:       uuid.New(),
+				FactType: domain.FactPersonBirth,
+				Place:    "Springfield",
+			}),
+			eventType: "LifeEventCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.LifeEventCreated)
+				if !ok {
+					t.Fatalf("Expected LifeEventCreated, got %T", decoded)
+				}
+				if e.Place != "Springfield" {
+					t.Errorf("Place = %s, want Springfield", e.Place)
+				}
+			},
+		},
+		{
+			name:      "LifeEventDeleted",
+			event:     domain.NewLifeEventDeleted(uuid.New(), "duplicate"),
+			eventType: "LifeEventDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.LifeEventDeleted)
+				if !ok {
+					t.Fatalf("Expected LifeEventDeleted, got %T", decoded)
+				}
+				if e.Reason != "duplicate" {
+					t.Errorf("Reason = %s, want duplicate", e.Reason)
+				}
+			},
+		},
+		{
+			name: "AttributeCreated",
+			event: domain.NewAttributeCreatedFromModel(&domain.Attribute{
+				ID:       uuid.New(),
+				PersonID: uuid.New(),
+				FactType: domain.FactPersonOccupation,
+				Value:    "Blacksmith",
+			}),
+			eventType: "AttributeCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.AttributeCreated)
+				if !ok {
+					t.Fatalf("Expected AttributeCreated, got %T", decoded)
+				}
+				if e.Value != "Blacksmith" {
+					t.Errorf("Value = %s, want Blacksmith", e.Value)
+				}
+			},
+		},
+		{
+			name:      "AttributeDeleted",
+			event:     domain.NewAttributeDeleted(uuid.New(), "incorrect"),
+			eventType: "AttributeDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.AttributeDeleted)
+				if !ok {
+					t.Fatalf("Expected AttributeDeleted, got %T", decoded)
+				}
+				if e.Reason != "incorrect" {
+					t.Errorf("Reason = %s, want incorrect", e.Reason)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -681,6 +746,16 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"GedcomImported",
 		"SourceCreated", "SourceUpdated", "SourceDeleted",
 		"CitationCreated", "CitationUpdated", "CitationDeleted",
+		"MediaCreated", "MediaUpdated", "MediaDeleted",
+		"NameAdded", "NameUpdated", "NameRemoved",
+		"SnapshotCreated", "PersonMerged",
+		"NoteCreated", "NoteUpdated", "NoteDeleted",
+		"SubmitterCreated", "SubmitterUpdated", "SubmitterDeleted",
+		"AssociationCreated", "AssociationUpdated", "AssociationDeleted",
+		"LDSOrdinanceCreated", "LDSOrdinanceUpdated", "LDSOrdinanceDeleted",
+		"RepositoryCreated", "RepositoryUpdated", "RepositoryDeleted",
+		"LifeEventCreated", "LifeEventUpdated", "LifeEventDeleted",
+		"AttributeCreated", "AttributeUpdated", "AttributeDeleted",
 	}
 
 	for _, eventType := range eventTypes {

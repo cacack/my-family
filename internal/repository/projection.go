@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -895,8 +896,15 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 				event.Place = v
 			}
 		case "address":
-			if v, ok := value.(*domain.Address); ok {
+			switch v := value.(type) {
+			case *domain.Address:
 				event.Address = v
+			case map[string]any:
+				b, _ := json.Marshal(v)
+				var addr domain.Address
+				if json.Unmarshal(b, &addr) == nil {
+					event.Address = &addr
+				}
 			}
 		case "description":
 			if v, ok := value.(string); ok {
