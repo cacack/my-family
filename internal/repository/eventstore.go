@@ -289,6 +289,60 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "RepositoryCreated":
+		var event domain.RepositoryCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "RepositoryUpdated":
+		var event domain.RepositoryUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "RepositoryDeleted":
+		var event domain.RepositoryDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "LifeEventCreated":
+		var event domain.LifeEventCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "LifeEventUpdated":
+		var event domain.LifeEventUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "LifeEventDeleted":
+		var event domain.LifeEventDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "AttributeCreated":
+		var event domain.AttributeCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "AttributeUpdated":
+		var event domain.AttributeUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "AttributeDeleted":
+		var event domain.AttributeDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	default:
 		return nil, errors.New("unknown event type: " + e.EventType)
 	}

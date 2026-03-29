@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -64,12 +65,22 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectMediaDeleted(ctx, e)
 	case domain.LifeEventCreated:
 		return p.projectLifeEventCreated(ctx, e, version)
+	case domain.LifeEventUpdated:
+		return p.projectLifeEventUpdated(ctx, e, version)
 	case domain.LifeEventDeleted:
 		return p.projectLifeEventDeleted(ctx, e)
 	case domain.AttributeCreated:
 		return p.projectAttributeCreated(ctx, e, version)
+	case domain.AttributeUpdated:
+		return p.projectAttributeUpdated(ctx, e, version)
 	case domain.AttributeDeleted:
 		return p.projectAttributeDeleted(ctx, e)
+	case domain.RepositoryCreated:
+		return p.projectRepositoryCreated(ctx, e, version)
+	case domain.RepositoryUpdated:
+		return p.projectRepositoryUpdated(ctx, e, version)
+	case domain.RepositoryDeleted:
+		return p.projectRepositoryDeleted(ctx, e)
 	case domain.NameAdded:
 		return p.projectNameAdded(ctx, e, version)
 	case domain.NameUpdated:
@@ -852,6 +863,132 @@ func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.Attrib
 
 func (p *Projector) projectAttributeDeleted(ctx context.Context, e domain.AttributeDeleted) error {
 	return p.readStore.DeleteAttribute(ctx, e.AttributeID)
+}
+
+func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEventUpdated, version int64) error {
+	event, err := p.readStore.GetEvent(ctx, e.EventID)
+	if err != nil {
+		return err
+	}
+	if event == nil {
+		return nil // Event doesn't exist in read model, skip
+	}
+
+	for key, value := range e.Changes {
+		switch key {
+		case "fact_type":
+			if v, ok := value.(string); ok {
+				event.FactType = domain.FactType(v)
+			}
+		case "date":
+			if v, ok := value.(string); ok {
+				event.DateRaw = v
+				gd := domain.ParseGenDate(v)
+				t := gd.ToTime()
+				if !t.IsZero() {
+					event.DateSort = &t
+				} else {
+					event.DateSort = nil
+				}
+			}
+		case "place":
+			if v, ok := value.(string); ok {
+				event.Place = v
+			}
+		case "address":
+			if value == nil {
+				event.Address = nil
+			} else {
+				switch v := value.(type) {
+				case *domain.Address:
+					event.Address = v
+				case map[string]any:
+					b, _ := json.Marshal(v)
+					var addr domain.Address
+					if json.Unmarshal(b, &addr) == nil {
+						event.Address = &addr
+					}
+				}
+			}
+		case "description":
+			if v, ok := value.(string); ok {
+				event.Description = v
+			}
+		case "cause":
+			if v, ok := value.(string); ok {
+				event.Cause = v
+			}
+		case "age":
+			if v, ok := value.(string); ok {
+				event.Age = v
+			}
+		case "is_negated":
+			if v, ok := value.(bool); ok {
+				event.IsNegated = v
+			}
+		}
+	}
+
+	event.Version = version
+
+	return p.readStore.SaveEvent(ctx, event)
+}
+
+func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.AttributeUpdated, version int64) error {
+	attribute, err := p.readStore.GetAttribute(ctx, e.AttributeID)
+	if err != nil {
+		return err
+	}
+	if attribute == nil {
+		return nil // Attribute doesn't exist in read model, skip
+	}
+
+	for key, value := range e.Changes {
+		switch key {
+		case "fact_type":
+			if v, ok := value.(string); ok {
+				attribute.FactType = domain.FactType(v)
+			}
+		case "value":
+			if v, ok := value.(string); ok {
+				attribute.Value = v
+			}
+		case "date":
+			if v, ok := value.(string); ok {
+				attribute.DateRaw = v
+				gd := domain.ParseGenDate(v)
+				t := gd.ToTime()
+				if !t.IsZero() {
+					attribute.DateSort = &t
+				} else {
+					attribute.DateSort = nil
+				}
+			}
+		case "place":
+			if v, ok := value.(string); ok {
+				attribute.Place = v
+			}
+		}
+	}
+
+	attribute.Version = version
+
+	return p.readStore.SaveAttribute(ctx, attribute)
+}
+
+// projectRepositoryCreated is a no-op until RepositoryReadModel is implemented (#239).
+func (p *Projector) projectRepositoryCreated(_ context.Context, _ domain.RepositoryCreated, _ int64) error {
+	return nil
+}
+
+// projectRepositoryUpdated is a no-op until RepositoryReadModel is implemented (#239).
+func (p *Projector) projectRepositoryUpdated(_ context.Context, _ domain.RepositoryUpdated, _ int64) error {
+	return nil
+}
+
+// projectRepositoryDeleted is a no-op until RepositoryReadModel is implemented (#239).
+func (p *Projector) projectRepositoryDeleted(_ context.Context, _ domain.RepositoryDeleted) error {
+	return nil
 }
 
 func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64) error {

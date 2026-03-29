@@ -530,6 +530,141 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:      "RepositoryCreated",
+			event:     domain.NewRepositoryCreated(domain.NewRepository("National Archives")),
+			eventType: "RepositoryCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.RepositoryCreated)
+				if !ok {
+					t.Fatalf("Expected RepositoryCreated, got %T", decoded)
+				}
+				if e.Name != "National Archives" {
+					t.Errorf("Name = %s, want National Archives", e.Name)
+				}
+			},
+		},
+		{
+			name:      "RepositoryUpdated",
+			event:     domain.NewRepositoryUpdated(uuid.New(), map[string]any{"name": "Updated Archives"}),
+			eventType: "RepositoryUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.RepositoryUpdated)
+				if !ok {
+					t.Fatalf("Expected RepositoryUpdated, got %T", decoded)
+				}
+				if e.Changes["name"] != "Updated Archives" {
+					t.Errorf("Changes[name] = %v, want Updated Archives", e.Changes["name"])
+				}
+			},
+		},
+		{
+			name:      "RepositoryDeleted",
+			event:     domain.NewRepositoryDeleted(uuid.New(), "closed permanently"),
+			eventType: "RepositoryDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.RepositoryDeleted)
+				if !ok {
+					t.Fatalf("Expected RepositoryDeleted, got %T", decoded)
+				}
+				if e.Reason != "closed permanently" {
+					t.Errorf("Reason = %s, want closed permanently", e.Reason)
+				}
+			},
+		},
+		{
+			name:      "LifeEventUpdated",
+			event:     domain.NewLifeEventUpdated(uuid.New(), map[string]any{"place": "Springfield"}),
+			eventType: "LifeEventUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.LifeEventUpdated)
+				if !ok {
+					t.Fatalf("Expected LifeEventUpdated, got %T", decoded)
+				}
+				if e.Changes["place"] != "Springfield" {
+					t.Errorf("Changes[place] = %v, want Springfield", e.Changes["place"])
+				}
+			},
+		},
+		{
+			name:      "AttributeUpdated",
+			event:     domain.NewAttributeUpdated(uuid.New(), map[string]any{"value": "blue eyes"}),
+			eventType: "AttributeUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.AttributeUpdated)
+				if !ok {
+					t.Fatalf("Expected AttributeUpdated, got %T", decoded)
+				}
+				if e.Changes["value"] != "blue eyes" {
+					t.Errorf("Changes[value] = %v, want blue eyes", e.Changes["value"])
+				}
+			},
+		},
+		{
+			name: "LifeEventCreated",
+			event: domain.NewLifeEventCreatedFromModel(&domain.LifeEvent{
+				ID:       uuid.New(),
+				FactType: domain.FactPersonBirth,
+				Place:    "Springfield",
+			}),
+			eventType: "LifeEventCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.LifeEventCreated)
+				if !ok {
+					t.Fatalf("Expected LifeEventCreated, got %T", decoded)
+				}
+				if e.Place != "Springfield" {
+					t.Errorf("Place = %s, want Springfield", e.Place)
+				}
+			},
+		},
+		{
+			name:      "LifeEventDeleted",
+			event:     domain.NewLifeEventDeleted(uuid.New(), "duplicate"),
+			eventType: "LifeEventDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.LifeEventDeleted)
+				if !ok {
+					t.Fatalf("Expected LifeEventDeleted, got %T", decoded)
+				}
+				if e.Reason != "duplicate" {
+					t.Errorf("Reason = %s, want duplicate", e.Reason)
+				}
+			},
+		},
+		{
+			name: "AttributeCreated",
+			event: domain.NewAttributeCreatedFromModel(&domain.Attribute{
+				ID:       uuid.New(),
+				PersonID: uuid.New(),
+				FactType: domain.FactPersonOccupation,
+				Value:    "Blacksmith",
+			}),
+			eventType: "AttributeCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.AttributeCreated)
+				if !ok {
+					t.Fatalf("Expected AttributeCreated, got %T", decoded)
+				}
+				if e.Value != "Blacksmith" {
+					t.Errorf("Value = %s, want Blacksmith", e.Value)
+				}
+			},
+		},
+		{
+			name:      "AttributeDeleted",
+			event:     domain.NewAttributeDeleted(uuid.New(), "incorrect"),
+			eventType: "AttributeDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.AttributeDeleted)
+				if !ok {
+					t.Fatalf("Expected AttributeDeleted, got %T", decoded)
+				}
+				if e.Reason != "incorrect" {
+					t.Errorf("Reason = %s, want incorrect", e.Reason)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -611,6 +746,16 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"GedcomImported",
 		"SourceCreated", "SourceUpdated", "SourceDeleted",
 		"CitationCreated", "CitationUpdated", "CitationDeleted",
+		"MediaCreated", "MediaUpdated", "MediaDeleted",
+		"NameAdded", "NameUpdated", "NameRemoved",
+		"SnapshotCreated", "PersonMerged",
+		"NoteCreated", "NoteUpdated", "NoteDeleted",
+		"SubmitterCreated", "SubmitterUpdated", "SubmitterDeleted",
+		"AssociationCreated", "AssociationUpdated", "AssociationDeleted",
+		"LDSOrdinanceCreated", "LDSOrdinanceUpdated", "LDSOrdinanceDeleted",
+		"RepositoryCreated", "RepositoryUpdated", "RepositoryDeleted",
+		"LifeEventCreated", "LifeEventUpdated", "LifeEventDeleted",
+		"AttributeCreated", "AttributeUpdated", "AttributeDeleted",
 	}
 
 	for _, eventType := range eventTypes {
