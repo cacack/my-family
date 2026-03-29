@@ -896,14 +896,18 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 				event.Place = v
 			}
 		case "address":
-			switch v := value.(type) {
-			case *domain.Address:
-				event.Address = v
-			case map[string]any:
-				b, _ := json.Marshal(v)
-				var addr domain.Address
-				if json.Unmarshal(b, &addr) == nil {
-					event.Address = &addr
+			if value == nil {
+				event.Address = nil
+			} else {
+				switch v := value.(type) {
+				case *domain.Address:
+					event.Address = v
+				case map[string]any:
+					b, _ := json.Marshal(v)
+					var addr domain.Address
+					if json.Unmarshal(b, &addr) == nil {
+						event.Address = &addr
+					}
 				}
 			}
 		case "description":
