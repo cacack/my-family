@@ -31,6 +31,7 @@ Completed features in my-family genealogy software.
 - **Data Quality Scores** - Analytics page showing records needing attention with actionable issues
 - **Brick Wall Tracker** - Mark research dead ends, add notes, and celebrate breakthroughs with resolution tracking and browse page
 - **Discovery Feed** - Prioritized research suggestions on the dashboard identifying missing data, orphaned records, unassessed persons, and quality gaps
+- **Citation Template UI** - Browse 26 Evidence Explained citation templates by category, select templates when adding citations for dynamic field rendering with live-formatted preview
 
 ## Data Validation & Cleanup
 

@@ -674,6 +674,54 @@ func (ss *StrictServer) GetCitationTemplate(ctx context.Context, request GetCita
 	return GetCitationTemplate200JSONResponse(convertCitationTemplate(*tmpl)), nil
 }
 
+// PreviewCitationTemplate implements StrictServerInterface.
+func (ss *StrictServer) PreviewCitationTemplate(ctx context.Context, request PreviewCitationTemplateRequestObject) (PreviewCitationTemplateResponseObject, error) {
+	tmpl := citation.GetTemplate(request.Id)
+	if tmpl == nil {
+		return PreviewCitationTemplate404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Citation template not found",
+		}}, nil
+	}
+
+	fields := request.Body.Fields
+
+	full, err := citation.FormatFull(tmpl, fields)
+	if err != nil {
+		return PreviewCitationTemplate400JSONResponse{BadRequestJSONResponse{
+			Code:    "format_error",
+			Message: fmt.Sprintf("Failed to format full citation: %v", err),
+		}}, nil
+	}
+	short, err := citation.FormatShort(tmpl, fields)
+	if err != nil {
+		return PreviewCitationTemplate400JSONResponse{BadRequestJSONResponse{
+			Code:    "format_error",
+			Message: fmt.Sprintf("Failed to format short citation: %v", err),
+		}}, nil
+	}
+
+	issues := citation.ValidateFields(tmpl, fields)
+	var apiIssues *[]CitationValidationIssue
+	if len(issues) > 0 {
+		converted := make([]CitationValidationIssue, len(issues))
+		for i, issue := range issues {
+			converted[i] = CitationValidationIssue{
+				Field:   issue.Field,
+				Message: issue.Message,
+				Level:   CitationValidationIssueLevel(issue.Level),
+			}
+		}
+		apiIssues = &converted
+	}
+
+	return PreviewCitationTemplate200JSONResponse(FormattedCitation{
+		Full:             full,
+		Short:            short,
+		ValidationIssues: apiIssues,
+	}), nil
+}
+
 // FormatCitation implements StrictServerInterface.
 func (ss *StrictServer) FormatCitation(ctx context.Context, request FormatCitationRequestObject) (FormatCitationResponseObject, error) {
 	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)

@@ -10,6 +10,7 @@
 	import DemoBanner from '$lib/components/DemoBanner.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Button } from '$lib/components/ui/button';
+	import TooltipProvider from '$lib/components/ui/tooltip/tooltip-provider.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { loadAppConfig, getAppConfig } from '$lib/stores/appConfig.svelte';
 	import type { SearchResult } from '$lib/api/client';
@@ -95,6 +96,7 @@
 					<DropdownMenu.Item><a href="/browse/places">By Place</a></DropdownMenu.Item>
 					<DropdownMenu.Item><a href="/browse/cemeteries">By Cemetery</a></DropdownMenu.Item>
 					<DropdownMenu.Item><a href="/browse/brick-walls">Brick Walls</a></DropdownMenu.Item>
+					<DropdownMenu.Item><a href="/browse/citation-templates">Citation Templates</a></DropdownMenu.Item>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
@@ -126,7 +128,9 @@
 		</div>
 	</header>
 	<main id="main-content" class="app-main" role="main">
-		{@render children()}
+		<TooltipProvider>
+			{@render children()}
+		</TooltipProvider>
 	</main>
 </div>
 
