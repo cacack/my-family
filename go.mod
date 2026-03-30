@@ -7,7 +7,7 @@ require (
 	github.com/getkin/kin-openapi v0.134.0
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.1
-	github.com/lib/pq v1.11.2
+	github.com/lib/pq v1.12.1
 	github.com/mattn/go-sqlite3 v1.14.38
 	github.com/oapi-codegen/oapi-codegen/v2 v2.6.0
 	github.com/oapi-codegen/runtime v1.2.0
