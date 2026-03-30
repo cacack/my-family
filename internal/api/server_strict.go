@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/cacack/my-family/internal/citation"
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
@@ -512,6 +513,9 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 	if request.Body.TemplateId != nil {
 		input.TemplateID = *request.Body.TemplateId
 	}
+	if request.Body.Fields != nil {
+		input.Fields = *request.Body.Fields
+	}
 	if request.Body.GedcomXref != nil {
 		input.GedcomXref = *request.Body.GedcomXref
 	}
@@ -521,17 +525,17 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 		return nil, err
 	}
 
-	citation, err := ss.server.sourceService.GetCitation(ctx, result.ID)
+	cit, err := ss.server.sourceService.GetCitation(ctx, result.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	return CreateCitation201JSONResponse(convertQueryCitationToGenerated(*citation)), nil
+	return CreateCitation201JSONResponse(convertQueryCitationToGenerated(*cit)), nil
 }
 
 // GetCitation implements StrictServerInterface.
 func (ss *StrictServer) GetCitation(ctx context.Context, request GetCitationRequestObject) (GetCitationResponseObject, error) {
-	citation, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetCitation404JSONResponse{NotFoundJSONResponse{
@@ -542,7 +546,7 @@ func (ss *StrictServer) GetCitation(ctx context.Context, request GetCitationRequ
 		return nil, err
 	}
 
-	return GetCitation200JSONResponse(convertQueryCitationToGenerated(*citation)), nil
+	return GetCitation200JSONResponse(convertQueryCitationToGenerated(*cit)), nil
 }
 
 // UpdateCitation implements StrictServerInterface.
@@ -576,6 +580,9 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 	if request.Body.TemplateId != nil {
 		input.TemplateID = request.Body.TemplateId
 	}
+	if request.Body.Fields != nil {
+		input.Fields = *request.Body.Fields
+	}
 
 	_, err := ss.server.commandHandler.UpdateCitation(ctx, input)
 	if err != nil {
@@ -594,12 +601,12 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 		return nil, err
 	}
 
-	citation, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	return UpdateCitation200JSONResponse(convertQueryCitationToGenerated(*citation)), nil
+	return UpdateCitation200JSONResponse(convertQueryCitationToGenerated(*cit)), nil
 }
 
 // DeleteCitation implements StrictServerInterface.
@@ -608,7 +615,7 @@ func (ss *StrictServer) DeleteCitation(ctx context.Context, request DeleteCitati
 	if request.Params.Version != nil {
 		version = *request.Params.Version
 	} else {
-		citation, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+		cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
 		if err != nil {
 			if errors.Is(err, query.ErrNotFound) {
 				return DeleteCitation404JSONResponse{NotFoundJSONResponse{
@@ -618,7 +625,7 @@ func (ss *StrictServer) DeleteCitation(ctx context.Context, request DeleteCitati
 			}
 			return nil, err
 		}
-		version = citation.Version
+		version = cit.Version
 	}
 
 	err := ss.server.commandHandler.DeleteCitation(ctx, request.Id, version, "")
@@ -633,6 +640,124 @@ func (ss *StrictServer) DeleteCitation(ctx context.Context, request DeleteCitati
 	}
 
 	return DeleteCitation204Response{}, nil
+}
+
+// ListCitationTemplates implements StrictServerInterface.
+func (ss *StrictServer) ListCitationTemplates(ctx context.Context, request ListCitationTemplatesRequestObject) (ListCitationTemplatesResponseObject, error) {
+	var templates []citation.Template
+	if request.Params.SourceType != nil && *request.Params.SourceType != "" {
+		templates = citation.TemplatesForSourceType(domain.SourceType(*request.Params.SourceType))
+	} else {
+		templates = citation.ListTemplates()
+	}
+
+	result := CitationTemplateList{
+		Templates: make([]CitationTemplate, 0, len(templates)),
+	}
+	for _, t := range templates {
+		result.Templates = append(result.Templates, convertCitationTemplate(t))
+	}
+
+	return ListCitationTemplates200JSONResponse(result), nil
+}
+
+// GetCitationTemplate implements StrictServerInterface.
+func (ss *StrictServer) GetCitationTemplate(ctx context.Context, request GetCitationTemplateRequestObject) (GetCitationTemplateResponseObject, error) {
+	tmpl := citation.GetTemplate(request.Id)
+	if tmpl == nil {
+		return GetCitationTemplate404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Citation template not found",
+		}}, nil
+	}
+
+	return GetCitationTemplate200JSONResponse(convertCitationTemplate(*tmpl)), nil
+}
+
+// FormatCitation implements StrictServerInterface.
+func (ss *StrictServer) FormatCitation(ctx context.Context, request FormatCitationRequestObject) (FormatCitationResponseObject, error) {
+	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return FormatCitation404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Citation not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	var templateID string
+	if cit.TemplateID != nil {
+		templateID = *cit.TemplateID
+	}
+
+	if templateID == "" {
+		return FormatCitation200JSONResponse(FormattedCitation{
+			Full:  "",
+			Short: "",
+		}), nil
+	}
+
+	tmpl := citation.GetTemplate(templateID)
+	if tmpl == nil {
+		return FormatCitation200JSONResponse(FormattedCitation{
+			Full:  "",
+			Short: "",
+		}), nil
+	}
+
+	fields := cit.Fields
+
+	full, _ := citation.FormatFull(tmpl, fields)
+	short, _ := citation.FormatShort(tmpl, fields)
+
+	issues := citation.ValidateFields(tmpl, fields)
+	var apiIssues *[]CitationValidationIssue
+	if len(issues) > 0 {
+		converted := make([]CitationValidationIssue, len(issues))
+		for i, issue := range issues {
+			converted[i] = CitationValidationIssue{
+				Field:   issue.Field,
+				Message: issue.Message,
+				Level:   CitationValidationIssueLevel(issue.Level),
+			}
+		}
+		apiIssues = &converted
+	}
+
+	return FormatCitation200JSONResponse(FormattedCitation{
+		Full:             full,
+		Short:            short,
+		ValidationIssues: apiIssues,
+	}), nil
+}
+
+// convertCitationTemplate converts a citation.Template to the generated API type.
+func convertCitationTemplate(t citation.Template) CitationTemplate {
+	fields := make([]CitationTemplateField, len(t.Fields))
+	for i, f := range t.Fields {
+		fields[i] = CitationTemplateField{
+			Key:      f.Key,
+			Label:    f.Label,
+			HelpText: strPtr(f.HelpText),
+			Required: f.Required,
+		}
+	}
+
+	sourceTypes := make([]string, len(t.SourceTypes))
+	for i, st := range t.SourceTypes {
+		sourceTypes[i] = string(st)
+	}
+
+	return CitationTemplate{
+		Id:          t.ID,
+		Name:        t.Name,
+		Category:    t.Category,
+		Description: strPtr(t.Description),
+		SourceTypes: sourceTypes,
+		Fields:      fields,
+	}
 }
 
 // GetCitationRestorePoints implements StrictServerInterface.
@@ -3632,9 +3757,27 @@ func convertQueryCitationToGenerated(c query.Citation) Citation {
 		QuotedText:    c.QuotedText,
 		Analysis:      c.Analysis,
 		TemplateId:    c.TemplateID,
+		Fields:        fieldsToPtr(c.Fields),
 		GedcomXref:    c.GedcomXref,
 		Version:       c.Version,
 	}
+}
+
+// fieldsToPtr converts a map to a pointer, returning nil for empty maps.
+// The pointer-to-map return type matches the oapi-codegen generated schema.
+func fieldsToPtr(m map[string]string) *map[string]string { //nolint:gocritic // matches generated API type
+	if len(m) == 0 {
+		return nil
+	}
+	return &m
+}
+
+// strPtr returns a pointer to s, or nil if s is empty.
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // convertQueryPedigreeNodeToGenerated converts a query.PedigreeNode to the generated PedigreeNode type.

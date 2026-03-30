@@ -74,20 +74,21 @@ func (s *Source) Validate() error {
 
 // Citation represents a citation linking a source to a specific fact.
 type Citation struct {
-	ID            uuid.UUID     `json:"id"`
-	SourceID      uuid.UUID     `json:"source_id"`
-	FactType      FactType      `json:"fact_type"`
-	FactOwnerID   uuid.UUID     `json:"fact_owner_id"`    // Person or Family ID
-	Page          string        `json:"page,omitempty"`   // Page/location within source
-	Volume        string        `json:"volume,omitempty"` // Volume/issue/series
-	SourceQuality SourceQuality `json:"source_quality,omitempty"`
-	InformantType InformantType `json:"informant_type,omitempty"`
-	EvidenceType  EvidenceType  `json:"evidence_type,omitempty"`
-	QuotedText    string        `json:"quoted_text,omitempty"` // Direct quote from source
-	Analysis      string        `json:"analysis,omitempty"`    // Researcher's analysis
-	TemplateID    string        `json:"template_id,omitempty"` // For future Evidence Explained templates
-	GedcomXref    string        `json:"gedcom_xref,omitempty"` // Original GEDCOM @XREF@ for round-trip
-	Version       int64         `json:"version"`               // Optimistic locking version
+	ID            uuid.UUID         `json:"id"`
+	SourceID      uuid.UUID         `json:"source_id"`
+	FactType      FactType          `json:"fact_type"`
+	FactOwnerID   uuid.UUID         `json:"fact_owner_id"`    // Person or Family ID
+	Page          string            `json:"page,omitempty"`   // Page/location within source
+	Volume        string            `json:"volume,omitempty"` // Volume/issue/series
+	SourceQuality SourceQuality     `json:"source_quality,omitempty"`
+	InformantType InformantType     `json:"informant_type,omitempty"`
+	EvidenceType  EvidenceType      `json:"evidence_type,omitempty"`
+	QuotedText    string            `json:"quoted_text,omitempty"` // Direct quote from source
+	Analysis      string            `json:"analysis,omitempty"`    // Researcher's analysis
+	TemplateID    string            `json:"template_id,omitempty"` // Evidence Explained template ID
+	Fields        map[string]string `json:"fields,omitempty"`      // Template-specific field values
+	GedcomXref    string            `json:"gedcom_xref,omitempty"` // Original GEDCOM @XREF@ for round-trip
+	Version       int64             `json:"version"`               // Optimistic locking version
 }
 
 // CitationValidationError represents a validation error for a Citation.

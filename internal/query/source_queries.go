@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,22 +41,23 @@ type Source struct {
 
 // Citation represents a citation in query results.
 type Citation struct {
-	ID            uuid.UUID `json:"id"`
-	SourceID      uuid.UUID `json:"source_id"`
-	SourceTitle   string    `json:"source_title"`
-	FactType      string    `json:"fact_type"`
-	FactOwnerID   uuid.UUID `json:"fact_owner_id"`
-	Page          *string   `json:"page,omitempty"`
-	Volume        *string   `json:"volume,omitempty"`
-	SourceQuality *string   `json:"source_quality,omitempty"`
-	InformantType *string   `json:"informant_type,omitempty"`
-	EvidenceType  *string   `json:"evidence_type,omitempty"`
-	QuotedText    *string   `json:"quoted_text,omitempty"`
-	Analysis      *string   `json:"analysis,omitempty"`
-	TemplateID    *string   `json:"template_id,omitempty"`
-	GedcomXref    *string   `json:"gedcom_xref,omitempty"`
-	Version       int64     `json:"version"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID            uuid.UUID         `json:"id"`
+	SourceID      uuid.UUID         `json:"source_id"`
+	SourceTitle   string            `json:"source_title"`
+	FactType      string            `json:"fact_type"`
+	FactOwnerID   uuid.UUID         `json:"fact_owner_id"`
+	Page          *string           `json:"page,omitempty"`
+	Volume        *string           `json:"volume,omitempty"`
+	SourceQuality *string           `json:"source_quality,omitempty"`
+	InformantType *string           `json:"informant_type,omitempty"`
+	EvidenceType  *string           `json:"evidence_type,omitempty"`
+	QuotedText    *string           `json:"quoted_text,omitempty"`
+	Analysis      *string           `json:"analysis,omitempty"`
+	TemplateID    *string           `json:"template_id,omitempty"`
+	Fields        map[string]string `json:"fields,omitempty"`
+	GedcomXref    *string           `json:"gedcom_xref,omitempty"`
+	Version       int64             `json:"version"`
+	CreatedAt     time.Time         `json:"created_at"`
 }
 
 // SourceDetail includes citations attached to this source.
@@ -293,6 +295,12 @@ func convertReadModelToCitation(rm repository.CitationReadModel) Citation {
 	}
 	if rm.TemplateID != "" {
 		c.TemplateID = &rm.TemplateID
+	}
+	if rm.FieldsJSON != "" {
+		var fields map[string]string
+		if err := json.Unmarshal([]byte(rm.FieldsJSON), &fields); err == nil {
+			c.Fields = fields
+		}
 	}
 	if rm.GedcomXref != "" {
 		c.GedcomXref = &rm.GedcomXref

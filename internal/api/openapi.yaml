@@ -29,6 +29,8 @@ tags:
     description: Source record management
   - name: citations
     description: Citation management
+  - name: citation-templates
+    description: Evidence Explained citation templates
   - name: export
     description: Data export
   - name: history
@@ -1127,6 +1129,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  # Citation template endpoints
+  /citation-templates:
+    get:
+      operationId: listCitationTemplates
+      summary: List available citation templates
+      description: Returns all Evidence Explained citation templates, optionally filtered by source type
+      tags: [citation-templates]
+      parameters:
+        - name: source_type
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter templates by source type
+      responses:
+        '200':
+          description: List of citation templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitationTemplateList'
+
+  /citation-templates/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Template ID (e.g., census.us.federal)
+
+    get:
+      operationId: getCitationTemplate
+      summary: Get a citation template by ID
+      tags: [citation-templates]
+      responses:
+        '200':
+          description: Citation template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitationTemplate'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /citations/{id}/format:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: formatCitation
+      summary: Format a citation using its template
+      description: Renders the citation as full and short formatted text using the associated template
+      tags: [citations]
+      responses:
+        '200':
+          description: Formatted citation text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormattedCitation'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   # Media endpoints
   /persons/{id}/media:
@@ -4332,7 +4403,12 @@ components:
           description: Researcher's analysis of the citation
         template_id:
           type: string
-          description: Citation template ID
+          description: Evidence Explained citation template ID
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Template-specific field values
         gedcom_xref:
           type: string
           description: GEDCOM cross-reference ID (e.g., "@C1@") for round-trip support
@@ -4371,6 +4447,11 @@ components:
           type: string
         template_id:
           type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Template-specific field values
         gedcom_xref:
           type: string
           description: Optional GEDCOM cross-reference ID for import
@@ -4395,6 +4476,11 @@ components:
           type: string
         template_id:
           type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+          description: Template-specific field values
         version:
           type: integer
           format: int64
@@ -4410,6 +4496,87 @@ components:
             $ref: '#/components/schemas/Citation'
         total:
           type: integer
+
+    CitationTemplate:
+      type: object
+      required: [id, name, category, source_types, fields]
+      properties:
+        id:
+          type: string
+          description: Stable template identifier (e.g., census.us.federal)
+        name:
+          type: string
+          description: Human-readable template name
+        category:
+          type: string
+          description: Template category (e.g., Census Records)
+        description:
+          type: string
+          description: Brief help text
+        source_types:
+          type: array
+          items:
+            type: string
+          description: Applicable source types
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/CitationTemplateField'
+          description: Ordered list of field definitions
+
+    CitationTemplateField:
+      type: object
+      required: [key, label, required]
+      properties:
+        key:
+          type: string
+          description: Machine key for the field
+        label:
+          type: string
+          description: Human-readable label
+        help_text:
+          type: string
+          description: Guidance for the user
+        required:
+          type: boolean
+          description: Whether the field is required
+
+    CitationTemplateList:
+      type: object
+      required: [templates]
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CitationTemplate'
+
+    FormattedCitation:
+      type: object
+      required: [full, short]
+      properties:
+        full:
+          type: string
+          description: Full formatted citation text
+        short:
+          type: string
+          description: Short formatted citation text
+        validation_issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/CitationValidationIssue'
+          description: Any field validation warnings or errors
+
+    CitationValidationIssue:
+      type: object
+      required: [field, message, level]
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+        level:
+          type: string
+          enum: [error, warning]
 
     # Quality and Statistics schemas
     QualityOverview:

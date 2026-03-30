@@ -962,3 +962,237 @@ func TestUpdateCitation_NotFound(t *testing.T) {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
+
+func TestListCitationTemplates(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citation-templates", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d. Body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+
+	templates, ok := resp["templates"].([]any)
+	if !ok {
+		t.Fatal("Expected templates array in response")
+	}
+	if len(templates) < 20 {
+		t.Errorf("Expected at least 20 templates, got %d", len(templates))
+	}
+}
+
+func TestListCitationTemplates_FilterBySourceType(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citation-templates?source_type=census", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	templates := resp["templates"].([]any)
+
+	if len(templates) < 3 {
+		t.Errorf("Expected at least 3 census templates, got %d", len(templates))
+	}
+
+	for _, tmpl := range templates {
+		m := tmpl.(map[string]any)
+		sourceTypes := m["source_types"].([]any)
+		found := false
+		for _, st := range sourceTypes {
+			if st == "census" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Template %v does not include census source type", m["id"])
+		}
+	}
+}
+
+func TestGetCitationTemplate(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citation-templates/census.us.federal", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d. Body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+
+	if resp["id"] != "census.us.federal" {
+		t.Errorf("id = %v, want census.us.federal", resp["id"])
+	}
+	if resp["name"] != "U.S. Federal Census" {
+		t.Errorf("name = %v, want U.S. Federal Census", resp["name"])
+	}
+
+	fields, ok := resp["fields"].([]any)
+	if !ok || len(fields) == 0 {
+		t.Error("Expected non-empty fields array")
+	}
+}
+
+func TestGetCitationTemplate_NotFound(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citation-templates/nonexistent.template", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestFormatCitation(t *testing.T) {
+	server := setupTestServer()
+
+	// Create source
+	sourceBody := `{"source_type":"census","title":"1850 Census"}`
+	sourceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(sourceBody))
+	sourceReq.Header.Set("Content-Type", "application/json")
+	sourceRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(sourceRec, sourceReq)
+	var sourceResp map[string]any
+	json.Unmarshal(sourceRec.Body.Bytes(), &sourceResp)
+	sourceID := sourceResp["id"].(string)
+
+	// Create person
+	personBody := `{"given_name":"John","surname":"Doe"}`
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	personReq.Header.Set("Content-Type", "application/json")
+	personRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(personRec, personReq)
+	var personResp map[string]any
+	json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	// Create citation with template and fields
+	citationBody := fmt.Sprintf(`{
+		"source_id": %q,
+		"fact_type": "person_birth",
+		"fact_owner_id": %q,
+		"template_id": "census.us.federal",
+		"fields": {
+			"year": "1850",
+			"state": "Virginia",
+			"county": "Augusta",
+			"person_name": "John Doe"
+		}
+	}`, sourceID, personID)
+	citReq := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
+	citReq.Header.Set("Content-Type", "application/json")
+	citRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(citRec, citReq)
+
+	if citRec.Code != http.StatusCreated {
+		t.Fatalf("Create citation: status = %d, want %d. Body: %s", citRec.Code, http.StatusCreated, citRec.Body.String())
+	}
+
+	var citResp map[string]any
+	json.Unmarshal(citRec.Body.Bytes(), &citResp)
+	citationID := citResp["id"].(string)
+
+	if citResp["template_id"] != "census.us.federal" {
+		t.Errorf("template_id = %v, want census.us.federal", citResp["template_id"])
+	}
+	if citResp["fields"] == nil {
+		t.Error("Expected fields to be returned on citation")
+	}
+
+	// Format the citation
+	formatReq := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID+"/format", http.NoBody)
+	formatRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(formatRec, formatReq)
+
+	if formatRec.Code != http.StatusOK {
+		t.Fatalf("Format: status = %d, want %d. Body: %s", formatRec.Code, http.StatusOK, formatRec.Body.String())
+	}
+
+	var formatResp map[string]any
+	json.Unmarshal(formatRec.Body.Bytes(), &formatResp)
+
+	full := formatResp["full"].(string)
+	short := formatResp["short"].(string)
+
+	if full == "" {
+		t.Error("Expected non-empty full citation")
+	}
+	if short == "" {
+		t.Error("Expected non-empty short citation")
+	}
+
+	if !strings.Contains(full, "1850") || !strings.Contains(full, "John Doe") {
+		t.Errorf("Full citation missing expected content: %s", full)
+	}
+}
+
+func TestFormatCitation_NotFound(t *testing.T) {
+	server := setupTestServer()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/citations/00000000-0000-0000-0000-000000000001/format", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestFormatCitation_NoTemplate(t *testing.T) {
+	server := setupTestServer()
+
+	sourceBody := `{"source_type":"book","title":"Test Book"}`
+	sourceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", strings.NewReader(sourceBody))
+	sourceReq.Header.Set("Content-Type", "application/json")
+	sourceRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(sourceRec, sourceReq)
+	var sourceResp map[string]any
+	json.Unmarshal(sourceRec.Body.Bytes(), &sourceResp)
+	sourceID := sourceResp["id"].(string)
+
+	personBody := `{"given_name":"Jane","surname":"Doe"}`
+	personReq := httptest.NewRequest(http.MethodPost, "/api/v1/persons", strings.NewReader(personBody))
+	personReq.Header.Set("Content-Type", "application/json")
+	personRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(personRec, personReq)
+	var personResp map[string]any
+	json.Unmarshal(personRec.Body.Bytes(), &personResp)
+	personID := personResp["id"].(string)
+
+	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `"}`
+	citReq := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
+	citReq.Header.Set("Content-Type", "application/json")
+	citRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(citRec, citReq)
+	var citResp map[string]any
+	json.Unmarshal(citRec.Body.Bytes(), &citResp)
+	citationID := citResp["id"].(string)
+
+	formatReq := httptest.NewRequest(http.MethodGet, "/api/v1/citations/"+citationID+"/format", http.NoBody)
+	formatRec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(formatRec, formatReq)
+
+	if formatRec.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d", formatRec.Code, http.StatusOK)
+	}
+
+	var formatResp map[string]any
+	json.Unmarshal(formatRec.Body.Bytes(), &formatResp)
+	if formatResp["full"] != "" {
+		t.Errorf("Expected empty full citation for template-less citation, got %q", formatResp["full"])
+	}
+}

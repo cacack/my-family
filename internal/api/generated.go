@@ -106,6 +106,24 @@ func (e ChangeEntryEntityType) Valid() bool {
 	}
 }
 
+// Defines values for CitationValidationIssueLevel.
+const (
+	CitationValidationIssueLevelError   CitationValidationIssueLevel = "error"
+	CitationValidationIssueLevelWarning CitationValidationIssueLevel = "warning"
+)
+
+// Valid indicates whether the value is a known member of the CitationValidationIssueLevel enum.
+func (e CitationValidationIssueLevel) Valid() bool {
+	switch e {
+	case CitationValidationIssueLevelError:
+		return true
+	case CitationValidationIssueLevelWarning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DiscoverySuggestionType.
 const (
 	BrickWallResolved DiscoverySuggestionType = "brick_wall_resolved"
@@ -1485,6 +1503,9 @@ type Citation struct {
 	// FactType Type of fact being cited (e.g., birth, death, marriage)
 	FactType string `json:"fact_type"`
 
+	// Fields Template-specific field values
+	Fields *map[string]string `json:"fields,omitempty"`
+
 	// GedcomXref GEDCOM cross-reference ID (e.g., "@C1@") for round-trip support
 	GedcomXref *string            `json:"gedcom_xref,omitempty"`
 	Id         openapi_types.UUID `json:"id"`
@@ -1503,7 +1524,7 @@ type Citation struct {
 	// SourceTitle Title of the referenced source
 	SourceTitle string `json:"source_title"`
 
-	// TemplateId Citation template ID
+	// TemplateId Evidence Explained citation template ID
 	TemplateId *string `json:"template_id,omitempty"`
 
 	// Version Optimistic locking version
@@ -1522,6 +1543,9 @@ type CitationCreate struct {
 	// FactType Type of fact being cited (e.g., birth, death, marriage)
 	FactType string `json:"fact_type"`
 
+	// Fields Template-specific field values
+	Fields *map[string]string `json:"fields,omitempty"`
+
 	// GedcomXref Optional GEDCOM cross-reference ID for import
 	GedcomXref    *string            `json:"gedcom_xref,omitempty"`
 	InformantType *string            `json:"informant_type,omitempty"`
@@ -1539,20 +1563,74 @@ type CitationList struct {
 	Total     int        `json:"total"`
 }
 
+// CitationTemplate defines model for CitationTemplate.
+type CitationTemplate struct {
+	// Category Template category (e.g., Census Records)
+	Category string `json:"category"`
+
+	// Description Brief help text
+	Description *string `json:"description,omitempty"`
+
+	// Fields Ordered list of field definitions
+	Fields []CitationTemplateField `json:"fields"`
+
+	// Id Stable template identifier (e.g., census.us.federal)
+	Id string `json:"id"`
+
+	// Name Human-readable template name
+	Name string `json:"name"`
+
+	// SourceTypes Applicable source types
+	SourceTypes []string `json:"source_types"`
+}
+
+// CitationTemplateField defines model for CitationTemplateField.
+type CitationTemplateField struct {
+	// HelpText Guidance for the user
+	HelpText *string `json:"help_text,omitempty"`
+
+	// Key Machine key for the field
+	Key string `json:"key"`
+
+	// Label Human-readable label
+	Label string `json:"label"`
+
+	// Required Whether the field is required
+	Required bool `json:"required"`
+}
+
+// CitationTemplateList defines model for CitationTemplateList.
+type CitationTemplateList struct {
+	Templates []CitationTemplate `json:"templates"`
+}
+
 // CitationUpdate defines model for CitationUpdate.
 type CitationUpdate struct {
-	Analysis      *string `json:"analysis,omitempty"`
-	EvidenceType  *string `json:"evidence_type,omitempty"`
-	InformantType *string `json:"informant_type,omitempty"`
-	Page          *string `json:"page,omitempty"`
-	QuotedText    *string `json:"quoted_text,omitempty"`
-	SourceQuality *string `json:"source_quality,omitempty"`
-	TemplateId    *string `json:"template_id,omitempty"`
+	Analysis     *string `json:"analysis,omitempty"`
+	EvidenceType *string `json:"evidence_type,omitempty"`
+
+	// Fields Template-specific field values
+	Fields        *map[string]string `json:"fields,omitempty"`
+	InformantType *string            `json:"informant_type,omitempty"`
+	Page          *string            `json:"page,omitempty"`
+	QuotedText    *string            `json:"quoted_text,omitempty"`
+	SourceQuality *string            `json:"source_quality,omitempty"`
+	TemplateId    *string            `json:"template_id,omitempty"`
 
 	// Version Current version for optimistic locking
 	Version int64   `json:"version"`
 	Volume  *string `json:"volume,omitempty"`
 }
+
+// CitationValidationIssue defines model for CitationValidationIssue.
+type CitationValidationIssue struct {
+	Field   string                       `json:"field"`
+	Level   CitationValidationIssueLevel `json:"level"`
+	Message string                       `json:"message"`
+}
+
+// CitationValidationIssueLevel defines model for CitationValidationIssue.Level.
+type CitationValidationIssueLevel string
 
 // DateRange defines model for DateRange.
 type DateRange struct {
@@ -1865,6 +1943,18 @@ type FieldChange struct {
 
 	// OldValue Previous value (null for new fields)
 	OldValue interface{} `json:"old_value,omitempty"`
+}
+
+// FormattedCitation defines model for FormattedCitation.
+type FormattedCitation struct {
+	// Full Full formatted citation text
+	Full string `json:"full"`
+
+	// Short Short formatted citation text
+	Short string `json:"short"`
+
+	// ValidationIssues Any field validation warnings or errors
+	ValidationIssues *[]CitationValidationIssue `json:"validation_issues,omitempty"`
 }
 
 // GenDate Genealogical date with flexible precision
@@ -3188,6 +3278,12 @@ type GetPersonsBySurnameParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListCitationTemplatesParams defines parameters for ListCitationTemplates.
+type ListCitationTemplatesParams struct {
+	// SourceType Filter templates by source type
+	SourceType *string `form:"source_type,omitempty" json:"source_type,omitempty"`
+}
+
 // DeleteCitationParams defines parameters for DeleteCitation.
 type DeleteCitationParams struct {
 	// Version Entity version for optimistic locking
@@ -3620,6 +3716,12 @@ type ServerInterface interface {
 	// Get persons with a specific surname
 	// (GET /browse/surnames/{surname}/persons)
 	GetPersonsBySurname(ctx echo.Context, surname string, params GetPersonsBySurnameParams) error
+	// List available citation templates
+	// (GET /citation-templates)
+	ListCitationTemplates(ctx echo.Context, params ListCitationTemplatesParams) error
+	// Get a citation template by ID
+	// (GET /citation-templates/{id})
+	GetCitationTemplate(ctx echo.Context, id string) error
 	// Create a new citation
 	// (POST /citations)
 	CreateCitation(ctx echo.Context) error
@@ -3632,6 +3734,9 @@ type ServerInterface interface {
 	// Update a citation
 	// (PUT /citations/{id})
 	UpdateCitation(ctx echo.Context, id openapi_types.UUID) error
+	// Format a citation using its template
+	// (GET /citations/{id}/format)
+	FormatCitation(ctx echo.Context, id openapi_types.UUID) error
 	// Get restore points for a citation
 	// (GET /citations/{id}/restore-points)
 	GetCitationRestorePoints(ctx echo.Context, id openapi_types.UUID, params GetCitationRestorePointsParams) error
@@ -4235,6 +4340,40 @@ func (w *ServerInterfaceWrapper) GetPersonsBySurname(ctx echo.Context) error {
 	return err
 }
 
+// ListCitationTemplates converts echo context to params.
+func (w *ServerInterfaceWrapper) ListCitationTemplates(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCitationTemplatesParams
+	// ------------- Optional query parameter "source_type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source_type", ctx.QueryParams(), &params.SourceType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter source_type: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListCitationTemplates(ctx, params)
+	return err
+}
+
+// GetCitationTemplate converts echo context to params.
+func (w *ServerInterfaceWrapper) GetCitationTemplate(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetCitationTemplate(ctx, id)
+	return err
+}
+
 // CreateCitation converts echo context to params.
 func (w *ServerInterfaceWrapper) CreateCitation(ctx echo.Context) error {
 	var err error
@@ -4298,6 +4437,22 @@ func (w *ServerInterfaceWrapper) UpdateCitation(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateCitation(ctx, id)
+	return err
+}
+
+// FormatCitation converts echo context to params.
+func (w *ServerInterfaceWrapper) FormatCitation(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.FormatCitation(ctx, id)
 	return err
 }
 
@@ -6171,10 +6326,13 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/browse/places/:place/persons", wrapper.GetPersonsByPlace)
 	router.GET(baseURL+"/browse/surnames", wrapper.BrowseSurnames)
 	router.GET(baseURL+"/browse/surnames/:surname/persons", wrapper.GetPersonsBySurname)
+	router.GET(baseURL+"/citation-templates", wrapper.ListCitationTemplates)
+	router.GET(baseURL+"/citation-templates/:id", wrapper.GetCitationTemplate)
 	router.POST(baseURL+"/citations", wrapper.CreateCitation)
 	router.DELETE(baseURL+"/citations/:id", wrapper.DeleteCitation)
 	router.GET(baseURL+"/citations/:id", wrapper.GetCitation)
 	router.PUT(baseURL+"/citations/:id", wrapper.UpdateCitation)
+	router.GET(baseURL+"/citations/:id/format", wrapper.FormatCitation)
 	router.GET(baseURL+"/citations/:id/restore-points", wrapper.GetCitationRestorePoints)
 	router.POST(baseURL+"/citations/:id/rollback", wrapper.RollbackCitation)
 	router.GET(baseURL+"/descendancy/:id", wrapper.GetDescendancy)
@@ -6620,6 +6778,49 @@ func (response GetPersonsBySurname200JSONResponse) VisitGetPersonsBySurnameRespo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListCitationTemplatesRequestObject struct {
+	Params ListCitationTemplatesParams
+}
+
+type ListCitationTemplatesResponseObject interface {
+	VisitListCitationTemplatesResponse(w http.ResponseWriter) error
+}
+
+type ListCitationTemplates200JSONResponse CitationTemplateList
+
+func (response ListCitationTemplates200JSONResponse) VisitListCitationTemplatesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetCitationTemplateRequestObject struct {
+	Id string `json:"id"`
+}
+
+type GetCitationTemplateResponseObject interface {
+	VisitGetCitationTemplateResponse(w http.ResponseWriter) error
+}
+
+type GetCitationTemplate200JSONResponse CitationTemplate
+
+func (response GetCitationTemplate200JSONResponse) VisitGetCitationTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetCitationTemplate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetCitationTemplate404JSONResponse) VisitGetCitationTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type CreateCitationRequestObject struct {
 	Body *CreateCitationJSONRequestBody
 }
@@ -6757,6 +6958,32 @@ type UpdateCitation409JSONResponse struct{ ConflictJSONResponse }
 func (response UpdateCitation409JSONResponse) VisitUpdateCitationResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type FormatCitationRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type FormatCitationResponseObject interface {
+	VisitFormatCitationResponse(w http.ResponseWriter) error
+}
+
+type FormatCitation200JSONResponse FormattedCitation
+
+func (response FormatCitation200JSONResponse) VisitFormatCitationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type FormatCitation404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response FormatCitation404JSONResponse) VisitFormatCitationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -9567,6 +9794,12 @@ type StrictServerInterface interface {
 	// Get persons with a specific surname
 	// (GET /browse/surnames/{surname}/persons)
 	GetPersonsBySurname(ctx context.Context, request GetPersonsBySurnameRequestObject) (GetPersonsBySurnameResponseObject, error)
+	// List available citation templates
+	// (GET /citation-templates)
+	ListCitationTemplates(ctx context.Context, request ListCitationTemplatesRequestObject) (ListCitationTemplatesResponseObject, error)
+	// Get a citation template by ID
+	// (GET /citation-templates/{id})
+	GetCitationTemplate(ctx context.Context, request GetCitationTemplateRequestObject) (GetCitationTemplateResponseObject, error)
 	// Create a new citation
 	// (POST /citations)
 	CreateCitation(ctx context.Context, request CreateCitationRequestObject) (CreateCitationResponseObject, error)
@@ -9579,6 +9812,9 @@ type StrictServerInterface interface {
 	// Update a citation
 	// (PUT /citations/{id})
 	UpdateCitation(ctx context.Context, request UpdateCitationRequestObject) (UpdateCitationResponseObject, error)
+	// Format a citation using its template
+	// (GET /citations/{id}/format)
+	FormatCitation(ctx context.Context, request FormatCitationRequestObject) (FormatCitationResponseObject, error)
 	// Get restore points for a citation
 	// (GET /citations/{id}/restore-points)
 	GetCitationRestorePoints(ctx context.Context, request GetCitationRestorePointsRequestObject) (GetCitationRestorePointsResponseObject, error)
@@ -10238,6 +10474,56 @@ func (sh *strictHandler) GetPersonsBySurname(ctx echo.Context, surname string, p
 	return nil
 }
 
+// ListCitationTemplates operation middleware
+func (sh *strictHandler) ListCitationTemplates(ctx echo.Context, params ListCitationTemplatesParams) error {
+	var request ListCitationTemplatesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCitationTemplates(ctx.Request().Context(), request.(ListCitationTemplatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCitationTemplates")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListCitationTemplatesResponseObject); ok {
+		return validResponse.VisitListCitationTemplatesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetCitationTemplate operation middleware
+func (sh *strictHandler) GetCitationTemplate(ctx echo.Context, id string) error {
+	var request GetCitationTemplateRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCitationTemplate(ctx.Request().Context(), request.(GetCitationTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCitationTemplate")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetCitationTemplateResponseObject); ok {
+		return validResponse.VisitGetCitationTemplateResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // CreateCitation operation middleware
 func (sh *strictHandler) CreateCitation(ctx echo.Context) error {
 	var request CreateCitationRequestObject
@@ -10343,6 +10629,31 @@ func (sh *strictHandler) UpdateCitation(ctx echo.Context, id openapi_types.UUID)
 		return err
 	} else if validResponse, ok := response.(UpdateCitationResponseObject); ok {
 		return validResponse.VisitUpdateCitationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// FormatCitation operation middleware
+func (sh *strictHandler) FormatCitation(ctx echo.Context, id openapi_types.UUID) error {
+	var request FormatCitationRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.FormatCitation(ctx.Request().Context(), request.(FormatCitationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FormatCitation")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(FormatCitationResponseObject); ok {
+		return validResponse.VisitFormatCitationResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

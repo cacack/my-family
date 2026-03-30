@@ -159,6 +159,7 @@ func (s *ReadModelStore) createTables() error {
 			quoted_text TEXT,
 			analysis TEXT,
 			template_id VARCHAR(100),
+			fields_data JSONB,
 			gedcom_xref VARCHAR(50),
 			version BIGINT NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1429,7 +1430,7 @@ func (s *ReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*reposi
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
 			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, gedcom_xref, version, created_at
+			   template_id, fields_data, gedcom_xref, version, created_at
 		FROM citations WHERE id = $1
 	`, id)
 
@@ -1441,7 +1442,7 @@ func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uui
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
 			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, gedcom_xref, version, created_at
+			   template_id, fields_data, gedcom_xref, version, created_at
 		FROM citations
 		WHERE source_id = $1
 	`, sourceID)
@@ -1467,7 +1468,7 @@ func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, personID uui
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
 			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, gedcom_xref, version, created_at
+			   template_id, fields_data, gedcom_xref, version, created_at
 		FROM citations
 		WHERE fact_owner_id = $1 AND fact_type LIKE 'person_%'
 	`, personID)
@@ -1493,7 +1494,7 @@ func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, factType domai
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
 			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, gedcom_xref, version, created_at
+			   template_id, fields_data, gedcom_xref, version, created_at
 		FROM citations
 		WHERE fact_type = $1 AND fact_owner_id = $2
 	`, string(factType), factOwnerID)
@@ -1527,7 +1528,7 @@ func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.List
 	query := `
 		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
 			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, gedcom_xref, version, created_at
+			   template_id, fields_data, gedcom_xref, version, created_at
 		FROM citations
 		ORDER BY source_title ASC, fact_type ASC, id ASC
 		LIMIT $1 OFFSET $2
@@ -1556,8 +1557,8 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO citations (id, source_id, source_title, fact_type, fact_owner_id, page, volume,
 							   source_quality, informant_type, evidence_type, quoted_text, analysis,
-							   template_id, gedcom_xref, version, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+							   template_id, fields_data, gedcom_xref, version, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT(id) DO UPDATE SET
 			source_id = EXCLUDED.source_id,
 			source_title = EXCLUDED.source_title,
@@ -1571,6 +1572,7 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.
 			quoted_text = EXCLUDED.quoted_text,
 			analysis = EXCLUDED.analysis,
 			template_id = EXCLUDED.template_id,
+			fields_data = EXCLUDED.fields_data,
 			gedcom_xref = EXCLUDED.gedcom_xref,
 			version = EXCLUDED.version
 	`, citation.ID, citation.SourceID, nullableString(citation.SourceTitle),
@@ -1579,7 +1581,8 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.
 		nullableString(string(citation.SourceQuality)), nullableString(string(citation.InformantType)),
 		nullableString(string(citation.EvidenceType)), nullableString(citation.QuotedText),
 		nullableString(citation.Analysis), nullableString(citation.TemplateID),
-		nullableString(citation.GedcomXref), citation.Version, citation.CreatedAt)
+		nullableString(citation.FieldsJSON), nullableString(citation.GedcomXref),
+		citation.Version, citation.CreatedAt)
 
 	return err
 }
@@ -1907,14 +1910,14 @@ func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 		page, volume, sourceQuality      sql.NullString
 		informantType, evidenceType      sql.NullString
 		quotedText, analysis, templateID sql.NullString
-		gedcomXref                       sql.NullString
+		fieldsData, gedcomXref           sql.NullString
 		version                          int64
 		createdAt                        time.Time
 	)
 
 	err := row.Scan(&id, &sourceID, &sourceTitle, &factType, &factOwnerID,
 		&page, &volume, &sourceQuality, &informantType, &evidenceType,
-		&quotedText, &analysis, &templateID, &gedcomXref, &version, &createdAt)
+		&quotedText, &analysis, &templateID, &fieldsData, &gedcomXref, &version, &createdAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1937,6 +1940,7 @@ func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 		QuotedText:    quotedText.String,
 		Analysis:      analysis.String,
 		TemplateID:    templateID.String,
+		FieldsJSON:    fieldsData.String,
 		GedcomXref:    gedcomXref.String,
 		Version:       version,
 		CreatedAt:     createdAt,
