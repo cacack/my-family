@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type ImportResult } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 
 	interface Props {
 		onComplete: (data: { personCount: number }) => void;
@@ -109,9 +110,9 @@
 				</div>
 			{/if}
 
-			<button class="btn btn-primary btn-large" onclick={() => onComplete({ personCount: result?.persons_imported ?? 0 })}>
+			<Button size="lg" onclick={() => onComplete({ personCount: result?.persons_imported ?? 0 })} class="w-full mt-4">
 				Continue
-			</button>
+			</Button>
 		</div>
 	{:else}
 		<div
@@ -152,14 +153,14 @@
 		{/if}
 
 		{#if file}
-			<button class="btn btn-primary btn-large" onclick={importFile} disabled={importing}>
+			<Button size="lg" onclick={importFile} disabled={importing} class="w-full mt-4">
 				{#if importing}
 					<span class="spinner"></span>
 					Importing...
 				{:else}
 					Import File
 				{/if}
-			</button>
+			</Button>
 		{/if}
 	{/if}
 </div>
@@ -290,49 +291,6 @@
 		font-size: 0.875rem;
 		margin: 1rem 0 0;
 		text-align: center;
-	}
-
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1.25rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: #475569;
-		cursor: pointer;
-		transition: all 0.15s;
-		font-family: inherit;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-large {
-		width: 100%;
-		justify-content: center;
-		padding: 0.875rem;
-		margin-top: 1rem;
-		font-size: 1rem;
-	}
-
-	.btn:disabled {
-		opacity: 0.7;
-		cursor: not-allowed;
 	}
 
 	.spinner {

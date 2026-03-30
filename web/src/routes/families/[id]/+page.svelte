@@ -7,6 +7,8 @@
 	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
 	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -174,9 +176,9 @@
 		<a href="/families" class="back-link">&larr; Families</a>
 		{#if family && !editing}
 			<div class="actions">
-				<a href="/families/{family.id}/group-sheet" class="btn">Group Sheet</a>
-				<button class="btn" onclick={startEdit}>Edit</button>
-				<button class="btn btn-danger" onclick={deleteFamily}>Delete</button>
+				<Button variant="outline" href="/families/{family.id}/group-sheet">Group Sheet</Button>
+				<Button variant="outline" onclick={startEdit}>Edit</Button>
+				<Button variant="destructive" onclick={deleteFamily}>Delete</Button>
 			</div>
 		{/if}
 	</header>
@@ -213,10 +215,10 @@
 				</div>
 
 				<div class="form-actions">
-					<button type="button" class="btn" onclick={cancelEdit} disabled={saving}>Cancel</button>
-					<button type="submit" class="btn btn-primary" disabled={saving}>
+					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
+					<Button type="submit" disabled={saving}>
 						{saving ? 'Saving...' : 'Save Changes'}
-					</button>
+					</Button>
 				</div>
 			</form>
 		{:else}
@@ -305,7 +307,7 @@
 						<h2>
 							History
 							{#if historyCount !== null}
-								<span class="count-badge">{historyCount}</span>
+								<Badge variant="outline" class="ml-2">{historyCount}</Badge>
 							{/if}
 						</h2>
 						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
@@ -385,30 +387,6 @@
 	.actions {
 		display: flex;
 		gap: 0.5rem;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		text-decoration: none;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-danger {
-		color: #dc2626;
-		border-color: #fecaca;
-	}
-
-	.btn-danger:hover {
-		background: #fef2f2;
 	}
 
 	.loading,
@@ -619,33 +597,7 @@
 		border-top: 1px solid #e2e8f0;
 	}
 
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
 	/* History section styles */
-	.count-badge {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1.25rem;
-		height: 1.25rem;
-		padding: 0 0.375rem;
-		background: #3b82f6;
-		border-radius: 9999px;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		color: white;
-		margin-left: 0.5rem;
-		vertical-align: middle;
-	}
-
 	.history-section {
 		margin-top: 1.5rem;
 		padding-top: 1.5rem;

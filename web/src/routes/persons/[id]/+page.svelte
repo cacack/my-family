@@ -11,6 +11,8 @@
 	import NameSection from '$lib/components/NameSection.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -261,10 +263,10 @@
 		<a href="/persons" class="back-link">&larr; People</a>
 		{#if person && !editing}
 			<div class="actions">
-				<a href="/pedigree/{person.id}" class="btn">Pedigree</a>
-				<a href="/ahnentafel/{person.id}" class="btn">Ahnentafel</a>
-				<button class="btn" onclick={startEdit}>Edit</button>
-				<button class="btn btn-danger" onclick={deletePerson}>Delete</button>
+				<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
+				<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
+				<Button variant="outline" onclick={startEdit}>Edit</Button>
+				<Button variant="destructive" onclick={deletePerson}>Delete</Button>
 			</div>
 		{/if}
 	</header>
@@ -336,10 +338,10 @@
 				</label>
 
 				<div class="form-actions">
-					<button type="button" class="btn" onclick={cancelEdit} disabled={saving}>Cancel</button>
-					<button type="submit" class="btn btn-primary" disabled={saving}>
+					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
+					<Button type="submit" disabled={saving}>
 						{saving ? 'Saving...' : 'Save Changes'}
-					</button>
+					</Button>
 				</div>
 			</form>
 		{:else}
@@ -397,35 +399,35 @@
 						<!-- Active brick wall -->
 						<div class="brick-wall-indicator active">
 							<div class="brick-wall-header">
-								<span class="brick-wall-badge badge-active">
-									<svg viewBox="0 0 24 24" fill="currentColor" class="brick-wall-badge-icon">
+								<Badge variant="destructive" class="gap-1 uppercase text-[0.6875rem] tracking-wide font-semibold">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="size-3">
 										<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
 									</svg>
 									Brick Wall
-								</span>
+								</Badge>
 								{#if person.brick_wall_since}
 									<span class="brick-wall-since">Since {formatBrickWallDuration(person.brick_wall_since)}</span>
 								{/if}
 							</div>
 							<p class="brick-wall-note">{person.brick_wall_note}</p>
-							<button
-								class="btn btn-resolve"
+							<Button
+								variant="warning"
 								onclick={resolveBrickWall}
 								disabled={brickWallSaving}
 							>
 								{brickWallSaving ? 'Resolving...' : 'Resolve Brick Wall'}
-							</button>
+							</Button>
 						</div>
 					{:else if person.brick_wall_resolved_at}
 						<!-- Resolved brick wall -->
 						<div class="brick-wall-indicator resolved">
 							<div class="brick-wall-header">
-								<span class="brick-wall-badge badge-resolved">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="brick-wall-badge-icon">
+								<Badge variant="outline" class="gap-1 border-green-200 bg-green-50 text-green-700 uppercase text-[0.6875rem] tracking-wide font-semibold dark:border-green-800 dark:bg-green-950 dark:text-green-400">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3">
 										<polyline points="20 6 9 17 4 12" />
 									</svg>
 									Resolved
-								</span>
+								</Badge>
 								<span class="brick-wall-since">Resolved {formatBrickWallDate(person.brick_wall_resolved_at)}</span>
 							</div>
 							{#if person.brick_wall_note}
@@ -445,20 +447,20 @@
 									></textarea>
 								</label>
 								<div class="brick-wall-form-actions">
-									<button class="btn" onclick={cancelBrickWallForm} disabled={brickWallSaving}>Cancel</button>
-									<button
-										class="btn btn-mark"
+									<Button variant="outline" onclick={cancelBrickWallForm} disabled={brickWallSaving}>Cancel</Button>
+									<Button
+										variant="warning"
 										onclick={markBrickWall}
 										disabled={brickWallSaving || !brickWallNote.trim()}
 									>
 										{brickWallSaving ? 'Saving...' : 'Mark as Brick Wall'}
-									</button>
+									</Button>
 								</div>
 							</div>
 						{:else}
-							<button class="btn btn-subtle" onclick={() => showBrickWallForm = true}>
+							<Button variant="ghost" onclick={() => showBrickWallForm = true}>
 								Mark as Brick Wall
-							</button>
+							</Button>
 						{/if}
 					{/if}
 				</div>
@@ -480,7 +482,7 @@
 										{family.partner1_name || 'Unknown'}
 										{#if family.partner2_name} &amp; {family.partner2_name}{/if}
 										{#if family.relationship_type}
-											<span class="badge">{family.relationship_type}</span>
+											<Badge variant="secondary" class="capitalize">{family.relationship_type}</Badge>
 										{/if}
 									</a>
 								</li>
@@ -503,7 +505,7 @@
 					<h2>
 						Media
 						{#if mediaCount !== null && mediaCount > 0}
-							<span class="count-badge">{mediaCount}</span>
+							<Badge variant="outline" class="ml-2">{mediaCount}</Badge>
 						{/if}
 					</h2>
 					<MediaGallery personId={person.id} onMediaAdded={handleMediaAdded} />
@@ -526,7 +528,7 @@
 						<h2>
 							History
 							{#if historyCount !== null}
-								<span class="count-badge">{historyCount}</span>
+								<Badge variant="outline" class="ml-2">{historyCount}</Badge>
 							{/if}
 						</h2>
 						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
@@ -606,40 +608,6 @@
 	.actions {
 		display: flex;
 		gap: 0.5rem;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		text-decoration: none;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-danger {
-		color: #dc2626;
-		border-color: #fecaca;
-	}
-
-	.btn-danger:hover {
-		background: #fef2f2;
 	}
 
 	.loading,
@@ -790,33 +758,6 @@
 
 	.parent-link:hover {
 		color: #3b82f6;
-	}
-
-	.badge {
-		display: inline-block;
-		padding: 0.125rem 0.375rem;
-		background: #f1f5f9;
-		border-radius: 4px;
-		font-size: 0.6875rem;
-		color: #64748b;
-		margin-left: 0.5rem;
-		text-transform: capitalize;
-	}
-
-	.count-badge {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1.25rem;
-		height: 1.25rem;
-		padding: 0 0.375rem;
-		background: #3b82f6;
-		border-radius: 9999px;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		color: white;
-		margin-left: 0.5rem;
-		vertical-align: middle;
 	}
 
 	.media-section {
@@ -996,33 +937,6 @@
 		margin-bottom: 0.5rem;
 	}
 
-	.brick-wall-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-		padding: 0.125rem 0.5rem;
-		border-radius: 9999px;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.025em;
-	}
-
-	.brick-wall-badge-icon {
-		width: 0.75rem;
-		height: 0.75rem;
-	}
-
-	.brick-wall-badge.badge-active {
-		background: #fef3c7;
-		color: #b45309;
-	}
-
-	.brick-wall-badge.badge-resolved {
-		background: #dcfce7;
-		color: #15803d;
-	}
-
 	.brick-wall-since {
 		font-size: 0.75rem;
 		color: #94a3b8;
@@ -1033,47 +947,6 @@
 		font-size: 0.8125rem;
 		color: #475569;
 		line-height: 1.5;
-	}
-
-	.btn-resolve {
-		background: #f59e0b;
-		border-color: #f59e0b;
-		color: white;
-		font-weight: 500;
-	}
-
-	.btn-resolve:hover {
-		background: #d97706;
-		border-color: #d97706;
-	}
-
-	.btn-subtle {
-		color: #94a3b8;
-		border-color: #e2e8f0;
-		font-size: 0.8125rem;
-	}
-
-	.btn-subtle:hover {
-		color: #64748b;
-		background: #f8fafc;
-		border-color: #cbd5e1;
-	}
-
-	.btn-mark {
-		background: #f59e0b;
-		border-color: #f59e0b;
-		color: white;
-		font-weight: 500;
-	}
-
-	.btn-mark:hover {
-		background: #d97706;
-		border-color: #d97706;
-	}
-
-	.btn-mark:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 	.brick-wall-form {

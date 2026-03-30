@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { api, type ImportResult } from '$lib/api/client';
 	import { ExportButton } from '$lib/components/export';
+	import { Button } from '$lib/components/ui/button';
 
 	let file: File | null = $state(null);
 	let importing = $state(false);
@@ -393,8 +394,8 @@
 					{/if}
 
 					<div class="result-actions">
-						<button class="btn" onclick={reset}>Import Another</button>
-						<a href="/persons" class="btn btn-primary">View People</a>
+						<Button variant="outline" onclick={reset}>Import Another</Button>
+						<Button href="/persons">View People</Button>
 					</div>
 				</div>
 			{:else}
@@ -436,14 +437,14 @@
 				{/if}
 
 				{#if file}
-					<button class="btn btn-primary btn-large" onclick={importFile} disabled={importing}>
+					<Button size="lg" onclick={importFile} disabled={importing} class="w-full mt-4">
 						{#if importing}
 							<span class="spinner"></span>
 							Importing...
 						{:else}
 							Import File
 						{/if}
-					</button>
+					</Button>
 				{/if}
 			{/if}
 		</section>
@@ -571,20 +572,20 @@
 							<div class="field-picker-header">
 								<span class="form-label" id="export-fields-label">Fields to include</span>
 								<div class="field-picker-actions">
-									<button
-										type="button"
-										class="btn-text"
+									<Button
+										variant="link"
+										size="sm"
 										onclick={() => selectAllFields(exportEntityType)}
 									>
 										Select All
-									</button>
-									<button
-										type="button"
-										class="btn-text"
+									</Button>
+									<Button
+										variant="link"
+										size="sm"
 										onclick={() => selectNoFields(exportEntityType)}
 									>
 										Select None
-									</button>
+									</Button>
 								</div>
 							</div>
 							<div class="field-picker" role="group" aria-labelledby="export-fields-label">
@@ -607,7 +608,7 @@
 					<p class="error-message" role="alert">{exportError}</p>
 				{/if}
 
-				<button class="btn btn-primary" onclick={exportData} disabled={exporting}>
+				<Button onclick={exportData} disabled={exporting}>
 					{#if exporting}
 						<span class="spinner"></span>
 						Exporting...
@@ -619,7 +620,7 @@
 						</svg>
 						Export {getEntityLabel(exportEntityType)} as {exportEntityType === 'tree' ? 'JSON' : exportFormat.toUpperCase()}
 					{/if}
-				</button>
+				</Button>
 			</div>
 		</section>
 	</div>
@@ -757,54 +758,6 @@
 		font-size: 0.875rem;
 		margin: 1rem 0 0;
 		text-align: center;
-	}
-
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1.25rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: #475569;
-		cursor: pointer;
-		text-decoration: none;
-		transition: all 0.15s;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn svg {
-		width: 1.125rem;
-		height: 1.125rem;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-large {
-		width: 100%;
-		justify-content: center;
-		padding: 0.875rem;
-		margin-top: 1rem;
-		font-size: 1rem;
-	}
-
-	.btn:disabled {
-		opacity: 0.7;
-		cursor: not-allowed;
 	}
 
 	.spinner {
@@ -983,21 +936,6 @@
 	.field-picker-actions {
 		display: flex;
 		gap: 0.75rem;
-	}
-
-	.btn-text {
-		background: none;
-		border: none;
-		padding: 0;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: #3b82f6;
-		cursor: pointer;
-	}
-
-	.btn-text:hover {
-		color: #2563eb;
-		text-decoration: underline;
 	}
 
 	.field-picker {

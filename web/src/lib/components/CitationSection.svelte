@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, isConflictError, type Citation, type Source } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import ConflictError from './ConflictError.svelte';
 
 	interface Props {
@@ -227,7 +228,7 @@
 	<div class="section-header">
 		<h2>Citations <span class="count-badge">{citations.length}</span></h2>
 		{#if !showAddForm}
-			<button class="btn btn-small" onclick={openAddForm}>Add Citation</button>
+			<Button variant="outline" size="sm" onclick={openAddForm}>Add Citation</Button>
 		{/if}
 	</div>
 
@@ -353,10 +354,10 @@
 			</label>
 
 			<div class="form-actions">
-				<button type="button" class="btn" onclick={cancelAdd} disabled={saving}>Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled={saving}>
+				<Button variant="outline" onclick={cancelAdd} disabled={saving}>Cancel</Button>
+				<Button type="submit" disabled={saving}>
 					{saving ? 'Saving...' : 'Add Citation'}
-				</button>
+				</Button>
 			</div>
 		</form>
 	{/if}
@@ -366,7 +367,7 @@
 	{:else if citations.length === 0 && !showAddForm}
 		<div class="empty-state">
 			<p>No citations yet.</p>
-			<button class="btn btn-small" onclick={openAddForm}>Add the first citation</button>
+			<Button variant="outline" size="sm" onclick={openAddForm}>Add the first citation</Button>
 		</div>
 	{:else if citations.length > 0}
 		<ul class="citation-list">
@@ -421,10 +422,10 @@
 					<div class="citation-actions">
 						{#if deleteConfirm === citation.id}
 							<span class="delete-confirm">Delete this citation?</span>
-							<button class="btn btn-small btn-danger" onclick={() => deleteCitation(citation)}>Yes, Delete</button>
-							<button class="btn btn-small" onclick={() => deleteConfirm = null}>Cancel</button>
+							<Button variant="destructive" size="sm" onclick={() => deleteCitation(citation)}>Yes, Delete</Button>
+							<Button variant="outline" size="sm" onclick={() => deleteConfirm = null}>Cancel</Button>
 						{:else}
-							<button class="btn btn-small btn-text" onclick={() => deleteConfirm = citation.id}>Delete</button>
+							<Button variant="ghost" size="sm" onclick={() => deleteConfirm = citation.id}>Delete</Button>
 						{/if}
 					</div>
 				</li>
@@ -471,55 +472,6 @@
 		color: #3b82f6;
 		text-transform: none;
 		letter-spacing: 0;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-small {
-		padding: 0.375rem 0.75rem;
-		font-size: 0.8125rem;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-danger {
-		color: #dc2626;
-		border-color: #fecaca;
-	}
-
-	.btn-danger:hover {
-		background: #fef2f2;
-	}
-
-	.btn-text {
-		background: transparent;
-		border-color: transparent;
-		color: #64748b;
-	}
-
-	.btn-text:hover {
-		color: #dc2626;
-		background: transparent;
 	}
 
 	.section-error {

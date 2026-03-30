@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type ExportEstimate, type ExportProgress } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import ExportEstimateDisplay from './ExportEstimate.svelte';
 	import ExportProgressBar from './ExportProgress.svelte';
 	import ExportConfirmDialog from './ExportConfirmDialog.svelte';
@@ -188,9 +189,8 @@
 		<p class="error-message" role="alert">{error}</p>
 	{/if}
 
-	<button
-		type="button"
-		class="btn btn-export"
+	<Button
+		variant="outline"
 		onclick={handleExportClick}
 		disabled={exporting}
 		aria-busy={exporting}
@@ -213,11 +213,11 @@
 			</svg>
 			{label}
 		{/if}
-	</button>
+	</Button>
 </div>
 
-{#if showConfirmDialog && estimate}
-	<ExportConfirmDialog {estimate} onConfirm={handleConfirm} onCancel={handleCancel} />
+{#if estimate}
+	<ExportConfirmDialog open={showConfirmDialog} {estimate} onConfirm={handleConfirm} onCancel={handleCancel} />
 {/if}
 
 <style>
@@ -272,54 +272,8 @@
 		font-size: 0.875rem;
 	}
 
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1.25rem;
-		border-radius: 6px;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.btn-export {
-		background: white;
-		border: 1px solid #cbd5e1;
-		color: #475569;
-	}
-
-	.btn-export:hover:not(:disabled) {
-		background: #f1f5f9;
-		border-color: #94a3b8;
-	}
-
-	.btn-export:focus {
-		outline: none;
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-	}
-
-	.btn-export:disabled {
-		opacity: 0.7;
-		cursor: not-allowed;
-	}
-
-	.btn-export .spinner {
-		border-color: rgba(71, 85, 105, 0.3);
-		border-top-color: #475569;
-	}
-
 	.icon {
 		width: 1.125rem;
 		height: 1.125rem;
-	}
-
-	/* Responsive adjustments */
-	@media (max-width: 480px) {
-		.btn-export {
-			width: 100%;
-		}
 	}
 </style>

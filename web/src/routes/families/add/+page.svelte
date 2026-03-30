@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { api, type FamilyCreate } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 
 	let saving = $state(false);
 	let error: string | null = $state(null);
@@ -77,10 +78,10 @@
 		</p>
 
 		<div class="form-actions">
-			<button type="button" class="btn" onclick={handleCancel} disabled={saving}>Cancel</button>
-			<button type="submit" class="btn btn-primary" disabled={saving}>
+			<Button type="button" variant="outline" onclick={handleCancel} disabled={saving}>Cancel</Button>
+			<Button type="submit" disabled={saving}>
 				{saving ? 'Creating...' : 'Create Family'}
-			</button>
+			</Button>
 		</div>
 	</form>
 </div>
@@ -123,36 +124,6 @@
 		border: 1px solid #fecaca;
 		border-radius: 6px;
 		margin-bottom: 1rem;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		text-decoration: none;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
 	}
 
 	/* Edit form styles */

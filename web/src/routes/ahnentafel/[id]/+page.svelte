@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { api, type AhnentafelResponse, type AhnentafelEntry, formatGenDate } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 
 	let report: AhnentafelResponse | null = $state(null);
 	let error: string | null = $state(null);
@@ -132,12 +133,12 @@
 					{/each}
 				</select>
 			</label>
-			<button class="btn" onclick={handlePrint} disabled={loading || !!error}>
+			<Button variant="outline" onclick={handlePrint} disabled={loading || !!error}>
 				Print
-			</button>
-			<button class="btn" onclick={handleExportText} disabled={loading || !!error || exporting}>
+			</Button>
+			<Button variant="outline" onclick={handleExportText} disabled={loading || !!error || exporting}>
 				{exporting ? 'Exporting...' : 'Export Text'}
-			</button>
+			</Button>
 		</div>
 	</header>
 
@@ -332,25 +333,6 @@
 		border-radius: 6px;
 		background: white;
 		font-size: 0.875rem;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		color: #475569;
-	}
-
-	.btn:hover:not(:disabled) {
-		background: #f1f5f9;
-	}
-
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 
 	.report-container {

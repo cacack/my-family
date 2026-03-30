@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type BrickWallEntry } from '$lib/api/client';
+	import { Badge } from '$lib/components/ui/badge';
 
 	let entries: BrickWallEntry[] = $state([]);
 	let activeCount = $state(0);
@@ -109,19 +110,19 @@
 								{entry.person_name}
 							</a>
 							{#if entry.resolved_at}
-								<span class="badge badge-resolved">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="badge-icon">
+								<Badge variant="outline" class="gap-1 border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400">
+									<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3">
 										<polyline points="20 6 9 17 4 12" />
 									</svg>
 									Resolved
-								</span>
+								</Badge>
 							{:else}
-								<span class="badge badge-active">
-									<svg viewBox="0 0 24 24" fill="currentColor" class="badge-icon">
+								<Badge variant="destructive">
+									<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3">
 										<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
 									</svg>
 									Active
-								</span>
+								</Badge>
 							{/if}
 						</div>
 						{#if entry.note}
@@ -275,33 +276,6 @@
 
 	.person-link:hover {
 		color: #3b82f6;
-	}
-
-	.badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-		padding: 0.125rem 0.5rem;
-		border-radius: 9999px;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.025em;
-	}
-
-	.badge-icon {
-		width: 0.75rem;
-		height: 0.75rem;
-	}
-
-	.badge-active {
-		background: #fef3c7;
-		color: #b45309;
-	}
-
-	.badge-resolved {
-		background: #dcfce7;
-		color: #15803d;
 	}
 
 	.note {

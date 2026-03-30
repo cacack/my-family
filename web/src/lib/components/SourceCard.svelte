@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { Source } from '$lib/api/client';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Card, CardContent } from '$lib/components/ui/card';
 
 	interface Props {
 		source: Source;
@@ -14,68 +16,51 @@
 	}
 </script>
 
-{#if href}
-	<a {href} class="source-card">
-		<div class="source-icon">
-			<svg viewBox="0 0 24 24" fill="currentColor">
-				<path d="M19 2H6c-1.206 0-3 .799-3 3v14c0 2.201 1.794 3 3 3h15v-2H6.012C5.55 19.988 5 19.806 5 19s.55-.988 1.012-1H21V4c0-1.103-.897-2-2-2zm0 14H5V5c0-.806.55-.988 1-1h13v12z" />
-			</svg>
+{#snippet cardInner()}
+	<div class="source-icon">
+		<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
+			<path d="M19 2H6c-1.206 0-3 .799-3 3v14c0 2.201 1.794 3 3 3h15v-2H6.012C5.55 19.988 5 19.806 5 19s.55-.988 1.012-1H21V4c0-1.103-.897-2-2-2zm0 14H5V5c0-.806.55-.988 1-1h13v12z" />
+		</svg>
+	</div>
+	<div class="info">
+		<h3 class="title">{source.title}</h3>
+		<div class="meta">
+			{#if source.author}
+				<span class="author">{source.author}</span>
+			{/if}
+			<Badge variant="secondary">{formatSourceType(source.source_type)}</Badge>
+			{#if source.citation_count > 0}
+				<span class="citation-count">{source.citation_count} {source.citation_count === 1 ? 'citation' : 'citations'}</span>
+			{/if}
 		</div>
-		<div class="info">
-			<h3 class="title">{source.title}</h3>
-			<div class="meta">
-				{#if source.author}
-					<span class="author">{source.author}</span>
-				{/if}
-				<span class="type-badge">{formatSourceType(source.source_type)}</span>
-				{#if source.citation_count > 0}
-					<span class="citation-count">{source.citation_count} {source.citation_count === 1 ? 'citation' : 'citations'}</span>
-				{/if}
-			</div>
-		</div>
-	</a>
-{:else}
-	<button class="source-card" {onclick}>
-		<div class="source-icon">
-			<svg viewBox="0 0 24 24" fill="currentColor">
-				<path d="M19 2H6c-1.206 0-3 .799-3 3v14c0 2.201 1.794 3 3 3h15v-2H6.012C5.55 19.988 5 19.806 5 19s.55-.988 1.012-1H21V4c0-1.103-.897-2-2-2zm0 14H5V5c0-.806.55-.988 1-1h13v12z" />
-			</svg>
-		</div>
-		<div class="info">
-			<h3 class="title">{source.title}</h3>
-			<div class="meta">
-				{#if source.author}
-					<span class="author">{source.author}</span>
-				{/if}
-				<span class="type-badge">{formatSourceType(source.source_type)}</span>
-				{#if source.citation_count > 0}
-					<span class="citation-count">{source.citation_count} {source.citation_count === 1 ? 'citation' : 'citations'}</span>
-				{/if}
-			</div>
-		</div>
-	</button>
-{/if}
+	</div>
+{/snippet}
+
+<Card class="p-0 hover:ring-foreground/20 hover:shadow-sm transition-all">
+	<CardContent class="p-0">
+		{#if href}
+			<a {href} class="card-link">
+				{@render cardInner()}
+			</a>
+		{:else}
+			<button type="button" class="card-link" {onclick}>
+				{@render cardInner()}
+			</button>
+		{/if}
+	</CardContent>
+</Card>
 
 <style>
-	.source-card {
+	.card-link {
 		display: flex;
 		align-items: flex-start;
 		gap: 0.75rem;
 		padding: 1rem;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
 		text-decoration: none;
 		color: inherit;
 		cursor: pointer;
-		transition: all 0.15s;
 		width: 100%;
 		text-align: left;
-	}
-
-	.source-card:hover {
-		border-color: #cbd5e1;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 	}
 
 	.source-icon {
@@ -90,7 +75,7 @@
 		color: #64748b;
 	}
 
-	.source-icon svg {
+	.source-icon :global(svg) {
 		width: 1.25rem;
 		height: 1.25rem;
 	}
@@ -121,15 +106,6 @@
 	.author {
 		font-size: 0.8125rem;
 		color: #64748b;
-	}
-
-	.type-badge {
-		display: inline-block;
-		padding: 0.125rem 0.5rem;
-		background: #f1f5f9;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		color: #475569;
 	}
 
 	.citation-count {

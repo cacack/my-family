@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, isConflictError, type Media } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import ConflictError from './ConflictError.svelte';
 
 	interface Props {
@@ -235,10 +236,10 @@
 				</select>
 			</label>
 
-			<button
-				class="btn btn-primary btn-upload"
+			<Button
 				onclick={uploadFile}
 				disabled={uploading || !title.trim()}
+				class="mt-2"
 			>
 				{#if uploading}
 					<span class="spinner"></span>
@@ -246,7 +247,7 @@
 				{:else}
 					Upload
 				{/if}
-			</button>
+			</Button>
 		</div>
 	{/if}
 
@@ -441,46 +442,6 @@
 
 	textarea {
 		resize: vertical;
-	}
-
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: #475569;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-primary:disabled {
-		background: #93c5fd;
-		border-color: #93c5fd;
-		cursor: not-allowed;
-	}
-
-	.btn-upload {
-		margin-top: 0.5rem;
 	}
 
 	.spinner {

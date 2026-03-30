@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type PersonCreate } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 
 	interface Props {
 		onComplete: (data: { personId: string; personName: string }) => void;
@@ -96,9 +97,9 @@
 		</div>
 
 		<div class="form-actions">
-			<button type="submit" class="btn btn-primary" disabled={saving}>
+			<Button type="submit" disabled={saving}>
 				{saving ? 'Creating...' : 'Create Person'}
-			</button>
+			</Button>
 		</div>
 	</form>
 </div>
@@ -201,41 +202,6 @@
 		margin-top: 1.5rem;
 		padding-top: 1rem;
 		border-top: 1px solid #e2e8f0;
-	}
-
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1.25rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: #475569;
-		cursor: pointer;
-		transition: all 0.15s;
-		font-family: inherit;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn:disabled {
-		opacity: 0.7;
-		cursor: not-allowed;
 	}
 
 	/* High contrast mode */

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, isConflictError, type Media } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import MediaUpload from './MediaUpload.svelte';
 	import MediaLightbox from './MediaLightbox.svelte';
 	import ConflictError from './ConflictError.svelte';
@@ -119,7 +120,7 @@
 	{:else if error}
 		<div class="error-state" role="alert">
 			<p>{error}</p>
-			<button class="btn" onclick={() => loadMedia()}>Retry</button>
+			<Button variant="outline" onclick={() => loadMedia()}>Retry</Button>
 		</div>
 	{:else if mediaItems.length === 0}
 		<div class="empty-state">
@@ -187,6 +188,7 @@
 
 {#if lightboxMedia}
 	<MediaLightbox
+		open={!!lightboxMedia}
 		media={lightboxMedia}
 		allMedia={mediaItems}
 		onClose={closeLightbox}
@@ -374,20 +376,6 @@
 		to {
 			transform: rotate(360deg);
 		}
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
 	}
 
 	@media (max-width: 640px) {

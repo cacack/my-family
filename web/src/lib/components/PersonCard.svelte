@@ -2,6 +2,7 @@
 	import type { Person, PersonSummary } from '$lib/api/client';
 	import { formatGenDate, formatPersonName, formatLifespan } from '$lib/api/client';
 	import UncertaintyBadge from './UncertaintyBadge.svelte';
+	import { Card, CardContent } from '$lib/components/ui/card';
 
 	interface Props {
 		person: Person | PersonSummary;
@@ -20,122 +21,80 @@
 
 	// Get research_status if available (Person has it, PersonSummary doesn't)
 	const researchStatus = 'research_status' in person ? person.research_status : undefined;
+
+	const cardSize = variant === 'compact' ? 'sm' : 'default';
 </script>
 
-{#if href}
-	<a {href} class="person-card" class:compact={variant === 'compact'} data-gender={person.gender}>
-		<div class="avatar">
-			{#if person.gender === 'male'}
-				<svg viewBox="0 0 24 24" fill="currentColor">
-					<path
-						d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
-					/>
-				</svg>
-			{:else if person.gender === 'female'}
-				<svg viewBox="0 0 24 24" fill="currentColor">
-					<path
-						d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
-					/>
-				</svg>
-			{:else}
-				<svg viewBox="0 0 24 24" fill="currentColor">
-					<path
-						d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
-					/>
-				</svg>
+{#snippet cardInner()}
+	<div class="avatar" class:compact={variant === 'compact'} data-gender={person.gender}>
+		{#if person.gender === 'male'}
+			<svg viewBox="0 0 24 24" fill="currentColor">
+				<path
+					d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
+				/>
+			</svg>
+		{:else if person.gender === 'female'}
+			<svg viewBox="0 0 24 24" fill="currentColor">
+				<path
+					d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
+				/>
+			</svg>
+		{:else}
+			<svg viewBox="0 0 24 24" fill="currentColor">
+				<path
+					d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
+				/>
+			</svg>
+		{/if}
+	</div>
+	<div class="info">
+		<div class="name-row">
+			<h3 class="name" class:compact={variant === 'compact'}>{fullName}</h3>
+			{#if researchStatus}
+				<UncertaintyBadge status={researchStatus} size="small" />
 			{/if}
 		</div>
-		<div class="info">
-			<div class="name-row">
-				<h3 class="name">{fullName}</h3>
-				{#if researchStatus}
-					<UncertaintyBadge status={researchStatus} size="small" />
-				{/if}
-			</div>
-			{#if variant === 'default'}
-				{#if birthDate}
-					<p class="detail">b. {birthDate}</p>
-				{/if}
-				{#if deathDate}
-					<p class="detail">d. {deathDate}</p>
-				{/if}
-			{:else}
-				<p class="lifespan">{lifespan}</p>
+		{#if variant === 'default'}
+			{#if birthDate}
+				<p class="detail">b. {birthDate}</p>
 			{/if}
-		</div>
-	</a>
-{:else}
-	<button
-		class="person-card"
-		class:compact={variant === 'compact'}
-		data-gender={person.gender}
-		{onclick}
-	>
-		<div class="avatar">
-			{#if person.gender === 'male'}
-				<svg viewBox="0 0 24 24" fill="currentColor">
-					<path
-						d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
-					/>
-				</svg>
-			{:else if person.gender === 'female'}
-				<svg viewBox="0 0 24 24" fill="currentColor">
-					<path
-						d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
-					/>
-				</svg>
-			{:else}
-				<svg viewBox="0 0 24 24" fill="currentColor">
-					<path
-						d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z"
-					/>
-				</svg>
+			{#if deathDate}
+				<p class="detail">d. {deathDate}</p>
 			{/if}
-		</div>
-		<div class="info">
-			<div class="name-row">
-				<h3 class="name">{fullName}</h3>
-				{#if researchStatus}
-					<UncertaintyBadge status={researchStatus} size="small" />
-				{/if}
-			</div>
-			{#if variant === 'default'}
-				{#if birthDate}
-					<p class="detail">b. {birthDate}</p>
-				{/if}
-				{#if deathDate}
-					<p class="detail">d. {deathDate}</p>
-				{/if}
-			{:else}
-				<p class="lifespan">{lifespan}</p>
-			{/if}
-		</div>
-	</button>
-{/if}
+		{:else}
+			<p class="lifespan">{lifespan}</p>
+		{/if}
+	</div>
+{/snippet}
+
+<Card size={cardSize} class="p-0 hover:ring-foreground/20 hover:shadow-sm transition-all">
+	<CardContent class="p-0">
+		{#if href}
+			<a {href} class="card-link" class:compact={variant === 'compact'}>
+				{@render cardInner()}
+			</a>
+		{:else}
+			<button type="button" class="card-link" class:compact={variant === 'compact'} {onclick}>
+				{@render cardInner()}
+			</button>
+		{/if}
+	</CardContent>
+</Card>
 
 <style>
-	.person-card {
+	.card-link {
 		display: flex;
 		align-items: flex-start;
 		gap: 0.75rem;
 		padding: 1rem;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
 		text-decoration: none;
 		color: inherit;
 		cursor: pointer;
-		transition: all 0.15s;
 		width: 100%;
 		text-align: left;
 	}
 
-	.person-card:hover {
-		border-color: #cbd5e1;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-	}
-
-	.person-card.compact {
+	.card-link.compact {
 		padding: 0.625rem 0.75rem;
 		gap: 0.5rem;
 	}
@@ -150,33 +109,33 @@
 		justify-content: center;
 	}
 
-	.compact .avatar {
+	.avatar.compact {
 		width: 2rem;
 		height: 2rem;
 	}
 
-	.avatar svg {
+	.avatar :global(svg) {
 		width: 1.25rem;
 		height: 1.25rem;
 	}
 
-	.compact .avatar svg {
+	.avatar.compact :global(svg) {
 		width: 1rem;
 		height: 1rem;
 	}
 
-	[data-gender='male'] .avatar {
+	.avatar[data-gender='male'] {
 		background: #dbeafe;
 		color: #3b82f6;
 	}
 
-	[data-gender='female'] .avatar {
+	.avatar[data-gender='female'] {
 		background: #fce7f3;
 		color: #ec4899;
 	}
 
-	[data-gender='unknown'] .avatar,
-	.person-card:not([data-gender]) .avatar {
+	.avatar[data-gender='unknown'],
+	.avatar:not([data-gender]) {
 		background: #f1f5f9;
 		color: #64748b;
 	}
@@ -202,7 +161,7 @@
 		text-overflow: ellipsis;
 	}
 
-	.compact .name {
+	.name.compact {
 		font-size: 0.875rem;
 	}
 

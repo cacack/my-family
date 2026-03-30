@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
+
 	interface Props {
 		completionData: { personCount?: number; personId?: string; personName?: string };
 		onFinish: () => void;
@@ -70,11 +72,11 @@
 
 	<div class="actions">
 		{#if completionData.personId}
-			<a href="/persons/{completionData.personId}" class="btn btn-secondary">
+			<Button variant="secondary" href="/persons/{completionData.personId}">
 				View {completionData.personName}'s Profile
-			</a>
+			</Button>
 		{/if}
-		<button class="btn btn-primary" onclick={onFinish}>Go to Dashboard</button>
+		<Button onclick={onFinish}>Go to Dashboard</Button>
 	</div>
 </div>
 
@@ -171,40 +173,6 @@
 		flex-wrap: wrap;
 	}
 
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1.5rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 8px;
-		font-size: 0.9375rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.15s;
-		text-decoration: none;
-		font-family: inherit;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-secondary {
-		background: white;
-		color: #475569;
-	}
-
-	.btn-secondary:hover {
-		background: #f1f5f9;
-	}
-
 	/* High contrast mode */
 	:global(body.high-contrast) h2 {
 		color: var(--color-text);
@@ -236,13 +204,4 @@
 		color: var(--color-text-muted);
 	}
 
-	:global(body.high-contrast) .btn-secondary {
-		background: var(--color-bg-secondary);
-		border-color: var(--a11y-color-border);
-		color: var(--color-text);
-	}
-
-	:global(body.high-contrast) .btn-secondary:hover {
-		background: var(--a11y-color-border);
-	}
 </style>

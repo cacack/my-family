@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type ChangeEntry, type ChangeHistoryResponse } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import DiffView from './DiffView.svelte';
 
 	interface Props {
@@ -208,9 +209,9 @@
 
 		{#if history.has_more}
 			<div class="load-more">
-				<button class="btn" onclick={loadMore} disabled={loadingMore}>
+				<Button variant="outline" onclick={loadMore} disabled={loadingMore}>
 					{loadingMore ? 'Loading...' : 'Load more'}
-				</button>
+				</Button>
 			</div>
 		{/if}
 	{:else}
@@ -378,22 +379,4 @@
 		margin-top: 1rem;
 	}
 
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		color: #475569;
-	}
-
-	.btn:hover:not(:disabled) {
-		background: #f1f5f9;
-	}
-
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
 </style>

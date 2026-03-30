@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type PersonCreate } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import { goto } from '$app/navigation';
 	import { parseName } from '$lib/utils/nameParse';
 
@@ -147,12 +148,12 @@
 		{/if}
 
 		<div class="form-actions">
-			<button type="submit" class="btn btn-primary" disabled={saving}>
+			<Button type="submit" disabled={saving} class="flex-1">
 				{saving ? 'Adding...' : 'Add & Next'}
-			</button>
-			<button type="button" class="btn btn-secondary" disabled={saving} onclick={() => submit('view')}>
+			</Button>
+			<Button variant="secondary" disabled={saving} onclick={() => submit('view')}>
 				Add & View
-			</button>
+			</Button>
 		</div>
 	</form>
 </div>
@@ -308,39 +309,4 @@
 		padding-top: 0.5rem;
 	}
 
-	.btn {
-		padding: 0.75rem 1.25rem;
-		min-height: 48px;
-		border-radius: 6px;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.btn-primary {
-		flex: 1;
-		background: #3b82f6;
-		border: 1px solid #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover:not(:disabled) {
-		background: #2563eb;
-	}
-
-	.btn-secondary {
-		background: white;
-		border: 1px solid #cbd5e1;
-		color: #475569;
-	}
-
-	.btn-secondary:hover:not(:disabled) {
-		background: #f1f5f9;
-	}
 </style>

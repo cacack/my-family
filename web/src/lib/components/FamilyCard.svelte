@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { FamilyDetail } from '$lib/api/client';
 	import { formatGenDate } from '$lib/api/client';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
 
 	interface Props {
 		family: FamilyDetail;
@@ -16,68 +18,52 @@
 	const childCount = family.child_count ?? family.children?.length ?? 0;
 </script>
 
-{#if href}
-	<a {href} class="family-card">
-		<div class="partners">
-			<span class="partner">{partner1Name}</span>
-			{#if partner2Name}
-				<span class="connector">&amp;</span>
-				<span class="partner">{partner2Name}</span>
-			{/if}
-		</div>
-		<div class="details">
-			{#if family.relationship_type}
-				<span class="badge">{family.relationship_type}</span>
-			{/if}
-			{#if marriageDate}
-				<span class="date">{marriageDate}</span>
-			{/if}
-			{#if childCount > 0}
-				<span class="children">{childCount} {childCount === 1 ? 'child' : 'children'}</span>
-			{/if}
-		</div>
-	</a>
-{:else}
-	<button class="family-card" {onclick}>
-		<div class="partners">
-			<span class="partner">{partner1Name}</span>
-			{#if partner2Name}
-				<span class="connector">&amp;</span>
-				<span class="partner">{partner2Name}</span>
-			{/if}
-		</div>
-		<div class="details">
-			{#if family.relationship_type}
-				<span class="badge">{family.relationship_type}</span>
-			{/if}
-			{#if marriageDate}
-				<span class="date">{marriageDate}</span>
-			{/if}
-			{#if childCount > 0}
-				<span class="children">{childCount} {childCount === 1 ? 'child' : 'children'}</span>
-			{/if}
-		</div>
-	</button>
-{/if}
+{#snippet cardInner()}
+	<div class="partners">
+		<span class="partner">{partner1Name}</span>
+		{#if partner2Name}
+			<span class="connector">&amp;</span>
+			<span class="partner">{partner2Name}</span>
+		{/if}
+	</div>
+	<div class="details">
+		{#if family.relationship_type}
+			<Badge variant="secondary" class="capitalize">{family.relationship_type}</Badge>
+		{/if}
+		{#if marriageDate}
+			<span class="date">{marriageDate}</span>
+		{/if}
+		{#if childCount > 0}
+			<span class="children">{childCount} {childCount === 1 ? 'child' : 'children'}</span>
+		{/if}
+	</div>
+{/snippet}
+
+<Card class="p-0 hover:ring-foreground/20 hover:shadow-sm transition-all">
+	{#if href}
+		<a {href} class="card-link">
+			<CardHeader class="pb-0">
+				{@render cardInner()}
+			</CardHeader>
+		</a>
+	{:else}
+		<button type="button" class="card-link" {onclick}>
+			<CardHeader class="pb-0">
+				{@render cardInner()}
+			</CardHeader>
+		</button>
+	{/if}
+</Card>
 
 <style>
-	.family-card {
+	.card-link {
 		display: block;
-		padding: 1rem;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
+		padding: 0;
 		text-decoration: none;
 		color: inherit;
 		cursor: pointer;
-		transition: all 0.15s;
 		width: 100%;
 		text-align: left;
-	}
-
-	.family-card:hover {
-		border-color: #cbd5e1;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 	}
 
 	.partners {
@@ -103,16 +89,6 @@
 		align-items: center;
 		gap: 0.75rem;
 		margin-top: 0.5rem;
-	}
-
-	.badge {
-		display: inline-block;
-		padding: 0.125rem 0.5rem;
-		background: #f1f5f9;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		color: #475569;
-		text-transform: capitalize;
 	}
 
 	.date {

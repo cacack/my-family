@@ -7,6 +7,8 @@
 	import KeyboardHelp from '$lib/components/KeyboardHelp.svelte';
 	import AccessibilityPanel from '$lib/components/AccessibilityPanel.svelte';
 	import DemoBanner from '$lib/components/DemoBanner.svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import { Button } from '$lib/components/ui/button';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { loadAppConfig, getAppConfig } from '$lib/stores/appConfig.svelte';
 	import type { SearchResult } from '$lib/api/client';
@@ -75,20 +77,22 @@
 		<nav class="nav" role="navigation" aria-label="Main navigation">
 			<a href="/persons" class:active={$page.url.pathname.startsWith('/persons')}>People</a>
 			<a href="/families" class:active={$page.url.pathname.startsWith('/families')}>Families</a>
-			<div class="nav-dropdown">
-				<button class="nav-dropdown-toggle" class:active={$page.url.pathname.startsWith('/browse')}>
-					Browse
-					<svg class="dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<polyline points="6 9 12 15 18 9" />
-					</svg>
-				</button>
-				<div class="nav-dropdown-menu">
-					<a href="/browse/surnames">By Surname</a>
-					<a href="/browse/places">By Place</a>
-					<a href="/browse/cemeteries">By Cemetery</a>
-					<a href="/browse/brick-walls">Brick Walls</a>
-				</div>
-			</div>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					<Button variant="ghost" class="nav-dropdown-trigger gap-1 px-4 py-2 text-sm font-medium {$page.url.pathname.startsWith('/browse') ? 'bg-[#eff6ff] text-[#3b82f6]' : 'text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#1e293b]'}">
+						Browse
+						<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<polyline points="6 9 12 15 18 9" />
+						</svg>
+					</Button>
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content>
+					<DropdownMenu.Item><a href="/browse/surnames">By Surname</a></DropdownMenu.Item>
+					<DropdownMenu.Item><a href="/browse/places">By Place</a></DropdownMenu.Item>
+					<DropdownMenu.Item><a href="/browse/cemeteries">By Cemetery</a></DropdownMenu.Item>
+					<DropdownMenu.Item><a href="/browse/brick-walls">Brick Walls</a></DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
 			<a href="/history" class:active={$page.url.pathname.startsWith('/history')}>History</a>
 			<a href="/map" class:active={$page.url.pathname.startsWith('/map')}>Map</a>
@@ -274,115 +278,6 @@
 
 	:global(body.high-contrast) .nav a:focus {
 		outline-color: var(--color-focus-ring);
-	}
-
-	.nav-dropdown {
-		position: relative;
-	}
-
-	.nav-dropdown-toggle {
-		display: flex;
-		align-items: center;
-		gap: 0.25rem;
-		padding: 0.5rem 1rem;
-		border: none;
-		border-radius: 6px;
-		background: transparent;
-		color: #64748b;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	:global(body.high-contrast) .nav-dropdown-toggle {
-		color: var(--color-text-muted);
-	}
-
-	.nav-dropdown-toggle:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-	}
-
-	:global(body.high-contrast) .nav-dropdown-toggle:hover {
-		background: var(--a11y-color-border);
-		color: var(--color-text);
-	}
-
-	.nav-dropdown-toggle.active {
-		background: #eff6ff;
-		color: #3b82f6;
-	}
-
-	:global(body.high-contrast) .nav-dropdown-toggle.active {
-		background: var(--color-focus-ring);
-		color: #000;
-	}
-
-	.nav-dropdown-toggle:focus {
-		outline: 2px solid #3b82f6;
-		outline-offset: 2px;
-	}
-
-	:global(body.high-contrast) .nav-dropdown-toggle:focus {
-		outline-color: var(--color-focus-ring);
-	}
-
-	.dropdown-arrow {
-		width: 1rem;
-		height: 1rem;
-	}
-
-	.nav-dropdown-menu {
-		position: absolute;
-		top: 100%;
-		left: 0;
-		margin-top: 0.25rem;
-		padding: 0.5rem 0;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
-		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-		min-width: 140px;
-		opacity: 0;
-		visibility: hidden;
-		transform: translateY(-4px);
-		transition: all 0.15s ease;
-		z-index: 100;
-	}
-
-	:global(body.high-contrast) .nav-dropdown-menu {
-		background: var(--color-bg-secondary);
-		border-color: var(--a11y-color-border);
-	}
-
-	.nav-dropdown:hover .nav-dropdown-menu {
-		opacity: 1;
-		visibility: visible;
-		transform: translateY(0);
-	}
-
-	.nav-dropdown-menu a {
-		display: block;
-		padding: 0.5rem 1rem;
-		color: #475569;
-		text-decoration: none;
-		font-size: 0.875rem;
-		transition: background 0.15s;
-	}
-
-	:global(body.high-contrast) .nav-dropdown-menu a {
-		color: var(--color-text-muted);
-	}
-
-	.nav-dropdown-menu a:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-	}
-
-	:global(body.high-contrast) .nav-dropdown-menu a:hover {
-		background: var(--a11y-color-border);
-		color: var(--color-text);
 	}
 
 	.header-controls {
