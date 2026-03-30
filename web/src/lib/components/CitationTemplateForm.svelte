@@ -195,7 +195,7 @@
 							<span class="text-muted-foreground">Select a template...</span>
 						{/if}
 					</SelectTrigger>
-					<SelectContent>
+					<SelectContent class="max-h-72">
 						{#each Object.entries(templatesByCategory()) as [category, categoryTemplates]}
 							<SelectGroup>
 								<SelectGroupHeading>{category}</SelectGroupHeading>
