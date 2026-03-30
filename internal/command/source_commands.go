@@ -263,6 +263,7 @@ type CreateCitationInput struct {
 	QuotedText    string
 	Analysis      string
 	TemplateID    string
+	Fields        map[string]string
 	GedcomXref    string
 }
 
@@ -322,6 +323,9 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 	if input.TemplateID != "" {
 		citation.TemplateID = input.TemplateID
 	}
+	if len(input.Fields) > 0 {
+		citation.Fields = input.Fields
+	}
 	if input.GedcomXref != "" {
 		citation.GedcomXref = input.GedcomXref
 	}
@@ -360,7 +364,8 @@ type UpdateCitationInput struct {
 	QuotedText    *string
 	Analysis      *string
 	TemplateID    *string
-	Version       int64 // Required for optimistic locking
+	Fields        map[string]string // nil means no change; empty map clears fields
+	Version       int64             // Required for optimistic locking
 }
 
 // UpdateCitationResult contains the result of updating a citation.
@@ -369,7 +374,7 @@ type UpdateCitationResult struct {
 }
 
 // UpdateCitation updates an existing citation record.
-func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput) (*UpdateCitationResult, error) {
+func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput) (*UpdateCitationResult, error) { //nolint:gocyclo // field-by-field update is inherently branchy
 	// Get current citation from read model
 	current, err := h.readStore.GetCitation(ctx, input.ID)
 	if err != nil {
@@ -454,6 +459,10 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 	if input.TemplateID != nil {
 		testCitation.TemplateID = *input.TemplateID
 		changes["template_id"] = *input.TemplateID
+	}
+	if input.Fields != nil {
+		testCitation.Fields = input.Fields
+		changes["fields"] = input.Fields
 	}
 
 	// No changes?

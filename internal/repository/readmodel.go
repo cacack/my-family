@@ -106,6 +106,7 @@ type CitationReadModel struct {
 	QuotedText    string               `json:"quoted_text,omitempty"`
 	Analysis      string               `json:"analysis,omitempty"`
 	TemplateID    string               `json:"template_id,omitempty"`
+	FieldsJSON    string               `json:"fields_json,omitempty"` // JSON-serialized map[string]string
 	GedcomXref    string               `json:"gedcom_xref,omitempty"`
 	Version       int64                `json:"version"`
 	CreatedAt     time.Time            `json:"created_at"`

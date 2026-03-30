@@ -357,19 +357,20 @@ func NewSourceDeleted(sourceID uuid.UUID, reason string) SourceDeleted {
 // CitationCreated event is emitted when a new citation is created.
 type CitationCreated struct {
 	BaseEvent
-	CitationID    uuid.UUID     `json:"citation_id"`
-	SourceID      uuid.UUID     `json:"source_id"`
-	FactType      FactType      `json:"fact_type"`
-	FactOwnerID   uuid.UUID     `json:"fact_owner_id"`
-	Page          string        `json:"page,omitempty"`
-	Volume        string        `json:"volume,omitempty"`
-	SourceQuality SourceQuality `json:"source_quality,omitempty"`
-	InformantType InformantType `json:"informant_type,omitempty"`
-	EvidenceType  EvidenceType  `json:"evidence_type,omitempty"`
-	QuotedText    string        `json:"quoted_text,omitempty"`
-	Analysis      string        `json:"analysis,omitempty"`
-	TemplateID    string        `json:"template_id,omitempty"`
-	GedcomXref    string        `json:"gedcom_xref,omitempty"`
+	CitationID    uuid.UUID         `json:"citation_id"`
+	SourceID      uuid.UUID         `json:"source_id"`
+	FactType      FactType          `json:"fact_type"`
+	FactOwnerID   uuid.UUID         `json:"fact_owner_id"`
+	Page          string            `json:"page,omitempty"`
+	Volume        string            `json:"volume,omitempty"`
+	SourceQuality SourceQuality     `json:"source_quality,omitempty"`
+	InformantType InformantType     `json:"informant_type,omitempty"`
+	EvidenceType  EvidenceType      `json:"evidence_type,omitempty"`
+	QuotedText    string            `json:"quoted_text,omitempty"`
+	Analysis      string            `json:"analysis,omitempty"`
+	TemplateID    string            `json:"template_id,omitempty"`
+	Fields        map[string]string `json:"fields,omitempty"`
+	GedcomXref    string            `json:"gedcom_xref,omitempty"`
 }
 
 func (e CitationCreated) EventType() string      { return "CitationCreated" }
@@ -391,6 +392,7 @@ func NewCitationCreated(c *Citation) CitationCreated {
 		QuotedText:    c.QuotedText,
 		Analysis:      c.Analysis,
 		TemplateID:    c.TemplateID,
+		Fields:        c.Fields,
 		GedcomXref:    c.GedcomXref,
 	}
 }

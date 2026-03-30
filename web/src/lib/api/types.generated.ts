@@ -690,6 +690,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/citation-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List available citation templates
+         * @description Returns all Evidence Explained citation templates, optionally filtered by source type
+         */
+        get: operations["listCitationTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/citation-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template ID (e.g., census.us.federal) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Get a citation template by ID */
+        get: operations["getCitationTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/citations/{id}/format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Format a citation using its template
+         * @description Renders the citation as full and short formatted text using the associated template
+         */
+        get: operations["formatCitation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/persons/{id}/media": {
         parameters: {
             query?: never;
@@ -2580,8 +2642,12 @@ export interface components {
             quoted_text?: string;
             /** @description Researcher's analysis of the citation */
             analysis?: string;
-            /** @description Citation template ID */
+            /** @description Evidence Explained citation template ID */
             template_id?: string;
+            /** @description Template-specific field values */
+            fields?: {
+                [key: string]: string;
+            };
             /** @description GEDCOM cross-reference ID (e.g., "@C1@") for round-trip support */
             gedcom_xref?: string;
             /**
@@ -2608,6 +2674,10 @@ export interface components {
             quoted_text?: string;
             analysis?: string;
             template_id?: string;
+            /** @description Template-specific field values */
+            fields?: {
+                [key: string]: string;
+            };
             /** @description Optional GEDCOM cross-reference ID for import */
             gedcom_xref?: string;
         };
@@ -2620,6 +2690,10 @@ export interface components {
             quoted_text?: string;
             analysis?: string;
             template_id?: string;
+            /** @description Template-specific field values */
+            fields?: {
+                [key: string]: string;
+            };
             /**
              * Format: int64
              * @description Current version for optimistic locking
@@ -2629,6 +2703,47 @@ export interface components {
         CitationList: {
             citations: components["schemas"]["Citation"][];
             total: number;
+        };
+        CitationTemplate: {
+            /** @description Stable template identifier (e.g., census.us.federal) */
+            id: string;
+            /** @description Human-readable template name */
+            name: string;
+            /** @description Template category (e.g., Census Records) */
+            category: string;
+            /** @description Brief help text */
+            description?: string;
+            /** @description Applicable source types */
+            source_types: string[];
+            /** @description Ordered list of field definitions */
+            fields: components["schemas"]["CitationTemplateField"][];
+        };
+        CitationTemplateField: {
+            /** @description Machine key for the field */
+            key: string;
+            /** @description Human-readable label */
+            label: string;
+            /** @description Guidance for the user */
+            help_text?: string;
+            /** @description Whether the field is required */
+            required: boolean;
+        };
+        CitationTemplateList: {
+            templates: components["schemas"]["CitationTemplate"][];
+        };
+        FormattedCitation: {
+            /** @description Full formatted citation text */
+            full: string;
+            /** @description Short formatted citation text */
+            short: string;
+            /** @description Any field validation warnings or errors */
+            validation_issues?: components["schemas"]["CitationValidationIssue"][];
+        };
+        CitationValidationIssue: {
+            field: string;
+            message: string;
+            /** @enum {string} */
+            level: "error" | "warning";
         };
         QualityOverview: {
             /** @description Total number of persons in the tree */
@@ -4582,6 +4697,76 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    listCitationTemplates: {
+        parameters: {
+            query?: {
+                /** @description Filter templates by source type */
+                source_type?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of citation templates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationTemplateList"];
+                };
+            };
+        };
+    };
+    getCitationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template ID (e.g., census.us.federal) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Citation template details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationTemplate"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    formatCitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Formatted citation text */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormattedCitation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     listPersonMedia: {

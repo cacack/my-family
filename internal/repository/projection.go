@@ -550,6 +550,13 @@ func (p *Projector) projectCitationCreated(ctx context.Context, e domain.Citatio
 		sourceTitle = source.Title
 	}
 
+	var fieldsJSON string
+	if len(e.Fields) > 0 {
+		if b, err := json.Marshal(e.Fields); err == nil {
+			fieldsJSON = string(b)
+		}
+	}
+
 	citation := &CitationReadModel{
 		ID:            e.CitationID,
 		SourceID:      e.SourceID,
@@ -564,6 +571,7 @@ func (p *Projector) projectCitationCreated(ctx context.Context, e domain.Citatio
 		QuotedText:    e.QuotedText,
 		Analysis:      e.Analysis,
 		TemplateID:    e.TemplateID,
+		FieldsJSON:    fieldsJSON,
 		GedcomXref:    e.GedcomXref,
 		Version:       version,
 		CreatedAt:     e.OccurredAt(),
@@ -662,6 +670,10 @@ func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.Citatio
 		case "template_id":
 			if v, ok := value.(string); ok {
 				citation.TemplateID = v
+			}
+		case "fields":
+			if b, err := json.Marshal(value); err == nil {
+				citation.FieldsJSON = string(b)
 			}
 		}
 	}
