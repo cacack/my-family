@@ -438,11 +438,21 @@ func (s *FamilyService) applyNegatedPersonEvents(ctx context.Context, personID u
 			} else {
 				(*birth).IsNegated = true
 			}
+			// Load citations for the negated birth event
+			citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonBirth, personID)
+			if err == nil && len(citations) > 0 {
+				(*birth).Citations = convertCitationsToGroupSheet(citations)
+			}
 		case domain.FactPersonDeath:
 			if *death == nil {
 				*death = &GroupSheetEvent{IsNegated: true}
 			} else {
 				(*death).IsNegated = true
+			}
+			// Load citations for the negated death event
+			citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonDeath, personID)
+			if err == nil && len(citations) > 0 {
+				(*death).Citations = convertCitationsToGroupSheet(citations)
 			}
 		}
 	}
@@ -464,6 +474,11 @@ func (s *FamilyService) applyNegatedFamilyEvents(ctx context.Context, familyID u
 				*marriage = &GroupSheetEvent{IsNegated: true}
 			} else {
 				(*marriage).IsNegated = true
+			}
+			// Load citations for the negated marriage event
+			citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, familyID)
+			if err == nil && len(citations) > 0 {
+				(*marriage).Citations = convertCitationsToGroupSheet(citations)
 			}
 		}
 	}

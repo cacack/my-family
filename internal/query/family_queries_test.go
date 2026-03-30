@@ -7,7 +7,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -733,5 +735,378 @@ func TestGetGroupSheet_PersonWithParents(t *testing.T) {
 	}
 	if gs.Husband.MotherID == nil {
 		t.Error("Husband MotherID should not be nil")
+	}
+}
+
+func TestGetGroupSheet_NegatedBirthWithCitations(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	// Create a person with no birth info (negated birth = "no birth recorded")
+	husband, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Unknown",
+		Surname:   "Person",
+		Gender:    "male",
+	})
+
+	// Create family
+	familyResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &husband.ID,
+	})
+
+	// Create a negated birth event directly in the read store
+	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   husband.ID,
+		FactType:  domain.FactPersonBirth,
+		IsNegated: true,
+		Version:   1,
+	})
+
+	// Create a citation for the negated birth fact
+	sourceID := uuid.New()
+	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:    sourceID,
+		Title: "Census Record",
+	})
+	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		SourceTitle: "Census Record",
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: husband.ID,
+		Page:        "42",
+		Version:     1,
+	})
+
+	// Get group sheet
+	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	if err != nil {
+		t.Fatalf("GetGroupSheet failed: %v", err)
+	}
+
+	if gs.Husband == nil {
+		t.Fatal("Husband should not be nil")
+	}
+	if gs.Husband.Birth == nil {
+		t.Fatal("Husband Birth should not be nil for negated event")
+	}
+	if !gs.Husband.Birth.IsNegated {
+		t.Error("Husband Birth.IsNegated should be true")
+	}
+	if len(gs.Husband.Birth.Citations) != 1 {
+		t.Fatalf("Husband Birth.Citations count = %d, want 1", len(gs.Husband.Birth.Citations))
+	}
+	if gs.Husband.Birth.Citations[0].SourceTitle != "Census Record" {
+		t.Errorf("Citation SourceTitle = %q, want 'Census Record'", gs.Husband.Birth.Citations[0].SourceTitle)
+	}
+	if gs.Husband.Birth.Citations[0].Page != "42" {
+		t.Errorf("Citation Page = %q, want '42'", gs.Husband.Birth.Citations[0].Page)
+	}
+}
+
+func TestGetGroupSheet_NegatedDeathWithCitations(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	// Create a person (still living, negated death)
+	wife, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Alice",
+		Surname:   "Living",
+		Gender:    "female",
+		BirthDate: "15 JAN 1990",
+	})
+
+	// Create family
+	familyResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner2ID: &wife.ID,
+	})
+
+	// Create a negated death event
+	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   wife.ID,
+		FactType:  domain.FactPersonDeath,
+		IsNegated: true,
+		Version:   1,
+	})
+
+	// Create a citation for the negated death
+	sourceID := uuid.New()
+	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:    sourceID,
+		Title: "Death Index",
+	})
+	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		SourceTitle: "Death Index",
+		FactType:    domain.FactPersonDeath,
+		FactOwnerID: wife.ID,
+		Page:        "99",
+		Version:     1,
+	})
+
+	// Get group sheet
+	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	if err != nil {
+		t.Fatalf("GetGroupSheet failed: %v", err)
+	}
+
+	if gs.Wife == nil {
+		t.Fatal("Wife should not be nil")
+	}
+	if gs.Wife.Death == nil {
+		t.Fatal("Wife Death should not be nil for negated event")
+	}
+	if !gs.Wife.Death.IsNegated {
+		t.Error("Wife Death.IsNegated should be true")
+	}
+	if len(gs.Wife.Death.Citations) != 1 {
+		t.Fatalf("Wife Death.Citations count = %d, want 1", len(gs.Wife.Death.Citations))
+	}
+	if gs.Wife.Death.Citations[0].SourceTitle != "Death Index" {
+		t.Errorf("Citation SourceTitle = %q, want 'Death Index'", gs.Wife.Death.Citations[0].SourceTitle)
+	}
+}
+
+func TestGetGroupSheet_NegatedMarriageWithCitations(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	// Create partners in an unmarried relationship
+	husband, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "John",
+		Surname:   "Doe",
+		Gender:    "male",
+	})
+	wife, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Jane",
+		Surname:   "Smith",
+		Gender:    "female",
+	})
+
+	// Create family without marriage info
+	familyResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &husband.ID,
+		Partner2ID: &wife.ID,
+	})
+
+	// Create a negated marriage event
+	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "family",
+		OwnerID:   familyResult.ID,
+		FactType:  domain.FactFamilyMarriage,
+		IsNegated: true,
+		Version:   1,
+	})
+
+	// Create a citation for the negated marriage
+	sourceID := uuid.New()
+	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:    sourceID,
+		Title: "Marriage Registry",
+	})
+	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		SourceTitle: "Marriage Registry",
+		FactType:    domain.FactFamilyMarriage,
+		FactOwnerID: familyResult.ID,
+		Page:        "N/A",
+		Volume:      "3",
+		Version:     1,
+	})
+
+	// Get group sheet
+	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	if err != nil {
+		t.Fatalf("GetGroupSheet failed: %v", err)
+	}
+
+	if gs.Marriage == nil {
+		t.Fatal("Marriage should not be nil for negated event")
+	}
+	if !gs.Marriage.IsNegated {
+		t.Error("Marriage.IsNegated should be true")
+	}
+	if len(gs.Marriage.Citations) != 1 {
+		t.Fatalf("Marriage.Citations count = %d, want 1", len(gs.Marriage.Citations))
+	}
+	if gs.Marriage.Citations[0].SourceTitle != "Marriage Registry" {
+		t.Errorf("Citation SourceTitle = %q, want 'Marriage Registry'", gs.Marriage.Citations[0].SourceTitle)
+	}
+	if gs.Marriage.Citations[0].Detail != "p. N/A, vol. 3" {
+		t.Errorf("Citation Detail = %q, want 'p. N/A, vol. 3'", gs.Marriage.Citations[0].Detail)
+	}
+}
+
+func TestGetGroupSheet_ExistingEventMarkedNegatedWithCitations(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	// Create a person WITH birth info, then also a negated birth event
+	// This tests the non-nil code path where an existing event gets marked negated
+	husband, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName:  "John",
+		Surname:    "Doe",
+		Gender:     "male",
+		BirthDate:  "ABT 1850",
+		BirthPlace: "Unknown",
+	})
+
+	familyResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID: &husband.ID,
+	})
+
+	// Create a negated birth event (person already has birth data, so this is the non-nil path)
+	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+		ID:        uuid.New(),
+		OwnerType: "person",
+		OwnerID:   husband.ID,
+		FactType:  domain.FactPersonBirth,
+		IsNegated: true,
+		Version:   1,
+	})
+
+	// Create a citation for the birth fact
+	sourceID := uuid.New()
+	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:    sourceID,
+		Title: "Parish Register",
+	})
+	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		SourceTitle: "Parish Register",
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: husband.ID,
+		Page:        "15",
+		Version:     1,
+	})
+
+	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	if err != nil {
+		t.Fatalf("GetGroupSheet failed: %v", err)
+	}
+
+	if gs.Husband == nil {
+		t.Fatal("Husband should not be nil")
+	}
+	if gs.Husband.Birth == nil {
+		t.Fatal("Husband Birth should not be nil")
+	}
+	if !gs.Husband.Birth.IsNegated {
+		t.Error("Husband Birth.IsNegated should be true")
+	}
+	if gs.Husband.Birth.Date != "ABT 1850" {
+		t.Errorf("Husband Birth.Date = %q, want 'ABT 1850'", gs.Husband.Birth.Date)
+	}
+	// Citations should be loaded from the negated event path
+	if len(gs.Husband.Birth.Citations) != 1 {
+		t.Fatalf("Husband Birth.Citations count = %d, want 1", len(gs.Husband.Birth.Citations))
+	}
+	if gs.Husband.Birth.Citations[0].SourceTitle != "Parish Register" {
+		t.Errorf("Citation SourceTitle = %q, want 'Parish Register'", gs.Husband.Birth.Citations[0].SourceTitle)
+	}
+}
+
+func TestGetGroupSheet_NonNegatedEventsStillHaveCitations(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	// Create person with birth/death info
+	husband, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName:  "John",
+		Surname:    "Doe",
+		Gender:     "male",
+		BirthDate:  "1 JAN 1950",
+		BirthPlace: "Boston, MA",
+		DeathDate:  "15 DEC 2020",
+		DeathPlace: "New York, NY",
+	})
+
+	wife, _ := handler.CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Jane",
+		Surname:   "Doe",
+		Gender:    "female",
+	})
+
+	// Create family with marriage
+	familyResult, _ := handler.CreateFamily(ctx, command.CreateFamilyInput{
+		Partner1ID:    &husband.ID,
+		Partner2ID:    &wife.ID,
+		MarriageDate:  "20 JUN 1975",
+		MarriagePlace: "Boston, MA",
+	})
+
+	// Create citations for non-negated events
+	sourceID := uuid.New()
+	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:    sourceID,
+		Title: "Birth Certificate",
+	})
+	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		SourceTitle: "Birth Certificate",
+		FactType:    domain.FactPersonBirth,
+		FactOwnerID: husband.ID,
+		Page:        "1",
+		Version:     1,
+	})
+	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+		ID:          uuid.New(),
+		SourceID:    sourceID,
+		SourceTitle: "Birth Certificate",
+		FactType:    domain.FactFamilyMarriage,
+		FactOwnerID: familyResult.ID,
+		Page:        "5",
+		Version:     1,
+	})
+
+	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	if err != nil {
+		t.Fatalf("GetGroupSheet failed: %v", err)
+	}
+
+	// Non-negated birth should still have citations (regression check)
+	if gs.Husband.Birth == nil {
+		t.Fatal("Husband Birth should not be nil")
+	}
+	if len(gs.Husband.Birth.Citations) != 1 {
+		t.Fatalf("Husband Birth.Citations count = %d, want 1", len(gs.Husband.Birth.Citations))
+	}
+	if gs.Husband.Birth.IsNegated {
+		t.Error("Husband Birth.IsNegated should be false for non-negated event")
+	}
+
+	// Non-negated marriage should still have citations (regression check)
+	if gs.Marriage == nil {
+		t.Fatal("Marriage should not be nil")
+	}
+	if len(gs.Marriage.Citations) != 1 {
+		t.Fatalf("Marriage.Citations count = %d, want 1", len(gs.Marriage.Citations))
+	}
+	if gs.Marriage.IsNegated {
+		t.Error("Marriage.IsNegated should be false for non-negated event")
 	}
 }
