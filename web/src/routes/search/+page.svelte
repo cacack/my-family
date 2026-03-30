@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import { Card, CardContent } from '$lib/components/ui/card';
 	import {
 		api,
 		type SearchResult,
@@ -81,7 +82,9 @@
 			const childPromises = result.items
 				.filter((place) => place.has_children)
 				.map((place) =>
-					api.getPlaceHierarchy(place.full_name || place.name).catch(() => ({ items: [] as PlaceEntry[] }))
+					api
+						.getPlaceHierarchy(place.full_name || place.name)
+						.catch(() => ({ items: [] as PlaceEntry[] }))
 				);
 			const childResults = await Promise.all(childPromises);
 			allPlaces = [...allPlaces, ...childResults.flatMap((r) => r.items)];
@@ -257,7 +260,7 @@
 	}
 
 	function scoreLabel(score: number | undefined): string {
-		if (score === undefined) return '—';
+		if (score === undefined) return '\u2014';
 		return `${Math.round(score * 100)}%`;
 	}
 </script>
@@ -272,309 +275,361 @@
 		<p class="description">Search people by name, dates, and places</p>
 	</header>
 
-	<form class="search-form" onsubmit={handleFormSubmit}>
-		<!-- Name query -->
-		<div class="form-section">
-			<label class="field-label" for="search-query">Name</label>
-			<input
-				id="search-query"
-				type="text"
-				bind:value={query}
-				onkeydown={handleNameKeydown}
-				placeholder="Name (e.g., Smith, John Smith)"
-				class="name-input"
-			/>
-		</div>
-
-		<!-- Toggle buttons -->
-		<div class="toggle-row">
-			<button
-				type="button"
-				class="pill-toggle"
-				class:active={fuzzy}
-				onclick={() => (fuzzy = !fuzzy)}
-				aria-pressed={fuzzy}
-				title={fuzzy ? 'Fuzzy matching enabled' : 'Enable fuzzy matching'}
-			>
-				<span class="toggle-icon">~</span>
-				Fuzzy
-			</button>
-			<button
-				type="button"
-				class="pill-toggle"
-				class:active={soundex}
-				onclick={() => (soundex = !soundex)}
-				aria-pressed={soundex}
-				title={soundex ? 'Phonetic matching enabled' : 'Enable phonetic matching'}
-			>
-				Phonetic
-			</button>
-		</div>
-
-		<!-- Date ranges -->
-		<div class="form-section">
-			<div class="date-grid">
-				<div class="date-group">
-					<span class="field-label">Birth date</span>
-					<div class="date-range">
-						<label class="date-label">
-							From
-							<input
-								type="text"
-								bind:value={birthYearFrom}
-								inputmode="numeric"
-								pattern="[0-9]*"
-								placeholder="YYYY"
-								class="year-input"
-								maxlength={4}
-							/>
-						</label>
-						<label class="date-label">
-							To
-							<input
-								type="text"
-								bind:value={birthYearTo}
-								inputmode="numeric"
-								pattern="[0-9]*"
-								placeholder="YYYY"
-								class="year-input"
-								maxlength={4}
-							/>
-						</label>
-					</div>
+	<Card class="mb-8">
+		<CardContent>
+			<form onsubmit={handleFormSubmit}>
+				<!-- Name query -->
+				<div class="form-section">
+					<label class="field-label" for="search-query">Name</label>
+					<input
+						id="search-query"
+						type="text"
+						bind:value={query}
+						onkeydown={handleNameKeydown}
+						placeholder="Name (e.g., Smith, John Smith)"
+						class="name-input"
+					/>
 				</div>
-				<div class="date-group">
-					<span class="field-label">Death date</span>
-					<div class="date-range">
-						<label class="date-label">
-							From
-							<input
-								type="text"
-								bind:value={deathYearFrom}
-								inputmode="numeric"
-								pattern="[0-9]*"
-								placeholder="YYYY"
-								class="year-input"
-								maxlength={4}
-							/>
-						</label>
-						<label class="date-label">
-							To
-							<input
-								type="text"
-								bind:value={deathYearTo}
-								inputmode="numeric"
-								pattern="[0-9]*"
-								placeholder="YYYY"
-								class="year-input"
-								maxlength={4}
-							/>
-						</label>
-					</div>
-				</div>
-			</div>
-		</div>
 
-		<!-- Place filters -->
-		<div class="form-section">
-			<div class="place-grid">
-				<div class="place-field">
-					<label class="field-label" for="birth-place-input">Birth place</label>
-					<div class="place-wrapper">
-						<input
-							id="birth-place-input"
-							type="text"
-							bind:value={birthPlace}
-							onfocus={() => {
-								if (birthPlaceSuggestions.length > 0) showBirthPlaceDropdown = true;
-							}}
-							onblur={() => { showBirthPlaceDropdown = false; birthPlaceHighlight = -1; }}
-							onkeydown={handleBirthPlaceKeydown}
-							placeholder="e.g., Springfield, IL"
-							role="combobox"
-							aria-expanded={showBirthPlaceDropdown}
-							aria-haspopup="listbox"
-							aria-controls="birth-place-listbox"
-							aria-autocomplete="list"
-							aria-activedescendant={birthPlaceHighlight >= 0 ? `bp-option-${birthPlaceHighlight}` : undefined}
-							autocomplete="off"
-						/>
-						{#if showBirthPlaceDropdown && birthPlaceSuggestions.length > 0}
-							<!-- svelte-ignore a11y_interactive_supports_focus -->
-						<div class="place-dropdown" role="listbox" id="birth-place-listbox" aria-label="Birth place suggestions" onmousedown={(e) => e.preventDefault()}>
-								{#each birthPlaceSuggestions as place, i}
-									<button
-										type="button"
-										id="bp-option-{i}"
-										class="place-option"
-										class:highlighted={i === birthPlaceHighlight}
-										onclick={() => selectBirthPlace(place)}
-										role="option"
-										aria-selected={i === birthPlaceHighlight}
-									>
-										<span class="place-name">{place.full_name}</span>
-										<span class="place-count">({place.count})</span>
-									</button>
-								{/each}
+				<!-- Toggle buttons -->
+				<div class="toggle-row">
+					<button
+						type="button"
+						class="pill-toggle"
+						class:active={fuzzy}
+						onclick={() => (fuzzy = !fuzzy)}
+						aria-pressed={fuzzy}
+						title={fuzzy ? 'Fuzzy matching enabled' : 'Enable fuzzy matching'}
+					>
+						<span class="toggle-icon">~</span>
+						Fuzzy
+					</button>
+					<button
+						type="button"
+						class="pill-toggle"
+						class:active={soundex}
+						onclick={() => (soundex = !soundex)}
+						aria-pressed={soundex}
+						title={soundex ? 'Phonetic matching enabled' : 'Enable phonetic matching'}
+					>
+						Phonetic
+					</button>
+				</div>
+
+				<!-- Date ranges -->
+				<div class="form-section">
+					<div class="date-grid">
+						<div class="date-group">
+							<span class="field-label">Birth date</span>
+							<div class="date-range">
+								<label class="date-label">
+									From
+									<input
+										type="text"
+										bind:value={birthYearFrom}
+										inputmode="numeric"
+										pattern="[0-9]*"
+										placeholder="YYYY"
+										class="year-input"
+										maxlength={4}
+									/>
+								</label>
+								<label class="date-label">
+									To
+									<input
+										type="text"
+										bind:value={birthYearTo}
+										inputmode="numeric"
+										pattern="[0-9]*"
+										placeholder="YYYY"
+										class="year-input"
+										maxlength={4}
+									/>
+								</label>
 							</div>
-						{/if}
-					</div>
-				</div>
-				<div class="place-field">
-					<label class="field-label" for="death-place-input">Death place</label>
-					<div class="place-wrapper">
-						<input
-							id="death-place-input"
-							type="text"
-							bind:value={deathPlace}
-							onfocus={() => {
-								if (deathPlaceSuggestions.length > 0) showDeathPlaceDropdown = true;
-							}}
-							onblur={() => { showDeathPlaceDropdown = false; deathPlaceHighlight = -1; }}
-							onkeydown={handleDeathPlaceKeydown}
-							placeholder="e.g., Springfield, IL"
-							role="combobox"
-							aria-expanded={showDeathPlaceDropdown}
-							aria-haspopup="listbox"
-							aria-controls="death-place-listbox"
-							aria-autocomplete="list"
-							aria-activedescendant={deathPlaceHighlight >= 0 ? `dp-option-${deathPlaceHighlight}` : undefined}
-							autocomplete="off"
-						/>
-						{#if showDeathPlaceDropdown && deathPlaceSuggestions.length > 0}
-							<!-- svelte-ignore a11y_interactive_supports_focus -->
-						<div class="place-dropdown" role="listbox" id="death-place-listbox" aria-label="Death place suggestions" onmousedown={(e) => e.preventDefault()}>
-								{#each deathPlaceSuggestions as place, i}
-									<button
-										type="button"
-										id="dp-option-{i}"
-										class="place-option"
-										class:highlighted={i === deathPlaceHighlight}
-										onclick={() => selectDeathPlace(place)}
-										role="option"
-										aria-selected={i === deathPlaceHighlight}
-									>
-										<span class="place-name">{place.full_name}</span>
-										<span class="place-count">({place.count})</span>
-									</button>
-								{/each}
+						</div>
+						<div class="date-group">
+							<span class="field-label">Death date</span>
+							<div class="date-range">
+								<label class="date-label">
+									From
+									<input
+										type="text"
+										bind:value={deathYearFrom}
+										inputmode="numeric"
+										pattern="[0-9]*"
+										placeholder="YYYY"
+										class="year-input"
+										maxlength={4}
+									/>
+								</label>
+								<label class="date-label">
+									To
+									<input
+										type="text"
+										bind:value={deathYearTo}
+										inputmode="numeric"
+										pattern="[0-9]*"
+										placeholder="YYYY"
+										class="year-input"
+										maxlength={4}
+									/>
+								</label>
 							</div>
-						{/if}
+						</div>
 					</div>
 				</div>
-			</div>
-		</div>
 
-		<!-- Action buttons -->
-		<div class="form-actions">
-			<Button type="submit" disabled={!hasAnyCriteria || loading}>
-				{loading ? 'Searching...' : 'Search'}
-			</Button>
-			<Button variant="secondary" onclick={clearAll}>Clear All</Button>
-		</div>
-	</form>
+				<!-- Place filters -->
+				<div class="form-section">
+					<div class="place-grid">
+						<div class="place-field">
+							<label class="field-label" for="birth-place-input">Birth place</label>
+							<div class="place-wrapper">
+								<input
+									id="birth-place-input"
+									type="text"
+									bind:value={birthPlace}
+									onfocus={() => {
+										if (birthPlaceSuggestions.length > 0)
+											showBirthPlaceDropdown = true;
+									}}
+									onblur={() => {
+										showBirthPlaceDropdown = false;
+										birthPlaceHighlight = -1;
+									}}
+									onkeydown={handleBirthPlaceKeydown}
+									placeholder="e.g., Springfield, IL"
+									role="combobox"
+									aria-expanded={showBirthPlaceDropdown}
+									aria-haspopup="listbox"
+									aria-controls="birth-place-listbox"
+									aria-autocomplete="list"
+									aria-activedescendant={birthPlaceHighlight >= 0
+										? `bp-option-${birthPlaceHighlight}`
+										: undefined}
+									autocomplete="off"
+								/>
+								{#if showBirthPlaceDropdown && birthPlaceSuggestions.length > 0}
+									<!-- svelte-ignore a11y_interactive_supports_focus -->
+									<div
+										class="place-dropdown"
+										role="listbox"
+										id="birth-place-listbox"
+										aria-label="Birth place suggestions"
+										onmousedown={(e) => e.preventDefault()}
+									>
+										{#each birthPlaceSuggestions as place, i}
+											<button
+												type="button"
+												id="bp-option-{i}"
+												class="place-option"
+												class:highlighted={i === birthPlaceHighlight}
+												onclick={() => selectBirthPlace(place)}
+												role="option"
+												aria-selected={i === birthPlaceHighlight}
+											>
+												<span class="place-name">{place.full_name}</span>
+												<span class="place-count">({place.count})</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
+						<div class="place-field">
+							<label class="field-label" for="death-place-input">Death place</label>
+							<div class="place-wrapper">
+								<input
+									id="death-place-input"
+									type="text"
+									bind:value={deathPlace}
+									onfocus={() => {
+										if (deathPlaceSuggestions.length > 0)
+											showDeathPlaceDropdown = true;
+									}}
+									onblur={() => {
+										showDeathPlaceDropdown = false;
+										deathPlaceHighlight = -1;
+									}}
+									onkeydown={handleDeathPlaceKeydown}
+									placeholder="e.g., Springfield, IL"
+									role="combobox"
+									aria-expanded={showDeathPlaceDropdown}
+									aria-haspopup="listbox"
+									aria-controls="death-place-listbox"
+									aria-autocomplete="list"
+									aria-activedescendant={deathPlaceHighlight >= 0
+										? `dp-option-${deathPlaceHighlight}`
+										: undefined}
+									autocomplete="off"
+								/>
+								{#if showDeathPlaceDropdown && deathPlaceSuggestions.length > 0}
+									<!-- svelte-ignore a11y_interactive_supports_focus -->
+									<div
+										class="place-dropdown"
+										role="listbox"
+										id="death-place-listbox"
+										aria-label="Death place suggestions"
+										onmousedown={(e) => e.preventDefault()}
+									>
+										{#each deathPlaceSuggestions as place, i}
+											<button
+												type="button"
+												id="dp-option-{i}"
+												class="place-option"
+												class:highlighted={i === deathPlaceHighlight}
+												onclick={() => selectDeathPlace(place)}
+												role="option"
+												aria-selected={i === deathPlaceHighlight}
+											>
+												<span class="place-name">{place.full_name}</span>
+												<span class="place-count">({place.count})</span>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Action buttons -->
+				<div class="form-actions">
+					<Button type="submit" disabled={!hasAnyCriteria || loading}>
+						{loading ? 'Searching...' : 'Search'}
+					</Button>
+					<Button variant="secondary" onclick={clearAll}>Clear All</Button>
+				</div>
+			</form>
+		</CardContent>
+	</Card>
 
 	<!-- Results section -->
 	{#if searched}
-		<div class="results-section">
-			<!-- Sort controls and result count -->
-			<div class="results-header">
-				<div class="results-info">
-					{#if loading}
-						<span class="results-count" aria-live="polite">Searching...</span>
-					{:else}
-						<span class="results-count" aria-live="polite">Showing {results.length} of {total} results</span>
-					{/if}
-					{#if soundex}
-						<span class="mode-badge">Phonetic</span>
-					{/if}
-				</div>
-				<div class="sort-controls">
-					<label class="sort-label">
-						Sort by:
-						<select value={sort} onchange={handleSortChange}>
-							<option value="relevance">Relevance</option>
-							<option value="name">Name</option>
-							<option value="birth_date">Birth Date</option>
-							<option value="death_date">Death Date</option>
-						</select>
-					</label>
-					<button
-						class="order-btn"
-						onclick={handleOrderToggle}
-						title="Toggle sort order ({order === 'asc' ? 'ascending' : 'descending'})"
-					>
-						{#if order === 'asc'}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M12 5v14M5 12l7-7 7 7" />
-							</svg>
+		<Card>
+			<CardContent>
+				<!-- Sort controls and result count -->
+				<div class="results-header">
+					<div class="results-info">
+						{#if loading}
+							<span class="results-count" aria-live="polite">Searching...</span>
 						{:else}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M12 19V5M5 12l7 7 7-7" />
-							</svg>
+							<span class="results-count" aria-live="polite"
+								>Showing {results.length} of {total} results</span
+							>
 						{/if}
-					</button>
-				</div>
-			</div>
-
-			{#if error}
-				<div class="error-message" role="alert">{error}</div>
-			{:else if !loading && results.length === 0}
-				<div class="empty-state">No results found. Try adjusting your search criteria.</div>
-			{:else if !loading}
-				<!-- Desktop table -->
-				<div class="results-table-wrapper">
-					<table class="results-table">
-						<thead>
-							<tr>
-								<th>Name</th>
-								<th>Birth</th>
-								<th>Death</th>
-								<th>Score</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each results as person}
-								<tr>
-									<td>
-										<a href="/persons/{person.id}" class="person-link">
-											{formatPersonName(person)}
-										</a>
-									</td>
-									<td class="date-cell">{formatGenDate(person.birth_date)}</td>
-									<td class="date-cell">{formatGenDate(person.death_date)}</td>
-									<td class="score-cell">
-										<span class="score-badge {scoreColor(person.score)}">{scoreLabel(person.score)}</span>
-									</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
-
-				<!-- Mobile cards -->
-				<div class="results-cards">
-					{#each results as person}
-						<a href="/persons/{person.id}" class="result-card">
-							<div class="card-top">
-								<span class="card-name">{formatPersonName(person)}</span>
-								<span class="score-badge {scoreColor(person.score)}">{scoreLabel(person.score)}</span>
-							</div>
-							<span class="card-lifespan">{formatLifespan(person)}</span>
-						</a>
-					{/each}
-				</div>
-
-				<!-- Load more -->
-				{#if results.length < total}
-					<div class="load-more">
-						<Button variant="secondary" onclick={loadMore} disabled={loading}>
-							Load more
-						</Button>
+						{#if soundex}
+							<span class="mode-badge">Phonetic</span>
+						{/if}
 					</div>
+					<div class="sort-controls">
+						<label class="sort-label">
+							Sort by:
+							<select value={sort} onchange={handleSortChange}>
+								<option value="relevance">Relevance</option>
+								<option value="name">Name</option>
+								<option value="birth_date">Birth Date</option>
+								<option value="death_date">Death Date</option>
+							</select>
+						</label>
+						<button
+							class="order-btn"
+							onclick={handleOrderToggle}
+							title="Toggle sort order ({order === 'asc' ? 'ascending' : 'descending'})"
+						>
+							{#if order === 'asc'}
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M12 5v14M5 12l7-7 7 7" />
+								</svg>
+							{:else}
+								<svg
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M12 19V5M5 12l7 7 7-7" />
+								</svg>
+							{/if}
+						</button>
+					</div>
+				</div>
+
+				{#if error}
+					<div class="error-message" role="alert">{error}</div>
+				{:else if !loading && results.length === 0}
+					<div class="empty-state">
+						No results found. Try adjusting your search criteria.
+					</div>
+				{:else if !loading}
+					<!-- Desktop table -->
+					<div class="results-table-wrapper">
+						<table class="results-table">
+							<thead>
+								<tr>
+									<th>Name</th>
+									<th>Birth</th>
+									<th>Death</th>
+									<th>Score</th>
+								</tr>
+							</thead>
+							<tbody>
+								{#each results as person}
+									<tr>
+										<td>
+											<a href="/persons/{person.id}" class="person-link">
+												{formatPersonName(person)}
+											</a>
+										</td>
+										<td class="date-cell">{formatGenDate(person.birth_date)}</td>
+										<td class="date-cell">{formatGenDate(person.death_date)}</td>
+										<td class="score-cell">
+											<span class="score-badge {scoreColor(person.score)}"
+												>{scoreLabel(person.score)}</span
+											>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+
+					<!-- Mobile cards -->
+					<div class="results-cards">
+						{#each results as person}
+							<a href="/persons/{person.id}" class="result-card">
+								<div class="result-card-top">
+									<span class="result-card-name"
+										>{formatPersonName(person)}</span
+									>
+									<span class="score-badge {scoreColor(person.score)}"
+										>{scoreLabel(person.score)}</span
+									>
+								</div>
+								<span class="result-card-lifespan"
+									>{formatLifespan(person)}</span
+								>
+							</a>
+						{/each}
+					</div>
+
+					<!-- Load more -->
+					{#if results.length < total}
+						<div class="load-more">
+							<Button variant="secondary" onclick={loadMore} disabled={loading}>
+								Load more
+							</Button>
+						</div>
+					{/if}
 				{/if}
-			{/if}
-		</div>
+			</CardContent>
+		</Card>
 	{/if}
 </div>
 
@@ -599,15 +654,6 @@
 		margin: 0;
 		color: #64748b;
 		font-size: 0.9375rem;
-	}
-
-	/* Search form */
-	.search-form {
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 12px;
-		padding: 1.5rem;
-		margin-bottom: 2rem;
 	}
 
 	.form-section {
@@ -813,14 +859,7 @@
 		border-top: 1px solid #e2e8f0;
 	}
 
-	/* Results section */
-	.results-section {
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 12px;
-		padding: 1.5rem;
-	}
-
+	/* Results */
 	.results-header {
 		display: flex;
 		justify-content: space-between;
@@ -1008,20 +1047,20 @@
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 	}
 
-	.card-top {
+	.result-card-top {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 0.25rem;
 	}
 
-	.card-name {
+	.result-card-name {
 		font-weight: 500;
 		color: #1e293b;
 		font-size: 0.875rem;
 	}
 
-	.card-lifespan {
+	.result-card-lifespan {
 		font-size: 0.8125rem;
 		color: #64748b;
 	}

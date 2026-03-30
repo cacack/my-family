@@ -188,12 +188,12 @@
 					<span class="file-name">{file.name}</span>
 					<span class="file-size">{formatFileSize(file.size)}</span>
 				</div>
-				<button class="remove-btn" onclick={removeFile} type="button" aria-label="Remove file">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<Button variant="destructive" size="icon-xs" onclick={removeFile} type="button" aria-label="Remove file">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-4">
 						<line x1="18" y1="6" x2="6" y2="18" />
 						<line x1="6" y1="6" x2="18" y2="18" />
 					</svg>
-				</button>
+				</Button>
 			</div>
 		{:else}
 			<svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -371,35 +371,7 @@
 		font-size: 0.75rem;
 	}
 
-	.remove-btn {
-		width: 1.75rem;
-		height: 1.75rem;
-		border: none;
-		background: #f1f5f9;
-		border-radius: 50%;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		transition: all 0.15s;
-	}
-
-	.remove-btn svg {
-		width: 1rem;
-		height: 1rem;
-		color: #64748b;
-	}
-
-	.remove-btn:hover {
-		background: #fee2e2;
-	}
-
-	.remove-btn:hover svg {
-		color: #dc2626;
-	}
-
-	.upload-form {
+.upload-form {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;

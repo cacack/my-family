@@ -99,30 +99,33 @@
 		<fieldset class="gender-group">
 			<legend>Gender</legend>
 			<div class="gender-buttons">
-				<button
+				<Button
 					type="button"
-					class="gender-btn"
-					class:active={gender === 'male'}
+					variant={gender === 'male' ? 'default' : 'outline'}
+					size="sm"
+					class="min-h-12"
 					onclick={() => (gender = 'male')}
 				>
 					Male
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
-					class="gender-btn"
-					class:active={gender === 'female'}
+					variant={gender === 'female' ? 'default' : 'outline'}
+					size="sm"
+					class="min-h-12"
 					onclick={() => (gender = 'female')}
 				>
 					Female
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
-					class="gender-btn"
-					class:active={gender === 'unknown'}
+					variant={gender === 'unknown' ? 'default' : 'outline'}
+					size="sm"
+					class="min-h-12"
 					onclick={() => (gender = 'unknown')}
 				>
 					Unknown
-				</button>
+				</Button>
 			</div>
 		</fieldset>
 
@@ -266,30 +269,7 @@
 		gap: 0.5rem;
 	}
 
-	.gender-btn {
-		padding: 0.75rem;
-		min-height: 48px;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		transition: all 0.15s;
-		color: #475569;
-	}
-
-	.gender-btn:hover {
-		background: #f1f5f9;
-	}
-
-	.gender-btn.active {
-		background: #eff6ff;
-		border-color: #3b82f6;
-		color: #1d4ed8;
-		font-weight: 600;
-	}
-
-	.toggle-notes {
+.toggle-notes {
 		background: none;
 		border: none;
 		color: #64748b;

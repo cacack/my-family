@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type SurnameEntry, type LetterCount } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 
 	let letterCounts: LetterCount[] = $state([]);
 	let surnames: SurnameEntry[] = $state([]);
@@ -60,19 +61,19 @@
 		<div class="letter-nav">
 			{#each ALPHABET as letter}
 				{@const count = getLetterCount(letter)}
-				<button
-					class="letter-btn"
-					class:active={selectedLetter === letter}
-					class:disabled={count === 0}
+				<Button
+					variant={selectedLetter === letter ? 'default' : 'outline'}
+					size="sm"
+					class="letter-btn relative"
 					disabled={count === 0}
 					onclick={() => selectLetter(letter)}
 					title={count > 0 ? `${count} surname${count === 1 ? '' : 's'}` : 'No surnames'}
 				>
 					{letter}
 					{#if count > 0}
-						<span class="count-badge">{count}</span>
+						<span class="count-badge" class:count-badge-active={selectedLetter === letter}>{count}</span>
 					{/if}
-				</button>
+				</Button>
 			{/each}
 		</div>
 
@@ -118,41 +119,7 @@
 		border-radius: 8px;
 	}
 
-	.letter-btn {
-		position: relative;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.5rem;
-		height: 2.5rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: #1e293b;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.letter-btn:hover:not(:disabled) {
-		background: #f1f5f9;
-		border-color: #3b82f6;
-	}
-
-	.letter-btn.active {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.letter-btn.disabled {
-		color: #94a3b8;
-		background: #f1f5f9;
-		cursor: not-allowed;
-	}
-
-	.count-badge {
+.count-badge {
 		position: absolute;
 		top: -4px;
 		right: -4px;
@@ -169,7 +136,7 @@
 		justify-content: center;
 	}
 
-	.letter-btn.active .count-badge {
+	.count-badge-active {
 		background: white;
 		color: #3b82f6;
 	}
@@ -224,12 +191,6 @@
 		.letter-nav {
 			gap: 0.25rem;
 			padding: 0.75rem;
-		}
-
-		.letter-btn {
-			width: 2rem;
-			height: 2rem;
-			font-size: 0.75rem;
 		}
 
 		.count-badge {

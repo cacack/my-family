@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type DiscoverySuggestion } from '$lib/api/client';
+	import { Card, CardContent } from '$lib/components/ui/card';
 
 	type SuggestionType = DiscoverySuggestion['type'];
 
@@ -85,39 +86,43 @@
 
 		<div class="feed-grid">
 			{#each displayedSuggestions as suggestion}
-				<a href={suggestion.action_url} class="feed-card" data-type={suggestion.type}>
-					<div class="card-icon">
-						{#if suggestion.type === 'missing_data'}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<circle cx="11" cy="11" r="8" />
-								<line x1="21" y1="21" x2="16.65" y2="16.65" />
-							</svg>
-						{:else if suggestion.type === 'orphan'}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-								<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-							</svg>
-						{:else if suggestion.type === 'unassessed'}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M9 11l3 3L22 4" />
-								<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-							</svg>
-						{:else if suggestion.type === 'brick_wall_resolved'}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-							</svg>
-						{:else}
-							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<line x1="18" y1="20" x2="18" y2="10" />
-								<line x1="12" y1="20" x2="12" y2="4" />
-								<line x1="6" y1="20" x2="6" y2="14" />
-							</svg>
-						{/if}
-					</div>
-					<div class="card-content">
-						<h4 class="card-title">{suggestion.title}</h4>
-						<p class="card-desc">{suggestion.description}</p>
-					</div>
+				<a href={suggestion.action_url} class="feed-card-link" data-type={suggestion.type}>
+					<Card size="sm" class="h-full p-0 hover:ring-primary/30 hover:shadow-sm transition-all">
+						<CardContent class="flex gap-3 p-4">
+							<div class="feed-icon">
+								{#if suggestion.type === 'missing_data'}
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<circle cx="11" cy="11" r="8" />
+										<line x1="21" y1="21" x2="16.65" y2="16.65" />
+									</svg>
+								{:else if suggestion.type === 'orphan'}
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+										<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+									</svg>
+								{:else if suggestion.type === 'unassessed'}
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<path d="M9 11l3 3L22 4" />
+										<path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+									</svg>
+								{:else if suggestion.type === 'brick_wall_resolved'}
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+									</svg>
+								{:else}
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<line x1="18" y1="20" x2="18" y2="10" />
+										<line x1="12" y1="20" x2="12" y2="4" />
+										<line x1="6" y1="20" x2="6" y2="14" />
+									</svg>
+								{/if}
+							</div>
+							<div class="min-w-0">
+								<h4 class="mb-1 text-[0.8125rem] font-semibold text-foreground">{suggestion.title}</h4>
+								<p class="m-0 text-xs leading-snug text-muted-foreground line-clamp-2">{suggestion.description}</p>
+							</div>
+						</CardContent>
+					</Card>
 				</a>
 			{/each}
 		</div>
@@ -188,30 +193,18 @@
 		gap: 0.75rem;
 	}
 
-	.feed-card {
-		display: flex;
-		gap: 0.75rem;
-		padding: 1rem;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
+	.feed-card-link {
 		text-decoration: none;
 		color: inherit;
-		transition: all 0.15s ease;
 	}
 
-	.feed-card:hover {
-		border-color: #3b82f6;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-		transform: translateY(-1px);
-	}
-
-	.feed-card:focus {
-		outline: 2px solid #3b82f6;
+	.feed-card-link:focus-visible {
+		outline: 2px solid hsl(var(--primary));
 		outline-offset: 2px;
+		border-radius: 0.75rem;
 	}
 
-	.card-icon {
+	.feed-icon {
 		flex-shrink: 0;
 		width: 2rem;
 		height: 2rem;
@@ -222,57 +215,34 @@
 		padding: 0.375rem;
 	}
 
-	.card-icon svg {
+	.feed-icon :global(svg) {
 		width: 100%;
 		height: 100%;
 	}
 
-	[data-type="missing_data"] .card-icon {
+	[data-type="missing_data"] .feed-icon {
 		background: #fef3c7;
 		color: #b45309;
 	}
 
-	[data-type="orphan"] .card-icon {
+	[data-type="orphan"] .feed-icon {
 		background: #fce7f3;
 		color: #be185d;
 	}
 
-	[data-type="unassessed"] .card-icon {
+	[data-type="unassessed"] .feed-icon {
 		background: #e0e7ff;
 		color: #4338ca;
 	}
 
-	[data-type="brick_wall_resolved"] .card-icon {
+	[data-type="brick_wall_resolved"] .feed-icon {
 		background: #dcfce7;
 		color: #15803d;
 	}
 
-	[data-type="quality_gap"] .card-icon {
+	[data-type="quality_gap"] .feed-icon {
 		background: #f0f9ff;
 		color: #0369a1;
-	}
-
-	.card-content {
-		min-width: 0;
-	}
-
-	.card-title {
-		margin: 0 0 0.25rem;
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: #1e293b;
-	}
-
-	.card-desc {
-		margin: 0;
-		font-size: 0.75rem;
-		color: #64748b;
-		line-height: 1.4;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
 	}
 
 	.view-more {
