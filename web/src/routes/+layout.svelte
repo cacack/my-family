@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import logoMark from '$lib/assets/favicon.svg?raw';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import SearchBox from '$lib/components/SearchBox.svelte';
@@ -73,7 +74,10 @@
 
 <div class="app-layout">
 	<header class="app-header" role="banner">
-		<a href="/" class="logo">My Family</a>
+		<a href="/" class="logo">
+			<span class="logo-mark">{@html logoMark}</span>
+			My Family
+		</a>
 		<nav class="nav" role="navigation" aria-label="Main navigation">
 			<a href="/persons" class:active={$page.url.pathname.startsWith('/persons')}>People</a>
 			<a href="/families" class:active={$page.url.pathname.startsWith('/families')}>Families</a>
@@ -224,8 +228,22 @@
 	.logo {
 		font-size: 1.25rem;
 		font-weight: 700;
-		color: #1e293b;
+		color: #1F2933;
 		text-decoration: none;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.logo-mark {
+		display: flex;
+		width: 28px;
+		height: 28px;
+	}
+
+	.logo-mark :global(svg) {
+		width: 100%;
+		height: 100%;
 	}
 
 	:global(body.high-contrast) .logo {
