@@ -95,6 +95,7 @@
 					<DropdownMenu.Item><a href="/browse/places">By Place</a></DropdownMenu.Item>
 					<DropdownMenu.Item><a href="/browse/cemeteries">By Cemetery</a></DropdownMenu.Item>
 					<DropdownMenu.Item><a href="/browse/brick-walls">Brick Walls</a></DropdownMenu.Item>
+					<DropdownMenu.Item><a href="/browse/citation-templates">Citation Templates</a></DropdownMenu.Item>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>

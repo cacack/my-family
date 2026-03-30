@@ -3284,6 +3284,12 @@ type ListCitationTemplatesParams struct {
 	SourceType *string `form:"source_type,omitempty" json:"source_type,omitempty"`
 }
 
+// PreviewCitationTemplateJSONBody defines parameters for PreviewCitationTemplate.
+type PreviewCitationTemplateJSONBody struct {
+	// Fields Map of field key to value
+	Fields map[string]string `json:"fields"`
+}
+
 // DeleteCitationParams defines parameters for DeleteCitation.
 type DeleteCitationParams struct {
 	// Version Entity version for optimistic locking
@@ -3582,6 +3588,9 @@ type CreateAssociationJSONRequestBody = AssociationCreate
 // UpdateAssociationJSONRequestBody defines body for UpdateAssociation for application/json ContentType.
 type UpdateAssociationJSONRequestBody = AssociationUpdate
 
+// PreviewCitationTemplateJSONRequestBody defines body for PreviewCitationTemplate for application/json ContentType.
+type PreviewCitationTemplateJSONRequestBody PreviewCitationTemplateJSONBody
+
 // CreateCitationJSONRequestBody defines body for CreateCitation for application/json ContentType.
 type CreateCitationJSONRequestBody = CitationCreate
 
@@ -3722,6 +3731,9 @@ type ServerInterface interface {
 	// Get a citation template by ID
 	// (GET /citation-templates/{id})
 	GetCitationTemplate(ctx echo.Context, id string) error
+	// Preview a citation template with provided fields
+	// (POST /citation-templates/{id}/preview)
+	PreviewCitationTemplate(ctx echo.Context, id string) error
 	// Create a new citation
 	// (POST /citations)
 	CreateCitation(ctx echo.Context) error
@@ -4371,6 +4383,22 @@ func (w *ServerInterfaceWrapper) GetCitationTemplate(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetCitationTemplate(ctx, id)
+	return err
+}
+
+// PreviewCitationTemplate converts echo context to params.
+func (w *ServerInterfaceWrapper) PreviewCitationTemplate(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PreviewCitationTemplate(ctx, id)
 	return err
 }
 
@@ -6328,6 +6356,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/browse/surnames/:surname/persons", wrapper.GetPersonsBySurname)
 	router.GET(baseURL+"/citation-templates", wrapper.ListCitationTemplates)
 	router.GET(baseURL+"/citation-templates/:id", wrapper.GetCitationTemplate)
+	router.POST(baseURL+"/citation-templates/:id/preview", wrapper.PreviewCitationTemplate)
 	router.POST(baseURL+"/citations", wrapper.CreateCitation)
 	router.DELETE(baseURL+"/citations/:id", wrapper.DeleteCitation)
 	router.GET(baseURL+"/citations/:id", wrapper.GetCitation)
@@ -6815,6 +6844,33 @@ func (response GetCitationTemplate200JSONResponse) VisitGetCitationTemplateRespo
 type GetCitationTemplate404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response GetCitationTemplate404JSONResponse) VisitGetCitationTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewCitationTemplateRequestObject struct {
+	Id   string `json:"id"`
+	Body *PreviewCitationTemplateJSONRequestBody
+}
+
+type PreviewCitationTemplateResponseObject interface {
+	VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error
+}
+
+type PreviewCitationTemplate200JSONResponse FormattedCitation
+
+func (response PreviewCitationTemplate200JSONResponse) VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewCitationTemplate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PreviewCitationTemplate404JSONResponse) VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -9800,6 +9856,9 @@ type StrictServerInterface interface {
 	// Get a citation template by ID
 	// (GET /citation-templates/{id})
 	GetCitationTemplate(ctx context.Context, request GetCitationTemplateRequestObject) (GetCitationTemplateResponseObject, error)
+	// Preview a citation template with provided fields
+	// (POST /citation-templates/{id}/preview)
+	PreviewCitationTemplate(ctx context.Context, request PreviewCitationTemplateRequestObject) (PreviewCitationTemplateResponseObject, error)
 	// Create a new citation
 	// (POST /citations)
 	CreateCitation(ctx context.Context, request CreateCitationRequestObject) (CreateCitationResponseObject, error)
@@ -10518,6 +10577,37 @@ func (sh *strictHandler) GetCitationTemplate(ctx echo.Context, id string) error 
 		return err
 	} else if validResponse, ok := response.(GetCitationTemplateResponseObject); ok {
 		return validResponse.VisitGetCitationTemplateResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// PreviewCitationTemplate operation middleware
+func (sh *strictHandler) PreviewCitationTemplate(ctx echo.Context, id string) error {
+	var request PreviewCitationTemplateRequestObject
+
+	request.Id = id
+
+	var body PreviewCitationTemplateJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewCitationTemplate(ctx.Request().Context(), request.(PreviewCitationTemplateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewCitationTemplate")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PreviewCitationTemplateResponseObject); ok {
+		return validResponse.VisitPreviewCitationTemplateResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

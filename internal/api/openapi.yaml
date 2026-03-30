@@ -1175,6 +1175,43 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /citation-templates/{id}/preview:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Template ID (e.g., census.us.federal)
+
+    post:
+      operationId: previewCitationTemplate
+      summary: Preview a citation template with provided fields
+      description: Renders a citation preview without requiring a saved citation. Useful for live preview during editing.
+      tags: [citation-templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fields]
+              properties:
+                fields:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Map of field key to value
+      responses:
+        '200':
+          description: Formatted citation preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormattedCitation'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /citations/{id}/format:
     parameters:
       - name: id

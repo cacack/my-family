@@ -2,6 +2,7 @@
 	import { api, isConflictError, type Citation, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import ConflictError from './ConflictError.svelte';
+	import CitationTemplateForm from './CitationTemplateForm.svelte';
 
 	interface Props {
 		personId: string;
@@ -17,6 +18,13 @@
 	let showAddForm = $state(false);
 	let saving = $state(false);
 	let deleteConfirm: string | null = $state(null);
+
+	// Citation entry mode: 'freeform' or 'template'
+	let citationMode: 'freeform' | 'template' = $state('freeform');
+
+	// Template state
+	let templateId: string | undefined = $state(undefined);
+	let templateFields: Record<string, string> = $state({});
 
 	// Conflict retry state
 	let conflictError = $state(false);
@@ -142,8 +150,16 @@
 		sourceSearchQuery = '';
 		selectedSource = null;
 		sourceSearchResults = [];
+		citationMode = 'freeform';
+		templateId = undefined;
+		templateFields = {};
 		showAddForm = true;
 		error = null;
+	}
+
+	function handleTemplateChange(newTemplateId: string, newFields: Record<string, string>) {
+		templateId = newTemplateId;
+		templateFields = newFields;
 	}
 
 	function cancelAdd() {
@@ -170,7 +186,12 @@
 				informant_type: newCitation.informant_type || undefined,
 				evidence_type: newCitation.evidence_type || undefined,
 				quoted_text: newCitation.quoted_text.trim() || undefined,
-				analysis: newCitation.analysis.trim() || undefined
+				analysis: newCitation.analysis.trim() || undefined,
+				template_id: citationMode === 'template' && templateId ? templateId : undefined,
+				fields:
+					citationMode === 'template' && templateId && Object.keys(templateFields).length > 0
+						? templateFields
+						: undefined
 			});
 			showAddForm = false;
 			conflictError = false;
@@ -240,6 +261,30 @@
 
 	{#if showAddForm}
 		<form class="add-form" onsubmit={(e) => { e.preventDefault(); saveNewCitation(); }}>
+			<!-- Citation entry mode toggle -->
+			<div class="mode-toggle" role="tablist" aria-label="Citation entry mode">
+				<button
+					type="button"
+					role="tab"
+					aria-selected={citationMode === 'freeform'}
+					class="mode-tab"
+					class:active={citationMode === 'freeform'}
+					onclick={() => (citationMode = 'freeform')}
+				>
+					Free-form
+				</button>
+				<button
+					type="button"
+					role="tab"
+					aria-selected={citationMode === 'template'}
+					class="mode-tab"
+					class:active={citationMode === 'template'}
+					onclick={() => (citationMode = 'template')}
+				>
+					Use Template
+				</button>
+			</div>
+
 			<div class="form-group">
 				<label for="source-search-input">
 					Source <span class="required">*</span>
@@ -305,6 +350,15 @@
 				</label>
 			</div>
 
+			{#if citationMode === 'template'}
+				<!-- Template-driven citation fields -->
+				<CitationTemplateForm
+					bind:templateId={templateId}
+					fields={templateFields}
+					onchange={handleTemplateChange}
+				/>
+			{/if}
+
 			<div class="form-row">
 				<label>
 					Page
@@ -316,32 +370,34 @@
 				</label>
 			</div>
 
-			<div class="form-row three-cols">
-				<label>
-					Source Quality
-					<select bind:value={newCitation.source_quality}>
-						<option value="">Not specified</option>
-						<option value="original">Original</option>
-						<option value="derivative">Derivative</option>
-					</select>
-				</label>
-				<label>
-					Informant Type
-					<select bind:value={newCitation.informant_type}>
-						<option value="">Not specified</option>
-						<option value="primary">Primary</option>
-						<option value="secondary">Secondary</option>
-					</select>
-				</label>
-				<label>
-					Evidence Type
-					<select bind:value={newCitation.evidence_type}>
-						<option value="">Not specified</option>
-						<option value="direct">Direct</option>
-						<option value="indirect">Indirect</option>
-					</select>
-				</label>
-			</div>
+			{#if citationMode === 'freeform'}
+				<div class="form-row three-cols">
+					<label>
+						Source Quality
+						<select bind:value={newCitation.source_quality}>
+							<option value="">Not specified</option>
+							<option value="original">Original</option>
+							<option value="derivative">Derivative</option>
+						</select>
+					</label>
+					<label>
+						Informant Type
+						<select bind:value={newCitation.informant_type}>
+							<option value="">Not specified</option>
+							<option value="primary">Primary</option>
+							<option value="secondary">Secondary</option>
+						</select>
+					</label>
+					<label>
+						Evidence Type
+						<select bind:value={newCitation.evidence_type}>
+							<option value="">Not specified</option>
+							<option value="direct">Direct</option>
+							<option value="indirect">Indirect</option>
+						</select>
+					</label>
+				</div>
+			{/if}
 
 			<label>
 				Quoted Text
@@ -482,6 +538,42 @@
 		color: #dc2626;
 		font-size: 0.875rem;
 		margin-bottom: 1rem;
+	}
+
+	.mode-toggle {
+		display: flex;
+		gap: 0;
+		margin-bottom: 1rem;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+		overflow: hidden;
+	}
+
+	.mode-tab {
+		flex: 1;
+		padding: 0.5rem 1rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		border: none;
+		background: white;
+		color: #64748b;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+
+	.mode-tab:not(:last-child) {
+		border-right: 1px solid #e2e8f0;
+	}
+
+	.mode-tab.active {
+		background: #3b82f6;
+		color: white;
+	}
+
+	.mode-tab:hover:not(.active) {
+		background: #f1f5f9;
 	}
 
 	.add-form {

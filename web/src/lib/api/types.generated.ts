@@ -730,6 +730,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/citation-templates/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template ID (e.g., census.us.federal) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a citation template with provided fields
+         * @description Renders a citation preview without requiring a saved citation. Useful for live preview during editing.
+         */
+        post: operations["previewCitationTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/citations/{id}/format": {
         parameters: {
             query?: never;
@@ -4741,6 +4764,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CitationTemplate"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    previewCitationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Template ID (e.g., census.us.federal) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Map of field key to value */
+                    fields: {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Formatted citation preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormattedCitation"];
                 };
             };
             404: components["responses"]["NotFound"];

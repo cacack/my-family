@@ -11,6 +11,13 @@ export type AhnentafelResponse = components['schemas']['AhnentafelResponse'];
 export type AhnentafelEntry = components['schemas']['AhnentafelEntry'];
 export type AhnentafelSubject = components['schemas']['AhnentafelSubject'];
 
+// Re-export Citation template types from generated file
+export type CitationTemplate = components['schemas']['CitationTemplate'];
+export type CitationTemplateField = components['schemas']['CitationTemplateField'];
+export type CitationTemplateList = components['schemas']['CitationTemplateList'];
+export type FormattedCitation = components['schemas']['FormattedCitation'];
+export type CitationValidationIssue = components['schemas']['CitationValidationIssue'];
+
 // Re-export Rollback types from generated file
 export type RestorePoint = components['schemas']['RestorePoint'];
 export type RestorePointsResponse = components['schemas']['RestorePointsResponse'];
@@ -391,6 +398,7 @@ export interface Citation {
 	quoted_text?: string;
 	analysis?: string;
 	template_id?: string;
+	fields?: Record<string, string>;
 	version: number;
 }
 
@@ -411,6 +419,7 @@ export interface CreateCitationRequest {
 	quoted_text?: string;
 	analysis?: string;
 	template_id?: string;
+	fields?: Record<string, string>;
 }
 
 export interface UpdateCitationRequest {
@@ -422,6 +431,7 @@ export interface UpdateCitationRequest {
 	quoted_text?: string;
 	analysis?: string;
 	template_id?: string;
+	fields?: Record<string, string>;
 	version: number;
 }
 
@@ -1069,6 +1079,31 @@ class ApiClient {
 
 	async deleteCitation(id: string, version: number): Promise<void> {
 		return this.request<void>('DELETE', `/citations/${id}?version=${version}`);
+	}
+
+	// Citation template endpoints
+	async listCitationTemplates(sourceType?: string): Promise<CitationTemplateList> {
+		const params = sourceType ? `?source_type=${encodeURIComponent(sourceType)}` : '';
+		return this.request<CitationTemplateList>('GET', `/citation-templates${params}`);
+	}
+
+	async getCitationTemplate(id: string): Promise<CitationTemplate> {
+		return this.request<CitationTemplate>('GET', `/citation-templates/${encodeURIComponent(id)}`);
+	}
+
+	async formatCitation(id: string): Promise<FormattedCitation> {
+		return this.request<FormattedCitation>('GET', `/citations/${id}/format`);
+	}
+
+	async previewCitationTemplate(
+		templateId: string,
+		fields: Record<string, string>
+	): Promise<FormattedCitation> {
+		return this.request<FormattedCitation>(
+			'POST',
+			`/citation-templates/${encodeURIComponent(templateId)}/preview`,
+			{ fields }
+		);
 	}
 
 	// PersonName endpoints

@@ -674,6 +674,42 @@ func (ss *StrictServer) GetCitationTemplate(ctx context.Context, request GetCita
 	return GetCitationTemplate200JSONResponse(convertCitationTemplate(*tmpl)), nil
 }
 
+// PreviewCitationTemplate implements StrictServerInterface.
+func (ss *StrictServer) PreviewCitationTemplate(ctx context.Context, request PreviewCitationTemplateRequestObject) (PreviewCitationTemplateResponseObject, error) {
+	tmpl := citation.GetTemplate(request.Id)
+	if tmpl == nil {
+		return PreviewCitationTemplate404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Citation template not found",
+		}}, nil
+	}
+
+	fields := request.Body.Fields
+
+	full, _ := citation.FormatFull(tmpl, fields)
+	short, _ := citation.FormatShort(tmpl, fields)
+
+	issues := citation.ValidateFields(tmpl, fields)
+	var apiIssues *[]CitationValidationIssue
+	if len(issues) > 0 {
+		converted := make([]CitationValidationIssue, len(issues))
+		for i, issue := range issues {
+			converted[i] = CitationValidationIssue{
+				Field:   issue.Field,
+				Message: issue.Message,
+				Level:   CitationValidationIssueLevel(issue.Level),
+			}
+		}
+		apiIssues = &converted
+	}
+
+	return PreviewCitationTemplate200JSONResponse(FormattedCitation{
+		Full:             full,
+		Short:            short,
+		ValidationIssues: apiIssues,
+	}), nil
+}
+
 // FormatCitation implements StrictServerInterface.
 func (ss *StrictServer) FormatCitation(ctx context.Context, request FormatCitationRequestObject) (FormatCitationResponseObject, error) {
 	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
