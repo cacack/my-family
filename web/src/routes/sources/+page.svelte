@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type Source } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import SourceCard from '$lib/components/SourceCard.svelte';
 
 	let sources: Source[] = $state([]);
@@ -187,7 +188,7 @@
 					</svg>
 				{/if}
 			</button>
-			<button class="btn btn-primary" onclick={openAddForm}>Add Source</button>
+			<Button onclick={openAddForm}>Add Source</Button>
 		</div>
 	</header>
 
@@ -272,10 +273,10 @@
 				</label>
 
 				<div class="form-actions">
-					<button type="button" class="btn" onclick={cancelAdd} disabled={saving}>Cancel</button>
-					<button type="submit" class="btn btn-primary" disabled={saving}>
+					<Button variant="outline" onclick={cancelAdd} disabled={saving}>Cancel</Button>
+					<Button type="submit" disabled={saving}>
 						{saving ? 'Saving...' : 'Create Source'}
-					</button>
+					</Button>
 				</div>
 			</form>
 		</div>
@@ -287,10 +288,10 @@
 		<div class="empty">
 			{#if searchQuery}
 				<p>No sources found matching "{searchQuery}".</p>
-				<button class="btn" onclick={() => { searchQuery = ''; loadSources(); }}>Clear Search</button>
+				<Button variant="outline" onclick={() => { searchQuery = ''; loadSources(); }}>Clear Search</Button>
 			{:else}
 				<p>No sources found.</p>
-				<button class="btn btn-primary" onclick={openAddForm}>Add Source</button>
+				<Button onclick={openAddForm}>Add Source</Button>
 			{/if}
 		</div>
 	{:else}
@@ -404,31 +405,6 @@
 		width: 1rem;
 		height: 1rem;
 		color: #64748b;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		text-decoration: none;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
 	}
 
 	.add-form-container {

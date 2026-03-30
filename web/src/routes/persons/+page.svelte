@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type Person, type ResearchStatus } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 
 	let persons: Person[] = $state([]);
@@ -78,8 +79,8 @@
 	<header class="page-header">
 		<h1>People</h1>
 		<div class="header-actions">
-			<a href="/persons/add" class="btn">Add Person</a>
-			<a href="/persons/quick" class="btn btn-accent">Quick Capture</a>
+			<Button variant="outline" href="/persons/add">Add Person</Button>
+			<Button variant="secondary" href="/persons/quick">Quick Capture</Button>
 		</div>
 	</header>
 
@@ -135,7 +136,7 @@
 	{:else if persons.length === 0}
 		<div class="empty">
 			<p>No people found.</p>
-			<a href="/import" class="btn-primary">Import GEDCOM</a>
+			<Button href="/import">Import GEDCOM</Button>
 		</div>
 	{:else}
 		<div class="persons-grid">
@@ -229,20 +230,6 @@
 		margin: 0 0 1rem;
 	}
 
-	.btn-primary {
-		display: inline-block;
-		padding: 0.75rem 1.5rem;
-		background: #3b82f6;
-		color: white;
-		border-radius: 8px;
-		text-decoration: none;
-		font-weight: 500;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
 	.persons-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -285,31 +272,6 @@
 	.header-actions {
 		display: flex;
 		gap: 0.5rem;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		text-decoration: none;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-accent {
-		background: #f0f9ff;
-		border-color: #7dd3fc;
-		color: #0369a1;
-	}
-
-	.btn-accent:hover {
-		background: #e0f2fe;
 	}
 
 	.toolbar {

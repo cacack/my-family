@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { api, type FamilyGroupSheet } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import FamilyGroupSheetComponent from '$lib/components/FamilyGroupSheet.svelte';
 
 	let data: FamilyGroupSheet | null = $state(null);
@@ -52,7 +53,7 @@
 	<header class="page-header no-print">
 		<a href="/families/{$page.params.id}" class="back-link">&larr; Back to Family</a>
 		<div class="actions">
-			<button class="btn btn-primary" onclick={handlePrint}>Print</button>
+			<Button onclick={handlePrint}>Print</Button>
 		</div>
 	</header>
 
@@ -92,31 +93,6 @@
 	.actions {
 		display: flex;
 		gap: 0.5rem;
-	}
-
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		text-decoration: none;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
 	}
 
 	.loading,

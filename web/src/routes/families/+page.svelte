@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type FamilyDetail } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
 
 	let families: FamilyDetail[] = $state([]);
@@ -59,7 +60,7 @@
 	{:else if families.length === 0}
 		<div class="empty">
 			<p>No families found.</p>
-			<a href="/import" class="btn-primary">Import GEDCOM</a>
+			<Button href="/import">Import GEDCOM</Button>
 		</div>
 	{:else}
 		<div class="families-grid">
@@ -107,20 +108,6 @@
 
 	.empty p {
 		margin: 0 0 1rem;
-	}
-
-	.btn-primary {
-		display: inline-block;
-		padding: 0.75rem 1.5rem;
-		background: #3b82f6;
-		color: white;
-		border-radius: 8px;
-		text-decoration: none;
-		font-weight: 500;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
 	}
 
 	.families-grid {

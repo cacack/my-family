@@ -2,6 +2,8 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, type SourceDetail, type Citation } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
 
 	let source: SourceDetail | null = $state(null);
 	let loading = $state(true);
@@ -141,10 +143,10 @@
 		<a href="/sources" class="back-link">&larr; Sources</a>
 		{#if source && !editing}
 			<div class="actions">
-				<button class="btn" onclick={startEdit}>Edit</button>
-				<button class="btn btn-danger" onclick={deleteSource} disabled={deleting}>
+				<Button variant="outline" onclick={startEdit}>Edit</Button>
+				<Button variant="destructive" onclick={deleteSource} disabled={deleting}>
 					{deleting ? 'Deleting...' : 'Delete'}
-				</button>
+				</Button>
 			</div>
 		{/if}
 	</header>
@@ -232,10 +234,10 @@
 				</label>
 
 				<div class="form-actions">
-					<button type="button" class="btn" onclick={cancelEdit} disabled={saving}>Cancel</button>
-					<button type="submit" class="btn btn-primary" disabled={saving}>
+					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
+					<Button type="submit" disabled={saving}>
 						{saving ? 'Saving...' : 'Save Changes'}
-					</button>
+					</Button>
 				</div>
 			</form>
 		{:else}
@@ -248,7 +250,7 @@
 					</div>
 					<div class="source-title">
 						<h1>{source.title}</h1>
-						<span class="type-badge">{formatSourceType(source.source_type)}</span>
+						<Badge variant="secondary">{formatSourceType(source.source_type)}</Badge>
 						{#if source.citation_count > 0}
 							<span class="citation-badge">{source.citation_count} {source.citation_count === 1 ? 'citation' : 'citations'}</span>
 						{/if}
@@ -392,40 +394,6 @@
 		gap: 0.5rem;
 	}
 
-	.btn {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-		text-decoration: none;
-		color: #475569;
-	}
-
-	.btn:hover {
-		background: #f1f5f9;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-danger {
-		color: #dc2626;
-		border-color: #fecaca;
-	}
-
-	.btn-danger:hover {
-		background: #fef2f2;
-	}
-
 	.loading,
 	.error {
 		text-align: center;
@@ -474,17 +442,6 @@
 		margin: 0;
 		font-size: 1.5rem;
 		color: #1e293b;
-	}
-
-	.type-badge {
-		display: inline-block;
-		padding: 0.125rem 0.5rem;
-		background: #f1f5f9;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		color: #64748b;
-		margin-top: 0.5rem;
-		margin-right: 0.5rem;
 	}
 
 	.citation-badge {

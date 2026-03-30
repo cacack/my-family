@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Badge } from '$lib/components/ui/badge';
+
 	interface Props {
 		status: 'certain' | 'probable' | 'possible' | 'unknown';
 		size?: 'small' | 'medium' | 'large';
@@ -11,88 +13,54 @@
 		switch (status) {
 			case 'certain':
 				return {
-					color: '#22c55e',
-					bgColor: '#dcfce7',
+					indicatorColor: 'bg-green-500',
+					badgeClass: 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-800',
 					label: 'Certain',
 					tooltip: 'Confirmed with strong evidence'
 				};
 			case 'probable':
 				return {
-					color: '#eab308',
-					bgColor: '#fef9c3',
+					indicatorColor: 'bg-yellow-500',
+					badgeClass: 'bg-yellow-50 text-yellow-600 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-800',
 					label: 'Probable',
 					tooltip: 'Likely correct, good supporting evidence'
 				};
 			case 'possible':
 				return {
-					color: '#f97316',
-					bgColor: '#ffedd5',
+					indicatorColor: 'bg-orange-500',
+					badgeClass: 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800',
 					label: 'Possible',
 					tooltip: 'Speculative, limited evidence'
 				};
 			default:
 				return {
-					color: '#6b7280',
-					bgColor: '#f3f4f6',
+					indicatorColor: 'bg-gray-400',
+					badgeClass: 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700',
 					label: 'Unknown',
 					tooltip: 'Not yet assessed'
 				};
 		}
 	});
 
-	const dimensions = $derived(() => {
+	const sizeClass = $derived(() => {
 		switch (size) {
 			case 'small':
-				return { padding: '0.125rem 0.375rem', fontSize: '0.625rem', iconSize: '0.5rem' };
+				return { badge: 'h-4 px-1.5 text-[0.625rem] gap-1', indicator: 'size-2' };
 			case 'large':
-				return { padding: '0.375rem 0.75rem', fontSize: '0.875rem', iconSize: '0.75rem' };
+				return { badge: 'h-6 px-3 text-sm gap-1.5', indicator: 'size-3' };
 			default:
-				return { padding: '0.25rem 0.5rem', fontSize: '0.75rem', iconSize: '0.625rem' };
+				return { badge: 'gap-1', indicator: 'size-2.5' };
 		}
 	});
 </script>
 
-<span
-	class="uncertainty-badge"
-	class:small={size === 'small'}
-	class:large={size === 'large'}
-	style:background-color={config().bgColor}
-	style:color={config().color}
-	style:padding={dimensions().padding}
-	style:font-size={dimensions().fontSize}
+<Badge
+	variant="outline"
+	class="cursor-help {config().badgeClass} {sizeClass().badge}"
 	title={config().tooltip}
 >
-	<span class="indicator" style:background-color={config().color} style:width={dimensions().iconSize} style:height={dimensions().iconSize}></span>
+	<span class="rounded-full flex-shrink-0 {config().indicatorColor} {sizeClass().indicator}"></span>
 	{#if showLabel}
-		<span class="label">{config().label}</span>
+		<span class="capitalize">{config().label}</span>
 	{/if}
-</span>
-
-<style>
-	.uncertainty-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25rem;
-		border-radius: 9999px;
-		font-weight: 500;
-		cursor: help;
-		white-space: nowrap;
-	}
-
-	.uncertainty-badge.small {
-		gap: 0.125rem;
-	}
-
-	.uncertainty-badge.large {
-		gap: 0.375rem;
-	}
-
-	.indicator {
-		border-radius: 50%;
-		flex-shrink: 0;
-	}
-
-	.label {
-		text-transform: capitalize;
-	}
-</style>
+</Badge>

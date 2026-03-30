@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { api, type Media } from '$lib/api/client';
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
 
 	interface Props {
+		open: boolean;
 		media: Media;
 		allMedia: Media[];
 		onClose: () => void;
 	}
 
-	let { media, allMedia, onClose }: Props = $props();
+	let { open = $bindable(), media, allMedia, onClose }: Props = $props();
 
 	let currentIndex = $derived(allMedia.findIndex((m) => m.id === media.id));
 	let currentMedia = $derived(allMedia[currentIndex] || media);
@@ -16,9 +19,6 @@
 
 	function goToPrevious() {
 		if (currentIndex > 0) {
-			const prevMedia = allMedia[currentIndex - 1];
-			// Update the media prop by calling onClose and reopening
-			// Actually, we need to update the parent - for now, navigate via index
 			navigateTo(currentIndex - 1);
 		}
 	}
@@ -30,28 +30,18 @@
 	}
 
 	function navigateTo(index: number) {
-		// We'll update the currentIndex by using a local state override
 		const newMedia = allMedia[index];
 		if (newMedia) {
-			// Replace media reference for the component
 			Object.assign(media, newMedia);
 		}
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			onClose();
-		} else if (e.key === 'ArrowLeft') {
+		if (!open) return;
+		if (e.key === 'ArrowLeft') {
 			goToPrevious();
 		} else if (e.key === 'ArrowRight') {
 			goToNext();
-		}
-	}
-
-	function handleOverlayClick(e: MouseEvent) {
-		// Close if clicking the overlay background, not the content
-		if (e.target === e.currentTarget) {
-			onClose();
 		}
 	}
 
@@ -70,139 +60,131 @@
 	}
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
-<div
-	class="lightbox-overlay"
-	onclick={handleOverlayClick}
-	onkeydown={(e) => e.key === 'Escape' && onClose()}
-	role="dialog"
-	aria-modal="true"
-	aria-label="Media lightbox - {currentMedia.title}"
-	tabindex="-1"
->
-	<button class="close-btn" onclick={onClose} aria-label="Close lightbox">
-		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-			<line x1="18" y1="6" x2="6" y2="18" />
-			<line x1="6" y1="6" x2="18" y2="18" />
-		</svg>
-	</button>
-
-	{#if allMedia.length > 1 && currentIndex > 0}
-		<button class="nav-btn nav-prev" onclick={goToPrevious} aria-label="Previous media">
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<polyline points="15 18 9 12 15 6" />
-			</svg>
-		</button>
-	{/if}
-
-	{#if allMedia.length > 1 && currentIndex < allMedia.length - 1}
-		<button class="nav-btn nav-next" onclick={goToNext} aria-label="Next media">
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<polyline points="9 18 15 12 9 6" />
-			</svg>
-		</button>
-	{/if}
-
-	<div class="lightbox-content">
-		<div class="media-container">
-			{#if isImage}
-				<img
-					src={api.getMediaContentUrl(currentMedia.id)}
-					alt={currentMedia.title}
-					class="media-image"
-				/>
-			{:else if isPdf}
-				<div class="document-preview">
-					<svg class="document-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-						<polyline points="14 2 14 8 20 8" />
-						<line x1="16" y1="13" x2="8" y2="13" />
-						<line x1="16" y1="17" x2="8" y2="17" />
-						<polyline points="10 9 9 9 8 9" />
-					</svg>
-					<p class="document-name">{currentMedia.filename}</p>
-					<a
-						href={api.getMediaContentUrl(currentMedia.id)}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="btn btn-primary"
-					>
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-							<polyline points="7 10 12 15 17 10" />
-							<line x1="12" y1="15" x2="12" y2="3" />
-						</svg>
-						View PDF
-					</a>
-				</div>
-			{:else}
-				<div class="document-preview">
-					<svg class="document-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-						<polyline points="14 2 14 8 20 8" />
-					</svg>
-					<p class="document-name">{currentMedia.filename}</p>
-					<a
-						href={api.getMediaContentUrl(currentMedia.id)}
-						download={currentMedia.filename}
-						class="btn btn-primary"
-					>
-						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-							<polyline points="7 10 12 15 17 10" />
-							<line x1="12" y1="15" x2="12" y2="3" />
-						</svg>
-						Download File
-					</a>
-				</div>
-			{/if}
+<Dialog.Root bind:open onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+	<Dialog.Content
+		showCloseButton={false}
+		class="max-w-[95vw] h-[90vh] p-0 sm:max-w-[95vw] bg-black/95 border-none"
+	>
+		<div class="sr-only">
+			<Dialog.Header>
+				<Dialog.Title>Media lightbox - {currentMedia.title}</Dialog.Title>
+			</Dialog.Header>
 		</div>
 
-		<div class="metadata-panel">
-			<h3>{currentMedia.title}</h3>
+		<!-- Close button -->
+		<button class="close-btn" onclick={onClose} aria-label="Close lightbox">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<line x1="18" y1="6" x2="6" y2="18" />
+				<line x1="6" y1="6" x2="18" y2="18" />
+			</svg>
+		</button>
 
-			{#if currentMedia.description}
-				<p class="description">{currentMedia.description}</p>
-			{/if}
+		<!-- Navigation buttons -->
+		{#if allMedia.length > 1 && currentIndex > 0}
+			<button class="nav-btn nav-prev" onclick={goToPrevious} aria-label="Previous media">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<polyline points="15 18 9 12 15 6" />
+				</svg>
+			</button>
+		{/if}
 
-			<dl class="metadata-list">
-				<dt>Filename</dt>
-				<dd>{currentMedia.filename}</dd>
+		{#if allMedia.length > 1 && currentIndex < allMedia.length - 1}
+			<button class="nav-btn nav-next" onclick={goToNext} aria-label="Next media">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<polyline points="9 18 15 12 9 6" />
+				</svg>
+			</button>
+		{/if}
 
-				<dt>Size</dt>
-				<dd>{formatFileSize(currentMedia.file_size)}</dd>
+		<div class="lightbox-content">
+			<div class="media-container">
+				{#if isImage}
+					<img
+						src={api.getMediaContentUrl(currentMedia.id)}
+						alt={currentMedia.title}
+						class="media-image"
+					/>
+				{:else if isPdf}
+					<div class="document-preview">
+						<svg class="document-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+							<polyline points="14 2 14 8 20 8" />
+							<line x1="16" y1="13" x2="8" y2="13" />
+							<line x1="16" y1="17" x2="8" y2="17" />
+							<polyline points="10 9 9 9 8 9" />
+						</svg>
+						<p class="document-name">{currentMedia.filename}</p>
+						<Button
+							href={api.getMediaContentUrl(currentMedia.id)}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+								<polyline points="7 10 12 15 17 10" />
+								<line x1="12" y1="15" x2="12" y2="3" />
+							</svg>
+							View PDF
+						</Button>
+					</div>
+				{:else}
+					<div class="document-preview">
+						<svg class="document-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+							<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+							<polyline points="14 2 14 8 20 8" />
+						</svg>
+						<p class="document-name">{currentMedia.filename}</p>
+						<Button
+							href={api.getMediaContentUrl(currentMedia.id)}
+							download={currentMedia.filename}
+						>
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+								<polyline points="7 10 12 15 17 10" />
+								<line x1="12" y1="15" x2="12" y2="3" />
+							</svg>
+							Download File
+						</Button>
+					</div>
+				{/if}
+			</div>
 
-				{#if currentMedia.media_type}
-					<dt>Type</dt>
-					<dd class="capitalize">{currentMedia.media_type}</dd>
+			<div class="metadata-panel">
+				<h3>{currentMedia.title}</h3>
+
+				{#if currentMedia.description}
+					<p class="description">{currentMedia.description}</p>
 				{/if}
 
-				<dt>Uploaded</dt>
-				<dd>{formatDate(currentMedia.created_at)}</dd>
-			</dl>
+				<dl class="metadata-list">
+					<dt>Filename</dt>
+					<dd>{currentMedia.filename}</dd>
 
-			{#if allMedia.length > 1}
-				<div class="media-counter">
-					{currentIndex + 1} of {allMedia.length}
-				</div>
-			{/if}
+					<dt>Size</dt>
+					<dd>{formatFileSize(currentMedia.file_size)}</dd>
+
+					{#if currentMedia.media_type}
+						<dt>Type</dt>
+						<dd class="capitalize">{currentMedia.media_type}</dd>
+					{/if}
+
+					<dt>Uploaded</dt>
+					<dd>{formatDate(currentMedia.created_at)}</dd>
+				</dl>
+
+				{#if allMedia.length > 1}
+					<div class="media-counter">
+						{currentIndex + 1} of {allMedia.length}
+					</div>
+				{/if}
+			</div>
 		</div>
-	</div>
-</div>
+	</Dialog.Content>
+</Dialog.Root>
 
 <style>
-	.lightbox-overlay {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.9);
-		z-index: 1000;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 2rem;
-	}
-
 	.close-btn {
 		position: absolute;
 		top: 1rem;
@@ -268,8 +250,9 @@
 	.lightbox-content {
 		display: flex;
 		gap: 2rem;
-		max-width: 90vw;
-		max-height: 80vh;
+		width: 100%;
+		height: 100%;
+		padding: 2rem;
 	}
 
 	.media-container {
@@ -282,7 +265,7 @@
 
 	.media-image {
 		max-width: 100%;
-		max-height: 80vh;
+		max-height: calc(90vh - 4rem);
 		object-fit: contain;
 		border-radius: 4px;
 	}
@@ -366,45 +349,11 @@
 		font-size: 0.875rem;
 	}
 
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: #475569;
-		cursor: pointer;
-		text-decoration: none;
-		transition: all 0.15s;
-	}
-
-	.btn svg {
-		width: 1rem;
-		height: 1rem;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
 	@media (max-width: 768px) {
-		.lightbox-overlay {
-			padding: 1rem;
-		}
-
 		.lightbox-content {
 			flex-direction: column;
 			gap: 1rem;
+			padding: 1rem;
 		}
 
 		.metadata-panel {

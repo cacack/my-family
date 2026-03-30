@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	import {
 		api,
 		type SearchResult,
@@ -466,10 +467,10 @@
 
 		<!-- Action buttons -->
 		<div class="form-actions">
-			<button type="submit" class="btn btn-primary" disabled={!hasAnyCriteria || loading}>
+			<Button type="submit" disabled={!hasAnyCriteria || loading}>
 				{loading ? 'Searching...' : 'Search'}
-			</button>
-			<button type="button" class="btn btn-secondary" onclick={clearAll}>Clear All</button>
+			</Button>
+			<Button variant="secondary" onclick={clearAll}>Clear All</Button>
 		</div>
 	</form>
 
@@ -567,9 +568,9 @@
 				<!-- Load more -->
 				{#if results.length < total}
 					<div class="load-more">
-						<button class="btn btn-secondary" onclick={loadMore} disabled={loading}>
+						<Button variant="secondary" onclick={loadMore} disabled={loading}>
 							Load more
-						</button>
+						</Button>
 					</div>
 				{/if}
 			{/if}
@@ -812,43 +813,6 @@
 		border-top: 1px solid #e2e8f0;
 	}
 
-	.btn {
-		padding: 0.5rem 1.25rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		color: #475569;
-		transition: all 0.15s;
-	}
-
-	.btn:hover:not(:disabled) {
-		background: #f1f5f9;
-	}
-
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
-	}
-
-	.btn-primary:hover:not(:disabled) {
-		background: #2563eb;
-	}
-
-	.btn-secondary {
-		background: white;
-		border-color: #cbd5e1;
-		color: #475569;
-	}
-
 	/* Results section */
 	.results-section {
 		background: white;
@@ -1087,11 +1051,6 @@
 
 		.form-actions {
 			flex-direction: column;
-		}
-
-		.form-actions .btn {
-			width: 100%;
-			text-align: center;
 		}
 
 		.results-table-wrapper {
