@@ -47,7 +47,7 @@
 			</CardHeader>
 		</a>
 	{:else}
-		<button class="card-link" {onclick}>
+		<button type="button" class="card-link" {onclick}>
 			<CardHeader class="pb-0">
 				{@render cardInner()}
 			</CardHeader>

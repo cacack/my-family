@@ -111,14 +111,14 @@
 							</a>
 							{#if entry.resolved_at}
 								<Badge variant="outline" class="gap-1 border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400">
-									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3">
+									<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3">
 										<polyline points="20 6 9 17 4 12" />
 									</svg>
 									Resolved
 								</Badge>
 							{:else}
 								<Badge variant="destructive">
-									<svg viewBox="0 0 24 24" fill="currentColor" class="size-3">
+									<svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3">
 										<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
 									</svg>
 									Active

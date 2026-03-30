@@ -315,7 +315,7 @@
 			</div>
 
 			<div class="form-actions">
-				<Button variant="outline" onclick={cancelAdd} disabled={saving}>Cancel</Button>
+				<Button type="button" variant="outline" onclick={cancelAdd} disabled={saving}>Cancel</Button>
 				<Button type="submit" disabled={saving}>
 					{saving ? 'Saving...' : 'Add Name'}
 				</Button>
@@ -392,7 +392,7 @@
 							</div>
 
 							<div class="form-actions">
-								<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
+								<Button type="button" variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
 								<Button type="submit" disabled={saving}>
 									{saving ? 'Saving...' : 'Save'}
 								</Button>

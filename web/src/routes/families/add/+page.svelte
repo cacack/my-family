@@ -78,7 +78,7 @@
 		</p>
 
 		<div class="form-actions">
-			<Button variant="outline" onclick={handleCancel} disabled={saving}>Cancel</Button>
+			<Button type="button" variant="outline" onclick={handleCancel} disabled={saving}>Cancel</Button>
 			<Button type="submit" disabled={saving}>
 				{saving ? 'Creating...' : 'Create Family'}
 			</Button>

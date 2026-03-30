@@ -108,10 +108,10 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: hsl(var(--muted-foreground));
+		color: var(--muted-foreground);
 		margin: 0 0 0.75rem;
 		padding-bottom: 0.5rem;
-		border-bottom: 1px solid hsl(var(--border));
+		border-bottom: 1px solid var(--border);
 	}
 
 	.shortcut-list {
@@ -142,24 +142,24 @@
 		min-width: 1.75rem;
 		height: 1.75rem;
 		padding: 0 0.5rem;
-		background: hsl(var(--muted));
-		border: 1px solid hsl(var(--border));
+		background: var(--muted);
+		border: 1px solid var(--border);
 		border-radius: 6px;
 		font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 		font-size: 0.8125rem;
 		font-weight: 500;
-		color: hsl(var(--foreground));
+		color: var(--foreground);
 		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 	}
 
 	.key-separator {
 		font-size: 0.75rem;
-		color: hsl(var(--muted-foreground));
+		color: var(--muted-foreground);
 		margin: 0 0.25rem;
 	}
 
 	.shortcut-description {
-		color: hsl(var(--muted-foreground));
+		color: var(--muted-foreground);
 		font-size: 0.875rem;
 		text-align: right;
 	}
@@ -167,7 +167,7 @@
 	.hint {
 		margin: 0;
 		font-size: 0.8125rem;
-		color: hsl(var(--muted-foreground));
+		color: var(--muted-foreground);
 		text-align: center;
 		width: 100%;
 	}

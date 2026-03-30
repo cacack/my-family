@@ -74,7 +74,7 @@
 				{@render cardInner()}
 			</a>
 		{:else}
-			<button class="card-link" class:compact={variant === 'compact'} {onclick}>
+			<button type="button" class="card-link" class:compact={variant === 'compact'} {onclick}>
 				{@render cardInner()}
 			</button>
 		{/if}
