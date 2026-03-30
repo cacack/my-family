@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
+
 	interface Props {
 		message?: string;
 		onRetry: () => void;
@@ -20,9 +22,9 @@
 		<p class="conflict-message">
 			{message || 'This record was updated by another operation. Your changes were not lost.'}
 		</p>
-		<button class="btn-retry" onclick={onRetry} disabled={retrying}>
+		<Button variant="destructive" onclick={onRetry} disabled={retrying}>
 			{retrying ? 'Retrying...' : 'Try Again'}
-		</button>
+		</Button>
 	</div>
 </div>
 
@@ -52,26 +54,7 @@
 		color: #92400e;
 	}
 
-	.btn-retry {
-		padding: 0.375rem 0.75rem;
-		font-size: 0.8125rem;
-		border: 1px solid #fbbf24;
-		border-radius: 6px;
-		background: white;
-		color: #92400e;
-		cursor: pointer;
-	}
-
-	.btn-retry:hover {
-		background: #fffbeb;
-	}
-
-	.btn-retry:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	:global(body.high-contrast) .conflict-error {
+:global(body.high-contrast) .conflict-error {
 		border-color: #d97706;
 		background: #fef3c7;
 	}

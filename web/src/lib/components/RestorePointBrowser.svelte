@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type RestorePointsResponse } from '$lib/api/client';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 
 	interface Props {
@@ -29,17 +30,19 @@
 		});
 	}
 
+	function getActionBadgeVariant(action: string): 'destructive' | undefined {
+		return action === 'deleted' ? 'destructive' : undefined;
+	}
+
 	function getActionBadgeClass(action: string): string {
 		switch (action) {
 			case 'created':
-				return 'badge-created';
+				return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
 			case 'updated':
-				return 'badge-updated';
-			case 'deleted':
-				return 'badge-deleted';
+				return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
 			case 'linked':
 			case 'unlinked':
-				return 'badge-linked';
+				return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
 			default:
 				return '';
 		}
@@ -122,19 +125,21 @@
 					<div class="entry-content">
 						<div class="entry-header">
 							<span class="timestamp">{formatTimestamp(point.timestamp)}</span>
-							<span class="action-badge {getActionBadgeClass(point.action)}">{point.action}</span>
+							<Badge variant={getActionBadgeVariant(point.action)} class="capitalize {getActionBadgeClass(point.action)}">{point.action}</Badge>
 							{#if isCurrent}
-								<span class="current-badge">Current</span>
+								<Badge variant="secondary">Current</Badge>
 							{/if}
 						</div>
 						<div class="entry-summary">{point.summary}</div>
 						{#if !isCurrent}
-							<button
-								class="restore-btn"
+							<Button
+								variant="warning"
+								size="sm"
+								class="mt-2"
 								onclick={() => onSelectVersion(point.version, point.summary)}
 							>
 								Restore to this version
-							</button>
+							</Button>
 						{/if}
 					</div>
 				</div>
@@ -258,70 +263,12 @@
 		color: #64748b;
 	}
 
-	.action-badge {
-		display: inline-block;
-		padding: 0.0625rem 0.375rem;
-		border-radius: 4px;
-		font-size: 0.6875rem;
-		font-weight: 500;
-		text-transform: capitalize;
-	}
-
-	.badge-created {
-		background: #22c55e;
-		color: white;
-	}
-
-	.badge-updated {
-		background: #3b82f6;
-		color: white;
-	}
-
-	.badge-deleted {
-		background: #ef4444;
-		color: white;
-	}
-
-	.badge-linked {
-		background: #8b5cf6;
-		color: white;
-	}
-
-	.current-badge {
-		display: inline-block;
-		padding: 0.0625rem 0.375rem;
-		border-radius: 4px;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		background: #dbeafe;
-		color: #1d4ed8;
-	}
-
 	.entry-summary {
 		font-size: 0.8125rem;
 		color: #475569;
 	}
 
-	.restore-btn {
-		display: inline-block;
-		margin-top: 0.5rem;
-		padding: 0.25rem 0.625rem;
-		border: 1px solid #f59e0b;
-		border-radius: 4px;
-		background: #fffbeb;
-		color: #b45309;
-		font-size: 0.75rem;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
-	}
-
-	.restore-btn:hover {
-		background: #fef3c7;
-		border-color: #d97706;
-	}
-
-	.load-more {
+.load-more {
 		display: flex;
 		justify-content: center;
 		margin-top: 1rem;

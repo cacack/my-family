@@ -74,28 +74,28 @@
 		</div>
 
 		<!-- Close button -->
-		<button class="close-btn" onclick={onClose} aria-label="Close lightbox">
-			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+		<Button variant="ghost" size="icon" class="absolute top-4 right-4 z-10 rounded-full text-white hover:bg-white/20" onclick={onClose} aria-label="Close lightbox">
+			<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6">
 				<line x1="18" y1="6" x2="6" y2="18" />
 				<line x1="6" y1="6" x2="18" y2="18" />
 			</svg>
-		</button>
+		</Button>
 
 		<!-- Navigation buttons -->
 		{#if allMedia.length > 1 && currentIndex > 0}
-			<button class="nav-btn nav-prev" onclick={goToPrevious} aria-label="Previous media">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+			<Button variant="ghost" size="icon" class="nav-prev absolute top-1/2 left-4 z-10 -translate-y-1/2 rounded-full text-white hover:bg-white/20 h-12 w-12" onclick={goToPrevious} aria-label="Previous media">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6">
 					<polyline points="15 18 9 12 15 6" />
 				</svg>
-			</button>
+			</Button>
 		{/if}
 
 		{#if allMedia.length > 1 && currentIndex < allMedia.length - 1}
-			<button class="nav-btn nav-next" onclick={goToNext} aria-label="Next media">
-				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+			<Button variant="ghost" size="icon" class="nav-next absolute top-1/2 right-4 z-10 -translate-y-1/2 rounded-full text-white hover:bg-white/20 h-12 w-12" onclick={goToNext} aria-label="Next media">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6">
 					<polyline points="9 18 15 12 9 6" />
 				</svg>
-			</button>
+			</Button>
 		{/if}
 
 		<div class="lightbox-content">
@@ -185,69 +185,7 @@
 </Dialog.Root>
 
 <style>
-	.close-btn {
-		position: absolute;
-		top: 1rem;
-		right: 1rem;
-		width: 2.5rem;
-		height: 2.5rem;
-		border: none;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 50%;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		transition: background 0.2s;
-		z-index: 10;
-	}
-
-	.close-btn svg {
-		width: 1.5rem;
-		height: 1.5rem;
-		color: white;
-	}
-
-	.close-btn:hover {
-		background: rgba(255, 255, 255, 0.2);
-	}
-
-	.nav-btn {
-		position: absolute;
-		top: 50%;
-		transform: translateY(-50%);
-		width: 3rem;
-		height: 3rem;
-		border: none;
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 50%;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		transition: background 0.2s;
-		z-index: 10;
-	}
-
-	.nav-btn svg {
-		width: 1.5rem;
-		height: 1.5rem;
-		color: white;
-	}
-
-	.nav-btn:hover {
-		background: rgba(255, 255, 255, 0.2);
-	}
-
-	.nav-prev {
-		left: 1rem;
-	}
-
-	.nav-next {
-		right: 1rem;
-	}
-
-	.lightbox-content {
+.lightbox-content {
 		display: flex;
 		gap: 2rem;
 		width: 100%;
@@ -359,19 +297,6 @@
 		.metadata-panel {
 			width: 100%;
 			max-height: 200px;
-		}
-
-		.nav-btn {
-			width: 2.5rem;
-			height: 2.5rem;
-		}
-
-		.nav-prev {
-			left: 0.5rem;
-		}
-
-		.nav-next {
-			right: 0.5rem;
 		}
 	}
 </style>

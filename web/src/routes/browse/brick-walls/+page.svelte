@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type BrickWallEntry } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Card, CardHeader, CardContent, CardFooter } from '$lib/components/ui/card';
 
 	let entries: BrickWallEntry[] = $state([]);
 	let activeCount = $state(0);
@@ -76,14 +77,14 @@
 		<div class="empty">No brick walls yet. Mark a person as a brick wall from their profile.</div>
 	{:else}
 		<div class="summary-stats">
-			<div class="stat">
-				<span class="stat-value">{activeCount}</span>
-				<span class="stat-label">Active</span>
-			</div>
-			<div class="stat">
-				<span class="stat-value">{resolvedCount}</span>
-				<span class="stat-label">Resolved</span>
-			</div>
+			<Card class="flex flex-col items-center px-8 py-4">
+				<span class="text-2xl font-bold text-foreground">{activeCount}</span>
+				<span class="mt-1 text-sm text-muted-foreground">Active</span>
+			</Card>
+			<Card class="flex flex-col items-center px-8 py-4">
+				<span class="text-2xl font-bold text-foreground">{resolvedCount}</span>
+				<span class="mt-1 text-sm text-muted-foreground">Resolved</span>
+			</Card>
 		</div>
 
 		<div class="controls">
@@ -104,8 +105,8 @@
 		{:else}
 			<div class="brick-wall-grid" aria-label="Brick wall list">
 				{#each entries as entry}
-					<div class="brick-wall-card" class:resolved={entry.resolved_at}>
-						<div class="card-header">
+					<Card class="p-0 {entry.resolved_at ? 'border-l-4 border-l-green-500' : 'border-l-4 border-l-amber-400'} hover:shadow-sm transition-all">
+						<CardHeader class="flex-row items-center justify-between gap-2 px-5 pt-5 pb-0">
 							<a href="/persons/{entry.person_id}" class="person-link">
 								{entry.person_name}
 							</a>
@@ -124,18 +125,20 @@
 									Active
 								</Badge>
 							{/if}
-						</div>
+						</CardHeader>
 						{#if entry.note}
-							<p class="note">{entry.note}</p>
+							<CardContent class="px-5 py-0">
+								<p class="note">{entry.note}</p>
+							</CardContent>
 						{/if}
-						<div class="card-footer">
+						<CardFooter class="px-5 pb-4 pt-2">
 							{#if entry.resolved_at}
 								<span class="meta">Resolved {formatDate(entry.resolved_at)}</span>
 							{:else}
 								<span class="meta">Marked {formatRelativeTime(entry.since)}</span>
 							{/if}
-						</div>
-					</div>
+						</CardFooter>
+					</Card>
 				{/each}
 			</div>
 		{/if}
@@ -198,28 +201,6 @@
 		margin-bottom: 1.5rem;
 	}
 
-	.stat {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		padding: 1rem 2rem;
-		background: white;
-		border-radius: 8px;
-		border: 1px solid #e2e8f0;
-	}
-
-	.stat-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: #1e293b;
-	}
-
-	.stat-label {
-		font-size: 0.8125rem;
-		color: #64748b;
-		margin-top: 0.25rem;
-	}
-
 	.controls {
 		margin-bottom: 1.5rem;
 	}
@@ -243,30 +224,6 @@
 		gap: 0.75rem;
 	}
 
-	.brick-wall-card {
-		padding: 1.25rem;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-left: 4px solid #f59e0b;
-		border-radius: 8px;
-		transition: all 0.15s ease;
-	}
-
-	.brick-wall-card:hover {
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-	}
-
-	.brick-wall-card.resolved {
-		border-left-color: #22c55e;
-	}
-
-	.card-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.5rem;
-	}
-
 	.person-link {
 		font-weight: 600;
 		color: #1e293b;
@@ -283,11 +240,6 @@
 		font-size: 0.8125rem;
 		color: #475569;
 		line-height: 1.5;
-	}
-
-	.card-footer {
-		display: flex;
-		align-items: center;
 	}
 
 	.meta {

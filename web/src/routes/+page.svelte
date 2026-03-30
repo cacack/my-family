@@ -5,6 +5,7 @@
 	import DiscoveryFeed from '$lib/components/DiscoveryFeed.svelte';
 	import { onboardingState } from '$lib/stores/onboardingSettings.svelte';
 	import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
+	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
 
 	let recentPersons: Person[] = $state([]);
 	let recentFamilies: FamilyDetail[] = $state([]);
@@ -67,60 +68,71 @@
 		<div class="loading">Loading...</div>
 	{:else}
 		<section class="stats">
-			<div class="stat-card">
-				<span class="stat-value">{stats.persons}</span>
-				<span class="stat-label">People</span>
-			</div>
-			<div class="stat-card">
-				<span class="stat-value">{stats.families}</span>
-				<span class="stat-label">Families</span>
-			</div>
+			<Card class="flex flex-col items-center px-12 py-6">
+				<span class="text-3xl font-bold text-foreground">{stats.persons}</span>
+				<span class="mt-1 text-sm text-muted-foreground">People</span>
+			</Card>
+			<Card class="flex flex-col items-center px-12 py-6">
+				<span class="text-3xl font-bold text-foreground">{stats.families}</span>
+				<span class="mt-1 text-sm text-muted-foreground">Families</span>
+			</Card>
 		</section>
 
 		{#if hasSuggestions}
-			<section class="suggestions-section">
-				<h2>Research Suggestions</h2>
-				<DiscoveryFeed />
-			</section>
+			<Card class="mb-8">
+				<CardHeader>
+					<h2 class="m-0 text-base font-semibold text-foreground">Research Suggestions</h2>
+				</CardHeader>
+				<CardContent>
+					<DiscoveryFeed />
+				</CardContent>
+			</Card>
 		{/if}
 
 		<div class="content-grid">
-			<section class="panel">
-				<div class="panel-header">
-					<h2>Recent People</h2>
-					<a href="/persons">View all</a>
-				</div>
-				{#if recentPersons.length === 0}
-					<p class="empty">No people yet. <a href="/import">Import a GEDCOM file</a> to get started.</p>
-				{:else}
-					<div class="card-list">
-						{#each recentPersons as person}
-							<PersonCard {person} href="/persons/{person.id}" variant="compact" />
-						{/each}
-					</div>
-				{/if}
-			</section>
+			<Card>
+				<CardHeader class="flex-row items-center justify-between">
+					<h2 class="m-0 text-base font-semibold text-foreground">Recent People</h2>
+					<a href="/persons" class="text-sm text-primary no-underline hover:underline">View all</a>
+				</CardHeader>
+				<CardContent>
+					{#if recentPersons.length === 0}
+						<p class="empty">No people yet. <a href="/import">Import a GEDCOM file</a> to get started.</p>
+					{:else}
+						<div class="card-list">
+							{#each recentPersons as person}
+								<PersonCard {person} href="/persons/{person.id}" variant="compact" />
+							{/each}
+						</div>
+					{/if}
+				</CardContent>
+			</Card>
 
-			<section class="panel">
-				<div class="panel-header">
-					<h2>Recent Families</h2>
-					<a href="/families">View all</a>
-				</div>
-				{#if recentFamilies.length === 0}
-					<p class="empty">No families yet.</p>
-				{:else}
-					<div class="card-list">
-						{#each recentFamilies as family}
-							<FamilyCard {family} href="/families/{family.id}" />
-						{/each}
-					</div>
-				{/if}
-			</section>
+			<Card>
+				<CardHeader class="flex-row items-center justify-between">
+					<h2 class="m-0 text-base font-semibold text-foreground">Recent Families</h2>
+					<a href="/families" class="text-sm text-primary no-underline hover:underline">View all</a>
+				</CardHeader>
+				<CardContent>
+					{#if recentFamilies.length === 0}
+						<p class="empty">No families yet.</p>
+					{:else}
+						<div class="card-list">
+							{#each recentFamilies as family}
+								<FamilyCard {family} href="/families/{family.id}" />
+							{/each}
+						</div>
+					{/if}
+				</CardContent>
+			</Card>
 		</div>
 
-		<section class="quick-actions">
-			<h2>Quick Actions</h2>
-			<div class="action-buttons">
+		<Card>
+			<CardHeader>
+				<h2 class="m-0 text-base font-semibold text-foreground">Quick Actions</h2>
+			</CardHeader>
+			<CardContent>
+				<div class="action-buttons">
 				<a href="/import" class="action-btn primary">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -154,7 +166,8 @@
 					Quick Capture
 				</a>
 			</div>
-		</section>
+			</CardContent>
+		</Card>
 	{/if}
 </div>
 {/if}
@@ -196,28 +209,6 @@
 		margin-bottom: 2rem;
 	}
 
-	.stat-card {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		padding: 1.5rem 3rem;
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-	}
-
-	.stat-value {
-		font-size: 2rem;
-		font-weight: 700;
-		color: #1e293b;
-	}
-
-	.stat-label {
-		font-size: 0.875rem;
-		color: #64748b;
-		margin-top: 0.25rem;
-	}
-
 	.content-grid {
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
@@ -229,37 +220,6 @@
 		.content-grid {
 			grid-template-columns: 1fr;
 		}
-	}
-
-	.panel {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.25rem;
-	}
-
-	.panel-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-	}
-
-	.panel-header h2 {
-		margin: 0;
-		font-size: 1rem;
-		font-weight: 600;
-		color: #1e293b;
-	}
-
-	.panel-header a {
-		font-size: 0.8125rem;
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	.panel-header a:hover {
-		text-decoration: underline;
 	}
 
 	.card-list {
@@ -277,20 +237,6 @@
 
 	.empty a {
 		color: #3b82f6;
-	}
-
-	.quick-actions {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.25rem;
-	}
-
-	.quick-actions h2 {
-		margin: 0 0 1rem;
-		font-size: 1rem;
-		font-weight: 600;
-		color: #1e293b;
 	}
 
 	.action-buttons {
@@ -333,21 +279,6 @@
 	.action-btn svg {
 		width: 1.25rem;
 		height: 1.25rem;
-	}
-
-	.suggestions-section {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.25rem;
-		margin-bottom: 2rem;
-	}
-
-	.suggestions-section h2 {
-		margin: 0 0 1rem;
-		font-size: 1rem;
-		font-weight: 600;
-		color: #1e293b;
 	}
 
 	.action-btn.accent {

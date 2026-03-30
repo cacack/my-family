@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { api, type AhnentafelResponse, type AhnentafelEntry, formatGenDate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
 
 	let report: AhnentafelResponse | null = $state(null);
 	let error: string | null = $state(null);
@@ -227,43 +228,45 @@
 							</h3>
 							<div class="card-list">
 								{#each entries as entry}
-									<div class="ancestor-card" class:unknown={!entry.id} class:male={entry.gender === 'male'} class:female={entry.gender === 'female'}>
-										<div class="card-header">
-											<span class="card-number">{entry.number}</span>
-											<span class="card-relationship">{entry.relationship}</span>
-										</div>
-										<div class="card-name">
-											{#if entry.id}
-												<a href="/persons/{entry.id}" class="person-link">
-													{entry.given_name || '?'} {entry.surname || '?'}
-												</a>
-											{:else}
-												<span class="unknown-person">Unknown</span>
-											{/if}
-										</div>
-										{#if entry.id && (entry.birth_date || entry.birth_place || entry.death_date || entry.death_place)}
-											<div class="card-details">
-												{#if entry.birth_date || entry.birth_place}
-													<div class="card-event">
-														<span class="event-label">b.</span>
-														<span class="event-value">
-															{entry.birth_date ? formatGenDate(entry.birth_date) : ''}
-															{entry.birth_place || ''}
-														</span>
-													</div>
-												{/if}
-												{#if entry.death_date || entry.death_place}
-													<div class="card-event">
-														<span class="event-label">d.</span>
-														<span class="event-value">
-															{entry.death_date ? formatGenDate(entry.death_date) : ''}
-															{entry.death_place || ''}
-														</span>
-													</div>
+									<Card size="sm" class="p-0 {!entry.id ? 'opacity-70 bg-muted' : ''} {entry.gender === 'male' ? 'border-l-[3px] border-l-blue-500' : ''} {entry.gender === 'female' ? 'border-l-[3px] border-l-pink-500' : ''}">
+										<CardHeader class="flex-row items-center justify-between gap-2 px-3 pt-3 pb-0">
+											<span class="text-[0.9375rem] font-bold text-muted-foreground">{entry.number}</span>
+											<span class="text-xs text-muted-foreground/70">{entry.relationship}</span>
+										</CardHeader>
+										<CardContent class="px-3 pb-3 pt-1">
+											<div class="mb-1 text-base font-medium">
+												{#if entry.id}
+													<a href="/persons/{entry.id}" class="person-link">
+														{entry.given_name || '?'} {entry.surname || '?'}
+													</a>
+												{:else}
+													<span class="unknown-person">Unknown</span>
 												{/if}
 											</div>
-										{/if}
-									</div>
+											{#if entry.id && (entry.birth_date || entry.birth_place || entry.death_date || entry.death_place)}
+												<div class="text-[0.8125rem] text-muted-foreground">
+													{#if entry.birth_date || entry.birth_place}
+														<div class="card-event">
+															<span class="event-label">b.</span>
+															<span class="event-value">
+																{entry.birth_date ? formatGenDate(entry.birth_date) : ''}
+																{entry.birth_place || ''}
+															</span>
+														</div>
+													{/if}
+													{#if entry.death_date || entry.death_place}
+														<div class="card-event">
+															<span class="event-label">d.</span>
+															<span class="event-value">
+																{entry.death_date ? formatGenDate(entry.death_date) : ''}
+																{entry.death_place || ''}
+															</span>
+														</div>
+													{/if}
+												</div>
+											{/if}
+										</CardContent>
+									</Card>
 								{/each}
 							</div>
 						</div>
@@ -520,56 +523,6 @@
 		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 		gap: 0.75rem;
 		padding: 0.75rem;
-	}
-
-	.ancestor-card {
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
-		padding: 0.75rem;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-	}
-
-	.ancestor-card.unknown {
-		opacity: 0.7;
-		background: #f8fafc;
-	}
-
-	.ancestor-card.male {
-		border-left: 3px solid #3b82f6;
-	}
-
-	.ancestor-card.female {
-		border-left: 3px solid #ec4899;
-	}
-
-	.card-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.375rem;
-	}
-
-	.card-number {
-		font-weight: 700;
-		font-size: 0.9375rem;
-		color: #64748b;
-	}
-
-	.card-relationship {
-		font-size: 0.75rem;
-		color: #94a3b8;
-	}
-
-	.card-name {
-		font-size: 1rem;
-		font-weight: 500;
-		margin-bottom: 0.5rem;
-	}
-
-	.card-details {
-		font-size: 0.8125rem;
-		color: #64748b;
 	}
 
 	.card-event {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type ChangeEntry, type ChangeHistoryResponse } from '$lib/api/client';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import DiffView from './DiffView.svelte';
 
@@ -32,14 +33,16 @@
 		});
 	}
 
+	function getActionBadgeVariant(action: string): 'destructive' | undefined {
+		return action === 'deleted' ? 'destructive' : undefined;
+	}
+
 	function getActionBadgeClass(action: string): string {
 		switch (action) {
 			case 'created':
-				return 'badge-created';
+				return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
 			case 'updated':
-				return 'badge-updated';
-			case 'deleted':
-				return 'badge-deleted';
+				return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
 			default:
 				return '';
 		}
@@ -176,7 +179,7 @@
 				<div class="timeline-entry">
 					<div class="entry-header">
 						<span class="timestamp">{formatTimestamp(entry.timestamp)}</span>
-						<span class="action-badge {getActionBadgeClass(entry.action)}">{entry.action}</span>
+						<Badge variant={getActionBadgeVariant(entry.action)} class="capitalize {getActionBadgeClass(entry.action)}">{entry.action}</Badge>
 					</div>
 					<div class="entry-body">
 						<span class="entity-type">{entry.entity_type}</span>
@@ -288,30 +291,6 @@
 	.timestamp {
 		font-size: 0.8125rem;
 		color: #64748b;
-	}
-
-	.action-badge {
-		display: inline-block;
-		padding: 0.125rem 0.5rem;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		font-weight: 500;
-		text-transform: capitalize;
-	}
-
-	.badge-created {
-		background: #22c55e;
-		color: white;
-	}
-
-	.badge-updated {
-		background: #3b82f6;
-		color: white;
-	}
-
-	.badge-deleted {
-		background: #ef4444;
-		color: white;
 	}
 
 	.entry-body {
