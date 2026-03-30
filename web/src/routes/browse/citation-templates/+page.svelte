@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { api, type CitationTemplate } from '$lib/api/client';
-	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Card from '$lib/components/ui/card';
 	import * as Select from '$lib/components/ui/select';
 	import { Badge } from '$lib/components/ui/badge';
@@ -118,90 +117,98 @@
 
 		<Separator class="my-4" />
 
-		<!-- Category tabs -->
-		<Tabs.Root value={activeCategory} onValueChange={(v) => { activeCategory = v; }}>
-			<Tabs.List class="flex-wrap">
-				<Tabs.Trigger value="all">All ({templates.length})</Tabs.Trigger>
-				{#each categories as cat}
-					<Tabs.Trigger value={cat}>
-						{cat} ({templates.filter((t) => t.category === cat).length})
-					</Tabs.Trigger>
-				{/each}
-			</Tabs.List>
+		<!-- Category filter buttons -->
+		<div class="category-filters" role="group" aria-label="Filter by category">
+			<Button
+				variant={activeCategory === 'all' ? 'default' : 'outline'}
+				size="sm"
+				onclick={() => { activeCategory = 'all'; }}
+			>
+				All ({templates.length})
+			</Button>
+			{#each categories as cat}
+				<Button
+					variant={activeCategory === cat ? 'default' : 'outline'}
+					size="sm"
+					onclick={() => { activeCategory = cat; }}
+				>
+					{cat} ({templates.filter((t) => t.category === cat).length})
+				</Button>
+			{/each}
+		</div>
 
-			<!-- Shared content area (filtering is done via $derived) -->
-			<div class="templates-content" role="region" aria-live="polite">
-				{#if filteredTemplates.length === 0}
-					<div class="empty">No templates match the current filters.</div>
-				{:else}
-					<div class="template-grid">
-						{#each filteredTemplates as template (template.id)}
-							{@const isExpanded = expandedIds.has(template.id)}
-							{@const requiredFields = template.fields.filter((f) => f.required)}
-							<Card.Root class="template-card">
-								<Card.Header>
-									<Card.Title class="template-title">{template.name}</Card.Title>
-									{#if template.description}
-										<Card.Description>{template.description}</Card.Description>
-									{/if}
-								</Card.Header>
-								<Card.Content>
-									<div class="template-meta">
-										<span class="field-count">{fieldSummary(template)}</span>
-									</div>
-									<div class="source-types">
-										{#each template.source_types as st}
-											<Badge variant="secondary">{st}</Badge>
+		<!-- Template grid -->
+		<div class="templates-content" role="region" aria-live="polite">
+			{#if filteredTemplates.length === 0}
+				<div class="empty">No templates match the current filters.</div>
+			{:else}
+				<div class="template-grid">
+					{#each filteredTemplates as template (template.id)}
+						{@const isExpanded = expandedIds.has(template.id)}
+						{@const requiredFields = template.fields.filter((f) => f.required)}
+						<Card.Root class="template-card">
+							<Card.Header>
+								<Card.Title class="template-title">{template.name}</Card.Title>
+								{#if template.description}
+									<Card.Description>{template.description}</Card.Description>
+								{/if}
+							</Card.Header>
+							<Card.Content>
+								<div class="template-meta">
+									<span class="field-count">{fieldSummary(template)}</span>
+								</div>
+								<div class="source-types">
+									{#each template.source_types as st}
+										<Badge variant="secondary">{st}</Badge>
+									{/each}
+								</div>
+								{#if requiredFields.length > 0}
+									<div class="required-fields">
+										<span class="required-label">Required:</span>
+										{#each requiredFields as field, i}
+											<span class="required-field">{field.label}{i < requiredFields.length - 1 ? ',' : ''}</span>
 										{/each}
 									</div>
-									{#if requiredFields.length > 0}
-										<div class="required-fields">
-											<span class="required-label">Required:</span>
-											{#each requiredFields as field, i}
-												<span class="required-field">{field.label}{i < requiredFields.length - 1 ? ',' : ''}</span>
-											{/each}
-										</div>
-									{/if}
-								</Card.Content>
-								<Card.Footer class="template-footer">
-									<Button
-										variant="ghost"
-										size="sm"
-										onclick={() => toggleExpanded(template.id)}
-										aria-expanded={isExpanded}
-										aria-controls="fields-{template.id}"
-									>
-										{isExpanded ? 'Hide fields' : 'Show all fields'}
-									</Button>
-								</Card.Footer>
-								{#if isExpanded}
-									<div id="fields-{template.id}" class="field-details">
-										<Separator />
-										<div class="field-list">
-											{#each template.fields as field}
-												<div class="field-item">
-													<div class="field-header">
-														<span class="field-name">{field.label}</span>
-														{#if field.required}
-															<Badge variant="destructive" class="field-badge">Required</Badge>
-														{:else}
-															<Badge variant="outline" class="field-badge">Optional</Badge>
-														{/if}
-													</div>
-													{#if field.help_text}
-														<p class="field-help">{field.help_text}</p>
+								{/if}
+							</Card.Content>
+							<Card.Footer class="template-footer">
+								<Button
+									variant="ghost"
+									size="sm"
+									onclick={() => toggleExpanded(template.id)}
+									aria-expanded={isExpanded}
+									aria-controls="fields-{template.id}"
+								>
+									{isExpanded ? 'Hide fields' : 'Show all fields'}
+								</Button>
+							</Card.Footer>
+							{#if isExpanded}
+								<div id="fields-{template.id}" class="field-details">
+									<Separator />
+									<div class="field-list">
+										{#each template.fields as field}
+											<div class="field-item">
+												<div class="field-header">
+													<span class="field-name">{field.label}</span>
+													{#if field.required}
+														<Badge variant="destructive" class="field-badge">Required</Badge>
+													{:else}
+														<Badge variant="outline" class="field-badge">Optional</Badge>
 													{/if}
 												</div>
-											{/each}
-										</div>
+												{#if field.help_text}
+													<p class="field-help">{field.help_text}</p>
+												{/if}
+											</div>
+										{/each}
 									</div>
-								{/if}
-							</Card.Root>
-						{/each}
-					</div>
-				{/if}
-			</div>
-		</Tabs.Root>
+								</div>
+							{/if}
+						</Card.Root>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	{/if}
 </div>
 
@@ -258,8 +265,15 @@
 		min-width: 200px;
 	}
 
+	.category-filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
 	.templates-content {
-		margin-top: 1.5rem;
+		margin-top: 1rem;
 	}
 
 	.template-grid {

@@ -73,10 +73,10 @@ describe('Citation Templates Browse Page', () => {
 		});
 	});
 
-	it('category tabs are present', async () => {
+	it('category filter buttons are present', async () => {
 		render(Page);
 		await waitFor(() => {
-			// "All" tab plus category tabs
+			// "All" button plus category buttons
 			expect(screen.getByText(/All \(2\)/)).toBeDefined();
 			expect(screen.getByText(/Census Records \(1\)/)).toBeDefined();
 			expect(screen.getByText(/Vital Records \(1\)/)).toBeDefined();

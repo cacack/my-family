@@ -686,8 +686,20 @@ func (ss *StrictServer) PreviewCitationTemplate(ctx context.Context, request Pre
 
 	fields := request.Body.Fields
 
-	full, _ := citation.FormatFull(tmpl, fields)
-	short, _ := citation.FormatShort(tmpl, fields)
+	full, err := citation.FormatFull(tmpl, fields)
+	if err != nil {
+		return PreviewCitationTemplate400JSONResponse{BadRequestJSONResponse{
+			Code:    "format_error",
+			Message: fmt.Sprintf("Failed to format full citation: %v", err),
+		}}, nil
+	}
+	short, err := citation.FormatShort(tmpl, fields)
+	if err != nil {
+		return PreviewCitationTemplate400JSONResponse{BadRequestJSONResponse{
+			Code:    "format_error",
+			Message: fmt.Sprintf("Failed to format short citation: %v", err),
+		}}, nil
+	}
 
 	issues := citation.ValidateFields(tmpl, fields)
 	var apiIssues *[]CitationValidationIssue

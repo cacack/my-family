@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, isConflictError, type Citation, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import ConflictError from './ConflictError.svelte';
 	import CitationTemplateForm from './CitationTemplateForm.svelte';
 
@@ -157,7 +158,7 @@
 		error = null;
 	}
 
-	function handleTemplateChange(newTemplateId: string, newFields: Record<string, string>) {
+	function handleTemplateChange(newTemplateId: string | undefined, newFields: Record<string, string>) {
 		templateId = newTemplateId;
 		templateFields = newFields;
 	}
@@ -262,28 +263,12 @@
 	{#if showAddForm}
 		<form class="add-form" onsubmit={(e) => { e.preventDefault(); saveNewCitation(); }}>
 			<!-- Citation entry mode toggle -->
-			<div class="mode-toggle" role="tablist" aria-label="Citation entry mode">
-				<button
-					type="button"
-					role="tab"
-					aria-selected={citationMode === 'freeform'}
-					class="mode-tab"
-					class:active={citationMode === 'freeform'}
-					onclick={() => (citationMode = 'freeform')}
-				>
-					Free-form
-				</button>
-				<button
-					type="button"
-					role="tab"
-					aria-selected={citationMode === 'template'}
-					class="mode-tab"
-					class:active={citationMode === 'template'}
-					onclick={() => (citationMode = 'template')}
-				>
-					Use Template
-				</button>
-			</div>
+			<Tabs.Root value={citationMode} onValueChange={(v) => { citationMode = v as 'freeform' | 'template'; }}>
+				<Tabs.List class="mode-toggle-tabs">
+					<Tabs.Trigger value="freeform">Free-form</Tabs.Trigger>
+					<Tabs.Trigger value="template">Use Template</Tabs.Trigger>
+				</Tabs.List>
+			</Tabs.Root>
 
 			<div class="form-group">
 				<label for="source-search-input">
@@ -540,40 +525,8 @@
 		margin-bottom: 1rem;
 	}
 
-	.mode-toggle {
-		display: flex;
-		gap: 0;
+	:global(.mode-toggle-tabs) {
 		margin-bottom: 1rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		overflow: hidden;
-	}
-
-	.mode-tab {
-		flex: 1;
-		padding: 0.5rem 1rem;
-		font-size: 0.8125rem;
-		font-weight: 500;
-		border: none;
-		background: white;
-		color: #64748b;
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			color 0.15s;
-	}
-
-	.mode-tab:not(:last-child) {
-		border-right: 1px solid #e2e8f0;
-	}
-
-	.mode-tab.active {
-		background: #3b82f6;
-		color: white;
-	}
-
-	.mode-tab:hover:not(.active) {
-		background: #f1f5f9;
 	}
 
 	.add-form {

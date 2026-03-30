@@ -4799,6 +4799,7 @@ export interface operations {
                     "application/json": components["schemas"]["FormattedCitation"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
         };
     };

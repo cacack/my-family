@@ -33,7 +33,7 @@
 	interface Props {
 		templateId?: string;
 		fields?: Record<string, string>;
-		onchange?: (templateId: string, fields: Record<string, string>) => void;
+		onchange?: (templateId: string | undefined, fields: Record<string, string>) => void;
 	}
 
 	let { templateId = $bindable(), fields: initialFields, onchange }: Props = $props();
@@ -49,6 +49,7 @@
 	let previewLoading = $state(false);
 	let previewError: string | null = $state(null);
 	let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let previewRequestId = 0;
 
 	// Mobile preview toggle
 	let showMobilePreview = $state(false);
@@ -120,6 +121,7 @@
 		fieldValues = {};
 		preview = null;
 		previewError = null;
+		onchange?.(undefined, {});
 	}
 
 	function handleFieldChange(key: string, value: string) {
@@ -134,22 +136,28 @@
 		if (previewDebounceTimer) {
 			clearTimeout(previewDebounceTimer);
 		}
+		const requestId = ++previewRequestId;
 		previewDebounceTimer = setTimeout(() => {
-			fetchPreview();
+			fetchPreview(requestId);
 		}, 300);
 	}
 
-	async function fetchPreview() {
+	async function fetchPreview(requestId: number) {
 		if (!templateId || !selectedTemplate) return;
 
 		previewLoading = true;
 		previewError = null;
 		try {
-			preview = await api.previewCitationTemplate(templateId, { ...fieldValues });
+			const result = await api.previewCitationTemplate(templateId, { ...fieldValues });
+			if (requestId !== previewRequestId) return;
+			preview = result;
 		} catch {
+			if (requestId !== previewRequestId) return;
 			previewError = 'Failed to load preview';
 		} finally {
-			previewLoading = false;
+			if (requestId === previewRequestId) {
+				previewLoading = false;
+			}
 		}
 	}
 

@@ -240,8 +240,8 @@ describe('CitationTemplateForm', () => {
 			full: 'Incomplete citation',
 			short: 'Incomplete',
 			validation_issues: [
-				{ field: 'year', message: 'Year is required', level: 'error' },
-				{ field: 'state', message: 'State recommended', level: 'warning' }
+				{ field: 'year', message: 'Year is required', level: 'error' as const },
+				{ field: 'state', message: 'State recommended', level: 'warning' as const }
 			]
 		};
 		vi.mocked(apiModule.api.previewCitationTemplate).mockResolvedValue(previewWithIssues);

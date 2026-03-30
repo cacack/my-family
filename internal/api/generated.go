@@ -6868,6 +6868,15 @@ func (response PreviewCitationTemplate200JSONResponse) VisitPreviewCitationTempl
 	return json.NewEncoder(w).Encode(response)
 }
 
+type PreviewCitationTemplate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PreviewCitationTemplate400JSONResponse) VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type PreviewCitationTemplate404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response PreviewCitationTemplate404JSONResponse) VisitPreviewCitationTemplateResponse(w http.ResponseWriter) error {
