@@ -158,8 +158,8 @@
 		error = null;
 	}
 
-	function handleTemplateChange(newTemplateId: string | undefined, newFields: Record<string, string>) {
-		templateId = newTemplateId;
+	function handleTemplateChange(_newTemplateId: string | undefined, newFields: Record<string, string>) {
+		// templateId is synced via bind:templateId
 		templateFields = newFields;
 	}
 
