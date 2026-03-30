@@ -263,6 +263,7 @@ type CreateCitationInput struct {
 	QuotedText    string
 	Analysis      string
 	TemplateID    string
+	GedcomXref    string
 }
 
 // CreateCitationResult contains the result of creating a citation.
@@ -320,6 +321,9 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 	}
 	if input.TemplateID != "" {
 		citation.TemplateID = input.TemplateID
+	}
+	if input.GedcomXref != "" {
+		citation.GedcomXref = input.GedcomXref
 	}
 
 	// Validate citation

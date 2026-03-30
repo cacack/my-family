@@ -290,8 +290,11 @@ func TestCreateCitation(t *testing.T) {
 	json.Unmarshal(personRec.Body.Bytes(), &personResp)
 	personID := personResp["id"].(string)
 
-	// Create citation
-	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `","page":"123"}`
+	// Create citation with all optional fields including gedcom_xref
+	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `",` +
+		`"page":"123","volume":"Vol 1","source_quality":"original","informant_type":"primary",` +
+		`"evidence_type":"direct","quoted_text":"Born Jan 1","analysis":"Good evidence","template_id":"tmpl1",` +
+		`"gedcom_xref":"@C1@"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -310,6 +313,9 @@ func TestCreateCitation(t *testing.T) {
 	}
 	if resp["fact_type"] != "person_birth" {
 		t.Errorf("fact_type = %v, want person_birth", resp["fact_type"])
+	}
+	if resp["gedcom_xref"] != "@C1@" {
+		t.Errorf("gedcom_xref = %v, want @C1@", resp["gedcom_xref"])
 	}
 }
 
@@ -337,8 +343,8 @@ func TestGetCitation(t *testing.T) {
 	json.Unmarshal(personRec.Body.Bytes(), &personResp)
 	personID := personResp["id"].(string)
 
-	// Create citation
-	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `"}`
+	// Create citation with gedcom_xref
+	citationBody := `{"source_id":"` + sourceID + `","fact_type":"person_birth","fact_owner_id":"` + personID + `","gedcom_xref":"@C2@"}`
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/citations", strings.NewReader(citationBody))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
@@ -363,6 +369,9 @@ func TestGetCitation(t *testing.T) {
 	}
 	if resp["fact_type"] != "person_birth" {
 		t.Errorf("fact_type = %v, want person_birth", resp["fact_type"])
+	}
+	if resp["gedcom_xref"] != "@C2@" {
+		t.Errorf("gedcom_xref = %v, want @C2@", resp["gedcom_xref"])
 	}
 }
 

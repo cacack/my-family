@@ -2582,6 +2582,8 @@ export interface components {
             analysis?: string;
             /** @description Citation template ID */
             template_id?: string;
+            /** @description GEDCOM cross-reference ID (e.g., "@C1@") for round-trip support */
+            gedcom_xref?: string;
             /**
              * Format: int64
              * @description Optimistic locking version
@@ -2606,6 +2608,8 @@ export interface components {
             quoted_text?: string;
             analysis?: string;
             template_id?: string;
+            /** @description Optional GEDCOM cross-reference ID for import */
+            gedcom_xref?: string;
         };
         CitationUpdate: {
             page?: string;

@@ -53,6 +53,7 @@ type Citation struct {
 	QuotedText    *string   `json:"quoted_text,omitempty"`
 	Analysis      *string   `json:"analysis,omitempty"`
 	TemplateID    *string   `json:"template_id,omitempty"`
+	GedcomXref    *string   `json:"gedcom_xref,omitempty"`
 	Version       int64     `json:"version"`
 	CreatedAt     time.Time `json:"created_at"`
 }
@@ -292,6 +293,9 @@ func convertReadModelToCitation(rm repository.CitationReadModel) Citation {
 	}
 	if rm.TemplateID != "" {
 		c.TemplateID = &rm.TemplateID
+	}
+	if rm.GedcomXref != "" {
+		c.GedcomXref = &rm.GedcomXref
 	}
 
 	return c
