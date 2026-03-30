@@ -4333,6 +4333,9 @@ components:
         template_id:
           type: string
           description: Citation template ID
+        gedcom_xref:
+          type: string
+          description: GEDCOM cross-reference ID (e.g., "@C1@") for round-trip support
         version:
           type: integer
           format: int64
@@ -4368,6 +4371,9 @@ components:
           type: string
         template_id:
           type: string
+        gedcom_xref:
+          type: string
+          description: Optional GEDCOM cross-reference ID for import
 
     CitationUpdate:
       type: object

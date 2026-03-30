@@ -1483,8 +1483,11 @@ type Citation struct {
 	FactOwnerId openapi_types.UUID `json:"fact_owner_id"`
 
 	// FactType Type of fact being cited (e.g., birth, death, marriage)
-	FactType string             `json:"fact_type"`
-	Id       openapi_types.UUID `json:"id"`
+	FactType string `json:"fact_type"`
+
+	// GedcomXref GEDCOM cross-reference ID (e.g., "@C1@") for round-trip support
+	GedcomXref *string            `json:"gedcom_xref,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
 
 	// InformantType Type of informant (e.g., primary, secondary)
 	InformantType *string `json:"informant_type,omitempty"`
@@ -1517,7 +1520,10 @@ type CitationCreate struct {
 	FactOwnerId openapi_types.UUID `json:"fact_owner_id"`
 
 	// FactType Type of fact being cited (e.g., birth, death, marriage)
-	FactType      string             `json:"fact_type"`
+	FactType string `json:"fact_type"`
+
+	// GedcomXref Optional GEDCOM cross-reference ID for import
+	GedcomXref    *string            `json:"gedcom_xref,omitempty"`
 	InformantType *string            `json:"informant_type,omitempty"`
 	Page          *string            `json:"page,omitempty"`
 	QuotedText    *string            `json:"quoted_text,omitempty"`

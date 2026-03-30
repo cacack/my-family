@@ -512,6 +512,9 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 	if request.Body.TemplateId != nil {
 		input.TemplateID = *request.Body.TemplateId
 	}
+	if request.Body.GedcomXref != nil {
+		input.GedcomXref = *request.Body.GedcomXref
+	}
 
 	result, err := ss.server.commandHandler.CreateCitation(ctx, input)
 	if err != nil {
@@ -3629,6 +3632,7 @@ func convertQueryCitationToGenerated(c query.Citation) Citation {
 		QuotedText:    c.QuotedText,
 		Analysis:      c.Analysis,
 		TemplateId:    c.TemplateID,
+		GedcomXref:    c.GedcomXref,
 		Version:       c.Version,
 	}
 }
@@ -4949,6 +4953,9 @@ func convertReadModelCitationToGenerated(rm repository.CitationReadModel) Citati
 	}
 	if rm.TemplateID != "" {
 		resp.TemplateId = &rm.TemplateID
+	}
+	if rm.GedcomXref != "" {
+		resp.GedcomXref = &rm.GedcomXref
 	}
 	return resp
 }
