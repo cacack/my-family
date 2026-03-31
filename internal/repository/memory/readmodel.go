@@ -16,40 +16,48 @@ import (
 
 // ReadModelStore is an in-memory implementation of repository.ReadModelStore for testing.
 type ReadModelStore struct {
-	mu             sync.RWMutex
-	persons        map[uuid.UUID]*repository.PersonReadModel
-	personNames    map[uuid.UUID][]repository.PersonNameReadModel // keyed by person ID
-	families       map[uuid.UUID]*repository.FamilyReadModel
-	familyChildren map[uuid.UUID][]repository.FamilyChildReadModel // keyed by family ID
-	pedigreeEdges  map[uuid.UUID]*repository.PedigreeEdge          // keyed by person ID
-	sources        map[uuid.UUID]*repository.SourceReadModel
-	citations      map[uuid.UUID]*repository.CitationReadModel
-	media          map[uuid.UUID]*repository.MediaReadModel
-	events         map[uuid.UUID]*repository.EventReadModel
-	attributes     map[uuid.UUID]*repository.AttributeReadModel
-	notes          map[uuid.UUID]*repository.NoteReadModel
-	submitters     map[uuid.UUID]*repository.SubmitterReadModel
-	associations   map[uuid.UUID]*repository.AssociationReadModel
-	ldsOrdinances  map[uuid.UUID]*repository.LDSOrdinanceReadModel
+	mu                sync.RWMutex
+	persons           map[uuid.UUID]*repository.PersonReadModel
+	personNames       map[uuid.UUID][]repository.PersonNameReadModel // keyed by person ID
+	families          map[uuid.UUID]*repository.FamilyReadModel
+	familyChildren    map[uuid.UUID][]repository.FamilyChildReadModel // keyed by family ID
+	pedigreeEdges     map[uuid.UUID]*repository.PedigreeEdge          // keyed by person ID
+	sources           map[uuid.UUID]*repository.SourceReadModel
+	citations         map[uuid.UUID]*repository.CitationReadModel
+	media             map[uuid.UUID]*repository.MediaReadModel
+	events            map[uuid.UUID]*repository.EventReadModel
+	attributes        map[uuid.UUID]*repository.AttributeReadModel
+	notes             map[uuid.UUID]*repository.NoteReadModel
+	submitters        map[uuid.UUID]*repository.SubmitterReadModel
+	associations      map[uuid.UUID]*repository.AssociationReadModel
+	ldsOrdinances     map[uuid.UUID]*repository.LDSOrdinanceReadModel
+	evidenceAnalyses  map[uuid.UUID]*repository.EvidenceAnalysisReadModel
+	evidenceConflicts map[uuid.UUID]*repository.EvidenceConflictReadModel
+	researchLogs      map[uuid.UUID]*repository.ResearchLogReadModel
+	proofSummaries    map[uuid.UUID]*repository.ProofSummaryReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
 func NewReadModelStore() *ReadModelStore {
 	return &ReadModelStore{
-		persons:        make(map[uuid.UUID]*repository.PersonReadModel),
-		personNames:    make(map[uuid.UUID][]repository.PersonNameReadModel),
-		families:       make(map[uuid.UUID]*repository.FamilyReadModel),
-		familyChildren: make(map[uuid.UUID][]repository.FamilyChildReadModel),
-		pedigreeEdges:  make(map[uuid.UUID]*repository.PedigreeEdge),
-		sources:        make(map[uuid.UUID]*repository.SourceReadModel),
-		citations:      make(map[uuid.UUID]*repository.CitationReadModel),
-		media:          make(map[uuid.UUID]*repository.MediaReadModel),
-		events:         make(map[uuid.UUID]*repository.EventReadModel),
-		attributes:     make(map[uuid.UUID]*repository.AttributeReadModel),
-		notes:          make(map[uuid.UUID]*repository.NoteReadModel),
-		submitters:     make(map[uuid.UUID]*repository.SubmitterReadModel),
-		associations:   make(map[uuid.UUID]*repository.AssociationReadModel),
-		ldsOrdinances:  make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
+		persons:           make(map[uuid.UUID]*repository.PersonReadModel),
+		personNames:       make(map[uuid.UUID][]repository.PersonNameReadModel),
+		families:          make(map[uuid.UUID]*repository.FamilyReadModel),
+		familyChildren:    make(map[uuid.UUID][]repository.FamilyChildReadModel),
+		pedigreeEdges:     make(map[uuid.UUID]*repository.PedigreeEdge),
+		sources:           make(map[uuid.UUID]*repository.SourceReadModel),
+		citations:         make(map[uuid.UUID]*repository.CitationReadModel),
+		media:             make(map[uuid.UUID]*repository.MediaReadModel),
+		events:            make(map[uuid.UUID]*repository.EventReadModel),
+		attributes:        make(map[uuid.UUID]*repository.AttributeReadModel),
+		notes:             make(map[uuid.UUID]*repository.NoteReadModel),
+		submitters:        make(map[uuid.UUID]*repository.SubmitterReadModel),
+		associations:      make(map[uuid.UUID]*repository.AssociationReadModel),
+		ldsOrdinances:     make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
+		evidenceAnalyses:  make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel),
+		evidenceConflicts: make(map[uuid.UUID]*repository.EvidenceConflictReadModel),
+		researchLogs:      make(map[uuid.UUID]*repository.ResearchLogReadModel),
+		proofSummaries:    make(map[uuid.UUID]*repository.ProofSummaryReadModel),
 	}
 }
 
@@ -1854,5 +1862,261 @@ func (s *ReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) e
 	defer s.mu.Unlock()
 
 	delete(s.ldsOrdinances, id)
+	return nil
+}
+
+// GetEvidenceAnalysis retrieves an evidence analysis by ID.
+func (s *ReadModelStore) GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	a, exists := s.evidenceAnalyses[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *a
+	return &result, nil
+}
+
+// ListEvidenceAnalyses returns a paginated list of evidence analyses.
+func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EvidenceAnalysisReadModel
+	for _, a := range s.evidenceAnalyses {
+		results = append(results, *a)
+	}
+
+	total := len(results)
+
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		if asc {
+			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+		}
+		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+	})
+
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveEvidenceAnalysis saves or updates an evidence analysis.
+func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *analysis
+	s.evidenceAnalyses[analysis.ID] = &result
+	return nil
+}
+
+// DeleteEvidenceAnalysis removes an evidence analysis.
+func (s *ReadModelStore) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.evidenceAnalyses, id)
+	return nil
+}
+
+// GetEvidenceConflict retrieves an evidence conflict by ID.
+func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	c, exists := s.evidenceConflicts[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *c
+	return &result, nil
+}
+
+// ListEvidenceConflicts returns a paginated list of evidence conflicts.
+func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EvidenceConflictReadModel
+	for _, c := range s.evidenceConflicts {
+		results = append(results, *c)
+	}
+
+	total := len(results)
+
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		if asc {
+			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+		}
+		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+	})
+
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveEvidenceConflict saves or updates an evidence conflict.
+func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *repository.EvidenceConflictReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *conflict
+	s.evidenceConflicts[conflict.ID] = &result
+	return nil
+}
+
+// DeleteEvidenceConflict removes an evidence conflict.
+func (s *ReadModelStore) DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.evidenceConflicts, id)
+	return nil
+}
+
+// GetResearchLog retrieves a research log by ID.
+func (s *ReadModelStore) GetResearchLog(ctx context.Context, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	l, exists := s.researchLogs[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *l
+	return &result, nil
+}
+
+// ListResearchLogs returns a paginated list of research logs.
+func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.ResearchLogReadModel
+	for _, l := range s.researchLogs {
+		results = append(results, *l)
+	}
+
+	total := len(results)
+
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		if asc {
+			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+		}
+		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+	})
+
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveResearchLog saves or updates a research log.
+func (s *ReadModelStore) SaveResearchLog(ctx context.Context, log *repository.ResearchLogReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *log
+	s.researchLogs[log.ID] = &result
+	return nil
+}
+
+// DeleteResearchLog removes a research log.
+func (s *ReadModelStore) DeleteResearchLog(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.researchLogs, id)
+	return nil
+}
+
+// GetProofSummary retrieves a proof summary by ID.
+func (s *ReadModelStore) GetProofSummary(ctx context.Context, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ps, exists := s.proofSummaries[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *ps
+	return &result, nil
+}
+
+// ListProofSummaries returns a paginated list of proof summaries.
+func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.ProofSummaryReadModel
+	for _, ps := range s.proofSummaries {
+		results = append(results, *ps)
+	}
+
+	total := len(results)
+
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		if asc {
+			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+		}
+		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+	})
+
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveProofSummary saves or updates a proof summary.
+func (s *ReadModelStore) SaveProofSummary(ctx context.Context, summary *repository.ProofSummaryReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *summary
+	s.proofSummaries[summary.ID] = &result
+	return nil
+}
+
+// DeleteProofSummary removes a proof summary.
+func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.proofSummaries, id)
 	return nil
 }

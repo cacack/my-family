@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -665,6 +666,186 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "EvidenceAnalysisCreated",
+			event: domain.NewEvidenceAnalysisCreated(&domain.EvidenceAnalysis{
+				ID:         uuid.New(),
+				FactType:   domain.FactPersonBirth,
+				SubjectID:  uuid.New(),
+				Conclusion: "Birth confirmed",
+			}),
+			eventType: "EvidenceAnalysisCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.EvidenceAnalysisCreated)
+				if !ok {
+					t.Fatalf("Expected EvidenceAnalysisCreated, got %T", decoded)
+				}
+				if e.Conclusion != "Birth confirmed" {
+					t.Errorf("Conclusion = %s, want Birth confirmed", e.Conclusion)
+				}
+			},
+		},
+		{
+			name:      "EvidenceAnalysisUpdated",
+			event:     domain.NewEvidenceAnalysisUpdated(uuid.New(), map[string]any{"conclusion": "Updated conclusion"}),
+			eventType: "EvidenceAnalysisUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.EvidenceAnalysisUpdated)
+				if !ok {
+					t.Fatalf("Expected EvidenceAnalysisUpdated, got %T", decoded)
+				}
+				if e.Changes["conclusion"] != "Updated conclusion" {
+					t.Errorf("Changes[conclusion] = %v, want Updated conclusion", e.Changes["conclusion"])
+				}
+			},
+		},
+		{
+			name:      "EvidenceAnalysisDeleted",
+			event:     domain.NewEvidenceAnalysisDeleted(uuid.New(), "superseded"),
+			eventType: "EvidenceAnalysisDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.EvidenceAnalysisDeleted)
+				if !ok {
+					t.Fatalf("Expected EvidenceAnalysisDeleted, got %T", decoded)
+				}
+				if e.Reason != "superseded" {
+					t.Errorf("Reason = %s, want superseded", e.Reason)
+				}
+			},
+		},
+		{
+			name: "EvidenceConflictDetected",
+			event: domain.NewEvidenceConflictDetected(&domain.EvidenceConflict{
+				ID:          uuid.New(),
+				FactType:    domain.FactPersonBirth,
+				SubjectID:   uuid.New(),
+				AnalysisIDs: []uuid.UUID{uuid.New(), uuid.New()},
+				Description: "Conflicting birth dates",
+				Status:      domain.ConflictStatusOpen,
+			}),
+			eventType: "EvidenceConflictDetected",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.EvidenceConflictDetected)
+				if !ok {
+					t.Fatalf("Expected EvidenceConflictDetected, got %T", decoded)
+				}
+				if e.Description != "Conflicting birth dates" {
+					t.Errorf("Description = %s, want Conflicting birth dates", e.Description)
+				}
+			},
+		},
+		{
+			name:      "EvidenceConflictResolved",
+			event:     domain.NewEvidenceConflictResolved(uuid.New(), "Certificate is authoritative", domain.ConflictStatusResolved),
+			eventType: "EvidenceConflictResolved",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.EvidenceConflictResolved)
+				if !ok {
+					t.Fatalf("Expected EvidenceConflictResolved, got %T", decoded)
+				}
+				if e.Resolution != "Certificate is authoritative" {
+					t.Errorf("Resolution = %s, want Certificate is authoritative", e.Resolution)
+				}
+			},
+		},
+		{
+			name: "ResearchLogCreated",
+			event: domain.NewResearchLogCreated(&domain.ResearchLog{
+				ID:                uuid.New(),
+				SubjectID:         uuid.New(),
+				SubjectType:       "person",
+				Repository:        "National Archives",
+				SearchDescription: "Census search",
+				Outcome:           domain.ResearchOutcomeFound,
+				SearchDate:        time.Now().UTC(),
+			}),
+			eventType: "ResearchLogCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.ResearchLogCreated)
+				if !ok {
+					t.Fatalf("Expected ResearchLogCreated, got %T", decoded)
+				}
+				if e.Repository != "National Archives" {
+					t.Errorf("Repository = %s, want National Archives", e.Repository)
+				}
+			},
+		},
+		{
+			name:      "ResearchLogUpdated",
+			event:     domain.NewResearchLogUpdated(uuid.New(), map[string]any{"notes": "Updated notes"}),
+			eventType: "ResearchLogUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.ResearchLogUpdated)
+				if !ok {
+					t.Fatalf("Expected ResearchLogUpdated, got %T", decoded)
+				}
+				if e.Changes["notes"] != "Updated notes" {
+					t.Errorf("Changes[notes] = %v, want Updated notes", e.Changes["notes"])
+				}
+			},
+		},
+		{
+			name:      "ResearchLogDeleted",
+			event:     domain.NewResearchLogDeleted(uuid.New(), "duplicate"),
+			eventType: "ResearchLogDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.ResearchLogDeleted)
+				if !ok {
+					t.Fatalf("Expected ResearchLogDeleted, got %T", decoded)
+				}
+				if e.Reason != "duplicate" {
+					t.Errorf("Reason = %s, want duplicate", e.Reason)
+				}
+			},
+		},
+		{
+			name: "ProofSummaryCreated",
+			event: domain.NewProofSummaryCreated(&domain.ProofSummary{
+				ID:         uuid.New(),
+				FactType:   domain.FactPersonBirth,
+				SubjectID:  uuid.New(),
+				Conclusion: "Birth year is 1850",
+				Argument:   "Multiple sources agree",
+			}),
+			eventType: "ProofSummaryCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.ProofSummaryCreated)
+				if !ok {
+					t.Fatalf("Expected ProofSummaryCreated, got %T", decoded)
+				}
+				if e.Argument != "Multiple sources agree" {
+					t.Errorf("Argument = %s, want Multiple sources agree", e.Argument)
+				}
+			},
+		},
+		{
+			name:      "ProofSummaryUpdated",
+			event:     domain.NewProofSummaryUpdated(uuid.New(), map[string]any{"argument": "Revised argument"}),
+			eventType: "ProofSummaryUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.ProofSummaryUpdated)
+				if !ok {
+					t.Fatalf("Expected ProofSummaryUpdated, got %T", decoded)
+				}
+				if e.Changes["argument"] != "Revised argument" {
+					t.Errorf("Changes[argument] = %v, want Revised argument", e.Changes["argument"])
+				}
+			},
+		},
+		{
+			name:      "ProofSummaryDeleted",
+			event:     domain.NewProofSummaryDeleted(uuid.New(), "obsolete"),
+			eventType: "ProofSummaryDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.ProofSummaryDeleted)
+				if !ok {
+					t.Fatalf("Expected ProofSummaryDeleted, got %T", decoded)
+				}
+				if e.Reason != "obsolete" {
+					t.Errorf("Reason = %s, want obsolete", e.Reason)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -756,6 +937,10 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"RepositoryCreated", "RepositoryUpdated", "RepositoryDeleted",
 		"LifeEventCreated", "LifeEventUpdated", "LifeEventDeleted",
 		"AttributeCreated", "AttributeUpdated", "AttributeDeleted",
+		"EvidenceAnalysisCreated", "EvidenceAnalysisUpdated", "EvidenceAnalysisDeleted",
+		"EvidenceConflictDetected", "EvidenceConflictResolved",
+		"ResearchLogCreated", "ResearchLogUpdated", "ResearchLogDeleted",
+		"ProofSummaryCreated", "ProofSummaryUpdated", "ProofSummaryDeleted",
 	}
 
 	for _, eventType := range eventTypes {

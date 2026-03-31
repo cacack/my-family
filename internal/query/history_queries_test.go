@@ -340,6 +340,62 @@ func (m *mockReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUI
 	return nil
 }
 
+// Evidence analysis stub methods
+func (m *mockReadModelStore) GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// Evidence conflict stub methods
+func (m *mockReadModelStore) GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *repository.EvidenceConflictReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// Research log stub methods
+func (m *mockReadModelStore) GetResearchLog(ctx context.Context, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveResearchLog(ctx context.Context, log *repository.ResearchLogReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteResearchLog(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+// Proof summary stub methods
+func (m *mockReadModelStore) GetProofSummary(ctx context.Context, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveProofSummary(ctx context.Context, summary *repository.ProofSummaryReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteProofSummary(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
 func TestNewHistoryService(t *testing.T) {
 	eventStore := &mockEventStore{}
 	readStore := &mockReadModelStore{}

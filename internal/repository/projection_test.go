@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -3513,5 +3514,375 @@ func TestProjector_NameRemoved(t *testing.T) {
 	rm, _ = readStore.GetPersonName(ctx, name.ID)
 	if rm != nil {
 		t.Error("Name should be deleted")
+	}
+}
+
+func TestProjector_EvidenceAnalysisCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ea := &domain.EvidenceAnalysis{
+		ID:             uuid.New(),
+		FactType:       domain.FactPersonBirth,
+		SubjectID:      uuid.New(),
+		CitationIDs:    []uuid.UUID{uuid.New(), uuid.New()},
+		Conclusion:     "Birth date confirmed",
+		ResearchStatus: domain.ResearchStatusCertain,
+		Notes:          "Based on birth certificate",
+	}
+	event := domain.NewEvidenceAnalysisCreated(ea)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project EvidenceAnalysisCreated failed: %v", err)
+	}
+
+	rm, err := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceAnalysis failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("EvidenceAnalysis not found in read model")
+	}
+	if rm.Conclusion != "Birth date confirmed" {
+		t.Errorf("Conclusion = %s, want Birth date confirmed", rm.Conclusion)
+	}
+	if rm.ResearchStatus != domain.ResearchStatusCertain {
+		t.Errorf("ResearchStatus = %s, want certain", rm.ResearchStatus)
+	}
+	if rm.CitationIDsJSON == "" {
+		t.Error("CitationIDsJSON should not be empty")
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+}
+
+func TestProjector_EvidenceAnalysisUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ea := &domain.EvidenceAnalysis{
+		ID:         uuid.New(),
+		FactType:   domain.FactPersonBirth,
+		SubjectID:  uuid.New(),
+		Conclusion: "Initial conclusion",
+	}
+	createEvent := domain.NewEvidenceAnalysisCreated(ea)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	updateEvent := domain.NewEvidenceAnalysisUpdated(ea.ID, map[string]any{
+		"conclusion": "Updated conclusion",
+		"notes":      "New notes",
+	})
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	rm, _ := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	if rm.Conclusion != "Updated conclusion" {
+		t.Errorf("Conclusion = %s, want Updated conclusion", rm.Conclusion)
+	}
+	if rm.Notes != "New notes" {
+		t.Errorf("Notes = %s, want New notes", rm.Notes)
+	}
+	if rm.Version != 2 {
+		t.Errorf("Version = %d, want 2", rm.Version)
+	}
+}
+
+func TestProjector_EvidenceAnalysisDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ea := &domain.EvidenceAnalysis{
+		ID:         uuid.New(),
+		FactType:   domain.FactPersonBirth,
+		SubjectID:  uuid.New(),
+		Conclusion: "Will be deleted",
+	}
+	createEvent := domain.NewEvidenceAnalysisCreated(ea)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	deleteEvent := domain.NewEvidenceAnalysisDeleted(ea.ID, "superseded")
+	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	rm, _ := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	if rm != nil {
+		t.Error("EvidenceAnalysis should be deleted")
+	}
+}
+
+func TestProjector_EvidenceConflictDetected(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ec := &domain.EvidenceConflict{
+		ID:          uuid.New(),
+		FactType:    domain.FactPersonBirth,
+		SubjectID:   uuid.New(),
+		AnalysisIDs: []uuid.UUID{uuid.New(), uuid.New()},
+		Description: "Conflicting birth dates",
+		Status:      domain.ConflictStatusOpen,
+	}
+	event := domain.NewEvidenceConflictDetected(ec)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project EvidenceConflictDetected failed: %v", err)
+	}
+
+	rm, _ := readStore.GetEvidenceConflict(ctx, ec.ID)
+	if rm == nil {
+		t.Fatal("EvidenceConflict not found")
+	}
+	if rm.Description != "Conflicting birth dates" {
+		t.Errorf("Description = %s, want Conflicting birth dates", rm.Description)
+	}
+	if rm.Status != domain.ConflictStatusOpen {
+		t.Errorf("Status = %s, want open", rm.Status)
+	}
+}
+
+func TestProjector_EvidenceConflictResolved(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ec := &domain.EvidenceConflict{
+		ID:          uuid.New(),
+		FactType:    domain.FactPersonBirth,
+		SubjectID:   uuid.New(),
+		AnalysisIDs: []uuid.UUID{uuid.New(), uuid.New()},
+		Description: "Conflicting dates",
+		Status:      domain.ConflictStatusOpen,
+	}
+	createEvent := domain.NewEvidenceConflictDetected(ec)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	resolveEvent := domain.NewEvidenceConflictResolved(ec.ID, "Certificate is authoritative", domain.ConflictStatusResolved)
+	if err := projector.Project(ctx, resolveEvent, 2); err != nil {
+		t.Fatalf("Project resolve failed: %v", err)
+	}
+
+	rm, _ := readStore.GetEvidenceConflict(ctx, ec.ID)
+	if rm.Status != domain.ConflictStatusResolved {
+		t.Errorf("Status = %s, want resolved", rm.Status)
+	}
+	if rm.Resolution != "Certificate is authoritative" {
+		t.Errorf("Resolution = %s, want Certificate is authoritative", rm.Resolution)
+	}
+}
+
+func TestProjector_ResearchLogCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	rl := &domain.ResearchLog{
+		ID:                uuid.New(),
+		SubjectID:         uuid.New(),
+		SubjectType:       "person",
+		Repository:        "National Archives",
+		SearchDescription: "Census records",
+		Outcome:           domain.ResearchOutcomeFound,
+		Notes:             "Found in 1850 census",
+		SearchDate:        time.Now().UTC(),
+	}
+	event := domain.NewResearchLogCreated(rl)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project ResearchLogCreated failed: %v", err)
+	}
+
+	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	if rm == nil {
+		t.Fatal("ResearchLog not found")
+	}
+	if rm.Repository != "National Archives" {
+		t.Errorf("Repository = %s, want National Archives", rm.Repository)
+	}
+	if rm.Outcome != domain.ResearchOutcomeFound {
+		t.Errorf("Outcome = %s, want found", rm.Outcome)
+	}
+}
+
+func TestProjector_ResearchLogUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	rl := &domain.ResearchLog{
+		ID:                uuid.New(),
+		SubjectID:         uuid.New(),
+		SubjectType:       "person",
+		Repository:        "National Archives",
+		SearchDescription: "Census records",
+		Outcome:           domain.ResearchOutcomeFound,
+		SearchDate:        time.Now().UTC(),
+	}
+	createEvent := domain.NewResearchLogCreated(rl)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	updateEvent := domain.NewResearchLogUpdated(rl.ID, map[string]any{
+		"notes":   "Updated notes",
+		"outcome": "not_found",
+	})
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	if rm.Notes != "Updated notes" {
+		t.Errorf("Notes = %s, want Updated notes", rm.Notes)
+	}
+	if rm.Outcome != domain.ResearchOutcomeNotFound {
+		t.Errorf("Outcome = %s, want not_found", rm.Outcome)
+	}
+}
+
+func TestProjector_ResearchLogDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	rl := &domain.ResearchLog{
+		ID:                uuid.New(),
+		SubjectID:         uuid.New(),
+		SubjectType:       "person",
+		Repository:        "National Archives",
+		SearchDescription: "Census records",
+		Outcome:           domain.ResearchOutcomeFound,
+		SearchDate:        time.Now().UTC(),
+	}
+	createEvent := domain.NewResearchLogCreated(rl)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	deleteEvent := domain.NewResearchLogDeleted(rl.ID, "duplicate")
+	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	if rm != nil {
+		t.Error("ResearchLog should be deleted")
+	}
+}
+
+func TestProjector_ProofSummaryCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ps := &domain.ProofSummary{
+		ID:             uuid.New(),
+		FactType:       domain.FactPersonBirth,
+		SubjectID:      uuid.New(),
+		Conclusion:     "Birth year is 1850",
+		Argument:       "Multiple sources agree on this date",
+		AnalysisIDs:    []uuid.UUID{uuid.New()},
+		ResearchStatus: domain.ResearchStatusProbable,
+	}
+	event := domain.NewProofSummaryCreated(ps)
+
+	err := projector.Project(ctx, event, 1)
+	if err != nil {
+		t.Fatalf("Project ProofSummaryCreated failed: %v", err)
+	}
+
+	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	if rm == nil {
+		t.Fatal("ProofSummary not found")
+	}
+	if rm.Conclusion != "Birth year is 1850" {
+		t.Errorf("Conclusion = %s, want Birth year is 1850", rm.Conclusion)
+	}
+	if rm.Argument != "Multiple sources agree on this date" {
+		t.Errorf("Argument = %s, want Multiple sources agree on this date", rm.Argument)
+	}
+	if rm.ResearchStatus != domain.ResearchStatusProbable {
+		t.Errorf("ResearchStatus = %s, want probable", rm.ResearchStatus)
+	}
+}
+
+func TestProjector_ProofSummaryUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ps := &domain.ProofSummary{
+		ID:         uuid.New(),
+		FactType:   domain.FactPersonBirth,
+		SubjectID:  uuid.New(),
+		Conclusion: "Initial conclusion",
+		Argument:   "Initial argument",
+	}
+	createEvent := domain.NewProofSummaryCreated(ps)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	updateEvent := domain.NewProofSummaryUpdated(ps.ID, map[string]any{
+		"conclusion": "Revised conclusion",
+		"argument":   "Stronger argument",
+	})
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	if rm.Conclusion != "Revised conclusion" {
+		t.Errorf("Conclusion = %s, want Revised conclusion", rm.Conclusion)
+	}
+	if rm.Argument != "Stronger argument" {
+		t.Errorf("Argument = %s, want Stronger argument", rm.Argument)
+	}
+	if rm.Version != 2 {
+		t.Errorf("Version = %d, want 2", rm.Version)
+	}
+}
+
+func TestProjector_ProofSummaryDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	ps := &domain.ProofSummary{
+		ID:         uuid.New(),
+		FactType:   domain.FactPersonBirth,
+		SubjectID:  uuid.New(),
+		Conclusion: "Will be deleted",
+		Argument:   "Obsolete argument",
+	}
+	createEvent := domain.NewProofSummaryCreated(ps)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	deleteEvent := domain.NewProofSummaryDeleted(ps.ID, "obsolete")
+	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	if rm != nil {
+		t.Error("ProofSummary should be deleted")
 	}
 }

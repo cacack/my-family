@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -142,6 +143,8 @@ func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*Disc
 		if suggestion := s.qualityGapSuggestion(ctx, person); suggestion != nil {
 			items = append(items, *suggestion)
 		}
+
+		items = append(items, s.evidenceSuggestions(ctx, person)...)
 	}
 
 	// Sort by priority ascending, then by person name within same priority
@@ -428,7 +431,8 @@ func (s *QualityService) GetStatistics(ctx context.Context) (*Statistics, error)
 // - Death date present: +20 points (or +20 if living, birth > 100 years ago)
 // - Death place present: +15 points (if deceased)
 // - Base score is out of 70, normalized to 100
-func (s *QualityService) computePersonScore(_ context.Context, person repository.PersonReadModel) (float64, []string) {
+// - Unresolved evidence conflicts: -5 points each (floor at 0)
+func (s *QualityService) computePersonScore(ctx context.Context, person repository.PersonReadModel) (float64, []string) {
 	var score float64
 	var issues []string
 	currentYear := time.Now().Year()
@@ -481,7 +485,35 @@ func (s *QualityService) computePersonScore(_ context.Context, person repository
 	// Base score is out of 70, normalize to 100
 	normalizedScore := (score / 70) * 100
 
+	// Apply unresolved evidence conflict penalty
+	conflictIssues := s.unresolvedConflictIssues(ctx, person.ID)
+	if len(conflictIssues) > 0 {
+		issues = append(issues, conflictIssues...)
+		penalty := float64(len(conflictIssues)) * 5
+		normalizedScore -= penalty
+		if normalizedScore < 0 {
+			normalizedScore = 0
+		}
+	}
+
 	return normalizedScore, issues
+}
+
+// unresolvedConflictIssues returns issue strings for each unresolved evidence conflict
+// affecting the given person. Resolved/accepted conflicts do not generate issues.
+func (s *QualityService) unresolvedConflictIssues(ctx context.Context, personID uuid.UUID) []string {
+	allConflicts, err := repository.ListAll(ctx, 100, s.readStore.ListEvidenceConflicts)
+	if err != nil {
+		return nil
+	}
+
+	var issues []string
+	for _, c := range allConflicts {
+		if c.SubjectID == personID && c.Status == domain.ConflictStatusOpen {
+			issues = append(issues, fmt.Sprintf("Unresolved evidence conflict for %s", string(c.FactType)))
+		}
+	}
+	return issues
 }
 
 // buildConnectedPersonIDs returns a set of person IDs that have at least one family connection
@@ -534,22 +566,99 @@ func (s *QualityService) isOrphaned(ctx context.Context, personID uuid.UUID) (bo
 	return true, nil
 }
 
+// evidenceSuggestions returns discovery suggestions based on evidence analysis data for a person.
+// This includes: facts with analyses but no proof summary, and missing research logs.
+func (s *QualityService) evidenceSuggestions(ctx context.Context, person repository.PersonReadModel) []DiscoverySuggestion {
+	var suggestions []DiscoverySuggestion
+	name := person.FullName
+	idStr := person.ID.String()
+	actionURL := "/persons/" + idStr
+
+	// Check for facts with analyses but no proof summary
+	allAnalyses, err := repository.ListAll(ctx, 100, s.readStore.ListEvidenceAnalyses)
+	if err == nil {
+		allSummaries, summaryErr := repository.ListAll(ctx, 100, s.readStore.ListProofSummaries)
+		if summaryErr == nil {
+			// Build set of (factType, subjectID) that have proof summaries
+			type factKey struct {
+				factType  domain.FactType
+				subjectID uuid.UUID
+			}
+			summarized := make(map[factKey]bool)
+			for _, ps := range allSummaries {
+				summarized[factKey{ps.FactType, ps.SubjectID}] = true
+			}
+
+			// Find analyses for this person that lack proof summaries
+			seen := make(map[factKey]bool)
+			for _, a := range allAnalyses {
+				if a.SubjectID != person.ID {
+					continue
+				}
+				key := factKey{a.FactType, a.SubjectID}
+				if !summarized[key] && !seen[key] {
+					seen[key] = true
+					suggestions = append(suggestions, DiscoverySuggestion{
+						Type:        "quality_gap",
+						Title:       fmt.Sprintf("Write proof summary for %s %s", name, string(a.FactType)),
+						Description: fmt.Sprintf("%s has evidence analyses for %s but no proof summary. Write a proof summary to document your conclusion.", name, string(a.FactType)),
+						PersonID:    idStr,
+						PersonName:  name,
+						ActionURL:   actionURL,
+						Priority:    2,
+					})
+				}
+			}
+		}
+	}
+
+	// Check for missing research logs — only suggest if person has been assessed
+	// (don't suggest for completely empty/unreviewed persons)
+	if person.ResearchStatus != domain.ResearchStatusUnknown && person.ResearchStatus != "" {
+		allLogs, logErr := repository.ListAll(ctx, 100, s.readStore.ListResearchLogs)
+		if logErr == nil {
+			hasLog := false
+			for _, log := range allLogs {
+				if log.SubjectID == person.ID {
+					hasLog = true
+					break
+				}
+			}
+			if !hasLog {
+				suggestions = append(suggestions, DiscoverySuggestion{
+					Type:        "quality_gap",
+					Title:       fmt.Sprintf("Document research for %s", name),
+					Description: fmt.Sprintf("No research log entries exist for %s. Document research activity to track what sources have been searched.", name),
+					PersonID:    idStr,
+					PersonName:  name,
+					ActionURL:   actionURL,
+					Priority:    3,
+				})
+			}
+		}
+	}
+
+	return suggestions
+}
+
 // generateSuggestions creates suggestions based on the identified issues.
 func (s *QualityService) generateSuggestions(issues []string) []string {
 	suggestions := make([]string, 0, len(issues))
 
 	for _, issue := range issues {
-		switch issue {
-		case "Missing birth date":
+		switch {
+		case issue == "Missing birth date":
 			suggestions = append(suggestions, "Add birth date from vital records, census, or family sources")
-		case "Missing birth place":
+		case issue == "Missing birth place":
 			suggestions = append(suggestions, "Research birth location in census records or vital records")
-		case "Missing death date (likely deceased)":
+		case issue == "Missing death date (likely deceased)":
 			suggestions = append(suggestions, "Search death records, obituaries, or cemetery records")
-		case "Missing death place":
+		case issue == "Missing death place":
 			suggestions = append(suggestions, "Check death certificate or obituary for location")
-		case "No family connections":
+		case issue == "No family connections":
 			suggestions = append(suggestions, "Link to existing family or create new family relationships")
+		case strings.HasPrefix(issue, "Unresolved evidence conflict for "):
+			suggestions = append(suggestions, "Review and resolve the conflicting evidence")
 		}
 	}
 

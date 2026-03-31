@@ -1240,3 +1240,488 @@ func TestGetDiscoveryFeed_MissingDeathDateForDeceased(t *testing.T) {
 		t.Error("Expected missing_data suggestion for death date of assessed deceased person")
 	}
 }
+
+// ============================================================================
+// Evidence integration tests
+// ============================================================================
+
+// TestPersonQuality_UnresolvedConflicts tests that unresolved evidence conflicts reduce score
+func TestPersonQuality_UnresolvedConflicts(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	// Create a fully documented living person (should be 100% without conflicts)
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "John", "Doe",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Verify baseline score is 100
+	baseline, err := service.GetPersonQuality(ctx, personID)
+	if err != nil {
+		t.Fatalf("GetPersonQuality baseline failed: %v", err)
+	}
+	if baseline.CompletenessScore != 100 {
+		t.Fatalf("Baseline score = %.2f, want 100", baseline.CompletenessScore)
+	}
+
+	// Add two unresolved conflicts for this person
+	conflict1 := repository.EvidenceConflictReadModel{
+		ID:          uuid.New(),
+		FactType:    domain.FactPersonBirth,
+		SubjectID:   personID,
+		Description: "Conflicting birth dates",
+		Status:      domain.ConflictStatusOpen,
+		Version:     1,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	_ = readStore.SaveEvidenceConflict(ctx, &conflict1)
+
+	conflict2 := repository.EvidenceConflictReadModel{
+		ID:          uuid.New(),
+		FactType:    domain.FactPersonDeath,
+		SubjectID:   personID,
+		Description: "Conflicting death dates",
+		Status:      domain.ConflictStatusOpen,
+		Version:     1,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	_ = readStore.SaveEvidenceConflict(ctx, &conflict2)
+
+	result, err := service.GetPersonQuality(ctx, personID)
+	if err != nil {
+		t.Fatalf("GetPersonQuality failed: %v", err)
+	}
+
+	// Score should be 100 - (2 * 5) = 90
+	expectedScore := 90.0
+	if result.CompletenessScore < expectedScore-0.1 || result.CompletenessScore > expectedScore+0.1 {
+		t.Errorf("CompletenessScore = %.2f, want ~%.2f (2 unresolved conflicts = -10)", result.CompletenessScore, expectedScore)
+	}
+
+	// Should have conflict issues
+	conflictIssueCount := 0
+	for _, issue := range result.Issues {
+		if issue == "Unresolved evidence conflict for person_birth" || issue == "Unresolved evidence conflict for person_death" {
+			conflictIssueCount++
+		}
+	}
+	if conflictIssueCount != 2 {
+		t.Errorf("Expected 2 conflict issues, got %d. Issues: %v", conflictIssueCount, result.Issues)
+	}
+
+	// Should have suggestion to resolve conflicts
+	foundResolveSuggestion := false
+	for _, s := range result.Suggestions {
+		if s == "Review and resolve the conflicting evidence" {
+			foundResolveSuggestion = true
+			break
+		}
+	}
+	if !foundResolveSuggestion {
+		t.Errorf("Expected conflict resolution suggestion, got: %v", result.Suggestions)
+	}
+}
+
+// TestPersonQuality_ResolvedConflicts tests that resolved conflicts do not penalize score
+func TestPersonQuality_ResolvedConflicts(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Jane", "Doe",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Add a resolved conflict
+	conflict := repository.EvidenceConflictReadModel{
+		ID:          uuid.New(),
+		FactType:    domain.FactPersonBirth,
+		SubjectID:   personID,
+		Description: "Conflicting birth dates",
+		Resolution:  "Census record is authoritative",
+		Status:      domain.ConflictStatusResolved,
+		Version:     2,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	_ = readStore.SaveEvidenceConflict(ctx, &conflict)
+
+	result, err := service.GetPersonQuality(ctx, personID)
+	if err != nil {
+		t.Fatalf("GetPersonQuality failed: %v", err)
+	}
+
+	// Score should remain 100 — resolved conflicts should not penalize
+	if result.CompletenessScore != 100 {
+		t.Errorf("CompletenessScore = %.2f, want 100 (resolved conflicts should not penalize)", result.CompletenessScore)
+	}
+
+	// Should NOT have conflict issues
+	for _, issue := range result.Issues {
+		if issue == "Unresolved evidence conflict for person_birth" {
+			t.Error("Resolved conflict should not generate an issue")
+		}
+	}
+}
+
+// TestPersonQuality_ConflictScoreFloor tests that conflict penalties don't go below 0
+func TestPersonQuality_ConflictScoreFloor(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	// Create person with low base score (no data = ~50% for living)
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Low", "Score")
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Add many unresolved conflicts to try to push below 0
+	for i := 0; i < 30; i++ {
+		conflict := repository.EvidenceConflictReadModel{
+			ID:        uuid.New(),
+			FactType:  domain.FactPersonBirth,
+			SubjectID: personID,
+			Status:    domain.ConflictStatusOpen,
+			Version:   1,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		_ = readStore.SaveEvidenceConflict(ctx, &conflict)
+	}
+
+	result, err := service.GetPersonQuality(ctx, personID)
+	if err != nil {
+		t.Fatalf("GetPersonQuality failed: %v", err)
+	}
+
+	if result.CompletenessScore < 0 {
+		t.Errorf("CompletenessScore = %.2f, should not go below 0", result.CompletenessScore)
+	}
+}
+
+// TestDiscoveryFeed_AnalysisWithoutProofSummary tests suggestions for facts with analyses but no proof summary
+func TestDiscoveryFeed_AnalysisWithoutProofSummary(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Research", "Subject",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Add an evidence analysis for person_birth with no corresponding proof summary
+	analysis := repository.EvidenceAnalysisReadModel{
+		ID:         uuid.New(),
+		FactType:   domain.FactPersonBirth,
+		SubjectID:  personID,
+		Conclusion: "Born March 15, 1990",
+		Version:    1,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_ = readStore.SaveEvidenceAnalysis(ctx, &analysis)
+
+	result, err := service.GetDiscoveryFeed(ctx, 50)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should have a quality_gap suggestion to write proof summary
+	foundProofSuggestion := false
+	for _, item := range result.Items {
+		if item.Type == "quality_gap" && item.PersonID == personID.String() &&
+			item.Title == "Write proof summary for Research Subject person_birth" {
+			foundProofSuggestion = true
+			if item.Priority != 2 {
+				t.Errorf("proof summary suggestion priority = %d, want 2", item.Priority)
+			}
+			break
+		}
+	}
+	if !foundProofSuggestion {
+		t.Error("Expected quality_gap suggestion for analysis without proof summary")
+	}
+}
+
+// TestDiscoveryFeed_AnalysisWithProofSummary tests that analysis with proof summary does NOT generate suggestion
+func TestDiscoveryFeed_AnalysisWithProofSummary(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Complete", "Research",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Add an evidence analysis AND a corresponding proof summary
+	analysis := repository.EvidenceAnalysisReadModel{
+		ID:         uuid.New(),
+		FactType:   domain.FactPersonBirth,
+		SubjectID:  personID,
+		Conclusion: "Born March 15, 1990",
+		Version:    1,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_ = readStore.SaveEvidenceAnalysis(ctx, &analysis)
+
+	proofSummary := repository.ProofSummaryReadModel{
+		ID:         uuid.New(),
+		FactType:   domain.FactPersonBirth,
+		SubjectID:  personID,
+		Conclusion: "Born March 15, 1990 in Boston",
+		Argument:   "Supported by birth certificate and census records",
+		Version:    1,
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	_ = readStore.SaveProofSummary(ctx, &proofSummary)
+
+	result, err := service.GetDiscoveryFeed(ctx, 50)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should NOT have proof summary suggestion since one exists
+	for _, item := range result.Items {
+		if item.Type == "quality_gap" && item.PersonID == personID.String() &&
+			item.Title == "Write proof summary for Complete Research person_birth" {
+			t.Error("Should not suggest proof summary when one already exists")
+		}
+	}
+}
+
+// TestDiscoveryFeed_MissingResearchLogs tests suggestion for assessed person with no research logs
+func TestDiscoveryFeed_MissingResearchLogs(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "No", "Logs",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+		withResearchStatus(domain.ResearchStatusProbable),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetDiscoveryFeed(ctx, 50)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should have suggestion to document research
+	foundResearchSuggestion := false
+	for _, item := range result.Items {
+		if item.Type == "quality_gap" && item.PersonID == personID.String() &&
+			item.Title == "Document research for No Logs" {
+			foundResearchSuggestion = true
+			if item.Priority != 3 {
+				t.Errorf("research log suggestion priority = %d, want 3", item.Priority)
+			}
+			break
+		}
+	}
+	if !foundResearchSuggestion {
+		t.Error("Expected quality_gap suggestion for person with no research logs")
+	}
+}
+
+// TestDiscoveryFeed_WithResearchLogs tests that person with research logs does NOT get log suggestion
+func TestDiscoveryFeed_WithResearchLogs(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Has", "Logs",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+		withResearchStatus(domain.ResearchStatusProbable),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Add a research log entry
+	log := repository.ResearchLogReadModel{
+		ID:                uuid.New(),
+		SubjectID:         personID,
+		SubjectType:       "person",
+		Repository:        "National Archives",
+		SearchDescription: "Census 1990 search",
+		Outcome:           domain.ResearchOutcomeFound,
+		SearchDate:        time.Now(),
+		Version:           1,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+	_ = readStore.SaveResearchLog(ctx, &log)
+
+	result, err := service.GetDiscoveryFeed(ctx, 50)
+	if err != nil {
+		t.Fatalf("GetDiscoveryFeed failed: %v", err)
+	}
+
+	// Should NOT have research log suggestion
+	for _, item := range result.Items {
+		if item.Type == "quality_gap" && item.PersonID == personID.String() &&
+			item.Title == "Document research for Has Logs" {
+			t.Error("Should not suggest documenting research when research logs exist")
+		}
+	}
+}
+
+// TestPersonQuality_NegativeResearchOutcome tests that not_found research outcomes don't penalize
+func TestPersonQuality_NegativeResearchOutcome(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "Negative", "Evidence",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Add research log with "not_found" outcome — this is valid GPS evidence
+	log := repository.ResearchLogReadModel{
+		ID:                uuid.New(),
+		SubjectID:         personID,
+		SubjectType:       "person",
+		Repository:        "County Records",
+		SearchDescription: "Death records search",
+		Outcome:           domain.ResearchOutcomeNotFound,
+		SearchDate:        time.Now(),
+		Version:           1,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+	_ = readStore.SaveResearchLog(ctx, &log)
+
+	result, err := service.GetPersonQuality(ctx, personID)
+	if err != nil {
+		t.Fatalf("GetPersonQuality failed: %v", err)
+	}
+
+	// Score should be the same as a person with no evidence data at all — 100% for living person
+	// Negative evidence (not_found) should NOT penalize the score
+	if result.CompletenessScore != 100 {
+		t.Errorf("CompletenessScore = %.2f, want 100 (negative evidence should not penalize)", result.CompletenessScore)
+	}
+}
+
+// TestPersonQuality_NoEvidenceData tests baseline: quality scoring works the same with no evidence data
+func TestPersonQuality_NoEvidenceData(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "No", "Evidence",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	result, err := service.GetPersonQuality(ctx, personID)
+	if err != nil {
+		t.Fatalf("GetPersonQuality failed: %v", err)
+	}
+
+	// Living person with birth date and place should still be 100%
+	if result.CompletenessScore != 100 {
+		t.Errorf("CompletenessScore = %.2f, want 100 (no evidence data = baseline)", result.CompletenessScore)
+	}
+
+	// Should have no evidence-related issues
+	for _, issue := range result.Issues {
+		if issue == "Unresolved evidence conflict for person_birth" {
+			t.Error("Should have no conflict issues when no evidence data exists")
+		}
+	}
+}
+
+// TestGetQualityOverview_WithConflicts tests that overview reflects conflict penalties
+func TestGetQualityOverview_WithConflicts(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewQualityService(readStore)
+	ctx := context.Background()
+
+	currentYear := time.Now().Year()
+	livingBirthYear := currentYear - 50
+
+	// Create a fully documented person
+	personID := uuid.New()
+	person := createPersonReadModel(personID, "John", "Conflicts",
+		withBirthDate("1990", livingBirthYear),
+		withBirthPlace("Boston, MA"),
+	)
+	_ = readStore.SavePerson(ctx, &person)
+
+	// Add an unresolved conflict
+	conflict := repository.EvidenceConflictReadModel{
+		ID:        uuid.New(),
+		FactType:  domain.FactPersonBirth,
+		SubjectID: personID,
+		Status:    domain.ConflictStatusOpen,
+		Version:   1,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	_ = readStore.SaveEvidenceConflict(ctx, &conflict)
+
+	overview, err := service.GetQualityOverview(ctx)
+	if err != nil {
+		t.Fatalf("GetQualityOverview failed: %v", err)
+	}
+
+	// Average should be 95 (100 - 5 for one conflict)
+	expectedAvg := 95.0
+	if overview.AverageCompleteness < expectedAvg-0.1 || overview.AverageCompleteness > expectedAvg+0.1 {
+		t.Errorf("AverageCompleteness = %.2f, want ~%.2f", overview.AverageCompleteness, expectedAvg)
+	}
+
+	// Should have records with issues
+	if overview.RecordsWithIssues != 1 {
+		t.Errorf("RecordsWithIssues = %d, want 1", overview.RecordsWithIssues)
+	}
+}

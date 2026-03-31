@@ -113,6 +113,28 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectLDSOrdinanceUpdated(ctx, e, version)
 	case domain.LDSOrdinanceDeleted:
 		return p.projectLDSOrdinanceDeleted(ctx, e)
+	case domain.EvidenceAnalysisCreated:
+		return p.projectEvidenceAnalysisCreated(ctx, e, version)
+	case domain.EvidenceAnalysisUpdated:
+		return p.projectEvidenceAnalysisUpdated(ctx, e, version)
+	case domain.EvidenceAnalysisDeleted:
+		return p.projectEvidenceAnalysisDeleted(ctx, e)
+	case domain.EvidenceConflictDetected:
+		return p.projectEvidenceConflictDetected(ctx, e, version)
+	case domain.EvidenceConflictResolved:
+		return p.projectEvidenceConflictResolved(ctx, e, version)
+	case domain.ResearchLogCreated:
+		return p.projectResearchLogCreated(ctx, e, version)
+	case domain.ResearchLogUpdated:
+		return p.projectResearchLogUpdated(ctx, e, version)
+	case domain.ResearchLogDeleted:
+		return p.projectResearchLogDeleted(ctx, e)
+	case domain.ProofSummaryCreated:
+		return p.projectProofSummaryCreated(ctx, e, version)
+	case domain.ProofSummaryUpdated:
+		return p.projectProofSummaryUpdated(ctx, e, version)
+	case domain.ProofSummaryDeleted:
+		return p.projectProofSummaryDeleted(ctx, e)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
@@ -1613,4 +1635,238 @@ func (p *Projector) projectLDSOrdinanceUpdated(ctx context.Context, e domain.LDS
 
 func (p *Projector) projectLDSOrdinanceDeleted(ctx context.Context, e domain.LDSOrdinanceDeleted) error {
 	return p.readStore.DeleteLDSOrdinance(ctx, e.OrdinanceID)
+}
+
+func (p *Projector) projectEvidenceAnalysisCreated(ctx context.Context, e domain.EvidenceAnalysisCreated, version int64) error {
+	var citationIDsJSON string
+	if len(e.CitationIDs) > 0 {
+		if b, err := json.Marshal(e.CitationIDs); err == nil {
+			citationIDsJSON = string(b)
+		}
+	}
+
+	analysis := &EvidenceAnalysisReadModel{
+		ID:              e.AnalysisID,
+		FactType:        e.FactType,
+		SubjectID:       e.SubjectID,
+		CitationIDsJSON: citationIDsJSON,
+		Conclusion:      e.Conclusion,
+		ResearchStatus:  e.ResearchStatus,
+		Notes:           e.Notes,
+		Version:         version,
+		CreatedAt:       e.OccurredAt(),
+		UpdatedAt:       e.OccurredAt(),
+	}
+
+	return p.readStore.SaveEvidenceAnalysis(ctx, analysis)
+}
+
+func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain.EvidenceAnalysisUpdated, version int64) error {
+	analysis, err := p.readStore.GetEvidenceAnalysis(ctx, e.AnalysisID)
+	if err != nil {
+		return err
+	}
+	if analysis == nil {
+		return nil
+	}
+
+	for key, value := range e.Changes {
+		switch key {
+		case "fact_type":
+			if v, ok := value.(string); ok {
+				analysis.FactType = domain.FactType(v)
+			}
+		case "conclusion":
+			if v, ok := value.(string); ok {
+				analysis.Conclusion = v
+			}
+		case "notes":
+			if v, ok := value.(string); ok {
+				analysis.Notes = v
+			}
+		case "research_status":
+			if v, ok := value.(string); ok {
+				analysis.ResearchStatus = domain.ParseResearchStatus(v)
+			}
+		case "citation_ids":
+			if b, err := json.Marshal(value); err == nil {
+				analysis.CitationIDsJSON = string(b)
+			}
+		}
+	}
+
+	analysis.Version = version
+	analysis.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveEvidenceAnalysis(ctx, analysis)
+}
+
+func (p *Projector) projectEvidenceAnalysisDeleted(ctx context.Context, e domain.EvidenceAnalysisDeleted) error {
+	return p.readStore.DeleteEvidenceAnalysis(ctx, e.AnalysisID)
+}
+
+func (p *Projector) projectEvidenceConflictDetected(ctx context.Context, e domain.EvidenceConflictDetected, version int64) error {
+	var analysisIDsJSON string
+	if len(e.AnalysisIDs) > 0 {
+		if b, err := json.Marshal(e.AnalysisIDs); err == nil {
+			analysisIDsJSON = string(b)
+		}
+	}
+
+	conflict := &EvidenceConflictReadModel{
+		ID:              e.ConflictID,
+		FactType:        e.FactType,
+		SubjectID:       e.SubjectID,
+		AnalysisIDsJSON: analysisIDsJSON,
+		Description:     e.Description,
+		Status:          e.Status,
+		Version:         version,
+		CreatedAt:       e.OccurredAt(),
+		UpdatedAt:       e.OccurredAt(),
+	}
+
+	return p.readStore.SaveEvidenceConflict(ctx, conflict)
+}
+
+func (p *Projector) projectEvidenceConflictResolved(ctx context.Context, e domain.EvidenceConflictResolved, version int64) error {
+	conflict, err := p.readStore.GetEvidenceConflict(ctx, e.ConflictID)
+	if err != nil {
+		return err
+	}
+	if conflict == nil {
+		return nil
+	}
+
+	conflict.Resolution = e.Resolution
+	conflict.Status = e.Status
+	conflict.Version = version
+	conflict.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveEvidenceConflict(ctx, conflict)
+}
+
+func (p *Projector) projectResearchLogCreated(ctx context.Context, e domain.ResearchLogCreated, version int64) error {
+	log := &ResearchLogReadModel{
+		ID:                e.LogID,
+		SubjectID:         e.SubjectID,
+		SubjectType:       e.SubjectType,
+		Repository:        e.Repository,
+		SearchDescription: e.SearchDescription,
+		Outcome:           e.Outcome,
+		Notes:             e.Notes,
+		SearchDate:        e.SearchDate,
+		Version:           version,
+		CreatedAt:         e.OccurredAt(),
+		UpdatedAt:         e.OccurredAt(),
+	}
+
+	return p.readStore.SaveResearchLog(ctx, log)
+}
+
+func (p *Projector) projectResearchLogUpdated(ctx context.Context, e domain.ResearchLogUpdated, version int64) error {
+	log, err := p.readStore.GetResearchLog(ctx, e.LogID)
+	if err != nil {
+		return err
+	}
+	if log == nil {
+		return nil
+	}
+
+	for key, value := range e.Changes {
+		switch key {
+		case "repository":
+			if v, ok := value.(string); ok {
+				log.Repository = v
+			}
+		case "search_description":
+			if v, ok := value.(string); ok {
+				log.SearchDescription = v
+			}
+		case "outcome":
+			if v, ok := value.(string); ok {
+				log.Outcome = domain.ResearchOutcome(v)
+			}
+		case "notes":
+			if v, ok := value.(string); ok {
+				log.Notes = v
+			}
+		}
+	}
+
+	log.Version = version
+	log.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveResearchLog(ctx, log)
+}
+
+func (p *Projector) projectResearchLogDeleted(ctx context.Context, e domain.ResearchLogDeleted) error {
+	return p.readStore.DeleteResearchLog(ctx, e.LogID)
+}
+
+func (p *Projector) projectProofSummaryCreated(ctx context.Context, e domain.ProofSummaryCreated, version int64) error {
+	var analysisIDsJSON string
+	if len(e.AnalysisIDs) > 0 {
+		if b, err := json.Marshal(e.AnalysisIDs); err == nil {
+			analysisIDsJSON = string(b)
+		}
+	}
+
+	summary := &ProofSummaryReadModel{
+		ID:              e.SummaryID,
+		FactType:        e.FactType,
+		SubjectID:       e.SubjectID,
+		Conclusion:      e.Conclusion,
+		Argument:        e.Argument,
+		AnalysisIDsJSON: analysisIDsJSON,
+		ResearchStatus:  e.ResearchStatus,
+		Version:         version,
+		CreatedAt:       e.OccurredAt(),
+		UpdatedAt:       e.OccurredAt(),
+	}
+
+	return p.readStore.SaveProofSummary(ctx, summary)
+}
+
+func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.ProofSummaryUpdated, version int64) error {
+	summary, err := p.readStore.GetProofSummary(ctx, e.SummaryID)
+	if err != nil {
+		return err
+	}
+	if summary == nil {
+		return nil
+	}
+
+	for key, value := range e.Changes {
+		switch key {
+		case "fact_type":
+			if v, ok := value.(string); ok {
+				summary.FactType = domain.FactType(v)
+			}
+		case "conclusion":
+			if v, ok := value.(string); ok {
+				summary.Conclusion = v
+			}
+		case "argument":
+			if v, ok := value.(string); ok {
+				summary.Argument = v
+			}
+		case "research_status":
+			if v, ok := value.(string); ok {
+				summary.ResearchStatus = domain.ParseResearchStatus(v)
+			}
+		case "analysis_ids":
+			if b, err := json.Marshal(value); err == nil {
+				summary.AnalysisIDsJSON = string(b)
+			}
+		}
+	}
+
+	summary.Version = version
+	summary.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveProofSummary(ctx, summary)
+}
+
+func (p *Projector) projectProofSummaryDeleted(ctx context.Context, e domain.ProofSummaryDeleted) error {
+	return p.readStore.DeleteProofSummary(ctx, e.SummaryID)
 }

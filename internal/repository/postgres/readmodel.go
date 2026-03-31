@@ -344,6 +344,75 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_lds_ordinances_person ON lds_ordinances(person_id);
 		CREATE INDEX IF NOT EXISTS idx_lds_ordinances_family ON lds_ordinances(family_id);
 		CREATE INDEX IF NOT EXISTS idx_lds_ordinances_type ON lds_ordinances(type);
+
+		-- Evidence analyses table
+		CREATE TABLE IF NOT EXISTS evidence_analyses (
+			id UUID PRIMARY KEY,
+			fact_type VARCHAR(50) NOT NULL,
+			subject_id UUID NOT NULL,
+			citation_ids JSONB,
+			conclusion TEXT NOT NULL,
+			research_status VARCHAR(20),
+			notes TEXT,
+			version BIGINT NOT NULL DEFAULT 1,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_evidence_analyses_subject ON evidence_analyses(subject_id);
+		CREATE INDEX IF NOT EXISTS idx_evidence_analyses_fact_type ON evidence_analyses(fact_type);
+
+		-- Evidence conflicts table
+		CREATE TABLE IF NOT EXISTS evidence_conflicts (
+			id UUID PRIMARY KEY,
+			fact_type VARCHAR(50) NOT NULL,
+			subject_id UUID NOT NULL,
+			analysis_ids JSONB,
+			description TEXT NOT NULL,
+			resolution TEXT,
+			status VARCHAR(20) NOT NULL,
+			version BIGINT NOT NULL DEFAULT 1,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_evidence_conflicts_subject ON evidence_conflicts(subject_id);
+		CREATE INDEX IF NOT EXISTS idx_evidence_conflicts_status ON evidence_conflicts(status);
+
+		-- Research logs table
+		CREATE TABLE IF NOT EXISTS research_logs (
+			id UUID PRIMARY KEY,
+			subject_id UUID NOT NULL,
+			subject_type VARCHAR(20) NOT NULL,
+			repository VARCHAR(255) NOT NULL,
+			search_description TEXT NOT NULL,
+			outcome VARCHAR(20) NOT NULL,
+			notes TEXT,
+			search_date TIMESTAMPTZ NOT NULL,
+			version BIGINT NOT NULL DEFAULT 1,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_research_logs_subject ON research_logs(subject_id);
+		CREATE INDEX IF NOT EXISTS idx_research_logs_outcome ON research_logs(outcome);
+
+		-- Proof summaries table
+		CREATE TABLE IF NOT EXISTS proof_summaries (
+			id UUID PRIMARY KEY,
+			fact_type VARCHAR(50) NOT NULL,
+			subject_id UUID NOT NULL,
+			conclusion TEXT NOT NULL,
+			argument TEXT NOT NULL,
+			analysis_ids JSONB,
+			research_status VARCHAR(20),
+			version BIGINT NOT NULL DEFAULT 1,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_proof_summaries_subject ON proof_summaries(subject_id);
+		CREATE INDEX IF NOT EXISTS idx_proof_summaries_fact_type ON proof_summaries(fact_type);
 	`)
 	if err != nil {
 		return err
@@ -3739,6 +3808,451 @@ func (s *ReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) e
 	_, err := s.db.ExecContext(ctx, "DELETE FROM lds_ordinances WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("delete lds_ordinance: %w", err)
+	}
+	return nil
+}
+
+// GetEvidenceAnalysis retrieves an evidence analysis by ID.
+func (s *ReadModelStore) GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
+		FROM evidence_analyses WHERE id = $1
+	`, id)
+
+	var a repository.EvidenceAnalysisReadModel
+	var citationIDs, researchStatus, notes sql.NullString
+	err := row.Scan(
+		&a.ID, &a.FactType, &a.SubjectID, &citationIDs,
+		&a.Conclusion, &researchStatus, &notes,
+		&a.Version, &a.CreatedAt, &a.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan evidence_analysis: %w", err)
+	}
+	if citationIDs.Valid {
+		a.CitationIDsJSON = citationIDs.String
+	}
+	if researchStatus.Valid {
+		a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+	}
+	if notes.Valid {
+		a.Notes = notes.String
+	}
+	return &a, nil
+}
+
+// ListEvidenceAnalyses returns a paginated list of evidence analyses.
+func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM evidence_analyses").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count evidence_analyses: %w", err)
+	}
+
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderDir is validated above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
+		FROM evidence_analyses
+		ORDER BY updated_at %s
+		LIMIT $1 OFFSET $2
+	`, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query evidence_analyses: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.EvidenceAnalysisReadModel
+	for rows.Next() {
+		var a repository.EvidenceAnalysisReadModel
+		var citationIDs, researchStatus, notes sql.NullString
+		if err := rows.Scan(
+			&a.ID, &a.FactType, &a.SubjectID, &citationIDs,
+			&a.Conclusion, &researchStatus, &notes,
+			&a.Version, &a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan evidence_analysis: %w", err)
+		}
+		if citationIDs.Valid {
+			a.CitationIDsJSON = citationIDs.String
+		}
+		if researchStatus.Valid {
+			a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+		}
+		if notes.Valid {
+			a.Notes = notes.String
+		}
+		results = append(results, a)
+	}
+
+	return results, total, rows.Err()
+}
+
+// SaveEvidenceAnalysis saves or updates an evidence analysis.
+func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO evidence_analyses (id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at)
+		VALUES ($1, $2, $3, NULLIF($4, '')::JSONB, $5, NULLIF($6, ''), NULLIF($7, ''), $8, $9, $10)
+		ON CONFLICT (id) DO UPDATE SET
+			fact_type = EXCLUDED.fact_type,
+			subject_id = EXCLUDED.subject_id,
+			citation_ids = EXCLUDED.citation_ids,
+			conclusion = EXCLUDED.conclusion,
+			research_status = EXCLUDED.research_status,
+			notes = EXCLUDED.notes,
+			version = EXCLUDED.version,
+			updated_at = EXCLUDED.updated_at
+	`, analysis.ID, analysis.FactType, analysis.SubjectID, analysis.CitationIDsJSON,
+		analysis.Conclusion, string(analysis.ResearchStatus), analysis.Notes,
+		analysis.Version, analysis.CreatedAt, analysis.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save evidence_analysis: %w", err)
+	}
+	return nil
+}
+
+// DeleteEvidenceAnalysis deletes an evidence analysis by ID.
+func (s *ReadModelStore) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM evidence_analyses WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("delete evidence_analysis: %w", err)
+	}
+	return nil
+}
+
+// GetEvidenceConflict retrieves an evidence conflict by ID.
+func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
+		FROM evidence_conflicts WHERE id = $1
+	`, id)
+
+	var c repository.EvidenceConflictReadModel
+	var analysisIDs, resolution sql.NullString
+	err := row.Scan(
+		&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
+		&c.Description, &resolution, &c.Status,
+		&c.Version, &c.CreatedAt, &c.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan evidence_conflict: %w", err)
+	}
+	if analysisIDs.Valid {
+		c.AnalysisIDsJSON = analysisIDs.String
+	}
+	if resolution.Valid {
+		c.Resolution = resolution.String
+	}
+	return &c, nil
+}
+
+// ListEvidenceConflicts returns a paginated list of evidence conflicts.
+func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM evidence_conflicts").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count evidence_conflicts: %w", err)
+	}
+
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderDir is validated above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
+		FROM evidence_conflicts
+		ORDER BY updated_at %s
+		LIMIT $1 OFFSET $2
+	`, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query evidence_conflicts: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.EvidenceConflictReadModel
+	for rows.Next() {
+		var c repository.EvidenceConflictReadModel
+		var analysisIDs, resolution sql.NullString
+		if err := rows.Scan(
+			&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
+			&c.Description, &resolution, &c.Status,
+			&c.Version, &c.CreatedAt, &c.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan evidence_conflict: %w", err)
+		}
+		if analysisIDs.Valid {
+			c.AnalysisIDsJSON = analysisIDs.String
+		}
+		if resolution.Valid {
+			c.Resolution = resolution.String
+		}
+		results = append(results, c)
+	}
+
+	return results, total, rows.Err()
+}
+
+// SaveEvidenceConflict saves or updates an evidence conflict.
+func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *repository.EvidenceConflictReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO evidence_conflicts (id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at)
+		VALUES ($1, $2, $3, NULLIF($4, '')::JSONB, $5, NULLIF($6, ''), $7, $8, $9, $10)
+		ON CONFLICT (id) DO UPDATE SET
+			fact_type = EXCLUDED.fact_type,
+			subject_id = EXCLUDED.subject_id,
+			analysis_ids = EXCLUDED.analysis_ids,
+			description = EXCLUDED.description,
+			resolution = EXCLUDED.resolution,
+			status = EXCLUDED.status,
+			version = EXCLUDED.version,
+			updated_at = EXCLUDED.updated_at
+	`, conflict.ID, conflict.FactType, conflict.SubjectID, conflict.AnalysisIDsJSON,
+		conflict.Description, conflict.Resolution, conflict.Status,
+		conflict.Version, conflict.CreatedAt, conflict.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save evidence_conflict: %w", err)
+	}
+	return nil
+}
+
+// DeleteEvidenceConflict deletes an evidence conflict by ID.
+func (s *ReadModelStore) DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM evidence_conflicts WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("delete evidence_conflict: %w", err)
+	}
+	return nil
+}
+
+// GetResearchLog retrieves a research log by ID.
+func (s *ReadModelStore) GetResearchLog(ctx context.Context, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
+		FROM research_logs WHERE id = $1
+	`, id)
+
+	var l repository.ResearchLogReadModel
+	var notes sql.NullString
+	err := row.Scan(
+		&l.ID, &l.SubjectID, &l.SubjectType, &l.Repository,
+		&l.SearchDescription, &l.Outcome, &notes,
+		&l.SearchDate, &l.Version, &l.CreatedAt, &l.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan research_log: %w", err)
+	}
+	if notes.Valid {
+		l.Notes = notes.String
+	}
+	return &l, nil
+}
+
+// ListResearchLogs returns a paginated list of research logs.
+func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM research_logs").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count research_logs: %w", err)
+	}
+
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderDir is validated above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
+		FROM research_logs
+		ORDER BY updated_at %s
+		LIMIT $1 OFFSET $2
+	`, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query research_logs: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.ResearchLogReadModel
+	for rows.Next() {
+		var l repository.ResearchLogReadModel
+		var notes sql.NullString
+		if err := rows.Scan(
+			&l.ID, &l.SubjectID, &l.SubjectType, &l.Repository,
+			&l.SearchDescription, &l.Outcome, &notes,
+			&l.SearchDate, &l.Version, &l.CreatedAt, &l.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan research_log: %w", err)
+		}
+		if notes.Valid {
+			l.Notes = notes.String
+		}
+		results = append(results, l)
+	}
+
+	return results, total, rows.Err()
+}
+
+// SaveResearchLog saves or updates a research log.
+func (s *ReadModelStore) SaveResearchLog(ctx context.Context, log *repository.ResearchLogReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO research_logs (id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, $9, $10, $11)
+		ON CONFLICT (id) DO UPDATE SET
+			subject_id = EXCLUDED.subject_id,
+			subject_type = EXCLUDED.subject_type,
+			repository = EXCLUDED.repository,
+			search_description = EXCLUDED.search_description,
+			outcome = EXCLUDED.outcome,
+			notes = EXCLUDED.notes,
+			search_date = EXCLUDED.search_date,
+			version = EXCLUDED.version,
+			updated_at = EXCLUDED.updated_at
+	`, log.ID, log.SubjectID, log.SubjectType, log.Repository,
+		log.SearchDescription, log.Outcome, log.Notes,
+		log.SearchDate, log.Version, log.CreatedAt, log.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save research_log: %w", err)
+	}
+	return nil
+}
+
+// DeleteResearchLog deletes a research log by ID.
+func (s *ReadModelStore) DeleteResearchLog(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM research_logs WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("delete research_log: %w", err)
+	}
+	return nil
+}
+
+// GetProofSummary retrieves a proof summary by ID.
+func (s *ReadModelStore) GetProofSummary(ctx context.Context, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
+		FROM proof_summaries WHERE id = $1
+	`, id)
+
+	var ps repository.ProofSummaryReadModel
+	var analysisIDs, researchStatus sql.NullString
+	err := row.Scan(
+		&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion,
+		&ps.Argument, &analysisIDs, &researchStatus,
+		&ps.Version, &ps.CreatedAt, &ps.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan proof_summary: %w", err)
+	}
+	if analysisIDs.Valid {
+		ps.AnalysisIDsJSON = analysisIDs.String
+	}
+	if researchStatus.Valid {
+		ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+	}
+	return &ps, nil
+}
+
+// ListProofSummaries returns a paginated list of proof summaries.
+func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM proof_summaries").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count proof_summaries: %w", err)
+	}
+
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderDir is validated above, not user input
+	query := fmt.Sprintf(`
+		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
+		FROM proof_summaries
+		ORDER BY updated_at %s
+		LIMIT $1 OFFSET $2
+	`, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query proof_summaries: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.ProofSummaryReadModel
+	for rows.Next() {
+		var ps repository.ProofSummaryReadModel
+		var analysisIDs, researchStatus sql.NullString
+		if err := rows.Scan(
+			&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion,
+			&ps.Argument, &analysisIDs, &researchStatus,
+			&ps.Version, &ps.CreatedAt, &ps.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan proof_summary: %w", err)
+		}
+		if analysisIDs.Valid {
+			ps.AnalysisIDsJSON = analysisIDs.String
+		}
+		if researchStatus.Valid {
+			ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+		}
+		results = append(results, ps)
+	}
+
+	return results, total, rows.Err()
+}
+
+// SaveProofSummary saves or updates a proof summary.
+func (s *ReadModelStore) SaveProofSummary(ctx context.Context, summary *repository.ProofSummaryReadModel) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO proof_summaries (id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::JSONB, NULLIF($7, ''), $8, $9, $10)
+		ON CONFLICT (id) DO UPDATE SET
+			fact_type = EXCLUDED.fact_type,
+			subject_id = EXCLUDED.subject_id,
+			conclusion = EXCLUDED.conclusion,
+			argument = EXCLUDED.argument,
+			analysis_ids = EXCLUDED.analysis_ids,
+			research_status = EXCLUDED.research_status,
+			version = EXCLUDED.version,
+			updated_at = EXCLUDED.updated_at
+	`, summary.ID, summary.FactType, summary.SubjectID, summary.Conclusion,
+		summary.Argument, summary.AnalysisIDsJSON, string(summary.ResearchStatus),
+		summary.Version, summary.CreatedAt, summary.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save proof_summary: %w", err)
+	}
+	return nil
+}
+
+// DeleteProofSummary deletes a proof summary by ID.
+func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM proof_summaries WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("delete proof_summary: %w", err)
 	}
 	return nil
 }

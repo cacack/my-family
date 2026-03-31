@@ -322,6 +322,156 @@ export interface ApiError {
 	status?: number;
 }
 
+// Evidence Analysis types
+export interface EvidenceAnalysisResponse {
+	id: string;
+	fact_type: string;
+	subject_id: string;
+	citation_ids?: string[];
+	conclusion: string;
+	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
+	notes?: string;
+	conflict_id?: string;
+	version: number;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface EvidenceAnalysisCreateRequest {
+	fact_type: string;
+	subject_id: string;
+	citation_ids?: string[];
+	conclusion: string;
+	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
+	notes?: string;
+}
+
+export interface EvidenceAnalysisUpdateRequest {
+	fact_type?: string;
+	subject_id?: string;
+	citation_ids?: string[];
+	conclusion?: string;
+	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
+	notes?: string;
+	version: number;
+}
+
+export interface EvidenceAnalysisListResponse {
+	analyses: EvidenceAnalysisResponse[];
+	total: number;
+	limit?: number;
+	offset?: number;
+}
+
+// Evidence Conflict types
+export interface EvidenceConflictResponse {
+	id: string;
+	fact_type: string;
+	subject_id: string;
+	analysis_ids: string[];
+	description: string;
+	resolution?: string;
+	status: 'open' | 'resolved';
+	version: number;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface EvidenceConflictResolveRequest {
+	resolution: string;
+	version: number;
+}
+
+export interface EvidenceConflictListResponse {
+	conflicts: EvidenceConflictResponse[];
+	total: number;
+	limit?: number;
+	offset?: number;
+}
+
+// Research Log types
+export interface ResearchLogResponse {
+	id: string;
+	subject_id: string;
+	subject_type: string;
+	repository: string;
+	search_description: string;
+	outcome: 'found' | 'not_found' | 'inconclusive';
+	notes?: string;
+	search_date: string;
+	version: number;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface ResearchLogCreateRequest {
+	subject_id: string;
+	subject_type: string;
+	repository: string;
+	search_description: string;
+	outcome: 'found' | 'not_found' | 'inconclusive';
+	notes?: string;
+	search_date: string;
+}
+
+export interface ResearchLogUpdateRequest {
+	subject_id?: string;
+	subject_type?: string;
+	repository?: string;
+	search_description?: string;
+	outcome?: 'found' | 'not_found' | 'inconclusive';
+	notes?: string;
+	search_date?: string;
+	version: number;
+}
+
+export interface ResearchLogListResponse {
+	logs: ResearchLogResponse[];
+	total: number;
+	limit?: number;
+	offset?: number;
+}
+
+// Proof Summary types
+export interface ProofSummaryResponse {
+	id: string;
+	fact_type: string;
+	subject_id: string;
+	conclusion: string;
+	argument: string;
+	analysis_ids?: string[];
+	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
+	version: number;
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface ProofSummaryCreateRequest {
+	fact_type: string;
+	subject_id: string;
+	conclusion: string;
+	argument: string;
+	analysis_ids?: string[];
+	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
+}
+
+export interface ProofSummaryUpdateRequest {
+	fact_type?: string;
+	subject_id?: string;
+	conclusion?: string;
+	argument?: string;
+	analysis_ids?: string[];
+	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
+	version: number;
+}
+
+export interface ProofSummaryListResponse {
+	summaries: ProofSummaryResponse[];
+	total: number;
+	limit?: number;
+	offset?: number;
+}
+
 // Source types
 export interface Source {
 	id: string;
@@ -1428,6 +1578,194 @@ class ApiClient {
 	async getDiscoveryFeed(limit?: number): Promise<DiscoveryFeedResponse> {
 		const params = limit != null ? `?limit=${limit}` : '';
 		return this.request<DiscoveryFeedResponse>('GET', `/analytics/discovery${params}`);
+	}
+
+	// Evidence Analysis endpoints
+	async listEvidenceAnalyses(params?: {
+		limit?: number;
+		offset?: number;
+		sort?: string;
+		order?: 'asc' | 'desc';
+	}): Promise<EvidenceAnalysisListResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+		if (params?.sort) searchParams.set('sort', params.sort);
+		if (params?.order) searchParams.set('order', params.order);
+
+		const query = searchParams.toString();
+		return this.request<EvidenceAnalysisListResponse>(
+			'GET',
+			`/evidence-analyses${query ? `?${query}` : ''}`
+		);
+	}
+
+	async createEvidenceAnalysis(
+		data: EvidenceAnalysisCreateRequest
+	): Promise<EvidenceAnalysisResponse> {
+		return this.request<EvidenceAnalysisResponse>('POST', '/evidence-analyses', data);
+	}
+
+	async getEvidenceAnalysis(id: string): Promise<EvidenceAnalysisResponse> {
+		return this.request<EvidenceAnalysisResponse>('GET', `/evidence-analyses/${id}`);
+	}
+
+	async updateEvidenceAnalysis(
+		id: string,
+		data: EvidenceAnalysisUpdateRequest
+	): Promise<EvidenceAnalysisResponse> {
+		return this.request<EvidenceAnalysisResponse>('PUT', `/evidence-analyses/${id}`, data);
+	}
+
+	async deleteEvidenceAnalysis(id: string, version: number): Promise<void> {
+		return this.request<void>('DELETE', `/evidence-analyses/${id}?version=${version}`);
+	}
+
+	async getAnalysesByFact(
+		factType: string,
+		subjectId: string
+	): Promise<EvidenceAnalysisResponse[]> {
+		const params = new URLSearchParams({ factType, subjectId });
+		return this.request<EvidenceAnalysisResponse[]>(
+			'GET',
+			`/evidence-analyses/by-fact?${params.toString()}`
+		);
+	}
+
+	// Evidence Conflict endpoints
+	async listEvidenceConflicts(params?: {
+		limit?: number;
+		offset?: number;
+		status?: 'open' | 'resolved';
+	}): Promise<EvidenceConflictListResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+		if (params?.status) searchParams.set('status', params.status);
+
+		const query = searchParams.toString();
+		return this.request<EvidenceConflictListResponse>(
+			'GET',
+			`/evidence-conflicts${query ? `?${query}` : ''}`
+		);
+	}
+
+	async getEvidenceConflict(id: string): Promise<EvidenceConflictResponse> {
+		return this.request<EvidenceConflictResponse>('GET', `/evidence-conflicts/${id}`);
+	}
+
+	async resolveEvidenceConflict(
+		id: string,
+		data: EvidenceConflictResolveRequest
+	): Promise<EvidenceConflictResponse> {
+		return this.request<EvidenceConflictResponse>(
+			'POST',
+			`/evidence-conflicts/${id}/resolve`,
+			data
+		);
+	}
+
+	async getConflictsBySubject(subjectId: string): Promise<EvidenceConflictResponse[]> {
+		return this.request<EvidenceConflictResponse[]>(
+			'GET',
+			`/evidence-conflicts/by-subject/${subjectId}`
+		);
+	}
+
+	// Research Log endpoints
+	async listResearchLogs(params?: {
+		limit?: number;
+		offset?: number;
+		sort?: string;
+		order?: 'asc' | 'desc';
+	}): Promise<ResearchLogListResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+		if (params?.sort) searchParams.set('sort', params.sort);
+		if (params?.order) searchParams.set('order', params.order);
+
+		const query = searchParams.toString();
+		return this.request<ResearchLogListResponse>(
+			'GET',
+			`/research-logs${query ? `?${query}` : ''}`
+		);
+	}
+
+	async createResearchLog(data: ResearchLogCreateRequest): Promise<ResearchLogResponse> {
+		return this.request<ResearchLogResponse>('POST', '/research-logs', data);
+	}
+
+	async getResearchLog(id: string): Promise<ResearchLogResponse> {
+		return this.request<ResearchLogResponse>('GET', `/research-logs/${id}`);
+	}
+
+	async updateResearchLog(
+		id: string,
+		data: ResearchLogUpdateRequest
+	): Promise<ResearchLogResponse> {
+		return this.request<ResearchLogResponse>('PUT', `/research-logs/${id}`, data);
+	}
+
+	async deleteResearchLog(id: string, version: number): Promise<void> {
+		return this.request<void>('DELETE', `/research-logs/${id}?version=${version}`);
+	}
+
+	async getResearchLogsBySubject(subjectId: string): Promise<ResearchLogResponse[]> {
+		return this.request<ResearchLogResponse[]>(
+			'GET',
+			`/research-logs/by-subject/${subjectId}`
+		);
+	}
+
+	// Proof Summary endpoints
+	async listProofSummaries(params?: {
+		limit?: number;
+		offset?: number;
+		sort?: string;
+		order?: 'asc' | 'desc';
+	}): Promise<ProofSummaryListResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+		if (params?.sort) searchParams.set('sort', params.sort);
+		if (params?.order) searchParams.set('order', params.order);
+
+		const query = searchParams.toString();
+		return this.request<ProofSummaryListResponse>(
+			'GET',
+			`/proof-summaries${query ? `?${query}` : ''}`
+		);
+	}
+
+	async createProofSummary(data: ProofSummaryCreateRequest): Promise<ProofSummaryResponse> {
+		return this.request<ProofSummaryResponse>('POST', '/proof-summaries', data);
+	}
+
+	async getProofSummary(id: string): Promise<ProofSummaryResponse> {
+		return this.request<ProofSummaryResponse>('GET', `/proof-summaries/${id}`);
+	}
+
+	async updateProofSummary(
+		id: string,
+		data: ProofSummaryUpdateRequest
+	): Promise<ProofSummaryResponse> {
+		return this.request<ProofSummaryResponse>('PUT', `/proof-summaries/${id}`, data);
+	}
+
+	async deleteProofSummary(id: string, version: number): Promise<void> {
+		return this.request<void>('DELETE', `/proof-summaries/${id}?version=${version}`);
+	}
+
+	async getProofSummaryByFact(
+		factType: string,
+		subjectId: string
+	): Promise<ProofSummaryResponse[]> {
+		const params = new URLSearchParams({ factType, subjectId });
+		return this.request<ProofSummaryResponse[]>(
+			'GET',
+			`/proof-summaries/by-fact?${params.toString()}`
+		);
 	}
 }
 

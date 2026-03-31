@@ -151,6 +151,72 @@ func (e DiscoverySuggestionType) Valid() bool {
 	}
 }
 
+// Defines values for EvidenceAnalysisCreateResearchStatus.
+const (
+	EvidenceAnalysisCreateResearchStatusCertain  EvidenceAnalysisCreateResearchStatus = "certain"
+	EvidenceAnalysisCreateResearchStatusPossible EvidenceAnalysisCreateResearchStatus = "possible"
+	EvidenceAnalysisCreateResearchStatusProbable EvidenceAnalysisCreateResearchStatus = "probable"
+	EvidenceAnalysisCreateResearchStatusUnknown  EvidenceAnalysisCreateResearchStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the EvidenceAnalysisCreateResearchStatus enum.
+func (e EvidenceAnalysisCreateResearchStatus) Valid() bool {
+	switch e {
+	case EvidenceAnalysisCreateResearchStatusCertain:
+		return true
+	case EvidenceAnalysisCreateResearchStatusPossible:
+		return true
+	case EvidenceAnalysisCreateResearchStatusProbable:
+		return true
+	case EvidenceAnalysisCreateResearchStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EvidenceAnalysisUpdateResearchStatus.
+const (
+	EvidenceAnalysisUpdateResearchStatusCertain  EvidenceAnalysisUpdateResearchStatus = "certain"
+	EvidenceAnalysisUpdateResearchStatusPossible EvidenceAnalysisUpdateResearchStatus = "possible"
+	EvidenceAnalysisUpdateResearchStatusProbable EvidenceAnalysisUpdateResearchStatus = "probable"
+	EvidenceAnalysisUpdateResearchStatusUnknown  EvidenceAnalysisUpdateResearchStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the EvidenceAnalysisUpdateResearchStatus enum.
+func (e EvidenceAnalysisUpdateResearchStatus) Valid() bool {
+	switch e {
+	case EvidenceAnalysisUpdateResearchStatusCertain:
+		return true
+	case EvidenceAnalysisUpdateResearchStatusPossible:
+		return true
+	case EvidenceAnalysisUpdateResearchStatusProbable:
+		return true
+	case EvidenceAnalysisUpdateResearchStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EvidenceConflictStatus.
+const (
+	EvidenceConflictStatusOpen     EvidenceConflictStatus = "open"
+	EvidenceConflictStatusResolved EvidenceConflictStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the EvidenceConflictStatus enum.
+func (e EvidenceConflictStatus) Valid() bool {
+	switch e {
+	case EvidenceConflictStatusOpen:
+		return true
+	case EvidenceConflictStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FamilyRelationshipType.
 const (
 	FamilyRelationshipTypeMarriage    FamilyRelationshipType = "marriage"
@@ -667,6 +733,141 @@ func (e PersonUpdateGender) Valid() bool {
 	}
 }
 
+// Defines values for ProofSummaryResearchStatus.
+const (
+	ProofSummaryResearchStatusCertain  ProofSummaryResearchStatus = "certain"
+	ProofSummaryResearchStatusPossible ProofSummaryResearchStatus = "possible"
+	ProofSummaryResearchStatusProbable ProofSummaryResearchStatus = "probable"
+	ProofSummaryResearchStatusUnknown  ProofSummaryResearchStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ProofSummaryResearchStatus enum.
+func (e ProofSummaryResearchStatus) Valid() bool {
+	switch e {
+	case ProofSummaryResearchStatusCertain:
+		return true
+	case ProofSummaryResearchStatusPossible:
+		return true
+	case ProofSummaryResearchStatusProbable:
+		return true
+	case ProofSummaryResearchStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProofSummaryCreateResearchStatus.
+const (
+	ProofSummaryCreateResearchStatusCertain  ProofSummaryCreateResearchStatus = "certain"
+	ProofSummaryCreateResearchStatusPossible ProofSummaryCreateResearchStatus = "possible"
+	ProofSummaryCreateResearchStatusProbable ProofSummaryCreateResearchStatus = "probable"
+	ProofSummaryCreateResearchStatusUnknown  ProofSummaryCreateResearchStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ProofSummaryCreateResearchStatus enum.
+func (e ProofSummaryCreateResearchStatus) Valid() bool {
+	switch e {
+	case ProofSummaryCreateResearchStatusCertain:
+		return true
+	case ProofSummaryCreateResearchStatusPossible:
+		return true
+	case ProofSummaryCreateResearchStatusProbable:
+		return true
+	case ProofSummaryCreateResearchStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProofSummaryUpdateResearchStatus.
+const (
+	ProofSummaryUpdateResearchStatusCertain  ProofSummaryUpdateResearchStatus = "certain"
+	ProofSummaryUpdateResearchStatusPossible ProofSummaryUpdateResearchStatus = "possible"
+	ProofSummaryUpdateResearchStatusProbable ProofSummaryUpdateResearchStatus = "probable"
+	ProofSummaryUpdateResearchStatusUnknown  ProofSummaryUpdateResearchStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ProofSummaryUpdateResearchStatus enum.
+func (e ProofSummaryUpdateResearchStatus) Valid() bool {
+	switch e {
+	case ProofSummaryUpdateResearchStatusCertain:
+		return true
+	case ProofSummaryUpdateResearchStatusPossible:
+		return true
+	case ProofSummaryUpdateResearchStatusProbable:
+		return true
+	case ProofSummaryUpdateResearchStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ResearchLogOutcome.
+const (
+	ResearchLogOutcomeFound        ResearchLogOutcome = "found"
+	ResearchLogOutcomeInconclusive ResearchLogOutcome = "inconclusive"
+	ResearchLogOutcomeNotFound     ResearchLogOutcome = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the ResearchLogOutcome enum.
+func (e ResearchLogOutcome) Valid() bool {
+	switch e {
+	case ResearchLogOutcomeFound:
+		return true
+	case ResearchLogOutcomeInconclusive:
+		return true
+	case ResearchLogOutcomeNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ResearchLogCreateOutcome.
+const (
+	ResearchLogCreateOutcomeFound        ResearchLogCreateOutcome = "found"
+	ResearchLogCreateOutcomeInconclusive ResearchLogCreateOutcome = "inconclusive"
+	ResearchLogCreateOutcomeNotFound     ResearchLogCreateOutcome = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the ResearchLogCreateOutcome enum.
+func (e ResearchLogCreateOutcome) Valid() bool {
+	switch e {
+	case ResearchLogCreateOutcomeFound:
+		return true
+	case ResearchLogCreateOutcomeInconclusive:
+		return true
+	case ResearchLogCreateOutcomeNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ResearchLogUpdateOutcome.
+const (
+	ResearchLogUpdateOutcomeFound        ResearchLogUpdateOutcome = "found"
+	ResearchLogUpdateOutcomeInconclusive ResearchLogUpdateOutcome = "inconclusive"
+	ResearchLogUpdateOutcomeNotFound     ResearchLogUpdateOutcome = "not_found"
+)
+
+// Valid indicates whether the value is a known member of the ResearchLogUpdateOutcome enum.
+func (e ResearchLogUpdateOutcome) Valid() bool {
+	switch e {
+	case ResearchLogUpdateOutcomeFound:
+		return true
+	case ResearchLogUpdateOutcomeInconclusive:
+		return true
+	case ResearchLogUpdateOutcomeNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ResearchStatus.
 const (
 	ResearchStatusCertain  ResearchStatus = "certain"
@@ -817,6 +1018,63 @@ func (e ListAssociationsParamsOrder) Valid() bool {
 	}
 }
 
+// Defines values for ListEvidenceAnalysesParamsSort.
+const (
+	ListEvidenceAnalysesParamsSortCreatedAt ListEvidenceAnalysesParamsSort = "created_at"
+	ListEvidenceAnalysesParamsSortFactType  ListEvidenceAnalysesParamsSort = "fact_type"
+	ListEvidenceAnalysesParamsSortUpdatedAt ListEvidenceAnalysesParamsSort = "updated_at"
+)
+
+// Valid indicates whether the value is a known member of the ListEvidenceAnalysesParamsSort enum.
+func (e ListEvidenceAnalysesParamsSort) Valid() bool {
+	switch e {
+	case ListEvidenceAnalysesParamsSortCreatedAt:
+		return true
+	case ListEvidenceAnalysesParamsSortFactType:
+		return true
+	case ListEvidenceAnalysesParamsSortUpdatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListEvidenceAnalysesParamsOrder.
+const (
+	ListEvidenceAnalysesParamsOrderAsc  ListEvidenceAnalysesParamsOrder = "asc"
+	ListEvidenceAnalysesParamsOrderDesc ListEvidenceAnalysesParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListEvidenceAnalysesParamsOrder enum.
+func (e ListEvidenceAnalysesParamsOrder) Valid() bool {
+	switch e {
+	case ListEvidenceAnalysesParamsOrderAsc:
+		return true
+	case ListEvidenceAnalysesParamsOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListEvidenceConflictsParamsStatus.
+const (
+	ListEvidenceConflictsParamsStatusOpen     ListEvidenceConflictsParamsStatus = "open"
+	ListEvidenceConflictsParamsStatusResolved ListEvidenceConflictsParamsStatus = "resolved"
+)
+
+// Valid indicates whether the value is a known member of the ListEvidenceConflictsParamsStatus enum.
+func (e ListEvidenceConflictsParamsStatus) Valid() bool {
+	switch e {
+	case ListEvidenceConflictsParamsStatusOpen:
+		return true
+	case ListEvidenceConflictsParamsStatusResolved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListHistoryParamsEntityType.
 const (
 	ListHistoryParamsEntityTypeCitation ListHistoryParamsEntityType = "citation"
@@ -942,25 +1200,25 @@ func (e ListPersonsParamsOrder) Valid() bool {
 
 // Defines values for ListPersonsParamsResearchStatus.
 const (
-	Certain  ListPersonsParamsResearchStatus = "certain"
-	Possible ListPersonsParamsResearchStatus = "possible"
-	Probable ListPersonsParamsResearchStatus = "probable"
-	Unknown  ListPersonsParamsResearchStatus = "unknown"
-	Unset    ListPersonsParamsResearchStatus = "unset"
+	ListPersonsParamsResearchStatusCertain  ListPersonsParamsResearchStatus = "certain"
+	ListPersonsParamsResearchStatusPossible ListPersonsParamsResearchStatus = "possible"
+	ListPersonsParamsResearchStatusProbable ListPersonsParamsResearchStatus = "probable"
+	ListPersonsParamsResearchStatusUnknown  ListPersonsParamsResearchStatus = "unknown"
+	ListPersonsParamsResearchStatusUnset    ListPersonsParamsResearchStatus = "unset"
 )
 
 // Valid indicates whether the value is a known member of the ListPersonsParamsResearchStatus enum.
 func (e ListPersonsParamsResearchStatus) Valid() bool {
 	switch e {
-	case Certain:
+	case ListPersonsParamsResearchStatusCertain:
 		return true
-	case Possible:
+	case ListPersonsParamsResearchStatusPossible:
 		return true
-	case Probable:
+	case ListPersonsParamsResearchStatusProbable:
 		return true
-	case Unknown:
+	case ListPersonsParamsResearchStatusUnknown:
 		return true
-	case Unset:
+	case ListPersonsParamsResearchStatusUnset:
 		return true
 	default:
 		return false
@@ -994,6 +1252,45 @@ func (e UploadPersonMediaMultipartBodyMediaType) Valid() bool {
 	}
 }
 
+// Defines values for ListProofSummariesParamsSort.
+const (
+	ListProofSummariesParamsSortCreatedAt ListProofSummariesParamsSort = "created_at"
+	ListProofSummariesParamsSortFactType  ListProofSummariesParamsSort = "fact_type"
+	ListProofSummariesParamsSortUpdatedAt ListProofSummariesParamsSort = "updated_at"
+)
+
+// Valid indicates whether the value is a known member of the ListProofSummariesParamsSort enum.
+func (e ListProofSummariesParamsSort) Valid() bool {
+	switch e {
+	case ListProofSummariesParamsSortCreatedAt:
+		return true
+	case ListProofSummariesParamsSortFactType:
+		return true
+	case ListProofSummariesParamsSortUpdatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListProofSummariesParamsOrder.
+const (
+	ListProofSummariesParamsOrderAsc  ListProofSummariesParamsOrder = "asc"
+	ListProofSummariesParamsOrderDesc ListProofSummariesParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListProofSummariesParamsOrder enum.
+func (e ListProofSummariesParamsOrder) Valid() bool {
+	switch e {
+	case ListProofSummariesParamsOrderAsc:
+		return true
+	case ListProofSummariesParamsOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetValidationIssuesParamsSeverity.
 const (
 	GetValidationIssuesParamsSeverityError   GetValidationIssuesParamsSeverity = "error"
@@ -1009,6 +1306,45 @@ func (e GetValidationIssuesParamsSeverity) Valid() bool {
 	case GetValidationIssuesParamsSeverityInfo:
 		return true
 	case GetValidationIssuesParamsSeverityWarning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListResearchLogsParamsSort.
+const (
+	ListResearchLogsParamsSortCreatedAt  ListResearchLogsParamsSort = "created_at"
+	ListResearchLogsParamsSortSearchDate ListResearchLogsParamsSort = "search_date"
+	ListResearchLogsParamsSortUpdatedAt  ListResearchLogsParamsSort = "updated_at"
+)
+
+// Valid indicates whether the value is a known member of the ListResearchLogsParamsSort enum.
+func (e ListResearchLogsParamsSort) Valid() bool {
+	switch e {
+	case ListResearchLogsParamsSortCreatedAt:
+		return true
+	case ListResearchLogsParamsSortSearchDate:
+		return true
+	case ListResearchLogsParamsSortUpdatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListResearchLogsParamsOrder.
+const (
+	ListResearchLogsParamsOrderAsc  ListResearchLogsParamsOrder = "asc"
+	ListResearchLogsParamsOrderDesc ListResearchLogsParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListResearchLogsParamsOrder enum.
+func (e ListResearchLogsParamsOrder) Valid() bool {
+	switch e {
+	case ListResearchLogsParamsOrderAsc:
+		return true
+	case ListResearchLogsParamsOrderDesc:
 		return true
 	default:
 		return false
@@ -1059,22 +1395,22 @@ func (e SearchPersonsParamsOrder) Valid() bool {
 
 // Defines values for ListSourcesParamsSort.
 const (
-	ListSourcesParamsSortCreatedAt  ListSourcesParamsSort = "created_at"
-	ListSourcesParamsSortSourceType ListSourcesParamsSort = "source_type"
-	ListSourcesParamsSortTitle      ListSourcesParamsSort = "title"
-	ListSourcesParamsSortUpdatedAt  ListSourcesParamsSort = "updated_at"
+	CreatedAt  ListSourcesParamsSort = "created_at"
+	SourceType ListSourcesParamsSort = "source_type"
+	Title      ListSourcesParamsSort = "title"
+	UpdatedAt  ListSourcesParamsSort = "updated_at"
 )
 
 // Valid indicates whether the value is a known member of the ListSourcesParamsSort enum.
 func (e ListSourcesParamsSort) Valid() bool {
 	switch e {
-	case ListSourcesParamsSortCreatedAt:
+	case CreatedAt:
 		return true
-	case ListSourcesParamsSortSourceType:
+	case SourceType:
 		return true
-	case ListSourcesParamsSortTitle:
+	case Title:
 		return true
-	case ListSourcesParamsSortUpdatedAt:
+	case UpdatedAt:
 		return true
 	default:
 		return false
@@ -1119,16 +1455,16 @@ func (e ListSubmittersParamsSort) Valid() bool {
 
 // Defines values for ListSubmittersParamsOrder.
 const (
-	Asc  ListSubmittersParamsOrder = "asc"
-	Desc ListSubmittersParamsOrder = "desc"
+	ListSubmittersParamsOrderAsc  ListSubmittersParamsOrder = "asc"
+	ListSubmittersParamsOrderDesc ListSubmittersParamsOrder = "desc"
 )
 
 // Valid indicates whether the value is a known member of the ListSubmittersParamsOrder enum.
 func (e ListSubmittersParamsOrder) Valid() bool {
 	switch e {
-	case Asc:
+	case ListSubmittersParamsOrderAsc:
 		return true
-	case Desc:
+	case ListSubmittersParamsOrderDesc:
 		return true
 	default:
 		return false
@@ -1788,6 +2124,101 @@ type EventExport struct {
 type EventsExportResponse struct {
 	Events []EventExport `json:"events"`
 	Total  int           `json:"total"`
+}
+
+// EvidenceAnalysis defines model for EvidenceAnalysis.
+type EvidenceAnalysis struct {
+	// CitationIds IDs of citations supporting this analysis
+	CitationIds *[]openapi_types.UUID `json:"citation_ids,omitempty"`
+
+	// Conclusion The conclusion drawn from the evidence
+	Conclusion string `json:"conclusion"`
+
+	// ConflictId ID of auto-detected conflict (present in create/update responses)
+	ConflictId *openapi_types.UUID `json:"conflict_id,omitempty"`
+	CreatedAt  *time.Time          `json:"created_at,omitempty"`
+
+	// FactType Type of fact being analyzed (e.g., birth, death, marriage)
+	FactType string             `json:"fact_type"`
+	Id       openapi_types.UUID `json:"id"`
+	Notes    *string            `json:"notes,omitempty"`
+
+	// ResearchStatus Confidence level of genealogical data per GPS standards
+	ResearchStatus *ResearchStatus `json:"research_status,omitempty"`
+
+	// SubjectId ID of the person or family this analysis is about
+	SubjectId openapi_types.UUID `json:"subject_id"`
+	UpdatedAt *time.Time         `json:"updated_at,omitempty"`
+	Version   int64              `json:"version"`
+}
+
+// EvidenceAnalysisCreate defines model for EvidenceAnalysisCreate.
+type EvidenceAnalysisCreate struct {
+	CitationIds *[]openapi_types.UUID `json:"citation_ids,omitempty"`
+	Conclusion  string                `json:"conclusion"`
+
+	// FactType Type of fact being analyzed
+	FactType       string                                `json:"fact_type"`
+	Notes          *string                               `json:"notes,omitempty"`
+	ResearchStatus *EvidenceAnalysisCreateResearchStatus `json:"research_status,omitempty"`
+	SubjectId      openapi_types.UUID                    `json:"subject_id"`
+}
+
+// EvidenceAnalysisCreateResearchStatus defines model for EvidenceAnalysisCreate.ResearchStatus.
+type EvidenceAnalysisCreateResearchStatus string
+
+// EvidenceAnalysisList defines model for EvidenceAnalysisList.
+type EvidenceAnalysisList struct {
+	Analyses []EvidenceAnalysis `json:"analyses"`
+	Limit    *int               `json:"limit,omitempty"`
+	Offset   *int               `json:"offset,omitempty"`
+	Total    int                `json:"total"`
+}
+
+// EvidenceAnalysisUpdate defines model for EvidenceAnalysisUpdate.
+type EvidenceAnalysisUpdate struct {
+	CitationIds    *[]openapi_types.UUID                 `json:"citation_ids,omitempty"`
+	Conclusion     *string                               `json:"conclusion,omitempty"`
+	FactType       *string                               `json:"fact_type,omitempty"`
+	Notes          *string                               `json:"notes,omitempty"`
+	ResearchStatus *EvidenceAnalysisUpdateResearchStatus `json:"research_status,omitempty"`
+	SubjectId      *openapi_types.UUID                   `json:"subject_id,omitempty"`
+	Version        int64                                 `json:"version"`
+}
+
+// EvidenceAnalysisUpdateResearchStatus defines model for EvidenceAnalysisUpdate.ResearchStatus.
+type EvidenceAnalysisUpdateResearchStatus string
+
+// EvidenceConflict defines model for EvidenceConflict.
+type EvidenceConflict struct {
+	AnalysisIds []openapi_types.UUID   `json:"analysis_ids"`
+	CreatedAt   *time.Time             `json:"created_at,omitempty"`
+	Description string                 `json:"description"`
+	FactType    string                 `json:"fact_type"`
+	Id          openapi_types.UUID     `json:"id"`
+	Resolution  *string                `json:"resolution,omitempty"`
+	Status      EvidenceConflictStatus `json:"status"`
+	SubjectId   openapi_types.UUID     `json:"subject_id"`
+	UpdatedAt   *time.Time             `json:"updated_at,omitempty"`
+	Version     int64                  `json:"version"`
+}
+
+// EvidenceConflictStatus defines model for EvidenceConflict.Status.
+type EvidenceConflictStatus string
+
+// EvidenceConflictList defines model for EvidenceConflictList.
+type EvidenceConflictList struct {
+	Conflicts []EvidenceConflict `json:"conflicts"`
+	Limit     *int               `json:"limit,omitempty"`
+	Offset    *int               `json:"offset,omitempty"`
+	Total     int                `json:"total"`
+}
+
+// EvidenceConflictResolve defines model for EvidenceConflictResolve.
+type EvidenceConflictResolve struct {
+	// Resolution How the conflict was resolved
+	Resolution string `json:"resolution"`
+	Version    int64  `json:"version"`
 }
 
 // ExportEstimate defines model for ExportEstimate.
@@ -2682,6 +3113,63 @@ type PlaceIndexResponse struct {
 	Total int `json:"total"`
 }
 
+// ProofSummary defines model for ProofSummary.
+type ProofSummary struct {
+	// AnalysisIds IDs of evidence analyses used in this proof
+	AnalysisIds *[]openapi_types.UUID `json:"analysis_ids,omitempty"`
+
+	// Argument The proof argument supporting the conclusion
+	Argument string `json:"argument"`
+
+	// Conclusion The proven conclusion
+	Conclusion     string                      `json:"conclusion"`
+	CreatedAt      *time.Time                  `json:"created_at,omitempty"`
+	FactType       string                      `json:"fact_type"`
+	Id             openapi_types.UUID          `json:"id"`
+	ResearchStatus *ProofSummaryResearchStatus `json:"research_status,omitempty"`
+	SubjectId      openapi_types.UUID          `json:"subject_id"`
+	UpdatedAt      *time.Time                  `json:"updated_at,omitempty"`
+	Version        int64                       `json:"version"`
+}
+
+// ProofSummaryResearchStatus defines model for ProofSummary.ResearchStatus.
+type ProofSummaryResearchStatus string
+
+// ProofSummaryCreate defines model for ProofSummaryCreate.
+type ProofSummaryCreate struct {
+	AnalysisIds    *[]openapi_types.UUID             `json:"analysis_ids,omitempty"`
+	Argument       string                            `json:"argument"`
+	Conclusion     string                            `json:"conclusion"`
+	FactType       string                            `json:"fact_type"`
+	ResearchStatus *ProofSummaryCreateResearchStatus `json:"research_status,omitempty"`
+	SubjectId      openapi_types.UUID                `json:"subject_id"`
+}
+
+// ProofSummaryCreateResearchStatus defines model for ProofSummaryCreate.ResearchStatus.
+type ProofSummaryCreateResearchStatus string
+
+// ProofSummaryList defines model for ProofSummaryList.
+type ProofSummaryList struct {
+	Limit     *int           `json:"limit,omitempty"`
+	Offset    *int           `json:"offset,omitempty"`
+	Summaries []ProofSummary `json:"summaries"`
+	Total     int            `json:"total"`
+}
+
+// ProofSummaryUpdate defines model for ProofSummaryUpdate.
+type ProofSummaryUpdate struct {
+	AnalysisIds    *[]openapi_types.UUID             `json:"analysis_ids,omitempty"`
+	Argument       *string                           `json:"argument,omitempty"`
+	Conclusion     *string                           `json:"conclusion,omitempty"`
+	FactType       *string                           `json:"fact_type,omitempty"`
+	ResearchStatus *ProofSummaryUpdateResearchStatus `json:"research_status,omitempty"`
+	SubjectId      *openapi_types.UUID               `json:"subject_id,omitempty"`
+	Version        int64                             `json:"version"`
+}
+
+// ProofSummaryUpdateResearchStatus defines model for ProofSummaryUpdate.ResearchStatus.
+type ProofSummaryUpdateResearchStatus string
+
 // QualityIssue defines model for QualityIssue.
 type QualityIssue struct {
 	// Count Number of records with this issue
@@ -2770,6 +3258,67 @@ type RelationshipResult struct {
 	// Summary Human-readable relationship summary
 	Summary *string `json:"summary,omitempty"`
 }
+
+// ResearchLog defines model for ResearchLog.
+type ResearchLog struct {
+	CreatedAt *time.Time         `json:"created_at,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+	Notes     *string            `json:"notes,omitempty"`
+	Outcome   ResearchLogOutcome `json:"outcome"`
+
+	// Repository Name of the repository searched
+	Repository string    `json:"repository"`
+	SearchDate time.Time `json:"search_date"`
+
+	// SearchDescription Description of the search performed
+	SearchDescription string             `json:"search_description"`
+	SubjectId         openapi_types.UUID `json:"subject_id"`
+
+	// SubjectType Type of subject (person or family)
+	SubjectType string     `json:"subject_type"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	Version     int64      `json:"version"`
+}
+
+// ResearchLogOutcome defines model for ResearchLog.Outcome.
+type ResearchLogOutcome string
+
+// ResearchLogCreate defines model for ResearchLogCreate.
+type ResearchLogCreate struct {
+	Notes             *string                  `json:"notes,omitempty"`
+	Outcome           ResearchLogCreateOutcome `json:"outcome"`
+	Repository        string                   `json:"repository"`
+	SearchDate        time.Time                `json:"search_date"`
+	SearchDescription string                   `json:"search_description"`
+	SubjectId         openapi_types.UUID       `json:"subject_id"`
+	SubjectType       string                   `json:"subject_type"`
+}
+
+// ResearchLogCreateOutcome defines model for ResearchLogCreate.Outcome.
+type ResearchLogCreateOutcome string
+
+// ResearchLogList defines model for ResearchLogList.
+type ResearchLogList struct {
+	Limit  *int          `json:"limit,omitempty"`
+	Logs   []ResearchLog `json:"logs"`
+	Offset *int          `json:"offset,omitempty"`
+	Total  int           `json:"total"`
+}
+
+// ResearchLogUpdate defines model for ResearchLogUpdate.
+type ResearchLogUpdate struct {
+	Notes             *string                   `json:"notes,omitempty"`
+	Outcome           *ResearchLogUpdateOutcome `json:"outcome,omitempty"`
+	Repository        *string                   `json:"repository,omitempty"`
+	SearchDate        *time.Time                `json:"search_date,omitempty"`
+	SearchDescription *string                   `json:"search_description,omitempty"`
+	SubjectId         *openapi_types.UUID       `json:"subject_id,omitempty"`
+	SubjectType       *string                   `json:"subject_type,omitempty"`
+	Version           int64                     `json:"version"`
+}
+
+// ResearchLogUpdateOutcome defines model for ResearchLogUpdate.Outcome.
+type ResearchLogUpdateOutcome string
 
 // ResearchStatus Confidence level of genealogical data per GPS standards
 type ResearchStatus string
@@ -3170,6 +3719,12 @@ type ValidationIssuesResponse struct {
 // AssociationId defines model for associationId.
 type AssociationId = openapi_types.UUID
 
+// EvidenceAnalysisId defines model for evidenceAnalysisId.
+type EvidenceAnalysisId = openapi_types.UUID
+
+// EvidenceConflictId defines model for evidenceConflictId.
+type EvidenceConflictId = openapi_types.UUID
+
 // FamilyId defines model for familyId.
 type FamilyId = openapi_types.UUID
 
@@ -3187,6 +3742,12 @@ type OffsetParam = int
 
 // PersonId defines model for personId.
 type PersonId = openapi_types.UUID
+
+// ProofSummaryId defines model for proofSummaryId.
+type ProofSummaryId = openapi_types.UUID
+
+// ResearchLogId defines model for researchLogId.
+type ResearchLogId = openapi_types.UUID
 
 // SnapshotId defines model for snapshotId.
 type SnapshotId = openapi_types.UUID
@@ -3307,6 +3868,44 @@ type GetDescendancyParams struct {
 	// Generations Number of descendant generations to include
 	Generations *int `form:"generations,omitempty" json:"generations,omitempty"`
 }
+
+// ListEvidenceAnalysesParams defines parameters for ListEvidenceAnalyses.
+type ListEvidenceAnalysesParams struct {
+	Limit  *LimitParam                      `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam                     `form:"offset,omitempty" json:"offset,omitempty"`
+	Sort   *ListEvidenceAnalysesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
+	Order  *ListEvidenceAnalysesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListEvidenceAnalysesParamsSort defines parameters for ListEvidenceAnalyses.
+type ListEvidenceAnalysesParamsSort string
+
+// ListEvidenceAnalysesParamsOrder defines parameters for ListEvidenceAnalyses.
+type ListEvidenceAnalysesParamsOrder string
+
+// GetAnalysesByFactParams defines parameters for GetAnalysesByFact.
+type GetAnalysesByFactParams struct {
+	FactType  string             `form:"factType" json:"factType"`
+	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
+}
+
+// DeleteEvidenceAnalysisParams defines parameters for DeleteEvidenceAnalysis.
+type DeleteEvidenceAnalysisParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
+
+// ListEvidenceConflictsParams defines parameters for ListEvidenceConflicts.
+type ListEvidenceConflictsParams struct {
+	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Status Filter by conflict status
+	Status *ListEvidenceConflictsParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// ListEvidenceConflictsParamsStatus defines parameters for ListEvidenceConflicts.
+type ListEvidenceConflictsParamsStatus string
 
 // ListFamiliesParams defines parameters for ListFamilies.
 type ListFamiliesParams struct {
@@ -3468,6 +4067,32 @@ type GetPersonRestorePointsParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListProofSummariesParams defines parameters for ListProofSummaries.
+type ListProofSummariesParams struct {
+	Limit  *LimitParam                    `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam                   `form:"offset,omitempty" json:"offset,omitempty"`
+	Sort   *ListProofSummariesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
+	Order  *ListProofSummariesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListProofSummariesParamsSort defines parameters for ListProofSummaries.
+type ListProofSummariesParamsSort string
+
+// ListProofSummariesParamsOrder defines parameters for ListProofSummaries.
+type ListProofSummariesParamsOrder string
+
+// GetProofSummaryByFactParams defines parameters for GetProofSummaryByFact.
+type GetProofSummaryByFactParams struct {
+	FactType  string             `form:"factType" json:"factType"`
+	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
+}
+
+// DeleteProofSummaryParams defines parameters for DeleteProofSummary.
+type DeleteProofSummaryParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
+
 // GetValidationIssuesParams defines parameters for GetValidationIssues.
 type GetValidationIssuesParams struct {
 	// Severity Filter by severity level
@@ -3476,6 +4101,26 @@ type GetValidationIssuesParams struct {
 
 // GetValidationIssuesParamsSeverity defines parameters for GetValidationIssues.
 type GetValidationIssuesParamsSeverity string
+
+// ListResearchLogsParams defines parameters for ListResearchLogs.
+type ListResearchLogsParams struct {
+	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam                 `form:"offset,omitempty" json:"offset,omitempty"`
+	Sort   *ListResearchLogsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
+	Order  *ListResearchLogsParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListResearchLogsParamsSort defines parameters for ListResearchLogs.
+type ListResearchLogsParamsSort string
+
+// ListResearchLogsParamsOrder defines parameters for ListResearchLogs.
+type ListResearchLogsParamsOrder string
+
+// DeleteResearchLogParams defines parameters for DeleteResearchLog.
+type DeleteResearchLogParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
 
 // SearchPersonsParams defines parameters for SearchPersons.
 type SearchPersonsParams struct {
@@ -3600,6 +4245,15 @@ type UpdateCitationJSONRequestBody = CitationUpdate
 // RollbackCitationJSONRequestBody defines body for RollbackCitation for application/json ContentType.
 type RollbackCitationJSONRequestBody = RollbackRequest
 
+// CreateEvidenceAnalysisJSONRequestBody defines body for CreateEvidenceAnalysis for application/json ContentType.
+type CreateEvidenceAnalysisJSONRequestBody = EvidenceAnalysisCreate
+
+// UpdateEvidenceAnalysisJSONRequestBody defines body for UpdateEvidenceAnalysis for application/json ContentType.
+type UpdateEvidenceAnalysisJSONRequestBody = EvidenceAnalysisUpdate
+
+// ResolveEvidenceConflictJSONRequestBody defines body for ResolveEvidenceConflict for application/json ContentType.
+type ResolveEvidenceConflictJSONRequestBody = EvidenceConflictResolve
+
 // CreateFamilyJSONRequestBody defines body for CreateFamily for application/json ContentType.
 type CreateFamilyJSONRequestBody = FamilyCreate
 
@@ -3662,6 +4316,18 @@ type UpdatePersonNameJSONRequestBody = PersonNameUpdate
 
 // RollbackPersonJSONRequestBody defines body for RollbackPerson for application/json ContentType.
 type RollbackPersonJSONRequestBody = RollbackRequest
+
+// CreateProofSummaryJSONRequestBody defines body for CreateProofSummary for application/json ContentType.
+type CreateProofSummaryJSONRequestBody = ProofSummaryCreate
+
+// UpdateProofSummaryJSONRequestBody defines body for UpdateProofSummary for application/json ContentType.
+type UpdateProofSummaryJSONRequestBody = ProofSummaryUpdate
+
+// CreateResearchLogJSONRequestBody defines body for CreateResearchLog for application/json ContentType.
+type CreateResearchLogJSONRequestBody = ResearchLogCreate
+
+// UpdateResearchLogJSONRequestBody defines body for UpdateResearchLog for application/json ContentType.
+type UpdateResearchLogJSONRequestBody = ResearchLogUpdate
 
 // CreateSnapshotJSONRequestBody defines body for CreateSnapshot for application/json ContentType.
 type CreateSnapshotJSONRequestBody = SnapshotCreate
@@ -3758,6 +4424,36 @@ type ServerInterface interface {
 	// Get descendancy tree for a person
 	// (GET /descendancy/{id})
 	GetDescendancy(ctx echo.Context, id PersonId, params GetDescendancyParams) error
+	// List all evidence analyses
+	// (GET /evidence-analyses)
+	ListEvidenceAnalyses(ctx echo.Context, params ListEvidenceAnalysesParams) error
+	// Create a new evidence analysis
+	// (POST /evidence-analyses)
+	CreateEvidenceAnalysis(ctx echo.Context) error
+	// Get evidence analyses by fact type and subject
+	// (GET /evidence-analyses/by-fact)
+	GetAnalysesByFact(ctx echo.Context, params GetAnalysesByFactParams) error
+	// Delete an evidence analysis
+	// (DELETE /evidence-analyses/{id})
+	DeleteEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId, params DeleteEvidenceAnalysisParams) error
+	// Get an evidence analysis by ID
+	// (GET /evidence-analyses/{id})
+	GetEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error
+	// Update an evidence analysis
+	// (PUT /evidence-analyses/{id})
+	UpdateEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error
+	// List all evidence conflicts
+	// (GET /evidence-conflicts)
+	ListEvidenceConflicts(ctx echo.Context, params ListEvidenceConflictsParams) error
+	// Get evidence conflicts for a subject
+	// (GET /evidence-conflicts/by-subject/{subjectId})
+	GetConflictsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error
+	// Get an evidence conflict by ID
+	// (GET /evidence-conflicts/{id})
+	GetEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error
+	// Resolve an evidence conflict
+	// (POST /evidence-conflicts/{id}/resolve)
+	ResolveEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error
 	// Export attributes data
 	// (GET /export/attributes)
 	ExportAttributes(ctx echo.Context) error
@@ -3950,6 +4646,24 @@ type ServerInterface interface {
 	// Rollback a person to a previous version
 	// (POST /persons/{id}/rollback)
 	RollbackPerson(ctx echo.Context, id PersonId) error
+	// List all proof summaries
+	// (GET /proof-summaries)
+	ListProofSummaries(ctx echo.Context, params ListProofSummariesParams) error
+	// Create a new proof summary
+	// (POST /proof-summaries)
+	CreateProofSummary(ctx echo.Context) error
+	// Get proof summaries by fact type and subject
+	// (GET /proof-summaries/by-fact)
+	GetProofSummaryByFact(ctx echo.Context, params GetProofSummaryByFactParams) error
+	// Delete a proof summary
+	// (DELETE /proof-summaries/{id})
+	DeleteProofSummary(ctx echo.Context, id ProofSummaryId, params DeleteProofSummaryParams) error
+	// Get a proof summary by ID
+	// (GET /proof-summaries/{id})
+	GetProofSummary(ctx echo.Context, id ProofSummaryId) error
+	// Update a proof summary
+	// (PUT /proof-summaries/{id})
+	UpdateProofSummary(ctx echo.Context, id ProofSummaryId) error
 	// Get aggregate quality metrics
 	// (GET /quality/overview)
 	GetQualityOverview(ctx echo.Context) error
@@ -3965,6 +4679,24 @@ type ServerInterface interface {
 	// Calculate relationship between two people
 	// (GET /relationship/{personId1}/{personId2})
 	GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID) error
+	// List all research log entries
+	// (GET /research-logs)
+	ListResearchLogs(ctx echo.Context, params ListResearchLogsParams) error
+	// Create a new research log entry
+	// (POST /research-logs)
+	CreateResearchLog(ctx echo.Context) error
+	// Get research log entries for a subject
+	// (GET /research-logs/by-subject/{subjectId})
+	GetResearchLogsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error
+	// Delete a research log entry
+	// (DELETE /research-logs/{id})
+	DeleteResearchLog(ctx echo.Context, id ResearchLogId, params DeleteResearchLogParams) error
+	// Get a research log entry by ID
+	// (GET /research-logs/{id})
+	GetResearchLog(ctx echo.Context, id ResearchLogId) error
+	// Update a research log entry
+	// (PUT /research-logs/{id})
+	UpdateResearchLog(ctx echo.Context, id ResearchLogId) error
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx echo.Context, params SearchPersonsParams) error
@@ -4554,6 +5286,216 @@ func (w *ServerInterfaceWrapper) GetDescendancy(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetDescendancy(ctx, id, params)
+	return err
+}
+
+// ListEvidenceAnalyses converts echo context to params.
+func (w *ServerInterfaceWrapper) ListEvidenceAnalyses(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListEvidenceAnalysesParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", ctx.QueryParams(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "order", ctx.QueryParams(), &params.Order, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListEvidenceAnalyses(ctx, params)
+	return err
+}
+
+// CreateEvidenceAnalysis converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateEvidenceAnalysis(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateEvidenceAnalysis(ctx)
+	return err
+}
+
+// GetAnalysesByFact converts echo context to params.
+func (w *ServerInterfaceWrapper) GetAnalysesByFact(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAnalysesByFactParams
+	// ------------- Required query parameter "factType" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "factType", ctx.QueryParams(), &params.FactType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter factType: %s", err))
+	}
+
+	// ------------- Required query parameter "subjectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "subjectId", ctx.QueryParams(), &params.SubjectId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetAnalysesByFact(ctx, params)
+	return err
+}
+
+// DeleteEvidenceAnalysis converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteEvidenceAnalysis(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id EvidenceAnalysisId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteEvidenceAnalysisParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteEvidenceAnalysis(ctx, id, params)
+	return err
+}
+
+// GetEvidenceAnalysis converts echo context to params.
+func (w *ServerInterfaceWrapper) GetEvidenceAnalysis(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id EvidenceAnalysisId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetEvidenceAnalysis(ctx, id)
+	return err
+}
+
+// UpdateEvidenceAnalysis converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateEvidenceAnalysis(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id EvidenceAnalysisId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateEvidenceAnalysis(ctx, id)
+	return err
+}
+
+// ListEvidenceConflicts converts echo context to params.
+func (w *ServerInterfaceWrapper) ListEvidenceConflicts(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListEvidenceConflictsParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", ctx.QueryParams(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter status: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListEvidenceConflicts(ctx, params)
+	return err
+}
+
+// GetConflictsBySubject converts echo context to params.
+func (w *ServerInterfaceWrapper) GetConflictsBySubject(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "subjectId" -------------
+	var subjectId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subjectId", ctx.Param("subjectId"), &subjectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetConflictsBySubject(ctx, subjectId)
+	return err
+}
+
+// GetEvidenceConflict converts echo context to params.
+func (w *ServerInterfaceWrapper) GetEvidenceConflict(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id EvidenceConflictId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetEvidenceConflict(ctx, id)
+	return err
+}
+
+// ResolveEvidenceConflict converts echo context to params.
+func (w *ServerInterfaceWrapper) ResolveEvidenceConflict(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id EvidenceConflictId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ResolveEvidenceConflict(ctx, id)
 	return err
 }
 
@@ -5720,6 +6662,136 @@ func (w *ServerInterfaceWrapper) RollbackPerson(ctx echo.Context) error {
 	return err
 }
 
+// ListProofSummaries converts echo context to params.
+func (w *ServerInterfaceWrapper) ListProofSummaries(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListProofSummariesParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", ctx.QueryParams(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "order", ctx.QueryParams(), &params.Order, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListProofSummaries(ctx, params)
+	return err
+}
+
+// CreateProofSummary converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateProofSummary(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateProofSummary(ctx)
+	return err
+}
+
+// GetProofSummaryByFact converts echo context to params.
+func (w *ServerInterfaceWrapper) GetProofSummaryByFact(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProofSummaryByFactParams
+	// ------------- Required query parameter "factType" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "factType", ctx.QueryParams(), &params.FactType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter factType: %s", err))
+	}
+
+	// ------------- Required query parameter "subjectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "subjectId", ctx.QueryParams(), &params.SubjectId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetProofSummaryByFact(ctx, params)
+	return err
+}
+
+// DeleteProofSummary converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteProofSummary(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id ProofSummaryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteProofSummaryParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteProofSummary(ctx, id, params)
+	return err
+}
+
+// GetProofSummary converts echo context to params.
+func (w *ServerInterfaceWrapper) GetProofSummary(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id ProofSummaryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetProofSummary(ctx, id)
+	return err
+}
+
+// UpdateProofSummary converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateProofSummary(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id ProofSummaryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateProofSummary(ctx, id)
+	return err
+}
+
 // GetQualityOverview converts echo context to params.
 func (w *ServerInterfaceWrapper) GetQualityOverview(ctx echo.Context) error {
 	var err error
@@ -5793,6 +6865,127 @@ func (w *ServerInterfaceWrapper) GetRelationship(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetRelationship(ctx, personId1, personId2)
+	return err
+}
+
+// ListResearchLogs converts echo context to params.
+func (w *ServerInterfaceWrapper) ListResearchLogs(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListResearchLogsParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", ctx.QueryParams(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "order", ctx.QueryParams(), &params.Order, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListResearchLogs(ctx, params)
+	return err
+}
+
+// CreateResearchLog converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateResearchLog(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateResearchLog(ctx)
+	return err
+}
+
+// GetResearchLogsBySubject converts echo context to params.
+func (w *ServerInterfaceWrapper) GetResearchLogsBySubject(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "subjectId" -------------
+	var subjectId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subjectId", ctx.Param("subjectId"), &subjectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetResearchLogsBySubject(ctx, subjectId)
+	return err
+}
+
+// DeleteResearchLog converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteResearchLog(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id ResearchLogId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteResearchLogParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteResearchLog(ctx, id, params)
+	return err
+}
+
+// GetResearchLog converts echo context to params.
+func (w *ServerInterfaceWrapper) GetResearchLog(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id ResearchLogId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetResearchLog(ctx, id)
+	return err
+}
+
+// UpdateResearchLog converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateResearchLog(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id ResearchLogId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateResearchLog(ctx, id)
 	return err
 }
 
@@ -6365,6 +7558,16 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/citations/:id/restore-points", wrapper.GetCitationRestorePoints)
 	router.POST(baseURL+"/citations/:id/rollback", wrapper.RollbackCitation)
 	router.GET(baseURL+"/descendancy/:id", wrapper.GetDescendancy)
+	router.GET(baseURL+"/evidence-analyses", wrapper.ListEvidenceAnalyses)
+	router.POST(baseURL+"/evidence-analyses", wrapper.CreateEvidenceAnalysis)
+	router.GET(baseURL+"/evidence-analyses/by-fact", wrapper.GetAnalysesByFact)
+	router.DELETE(baseURL+"/evidence-analyses/:id", wrapper.DeleteEvidenceAnalysis)
+	router.GET(baseURL+"/evidence-analyses/:id", wrapper.GetEvidenceAnalysis)
+	router.PUT(baseURL+"/evidence-analyses/:id", wrapper.UpdateEvidenceAnalysis)
+	router.GET(baseURL+"/evidence-conflicts", wrapper.ListEvidenceConflicts)
+	router.GET(baseURL+"/evidence-conflicts/by-subject/:subjectId", wrapper.GetConflictsBySubject)
+	router.GET(baseURL+"/evidence-conflicts/:id", wrapper.GetEvidenceConflict)
+	router.POST(baseURL+"/evidence-conflicts/:id/resolve", wrapper.ResolveEvidenceConflict)
 	router.GET(baseURL+"/export/attributes", wrapper.ExportAttributes)
 	router.GET(baseURL+"/export/citations", wrapper.ExportCitations)
 	router.GET(baseURL+"/export/estimate", wrapper.GetExportEstimate)
@@ -6429,11 +7632,23 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.PUT(baseURL+"/persons/:id/names/:nameId", wrapper.UpdatePersonName)
 	router.GET(baseURL+"/persons/:id/restore-points", wrapper.GetPersonRestorePoints)
 	router.POST(baseURL+"/persons/:id/rollback", wrapper.RollbackPerson)
+	router.GET(baseURL+"/proof-summaries", wrapper.ListProofSummaries)
+	router.POST(baseURL+"/proof-summaries", wrapper.CreateProofSummary)
+	router.GET(baseURL+"/proof-summaries/by-fact", wrapper.GetProofSummaryByFact)
+	router.DELETE(baseURL+"/proof-summaries/:id", wrapper.DeleteProofSummary)
+	router.GET(baseURL+"/proof-summaries/:id", wrapper.GetProofSummary)
+	router.PUT(baseURL+"/proof-summaries/:id", wrapper.UpdateProofSummary)
 	router.GET(baseURL+"/quality/overview", wrapper.GetQualityOverview)
 	router.GET(baseURL+"/quality/persons/:id", wrapper.GetPersonQuality)
 	router.GET(baseURL+"/quality/report", wrapper.GetQualityReport)
 	router.GET(baseURL+"/quality/validation", wrapper.GetValidationIssues)
 	router.GET(baseURL+"/relationship/:personId1/:personId2", wrapper.GetRelationship)
+	router.GET(baseURL+"/research-logs", wrapper.ListResearchLogs)
+	router.POST(baseURL+"/research-logs", wrapper.CreateResearchLog)
+	router.GET(baseURL+"/research-logs/by-subject/:subjectId", wrapper.GetResearchLogsBySubject)
+	router.DELETE(baseURL+"/research-logs/:id", wrapper.DeleteResearchLog)
+	router.GET(baseURL+"/research-logs/:id", wrapper.GetResearchLog)
+	router.PUT(baseURL+"/research-logs/:id", wrapper.UpdateResearchLog)
 	router.GET(baseURL+"/search", wrapper.SearchPersons)
 	router.GET(baseURL+"/snapshots", wrapper.ListSnapshots)
 	router.POST(baseURL+"/snapshots", wrapper.CreateSnapshot)
@@ -7148,6 +8363,304 @@ type GetDescendancy404JSONResponse struct{ NotFoundJSONResponse }
 func (response GetDescendancy404JSONResponse) VisitGetDescendancyResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEvidenceAnalysesRequestObject struct {
+	Params ListEvidenceAnalysesParams
+}
+
+type ListEvidenceAnalysesResponseObject interface {
+	VisitListEvidenceAnalysesResponse(w http.ResponseWriter) error
+}
+
+type ListEvidenceAnalyses200JSONResponse EvidenceAnalysisList
+
+func (response ListEvidenceAnalyses200JSONResponse) VisitListEvidenceAnalysesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEvidenceAnalyses400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListEvidenceAnalyses400JSONResponse) VisitListEvidenceAnalysesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEvidenceAnalysisRequestObject struct {
+	Body *CreateEvidenceAnalysisJSONRequestBody
+}
+
+type CreateEvidenceAnalysisResponseObject interface {
+	VisitCreateEvidenceAnalysisResponse(w http.ResponseWriter) error
+}
+
+type CreateEvidenceAnalysis201JSONResponse EvidenceAnalysis
+
+func (response CreateEvidenceAnalysis201JSONResponse) VisitCreateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateEvidenceAnalysis400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateEvidenceAnalysis400JSONResponse) VisitCreateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAnalysesByFactRequestObject struct {
+	Params GetAnalysesByFactParams
+}
+
+type GetAnalysesByFactResponseObject interface {
+	VisitGetAnalysesByFactResponse(w http.ResponseWriter) error
+}
+
+type GetAnalysesByFact200JSONResponse []EvidenceAnalysis
+
+func (response GetAnalysesByFact200JSONResponse) VisitGetAnalysesByFactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAnalysesByFact400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetAnalysesByFact400JSONResponse) VisitGetAnalysesByFactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteEvidenceAnalysisRequestObject struct {
+	Id     EvidenceAnalysisId `json:"id"`
+	Params DeleteEvidenceAnalysisParams
+}
+
+type DeleteEvidenceAnalysisResponseObject interface {
+	VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error
+}
+
+type DeleteEvidenceAnalysis204Response struct {
+}
+
+func (response DeleteEvidenceAnalysis204Response) VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteEvidenceAnalysis404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteEvidenceAnalysis404JSONResponse) VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteEvidenceAnalysis409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteEvidenceAnalysis409JSONResponse) VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEvidenceAnalysisRequestObject struct {
+	Id EvidenceAnalysisId `json:"id"`
+}
+
+type GetEvidenceAnalysisResponseObject interface {
+	VisitGetEvidenceAnalysisResponse(w http.ResponseWriter) error
+}
+
+type GetEvidenceAnalysis200JSONResponse EvidenceAnalysis
+
+func (response GetEvidenceAnalysis200JSONResponse) VisitGetEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEvidenceAnalysis404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetEvidenceAnalysis404JSONResponse) VisitGetEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateEvidenceAnalysisRequestObject struct {
+	Id   EvidenceAnalysisId `json:"id"`
+	Body *UpdateEvidenceAnalysisJSONRequestBody
+}
+
+type UpdateEvidenceAnalysisResponseObject interface {
+	VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error
+}
+
+type UpdateEvidenceAnalysis200JSONResponse EvidenceAnalysis
+
+func (response UpdateEvidenceAnalysis200JSONResponse) VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateEvidenceAnalysis400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateEvidenceAnalysis400JSONResponse) VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateEvidenceAnalysis404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateEvidenceAnalysis404JSONResponse) VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateEvidenceAnalysis409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateEvidenceAnalysis409JSONResponse) VisitUpdateEvidenceAnalysisResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEvidenceConflictsRequestObject struct {
+	Params ListEvidenceConflictsParams
+}
+
+type ListEvidenceConflictsResponseObject interface {
+	VisitListEvidenceConflictsResponse(w http.ResponseWriter) error
+}
+
+type ListEvidenceConflicts200JSONResponse EvidenceConflictList
+
+func (response ListEvidenceConflicts200JSONResponse) VisitListEvidenceConflictsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListEvidenceConflicts400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListEvidenceConflicts400JSONResponse) VisitListEvidenceConflictsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetConflictsBySubjectRequestObject struct {
+	SubjectId openapi_types.UUID `json:"subjectId"`
+}
+
+type GetConflictsBySubjectResponseObject interface {
+	VisitGetConflictsBySubjectResponse(w http.ResponseWriter) error
+}
+
+type GetConflictsBySubject200JSONResponse []EvidenceConflict
+
+func (response GetConflictsBySubject200JSONResponse) VisitGetConflictsBySubjectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEvidenceConflictRequestObject struct {
+	Id EvidenceConflictId `json:"id"`
+}
+
+type GetEvidenceConflictResponseObject interface {
+	VisitGetEvidenceConflictResponse(w http.ResponseWriter) error
+}
+
+type GetEvidenceConflict200JSONResponse EvidenceConflict
+
+func (response GetEvidenceConflict200JSONResponse) VisitGetEvidenceConflictResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetEvidenceConflict404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetEvidenceConflict404JSONResponse) VisitGetEvidenceConflictResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ResolveEvidenceConflictRequestObject struct {
+	Id   EvidenceConflictId `json:"id"`
+	Body *ResolveEvidenceConflictJSONRequestBody
+}
+
+type ResolveEvidenceConflictResponseObject interface {
+	VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error
+}
+
+type ResolveEvidenceConflict200JSONResponse EvidenceConflict
+
+func (response ResolveEvidenceConflict200JSONResponse) VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ResolveEvidenceConflict400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResolveEvidenceConflict400JSONResponse) VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ResolveEvidenceConflict404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResolveEvidenceConflict404JSONResponse) VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ResolveEvidenceConflict409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ResolveEvidenceConflict409JSONResponse) VisitResolveEvidenceConflictResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -9084,6 +10597,190 @@ func (response RollbackPerson409JSONResponse) VisitRollbackPersonResponse(w http
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListProofSummariesRequestObject struct {
+	Params ListProofSummariesParams
+}
+
+type ListProofSummariesResponseObject interface {
+	VisitListProofSummariesResponse(w http.ResponseWriter) error
+}
+
+type ListProofSummaries200JSONResponse ProofSummaryList
+
+func (response ListProofSummaries200JSONResponse) VisitListProofSummariesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListProofSummaries400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListProofSummaries400JSONResponse) VisitListProofSummariesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProofSummaryRequestObject struct {
+	Body *CreateProofSummaryJSONRequestBody
+}
+
+type CreateProofSummaryResponseObject interface {
+	VisitCreateProofSummaryResponse(w http.ResponseWriter) error
+}
+
+type CreateProofSummary201JSONResponse ProofSummary
+
+func (response CreateProofSummary201JSONResponse) VisitCreateProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateProofSummary400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateProofSummary400JSONResponse) VisitCreateProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProofSummaryByFactRequestObject struct {
+	Params GetProofSummaryByFactParams
+}
+
+type GetProofSummaryByFactResponseObject interface {
+	VisitGetProofSummaryByFactResponse(w http.ResponseWriter) error
+}
+
+type GetProofSummaryByFact200JSONResponse []ProofSummary
+
+func (response GetProofSummaryByFact200JSONResponse) VisitGetProofSummaryByFactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProofSummaryByFact400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetProofSummaryByFact400JSONResponse) VisitGetProofSummaryByFactResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProofSummaryRequestObject struct {
+	Id     ProofSummaryId `json:"id"`
+	Params DeleteProofSummaryParams
+}
+
+type DeleteProofSummaryResponseObject interface {
+	VisitDeleteProofSummaryResponse(w http.ResponseWriter) error
+}
+
+type DeleteProofSummary204Response struct {
+}
+
+func (response DeleteProofSummary204Response) VisitDeleteProofSummaryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProofSummary404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteProofSummary404JSONResponse) VisitDeleteProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteProofSummary409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteProofSummary409JSONResponse) VisitDeleteProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProofSummaryRequestObject struct {
+	Id ProofSummaryId `json:"id"`
+}
+
+type GetProofSummaryResponseObject interface {
+	VisitGetProofSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetProofSummary200JSONResponse ProofSummary
+
+func (response GetProofSummary200JSONResponse) VisitGetProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetProofSummary404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetProofSummary404JSONResponse) VisitGetProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProofSummaryRequestObject struct {
+	Id   ProofSummaryId `json:"id"`
+	Body *UpdateProofSummaryJSONRequestBody
+}
+
+type UpdateProofSummaryResponseObject interface {
+	VisitUpdateProofSummaryResponse(w http.ResponseWriter) error
+}
+
+type UpdateProofSummary200JSONResponse ProofSummary
+
+func (response UpdateProofSummary200JSONResponse) VisitUpdateProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProofSummary400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateProofSummary400JSONResponse) VisitUpdateProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProofSummary404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateProofSummary404JSONResponse) VisitUpdateProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProofSummary409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateProofSummary409JSONResponse) VisitUpdateProofSummaryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type GetQualityOverviewRequestObject struct {
 }
 
@@ -9182,6 +10879,181 @@ type GetRelationship404JSONResponse Error
 func (response GetRelationship404JSONResponse) VisitGetRelationshipResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListResearchLogsRequestObject struct {
+	Params ListResearchLogsParams
+}
+
+type ListResearchLogsResponseObject interface {
+	VisitListResearchLogsResponse(w http.ResponseWriter) error
+}
+
+type ListResearchLogs200JSONResponse ResearchLogList
+
+func (response ListResearchLogs200JSONResponse) VisitListResearchLogsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListResearchLogs400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListResearchLogs400JSONResponse) VisitListResearchLogsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateResearchLogRequestObject struct {
+	Body *CreateResearchLogJSONRequestBody
+}
+
+type CreateResearchLogResponseObject interface {
+	VisitCreateResearchLogResponse(w http.ResponseWriter) error
+}
+
+type CreateResearchLog201JSONResponse ResearchLog
+
+func (response CreateResearchLog201JSONResponse) VisitCreateResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateResearchLog400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateResearchLog400JSONResponse) VisitCreateResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetResearchLogsBySubjectRequestObject struct {
+	SubjectId openapi_types.UUID `json:"subjectId"`
+}
+
+type GetResearchLogsBySubjectResponseObject interface {
+	VisitGetResearchLogsBySubjectResponse(w http.ResponseWriter) error
+}
+
+type GetResearchLogsBySubject200JSONResponse []ResearchLog
+
+func (response GetResearchLogsBySubject200JSONResponse) VisitGetResearchLogsBySubjectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteResearchLogRequestObject struct {
+	Id     ResearchLogId `json:"id"`
+	Params DeleteResearchLogParams
+}
+
+type DeleteResearchLogResponseObject interface {
+	VisitDeleteResearchLogResponse(w http.ResponseWriter) error
+}
+
+type DeleteResearchLog204Response struct {
+}
+
+func (response DeleteResearchLog204Response) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteResearchLog404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteResearchLog404JSONResponse) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteResearchLog409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteResearchLog409JSONResponse) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetResearchLogRequestObject struct {
+	Id ResearchLogId `json:"id"`
+}
+
+type GetResearchLogResponseObject interface {
+	VisitGetResearchLogResponse(w http.ResponseWriter) error
+}
+
+type GetResearchLog200JSONResponse ResearchLog
+
+func (response GetResearchLog200JSONResponse) VisitGetResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetResearchLog404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetResearchLog404JSONResponse) VisitGetResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateResearchLogRequestObject struct {
+	Id   ResearchLogId `json:"id"`
+	Body *UpdateResearchLogJSONRequestBody
+}
+
+type UpdateResearchLogResponseObject interface {
+	VisitUpdateResearchLogResponse(w http.ResponseWriter) error
+}
+
+type UpdateResearchLog200JSONResponse ResearchLog
+
+func (response UpdateResearchLog200JSONResponse) VisitUpdateResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateResearchLog400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateResearchLog400JSONResponse) VisitUpdateResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateResearchLog404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateResearchLog404JSONResponse) VisitUpdateResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateResearchLog409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateResearchLog409JSONResponse) VisitUpdateResearchLogResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -9892,6 +11764,36 @@ type StrictServerInterface interface {
 	// Get descendancy tree for a person
 	// (GET /descendancy/{id})
 	GetDescendancy(ctx context.Context, request GetDescendancyRequestObject) (GetDescendancyResponseObject, error)
+	// List all evidence analyses
+	// (GET /evidence-analyses)
+	ListEvidenceAnalyses(ctx context.Context, request ListEvidenceAnalysesRequestObject) (ListEvidenceAnalysesResponseObject, error)
+	// Create a new evidence analysis
+	// (POST /evidence-analyses)
+	CreateEvidenceAnalysis(ctx context.Context, request CreateEvidenceAnalysisRequestObject) (CreateEvidenceAnalysisResponseObject, error)
+	// Get evidence analyses by fact type and subject
+	// (GET /evidence-analyses/by-fact)
+	GetAnalysesByFact(ctx context.Context, request GetAnalysesByFactRequestObject) (GetAnalysesByFactResponseObject, error)
+	// Delete an evidence analysis
+	// (DELETE /evidence-analyses/{id})
+	DeleteEvidenceAnalysis(ctx context.Context, request DeleteEvidenceAnalysisRequestObject) (DeleteEvidenceAnalysisResponseObject, error)
+	// Get an evidence analysis by ID
+	// (GET /evidence-analyses/{id})
+	GetEvidenceAnalysis(ctx context.Context, request GetEvidenceAnalysisRequestObject) (GetEvidenceAnalysisResponseObject, error)
+	// Update an evidence analysis
+	// (PUT /evidence-analyses/{id})
+	UpdateEvidenceAnalysis(ctx context.Context, request UpdateEvidenceAnalysisRequestObject) (UpdateEvidenceAnalysisResponseObject, error)
+	// List all evidence conflicts
+	// (GET /evidence-conflicts)
+	ListEvidenceConflicts(ctx context.Context, request ListEvidenceConflictsRequestObject) (ListEvidenceConflictsResponseObject, error)
+	// Get evidence conflicts for a subject
+	// (GET /evidence-conflicts/by-subject/{subjectId})
+	GetConflictsBySubject(ctx context.Context, request GetConflictsBySubjectRequestObject) (GetConflictsBySubjectResponseObject, error)
+	// Get an evidence conflict by ID
+	// (GET /evidence-conflicts/{id})
+	GetEvidenceConflict(ctx context.Context, request GetEvidenceConflictRequestObject) (GetEvidenceConflictResponseObject, error)
+	// Resolve an evidence conflict
+	// (POST /evidence-conflicts/{id}/resolve)
+	ResolveEvidenceConflict(ctx context.Context, request ResolveEvidenceConflictRequestObject) (ResolveEvidenceConflictResponseObject, error)
 	// Export attributes data
 	// (GET /export/attributes)
 	ExportAttributes(ctx context.Context, request ExportAttributesRequestObject) (ExportAttributesResponseObject, error)
@@ -10084,6 +11986,24 @@ type StrictServerInterface interface {
 	// Rollback a person to a previous version
 	// (POST /persons/{id}/rollback)
 	RollbackPerson(ctx context.Context, request RollbackPersonRequestObject) (RollbackPersonResponseObject, error)
+	// List all proof summaries
+	// (GET /proof-summaries)
+	ListProofSummaries(ctx context.Context, request ListProofSummariesRequestObject) (ListProofSummariesResponseObject, error)
+	// Create a new proof summary
+	// (POST /proof-summaries)
+	CreateProofSummary(ctx context.Context, request CreateProofSummaryRequestObject) (CreateProofSummaryResponseObject, error)
+	// Get proof summaries by fact type and subject
+	// (GET /proof-summaries/by-fact)
+	GetProofSummaryByFact(ctx context.Context, request GetProofSummaryByFactRequestObject) (GetProofSummaryByFactResponseObject, error)
+	// Delete a proof summary
+	// (DELETE /proof-summaries/{id})
+	DeleteProofSummary(ctx context.Context, request DeleteProofSummaryRequestObject) (DeleteProofSummaryResponseObject, error)
+	// Get a proof summary by ID
+	// (GET /proof-summaries/{id})
+	GetProofSummary(ctx context.Context, request GetProofSummaryRequestObject) (GetProofSummaryResponseObject, error)
+	// Update a proof summary
+	// (PUT /proof-summaries/{id})
+	UpdateProofSummary(ctx context.Context, request UpdateProofSummaryRequestObject) (UpdateProofSummaryResponseObject, error)
 	// Get aggregate quality metrics
 	// (GET /quality/overview)
 	GetQualityOverview(ctx context.Context, request GetQualityOverviewRequestObject) (GetQualityOverviewResponseObject, error)
@@ -10099,6 +12019,24 @@ type StrictServerInterface interface {
 	// Calculate relationship between two people
 	// (GET /relationship/{personId1}/{personId2})
 	GetRelationship(ctx context.Context, request GetRelationshipRequestObject) (GetRelationshipResponseObject, error)
+	// List all research log entries
+	// (GET /research-logs)
+	ListResearchLogs(ctx context.Context, request ListResearchLogsRequestObject) (ListResearchLogsResponseObject, error)
+	// Create a new research log entry
+	// (POST /research-logs)
+	CreateResearchLog(ctx context.Context, request CreateResearchLogRequestObject) (CreateResearchLogResponseObject, error)
+	// Get research log entries for a subject
+	// (GET /research-logs/by-subject/{subjectId})
+	GetResearchLogsBySubject(ctx context.Context, request GetResearchLogsBySubjectRequestObject) (GetResearchLogsBySubjectResponseObject, error)
+	// Delete a research log entry
+	// (DELETE /research-logs/{id})
+	DeleteResearchLog(ctx context.Context, request DeleteResearchLogRequestObject) (DeleteResearchLogResponseObject, error)
+	// Get a research log entry by ID
+	// (GET /research-logs/{id})
+	GetResearchLog(ctx context.Context, request GetResearchLogRequestObject) (GetResearchLogResponseObject, error)
+	// Update a research log entry
+	// (PUT /research-logs/{id})
+	UpdateResearchLog(ctx context.Context, request UpdateResearchLogRequestObject) (UpdateResearchLogResponseObject, error)
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error)
@@ -10836,6 +12774,273 @@ func (sh *strictHandler) GetDescendancy(ctx echo.Context, id PersonId, params Ge
 		return err
 	} else if validResponse, ok := response.(GetDescendancyResponseObject); ok {
 		return validResponse.VisitGetDescendancyResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListEvidenceAnalyses operation middleware
+func (sh *strictHandler) ListEvidenceAnalyses(ctx echo.Context, params ListEvidenceAnalysesParams) error {
+	var request ListEvidenceAnalysesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListEvidenceAnalyses(ctx.Request().Context(), request.(ListEvidenceAnalysesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListEvidenceAnalyses")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListEvidenceAnalysesResponseObject); ok {
+		return validResponse.VisitListEvidenceAnalysesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateEvidenceAnalysis operation middleware
+func (sh *strictHandler) CreateEvidenceAnalysis(ctx echo.Context) error {
+	var request CreateEvidenceAnalysisRequestObject
+
+	var body CreateEvidenceAnalysisJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateEvidenceAnalysis(ctx.Request().Context(), request.(CreateEvidenceAnalysisRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateEvidenceAnalysis")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateEvidenceAnalysisResponseObject); ok {
+		return validResponse.VisitCreateEvidenceAnalysisResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetAnalysesByFact operation middleware
+func (sh *strictHandler) GetAnalysesByFact(ctx echo.Context, params GetAnalysesByFactParams) error {
+	var request GetAnalysesByFactRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAnalysesByFact(ctx.Request().Context(), request.(GetAnalysesByFactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAnalysesByFact")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetAnalysesByFactResponseObject); ok {
+		return validResponse.VisitGetAnalysesByFactResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteEvidenceAnalysis operation middleware
+func (sh *strictHandler) DeleteEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId, params DeleteEvidenceAnalysisParams) error {
+	var request DeleteEvidenceAnalysisRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteEvidenceAnalysis(ctx.Request().Context(), request.(DeleteEvidenceAnalysisRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteEvidenceAnalysis")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteEvidenceAnalysisResponseObject); ok {
+		return validResponse.VisitDeleteEvidenceAnalysisResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetEvidenceAnalysis operation middleware
+func (sh *strictHandler) GetEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error {
+	var request GetEvidenceAnalysisRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEvidenceAnalysis(ctx.Request().Context(), request.(GetEvidenceAnalysisRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEvidenceAnalysis")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetEvidenceAnalysisResponseObject); ok {
+		return validResponse.VisitGetEvidenceAnalysisResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateEvidenceAnalysis operation middleware
+func (sh *strictHandler) UpdateEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error {
+	var request UpdateEvidenceAnalysisRequestObject
+
+	request.Id = id
+
+	var body UpdateEvidenceAnalysisJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateEvidenceAnalysis(ctx.Request().Context(), request.(UpdateEvidenceAnalysisRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateEvidenceAnalysis")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateEvidenceAnalysisResponseObject); ok {
+		return validResponse.VisitUpdateEvidenceAnalysisResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListEvidenceConflicts operation middleware
+func (sh *strictHandler) ListEvidenceConflicts(ctx echo.Context, params ListEvidenceConflictsParams) error {
+	var request ListEvidenceConflictsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListEvidenceConflicts(ctx.Request().Context(), request.(ListEvidenceConflictsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListEvidenceConflicts")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListEvidenceConflictsResponseObject); ok {
+		return validResponse.VisitListEvidenceConflictsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetConflictsBySubject operation middleware
+func (sh *strictHandler) GetConflictsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error {
+	var request GetConflictsBySubjectRequestObject
+
+	request.SubjectId = subjectId
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetConflictsBySubject(ctx.Request().Context(), request.(GetConflictsBySubjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetConflictsBySubject")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetConflictsBySubjectResponseObject); ok {
+		return validResponse.VisitGetConflictsBySubjectResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetEvidenceConflict operation middleware
+func (sh *strictHandler) GetEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error {
+	var request GetEvidenceConflictRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetEvidenceConflict(ctx.Request().Context(), request.(GetEvidenceConflictRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetEvidenceConflict")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetEvidenceConflictResponseObject); ok {
+		return validResponse.VisitGetEvidenceConflictResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ResolveEvidenceConflict operation middleware
+func (sh *strictHandler) ResolveEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error {
+	var request ResolveEvidenceConflictRequestObject
+
+	request.Id = id
+
+	var body ResolveEvidenceConflictJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveEvidenceConflict(ctx.Request().Context(), request.(ResolveEvidenceConflictRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveEvidenceConflict")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ResolveEvidenceConflictResponseObject); ok {
+		return validResponse.VisitResolveEvidenceConflictResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -12548,6 +14753,167 @@ func (sh *strictHandler) RollbackPerson(ctx echo.Context, id PersonId) error {
 	return nil
 }
 
+// ListProofSummaries operation middleware
+func (sh *strictHandler) ListProofSummaries(ctx echo.Context, params ListProofSummariesParams) error {
+	var request ListProofSummariesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListProofSummaries(ctx.Request().Context(), request.(ListProofSummariesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListProofSummaries")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListProofSummariesResponseObject); ok {
+		return validResponse.VisitListProofSummariesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateProofSummary operation middleware
+func (sh *strictHandler) CreateProofSummary(ctx echo.Context) error {
+	var request CreateProofSummaryRequestObject
+
+	var body CreateProofSummaryJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateProofSummary(ctx.Request().Context(), request.(CreateProofSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateProofSummary")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateProofSummaryResponseObject); ok {
+		return validResponse.VisitCreateProofSummaryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetProofSummaryByFact operation middleware
+func (sh *strictHandler) GetProofSummaryByFact(ctx echo.Context, params GetProofSummaryByFactParams) error {
+	var request GetProofSummaryByFactRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProofSummaryByFact(ctx.Request().Context(), request.(GetProofSummaryByFactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProofSummaryByFact")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetProofSummaryByFactResponseObject); ok {
+		return validResponse.VisitGetProofSummaryByFactResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteProofSummary operation middleware
+func (sh *strictHandler) DeleteProofSummary(ctx echo.Context, id ProofSummaryId, params DeleteProofSummaryParams) error {
+	var request DeleteProofSummaryRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProofSummary(ctx.Request().Context(), request.(DeleteProofSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProofSummary")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteProofSummaryResponseObject); ok {
+		return validResponse.VisitDeleteProofSummaryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetProofSummary operation middleware
+func (sh *strictHandler) GetProofSummary(ctx echo.Context, id ProofSummaryId) error {
+	var request GetProofSummaryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProofSummary(ctx.Request().Context(), request.(GetProofSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProofSummary")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetProofSummaryResponseObject); ok {
+		return validResponse.VisitGetProofSummaryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateProofSummary operation middleware
+func (sh *strictHandler) UpdateProofSummary(ctx echo.Context, id ProofSummaryId) error {
+	var request UpdateProofSummaryRequestObject
+
+	request.Id = id
+
+	var body UpdateProofSummaryJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateProofSummary(ctx.Request().Context(), request.(UpdateProofSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateProofSummary")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateProofSummaryResponseObject); ok {
+		return validResponse.VisitUpdateProofSummaryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // GetQualityOverview operation middleware
 func (sh *strictHandler) GetQualityOverview(ctx echo.Context) error {
 	var request GetQualityOverviewRequestObject
@@ -12664,6 +15030,167 @@ func (sh *strictHandler) GetRelationship(ctx echo.Context, personId1 openapi_typ
 		return err
 	} else if validResponse, ok := response.(GetRelationshipResponseObject); ok {
 		return validResponse.VisitGetRelationshipResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListResearchLogs operation middleware
+func (sh *strictHandler) ListResearchLogs(ctx echo.Context, params ListResearchLogsParams) error {
+	var request ListResearchLogsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListResearchLogs(ctx.Request().Context(), request.(ListResearchLogsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListResearchLogs")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListResearchLogsResponseObject); ok {
+		return validResponse.VisitListResearchLogsResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateResearchLog operation middleware
+func (sh *strictHandler) CreateResearchLog(ctx echo.Context) error {
+	var request CreateResearchLogRequestObject
+
+	var body CreateResearchLogJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateResearchLog(ctx.Request().Context(), request.(CreateResearchLogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateResearchLog")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateResearchLogResponseObject); ok {
+		return validResponse.VisitCreateResearchLogResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetResearchLogsBySubject operation middleware
+func (sh *strictHandler) GetResearchLogsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error {
+	var request GetResearchLogsBySubjectRequestObject
+
+	request.SubjectId = subjectId
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetResearchLogsBySubject(ctx.Request().Context(), request.(GetResearchLogsBySubjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetResearchLogsBySubject")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetResearchLogsBySubjectResponseObject); ok {
+		return validResponse.VisitGetResearchLogsBySubjectResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteResearchLog operation middleware
+func (sh *strictHandler) DeleteResearchLog(ctx echo.Context, id ResearchLogId, params DeleteResearchLogParams) error {
+	var request DeleteResearchLogRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteResearchLog(ctx.Request().Context(), request.(DeleteResearchLogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteResearchLog")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteResearchLogResponseObject); ok {
+		return validResponse.VisitDeleteResearchLogResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetResearchLog operation middleware
+func (sh *strictHandler) GetResearchLog(ctx echo.Context, id ResearchLogId) error {
+	var request GetResearchLogRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetResearchLog(ctx.Request().Context(), request.(GetResearchLogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetResearchLog")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetResearchLogResponseObject); ok {
+		return validResponse.VisitGetResearchLogResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateResearchLog operation middleware
+func (sh *strictHandler) UpdateResearchLog(ctx echo.Context, id ResearchLogId) error {
+	var request UpdateResearchLogRequestObject
+
+	request.Id = id
+
+	var body UpdateResearchLogJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateResearchLog(ctx.Request().Context(), request.(UpdateResearchLogRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateResearchLog")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateResearchLogResponseObject); ok {
+		return validResponse.VisitUpdateResearchLogResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

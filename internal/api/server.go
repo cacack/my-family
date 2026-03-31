@@ -66,6 +66,7 @@ type Server struct {
 	associationService  *query.AssociationService
 	ldsOrdinanceService *query.LDSOrdinanceService
 	exportService       *query.ExportService
+	evidenceService     *query.EvidenceQueryService
 	frontendFS          fs.FS
 	demo                *demoResetter // nil when not in demo mode
 }
@@ -124,6 +125,7 @@ func NewServer(
 	associationSvc := query.NewAssociationService(readStore)
 	ldsOrdinanceSvc := query.NewLDSOrdinanceService(readStore)
 	exportSvc := query.NewExportService(readStore)
+	evidenceSvc := query.NewEvidenceQueryService(readStore)
 
 	server := &Server{
 		echo:                e,
@@ -148,6 +150,7 @@ func NewServer(
 		associationService:  associationSvc,
 		ldsOrdinanceService: ldsOrdinanceSvc,
 		exportService:       exportSvc,
+		evidenceService:     evidenceSvc,
 		frontendFS:          frontendFS,
 	}
 
