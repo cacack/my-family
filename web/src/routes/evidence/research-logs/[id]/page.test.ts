@@ -164,10 +164,10 @@ describe('Research Log Detail Page - New Mode', () => {
 	it('shows form fields in create mode', async () => {
 		render(Page);
 		await waitFor(() => {
-			expect(screen.getByLabelText('Subject ID')).toBeDefined();
-			expect(screen.getByLabelText('Repository')).toBeDefined();
-			expect(screen.getByLabelText('Search Description')).toBeDefined();
-			expect(screen.getByLabelText('Outcome')).toBeDefined();
+			expect(screen.getByLabelText(/Subject ID/)).toBeDefined();
+			expect(screen.getByLabelText(/Repository/)).toBeDefined();
+			expect(screen.getByLabelText(/Search Description/)).toBeDefined();
+			expect(screen.getByLabelText(/Outcome/)).toBeDefined();
 		});
 	});
 

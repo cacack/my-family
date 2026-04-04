@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import {
 		api,
 		type EvidenceAnalysisResponse,
@@ -31,6 +32,7 @@
 	let conflictsError: string | null = $state(null);
 	let conflictStatusFilter = $state<'all' | 'open' | 'resolved'>('all');
 	let openConflictsCount = $state(0);
+	let openConflictsLoaded = $state(false);
 
 	// Research logs state
 	let logs: ResearchLogResponse[] = $state([]);
@@ -101,16 +103,18 @@
 			conflicts = result.conflicts;
 			conflictsTotal = result.total;
 
-			// Get open count for badge (only if not already filtered to open)
-			if (conflictStatusFilter !== 'open') {
+			// Get open count for badge
+			if (conflictStatusFilter === 'open') {
+				openConflictsCount = result.total;
+				openConflictsLoaded = true;
+			} else if (!openConflictsLoaded) {
 				try {
 					const openResult = await api.listEvidenceConflicts({ limit: 1, status: 'open' });
 					openConflictsCount = openResult.total;
+					openConflictsLoaded = true;
 				} catch {
 					// ignore - badge count is non-critical
 				}
-			} else {
-				openConflictsCount = result.total;
 			}
 		} catch (e) {
 			conflictsError = (e as { message?: string }).message || 'Failed to load conflicts';
@@ -155,16 +159,12 @@
 
 	// Load data when tab changes
 	$effect(() => {
-		if (activeTab === 'analyses') loadAnalyses();
-	});
-	$effect(() => {
-		if (activeTab === 'conflicts') loadConflicts();
-	});
-	$effect(() => {
-		if (activeTab === 'logs') loadLogs();
-	});
-	$effect(() => {
-		if (activeTab === 'summaries') loadSummaries();
+		switch (activeTab) {
+			case 'analyses': loadAnalyses(); break;
+			case 'conflicts': loadConflicts(); break;
+			case 'logs': loadLogs(); break;
+			case 'summaries': loadSummaries(); break;
+		}
 	});
 
 	// Derived page counts
@@ -234,7 +234,7 @@
 						</thead>
 						<tbody>
 							{#each analyses as analysis}
-								<tr class="clickable" onclick={() => window.location.href = `/evidence/analyses/${analysis.id}`}>
+								<tr class="clickable" onclick={() => goto(`/evidence/analyses/${analysis.id}`)}>
 									<td class="fact-type">{formatFactType(analysis.fact_type)}</td>
 									<td><a href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}" onclick={(e) => e.stopPropagation()}>{analysis.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(analysis.conclusion)}</td>
@@ -272,9 +272,9 @@
 
 				{#if analysesTotalPages > 1}
 					<div class="pagination">
-						<button onclick={() => { analysesPage--; loadAnalyses(); }} disabled={analysesPage === 1}>Previous</button>
+						<button onclick={() => { analysesPage--; loadAnalyses(); }} disabled={analysesPage === 1 || analysesLoading}>Previous</button>
 						<span>Page {analysesPage} of {analysesTotalPages}</span>
-						<button onclick={() => { analysesPage++; loadAnalyses(); }} disabled={analysesPage >= analysesTotalPages}>Next</button>
+						<button onclick={() => { analysesPage++; loadAnalyses(); }} disabled={analysesPage >= analysesTotalPages || analysesLoading}>Next</button>
 					</div>
 				{/if}
 			{/if}
@@ -284,9 +284,9 @@
 		<Tabs.Content value="conflicts">
 			<div class="tab-header">
 				<div class="filter-buttons">
-					<button class="filter-btn" class:active={conflictStatusFilter === 'all'} onclick={() => { conflictStatusFilter = 'all'; conflictsPage = 1; loadConflicts(); }}>All</button>
-					<button class="filter-btn" class:active={conflictStatusFilter === 'open'} onclick={() => { conflictStatusFilter = 'open'; conflictsPage = 1; loadConflicts(); }}>Open</button>
-					<button class="filter-btn" class:active={conflictStatusFilter === 'resolved'} onclick={() => { conflictStatusFilter = 'resolved'; conflictsPage = 1; loadConflicts(); }}>Resolved</button>
+					<button class="filter-btn" class:active={conflictStatusFilter === 'all'} aria-pressed={conflictStatusFilter === 'all'} onclick={() => { conflictStatusFilter = 'all'; conflictsPage = 1; loadConflicts(); }}>All</button>
+					<button class="filter-btn" class:active={conflictStatusFilter === 'open'} aria-pressed={conflictStatusFilter === 'open'} onclick={() => { conflictStatusFilter = 'open'; conflictsPage = 1; loadConflicts(); }}>Open</button>
+					<button class="filter-btn" class:active={conflictStatusFilter === 'resolved'} aria-pressed={conflictStatusFilter === 'resolved'} onclick={() => { conflictStatusFilter = 'resolved'; conflictsPage = 1; loadConflicts(); }}>Resolved</button>
 				</div>
 				<span class="tab-count">{conflictsTotal} {conflictsTotal === 1 ? 'conflict' : 'conflicts'}</span>
 			</div>
@@ -317,7 +317,7 @@
 						</thead>
 						<tbody>
 							{#each conflicts as conflict}
-								<tr class="clickable" onclick={() => window.location.href = `/evidence/conflicts/${conflict.id}`}>
+								<tr class="clickable" onclick={() => goto(`/evidence/conflicts/${conflict.id}`)}>
 									<td class="fact-type">{formatFactType(conflict.fact_type)}</td>
 									<td><a href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}" onclick={(e) => e.stopPropagation()}>{conflict.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(conflict.description)}</td>
@@ -353,9 +353,9 @@
 
 				{#if conflictsTotalPages > 1}
 					<div class="pagination">
-						<button onclick={() => { conflictsPage--; loadConflicts(); }} disabled={conflictsPage === 1}>Previous</button>
+						<button onclick={() => { conflictsPage--; loadConflicts(); }} disabled={conflictsPage === 1 || conflictsLoading}>Previous</button>
 						<span>Page {conflictsPage} of {conflictsTotalPages}</span>
-						<button onclick={() => { conflictsPage++; loadConflicts(); }} disabled={conflictsPage >= conflictsTotalPages}>Next</button>
+						<button onclick={() => { conflictsPage++; loadConflicts(); }} disabled={conflictsPage >= conflictsTotalPages || conflictsLoading}>Next</button>
 					</div>
 				{/if}
 			{/if}
@@ -396,7 +396,7 @@
 						</thead>
 						<tbody>
 							{#each logs as log}
-								<tr class="clickable" onclick={() => window.location.href = `/evidence/research-logs/${log.id}`}>
+								<tr class="clickable" onclick={() => goto(`/evidence/research-logs/${log.id}`)}>
 									<td><a href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}" onclick={(e) => e.stopPropagation()}>{log.subject_id.slice(0, 8)}...</a></td>
 									<td>{log.repository}</td>
 									<td class="truncated">{truncate(log.search_description)}</td>
@@ -440,9 +440,9 @@
 
 				{#if logsTotalPages > 1}
 					<div class="pagination">
-						<button onclick={() => { logsPage--; loadLogs(); }} disabled={logsPage === 1}>Previous</button>
+						<button onclick={() => { logsPage--; loadLogs(); }} disabled={logsPage === 1 || logsLoading}>Previous</button>
 						<span>Page {logsPage} of {logsTotalPages}</span>
-						<button onclick={() => { logsPage++; loadLogs(); }} disabled={logsPage >= logsTotalPages}>Next</button>
+						<button onclick={() => { logsPage++; loadLogs(); }} disabled={logsPage >= logsTotalPages || logsLoading}>Next</button>
 					</div>
 				{/if}
 			{/if}
@@ -483,7 +483,7 @@
 						</thead>
 						<tbody>
 							{#each summaries as summary}
-								<tr class="clickable" onclick={() => window.location.href = `/evidence/proof-summaries/${summary.id}`}>
+								<tr class="clickable" onclick={() => goto(`/evidence/proof-summaries/${summary.id}`)}>
 									<td class="fact-type">{formatFactType(summary.fact_type)}</td>
 									<td><a href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}" onclick={(e) => e.stopPropagation()}>{summary.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(summary.conclusion)}</td>
@@ -521,9 +521,9 @@
 
 				{#if summariesTotalPages > 1}
 					<div class="pagination">
-						<button onclick={() => { summariesPage--; loadSummaries(); }} disabled={summariesPage === 1}>Previous</button>
+						<button onclick={() => { summariesPage--; loadSummaries(); }} disabled={summariesPage === 1 || summariesLoading}>Previous</button>
 						<span>Page {summariesPage} of {summariesTotalPages}</span>
-						<button onclick={() => { summariesPage++; loadSummaries(); }} disabled={summariesPage >= summariesTotalPages}>Next</button>
+						<button onclick={() => { summariesPage++; loadSummaries(); }} disabled={summariesPage >= summariesTotalPages || summariesLoading}>Next</button>
 					</div>
 				{/if}
 			{/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import {
@@ -84,16 +85,12 @@
 	}
 
 	async function saveLog() {
-		if (!formData.subject_id.trim()) {
-			error = 'Subject ID is required';
-			return;
-		}
-		if (!formData.repository.trim()) {
-			error = 'Repository is required';
-			return;
-		}
-		if (!formData.search_description.trim()) {
-			error = 'Search description is required';
+		const errors: string[] = [];
+		if (!formData.subject_id.trim()) errors.push('Subject ID is required');
+		if (!formData.repository.trim()) errors.push('Repository is required');
+		if (!formData.search_description.trim()) errors.push('Search description is required');
+		if (errors.length > 0) {
+			error = errors.join('. ');
 			return;
 		}
 
@@ -155,7 +152,7 @@
 	$effect(() => {
 		const id = $page.params.id;
 		if (id) {
-			loadLog(id);
+			untrack(() => loadLog(id));
 		}
 	});
 </script>
@@ -195,11 +192,11 @@
 			<div class="form-row">
 				<label>
 					Subject ID <span class="required">*</span>
-					<input type="text" bind:value={formData.subject_id} required placeholder="Person or family UUID" aria-label="Subject ID" />
+					<input type="text" bind:value={formData.subject_id} required placeholder="Person or family UUID" />
 				</label>
 				<label>
 					Subject Type
-					<select bind:value={formData.subject_type} aria-label="Subject Type">
+					<select bind:value={formData.subject_type}>
 						<option value="person">Person</option>
 						<option value="family">Family</option>
 					</select>
@@ -209,23 +206,23 @@
 			<div class="form-row">
 				<label>
 					Repository <span class="required">*</span>
-					<input type="text" bind:value={formData.repository} required placeholder="e.g., National Archives" aria-label="Repository" />
+					<input type="text" bind:value={formData.repository} required placeholder="e.g., National Archives" />
 				</label>
 				<label>
 					Search Date
-					<input type="date" bind:value={formData.search_date} aria-label="Search Date" />
+					<input type="date" bind:value={formData.search_date} />
 				</label>
 			</div>
 
 			<label>
 				Search Description <span class="required">*</span>
-				<textarea bind:value={formData.search_description} rows="3" required aria-label="Search Description"></textarea>
+				<textarea bind:value={formData.search_description} rows="3" required></textarea>
 			</label>
 
 			<div class="form-row">
 				<label>
 					Outcome
-					<select bind:value={formData.outcome} aria-label="Outcome">
+					<select bind:value={formData.outcome}>
 						{#each outcomes as o}
 							<option value={o}>{formatOutcome(o)}</option>
 						{/each}
@@ -235,7 +232,7 @@
 
 			<label>
 				Notes
-				<textarea bind:value={formData.notes} rows="3" aria-label="Notes"></textarea>
+				<textarea bind:value={formData.notes} rows="3"></textarea>
 			</label>
 
 			<div class="form-actions">

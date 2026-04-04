@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import {
 		api,
 		type EvidenceAnalysisResponse,
@@ -24,7 +25,7 @@
 	let openConflictCount = $derived(conflicts.filter((c) => c.status === 'open').length);
 	let hasData = $derived(analyses.length > 0 || conflicts.length > 0 || researchLogs.length > 0);
 
-	let analysesByFactType = $derived(() => {
+	let analysesByFactType = $derived.by(() => {
 		const grouped = new Map<string, EvidenceAnalysisResponse[]>();
 		for (const a of analyses) {
 			const key = a.fact_type;
@@ -43,6 +44,17 @@
 
 	function subjectRoute(factType: string): string {
 		return factType.startsWith('family_') ? 'families' : 'persons';
+	}
+
+	function outcomeBadgeClass(outcome: string): string {
+		switch (outcome) {
+			case 'found':
+				return 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400';
+			case 'not_found':
+				return 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400';
+			default:
+				return 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400';
+		}
 	}
 
 	function formatDate(dateStr: string): string {
@@ -91,7 +103,7 @@
 
 	$effect(() => {
 		if (subjectId) {
-			loadData();
+			untrack(() => loadData());
 		}
 	});
 </script>
@@ -138,7 +150,7 @@
 								>Add Analysis</a
 							>
 						</div>
-						{#each [...analysesByFactType().entries()] as [factType, items]}
+						{#each [...analysesByFactType.entries()] as [factType, items]}
 							<div class="fact-group">
 								<h4 class="fact-type-label">{formatFactType(factType)}</h4>
 								<ul class="analysis-list">
@@ -231,11 +243,7 @@
 											<span class="log-repository">{log.repository}</span>
 											<Badge
 												variant="outline"
-												class={log.outcome === 'found'
-													? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400'
-													: log.outcome === 'not_found'
-														? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400'
-														: 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400'}
+												class={outcomeBadgeClass(log.outcome)}
 											>
 												{log.outcome.replace('_', ' ')}
 											</Badge>
