@@ -11,6 +11,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
+	import { formatFactType, subjectRoute, formatDate } from '$lib/utils/evidence';
 
 	const pageSize = 20;
 
@@ -48,27 +49,9 @@
 	let summariesLoading = $state(false);
 	let summariesError: string | null = $state(null);
 
-	function formatFactType(factType: string): string {
-		return factType
-			.replace(/_/g, ' ')
-			.replace(/\b\w/g, (c) => c.toUpperCase());
-	}
-
-	function subjectRoute(factType: string): string {
-		return factType.startsWith('family_') ? 'families' : 'persons';
-	}
-
 	function truncate(text: string, maxLen = 80): string {
 		if (text.length <= maxLen) return text;
 		return text.slice(0, maxLen) + '...';
-	}
-
-	function formatDate(dateStr: string): string {
-		try {
-			return new Date(dateStr).toLocaleDateString();
-		} catch {
-			return dateStr;
-		}
 	}
 
 	// --- Data loading ---
@@ -82,7 +65,7 @@
 				offset: (analysesPage - 1) * pageSize
 			});
 			analyses = result.analyses;
-			analysesTotal = result.total;
+			analysesTotal = result.total ?? 0;
 		} catch (e) {
 			analysesError = (e as { message?: string }).message || 'Failed to load analyses';
 		} finally {
@@ -101,7 +84,7 @@
 				status: statusParam as 'open' | 'resolved' | undefined
 			});
 			conflicts = result.conflicts;
-			conflictsTotal = result.total;
+			conflictsTotal = result.total ?? 0;
 
 			// Get open count for badge
 			if (conflictStatusFilter === 'open') {
@@ -132,7 +115,7 @@
 				offset: (logsPage - 1) * pageSize
 			});
 			logs = result.logs;
-			logsTotal = result.total;
+			logsTotal = result.total ?? 0;
 		} catch (e) {
 			logsError = (e as { message?: string }).message || 'Failed to load research logs';
 		} finally {
@@ -149,7 +132,7 @@
 				offset: (summariesPage - 1) * pageSize
 			});
 			summaries = result.summaries;
-			summariesTotal = result.total;
+			summariesTotal = result.total ?? 0;
 		} catch (e) {
 			summariesError = (e as { message?: string }).message || 'Failed to load proof summaries';
 		} finally {

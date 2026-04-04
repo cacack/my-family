@@ -10,6 +10,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
+	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
 
 	const factTypes = [
 		'person_birth', 'person_death', 'person_name', 'person_gender',
@@ -40,14 +41,6 @@
 	});
 
 	let newCitationId = $state('');
-
-	function formatFactType(type: string): string {
-		return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-	}
-
-	function subjectRoute(factType: string): string {
-		return factType.startsWith('family_') ? 'families' : 'persons';
-	}
 
 	async function loadAnalysis(id: string) {
 		if (id === 'new') {

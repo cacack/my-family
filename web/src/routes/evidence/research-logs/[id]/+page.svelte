@@ -9,6 +9,7 @@
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { toRFC3339 } from '$lib/utils/evidence';
 
 	const outcomes = ['found', 'not_found', 'inconclusive'] as const;
 
@@ -105,7 +106,7 @@
 					search_description: formData.search_description.trim(),
 					outcome: formData.outcome,
 					notes: formData.notes.trim() || undefined,
-					search_date: formData.search_date.includes('T') ? formData.search_date : formData.search_date + 'T00:00:00Z'
+					search_date: toRFC3339(formData.search_date)
 				};
 				const created = await api.createResearchLog(data);
 				goto(`/evidence/research-logs/${created.id}`);
@@ -117,7 +118,7 @@
 					search_description: formData.search_description.trim(),
 					outcome: formData.outcome,
 					notes: formData.notes.trim() || undefined,
-					search_date: formData.search_date.includes('T') ? formData.search_date : formData.search_date + 'T00:00:00Z',
+					search_date: toRFC3339(formData.search_date),
 					version: log.version
 				});
 				await loadLog(log.id);

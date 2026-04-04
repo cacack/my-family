@@ -8,6 +8,7 @@
 	} from '$lib/api/client';
 	import UncertaintyBadge from './UncertaintyBadge.svelte';
 	import { Badge } from '$lib/components/ui/badge';
+	import { formatFactTypeShort, subjectRoute, formatDate } from '$lib/utils/evidence';
 
 	interface Props {
 		subjectId: string;
@@ -35,16 +36,8 @@
 		return grouped;
 	});
 
-	function formatFactType(type: string): string {
-		return type
-			.replace(/^(person_|family_)/, '')
-			.replace(/_/g, ' ')
-			.replace(/\b\w/g, (c) => c.toUpperCase());
-	}
-
-	function subjectRoute(factType: string): string {
-		return factType.startsWith('family_') ? 'families' : 'persons';
-	}
+	// Use formatFactTypeShort in person/family context where prefix is redundant
+	const formatFactType = formatFactTypeShort;
 
 	function outcomeBadgeClass(outcome: string): string {
 		switch (outcome) {
@@ -55,10 +48,6 @@
 			default:
 				return 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400';
 		}
-	}
-
-	function formatDate(dateStr: string): string {
-		return new Date(dateStr).toLocaleDateString();
 	}
 
 	function summaryText(): string {
