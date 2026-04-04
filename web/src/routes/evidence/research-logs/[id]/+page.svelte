@@ -265,7 +265,7 @@
 					<h2>Details</h2>
 					<dl>
 						<dt>Subject</dt>
-						<dd><a href="/persons/{log.subject_id}">{log.subject_id}</a></dd>
+						<dd><a href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}">{log.subject_id}</a></dd>
 						<dt>Subject Type</dt>
 						<dd>{log.subject_type.charAt(0).toUpperCase() + log.subject_type.slice(1)}</dd>
 						<dt>Repository</dt>

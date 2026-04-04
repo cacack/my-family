@@ -21,6 +21,10 @@
 		return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
+	function subjectRoute(factType: string): string {
+		return factType.startsWith('family_') ? 'families' : 'persons';
+	}
+
 	async function loadConflict(id: string) {
 		loading = true;
 		error = null;
@@ -119,7 +123,7 @@
 					<h2>Details</h2>
 					<dl>
 						<dt>Subject</dt>
-						<dd><a href="/persons/{conflict.subject_id}">{conflict.subject_id}</a></dd>
+						<dd><a href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}">{conflict.subject_id}</a></dd>
 						<dt>Fact Type</dt>
 						<dd>{formatFactType(conflict.fact_type)}</dd>
 						<dt>Status</dt>

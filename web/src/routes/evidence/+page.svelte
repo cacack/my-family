@@ -52,6 +52,10 @@
 			.replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
+	function subjectRoute(factType: string): string {
+		return factType.startsWith('family_') ? 'families' : 'persons';
+	}
+
 	function truncate(text: string, maxLen = 80): string {
 		if (text.length <= maxLen) return text;
 		return text.slice(0, maxLen) + '...';
@@ -232,7 +236,7 @@
 							{#each analyses as analysis}
 								<tr class="clickable" onclick={() => window.location.href = `/evidence/analyses/${analysis.id}`}>
 									<td class="fact-type">{formatFactType(analysis.fact_type)}</td>
-									<td><a href="/persons/{analysis.subject_id}" onclick={(e) => e.stopPropagation()}>{analysis.subject_id.slice(0, 8)}...</a></td>
+									<td><a href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}" onclick={(e) => e.stopPropagation()}>{analysis.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(analysis.conclusion)}</td>
 									<td>
 										{#if analysis.research_status}
@@ -315,7 +319,7 @@
 							{#each conflicts as conflict}
 								<tr class="clickable" onclick={() => window.location.href = `/evidence/conflicts/${conflict.id}`}>
 									<td class="fact-type">{formatFactType(conflict.fact_type)}</td>
-									<td><a href="/persons/{conflict.subject_id}" onclick={(e) => e.stopPropagation()}>{conflict.subject_id.slice(0, 8)}...</a></td>
+									<td><a href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}" onclick={(e) => e.stopPropagation()}>{conflict.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(conflict.description)}</td>
 									<td>
 										{#if conflict.status === 'open'}
@@ -393,7 +397,7 @@
 						<tbody>
 							{#each logs as log}
 								<tr class="clickable" onclick={() => window.location.href = `/evidence/research-logs/${log.id}`}>
-									<td><a href="/persons/{log.subject_id}" onclick={(e) => e.stopPropagation()}>{log.subject_id.slice(0, 8)}...</a></td>
+									<td><a href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}" onclick={(e) => e.stopPropagation()}>{log.subject_id.slice(0, 8)}...</a></td>
 									<td>{log.repository}</td>
 									<td class="truncated">{truncate(log.search_description)}</td>
 									<td>
@@ -481,7 +485,7 @@
 							{#each summaries as summary}
 								<tr class="clickable" onclick={() => window.location.href = `/evidence/proof-summaries/${summary.id}`}>
 									<td class="fact-type">{formatFactType(summary.fact_type)}</td>
-									<td><a href="/persons/{summary.subject_id}" onclick={(e) => e.stopPropagation()}>{summary.subject_id.slice(0, 8)}...</a></td>
+									<td><a href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}" onclick={(e) => e.stopPropagation()}>{summary.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(summary.conclusion)}</td>
 									<td>
 										{#if summary.research_status}

@@ -44,6 +44,10 @@
 		return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
+	function subjectRoute(factType: string): string {
+		return factType.startsWith('family_') ? 'families' : 'persons';
+	}
+
 	async function loadAnalysis(id: string) {
 		if (id === 'new') {
 			isNew = true;
@@ -286,7 +290,7 @@
 					<h2>Details</h2>
 					<dl>
 						<dt>Subject</dt>
-						<dd><a href="/persons/{analysis.subject_id}">{analysis.subject_id}</a></dd>
+						<dd><a href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}">{analysis.subject_id}</a></dd>
 						<dt>Fact Type</dt>
 						<dd>{formatFactType(analysis.fact_type)}</dd>
 						{#if analysis.conflict_id}

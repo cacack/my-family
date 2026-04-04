@@ -41,6 +41,10 @@
 			.replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
+	function subjectRoute(factType: string): string {
+		return factType.startsWith('family_') ? 'families' : 'persons';
+	}
+
 	function formatDate(dateStr: string): string {
 		return new Date(dateStr).toLocaleDateString();
 	}
@@ -67,8 +71,11 @@
 		loading = true;
 		error = null;
 		try {
+			// TODO: Add GET /evidence-analyses/by-subject/{subjectId} backend endpoint
+			// to avoid over-fetching. Currently no subject-scoped analyses API exists,
+			// so we fetch globally and filter client-side.
 			const [analysisResult, conflictResult, logResult] = await Promise.all([
-				api.listEvidenceAnalyses({ limit: 200 }),
+				api.listEvidenceAnalyses({ limit: 100 }),
 				api.getConflictsBySubject(subjectId),
 				api.getResearchLogsBySubject(subjectId)
 			]);
