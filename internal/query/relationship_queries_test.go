@@ -886,21 +886,31 @@ func TestGetRelationship_PathContainsCorrectIDs(t *testing.T) {
 	if len(path.PathFromA) != 3 {
 		t.Errorf("Expected PathFromA length 3, got %d", len(path.PathFromA))
 	}
-	if path.PathFromA[0] != child {
+	if path.PathFromA[0].ID != child {
 		t.Error("PathFromA[0] should be child")
 	}
-	if path.PathFromA[1] != father {
+	if path.PathFromA[1].ID != father {
 		t.Error("PathFromA[1] should be father")
 	}
-	if path.PathFromA[2] != grandfather {
+	if path.PathFromA[2].ID != grandfather {
 		t.Error("PathFromA[2] should be grandfather")
+	}
+	// Verify names are resolved, not UUIDs
+	if path.PathFromA[0].Name != "C Doe" {
+		t.Errorf("PathFromA[0].Name = %q, want 'C Doe'", path.PathFromA[0].Name)
+	}
+	if path.PathFromA[1].Name != "F Doe" {
+		t.Errorf("PathFromA[1].Name = %q, want 'F Doe'", path.PathFromA[1].Name)
+	}
+	if path.PathFromA[2].Name != "GF Doe" {
+		t.Errorf("PathFromA[2].Name = %q, want 'GF Doe'", path.PathFromA[2].Name)
 	}
 
 	// PathFromB should be just: grandfather
 	if len(path.PathFromB) != 1 {
 		t.Errorf("Expected PathFromB length 1, got %d", len(path.PathFromB))
 	}
-	if path.PathFromB[0] != grandfather {
+	if path.PathFromB[0].ID != grandfather {
 		t.Error("PathFromB[0] should be grandfather")
 	}
 }

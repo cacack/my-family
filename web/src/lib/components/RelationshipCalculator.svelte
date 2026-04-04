@@ -109,12 +109,12 @@
 
 		// Add person A's path to common ancestor
 		if (path.pathFromA && path.pathFromA.length > 0) {
-			chain.push(...path.pathFromA);
+			chain.push(...path.pathFromA.map((node) => node.name));
 		}
 
 		// Add person B's path from common ancestor (reversed)
 		if (path.pathFromB && path.pathFromB.length > 0) {
-			chain.push(...path.pathFromB.slice().reverse());
+			chain.push(...path.pathFromB.slice().reverse().map((node) => node.name));
 		}
 
 		return chain;
@@ -242,7 +242,7 @@
 											</svg>
 										</div>
 										<div class="path-step">
-											<span class="step-label">{step}</span>
+											<span class="step-label">{step.name}</span>
 										</div>
 									{/each}
 								{/if}
@@ -268,7 +268,7 @@
 											</svg>
 										</div>
 										<div class="path-step">
-											<span class="step-label">{step}</span>
+											<span class="step-label">{step.name}</span>
 										</div>
 									{/each}
 								{/if}

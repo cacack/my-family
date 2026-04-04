@@ -24,14 +24,20 @@ func NewRelationshipService(readStore repository.ReadModelStore) *RelationshipSe
 	}
 }
 
+// RelationshipPathNode represents a person in a relationship path with their display name.
+type RelationshipPathNode struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"` // Display name (e.g., "John Smith")
+}
+
 // RelationshipPath represents a single path of relationship through a common ancestor.
 type RelationshipPath struct {
-	Name                string      `json:"name"`                  // Human-readable relationship name (e.g., "1st cousin")
-	PathFromA           []uuid.UUID `json:"path_from_a"`           // Path from PersonA to common ancestor
-	PathFromB           []uuid.UUID `json:"path_from_b"`           // Path from PersonB to common ancestor
-	CommonAncestor      *Person     `json:"common_ancestor"`       // The lowest common ancestor
-	GenerationDistanceA int         `json:"generation_distance_a"` // Generations from A to common ancestor
-	GenerationDistanceB int         `json:"generation_distance_b"` // Generations from B to common ancestor
+	Name                string                 `json:"name"`                  // Human-readable relationship name (e.g., "1st cousin")
+	PathFromA           []RelationshipPathNode `json:"path_from_a"`           // Path from PersonA to common ancestor
+	PathFromB           []RelationshipPathNode `json:"path_from_b"`           // Path from PersonB to common ancestor
+	CommonAncestor      *Person                `json:"common_ancestor"`       // The lowest common ancestor
+	GenerationDistanceA int                    `json:"generation_distance_a"` // Generations from A to common ancestor
+	GenerationDistanceB int                    `json:"generation_distance_b"` // Generations from B to common ancestor
 }
 
 // RelationshipResult contains the complete relationship analysis between two people.
@@ -47,7 +53,7 @@ type RelationshipResult struct {
 type ancestorInfo struct {
 	person     Person
 	generation int
-	path       []uuid.UUID // Path from the starting person to this ancestor
+	path       []RelationshipPathNode // Path from the starting person to this ancestor
 }
 
 // maxGenerations is the limit for ancestor search to prevent excessive recursion.
@@ -83,12 +89,13 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 
 	// Handle same person case
 	if personID1 == personID2 {
+		node := RelationshipPathNode{ID: personID1, Name: personDisplayName(personA)}
 		result.IsRelated = true
 		result.Summary = "same person"
 		result.Paths = []RelationshipPath{{
 			Name:                "self",
-			PathFromA:           []uuid.UUID{personID1},
-			PathFromB:           []uuid.UUID{personID2},
+			PathFromA:           []RelationshipPathNode{node},
+			PathFromB:           []RelationshipPathNode{node},
 			GenerationDistanceA: 0,
 			GenerationDistanceB: 0,
 		}}
@@ -96,13 +103,14 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 	}
 
 	// Build ancestor maps for both persons with paths
-	ancestorsA := s.buildAncestorMap(ctx, personID1)
-	ancestorsB := s.buildAncestorMap(ctx, personID2)
+	ancestorsA := s.buildAncestorMap(ctx, personA)
+	ancestorsB := s.buildAncestorMap(ctx, personB)
 
 	// Check if A is an ancestor of B (direct line down from A's perspective)
 	if info, ok := ancestorsB[personID1]; ok {
+		nodeA := RelationshipPathNode{ID: personID1, Name: personDisplayName(personA)}
 		path := RelationshipPath{
-			PathFromA:           []uuid.UUID{personID1},
+			PathFromA:           []RelationshipPathNode{nodeA},
 			PathFromB:           info.path,
 			CommonAncestor:      &personA,
 			GenerationDistanceA: 0,
@@ -114,9 +122,10 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 
 	// Check if B is an ancestor of A (direct line up from A's perspective)
 	if info, ok := ancestorsA[personID2]; ok {
+		nodeB := RelationshipPathNode{ID: personID2, Name: personDisplayName(personB)}
 		path := RelationshipPath{
 			PathFromA:           info.path,
-			PathFromB:           []uuid.UUID{personID2},
+			PathFromB:           []RelationshipPathNode{nodeB},
 			CommonAncestor:      &personB,
 			GenerationDistanceA: info.generation,
 			GenerationDistanceB: 0,
@@ -155,12 +164,22 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 	return result, nil
 }
 
+// personDisplayName returns a display name for a person.
+func personDisplayName(p Person) string {
+	name := strings.TrimSpace(p.GivenName + " " + p.Surname)
+	if name == "" {
+		return "Unknown"
+	}
+	return name
+}
+
 // buildAncestorMap builds a map of all ancestors with their generation distance and path.
-func (s *RelationshipService) buildAncestorMap(ctx context.Context, personID uuid.UUID) map[uuid.UUID]ancestorInfo {
+func (s *RelationshipService) buildAncestorMap(ctx context.Context, person Person) map[uuid.UUID]ancestorInfo {
 	ancestors := make(map[uuid.UUID]ancestorInfo)
 	visited := make(map[uuid.UUID]bool)
 
-	s.collectAncestorsWithPath(ctx, personID, 0, []uuid.UUID{personID}, visited, ancestors)
+	startNode := RelationshipPathNode{ID: person.ID, Name: personDisplayName(person)}
+	s.collectAncestorsWithPath(ctx, person.ID, 0, []RelationshipPathNode{startNode}, visited, ancestors)
 
 	return ancestors
 }
@@ -170,7 +189,7 @@ func (s *RelationshipService) collectAncestorsWithPath(
 	ctx context.Context,
 	personID uuid.UUID,
 	generation int,
-	currentPath []uuid.UUID,
+	currentPath []RelationshipPathNode,
 	visited map[uuid.UUID]bool,
 	ancestors map[uuid.UUID]ancestorInfo,
 ) {
@@ -189,16 +208,18 @@ func (s *RelationshipService) collectAncestorsWithPath(
 
 	// Process father
 	if edge.FatherID != nil {
-		fatherPath := make([]uuid.UUID, len(currentPath))
-		copy(fatherPath, currentPath)
-		fatherPath = append(fatherPath, *edge.FatherID)
-
 		father, err := s.readStore.GetPerson(ctx, *edge.FatherID)
 		if err == nil && father != nil {
+			fatherPerson := convertReadModelToPerson(*father)
+			fatherNode := RelationshipPathNode{ID: *edge.FatherID, Name: personDisplayName(fatherPerson)}
+			fatherPath := make([]RelationshipPathNode, len(currentPath))
+			copy(fatherPath, currentPath)
+			fatherPath = append(fatherPath, fatherNode)
+
 			// Only add if not already present or if this path is shorter
 			if existing, ok := ancestors[*edge.FatherID]; !ok || generation+1 < existing.generation {
 				ancestors[*edge.FatherID] = ancestorInfo{
-					person:     convertReadModelToPerson(*father),
+					person:     fatherPerson,
 					generation: generation + 1,
 					path:       fatherPath,
 				}
@@ -209,16 +230,18 @@ func (s *RelationshipService) collectAncestorsWithPath(
 
 	// Process mother
 	if edge.MotherID != nil {
-		motherPath := make([]uuid.UUID, len(currentPath))
-		copy(motherPath, currentPath)
-		motherPath = append(motherPath, *edge.MotherID)
-
 		mother, err := s.readStore.GetPerson(ctx, *edge.MotherID)
 		if err == nil && mother != nil {
+			motherPerson := convertReadModelToPerson(*mother)
+			motherNode := RelationshipPathNode{ID: *edge.MotherID, Name: personDisplayName(motherPerson)}
+			motherPath := make([]RelationshipPathNode, len(currentPath))
+			copy(motherPath, currentPath)
+			motherPath = append(motherPath, motherNode)
+
 			// Only add if not already present or if this path is shorter
 			if existing, ok := ancestors[*edge.MotherID]; !ok || generation+1 < existing.generation {
 				ancestors[*edge.MotherID] = ancestorInfo{
-					person:     convertReadModelToPerson(*mother),
+					person:     motherPerson,
 					generation: generation + 1,
 					path:       motherPath,
 				}

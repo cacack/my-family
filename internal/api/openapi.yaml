@@ -5731,6 +5731,17 @@ components:
           type: boolean
           description: True if snapshot1 is the older (lower position) snapshot
 
+    RelationshipPathNode:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Display name of the person (e.g., "John Smith")
+
     RelationshipPath:
       type: object
       properties:
@@ -5740,13 +5751,11 @@ components:
         pathFromA:
           type: array
           items:
-            type: string
-            format: uuid
+            $ref: '#/components/schemas/RelationshipPathNode'
         pathFromB:
           type: array
           items:
-            type: string
-            format: uuid
+            $ref: '#/components/schemas/RelationshipPathNode'
         commonAncestorId:
           type: string
           format: uuid

@@ -3243,9 +3243,17 @@ type RelationshipPath struct {
 	GenerationDistanceB *int                `json:"generationDistanceB,omitempty"`
 
 	// Name Relationship name (e.g., "1st cousin once removed")
-	Name      *string               `json:"name,omitempty"`
-	PathFromA *[]openapi_types.UUID `json:"pathFromA,omitempty"`
-	PathFromB *[]openapi_types.UUID `json:"pathFromB,omitempty"`
+	Name      *string                 `json:"name,omitempty"`
+	PathFromA *[]RelationshipPathNode `json:"pathFromA,omitempty"`
+	PathFromB *[]RelationshipPathNode `json:"pathFromB,omitempty"`
+}
+
+// RelationshipPathNode defines model for RelationshipPathNode.
+type RelationshipPathNode struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Display name of the person (e.g., "John Smith")
+	Name string `json:"name"`
 }
 
 // RelationshipResult defines model for RelationshipResult.
