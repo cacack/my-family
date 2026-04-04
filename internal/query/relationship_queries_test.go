@@ -884,7 +884,7 @@ func TestGetRelationship_PathContainsCorrectIDs(t *testing.T) {
 
 	// PathFromA should be: child -> father -> grandfather
 	if len(path.PathFromA) != 3 {
-		t.Errorf("Expected PathFromA length 3, got %d", len(path.PathFromA))
+		t.Fatalf("Expected PathFromA length 3, got %d", len(path.PathFromA))
 	}
 	if path.PathFromA[0].ID != child {
 		t.Error("PathFromA[0] should be child")
@@ -908,7 +908,7 @@ func TestGetRelationship_PathContainsCorrectIDs(t *testing.T) {
 
 	// PathFromB should be just: grandfather
 	if len(path.PathFromB) != 1 {
-		t.Errorf("Expected PathFromB length 1, got %d", len(path.PathFromB))
+		t.Fatalf("Expected PathFromB length 1, got %d", len(path.PathFromB))
 	}
 	if path.PathFromB[0].ID != grandfather {
 		t.Error("PathFromB[0] should be grandfather")
