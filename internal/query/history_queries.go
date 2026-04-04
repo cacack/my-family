@@ -31,10 +31,10 @@ func NewHistoryService(eventStore repository.EventStore, readStore repository.Re
 type ChangeEntry struct {
 	ID         uuid.UUID              `json:"id"`
 	Timestamp  time.Time              `json:"timestamp"`
-	EntityType string                 `json:"entity_type"` // "person", "family", "source", "citation", "import"
+	EntityType string                 `json:"entity_type"` // "person", "family", "source", "citation"
 	EntityID   uuid.UUID              `json:"entity_id"`
 	EntityName string                 `json:"entity_name"` // e.g., "John Smith"
-	Action     string                 `json:"action"`      // "created", "updated", "deleted", "linked", "unlinked"
+	Action     string                 `json:"action"`      // "created", "updated", "deleted"
 	Changes    map[string]FieldChange `json:"changes,omitempty"`
 	UserID     *string                `json:"user_id,omitempty"`
 }
@@ -136,20 +136,26 @@ func (s *HistoryService) transformStoredEvents(ctx context.Context, events []rep
 	entries := make([]ChangeEntry, 0, len(events))
 
 	for _, evt := range events {
+		// Map event type to entity type and action
+		entityType, action := s.mapEventTypeToEntityAndAction(evt.EventType)
+
+		// Skip events that don't map to valid OpenAPI entity types (e.g., GedcomImported)
+		if entityType == "skip" {
+			continue
+		}
+
 		entry := ChangeEntry{
 			ID:        evt.ID,
 			Timestamp: evt.Timestamp,
 			EntityID:  evt.StreamID,
 		}
 
-		// Map event type to entity type and action
-		entityType, action := s.mapEventTypeToEntityAndAction(evt.EventType)
 		entry.EntityType = entityType
 		entry.Action = action
 
 		// Extract changes for update events
 		if action == "updated" {
-			changes, err := s.extractChanges(evt)
+			changes, err := s.extractChanges(ctx, evt)
 			if err == nil && len(changes) > 0 {
 				entry.Changes = changes
 			}
@@ -189,9 +195,9 @@ func (s *HistoryService) mapEventTypeToEntityAndAction(eventType string) (entity
 	case "FamilyDeleted":
 		return "family", "deleted"
 	case "ChildLinkedToFamily":
-		return "family", "linked"
+		return "family", "updated"
 	case "ChildUnlinkedFromFamily":
-		return "family", "unlinked"
+		return "family", "updated"
 	case "SourceCreated":
 		return "source", "created"
 	case "SourceUpdated":
@@ -205,14 +211,14 @@ func (s *HistoryService) mapEventTypeToEntityAndAction(eventType string) (entity
 	case "CitationDeleted":
 		return "citation", "deleted"
 	case "GedcomImported":
-		return "import", "created"
+		return "skip", ""
 	default:
 		return "unknown", "unknown"
 	}
 }
 
 // extractChanges extracts field-level changes from update events.
-func (s *HistoryService) extractChanges(evt repository.StoredEvent) (map[string]FieldChange, error) {
+func (s *HistoryService) extractChanges(ctx context.Context, evt repository.StoredEvent) (map[string]FieldChange, error) {
 	// Decode the event to access its Changes field
 	domainEvent, err := evt.DecodeEvent()
 	if err != nil {
@@ -229,6 +235,16 @@ func (s *HistoryService) extractChanges(evt repository.StoredEvent) (map[string]
 		return s.convertChangesMap(e.Changes), nil
 	case domain.CitationUpdated:
 		return s.convertChangesMap(e.Changes), nil
+	case domain.ChildLinkedToFamily:
+		childName := s.getPersonName(ctx, e.PersonID, nil)
+		return map[string]FieldChange{
+			"children": {NewValue: fmt.Sprintf("Child linked: %s", childName)},
+		}, nil
+	case domain.ChildUnlinkedFromFamily:
+		childName := s.getPersonName(ctx, e.PersonID, nil)
+		return map[string]FieldChange{
+			"children": {NewValue: fmt.Sprintf("Child unlinked: %s", childName)},
+		}, nil
 	default:
 		return nil, nil
 	}
@@ -259,8 +275,6 @@ func (s *HistoryService) getEntityName(ctx context.Context, entityType string, e
 		return s.getSourceName(ctx, entityID, evt)
 	case "citation":
 		return s.getCitationName(ctx, entityID, evt)
-	case "import":
-		return s.getImportName(evt)
 	default:
 		return entityID.String()
 	}
@@ -275,7 +289,7 @@ func (s *HistoryService) getPersonName(ctx context.Context, personID uuid.UUID, 
 	}
 
 	// Fallback: extract name from creation event
-	if evt.EventType == "PersonCreated" {
+	if evt != nil && evt.EventType == "PersonCreated" {
 		var created domain.PersonCreated
 		if err := json.Unmarshal(evt.Data, &created); err == nil {
 			if created.GivenName != "" || created.Surname != "" {
@@ -289,8 +303,7 @@ func (s *HistoryService) getPersonName(ctx context.Context, personID uuid.UUID, 
 }
 
 // getFamilyName retrieves or constructs a family's name.
-// TODO: evt parameter reserved for extracting name from event data when read model unavailable
-func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, _ *repository.StoredEvent) string {
+func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, evt *repository.StoredEvent) string {
 	// Try to get from read model first
 	family, err := s.readStore.GetFamily(ctx, familyID)
 	if err == nil && family != nil {
@@ -305,7 +318,27 @@ func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, 
 		}
 	}
 
-	// Fallback: use ID
+	// Fallback: extract partner names from creation event
+	if evt != nil && evt.EventType == "FamilyCreated" {
+		var created domain.FamilyCreated
+		if err := json.Unmarshal(evt.Data, &created); err == nil {
+			names := make([]string, 0, 2)
+			if created.Partner1ID != nil {
+				names = append(names, s.getPersonName(ctx, *created.Partner1ID, nil))
+			}
+			if created.Partner2ID != nil {
+				names = append(names, s.getPersonName(ctx, *created.Partner2ID, nil))
+			}
+			if len(names) == 2 {
+				return fmt.Sprintf("%s & %s", names[0], names[1])
+			}
+			if len(names) == 1 {
+				return names[0]
+			}
+		}
+	}
+
+	// Last resort: use ID
 	return familyID.String()
 }
 
@@ -342,15 +375,4 @@ func (s *HistoryService) getCitationName(ctx context.Context, citationID uuid.UU
 
 	// Fallback: use ID
 	return citationID.String()
-}
-
-// getImportName constructs a name for an import event.
-func (s *HistoryService) getImportName(evt *repository.StoredEvent) string {
-	if evt.EventType == "GedcomImported" {
-		var imported domain.GedcomImported
-		if err := json.Unmarshal(evt.Data, &imported); err == nil {
-			return fmt.Sprintf("GEDCOM Import: %s", imported.Filename)
-		}
-	}
-	return "Import"
 }

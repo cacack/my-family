@@ -678,15 +678,15 @@ func TestMapEventTypeToEntityAndAction(t *testing.T) {
 		{"FamilyCreated", "family", "created"},
 		{"FamilyUpdated", "family", "updated"},
 		{"FamilyDeleted", "family", "deleted"},
-		{"ChildLinkedToFamily", "family", "linked"},
-		{"ChildUnlinkedFromFamily", "family", "unlinked"},
+		{"ChildLinkedToFamily", "family", "updated"},
+		{"ChildUnlinkedFromFamily", "family", "updated"},
 		{"SourceCreated", "source", "created"},
 		{"SourceUpdated", "source", "updated"},
 		{"SourceDeleted", "source", "deleted"},
 		{"CitationCreated", "citation", "created"},
 		{"CitationUpdated", "citation", "updated"},
 		{"CitationDeleted", "citation", "deleted"},
-		{"GedcomImported", "import", "created"},
+		{"GedcomImported", "skip", ""},
 		{"UnknownEvent", "unknown", "unknown"},
 	}
 
@@ -700,7 +700,7 @@ func TestMapEventTypeToEntityAndAction(t *testing.T) {
 }
 
 func TestExtractChanges(t *testing.T) {
-	service := &HistoryService{}
+	service := NewHistoryService(&mockEventStore{}, &mockReadModelStore{})
 
 	tests := []struct {
 		name        string
@@ -753,7 +753,7 @@ func TestExtractChanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			changes, err := service.extractChanges(tt.event)
+			changes, err := service.extractChanges(context.Background(), tt.event)
 			require.NoError(t, err)
 
 			if tt.wantChanges {
@@ -774,7 +774,6 @@ func TestGetEntityName(t *testing.T) {
 	familyID := uuid.New()
 	sourceID := uuid.New()
 	citationID := uuid.New()
-	importID := uuid.New()
 
 	readStore := &mockReadModelStore{
 		getPersonFunc: func(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
@@ -853,16 +852,6 @@ func TestGetEntityName(t *testing.T) {
 			entityID:   citationID,
 			event:      &repository.StoredEvent{EventType: "CitationCreated"},
 			wantName:   "1900 Census (person_birth)",
-		},
-		{
-			name:       "import event",
-			entityType: "import",
-			entityID:   importID,
-			event: &repository.StoredEvent{
-				EventType: "GedcomImported",
-				Data:      mustMarshal(domain.NewGedcomImported("family.ged", 1024, 10, 5, nil, nil)),
-			},
-			wantName: "GEDCOM Import: family.ged",
 		},
 		{
 			name:       "unknown entity type",
@@ -1129,6 +1118,217 @@ func TestTransformStoredEvents(t *testing.T) {
 	assert.Equal(t, "John Smith", entries[1].EntityName)
 	assert.NotNil(t, entries[1].Changes)
 	assert.Contains(t, entries[1].Changes, "given_name")
+}
+
+func TestChildLinkedToFamilyProducesUpdatedAction(t *testing.T) {
+	familyID := uuid.New()
+	childID := uuid.New()
+	now := time.Now().UTC()
+
+	linkedEvent := domain.NewChildLinkedToFamily(&domain.FamilyChild{
+		FamilyID:         familyID,
+		PersonID:         childID,
+		RelationshipType: domain.ChildBiological,
+	})
+	linkedData, _ := json.Marshal(linkedEvent)
+
+	readStore := &mockReadModelStore{
+		getFamilyFunc: func(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
+			if id == familyID {
+				return &repository.FamilyReadModel{
+					ID:           familyID,
+					Partner1Name: "John Smith",
+					Partner2Name: "Jane Smith",
+				}, nil
+			}
+			return nil, repository.ErrStreamNotFound
+		},
+		getPersonFunc: func(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
+			if id == childID {
+				return &repository.PersonReadModel{
+					ID:       childID,
+					FullName: "Bobby Smith",
+				}, nil
+			}
+			return nil, repository.ErrStreamNotFound
+		},
+	}
+
+	service := NewHistoryService(&mockEventStore{}, readStore)
+
+	events := []repository.StoredEvent{
+		{
+			ID:         uuid.New(),
+			StreamID:   familyID,
+			StreamType: "family",
+			EventType:  "ChildLinkedToFamily",
+			Data:       linkedData,
+			Version:    2,
+			Position:   2,
+			Timestamp:  now,
+		},
+	}
+
+	entries, err := service.transformStoredEvents(context.Background(), events)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	entry := entries[0]
+	assert.Equal(t, "family", entry.EntityType)
+	assert.Equal(t, "updated", entry.Action)
+	assert.Equal(t, "John Smith & Jane Smith", entry.EntityName)
+	require.Contains(t, entry.Changes, "children")
+	assert.Equal(t, "Child linked: Bobby Smith", entry.Changes["children"].NewValue)
+}
+
+func TestChildUnlinkedFromFamilyProducesUpdatedAction(t *testing.T) {
+	familyID := uuid.New()
+	childID := uuid.New()
+	now := time.Now().UTC()
+
+	unlinkedEvent := domain.NewChildUnlinkedFromFamily(familyID, childID)
+	unlinkedData, _ := json.Marshal(unlinkedEvent)
+
+	readStore := &mockReadModelStore{
+		getFamilyFunc: func(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
+			if id == familyID {
+				return &repository.FamilyReadModel{
+					ID:           familyID,
+					Partner1Name: "John Smith",
+					Partner2Name: "Jane Smith",
+				}, nil
+			}
+			return nil, repository.ErrStreamNotFound
+		},
+		getPersonFunc: func(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
+			if id == childID {
+				return &repository.PersonReadModel{
+					ID:       childID,
+					FullName: "Bobby Smith",
+				}, nil
+			}
+			return nil, repository.ErrStreamNotFound
+		},
+	}
+
+	service := NewHistoryService(&mockEventStore{}, readStore)
+
+	events := []repository.StoredEvent{
+		{
+			ID:         uuid.New(),
+			StreamID:   familyID,
+			StreamType: "family",
+			EventType:  "ChildUnlinkedFromFamily",
+			Data:       unlinkedData,
+			Version:    3,
+			Position:   3,
+			Timestamp:  now,
+		},
+	}
+
+	entries, err := service.transformStoredEvents(context.Background(), events)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	entry := entries[0]
+	assert.Equal(t, "family", entry.EntityType)
+	assert.Equal(t, "updated", entry.Action)
+	assert.Equal(t, "John Smith & Jane Smith", entry.EntityName)
+	require.Contains(t, entry.Changes, "children")
+	assert.Equal(t, "Child unlinked: Bobby Smith", entry.Changes["children"].NewValue)
+}
+
+func TestGedcomImportedEventsAreSkipped(t *testing.T) {
+	importID := uuid.New()
+	now := time.Now().UTC()
+
+	importEvent := domain.NewGedcomImported("family.ged", 1024, 10, 5, nil, nil)
+	importData, _ := json.Marshal(importEvent)
+
+	service := NewHistoryService(&mockEventStore{}, &mockReadModelStore{})
+
+	events := []repository.StoredEvent{
+		{
+			ID:         uuid.New(),
+			StreamID:   importID,
+			StreamType: "import",
+			EventType:  "GedcomImported",
+			Data:       importData,
+			Version:    1,
+			Position:   1,
+			Timestamp:  now,
+		},
+	}
+
+	entries, err := service.transformStoredEvents(context.Background(), events)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "GedcomImported events should be filtered out")
+}
+
+func TestUnknownEventTypeStillReturnsUnknown(t *testing.T) {
+	service := &HistoryService{}
+	entityType, action := service.mapEventTypeToEntityAndAction("CompletelyUnknownEvent")
+	assert.Equal(t, "unknown", entityType)
+	assert.Equal(t, "unknown", action)
+}
+
+func TestGetFamilyNameFallbackFromCreationEvent(t *testing.T) {
+	familyID := uuid.New()
+	partner1ID := uuid.New()
+	partner2ID := uuid.New()
+
+	readStore := &mockReadModelStore{
+		getFamilyFunc: func(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
+			return nil, repository.ErrStreamNotFound
+		},
+		getPersonFunc: func(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
+			if id == partner1ID {
+				return &repository.PersonReadModel{ID: partner1ID, FullName: "John Smith"}, nil
+			}
+			if id == partner2ID {
+				return &repository.PersonReadModel{ID: partner2ID, FullName: "Jane Doe"}, nil
+			}
+			return nil, repository.ErrStreamNotFound
+		},
+	}
+
+	service := NewHistoryService(&mockEventStore{}, readStore)
+
+	t.Run("both partners from creation event", func(t *testing.T) {
+		evt := &repository.StoredEvent{
+			EventType: "FamilyCreated",
+			Data: mustMarshal(domain.FamilyCreated{
+				FamilyID:   familyID,
+				Partner1ID: &partner1ID,
+				Partner2ID: &partner2ID,
+			}),
+		}
+		name := service.getFamilyName(context.Background(), familyID, evt)
+		assert.Equal(t, "John Smith & Jane Doe", name)
+	})
+
+	t.Run("one partner from creation event", func(t *testing.T) {
+		evt := &repository.StoredEvent{
+			EventType: "FamilyCreated",
+			Data: mustMarshal(domain.FamilyCreated{
+				FamilyID:   familyID,
+				Partner1ID: &partner1ID,
+			}),
+		}
+		name := service.getFamilyName(context.Background(), familyID, evt)
+		assert.Equal(t, "John Smith", name)
+	})
+
+	t.Run("no partners falls back to ID", func(t *testing.T) {
+		evt := &repository.StoredEvent{
+			EventType: "FamilyCreated",
+			Data: mustMarshal(domain.FamilyCreated{
+				FamilyID: familyID,
+			}),
+		}
+		name := service.getFamilyName(context.Background(), familyID, evt)
+		assert.Equal(t, familyID.String(), name)
+	})
 }
 
 // Helper function to marshal data for tests
