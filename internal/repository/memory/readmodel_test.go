@@ -3685,3 +3685,381 @@ func TestReadModelStore_ListAttributes(t *testing.T) {
 		t.Errorf("len(results) with limit = %d, want 2", len(results))
 	}
 }
+
+// Evidence Analysis CRUD operations
+
+func TestReadModelStore_SaveAndGetEvidenceAnalysis(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	analysis := &repository.EvidenceAnalysisReadModel{
+		ID:              uuid.New(),
+		FactType:        domain.FactPersonBirth,
+		SubjectID:       uuid.New(),
+		CitationIDsJSON: `["` + uuid.New().String() + `"]`,
+		Conclusion:      "Birth confirmed by certificate",
+		ResearchStatus:  domain.ResearchStatusCertain,
+		Notes:           "Primary source",
+		Version:         1,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	err := store.SaveEvidenceAnalysis(ctx, analysis)
+	if err != nil {
+		t.Fatalf("SaveEvidenceAnalysis() failed: %v", err)
+	}
+
+	retrieved, err := store.GetEvidenceAnalysis(ctx, analysis.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceAnalysis() failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("EvidenceAnalysis not found")
+	}
+	if retrieved.Conclusion != "Birth confirmed by certificate" {
+		t.Errorf("Conclusion = %s, want Birth confirmed by certificate", retrieved.Conclusion)
+	}
+	if retrieved.ResearchStatus != domain.ResearchStatusCertain {
+		t.Errorf("ResearchStatus = %s, want certain", retrieved.ResearchStatus)
+	}
+
+	// Test not found
+	notFound, err := store.GetEvidenceAnalysis(ctx, uuid.New())
+	if err != nil {
+		t.Fatalf("GetEvidenceAnalysis() not found failed: %v", err)
+	}
+	if notFound != nil {
+		t.Error("Expected nil for non-existent analysis")
+	}
+
+	// Test delete
+	err = store.DeleteEvidenceAnalysis(ctx, analysis.ID)
+	if err != nil {
+		t.Fatalf("DeleteEvidenceAnalysis() failed: %v", err)
+	}
+	deleted, err := store.GetEvidenceAnalysis(ctx, analysis.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceAnalysis() after delete failed: %v", err)
+	}
+	if deleted != nil {
+		t.Error("Analysis should be deleted")
+	}
+}
+
+func TestReadModelStore_ListEvidenceAnalyses(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		a := &repository.EvidenceAnalysisReadModel{
+			ID:         uuid.New(),
+			FactType:   domain.FactPersonBirth,
+			SubjectID:  uuid.New(),
+			Conclusion: fmt.Sprintf("Conclusion %d", i),
+			Version:    1,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now().Add(time.Duration(i) * time.Second),
+		}
+		if err := store.SaveEvidenceAnalysis(ctx, a); err != nil {
+			t.Fatalf("SaveEvidenceAnalysis() failed: %v", err)
+		}
+	}
+
+	results, total, err := store.ListEvidenceAnalyses(ctx, repository.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListEvidenceAnalyses() failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+
+	// Test pagination
+	results, total, err = store.ListEvidenceAnalyses(ctx, repository.ListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListEvidenceAnalyses() paginated failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("len(results) = %d, want 2", len(results))
+	}
+}
+
+// Evidence Conflict CRUD operations
+
+func TestReadModelStore_SaveAndGetEvidenceConflict(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	conflict := &repository.EvidenceConflictReadModel{
+		ID:              uuid.New(),
+		FactType:        domain.FactPersonBirth,
+		SubjectID:       uuid.New(),
+		AnalysisIDsJSON: `["` + uuid.New().String() + `","` + uuid.New().String() + `"]`,
+		Description:     "Conflicting birth dates",
+		Status:          domain.ConflictStatusOpen,
+		Version:         1,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	err := store.SaveEvidenceConflict(ctx, conflict)
+	if err != nil {
+		t.Fatalf("SaveEvidenceConflict() failed: %v", err)
+	}
+
+	retrieved, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceConflict() failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("EvidenceConflict not found")
+	}
+	if retrieved.Description != "Conflicting birth dates" {
+		t.Errorf("Description = %s, want Conflicting birth dates", retrieved.Description)
+	}
+	if retrieved.Status != domain.ConflictStatusOpen {
+		t.Errorf("Status = %s, want open", retrieved.Status)
+	}
+
+	// Test update (resolve)
+	conflict.Resolution = "Certificate is authoritative"
+	conflict.Status = domain.ConflictStatusResolved
+	conflict.Version = 2
+	err = store.SaveEvidenceConflict(ctx, conflict)
+	if err != nil {
+		t.Fatalf("SaveEvidenceConflict() update failed: %v", err)
+	}
+
+	updated, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceConflict() after update failed: %v", err)
+	}
+	if updated.Status != domain.ConflictStatusResolved {
+		t.Errorf("Status after update = %s, want resolved", updated.Status)
+	}
+	if updated.Resolution != "Certificate is authoritative" {
+		t.Errorf("Resolution = %s, want Certificate is authoritative", updated.Resolution)
+	}
+
+	// Test delete
+	err = store.DeleteEvidenceConflict(ctx, conflict.ID)
+	if err != nil {
+		t.Fatalf("DeleteEvidenceConflict() failed: %v", err)
+	}
+	deleted, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceConflict() after delete failed: %v", err)
+	}
+	if deleted != nil {
+		t.Error("Conflict should be deleted")
+	}
+}
+
+func TestReadModelStore_ListEvidenceConflicts(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		c := &repository.EvidenceConflictReadModel{
+			ID:          uuid.New(),
+			FactType:    domain.FactPersonBirth,
+			SubjectID:   uuid.New(),
+			Description: fmt.Sprintf("Conflict %d", i),
+			Status:      domain.ConflictStatusOpen,
+			Version:     1,
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now().Add(time.Duration(i) * time.Second),
+		}
+		if err := store.SaveEvidenceConflict(ctx, c); err != nil {
+			t.Fatalf("SaveEvidenceConflict() failed: %v", err)
+		}
+	}
+
+	results, total, err := store.ListEvidenceConflicts(ctx, repository.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListEvidenceConflicts() failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+}
+
+// Research Log CRUD operations
+
+func TestReadModelStore_SaveAndGetResearchLog(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	log := &repository.ResearchLogReadModel{
+		ID:                uuid.New(),
+		SubjectID:         uuid.New(),
+		SubjectType:       "person",
+		Repository:        "National Archives",
+		SearchDescription: "Census records search",
+		Outcome:           domain.ResearchOutcomeFound,
+		Notes:             "Found in 1850 census",
+		SearchDate:        time.Now().UTC(),
+		Version:           1,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+
+	err := store.SaveResearchLog(ctx, log)
+	if err != nil {
+		t.Fatalf("SaveResearchLog() failed: %v", err)
+	}
+
+	retrieved, err := store.GetResearchLog(ctx, log.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLog() failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("ResearchLog not found")
+	}
+	if retrieved.Repository != "National Archives" {
+		t.Errorf("Repository = %s, want National Archives", retrieved.Repository)
+	}
+	if retrieved.Outcome != domain.ResearchOutcomeFound {
+		t.Errorf("Outcome = %s, want found", retrieved.Outcome)
+	}
+
+	// Test delete
+	err = store.DeleteResearchLog(ctx, log.ID)
+	if err != nil {
+		t.Fatalf("DeleteResearchLog() failed: %v", err)
+	}
+	deleted, err := store.GetResearchLog(ctx, log.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLog() after delete failed: %v", err)
+	}
+	if deleted != nil {
+		t.Error("Research log should be deleted")
+	}
+}
+
+func TestReadModelStore_ListResearchLogs(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		l := &repository.ResearchLogReadModel{
+			ID:                uuid.New(),
+			SubjectID:         uuid.New(),
+			SubjectType:       "person",
+			Repository:        fmt.Sprintf("Repo %d", i),
+			SearchDescription: "Search",
+			Outcome:           domain.ResearchOutcomeFound,
+			SearchDate:        time.Now().UTC(),
+			Version:           1,
+			CreatedAt:         time.Now(),
+			UpdatedAt:         time.Now().Add(time.Duration(i) * time.Second),
+		}
+		if err := store.SaveResearchLog(ctx, l); err != nil {
+			t.Fatalf("SaveResearchLog() failed: %v", err)
+		}
+	}
+
+	results, total, err := store.ListResearchLogs(ctx, repository.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListResearchLogs() failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+}
+
+// Proof Summary CRUD operations
+
+func TestReadModelStore_SaveAndGetProofSummary(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	summary := &repository.ProofSummaryReadModel{
+		ID:              uuid.New(),
+		FactType:        domain.FactPersonBirth,
+		SubjectID:       uuid.New(),
+		Conclusion:      "Birth year is 1850",
+		Argument:        "Three independent sources corroborate this date",
+		AnalysisIDsJSON: `["` + uuid.New().String() + `"]`,
+		ResearchStatus:  domain.ResearchStatusProbable,
+		Version:         1,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	err := store.SaveProofSummary(ctx, summary)
+	if err != nil {
+		t.Fatalf("SaveProofSummary() failed: %v", err)
+	}
+
+	retrieved, err := store.GetProofSummary(ctx, summary.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummary() failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("ProofSummary not found")
+	}
+	if retrieved.Conclusion != "Birth year is 1850" {
+		t.Errorf("Conclusion = %s, want Birth year is 1850", retrieved.Conclusion)
+	}
+	if retrieved.Argument != "Three independent sources corroborate this date" {
+		t.Errorf("Argument = %s, want Three independent sources corroborate this date", retrieved.Argument)
+	}
+
+	// Test delete
+	err = store.DeleteProofSummary(ctx, summary.ID)
+	if err != nil {
+		t.Fatalf("DeleteProofSummary() failed: %v", err)
+	}
+	deleted, err := store.GetProofSummary(ctx, summary.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummary() after delete failed: %v", err)
+	}
+	if deleted != nil {
+		t.Error("Proof summary should be deleted")
+	}
+}
+
+func TestReadModelStore_ListProofSummaries(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		ps := &repository.ProofSummaryReadModel{
+			ID:         uuid.New(),
+			FactType:   domain.FactPersonBirth,
+			SubjectID:  uuid.New(),
+			Conclusion: fmt.Sprintf("Conclusion %d", i),
+			Argument:   "Argument",
+			Version:    1,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now().Add(time.Duration(i) * time.Second),
+		}
+		if err := store.SaveProofSummary(ctx, ps); err != nil {
+			t.Fatalf("SaveProofSummary() failed: %v", err)
+		}
+	}
+
+	results, total, err := store.ListProofSummaries(ctx, repository.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListProofSummaries() failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+}

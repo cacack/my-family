@@ -227,6 +227,54 @@ func ParseResearchStatus(s string) ResearchStatus {
 	}
 }
 
+// ConflictStatus represents the status of an evidence conflict.
+type ConflictStatus string
+
+const (
+	ConflictStatusOpen     ConflictStatus = "open"
+	ConflictStatusResolved ConflictStatus = "resolved"
+	ConflictStatusAccepted ConflictStatus = "accepted"
+)
+
+// IsValid checks if the conflict status value is valid.
+func (c ConflictStatus) IsValid() bool {
+	switch c {
+	case ConflictStatusOpen, ConflictStatusResolved, ConflictStatusAccepted:
+		return true
+	default:
+		return false
+	}
+}
+
+// AllConflictStatuses returns all valid ConflictStatus values.
+func AllConflictStatuses() []ConflictStatus {
+	return []ConflictStatus{ConflictStatusOpen, ConflictStatusResolved, ConflictStatusAccepted}
+}
+
+// ResearchOutcome represents the outcome of a research log entry.
+type ResearchOutcome string
+
+const (
+	ResearchOutcomeFound        ResearchOutcome = "found"
+	ResearchOutcomeNotFound     ResearchOutcome = "not_found"
+	ResearchOutcomeInconclusive ResearchOutcome = "inconclusive"
+)
+
+// IsValid checks if the research outcome value is valid.
+func (r ResearchOutcome) IsValid() bool {
+	switch r {
+	case ResearchOutcomeFound, ResearchOutcomeNotFound, ResearchOutcomeInconclusive:
+		return true
+	default:
+		return false
+	}
+}
+
+// AllResearchOutcomes returns all valid ResearchOutcome values.
+func AllResearchOutcomes() []ResearchOutcome {
+	return []ResearchOutcome{ResearchOutcomeFound, ResearchOutcomeNotFound, ResearchOutcomeInconclusive}
+}
+
 // FactType represents the type of fact that a citation can attach to.
 type FactType string
 

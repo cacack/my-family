@@ -32,6 +32,10 @@ Completed features in my-family genealogy software.
 - **Brick Wall Tracker** - Mark research dead ends, add notes, and celebrate breakthroughs with resolution tracking and browse page
 - **Discovery Feed** - Prioritized research suggestions on the dashboard identifying missing data, orphaned records, unassessed persons, and quality gaps
 - **Citation Template UI** - Browse 26 Evidence Explained citation templates by category, select templates when adding citations for dynamic field rendering with live-formatted preview
+- **Evidence Analysis** - Aggregate multiple citations per fact with researcher conclusions, separating what sources say from what you believe (GPS-compliant)
+- **Conflict Tracking** - Automatic detection of contradictory evidence across analyses for the same fact, with resolution workflow
+- **Research Logs** - Document research activity including repository searched, search description, and outcome (found/not found/inconclusive) for negative evidence tracking
+- **Proof Summaries** - Attach written proof arguments for non-obvious conclusions, linking supporting evidence analyses
 
 ## Data Validation & Cleanup
 

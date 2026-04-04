@@ -57,6 +57,14 @@ tags:
     description: GEDCOM ASSO record management (non-family relationships)
   - name: lds-ordinances
     description: LDS temple ordinance management (BAPL, CONL, ENDL, SLGC, SLGS)
+  - name: evidence-analyses
+    description: Evidence analysis management (GPS-compliant evidence evaluation)
+  - name: evidence-conflicts
+    description: Evidence conflict detection and resolution
+  - name: research-logs
+    description: Research log entries tracking searches and outcomes
+  - name: proof-summaries
+    description: Proof summary management (GPS-compliant proof arguments)
 
 paths:
   /persons:
@@ -2837,6 +2845,502 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # Evidence Analysis endpoints
+  /evidence-analyses:
+    get:
+      operationId: listEvidenceAnalyses
+      summary: List all evidence analyses
+      tags: [evidence-analyses]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [created_at, updated_at, fact_type]
+            default: created_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of evidence analyses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceAnalysisList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createEvidenceAnalysis
+      summary: Create a new evidence analysis
+      tags: [evidence-analyses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceAnalysisCreate'
+      responses:
+        '201':
+          description: Evidence analysis created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceAnalysis'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /evidence-analyses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/evidenceAnalysisId'
+
+    get:
+      operationId: getEvidenceAnalysis
+      summary: Get an evidence analysis by ID
+      tags: [evidence-analyses]
+      responses:
+        '200':
+          description: Evidence analysis details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceAnalysis'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateEvidenceAnalysis
+      summary: Update an evidence analysis
+      tags: [evidence-analyses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceAnalysisUpdate'
+      responses:
+        '200':
+          description: Evidence analysis updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceAnalysis'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteEvidenceAnalysis
+      summary: Delete an evidence analysis
+      tags: [evidence-analyses]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Evidence analysis deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /evidence-analyses/by-fact:
+    get:
+      operationId: getAnalysesByFact
+      summary: Get evidence analyses by fact type and subject
+      tags: [evidence-analyses]
+      parameters:
+        - name: factType
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: subjectId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of matching evidence analyses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvidenceAnalysis'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # Evidence Conflict endpoints
+  /evidence-conflicts:
+    get:
+      operationId: listEvidenceConflicts
+      summary: List all evidence conflicts
+      tags: [evidence-conflicts]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: status
+          in: query
+          description: Filter by conflict status
+          schema:
+            type: string
+            enum: [open, resolved]
+      responses:
+        '200':
+          description: List of evidence conflicts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceConflictList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /evidence-conflicts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/evidenceConflictId'
+
+    get:
+      operationId: getEvidenceConflict
+      summary: Get an evidence conflict by ID
+      tags: [evidence-conflicts]
+      responses:
+        '200':
+          description: Evidence conflict details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceConflict'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /evidence-conflicts/{id}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/evidenceConflictId'
+
+    post:
+      operationId: resolveEvidenceConflict
+      summary: Resolve an evidence conflict
+      tags: [evidence-conflicts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvidenceConflictResolve'
+      responses:
+        '200':
+          description: Conflict resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceConflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /evidence-conflicts/by-subject/{subjectId}:
+    parameters:
+      - name: subjectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getConflictsBySubject
+      summary: Get evidence conflicts for a subject
+      tags: [evidence-conflicts]
+      responses:
+        '200':
+          description: List of evidence conflicts for the subject
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvidenceConflict'
+
+  # Research Log endpoints
+  /research-logs:
+    get:
+      operationId: listResearchLogs
+      summary: List all research log entries
+      tags: [research-logs]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [created_at, search_date, updated_at]
+            default: created_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of research log entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchLogList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createResearchLog
+      summary: Create a new research log entry
+      tags: [research-logs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResearchLogCreate'
+      responses:
+        '201':
+          description: Research log entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchLog'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /research-logs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/researchLogId'
+
+    get:
+      operationId: getResearchLog
+      summary: Get a research log entry by ID
+      tags: [research-logs]
+      responses:
+        '200':
+          description: Research log entry details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchLog'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateResearchLog
+      summary: Update a research log entry
+      tags: [research-logs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResearchLogUpdate'
+      responses:
+        '200':
+          description: Research log entry updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchLog'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteResearchLog
+      summary: Delete a research log entry
+      tags: [research-logs]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Research log entry deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /research-logs/by-subject/{subjectId}:
+    parameters:
+      - name: subjectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getResearchLogsBySubject
+      summary: Get research log entries for a subject
+      tags: [research-logs]
+      responses:
+        '200':
+          description: List of research log entries for the subject
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResearchLog'
+
+  # Proof Summary endpoints
+  /proof-summaries:
+    get:
+      operationId: listProofSummaries
+      summary: List all proof summaries
+      tags: [proof-summaries]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [created_at, updated_at, fact_type]
+            default: created_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of proof summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProofSummaryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createProofSummary
+      summary: Create a new proof summary
+      tags: [proof-summaries]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProofSummaryCreate'
+      responses:
+        '201':
+          description: Proof summary created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProofSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /proof-summaries/{id}:
+    parameters:
+      - $ref: '#/components/parameters/proofSummaryId'
+
+    get:
+      operationId: getProofSummary
+      summary: Get a proof summary by ID
+      tags: [proof-summaries]
+      responses:
+        '200':
+          description: Proof summary details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProofSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateProofSummary
+      summary: Update a proof summary
+      tags: [proof-summaries]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProofSummaryUpdate'
+      responses:
+        '200':
+          description: Proof summary updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProofSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteProofSummary
+      summary: Delete a proof summary
+      tags: [proof-summaries]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Proof summary deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /proof-summaries/by-fact:
+    get:
+      operationId: getProofSummaryByFact
+      summary: Get proof summaries by fact type and subject
+      tags: [proof-summaries]
+      parameters:
+        - name: factType
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: subjectId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of matching proof summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProofSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
 components:
   parameters:
     personId:
@@ -2921,6 +3425,42 @@ components:
       in: path
       required: true
       description: LDS Ordinance UUID
+      schema:
+        type: string
+        format: uuid
+
+    evidenceAnalysisId:
+      name: id
+      in: path
+      required: true
+      description: Evidence Analysis UUID
+      schema:
+        type: string
+        format: uuid
+
+    evidenceConflictId:
+      name: id
+      in: path
+      required: true
+      description: Evidence Conflict UUID
+      schema:
+        type: string
+        format: uuid
+
+    researchLogId:
+      name: id
+      in: path
+      required: true
+      description: Research Log UUID
+      schema:
+        type: string
+        format: uuid
+
+    proofSummaryId:
+      name: id
+      in: path
+      required: true
+      description: Proof Summary UUID
       schema:
         type: string
         format: uuid
@@ -5781,4 +6321,371 @@ components:
           items:
             $ref: '#/components/schemas/AttributeExport'
         total:
+          type: integer
+
+    # Evidence Analysis schemas
+    EvidenceAnalysis:
+      type: object
+      required: [id, fact_type, subject_id, conclusion, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fact_type:
+          type: string
+          description: Type of fact being analyzed (e.g., birth, death, marriage)
+        subject_id:
+          type: string
+          format: uuid
+          description: ID of the person or family this analysis is about
+        citation_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: IDs of citations supporting this analysis
+        conclusion:
+          type: string
+          description: The conclusion drawn from the evidence
+        research_status:
+          type: string
+          $ref: '#/components/schemas/ResearchStatus'
+        notes:
+          type: string
+        conflict_id:
+          type: string
+          format: uuid
+          description: ID of auto-detected conflict (present in create/update responses)
+        version:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EvidenceAnalysisCreate:
+      type: object
+      required: [fact_type, subject_id, conclusion]
+      properties:
+        fact_type:
+          type: string
+          description: Type of fact being analyzed
+        subject_id:
+          type: string
+          format: uuid
+        citation_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        conclusion:
+          type: string
+        research_status:
+          type: string
+          enum: [certain, probable, possible, unknown]
+        notes:
+          type: string
+
+    EvidenceAnalysisUpdate:
+      type: object
+      required: [version]
+      properties:
+        fact_type:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        citation_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        conclusion:
+          type: string
+        research_status:
+          type: string
+          enum: [certain, probable, possible, unknown]
+        notes:
+          type: string
+        version:
+          type: integer
+          format: int64
+
+    EvidenceAnalysisList:
+      type: object
+      required: [analyses, total]
+      properties:
+        analyses:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceAnalysis'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Evidence Conflict schemas
+    EvidenceConflict:
+      type: object
+      required: [id, fact_type, subject_id, analysis_ids, description, status, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fact_type:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        analysis_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        description:
+          type: string
+        resolution:
+          type: string
+        status:
+          type: string
+          enum: [open, resolved]
+        version:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EvidenceConflictResolve:
+      type: object
+      required: [resolution, version]
+      properties:
+        resolution:
+          type: string
+          description: How the conflict was resolved
+        version:
+          type: integer
+          format: int64
+
+    EvidenceConflictList:
+      type: object
+      required: [conflicts, total]
+      properties:
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceConflict'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Research Log schemas
+    ResearchLog:
+      type: object
+      required: [id, subject_id, subject_type, repository, search_description, outcome, search_date, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject_id:
+          type: string
+          format: uuid
+        subject_type:
+          type: string
+          description: Type of subject (person or family)
+        repository:
+          type: string
+          description: Name of the repository searched
+        search_description:
+          type: string
+          description: Description of the search performed
+        outcome:
+          type: string
+          enum: [found, not_found, inconclusive]
+        notes:
+          type: string
+        search_date:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ResearchLogCreate:
+      type: object
+      required: [subject_id, subject_type, repository, search_description, outcome, search_date]
+      properties:
+        subject_id:
+          type: string
+          format: uuid
+        subject_type:
+          type: string
+        repository:
+          type: string
+        search_description:
+          type: string
+        outcome:
+          type: string
+          enum: [found, not_found, inconclusive]
+        notes:
+          type: string
+        search_date:
+          type: string
+          format: date-time
+
+    ResearchLogUpdate:
+      type: object
+      required: [version]
+      properties:
+        subject_id:
+          type: string
+          format: uuid
+        subject_type:
+          type: string
+        repository:
+          type: string
+        search_description:
+          type: string
+        outcome:
+          type: string
+          enum: [found, not_found, inconclusive]
+        notes:
+          type: string
+        search_date:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+
+    ResearchLogList:
+      type: object
+      required: [logs, total]
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResearchLog'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Proof Summary schemas
+    ProofSummary:
+      type: object
+      required: [id, fact_type, subject_id, conclusion, argument, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fact_type:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        conclusion:
+          type: string
+          description: The proven conclusion
+        argument:
+          type: string
+          description: The proof argument supporting the conclusion
+        analysis_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: IDs of evidence analyses used in this proof
+        research_status:
+          type: string
+          enum: [certain, probable, possible, unknown]
+        version:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProofSummaryCreate:
+      type: object
+      required: [fact_type, subject_id, conclusion, argument]
+      properties:
+        fact_type:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        conclusion:
+          type: string
+        argument:
+          type: string
+        analysis_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        research_status:
+          type: string
+          enum: [certain, probable, possible, unknown]
+
+    ProofSummaryUpdate:
+      type: object
+      required: [version]
+      properties:
+        fact_type:
+          type: string
+        subject_id:
+          type: string
+          format: uuid
+        conclusion:
+          type: string
+        argument:
+          type: string
+        analysis_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        research_status:
+          type: string
+          enum: [certain, probable, possible, unknown]
+        version:
+          type: integer
+          format: int64
+
+    ProofSummaryList:
+      type: object
+      required: [summaries, total]
+      properties:
+        summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProofSummary'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
           type: integer

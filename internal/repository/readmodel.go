@@ -236,6 +236,63 @@ type LDSOrdinanceReadModel struct {
 	UpdatedAt  time.Time               `json:"updated_at"`
 }
 
+// EvidenceAnalysisReadModel represents an evidence analysis in the read model.
+type EvidenceAnalysisReadModel struct {
+	ID              uuid.UUID             `json:"id"`
+	FactType        domain.FactType       `json:"fact_type"`
+	SubjectID       uuid.UUID             `json:"subject_id"`
+	CitationIDsJSON string                `json:"citation_ids_json,omitempty"` // JSON array of UUIDs
+	Conclusion      string                `json:"conclusion"`
+	ResearchStatus  domain.ResearchStatus `json:"research_status,omitempty"`
+	Notes           string                `json:"notes,omitempty"`
+	Version         int64                 `json:"version"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
+}
+
+// EvidenceConflictReadModel represents an evidence conflict in the read model.
+type EvidenceConflictReadModel struct {
+	ID              uuid.UUID             `json:"id"`
+	FactType        domain.FactType       `json:"fact_type"`
+	SubjectID       uuid.UUID             `json:"subject_id"`
+	AnalysisIDsJSON string                `json:"analysis_ids_json,omitempty"` // JSON array of UUIDs
+	Description     string                `json:"description"`
+	Resolution      string                `json:"resolution,omitempty"`
+	Status          domain.ConflictStatus `json:"status"`
+	Version         int64                 `json:"version"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
+}
+
+// ResearchLogReadModel represents a research log entry in the read model.
+type ResearchLogReadModel struct {
+	ID                uuid.UUID              `json:"id"`
+	SubjectID         uuid.UUID              `json:"subject_id"`
+	SubjectType       string                 `json:"subject_type"` // "person" or "family"
+	Repository        string                 `json:"repository"`
+	SearchDescription string                 `json:"search_description"`
+	Outcome           domain.ResearchOutcome `json:"outcome"`
+	Notes             string                 `json:"notes,omitempty"`
+	SearchDate        time.Time              `json:"search_date"`
+	Version           int64                  `json:"version"`
+	CreatedAt         time.Time              `json:"created_at"`
+	UpdatedAt         time.Time              `json:"updated_at"`
+}
+
+// ProofSummaryReadModel represents a proof summary in the read model.
+type ProofSummaryReadModel struct {
+	ID              uuid.UUID             `json:"id"`
+	FactType        domain.FactType       `json:"fact_type"`
+	SubjectID       uuid.UUID             `json:"subject_id"`
+	Conclusion      string                `json:"conclusion"`
+	Argument        string                `json:"argument"`
+	AnalysisIDsJSON string                `json:"analysis_ids_json,omitempty"` // JSON array of UUIDs
+	ResearchStatus  domain.ResearchStatus `json:"research_status,omitempty"`
+	Version         int64                 `json:"version"`
+	CreatedAt       time.Time             `json:"created_at"`
+	UpdatedAt       time.Time             `json:"updated_at"`
+}
+
 // ReadModelStore provides access to denormalized read models.
 type ReadModelStore interface {
 	// Person operations
@@ -335,6 +392,35 @@ type ReadModelStore interface {
 	ListLDSOrdinancesForFamily(ctx context.Context, familyID uuid.UUID) ([]LDSOrdinanceReadModel, error)
 	SaveLDSOrdinance(ctx context.Context, ordinance *LDSOrdinanceReadModel) error
 	DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) error
+
+	// Evidence analysis operations
+	GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*EvidenceAnalysisReadModel, error)
+	ListEvidenceAnalyses(ctx context.Context, opts ListOptions) ([]EvidenceAnalysisReadModel, int, error)
+	GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
+	SaveEvidenceAnalysis(ctx context.Context, analysis *EvidenceAnalysisReadModel) error
+	DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error
+
+	// Evidence conflict operations
+	GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*EvidenceConflictReadModel, error)
+	ListEvidenceConflicts(ctx context.Context, opts ListOptions) ([]EvidenceConflictReadModel, int, error)
+	GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]EvidenceConflictReadModel, error)
+	ListUnresolvedConflicts(ctx context.Context) ([]EvidenceConflictReadModel, error)
+	SaveEvidenceConflict(ctx context.Context, conflict *EvidenceConflictReadModel) error
+	DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error
+
+	// Research log operations
+	GetResearchLog(ctx context.Context, id uuid.UUID) (*ResearchLogReadModel, error)
+	ListResearchLogs(ctx context.Context, opts ListOptions) ([]ResearchLogReadModel, int, error)
+	GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]ResearchLogReadModel, error)
+	SaveResearchLog(ctx context.Context, log *ResearchLogReadModel) error
+	DeleteResearchLog(ctx context.Context, id uuid.UUID) error
+
+	// Proof summary operations
+	GetProofSummary(ctx context.Context, id uuid.UUID) (*ProofSummaryReadModel, error)
+	ListProofSummaries(ctx context.Context, opts ListOptions) ([]ProofSummaryReadModel, int, error)
+	GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
+	SaveProofSummary(ctx context.Context, summary *ProofSummaryReadModel) error
+	DeleteProofSummary(ctx context.Context, id uuid.UUID) error
 
 	// Browse operations
 	GetSurnameIndex(ctx context.Context) ([]SurnameEntry, []LetterCount, error)

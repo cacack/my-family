@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,6 +91,45 @@ type DiscoveryFeed struct {
 	Total int                   `json:"total"`
 }
 
+// bulkEvidenceData holds pre-loaded evidence data for bulk operations,
+// avoiding per-person full-table scans.
+type bulkEvidenceData struct {
+	conflicts      []repository.EvidenceConflictReadModel
+	analyses       []repository.EvidenceAnalysisReadModel
+	proofSummaries []repository.ProofSummaryReadModel
+	researchLogs   []repository.ResearchLogReadModel
+}
+
+// loadBulkEvidenceData loads all evidence data once for use in per-person loops.
+func (s *QualityService) loadBulkEvidenceData(ctx context.Context) (*bulkEvidenceData, error) {
+	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
+	}
+
+	analyses, err := repository.ListAll(ctx, 100, s.readStore.ListEvidenceAnalyses)
+	if err != nil {
+		return nil, fmt.Errorf("load evidence analyses: %w", err)
+	}
+
+	summaries, err := repository.ListAll(ctx, 100, s.readStore.ListProofSummaries)
+	if err != nil {
+		return nil, fmt.Errorf("load proof summaries: %w", err)
+	}
+
+	logs, err := repository.ListAll(ctx, 100, s.readStore.ListResearchLogs)
+	if err != nil {
+		return nil, fmt.Errorf("load research logs: %w", err)
+	}
+
+	return &bulkEvidenceData{
+		conflicts:      conflicts,
+		analyses:       analyses,
+		proofSummaries: summaries,
+		researchLogs:   logs,
+	}, nil
+}
+
 // GetDiscoveryFeed returns a prioritized list of research suggestions.
 func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*DiscoveryFeed, error) {
 	if limit <= 0 {
@@ -117,6 +157,12 @@ func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*Disc
 		return nil, err
 	}
 
+	// Pre-load all evidence data once to avoid per-person full-table scans
+	bulk, err := s.loadBulkEvidenceData(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, person := range persons {
 		items = append(items, s.missingDateSuggestions(person)...)
 
@@ -139,9 +185,11 @@ func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*Disc
 		// Recently resolved brick walls (priority 1) depend on BrickWallResolvedAt
 		// from prompt 008, which may not exist yet. Skipped gracefully.
 
-		if suggestion := s.qualityGapSuggestion(ctx, person); suggestion != nil {
+		if suggestion := s.qualityGapSuggestionBulk(person, bulk); suggestion != nil {
 			items = append(items, *suggestion)
 		}
+
+		items = append(items, s.evidenceSuggestionsBulk(person, bulk)...)
 	}
 
 	// Sort by priority ascending, then by person name within same priority
@@ -226,9 +274,14 @@ func (s *QualityService) unassessedSuggestion(person repository.PersonReadModel)
 	}
 }
 
-// qualityGapSuggestion returns a quality_gap suggestion if the person has low completeness.
-func (s *QualityService) qualityGapSuggestion(ctx context.Context, person repository.PersonReadModel) *DiscoverySuggestion {
-	score, _ := s.computePersonScore(ctx, person)
+// qualityGapSuggestionBulk returns a quality_gap suggestion using pre-loaded evidence data.
+func (s *QualityService) qualityGapSuggestionBulk(person repository.PersonReadModel, bulk *bulkEvidenceData) *DiscoverySuggestion {
+	score, _ := s.computePersonScoreBulk(person, bulk.conflicts)
+	return s.buildQualityGapSuggestion(person, score)
+}
+
+// buildQualityGapSuggestion builds a quality gap suggestion if score is below threshold.
+func (s *QualityService) buildQualityGapSuggestion(person repository.PersonReadModel, score float64) *DiscoverySuggestion {
 	hasSomeData := person.BirthDateRaw != "" || person.BirthPlace != "" || person.DeathDateRaw != "" || person.DeathPlace != ""
 	if score >= 50 || !hasSomeData {
 		return nil
@@ -264,13 +317,19 @@ func (s *QualityService) GetQualityOverview(ctx context.Context) (*QualityOvervi
 		}, nil
 	}
 
+	// Pre-load conflict data once to avoid per-person full-table scans
+	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
+	}
+
 	// Calculate quality for each person
 	var totalScore float64
 	recordsWithIssues := 0
 	issueCounts := make(map[string]int)
 
 	for _, person := range persons {
-		score, issues := s.computePersonScore(ctx, person)
+		score, issues := s.computePersonScoreBulk(person, conflicts)
 		totalScore += score
 
 		if len(issues) > 0 {
@@ -419,8 +478,9 @@ func (s *QualityService) GetStatistics(ctx context.Context) (*Statistics, error)
 	}, nil
 }
 
-// computePersonScore calculates the quality score for a person.
-// This algorithm is ported from the frontend (web/src/routes/analytics/+page.svelte).
+// computePersonScore calculates the quality score for a person (single-person path).
+// Loads conflicts from the store for the specific person.
+// Used by GetPersonQuality where per-call loading is acceptable.
 //
 // Scoring:
 // - Birth date present: +20 points
@@ -428,7 +488,32 @@ func (s *QualityService) GetStatistics(ctx context.Context) (*Statistics, error)
 // - Death date present: +20 points (or +20 if living, birth > 100 years ago)
 // - Death place present: +15 points (if deceased)
 // - Base score is out of 70, normalized to 100
-func (s *QualityService) computePersonScore(_ context.Context, person repository.PersonReadModel) (float64, []string) {
+// - Unresolved evidence conflicts: -5 points each (floor at 0)
+func (s *QualityService) computePersonScore(ctx context.Context, person repository.PersonReadModel) (float64, []string) {
+	conflicts, err := s.readStore.GetConflictsForSubject(ctx, person.ID)
+	if err != nil {
+		// For single-person path, return base score without conflict penalty
+		conflicts = nil
+	}
+	return computePersonScoreWithConflicts(person, conflicts)
+}
+
+// computePersonScoreBulk calculates the quality score using pre-loaded conflict data.
+// Used in bulk loops (GetDiscoveryFeed, GetQualityOverview) to avoid N+1 queries.
+func (s *QualityService) computePersonScoreBulk(person repository.PersonReadModel, allConflicts []repository.EvidenceConflictReadModel) (float64, []string) {
+	// Filter conflicts for this person
+	var personConflicts []repository.EvidenceConflictReadModel
+	for _, c := range allConflicts {
+		if c.SubjectID == person.ID {
+			personConflicts = append(personConflicts, c)
+		}
+	}
+	return computePersonScoreWithConflicts(person, personConflicts)
+}
+
+// computePersonScoreWithConflicts is the shared scoring logic.
+// conflicts should already be filtered to the specific person's open conflicts.
+func computePersonScoreWithConflicts(person repository.PersonReadModel, conflicts []repository.EvidenceConflictReadModel) (float64, []string) {
 	var score float64
 	var issues []string
 	currentYear := time.Now().Year()
@@ -481,7 +566,30 @@ func (s *QualityService) computePersonScore(_ context.Context, person repository
 	// Base score is out of 70, normalize to 100
 	normalizedScore := (score / 70) * 100
 
+	// Apply unresolved evidence conflict penalty
+	conflictIssues := unresolvedConflictIssuesFromData(person.ID, conflicts)
+	if len(conflictIssues) > 0 {
+		issues = append(issues, conflictIssues...)
+		penalty := float64(len(conflictIssues)) * 5
+		normalizedScore -= penalty
+		if normalizedScore < 0 {
+			normalizedScore = 0
+		}
+	}
+
 	return normalizedScore, issues
+}
+
+// unresolvedConflictIssuesFromData returns issue strings for each unresolved evidence conflict
+// affecting the given person from pre-loaded data. Resolved/accepted conflicts do not generate issues.
+func unresolvedConflictIssuesFromData(personID uuid.UUID, conflicts []repository.EvidenceConflictReadModel) []string {
+	var issues []string
+	for _, c := range conflicts {
+		if c.SubjectID == personID && c.Status == domain.ConflictStatusOpen {
+			issues = append(issues, fmt.Sprintf("Unresolved evidence conflict for %s", string(c.FactType)))
+		}
+	}
+	return issues
 }
 
 // buildConnectedPersonIDs returns a set of person IDs that have at least one family connection
@@ -534,22 +642,95 @@ func (s *QualityService) isOrphaned(ctx context.Context, personID uuid.UUID) (bo
 	return true, nil
 }
 
+// evidenceSuggestionsBulk returns discovery suggestions using pre-loaded evidence data.
+// Used in bulk loops (GetDiscoveryFeed) to avoid per-person full-table scans.
+func (s *QualityService) evidenceSuggestionsBulk(person repository.PersonReadModel, bulk *bulkEvidenceData) []DiscoverySuggestion {
+	return buildEvidenceSuggestions(person, bulk.analyses, bulk.proofSummaries, bulk.researchLogs)
+}
+
+// buildEvidenceSuggestions returns discovery suggestions based on evidence analysis data for a person.
+// This includes: facts with analyses but no proof summary, and missing research logs.
+func buildEvidenceSuggestions(person repository.PersonReadModel, allAnalyses []repository.EvidenceAnalysisReadModel, allSummaries []repository.ProofSummaryReadModel, allLogs []repository.ResearchLogReadModel) []DiscoverySuggestion {
+	var suggestions []DiscoverySuggestion
+	name := person.FullName
+	idStr := person.ID.String()
+	actionURL := "/persons/" + idStr
+
+	// Check for facts with analyses but no proof summary
+	type factKey struct {
+		factType  domain.FactType
+		subjectID uuid.UUID
+	}
+	summarized := make(map[factKey]bool)
+	for _, ps := range allSummaries {
+		summarized[factKey{ps.FactType, ps.SubjectID}] = true
+	}
+
+	// Find analyses for this person that lack proof summaries
+	seen := make(map[factKey]bool)
+	for _, a := range allAnalyses {
+		if a.SubjectID != person.ID {
+			continue
+		}
+		key := factKey{a.FactType, a.SubjectID}
+		if !summarized[key] && !seen[key] {
+			seen[key] = true
+			suggestions = append(suggestions, DiscoverySuggestion{
+				Type:        "quality_gap",
+				Title:       fmt.Sprintf("Write proof summary for %s %s", name, string(a.FactType)),
+				Description: fmt.Sprintf("%s has evidence analyses for %s but no proof summary. Write a proof summary to document your conclusion.", name, string(a.FactType)),
+				PersonID:    idStr,
+				PersonName:  name,
+				ActionURL:   actionURL,
+				Priority:    2,
+			})
+		}
+	}
+
+	// Check for missing research logs — only suggest if person has been assessed
+	// (don't suggest for completely empty/unreviewed persons)
+	if person.ResearchStatus != domain.ResearchStatusUnknown && person.ResearchStatus != "" {
+		hasLog := false
+		for _, log := range allLogs {
+			if log.SubjectID == person.ID {
+				hasLog = true
+				break
+			}
+		}
+		if !hasLog {
+			suggestions = append(suggestions, DiscoverySuggestion{
+				Type:        "quality_gap",
+				Title:       fmt.Sprintf("Document research for %s", name),
+				Description: fmt.Sprintf("No research log entries exist for %s. Document research activity to track what sources have been searched.", name),
+				PersonID:    idStr,
+				PersonName:  name,
+				ActionURL:   actionURL,
+				Priority:    3,
+			})
+		}
+	}
+
+	return suggestions
+}
+
 // generateSuggestions creates suggestions based on the identified issues.
 func (s *QualityService) generateSuggestions(issues []string) []string {
 	suggestions := make([]string, 0, len(issues))
 
 	for _, issue := range issues {
-		switch issue {
-		case "Missing birth date":
+		switch {
+		case issue == "Missing birth date":
 			suggestions = append(suggestions, "Add birth date from vital records, census, or family sources")
-		case "Missing birth place":
+		case issue == "Missing birth place":
 			suggestions = append(suggestions, "Research birth location in census records or vital records")
-		case "Missing death date (likely deceased)":
+		case issue == "Missing death date (likely deceased)":
 			suggestions = append(suggestions, "Search death records, obituaries, or cemetery records")
-		case "Missing death place":
+		case issue == "Missing death place":
 			suggestions = append(suggestions, "Check death certificate or obituary for location")
-		case "No family connections":
+		case issue == "No family connections":
 			suggestions = append(suggestions, "Link to existing family or create new family relationships")
+		case strings.HasPrefix(issue, "Unresolved evidence conflict for "):
+			suggestions = append(suggestions, "Review and resolve the conflicting evidence")
 		}
 	}
 

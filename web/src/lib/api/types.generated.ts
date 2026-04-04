@@ -1772,6 +1772,255 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/evidence-analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all evidence analyses */
+        get: operations["listEvidenceAnalyses"];
+        put?: never;
+        /** Create a new evidence analysis */
+        post: operations["createEvidenceAnalysis"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-analyses/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence Analysis UUID */
+                id: components["parameters"]["evidenceAnalysisId"];
+            };
+            cookie?: never;
+        };
+        /** Get an evidence analysis by ID */
+        get: operations["getEvidenceAnalysis"];
+        /** Update an evidence analysis */
+        put: operations["updateEvidenceAnalysis"];
+        post?: never;
+        /** Delete an evidence analysis */
+        delete: operations["deleteEvidenceAnalysis"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-analyses/by-fact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get evidence analyses by fact type and subject */
+        get: operations["getAnalysesByFact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all evidence conflicts */
+        get: operations["listEvidenceConflicts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-conflicts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence Conflict UUID */
+                id: components["parameters"]["evidenceConflictId"];
+            };
+            cookie?: never;
+        };
+        /** Get an evidence conflict by ID */
+        get: operations["getEvidenceConflict"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-conflicts/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence Conflict UUID */
+                id: components["parameters"]["evidenceConflictId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve an evidence conflict */
+        post: operations["resolveEvidenceConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/evidence-conflicts/by-subject/{subjectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subjectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get evidence conflicts for a subject */
+        get: operations["getConflictsBySubject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all research log entries */
+        get: operations["listResearchLogs"];
+        put?: never;
+        /** Create a new research log entry */
+        post: operations["createResearchLog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research-logs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Research Log UUID */
+                id: components["parameters"]["researchLogId"];
+            };
+            cookie?: never;
+        };
+        /** Get a research log entry by ID */
+        get: operations["getResearchLog"];
+        /** Update a research log entry */
+        put: operations["updateResearchLog"];
+        post?: never;
+        /** Delete a research log entry */
+        delete: operations["deleteResearchLog"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research-logs/by-subject/{subjectId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subjectId: string;
+            };
+            cookie?: never;
+        };
+        /** Get research log entries for a subject */
+        get: operations["getResearchLogsBySubject"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/proof-summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all proof summaries */
+        get: operations["listProofSummaries"];
+        put?: never;
+        /** Create a new proof summary */
+        post: operations["createProofSummary"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/proof-summaries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Proof Summary UUID */
+                id: components["parameters"]["proofSummaryId"];
+            };
+            cookie?: never;
+        };
+        /** Get a proof summary by ID */
+        get: operations["getProofSummary"];
+        /** Update a proof summary */
+        put: operations["updateProofSummary"];
+        post?: never;
+        /** Delete a proof summary */
+        delete: operations["deleteProofSummary"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/proof-summaries/by-fact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get proof summaries by fact type and subject */
+        get: operations["getProofSummaryByFact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3506,6 +3755,197 @@ export interface components {
             attributes: components["schemas"]["AttributeExport"][];
             total: number;
         };
+        EvidenceAnalysis: {
+            /** Format: uuid */
+            id: string;
+            /** @description Type of fact being analyzed (e.g., birth, death, marriage) */
+            fact_type: string;
+            /**
+             * Format: uuid
+             * @description ID of the person or family this analysis is about
+             */
+            subject_id: string;
+            /** @description IDs of citations supporting this analysis */
+            citation_ids?: string[];
+            /** @description The conclusion drawn from the evidence */
+            conclusion: string;
+            research_status?: components["schemas"]["ResearchStatus"];
+            notes?: string;
+            /**
+             * Format: uuid
+             * @description ID of auto-detected conflict (present in create/update responses)
+             */
+            conflict_id?: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        EvidenceAnalysisCreate: {
+            /** @description Type of fact being analyzed */
+            fact_type: string;
+            /** Format: uuid */
+            subject_id: string;
+            citation_ids?: string[];
+            conclusion: string;
+            /** @enum {string} */
+            research_status?: "certain" | "probable" | "possible" | "unknown";
+            notes?: string;
+        };
+        EvidenceAnalysisUpdate: {
+            fact_type?: string;
+            /** Format: uuid */
+            subject_id?: string;
+            citation_ids?: string[];
+            conclusion?: string;
+            /** @enum {string} */
+            research_status?: "certain" | "probable" | "possible" | "unknown";
+            notes?: string;
+            /** Format: int64 */
+            version: number;
+        };
+        EvidenceAnalysisList: {
+            analyses: components["schemas"]["EvidenceAnalysis"][];
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
+        EvidenceConflict: {
+            /** Format: uuid */
+            id: string;
+            fact_type: string;
+            /** Format: uuid */
+            subject_id: string;
+            analysis_ids: string[];
+            description: string;
+            resolution?: string;
+            /** @enum {string} */
+            status: "open" | "resolved";
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        EvidenceConflictResolve: {
+            /** @description How the conflict was resolved */
+            resolution: string;
+            /** Format: int64 */
+            version: number;
+        };
+        EvidenceConflictList: {
+            conflicts: components["schemas"]["EvidenceConflict"][];
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
+        ResearchLog: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            subject_id: string;
+            /** @description Type of subject (person or family) */
+            subject_type: string;
+            /** @description Name of the repository searched */
+            repository: string;
+            /** @description Description of the search performed */
+            search_description: string;
+            /** @enum {string} */
+            outcome: "found" | "not_found" | "inconclusive";
+            notes?: string;
+            /** Format: date-time */
+            search_date: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        ResearchLogCreate: {
+            /** Format: uuid */
+            subject_id: string;
+            subject_type: string;
+            repository: string;
+            search_description: string;
+            /** @enum {string} */
+            outcome: "found" | "not_found" | "inconclusive";
+            notes?: string;
+            /** Format: date-time */
+            search_date: string;
+        };
+        ResearchLogUpdate: {
+            /** Format: uuid */
+            subject_id?: string;
+            subject_type?: string;
+            repository?: string;
+            search_description?: string;
+            /** @enum {string} */
+            outcome?: "found" | "not_found" | "inconclusive";
+            notes?: string;
+            /** Format: date-time */
+            search_date?: string;
+            /** Format: int64 */
+            version: number;
+        };
+        ResearchLogList: {
+            logs: components["schemas"]["ResearchLog"][];
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
+        ProofSummary: {
+            /** Format: uuid */
+            id: string;
+            fact_type: string;
+            /** Format: uuid */
+            subject_id: string;
+            /** @description The proven conclusion */
+            conclusion: string;
+            /** @description The proof argument supporting the conclusion */
+            argument: string;
+            /** @description IDs of evidence analyses used in this proof */
+            analysis_ids?: string[];
+            /** @enum {string} */
+            research_status?: "certain" | "probable" | "possible" | "unknown";
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        ProofSummaryCreate: {
+            fact_type: string;
+            /** Format: uuid */
+            subject_id: string;
+            conclusion: string;
+            argument: string;
+            analysis_ids?: string[];
+            /** @enum {string} */
+            research_status?: "certain" | "probable" | "possible" | "unknown";
+        };
+        ProofSummaryUpdate: {
+            fact_type?: string;
+            /** Format: uuid */
+            subject_id?: string;
+            conclusion?: string;
+            argument?: string;
+            analysis_ids?: string[];
+            /** @enum {string} */
+            research_status?: "certain" | "probable" | "possible" | "unknown";
+            /** Format: int64 */
+            version: number;
+        };
+        ProofSummaryList: {
+            summaries: components["schemas"]["ProofSummary"][];
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
     };
     responses: {
         /** @description Invalid request */
@@ -3553,6 +3993,14 @@ export interface components {
         associationId: string;
         /** @description LDS Ordinance UUID */
         ldsOrdinanceId: string;
+        /** @description Evidence Analysis UUID */
+        evidenceAnalysisId: string;
+        /** @description Evidence Conflict UUID */
+        evidenceConflictId: string;
+        /** @description Research Log UUID */
+        researchLogId: string;
+        /** @description Proof Summary UUID */
+        proofSummaryId: string;
     };
     requestBodies: never;
     headers: never;
@@ -6649,6 +7097,571 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    listEvidenceAnalyses: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                sort?: "created_at" | "updated_at" | "fact_type";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of evidence analyses */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceAnalysisList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createEvidenceAnalysis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceAnalysisCreate"];
+            };
+        };
+        responses: {
+            /** @description Evidence analysis created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceAnalysis"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getEvidenceAnalysis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence Analysis UUID */
+                id: components["parameters"]["evidenceAnalysisId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evidence analysis details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceAnalysis"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateEvidenceAnalysis: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence Analysis UUID */
+                id: components["parameters"]["evidenceAnalysisId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceAnalysisUpdate"];
+            };
+        };
+        responses: {
+            /** @description Evidence analysis updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceAnalysis"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteEvidenceAnalysis: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Evidence Analysis UUID */
+                id: components["parameters"]["evidenceAnalysisId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evidence analysis deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getAnalysesByFact: {
+        parameters: {
+            query: {
+                factType: string;
+                subjectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of matching evidence analyses */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceAnalysis"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    listEvidenceConflicts: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                /** @description Filter by conflict status */
+                status?: "open" | "resolved";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of evidence conflicts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceConflictList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getEvidenceConflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence Conflict UUID */
+                id: components["parameters"]["evidenceConflictId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Evidence conflict details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceConflict"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resolveEvidenceConflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Evidence Conflict UUID */
+                id: components["parameters"]["evidenceConflictId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceConflictResolve"];
+            };
+        };
+        responses: {
+            /** @description Conflict resolved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceConflict"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getConflictsBySubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subjectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of evidence conflicts for the subject */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceConflict"][];
+                };
+            };
+        };
+    };
+    listResearchLogs: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                sort?: "created_at" | "search_date" | "updated_at";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of research log entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLogList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createResearchLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchLogCreate"];
+            };
+        };
+        responses: {
+            /** @description Research log entry created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLog"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getResearchLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Research Log UUID */
+                id: components["parameters"]["researchLogId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Research log entry details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLog"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateResearchLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Research Log UUID */
+                id: components["parameters"]["researchLogId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchLogUpdate"];
+            };
+        };
+        responses: {
+            /** @description Research log entry updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLog"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteResearchLog: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Research Log UUID */
+                id: components["parameters"]["researchLogId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Research log entry deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getResearchLogsBySubject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subjectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of research log entries for the subject */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchLog"][];
+                };
+            };
+        };
+    };
+    listProofSummaries: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                sort?: "created_at" | "updated_at" | "fact_type";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of proof summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProofSummaryList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createProofSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProofSummaryCreate"];
+            };
+        };
+        responses: {
+            /** @description Proof summary created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProofSummary"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getProofSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Proof Summary UUID */
+                id: components["parameters"]["proofSummaryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proof summary details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProofSummary"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProofSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Proof Summary UUID */
+                id: components["parameters"]["proofSummaryId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProofSummaryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Proof summary updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProofSummary"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteProofSummary: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Proof Summary UUID */
+                id: components["parameters"]["proofSummaryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proof summary deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getProofSummaryByFact: {
+        parameters: {
+            query: {
+                factType: string;
+                subjectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of matching proof summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProofSummary"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
 }

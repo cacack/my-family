@@ -1155,3 +1155,254 @@ func NewLDSOrdinanceDeleted(ordinanceID uuid.UUID, reason string) LDSOrdinanceDe
 		Reason:      reason,
 	}
 }
+
+// EvidenceAnalysisCreated event is emitted when a new evidence analysis is created.
+type EvidenceAnalysisCreated struct {
+	BaseEvent
+	AnalysisID     uuid.UUID      `json:"analysis_id"`
+	FactType       FactType       `json:"fact_type"`
+	SubjectID      uuid.UUID      `json:"subject_id"`
+	CitationIDs    []uuid.UUID    `json:"citation_ids,omitempty"`
+	Conclusion     string         `json:"conclusion"`
+	ResearchStatus ResearchStatus `json:"research_status,omitempty"`
+	Notes          string         `json:"notes,omitempty"`
+}
+
+func (e EvidenceAnalysisCreated) EventType() string      { return "EvidenceAnalysisCreated" }
+func (e EvidenceAnalysisCreated) AggregateID() uuid.UUID { return e.AnalysisID }
+
+// NewEvidenceAnalysisCreated creates an EvidenceAnalysisCreated event from an EvidenceAnalysis.
+func NewEvidenceAnalysisCreated(ea *EvidenceAnalysis) EvidenceAnalysisCreated {
+	return EvidenceAnalysisCreated{
+		BaseEvent:      NewBaseEvent(),
+		AnalysisID:     ea.ID,
+		FactType:       ea.FactType,
+		SubjectID:      ea.SubjectID,
+		CitationIDs:    ea.CitationIDs,
+		Conclusion:     ea.Conclusion,
+		ResearchStatus: ea.ResearchStatus,
+		Notes:          ea.Notes,
+	}
+}
+
+// EvidenceAnalysisUpdated event is emitted when an evidence analysis is updated.
+type EvidenceAnalysisUpdated struct {
+	BaseEvent
+	AnalysisID uuid.UUID      `json:"analysis_id"`
+	Changes    map[string]any `json:"changes"`
+}
+
+func (e EvidenceAnalysisUpdated) EventType() string      { return "EvidenceAnalysisUpdated" }
+func (e EvidenceAnalysisUpdated) AggregateID() uuid.UUID { return e.AnalysisID }
+
+// NewEvidenceAnalysisUpdated creates an EvidenceAnalysisUpdated event.
+func NewEvidenceAnalysisUpdated(analysisID uuid.UUID, changes map[string]any) EvidenceAnalysisUpdated {
+	return EvidenceAnalysisUpdated{
+		BaseEvent:  NewBaseEvent(),
+		AnalysisID: analysisID,
+		Changes:    changes,
+	}
+}
+
+// EvidenceAnalysisDeleted event is emitted when an evidence analysis is deleted.
+type EvidenceAnalysisDeleted struct {
+	BaseEvent
+	AnalysisID uuid.UUID `json:"analysis_id"`
+	Reason     string    `json:"reason,omitempty"`
+}
+
+func (e EvidenceAnalysisDeleted) EventType() string      { return "EvidenceAnalysisDeleted" }
+func (e EvidenceAnalysisDeleted) AggregateID() uuid.UUID { return e.AnalysisID }
+
+// NewEvidenceAnalysisDeleted creates an EvidenceAnalysisDeleted event.
+func NewEvidenceAnalysisDeleted(analysisID uuid.UUID, reason string) EvidenceAnalysisDeleted {
+	return EvidenceAnalysisDeleted{
+		BaseEvent:  NewBaseEvent(),
+		AnalysisID: analysisID,
+		Reason:     reason,
+	}
+}
+
+// EvidenceConflictDetected event is emitted when contradictory evidence is detected.
+type EvidenceConflictDetected struct {
+	BaseEvent
+	ConflictID  uuid.UUID      `json:"conflict_id"`
+	FactType    FactType       `json:"fact_type"`
+	SubjectID   uuid.UUID      `json:"subject_id"`
+	AnalysisIDs []uuid.UUID    `json:"analysis_ids"`
+	Description string         `json:"description"`
+	Status      ConflictStatus `json:"status"`
+}
+
+func (e EvidenceConflictDetected) EventType() string      { return "EvidenceConflictDetected" }
+func (e EvidenceConflictDetected) AggregateID() uuid.UUID { return e.ConflictID }
+
+// NewEvidenceConflictDetected creates an EvidenceConflictDetected event from an EvidenceConflict.
+func NewEvidenceConflictDetected(ec *EvidenceConflict) EvidenceConflictDetected {
+	return EvidenceConflictDetected{
+		BaseEvent:   NewBaseEvent(),
+		ConflictID:  ec.ID,
+		FactType:    ec.FactType,
+		SubjectID:   ec.SubjectID,
+		AnalysisIDs: ec.AnalysisIDs,
+		Description: ec.Description,
+		Status:      ec.Status,
+	}
+}
+
+// EvidenceConflictResolved event is emitted when an evidence conflict is resolved.
+type EvidenceConflictResolved struct {
+	BaseEvent
+	ConflictID uuid.UUID      `json:"conflict_id"`
+	Resolution string         `json:"resolution"`
+	Status     ConflictStatus `json:"status"`
+}
+
+func (e EvidenceConflictResolved) EventType() string      { return "EvidenceConflictResolved" }
+func (e EvidenceConflictResolved) AggregateID() uuid.UUID { return e.ConflictID }
+
+// NewEvidenceConflictResolved creates an EvidenceConflictResolved event.
+func NewEvidenceConflictResolved(conflictID uuid.UUID, resolution string, status ConflictStatus) EvidenceConflictResolved {
+	return EvidenceConflictResolved{
+		BaseEvent:  NewBaseEvent(),
+		ConflictID: conflictID,
+		Resolution: resolution,
+		Status:     status,
+	}
+}
+
+// ResearchLogCreated event is emitted when a new research log entry is created.
+type ResearchLogCreated struct {
+	BaseEvent
+	LogID             uuid.UUID       `json:"log_id"`
+	SubjectID         uuid.UUID       `json:"subject_id"`
+	SubjectType       string          `json:"subject_type"`
+	Repository        string          `json:"repository"`
+	SearchDescription string          `json:"search_description"`
+	Outcome           ResearchOutcome `json:"outcome"`
+	Notes             string          `json:"notes,omitempty"`
+	SearchDate        time.Time       `json:"search_date"`
+}
+
+func (e ResearchLogCreated) EventType() string      { return "ResearchLogCreated" }
+func (e ResearchLogCreated) AggregateID() uuid.UUID { return e.LogID }
+
+// NewResearchLogCreated creates a ResearchLogCreated event from a ResearchLog.
+func NewResearchLogCreated(rl *ResearchLog) ResearchLogCreated {
+	return ResearchLogCreated{
+		BaseEvent:         NewBaseEvent(),
+		LogID:             rl.ID,
+		SubjectID:         rl.SubjectID,
+		SubjectType:       rl.SubjectType,
+		Repository:        rl.Repository,
+		SearchDescription: rl.SearchDescription,
+		Outcome:           rl.Outcome,
+		Notes:             rl.Notes,
+		SearchDate:        rl.SearchDate,
+	}
+}
+
+// ResearchLogUpdated event is emitted when a research log entry is updated.
+type ResearchLogUpdated struct {
+	BaseEvent
+	LogID   uuid.UUID      `json:"log_id"`
+	Changes map[string]any `json:"changes"`
+}
+
+func (e ResearchLogUpdated) EventType() string      { return "ResearchLogUpdated" }
+func (e ResearchLogUpdated) AggregateID() uuid.UUID { return e.LogID }
+
+// NewResearchLogUpdated creates a ResearchLogUpdated event.
+func NewResearchLogUpdated(logID uuid.UUID, changes map[string]any) ResearchLogUpdated {
+	return ResearchLogUpdated{
+		BaseEvent: NewBaseEvent(),
+		LogID:     logID,
+		Changes:   changes,
+	}
+}
+
+// ResearchLogDeleted event is emitted when a research log entry is deleted.
+type ResearchLogDeleted struct {
+	BaseEvent
+	LogID  uuid.UUID `json:"log_id"`
+	Reason string    `json:"reason,omitempty"`
+}
+
+func (e ResearchLogDeleted) EventType() string      { return "ResearchLogDeleted" }
+func (e ResearchLogDeleted) AggregateID() uuid.UUID { return e.LogID }
+
+// NewResearchLogDeleted creates a ResearchLogDeleted event.
+func NewResearchLogDeleted(logID uuid.UUID, reason string) ResearchLogDeleted {
+	return ResearchLogDeleted{
+		BaseEvent: NewBaseEvent(),
+		LogID:     logID,
+		Reason:    reason,
+	}
+}
+
+// ProofSummaryCreated event is emitted when a new proof summary is created.
+type ProofSummaryCreated struct {
+	BaseEvent
+	SummaryID      uuid.UUID      `json:"summary_id"`
+	FactType       FactType       `json:"fact_type"`
+	SubjectID      uuid.UUID      `json:"subject_id"`
+	Conclusion     string         `json:"conclusion"`
+	Argument       string         `json:"argument"`
+	AnalysisIDs    []uuid.UUID    `json:"analysis_ids,omitempty"`
+	ResearchStatus ResearchStatus `json:"research_status,omitempty"`
+}
+
+func (e ProofSummaryCreated) EventType() string      { return "ProofSummaryCreated" }
+func (e ProofSummaryCreated) AggregateID() uuid.UUID { return e.SummaryID }
+
+// NewProofSummaryCreated creates a ProofSummaryCreated event from a ProofSummary.
+func NewProofSummaryCreated(ps *ProofSummary) ProofSummaryCreated {
+	return ProofSummaryCreated{
+		BaseEvent:      NewBaseEvent(),
+		SummaryID:      ps.ID,
+		FactType:       ps.FactType,
+		SubjectID:      ps.SubjectID,
+		Conclusion:     ps.Conclusion,
+		Argument:       ps.Argument,
+		AnalysisIDs:    ps.AnalysisIDs,
+		ResearchStatus: ps.ResearchStatus,
+	}
+}
+
+// ProofSummaryUpdated event is emitted when a proof summary is updated.
+type ProofSummaryUpdated struct {
+	BaseEvent
+	SummaryID uuid.UUID      `json:"summary_id"`
+	Changes   map[string]any `json:"changes"`
+}
+
+func (e ProofSummaryUpdated) EventType() string      { return "ProofSummaryUpdated" }
+func (e ProofSummaryUpdated) AggregateID() uuid.UUID { return e.SummaryID }
+
+// NewProofSummaryUpdated creates a ProofSummaryUpdated event.
+func NewProofSummaryUpdated(summaryID uuid.UUID, changes map[string]any) ProofSummaryUpdated {
+	return ProofSummaryUpdated{
+		BaseEvent: NewBaseEvent(),
+		SummaryID: summaryID,
+		Changes:   changes,
+	}
+}
+
+// ProofSummaryDeleted event is emitted when a proof summary is deleted.
+type ProofSummaryDeleted struct {
+	BaseEvent
+	SummaryID uuid.UUID `json:"summary_id"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+func (e ProofSummaryDeleted) EventType() string      { return "ProofSummaryDeleted" }
+func (e ProofSummaryDeleted) AggregateID() uuid.UUID { return e.SummaryID }
+
+// NewProofSummaryDeleted creates a ProofSummaryDeleted event.
+func NewProofSummaryDeleted(summaryID uuid.UUID, reason string) ProofSummaryDeleted {
+	return ProofSummaryDeleted{
+		BaseEvent: NewBaseEvent(),
+		SummaryID: summaryID,
+		Reason:    reason,
+	}
+}

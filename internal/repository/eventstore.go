@@ -343,6 +343,72 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "EvidenceAnalysisCreated":
+		var event domain.EvidenceAnalysisCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "EvidenceAnalysisUpdated":
+		var event domain.EvidenceAnalysisUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "EvidenceAnalysisDeleted":
+		var event domain.EvidenceAnalysisDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "EvidenceConflictDetected":
+		var event domain.EvidenceConflictDetected
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "EvidenceConflictResolved":
+		var event domain.EvidenceConflictResolved
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "ResearchLogCreated":
+		var event domain.ResearchLogCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "ResearchLogUpdated":
+		var event domain.ResearchLogUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "ResearchLogDeleted":
+		var event domain.ResearchLogDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "ProofSummaryCreated":
+		var event domain.ProofSummaryCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "ProofSummaryUpdated":
+		var event domain.ProofSummaryUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "ProofSummaryDeleted":
+		var event domain.ProofSummaryDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	default:
 		return nil, errors.New("unknown event type: " + e.EventType)
 	}
