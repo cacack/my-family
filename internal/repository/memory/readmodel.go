@@ -1894,18 +1894,29 @@ func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts reposito
 
 	total := len(results)
 
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+		var ti, tj time.Time
+		switch sortField {
+		case "created_at":
+			ti, tj = results[i].CreatedAt, results[j].CreatedAt
+		default:
+			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
+		}
+		if ti.Equal(tj) {
 			if asc {
 				return results[i].ID.String() < results[j].ID.String()
 			}
 			return results[i].ID.String() > results[j].ID.String()
 		}
 		if asc {
-			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+			return ti.Before(tj)
 		}
-		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+		return ti.After(tj)
 	})
 
 	if opts.Offset > 0 && opts.Offset < len(results) {
@@ -1978,18 +1989,29 @@ func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts reposit
 
 	total := len(results)
 
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+		var ti, tj time.Time
+		switch sortField {
+		case "created_at":
+			ti, tj = results[i].CreatedAt, results[j].CreatedAt
+		default:
+			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
+		}
+		if ti.Equal(tj) {
 			if asc {
 				return results[i].ID.String() < results[j].ID.String()
 			}
 			return results[i].ID.String() > results[j].ID.String()
 		}
 		if asc {
-			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+			return ti.Before(tj)
 		}
-		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+		return ti.After(tj)
 	})
 
 	if opts.Offset > 0 && opts.Offset < len(results) {
@@ -2076,18 +2098,29 @@ func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.L
 
 	total := len(results)
 
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+		var ti, tj time.Time
+		switch sortField {
+		case "created_at":
+			ti, tj = results[i].CreatedAt, results[j].CreatedAt
+		default:
+			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
+		}
+		if ti.Equal(tj) {
 			if asc {
 				return results[i].ID.String() < results[j].ID.String()
 			}
 			return results[i].ID.String() > results[j].ID.String()
 		}
 		if asc {
-			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+			return ti.Before(tj)
 		}
-		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+		return ti.After(tj)
 	})
 
 	if opts.Offset > 0 && opts.Offset < len(results) {
@@ -2160,18 +2193,29 @@ func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository
 
 	total := len(results)
 
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
-		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+		var ti, tj time.Time
+		switch sortField {
+		case "created_at":
+			ti, tj = results[i].CreatedAt, results[j].CreatedAt
+		default:
+			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
+		}
+		if ti.Equal(tj) {
 			if asc {
 				return results[i].ID.String() < results[j].ID.String()
 			}
 			return results[i].ID.String() > results[j].ID.String()
 		}
 		if asc {
-			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+			return ti.Before(tj)
 		}
-		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+		return ti.After(tj)
 	})
 
 	if opts.Offset > 0 && opts.Offset < len(results) {

@@ -1692,7 +1692,7 @@ func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain
 			}
 		case "research_status":
 			if v, ok := value.(string); ok {
-				analysis.ResearchStatus = domain.ParseResearchStatus(v)
+				analysis.ResearchStatus = domain.ResearchStatus(v)
 			}
 		case "citation_ids":
 			if b, err := json.Marshal(value); err == nil {
@@ -1880,7 +1880,7 @@ func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.Pro
 			}
 		case "research_status":
 			if v, ok := value.(string); ok {
-				summary.ResearchStatus = domain.ParseResearchStatus(v)
+				summary.ResearchStatus = domain.ResearchStatus(v)
 			}
 		case "analysis_ids":
 			if b, err := json.Marshal(value); err == nil {

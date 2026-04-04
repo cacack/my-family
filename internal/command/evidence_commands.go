@@ -570,23 +570,32 @@ func (h *Handler) DeleteProofSummary(ctx context.Context, id uuid.UUID, version 
 // detectEvidenceConflicts checks for conflicting conclusions among analyses
 // sharing the same FactType and SubjectID. Returns the conflict ID if one was created.
 func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.UUID, factType domain.FactType, subjectID uuid.UUID, conclusion string) (*uuid.UUID, error) {
-	// Get all analyses to find ones with same factType+subjectID
-	allAnalyses, err := repository.ListAll(ctx, 100, h.readStore.ListEvidenceAnalyses)
+	// Get analyses for the same fact type and subject
+	analyses, err := h.readStore.GetAnalysesForFact(ctx, factType, subjectID)
 	if err != nil {
 		return nil, err
 	}
 
 	var conflicting []uuid.UUID
-	for _, a := range allAnalyses {
-		if a.FactType == factType && a.SubjectID == subjectID && a.ID != analysisID {
-			if a.Conclusion != conclusion {
-				conflicting = append(conflicting, a.ID)
-			}
+	for _, a := range analyses {
+		if a.ID != analysisID && a.Conclusion != conclusion {
+			conflicting = append(conflicting, a.ID)
 		}
 	}
 
 	if len(conflicting) == 0 {
 		return nil, nil
+	}
+
+	// Check for existing open conflict to avoid duplicates
+	existingConflicts, err := h.readStore.GetConflictsForSubject(ctx, subjectID)
+	if err != nil {
+		return nil, err
+	}
+	for _, c := range existingConflicts {
+		if c.FactType == factType && c.Status == domain.ConflictStatusOpen {
+			return &c.ID, nil
+		}
 	}
 
 	// Create a conflict between this analysis and the disagreeing ones

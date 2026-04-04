@@ -4430,13 +4430,18 @@ func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts reposito
 		orderDir = "ASC"
 	}
 
-	// #nosec G201 -- orderDir is validated above, not user input
+	sortCol := "updated_at"
+	if opts.Sort == "created_at" {
+		sortCol = "created_at"
+	}
+
+	// #nosec G201 -- orderDir and sortCol are validated above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
 		FROM evidence_analyses
-		ORDER BY updated_at %s, id %s
+		ORDER BY %s %s, id %s
 		LIMIT ? OFFSET ?
-	`, orderDir, orderDir)
+	`, sortCol, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -4629,13 +4634,18 @@ func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts reposit
 		orderDir = "ASC"
 	}
 
-	// #nosec G201 -- orderDir is validated above, not user input
+	sortCol := "updated_at"
+	if opts.Sort == "created_at" {
+		sortCol = "created_at"
+	}
+
+	// #nosec G201 -- orderDir and sortCol are validated above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
 		FROM evidence_conflicts
-		ORDER BY updated_at %s, id %s
+		ORDER BY %s %s, id %s
 		LIMIT ? OFFSET ?
-	`, orderDir, orderDir)
+	`, sortCol, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -4866,13 +4876,18 @@ func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.L
 		orderDir = "ASC"
 	}
 
-	// #nosec G201 -- orderDir is validated above, not user input
+	sortCol := "updated_at"
+	if opts.Sort == "created_at" {
+		sortCol = "created_at"
+	}
+
+	// #nosec G201 -- orderDir and sortCol are validated above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
 		FROM research_logs
-		ORDER BY updated_at %s, id %s
+		ORDER BY %s %s, id %s
 		LIMIT ? OFFSET ?
-	`, orderDir, orderDir)
+	`, sortCol, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -5055,13 +5070,18 @@ func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository
 		orderDir = "ASC"
 	}
 
-	// #nosec G201 -- orderDir is validated above, not user input
+	sortCol := "updated_at"
+	if opts.Sort == "created_at" {
+		sortCol = "created_at"
+	}
+
+	// #nosec G201 -- orderDir and sortCol are validated above, not user input
 	query := fmt.Sprintf(`
 		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
 		FROM proof_summaries
-		ORDER BY updated_at %s, id %s
+		ORDER BY %s %s, id %s
 		LIMIT ? OFFSET ?
-	`, orderDir, orderDir)
+	`, sortCol, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
