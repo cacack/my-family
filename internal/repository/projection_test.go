@@ -3583,7 +3583,10 @@ func TestProjector_EvidenceAnalysisUpdated(t *testing.T) {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
-	rm, _ := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	rm, err := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceAnalysis() failed: %v", err)
+	}
 	if rm.Conclusion != "Updated conclusion" {
 		t.Errorf("Conclusion = %s, want Updated conclusion", rm.Conclusion)
 	}
@@ -3616,7 +3619,10 @@ func TestProjector_EvidenceAnalysisDeleted(t *testing.T) {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
-	rm, _ := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	rm, err := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceAnalysis() failed: %v", err)
+	}
 	if rm != nil {
 		t.Error("EvidenceAnalysis should be deleted")
 	}
@@ -3642,7 +3648,10 @@ func TestProjector_EvidenceConflictDetected(t *testing.T) {
 		t.Fatalf("Project EvidenceConflictDetected failed: %v", err)
 	}
 
-	rm, _ := readStore.GetEvidenceConflict(ctx, ec.ID)
+	rm, err := readStore.GetEvidenceConflict(ctx, ec.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceConflict() failed: %v", err)
+	}
 	if rm == nil {
 		t.Fatal("EvidenceConflict not found")
 	}
@@ -3677,7 +3686,10 @@ func TestProjector_EvidenceConflictResolved(t *testing.T) {
 		t.Fatalf("Project resolve failed: %v", err)
 	}
 
-	rm, _ := readStore.GetEvidenceConflict(ctx, ec.ID)
+	rm, err := readStore.GetEvidenceConflict(ctx, ec.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceConflict() failed: %v", err)
+	}
 	if rm.Status != domain.ConflictStatusResolved {
 		t.Errorf("Status = %s, want resolved", rm.Status)
 	}
@@ -3708,7 +3720,10 @@ func TestProjector_ResearchLogCreated(t *testing.T) {
 		t.Fatalf("Project ResearchLogCreated failed: %v", err)
 	}
 
-	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	rm, err := readStore.GetResearchLog(ctx, rl.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLog() failed: %v", err)
+	}
 	if rm == nil {
 		t.Fatal("ResearchLog not found")
 	}
@@ -3747,7 +3762,10 @@ func TestProjector_ResearchLogUpdated(t *testing.T) {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
-	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	rm, err := readStore.GetResearchLog(ctx, rl.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLog() failed: %v", err)
+	}
 	if rm.Notes != "Updated notes" {
 		t.Errorf("Notes = %s, want Updated notes", rm.Notes)
 	}
@@ -3780,7 +3798,10 @@ func TestProjector_ResearchLogDeleted(t *testing.T) {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
-	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	rm, err := readStore.GetResearchLog(ctx, rl.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLog() failed: %v", err)
+	}
 	if rm != nil {
 		t.Error("ResearchLog should be deleted")
 	}
@@ -3807,7 +3828,10 @@ func TestProjector_ProofSummaryCreated(t *testing.T) {
 		t.Fatalf("Project ProofSummaryCreated failed: %v", err)
 	}
 
-	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	rm, err := readStore.GetProofSummary(ctx, ps.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummary() failed: %v", err)
+	}
 	if rm == nil {
 		t.Fatal("ProofSummary not found")
 	}
@@ -3847,7 +3871,10 @@ func TestProjector_ProofSummaryUpdated(t *testing.T) {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
-	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	rm, err := readStore.GetProofSummary(ctx, ps.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummary() failed: %v", err)
+	}
 	if rm.Conclusion != "Revised conclusion" {
 		t.Errorf("Conclusion = %s, want Revised conclusion", rm.Conclusion)
 	}
@@ -3881,7 +3908,10 @@ func TestProjector_ProofSummaryDeleted(t *testing.T) {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
-	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	rm, err := readStore.GetProofSummary(ctx, ps.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummary() failed: %v", err)
+	}
 	if rm != nil {
 		t.Error("ProofSummary should be deleted")
 	}

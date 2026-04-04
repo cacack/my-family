@@ -3861,9 +3861,9 @@ func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts reposito
 	query := fmt.Sprintf(`
 		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
 		FROM evidence_analyses
-		ORDER BY updated_at %s
+		ORDER BY updated_at %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderDir)
+	`, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -3895,6 +3895,44 @@ func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts reposito
 	}
 
 	return results, total, rows.Err()
+}
+
+// GetAnalysesForFact returns all evidence analyses for a given fact type and subject.
+func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
+		FROM evidence_analyses
+		WHERE fact_type = $1 AND subject_id = $2
+	`, string(factType), subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("query analyses for fact: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.EvidenceAnalysisReadModel
+	for rows.Next() {
+		var a repository.EvidenceAnalysisReadModel
+		var citationIDs, researchStatus, notes sql.NullString
+		if err := rows.Scan(
+			&a.ID, &a.FactType, &a.SubjectID, &citationIDs,
+			&a.Conclusion, &researchStatus, &notes,
+			&a.Version, &a.CreatedAt, &a.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan evidence_analysis: %w", err)
+		}
+		if citationIDs.Valid {
+			a.CitationIDsJSON = citationIDs.String
+		}
+		if researchStatus.Valid {
+			a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+		}
+		if notes.Valid {
+			a.Notes = notes.String
+		}
+		results = append(results, a)
+	}
+
+	return results, rows.Err()
 }
 
 // SaveEvidenceAnalysis saves or updates an evidence analysis.
@@ -3975,9 +4013,9 @@ func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts reposit
 	query := fmt.Sprintf(`
 		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
 		FROM evidence_conflicts
-		ORDER BY updated_at %s
+		ORDER BY updated_at %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderDir)
+	`, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -4006,6 +4044,76 @@ func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts reposit
 	}
 
 	return results, total, rows.Err()
+}
+
+// GetConflictsForSubject returns all evidence conflicts for a given subject.
+func (s *ReadModelStore) GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
+		FROM evidence_conflicts
+		WHERE subject_id = $1
+	`, subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("query conflicts for subject: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.EvidenceConflictReadModel
+	for rows.Next() {
+		var c repository.EvidenceConflictReadModel
+		var analysisIDs, resolution sql.NullString
+		if err := rows.Scan(
+			&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
+			&c.Description, &resolution, &c.Status,
+			&c.Version, &c.CreatedAt, &c.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan evidence_conflict: %w", err)
+		}
+		if analysisIDs.Valid {
+			c.AnalysisIDsJSON = analysisIDs.String
+		}
+		if resolution.Valid {
+			c.Resolution = resolution.String
+		}
+		results = append(results, c)
+	}
+
+	return results, rows.Err()
+}
+
+// ListUnresolvedConflicts returns all unresolved (open) evidence conflicts.
+func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context) ([]repository.EvidenceConflictReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
+		FROM evidence_conflicts
+		WHERE status = $1
+	`, string(domain.ConflictStatusOpen))
+	if err != nil {
+		return nil, fmt.Errorf("query unresolved conflicts: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.EvidenceConflictReadModel
+	for rows.Next() {
+		var c repository.EvidenceConflictReadModel
+		var analysisIDs, resolution sql.NullString
+		if err := rows.Scan(
+			&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
+			&c.Description, &resolution, &c.Status,
+			&c.Version, &c.CreatedAt, &c.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan evidence_conflict: %w", err)
+		}
+		if analysisIDs.Valid {
+			c.AnalysisIDsJSON = analysisIDs.String
+		}
+		if resolution.Valid {
+			c.Resolution = resolution.String
+		}
+		results = append(results, c)
+	}
+
+	return results, rows.Err()
 }
 
 // SaveEvidenceConflict saves or updates an evidence conflict.
@@ -4083,9 +4191,9 @@ func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.L
 	query := fmt.Sprintf(`
 		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
 		FROM research_logs
-		ORDER BY updated_at %s
+		ORDER BY updated_at %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderDir)
+	`, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -4111,6 +4219,38 @@ func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.L
 	}
 
 	return results, total, rows.Err()
+}
+
+// GetResearchLogsForSubject returns all research logs for a given subject.
+func (s *ReadModelStore) GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
+		FROM research_logs
+		WHERE subject_id = $1
+	`, subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("query research logs for subject: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.ResearchLogReadModel
+	for rows.Next() {
+		var l repository.ResearchLogReadModel
+		var notes sql.NullString
+		if err := rows.Scan(
+			&l.ID, &l.SubjectID, &l.SubjectType, &l.Repository,
+			&l.SearchDescription, &l.Outcome, &notes,
+			&l.SearchDate, &l.Version, &l.CreatedAt, &l.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan research_log: %w", err)
+		}
+		if notes.Valid {
+			l.Notes = notes.String
+		}
+		results = append(results, l)
+	}
+
+	return results, rows.Err()
 }
 
 // SaveResearchLog saves or updates a research log.
@@ -4192,9 +4332,9 @@ func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository
 	query := fmt.Sprintf(`
 		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
 		FROM proof_summaries
-		ORDER BY updated_at %s
+		ORDER BY updated_at %s, id %s
 		LIMIT $1 OFFSET $2
-	`, orderDir)
+	`, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {
@@ -4223,6 +4363,41 @@ func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository
 	}
 
 	return results, total, rows.Err()
+}
+
+// GetProofSummariesForFact returns all proof summaries for a given fact type and subject.
+func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
+		FROM proof_summaries
+		WHERE fact_type = $1 AND subject_id = $2
+	`, string(factType), subjectID)
+	if err != nil {
+		return nil, fmt.Errorf("query proof summaries for fact: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.ProofSummaryReadModel
+	for rows.Next() {
+		var ps repository.ProofSummaryReadModel
+		var analysisIDs, researchStatus sql.NullString
+		if err := rows.Scan(
+			&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion,
+			&ps.Argument, &analysisIDs, &researchStatus,
+			&ps.Version, &ps.CreatedAt, &ps.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan proof_summary: %w", err)
+		}
+		if analysisIDs.Valid {
+			ps.AnalysisIDsJSON = analysisIDs.String
+		}
+		if researchStatus.Valid {
+			ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+		}
+		results = append(results, ps)
+	}
+
+	return results, rows.Err()
 }
 
 // SaveProofSummary saves or updates a proof summary.

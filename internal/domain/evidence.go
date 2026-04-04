@@ -51,7 +51,9 @@ func (ea *EvidenceAnalysis) Validate() error {
 	if ea.Conclusion == "" {
 		errs = append(errs, EvidenceAnalysisValidationError{Field: "conclusion", Message: "cannot be empty"})
 	}
-	if !ea.FactType.IsValid() {
+	if ea.FactType == "" {
+		errs = append(errs, EvidenceAnalysisValidationError{Field: "fact_type", Message: "cannot be empty"})
+	} else if !ea.FactType.IsValid() {
 		errs = append(errs, EvidenceAnalysisValidationError{Field: "fact_type", Message: fmt.Sprintf("invalid value: %s", ea.FactType)})
 	}
 	if !ea.ResearchStatus.IsValid() {
@@ -112,11 +114,16 @@ func (ec *EvidenceConflict) Validate() error {
 	if len(ec.AnalysisIDs) < 2 {
 		errs = append(errs, EvidenceConflictValidationError{Field: "analysis_ids", Message: "must have at least 2 conflicting analyses"})
 	}
-	if !ec.FactType.IsValid() {
+	if ec.FactType == "" {
+		errs = append(errs, EvidenceConflictValidationError{Field: "fact_type", Message: "cannot be empty"})
+	} else if !ec.FactType.IsValid() {
 		errs = append(errs, EvidenceConflictValidationError{Field: "fact_type", Message: fmt.Sprintf("invalid value: %s", ec.FactType)})
 	}
 	if !ec.Status.IsValid() {
 		errs = append(errs, EvidenceConflictValidationError{Field: "status", Message: fmt.Sprintf("invalid value: %s", ec.Status)})
+	}
+	if (ec.Status == ConflictStatusResolved || ec.Status == ConflictStatusAccepted) && ec.Resolution == "" {
+		errs = append(errs, EvidenceConflictValidationError{Field: "resolution", Message: "required when status is resolved or accepted"})
 	}
 
 	if len(errs) > 0 {
@@ -238,7 +245,9 @@ func (ps *ProofSummary) Validate() error {
 	if ps.Argument == "" {
 		errs = append(errs, ProofSummaryValidationError{Field: "argument", Message: "cannot be empty"})
 	}
-	if !ps.FactType.IsValid() {
+	if ps.FactType == "" {
+		errs = append(errs, ProofSummaryValidationError{Field: "fact_type", Message: "cannot be empty"})
+	} else if !ps.FactType.IsValid() {
 		errs = append(errs, ProofSummaryValidationError{Field: "fact_type", Message: fmt.Sprintf("invalid value: %s", ps.FactType)})
 	}
 	if !ps.ResearchStatus.IsValid() {

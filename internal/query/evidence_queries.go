@@ -120,6 +120,7 @@ type ListInput struct {
 	Offset    int
 	SortBy    string
 	SortOrder string
+	Status    string // Optional filter for conflict status
 }
 
 // --- EvidenceAnalysis queries ---
@@ -162,17 +163,14 @@ func (s *EvidenceQueryService) ListEvidenceAnalyses(ctx context.Context, input L
 
 // GetAnalysesForFact returns all evidence analyses for a given fact type and subject.
 func (s *EvidenceQueryService) GetAnalysesForFact(ctx context.Context, factType string, subjectID uuid.UUID) ([]EvidenceAnalysis, error) {
-	allAnalyses, err := repository.ListAll(ctx, 100, s.readStore.ListEvidenceAnalyses)
+	readModels, err := s.readStore.GetAnalysesForFact(ctx, domain.FactType(factType), subjectID)
 	if err != nil {
 		return nil, err
 	}
 
-	ft := domain.FactType(factType)
-	var results []EvidenceAnalysis
-	for _, rm := range allAnalyses {
-		if rm.FactType == ft && rm.SubjectID == subjectID {
-			results = append(results, convertReadModelToEvidenceAnalysis(rm))
-		}
+	results := make([]EvidenceAnalysis, len(readModels))
+	for i, rm := range readModels {
+		results[i] = convertReadModelToEvidenceAnalysis(rm)
 	}
 
 	return results, nil
@@ -203,9 +201,21 @@ func (s *EvidenceQueryService) ListEvidenceConflicts(ctx context.Context, input 
 		return nil, err
 	}
 
-	conflicts := make([]EvidenceConflict, len(readModels))
-	for i, rm := range readModels {
-		conflicts[i] = convertReadModelToEvidenceConflict(rm)
+	conflicts := make([]EvidenceConflict, 0, len(readModels))
+	for _, rm := range readModels {
+		conflicts = append(conflicts, convertReadModelToEvidenceConflict(rm))
+	}
+
+	// TODO: Status filtering should be pushed to the store layer for efficiency.
+	if input.Status != "" {
+		filtered := make([]EvidenceConflict, 0, len(conflicts))
+		for _, c := range conflicts {
+			if c.Status == input.Status {
+				filtered = append(filtered, c)
+			}
+		}
+		conflicts = filtered
+		total = len(filtered)
 	}
 
 	return &EvidenceConflictListResult{
@@ -218,16 +228,14 @@ func (s *EvidenceQueryService) ListEvidenceConflicts(ctx context.Context, input 
 
 // GetConflictsForSubject returns all evidence conflicts for a given subject.
 func (s *EvidenceQueryService) GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]EvidenceConflict, error) {
-	allConflicts, err := repository.ListAll(ctx, 100, s.readStore.ListEvidenceConflicts)
+	readModels, err := s.readStore.GetConflictsForSubject(ctx, subjectID)
 	if err != nil {
 		return nil, err
 	}
 
-	var results []EvidenceConflict
-	for _, rm := range allConflicts {
-		if rm.SubjectID == subjectID {
-			results = append(results, convertReadModelToEvidenceConflict(rm))
-		}
+	results := make([]EvidenceConflict, len(readModels))
+	for i, rm := range readModels {
+		results[i] = convertReadModelToEvidenceConflict(rm)
 	}
 
 	return results, nil
@@ -235,16 +243,14 @@ func (s *EvidenceQueryService) GetConflictsForSubject(ctx context.Context, subje
 
 // ListUnresolvedConflicts returns all unresolved evidence conflicts.
 func (s *EvidenceQueryService) ListUnresolvedConflicts(ctx context.Context) ([]EvidenceConflict, error) {
-	allConflicts, err := repository.ListAll(ctx, 100, s.readStore.ListEvidenceConflicts)
+	readModels, err := s.readStore.ListUnresolvedConflicts(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var results []EvidenceConflict
-	for _, rm := range allConflicts {
-		if rm.Status == domain.ConflictStatusOpen {
-			results = append(results, convertReadModelToEvidenceConflict(rm))
-		}
+	results := make([]EvidenceConflict, len(readModels))
+	for i, rm := range readModels {
+		results[i] = convertReadModelToEvidenceConflict(rm)
 	}
 
 	return results, nil
@@ -290,16 +296,14 @@ func (s *EvidenceQueryService) ListResearchLogs(ctx context.Context, input ListI
 
 // GetResearchLogsForSubject returns all research log entries for a given subject.
 func (s *EvidenceQueryService) GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]ResearchLogEntry, error) {
-	allLogs, err := repository.ListAll(ctx, 100, s.readStore.ListResearchLogs)
+	readModels, err := s.readStore.GetResearchLogsForSubject(ctx, subjectID)
 	if err != nil {
 		return nil, err
 	}
 
-	var results []ResearchLogEntry
-	for _, rm := range allLogs {
-		if rm.SubjectID == subjectID {
-			results = append(results, convertReadModelToResearchLog(rm))
-		}
+	results := make([]ResearchLogEntry, len(readModels))
+	for i, rm := range readModels {
+		results[i] = convertReadModelToResearchLog(rm)
 	}
 
 	return results, nil
@@ -343,22 +347,19 @@ func (s *EvidenceQueryService) ListProofSummaries(ctx context.Context, input Lis
 	}, nil
 }
 
-// GetProofSummaryForFact returns the proof summary for a specific fact type and subject.
-func (s *EvidenceQueryService) GetProofSummaryForFact(ctx context.Context, factType string, subjectID uuid.UUID) (*ProofSummaryResult, error) {
-	allSummaries, err := repository.ListAll(ctx, 100, s.readStore.ListProofSummaries)
+// GetProofSummaryForFact returns the proof summaries for a specific fact type and subject.
+func (s *EvidenceQueryService) GetProofSummaryForFact(ctx context.Context, factType string, subjectID uuid.UUID) ([]ProofSummaryResult, error) {
+	readModels, err := s.readStore.GetProofSummariesForFact(ctx, domain.FactType(factType), subjectID)
 	if err != nil {
 		return nil, err
 	}
 
-	ft := domain.FactType(factType)
-	for _, rm := range allSummaries {
-		if rm.FactType == ft && rm.SubjectID == subjectID {
-			result := convertReadModelToProofSummary(rm)
-			return &result, nil
-		}
+	results := make([]ProofSummaryResult, len(readModels))
+	for i, rm := range readModels {
+		results[i] = convertReadModelToProofSummary(rm)
 	}
 
-	return nil, ErrNotFound
+	return results, nil
 }
 
 // --- Helper functions ---
@@ -376,6 +377,9 @@ func normalizeListOptions(input ListInput) repository.ListOptions {
 	}
 	if opts.Limit > 100 {
 		opts.Limit = 100
+	}
+	if opts.Offset < 0 {
+		opts.Offset = 0
 	}
 	if opts.Sort == "" {
 		opts.Sort = "created_at"
@@ -407,9 +411,11 @@ func convertReadModelToEvidenceAnalysis(rm repository.EvidenceAnalysisReadModel)
 	}
 	if rm.CitationIDsJSON != "" {
 		var ids []uuid.UUID
-		if err := json.Unmarshal([]byte(rm.CitationIDsJSON), &ids); err == nil {
-			ea.CitationIDs = ids
+		if err := json.Unmarshal([]byte(rm.CitationIDsJSON), &ids); err != nil {
+			// Decode failed; ensure non-nil slice so API serializes as [] not null
+			ids = []uuid.UUID{}
 		}
+		ea.CitationIDs = ids
 	}
 
 	return ea
@@ -432,9 +438,11 @@ func convertReadModelToEvidenceConflict(rm repository.EvidenceConflictReadModel)
 	}
 	if rm.AnalysisIDsJSON != "" {
 		var ids []uuid.UUID
-		if err := json.Unmarshal([]byte(rm.AnalysisIDsJSON), &ids); err == nil {
-			ec.AnalysisIDs = ids
+		if err := json.Unmarshal([]byte(rm.AnalysisIDsJSON), &ids); err != nil {
+			// Decode failed; ensure non-nil slice so API serializes as [] not null
+			ids = []uuid.UUID{}
 		}
+		ec.AnalysisIDs = ids
 	}
 
 	return ec
@@ -479,9 +487,11 @@ func convertReadModelToProofSummary(rm repository.ProofSummaryReadModel) ProofSu
 	}
 	if rm.AnalysisIDsJSON != "" {
 		var ids []uuid.UUID
-		if err := json.Unmarshal([]byte(rm.AnalysisIDsJSON), &ids); err == nil {
-			ps.AnalysisIDs = ids
+		if err := json.Unmarshal([]byte(rm.AnalysisIDsJSON), &ids); err != nil {
+			// Decode failed; ensure non-nil slice so API serializes as [] not null
+			ids = []uuid.UUID{}
 		}
+		ps.AnalysisIDs = ids
 	}
 
 	return ps

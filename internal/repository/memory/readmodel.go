@@ -652,6 +652,10 @@ func (s *ReadModelStore) Reset() {
 	s.submitters = make(map[uuid.UUID]*repository.SubmitterReadModel)
 	s.associations = make(map[uuid.UUID]*repository.AssociationReadModel)
 	s.ldsOrdinances = make(map[uuid.UUID]*repository.LDSOrdinanceReadModel)
+	s.evidenceAnalyses = make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel)
+	s.evidenceConflicts = make(map[uuid.UUID]*repository.EvidenceConflictReadModel)
+	s.researchLogs = make(map[uuid.UUID]*repository.ResearchLogReadModel)
+	s.proofSummaries = make(map[uuid.UUID]*repository.ProofSummaryReadModel)
 }
 
 // GetSource retrieves a source by ID.
@@ -1892,6 +1896,12 @@ func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts reposito
 
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
+		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+			if asc {
+				return results[i].ID.String() < results[j].ID.String()
+			}
+			return results[i].ID.String() > results[j].ID.String()
+		}
 		if asc {
 			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
 		}
@@ -1908,6 +1918,20 @@ func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts reposito
 	}
 
 	return results, total, nil
+}
+
+// GetAnalysesForFact returns all evidence analyses for a given fact type and subject.
+func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EvidenceAnalysisReadModel
+	for _, a := range s.evidenceAnalyses {
+		if a.FactType == factType && a.SubjectID == subjectID {
+			results = append(results, *a)
+		}
+	}
+	return results, nil
 }
 
 // SaveEvidenceAnalysis saves or updates an evidence analysis.
@@ -1956,6 +1980,12 @@ func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts reposit
 
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
+		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+			if asc {
+				return results[i].ID.String() < results[j].ID.String()
+			}
+			return results[i].ID.String() > results[j].ID.String()
+		}
 		if asc {
 			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
 		}
@@ -1972,6 +2002,34 @@ func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts reposit
 	}
 
 	return results, total, nil
+}
+
+// GetConflictsForSubject returns all evidence conflicts for a given subject.
+func (s *ReadModelStore) GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EvidenceConflictReadModel
+	for _, c := range s.evidenceConflicts {
+		if c.SubjectID == subjectID {
+			results = append(results, *c)
+		}
+	}
+	return results, nil
+}
+
+// ListUnresolvedConflicts returns all unresolved (open) evidence conflicts.
+func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context) ([]repository.EvidenceConflictReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EvidenceConflictReadModel
+	for _, c := range s.evidenceConflicts {
+		if c.Status == domain.ConflictStatusOpen {
+			results = append(results, *c)
+		}
+	}
+	return results, nil
 }
 
 // SaveEvidenceConflict saves or updates an evidence conflict.
@@ -2020,6 +2078,12 @@ func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.L
 
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
+		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+			if asc {
+				return results[i].ID.String() < results[j].ID.String()
+			}
+			return results[i].ID.String() > results[j].ID.String()
+		}
 		if asc {
 			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
 		}
@@ -2036,6 +2100,20 @@ func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.L
 	}
 
 	return results, total, nil
+}
+
+// GetResearchLogsForSubject returns all research logs for a given subject.
+func (s *ReadModelStore) GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.ResearchLogReadModel
+	for _, l := range s.researchLogs {
+		if l.SubjectID == subjectID {
+			results = append(results, *l)
+		}
+	}
+	return results, nil
 }
 
 // SaveResearchLog saves or updates a research log.
@@ -2084,6 +2162,12 @@ func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository
 
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
+		if results[i].UpdatedAt.Equal(results[j].UpdatedAt) {
+			if asc {
+				return results[i].ID.String() < results[j].ID.String()
+			}
+			return results[i].ID.String() > results[j].ID.String()
+		}
 		if asc {
 			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
 		}
@@ -2100,6 +2184,20 @@ func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository
 	}
 
 	return results, total, nil
+}
+
+// GetProofSummariesForFact returns all proof summaries for a given fact type and subject.
+func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.ProofSummaryReadModel
+	for _, ps := range s.proofSummaries {
+		if ps.FactType == factType && ps.SubjectID == subjectID {
+			results = append(results, *ps)
+		}
+	}
+	return results, nil
 }
 
 // SaveProofSummary saves or updates a proof summary.

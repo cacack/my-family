@@ -1676,6 +1676,12 @@ func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain
 			if v, ok := value.(string); ok {
 				analysis.FactType = domain.FactType(v)
 			}
+		case "subject_id":
+			if v, ok := value.(string); ok {
+				if id, err := uuid.Parse(v); err == nil {
+					analysis.SubjectID = id
+				}
+			}
 		case "conclusion":
 			if v, ok := value.(string); ok {
 				analysis.Conclusion = v
@@ -1790,6 +1796,22 @@ func (p *Projector) projectResearchLogUpdated(ctx context.Context, e domain.Rese
 			if v, ok := value.(string); ok {
 				log.Notes = v
 			}
+		case "subject_id":
+			if v, ok := value.(string); ok {
+				if id, err := uuid.Parse(v); err == nil {
+					log.SubjectID = id
+				}
+			}
+		case "subject_type":
+			if v, ok := value.(string); ok {
+				log.SubjectType = v
+			}
+		case "search_date":
+			if v, ok := value.(string); ok {
+				if t, err := time.Parse(time.RFC3339, v); err == nil {
+					log.SearchDate = t
+				}
+			}
 		}
 	}
 
@@ -1841,6 +1863,12 @@ func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.Pro
 		case "fact_type":
 			if v, ok := value.(string); ok {
 				summary.FactType = domain.FactType(v)
+			}
+		case "subject_id":
+			if v, ok := value.(string); ok {
+				if id, err := uuid.Parse(v); err == nil {
+					summary.SubjectID = id
+				}
 			}
 		case "conclusion":
 			if v, ok := value.(string); ok {

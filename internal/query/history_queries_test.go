@@ -347,6 +347,9 @@ func (m *mockReadModelStore) GetEvidenceAnalysis(ctx context.Context, id uuid.UU
 func (m *mockReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
 	return nil, 0, nil
 }
+func (m *mockReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
 	return nil
 }
@@ -360,6 +363,12 @@ func (m *mockReadModelStore) GetEvidenceConflict(ctx context.Context, id uuid.UU
 }
 func (m *mockReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
 	return nil, 0, nil
+}
+func (m *mockReadModelStore) GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListUnresolvedConflicts(ctx context.Context) ([]repository.EvidenceConflictReadModel, error) {
+	return nil, nil
 }
 func (m *mockReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *repository.EvidenceConflictReadModel) error {
 	return nil
@@ -375,6 +384,9 @@ func (m *mockReadModelStore) GetResearchLog(ctx context.Context, id uuid.UUID) (
 func (m *mockReadModelStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
 	return nil, 0, nil
 }
+func (m *mockReadModelStore) GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) SaveResearchLog(ctx context.Context, log *repository.ResearchLogReadModel) error {
 	return nil
 }
@@ -388,6 +400,9 @@ func (m *mockReadModelStore) GetProofSummary(ctx context.Context, id uuid.UUID) 
 }
 func (m *mockReadModelStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
 	return nil, 0, nil
+}
+func (m *mockReadModelStore) GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+	return nil, nil
 }
 func (m *mockReadModelStore) SaveProofSummary(ctx context.Context, summary *repository.ProofSummaryReadModel) error {
 	return nil

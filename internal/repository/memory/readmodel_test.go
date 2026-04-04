@@ -3738,7 +3738,10 @@ func TestReadModelStore_SaveAndGetEvidenceAnalysis(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteEvidenceAnalysis() failed: %v", err)
 	}
-	deleted, _ := store.GetEvidenceAnalysis(ctx, analysis.ID)
+	deleted, err := store.GetEvidenceAnalysis(ctx, analysis.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceAnalysis() after delete failed: %v", err)
+	}
 	if deleted != nil {
 		t.Error("Analysis should be deleted")
 	}
@@ -3833,7 +3836,10 @@ func TestReadModelStore_SaveAndGetEvidenceConflict(t *testing.T) {
 		t.Fatalf("SaveEvidenceConflict() update failed: %v", err)
 	}
 
-	updated, _ := store.GetEvidenceConflict(ctx, conflict.ID)
+	updated, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceConflict() after update failed: %v", err)
+	}
 	if updated.Status != domain.ConflictStatusResolved {
 		t.Errorf("Status after update = %s, want resolved", updated.Status)
 	}
@@ -3846,7 +3852,10 @@ func TestReadModelStore_SaveAndGetEvidenceConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteEvidenceConflict() failed: %v", err)
 	}
-	deleted, _ := store.GetEvidenceConflict(ctx, conflict.ID)
+	deleted, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	if err != nil {
+		t.Fatalf("GetEvidenceConflict() after delete failed: %v", err)
+	}
 	if deleted != nil {
 		t.Error("Conflict should be deleted")
 	}
@@ -3928,7 +3937,10 @@ func TestReadModelStore_SaveAndGetResearchLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteResearchLog() failed: %v", err)
 	}
-	deleted, _ := store.GetResearchLog(ctx, log.ID)
+	deleted, err := store.GetResearchLog(ctx, log.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLog() after delete failed: %v", err)
+	}
 	if deleted != nil {
 		t.Error("Research log should be deleted")
 	}
@@ -4011,7 +4023,10 @@ func TestReadModelStore_SaveAndGetProofSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeleteProofSummary() failed: %v", err)
 	}
-	deleted, _ := store.GetProofSummary(ctx, summary.ID)
+	deleted, err := store.GetProofSummary(ctx, summary.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummary() after delete failed: %v", err)
+	}
 	if deleted != nil {
 		t.Error("Proof summary should be deleted")
 	}

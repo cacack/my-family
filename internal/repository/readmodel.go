@@ -396,24 +396,29 @@ type ReadModelStore interface {
 	// Evidence analysis operations
 	GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*EvidenceAnalysisReadModel, error)
 	ListEvidenceAnalyses(ctx context.Context, opts ListOptions) ([]EvidenceAnalysisReadModel, int, error)
+	GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
 	SaveEvidenceAnalysis(ctx context.Context, analysis *EvidenceAnalysisReadModel) error
 	DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error
 
 	// Evidence conflict operations
 	GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*EvidenceConflictReadModel, error)
 	ListEvidenceConflicts(ctx context.Context, opts ListOptions) ([]EvidenceConflictReadModel, int, error)
+	GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]EvidenceConflictReadModel, error)
+	ListUnresolvedConflicts(ctx context.Context) ([]EvidenceConflictReadModel, error)
 	SaveEvidenceConflict(ctx context.Context, conflict *EvidenceConflictReadModel) error
 	DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error
 
 	// Research log operations
 	GetResearchLog(ctx context.Context, id uuid.UUID) (*ResearchLogReadModel, error)
 	ListResearchLogs(ctx context.Context, opts ListOptions) ([]ResearchLogReadModel, int, error)
+	GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]ResearchLogReadModel, error)
 	SaveResearchLog(ctx context.Context, log *ResearchLogReadModel) error
 	DeleteResearchLog(ctx context.Context, id uuid.UUID) error
 
 	// Proof summary operations
 	GetProofSummary(ctx context.Context, id uuid.UUID) (*ProofSummaryReadModel, error)
 	ListProofSummaries(ctx context.Context, opts ListOptions) ([]ProofSummaryReadModel, int, error)
+	GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
 	SaveProofSummary(ctx context.Context, summary *ProofSummaryReadModel) error
 	DeleteProofSummary(ctx context.Context, id uuid.UUID) error
 

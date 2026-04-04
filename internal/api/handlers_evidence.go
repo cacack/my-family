@@ -230,6 +230,7 @@ func (ss *StrictServer) GetAnalysesByFact(ctx context.Context, request GetAnalys
 func (ss *StrictServer) ListEvidenceConflicts(ctx context.Context, request ListEvidenceConflictsRequestObject) (ListEvidenceConflictsResponseObject, error) {
 	limit := 20
 	offset := 0
+	var status string
 
 	if request.Params.Limit != nil {
 		limit = *request.Params.Limit
@@ -237,31 +238,14 @@ func (ss *StrictServer) ListEvidenceConflicts(ctx context.Context, request ListE
 	if request.Params.Offset != nil {
 		offset = *request.Params.Offset
 	}
-
-	// If status filter is provided, use specialized queries
-	if request.Params.Status != nil && string(*request.Params.Status) == "open" {
-		conflicts, err := ss.server.evidenceService.ListUnresolvedConflicts(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		genConflicts := make([]EvidenceConflict, len(conflicts))
-		for i, c := range conflicts {
-			genConflicts[i] = convertQueryEvidenceConflictToGenerated(c)
-		}
-
-		total := len(genConflicts)
-		return ListEvidenceConflicts200JSONResponse{
-			Conflicts: genConflicts,
-			Total:     total,
-			Limit:     &limit,
-			Offset:    &offset,
-		}, nil
+	if request.Params.Status != nil {
+		status = string(*request.Params.Status)
 	}
 
 	result, err := ss.server.evidenceService.ListEvidenceConflicts(ctx, query.ListInput{
 		Limit:  limit,
 		Offset: offset,
+		Status: status,
 	})
 	if err != nil {
 		return nil, err
@@ -738,18 +722,17 @@ func (ss *StrictServer) DeleteProofSummary(ctx context.Context, request DeletePr
 
 // GetProofSummaryByFact implements StrictServerInterface.
 func (ss *StrictServer) GetProofSummaryByFact(ctx context.Context, request GetProofSummaryByFactRequestObject) (GetProofSummaryByFactResponseObject, error) {
-	summary, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, request.Params.FactType, request.Params.SubjectId)
+	summaries, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, request.Params.FactType, request.Params.SubjectId)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			// Return empty array instead of 404 for by-fact queries
-			return GetProofSummaryByFact200JSONResponse([]ProofSummary{}), nil
-		}
 		return nil, err
 	}
 
-	return GetProofSummaryByFact200JSONResponse([]ProofSummary{
-		convertQueryProofSummaryToGenerated(*summary),
-	}), nil
+	result := make([]ProofSummary, len(summaries))
+	for i, s := range summaries {
+		result[i] = convertQueryProofSummaryToGenerated(s)
+	}
+
+	return GetProofSummaryByFact200JSONResponse(result), nil
 }
 
 // ============================================================================

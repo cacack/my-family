@@ -585,15 +585,18 @@ func TestGetProofSummaryForFact(t *testing.T) {
 		Argument:   "Death cert confirms",
 	})
 
-	result, err := queryService.GetProofSummaryForFact(ctx, "person_birth", subjectID)
+	results, err := queryService.GetProofSummaryForFact(ctx, "person_birth", subjectID)
 	if err != nil {
 		t.Fatalf("GetProofSummaryForFact failed: %v", err)
 	}
 
-	if result.FactType != "person_birth" {
-		t.Errorf("FactType = %s, want person_birth", result.FactType)
+	if len(results) != 1 {
+		t.Fatalf("Got %d results, want 1", len(results))
 	}
-	if result.SubjectID != subjectID {
+	if results[0].FactType != "person_birth" {
+		t.Errorf("FactType = %s, want person_birth", results[0].FactType)
+	}
+	if results[0].SubjectID != subjectID {
 		t.Errorf("SubjectID mismatch")
 	}
 }
@@ -603,9 +606,12 @@ func TestGetProofSummaryForFact_NotFound(t *testing.T) {
 	queryService := query.NewEvidenceQueryService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetProofSummaryForFact(ctx, "person_birth", uuid.New())
-	if err != query.ErrNotFound {
-		t.Errorf("Expected ErrNotFound, got %v", err)
+	results, err := queryService.GetProofSummaryForFact(ctx, "person_birth", uuid.New())
+	if err != nil {
+		t.Fatalf("GetProofSummaryForFact failed: %v", err)
+	}
+	if len(results) != 0 {
+		t.Errorf("Expected empty results, got %d", len(results))
 	}
 }
 

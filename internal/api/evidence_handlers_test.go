@@ -252,6 +252,15 @@ func TestListEvidenceConflicts(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
 	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	total := int(resp["total"].(float64))
+	if total < 1 {
+		t.Errorf("total = %d, want >= 1 (expected auto-detected conflict)", total)
+	}
 }
 
 func TestResolveEvidenceConflict(t *testing.T) {
@@ -274,7 +283,7 @@ func TestResolveEvidenceConflict(t *testing.T) {
 	json.Unmarshal(rec2.Body.Bytes(), &created2)
 	conflictID, ok := created2["conflict_id"].(string)
 	if !ok || conflictID == "" {
-		t.Skip("No conflict auto-detected, skipping resolve test")
+		t.Fatal("Expected conflict auto-detection to produce a conflict_id, but none was returned")
 	}
 
 	// Resolve the conflict
