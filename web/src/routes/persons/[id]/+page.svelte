@@ -8,6 +8,7 @@
 	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
 	import MediaGallery from '$lib/components/MediaGallery.svelte';
 	import CitationSection from '$lib/components/CitationSection.svelte';
+	import EvidencePanel from '$lib/components/EvidencePanel.svelte';
 	import NameSection from '$lib/components/NameSection.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
@@ -512,6 +513,8 @@
 				</div>
 
 				<CitationSection personId={person.id} />
+
+				<EvidencePanel subjectId={person.id} />
 
 				<NameSection personId={person.id} />
 
