@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
 		api,
@@ -142,12 +143,15 @@
 
 	// Load data when tab changes
 	$effect(() => {
-		switch (activeTab) {
-			case 'analyses': loadAnalyses(); break;
-			case 'conflicts': loadConflicts(); break;
-			case 'logs': loadLogs(); break;
-			case 'summaries': loadSummaries(); break;
-		}
+		const tab = activeTab;
+		untrack(() => {
+			switch (tab) {
+				case 'analyses': loadAnalyses(); break;
+				case 'conflicts': loadConflicts(); break;
+				case 'logs': loadLogs(); break;
+				case 'summaries': loadSummaries(); break;
+			}
+		});
 	});
 
 	// Derived page counts
@@ -217,7 +221,7 @@
 						</thead>
 						<tbody>
 							{#each analyses as analysis}
-								<tr class="clickable" onclick={() => goto(`/evidence/analyses/${analysis.id}`)}>
+								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/analyses/${analysis.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/analyses/${analysis.id}`); } }}>
 									<td class="fact-type">{formatFactType(analysis.fact_type)}</td>
 									<td><a href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}" onclick={(e) => e.stopPropagation()}>{analysis.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(analysis.conclusion)}</td>
@@ -300,7 +304,7 @@
 						</thead>
 						<tbody>
 							{#each conflicts as conflict}
-								<tr class="clickable" onclick={() => goto(`/evidence/conflicts/${conflict.id}`)}>
+								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/conflicts/${conflict.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/conflicts/${conflict.id}`); } }}>
 									<td class="fact-type">{formatFactType(conflict.fact_type)}</td>
 									<td><a href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}" onclick={(e) => e.stopPropagation()}>{conflict.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(conflict.description)}</td>
@@ -379,7 +383,7 @@
 						</thead>
 						<tbody>
 							{#each logs as log}
-								<tr class="clickable" onclick={() => goto(`/evidence/research-logs/${log.id}`)}>
+								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/research-logs/${log.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/research-logs/${log.id}`); } }}>
 									<td><a href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}" onclick={(e) => e.stopPropagation()}>{log.subject_id.slice(0, 8)}...</a></td>
 									<td>{log.repository}</td>
 									<td class="truncated">{truncate(log.search_description)}</td>
@@ -466,7 +470,7 @@
 						</thead>
 						<tbody>
 							{#each summaries as summary}
-								<tr class="clickable" onclick={() => goto(`/evidence/proof-summaries/${summary.id}`)}>
+								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/proof-summaries/${summary.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/proof-summaries/${summary.id}`); } }}>
 									<td class="fact-type">{formatFactType(summary.fact_type)}</td>
 									<td><a href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}" onclick={(e) => e.stopPropagation()}>{summary.subject_id.slice(0, 8)}...</a></td>
 									<td class="truncated">{truncate(summary.conclusion)}</td>

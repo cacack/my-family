@@ -40,6 +40,10 @@
 			isNew = true;
 			editing = true;
 			loading = false;
+			const urlSubjectId = $page.url?.searchParams.get('subjectId');
+			if (urlSubjectId) {
+				formData.subject_id = urlSubjectId;
+			}
 			return;
 		}
 		isNew = false;

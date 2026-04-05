@@ -25,7 +25,16 @@ export function subjectRoute(factType: string): string {
 /** Format a date string for display, with fallback to the raw string. */
 export function formatDate(dateStr: string): string {
 	try {
-		return new Date(dateStr).toLocaleDateString();
+		// Parse date-only strings as UTC to avoid timezone day-shift
+		if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+			const [year, month, day] = dateStr.split('-').map(Number);
+			const date = new Date(Date.UTC(year, month - 1, day));
+			if (isNaN(date.getTime())) return dateStr;
+			return date.toLocaleDateString();
+		}
+		const date = new Date(dateStr);
+		if (isNaN(date.getTime())) return dateStr;
+		return date.toLocaleDateString();
 	} catch {
 		return dateStr;
 	}
@@ -34,5 +43,5 @@ export function formatDate(dateStr: string): string {
 /** Convert a date input value (YYYY-MM-DD) to RFC3339 for the API. */
 export function toRFC3339(dateStr: string): string {
 	if (dateStr.includes('T')) return dateStr;
-	return new Date(dateStr + 'T00:00:00').toISOString();
+	return dateStr + 'T00:00:00Z';
 }

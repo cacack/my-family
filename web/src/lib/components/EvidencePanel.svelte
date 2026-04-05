@@ -98,7 +98,7 @@
 </script>
 
 <div class="evidence-panel">
-	<button class="panel-header" onclick={() => (expanded = !expanded)}>
+	<button class="panel-header" onclick={() => (expanded = !expanded)} aria-expanded={expanded} aria-controls="evidence-panel-content">
 		<h2>
 			Evidence & Research
 			{#if !loading && hasData}
@@ -112,7 +112,7 @@
 	</button>
 
 	{#if expanded}
-		<div class="panel-content">
+		<div class="panel-content" id="evidence-panel-content">
 			{#if loading}
 				<div class="loading-state" role="status" aria-live="polite">Loading evidence data...</div>
 			{:else if error}
