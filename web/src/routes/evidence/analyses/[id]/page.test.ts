@@ -153,4 +153,12 @@ describe('Analysis Detail Page - New Mode', () => {
 			expect(screen.getByText('Create Analysis')).toBeDefined();
 		});
 	});
+
+	it('does not fetch analysis data in create mode', async () => {
+		render(Page);
+		await waitFor(() => {
+			expect(screen.getByText('New Evidence Analysis')).toBeDefined();
+		});
+		expect(apiModule.api.getEvidenceAnalysis).not.toHaveBeenCalled();
+	});
 });

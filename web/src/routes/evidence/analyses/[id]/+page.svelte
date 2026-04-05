@@ -127,7 +127,7 @@
 					conclusion: formData.conclusion.trim(),
 					research_status: formData.research_status,
 					notes: formData.notes.trim() || undefined,
-					citation_ids: formData.citation_ids.length > 0 ? formData.citation_ids : undefined
+					citation_ids: formData.citation_ids
 				};
 				const created = await api.createEvidenceAnalysis(data);
 				goto(`/evidence/analyses/${created.id}`);
@@ -138,7 +138,7 @@
 					conclusion: formData.conclusion.trim(),
 					research_status: formData.research_status,
 					notes: formData.notes.trim() || undefined,
-					citation_ids: formData.citation_ids.length > 0 ? formData.citation_ids : undefined,
+					citation_ids: formData.citation_ids,
 					version: analysis.version
 				});
 				await loadAnalysis(analysis.id);

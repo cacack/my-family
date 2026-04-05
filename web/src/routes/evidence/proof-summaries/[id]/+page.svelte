@@ -46,13 +46,24 @@
 
 	async function loadSummary(id: string) {
 		if (id === 'new') {
-			isNew = true;
-			editing = true;
-			loading = false;
-			const urlSubjectId = $page.url?.searchParams.get('subjectId');
+			summary = null;
+			linkedAnalyses = [];
+			error = null;
+			formData = {
+				fact_type: 'person_birth',
+				subject_id: '',
+				conclusion: '',
+				argument: '',
+				research_status: 'unknown',
+				analysis_ids: []
+			};
+			const urlSubjectId = $page.url?.searchParams?.get('subjectId');
 			if (urlSubjectId) {
 				formData.subject_id = urlSubjectId;
 			}
+			isNew = true;
+			editing = true;
+			loading = false;
 			return;
 		}
 		isNew = false;
@@ -143,7 +154,7 @@
 					conclusion: formData.conclusion.trim(),
 					argument: formData.argument.trim(),
 					research_status: formData.research_status,
-					analysis_ids: formData.analysis_ids.length > 0 ? formData.analysis_ids : undefined
+					analysis_ids: formData.analysis_ids
 				};
 				const created = await api.createProofSummary(data);
 				goto(`/evidence/proof-summaries/${created.id}`);
@@ -154,7 +165,7 @@
 					conclusion: formData.conclusion.trim(),
 					argument: formData.argument.trim(),
 					research_status: formData.research_status,
-					analysis_ids: formData.analysis_ids.length > 0 ? formData.analysis_ids : undefined,
+					analysis_ids: formData.analysis_ids,
 					version: summary.version
 				});
 				await loadSummary(summary.id);
@@ -298,6 +309,10 @@
 					{/if}
 				</div>
 			</div>
+
+			{#if error}
+				<div class="form-error" role="alert">{error}</div>
+			{/if}
 
 			<div class="info-grid">
 				<div class="info-section">

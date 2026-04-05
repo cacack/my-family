@@ -94,6 +94,7 @@
 		if (!formData.subject_id.trim()) errors.push('Subject ID is required');
 		if (!formData.repository.trim()) errors.push('Repository is required');
 		if (!formData.search_description.trim()) errors.push('Search description is required');
+		if (!formData.search_date) errors.push('Search date is required');
 		if (errors.length > 0) {
 			error = errors.join('. ');
 			return;
@@ -214,8 +215,8 @@
 					<input type="text" bind:value={formData.repository} required placeholder="e.g., National Archives" />
 				</label>
 				<label>
-					Search Date
-					<input type="date" bind:value={formData.search_date} />
+					Search Date <span class="required">*</span>
+					<input type="date" bind:value={formData.search_date} required />
 				</label>
 			</div>
 

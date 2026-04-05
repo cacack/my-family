@@ -134,6 +134,23 @@ describe('Conflict Detail Page', () => {
 			expect(backLink).not.toBeNull();
 		});
 	});
+
+	it('requests conflict using route param id', async () => {
+		render(Page);
+		await waitFor(() => {
+			expect(screen.getByText('Evidence Conflict')).toBeDefined();
+		});
+		expect(apiModule.api.getEvidenceConflict).toHaveBeenCalledWith('ec-1');
+	});
+
+	it('fetches linked analyses using analysis_ids', async () => {
+		render(Page);
+		await waitFor(() => {
+			expect(screen.getByText('Died 1920 per death certificate')).toBeDefined();
+		});
+		expect(apiModule.api.getEvidenceAnalysis).toHaveBeenCalledWith('ea-1');
+		expect(apiModule.api.getEvidenceAnalysis).toHaveBeenCalledWith('ea-2');
+	});
 });
 
 describe('Conflict Detail Page - Resolved', () => {
