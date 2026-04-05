@@ -3387,11 +3387,17 @@ export interface components {
             /** @description True if snapshot1 is the older (lower position) snapshot */
             older_first: boolean;
         };
+        RelationshipPathNode: {
+            /** Format: uuid */
+            id: string;
+            /** @description Display name of the person (e.g., "John Smith") */
+            name: string;
+        };
         RelationshipPath: {
             /** @description Relationship name (e.g., "1st cousin once removed") */
             name?: string;
-            pathFromA?: string[];
-            pathFromB?: string[];
+            pathFromA?: components["schemas"]["RelationshipPathNode"][];
+            pathFromB?: components["schemas"]["RelationshipPathNode"][];
             /** Format: uuid */
             commonAncestorId?: string;
             generationDistanceA?: number;

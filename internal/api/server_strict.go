@@ -4034,10 +4034,14 @@ func (ss *StrictServer) GetRelationship(ctx context.Context, request GetRelation
 
 	paths := make([]RelationshipPath, len(result.Paths))
 	for i, p := range result.Paths {
-		pathFromA := make([]openapi_types.UUID, len(p.PathFromA))
-		copy(pathFromA, p.PathFromA)
-		pathFromB := make([]openapi_types.UUID, len(p.PathFromB))
-		copy(pathFromB, p.PathFromB)
+		pathFromA := make([]RelationshipPathNode, len(p.PathFromA))
+		for j, node := range p.PathFromA {
+			pathFromA[j] = RelationshipPathNode{Id: node.ID, Name: node.Name}
+		}
+		pathFromB := make([]RelationshipPathNode, len(p.PathFromB))
+		for j, node := range p.PathFromB {
+			pathFromB[j] = RelationshipPathNode{Id: node.ID, Name: node.Name}
+		}
 
 		name := p.Name
 		genDistA := p.GenerationDistanceA

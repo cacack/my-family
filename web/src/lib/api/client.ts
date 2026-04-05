@@ -656,10 +656,15 @@ export interface MediaListResponse {
 }
 
 // Relationship types
+export interface RelationshipPathNode {
+	id: string;
+	name: string;
+}
+
 export interface RelationshipPath {
 	name?: string;
-	pathFromA?: string[];
-	pathFromB?: string[];
+	pathFromA?: RelationshipPathNode[];
+	pathFromB?: RelationshipPathNode[];
 	commonAncestorId?: string;
 	generationDistanceA?: number;
 	generationDistanceB?: number;
