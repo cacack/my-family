@@ -59,11 +59,11 @@
 			await loadConflict(conflict.id);
 			resolutionText = '';
 		} catch (e) {
-			const msg = (e as { message?: string }).message || 'Failed to resolve conflict';
-			if (msg.includes('conflict') || msg.includes('version')) {
+			const status = (e as { status?: number }).status;
+			if (status === 409) {
 				error = 'Version conflict: someone else modified this record. Please reload and try again.';
 			} else {
-				error = msg;
+				error = (e as { message?: string }).message || 'Failed to resolve conflict';
 			}
 		} finally {
 			resolving = false;

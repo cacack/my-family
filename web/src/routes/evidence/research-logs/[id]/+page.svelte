@@ -37,13 +37,24 @@
 
 	async function loadLog(id: string) {
 		if (id === 'new') {
-			isNew = true;
-			editing = true;
-			loading = false;
+			log = null;
+			error = null;
+			formData = {
+				subject_id: '',
+				subject_type: 'person',
+				repository: '',
+				search_description: '',
+				outcome: 'inconclusive' as const,
+				notes: '',
+				search_date: new Date().toISOString().split('T')[0]
+			};
 			const urlSubjectId = $page.url?.searchParams.get('subjectId');
 			if (urlSubjectId) {
 				formData.subject_id = urlSubjectId;
 			}
+			isNew = true;
+			editing = true;
+			loading = false;
 			return;
 		}
 		isNew = false;
@@ -130,11 +141,11 @@
 				editing = false;
 			}
 		} catch (e) {
-			const msg = (e as { message?: string }).message || 'Failed to save';
-			if (msg.includes('conflict') || msg.includes('version')) {
+			const status = (e as { status?: number }).status;
+			if (status === 409) {
 				error = 'Version conflict: someone else modified this record. Please reload and try again.';
 			} else {
-				error = msg;
+				error = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
 			saving = false;

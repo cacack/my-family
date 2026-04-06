@@ -44,13 +44,24 @@
 
 	async function loadAnalysis(id: string) {
 		if (id === 'new') {
-			isNew = true;
-			editing = true;
-			loading = false;
+			analysis = null;
+			error = null;
+			newCitationId = '';
+			formData = {
+				fact_type: 'person_birth',
+				subject_id: '',
+				conclusion: '',
+				research_status: 'unknown' as const,
+				notes: '',
+				citation_ids: []
+			};
 			const urlSubjectId = $page.url?.searchParams.get('subjectId');
 			if (urlSubjectId) {
 				formData.subject_id = urlSubjectId;
 			}
+			isNew = true;
+			editing = true;
+			loading = false;
 			return;
 		}
 		isNew = false;
@@ -145,11 +156,11 @@
 				editing = false;
 			}
 		} catch (e) {
-			const msg = (e as { message?: string }).message || 'Failed to save';
-			if (msg.includes('conflict') || msg.includes('version')) {
+			const status = (e as { status?: number }).status;
+			if (status === 409) {
 				error = 'Version conflict: someone else modified this record. Please reload and try again.';
 			} else {
-				error = msg;
+				error = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
 			saving = false;

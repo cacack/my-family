@@ -49,6 +49,7 @@
 			summary = null;
 			linkedAnalyses = [];
 			error = null;
+			newAnalysisId = '';
 			formData = {
 				fact_type: 'person_birth',
 				subject_id: '',
@@ -172,11 +173,11 @@
 				editing = false;
 			}
 		} catch (e) {
-			const msg = (e as { message?: string }).message || 'Failed to save';
-			if (msg.includes('conflict') || msg.includes('version')) {
+			const status = (e as { status?: number }).status;
+			if (status === 409) {
 				error = 'Version conflict: someone else modified this record. Please reload and try again.';
 			} else {
-				error = msg;
+				error = (e as { message?: string }).message || 'Failed to save';
 			}
 		} finally {
 			saving = false;
