@@ -44,7 +44,7 @@
 
 	let newAnalysisId = $state('');
 
-	async function loadSummary(id: string) {
+	async function loadSummary(id: string, urlSubjectId?: string) {
 		if (id === 'new') {
 			summary = null;
 			linkedAnalyses = [];
@@ -52,16 +52,12 @@
 			newAnalysisId = '';
 			formData = {
 				fact_type: 'person_birth',
-				subject_id: '',
+				subject_id: urlSubjectId ?? '',
 				conclusion: '',
 				argument: '',
 				research_status: 'unknown',
 				analysis_ids: []
 			};
-			const urlSubjectId = $page.url?.searchParams?.get('subjectId');
-			if (urlSubjectId) {
-				formData.subject_id = urlSubjectId;
-			}
 			isNew = true;
 			editing = true;
 			loading = false;
@@ -202,8 +198,10 @@
 
 	$effect(() => {
 		const id = $page.params.id;
+		// Track subjectId so navigating ?subjectId=A → ?subjectId=B re-prefills
+		const subjectId = $page.url?.searchParams?.get('subjectId');
 		if (id) {
-			untrack(() => loadSummary(id));
+			untrack(() => loadSummary(id, subjectId ?? undefined));
 		}
 	});
 </script>

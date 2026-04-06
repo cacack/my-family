@@ -109,7 +109,7 @@
 			</div>
 
 			{#if error}
-				<div class="form-error">{error}</div>
+				<div class="form-error" role="alert">{error}</div>
 			{/if}
 
 			<div class="info-grid">

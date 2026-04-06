@@ -46,13 +46,12 @@
 
 	let newCitationId = $state('');
 
-	async function loadAnalysis(id: string) {
+	async function loadAnalysis(id: string, urlSubjectId?: string) {
 		if (id === 'new') {
 			analysis = null;
 			error = null;
 			newCitationId = '';
-			const urlSubjectId = $page.url?.searchParams.get('subjectId') ?? '';
-			formData = emptyFormData(urlSubjectId);
+			formData = emptyFormData(urlSubjectId ?? '');
 			isNew = true;
 			editing = true;
 			loading = false;
@@ -179,8 +178,10 @@
 
 	$effect(() => {
 		const id = $page.params.id;
+		// Track subjectId so navigating ?subjectId=A → ?subjectId=B re-prefills
+		const subjectId = $page.url?.searchParams?.get('subjectId');
 		if (id) {
-			untrack(() => loadAnalysis(id));
+			untrack(() => loadAnalysis(id, subjectId ?? undefined));
 		}
 	});
 </script>
@@ -214,7 +215,7 @@
 			<h1>{isNew ? 'New Evidence Analysis' : 'Edit Analysis'}</h1>
 
 			{#if error}
-				<div class="form-error">{error}</div>
+				<div class="form-error" role="alert">{error}</div>
 			{/if}
 
 			<div class="form-row">

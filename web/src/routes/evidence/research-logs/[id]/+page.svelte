@@ -35,12 +35,12 @@
 		return outcome.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
-	async function loadLog(id: string) {
+	async function loadLog(id: string, urlSubjectId?: string) {
 		if (id === 'new') {
 			log = null;
 			error = null;
 			formData = {
-				subject_id: '',
+				subject_id: urlSubjectId ?? '',
 				subject_type: 'person',
 				repository: '',
 				search_description: '',
@@ -48,10 +48,6 @@
 				notes: '',
 				search_date: new Date().toISOString().split('T')[0]
 			};
-			const urlSubjectId = $page.url?.searchParams.get('subjectId');
-			if (urlSubjectId) {
-				formData.subject_id = urlSubjectId;
-			}
 			isNew = true;
 			editing = true;
 			loading = false;
@@ -170,8 +166,10 @@
 
 	$effect(() => {
 		const id = $page.params.id;
+		// Track subjectId so navigating ?subjectId=A → ?subjectId=B re-prefills
+		const subjectId = $page.url?.searchParams?.get('subjectId');
 		if (id) {
-			untrack(() => loadLog(id));
+			untrack(() => loadLog(id, subjectId ?? undefined));
 		}
 	});
 </script>
@@ -205,7 +203,7 @@
 			<h1>{isNew ? 'New Research Log' : 'Edit Research Log'}</h1>
 
 			{#if error}
-				<div class="form-error">{error}</div>
+				<div class="form-error" role="alert">{error}</div>
 			{/if}
 
 			<div class="form-row">
