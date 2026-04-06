@@ -189,11 +189,13 @@
 		if (!confirm('Delete this proof summary? This cannot be undone.')) return;
 
 		deleting = true;
+		error = null;
 		try {
 			await api.deleteProofSummary(summary.id, summary.version);
-			goto('/evidence');
+			await goto('/evidence');
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to delete';
+		} finally {
 			deleting = false;
 		}
 	}
@@ -235,7 +237,7 @@
 			<h1>{isNew ? 'New Proof Summary' : 'Edit Proof Summary'}</h1>
 
 			{#if error}
-				<div class="form-error">{error}</div>
+				<div class="form-error" role="alert">{error}</div>
 			{/if}
 
 			<div class="form-row">

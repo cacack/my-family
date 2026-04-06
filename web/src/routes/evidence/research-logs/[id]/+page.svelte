@@ -157,11 +157,13 @@
 		if (!confirm('Delete this research log? This cannot be undone.')) return;
 
 		deleting = true;
+		error = null;
 		try {
 			await api.deleteResearchLog(log.id, log.version);
-			goto('/evidence');
+			await goto('/evidence');
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to delete';
+		} finally {
 			deleting = false;
 		}
 	}

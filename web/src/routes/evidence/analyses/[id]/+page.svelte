@@ -31,14 +31,18 @@
 	let deleting = $state(false);
 	let isNew = $state(false);
 
-	let formData = $state({
-		fact_type: 'person_birth',
-		subject_id: '',
-		conclusion: '',
-		research_status: 'unknown' as 'certain' | 'probable' | 'possible' | 'unknown',
-		notes: '',
-		citation_ids: [] as string[]
-	});
+	function emptyFormData(subjectId = '') {
+		return {
+			fact_type: 'person_birth',
+			subject_id: subjectId,
+			conclusion: '',
+			research_status: 'unknown' as 'certain' | 'probable' | 'possible' | 'unknown',
+			notes: '',
+			citation_ids: [] as string[]
+		};
+	}
+
+	let formData = $state(emptyFormData());
 
 	let newCitationId = $state('');
 
@@ -47,18 +51,8 @@
 			analysis = null;
 			error = null;
 			newCitationId = '';
-			formData = {
-				fact_type: 'person_birth',
-				subject_id: '',
-				conclusion: '',
-				research_status: 'unknown' as const,
-				notes: '',
-				citation_ids: []
-			};
-			const urlSubjectId = $page.url?.searchParams.get('subjectId');
-			if (urlSubjectId) {
-				formData.subject_id = urlSubjectId;
-			}
+			const urlSubjectId = $page.url?.searchParams.get('subjectId') ?? '';
+			formData = emptyFormData(urlSubjectId);
 			isNew = true;
 			editing = true;
 			loading = false;
@@ -172,11 +166,13 @@
 		if (!confirm('Delete this analysis? This cannot be undone.')) return;
 
 		deleting = true;
+		error = null;
 		try {
 			await api.deleteEvidenceAnalysis(analysis.id, analysis.version);
-			goto('/evidence');
+			await goto('/evidence');
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to delete';
+		} finally {
 			deleting = false;
 		}
 	}
