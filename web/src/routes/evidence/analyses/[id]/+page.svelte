@@ -46,7 +46,11 @@
 
 	let newCitationId = $state('');
 
+	// Monotonic request id to guard against stale async completions on fast route changes.
+	let loadSeq = 0;
+
 	async function loadAnalysis(id: string, urlSubjectId?: string) {
+		const seq = ++loadSeq;
 		if (id === 'new') {
 			analysis = null;
 			error = null;
@@ -62,13 +66,16 @@
 		loading = true;
 		error = null;
 		try {
-			analysis = await api.getEvidenceAnalysis(id);
+			const result = await api.getEvidenceAnalysis(id);
+			if (seq !== loadSeq) return;
+			analysis = result;
 			resetForm();
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			error = (e as { message?: string }).message || 'Failed to load analysis';
 			analysis = null;
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 
@@ -136,7 +143,7 @@
 				const created = await api.createEvidenceAnalysis(data);
 				goto(`/evidence/analyses/${created.id}`);
 			} else if (analysis) {
-				await api.updateEvidenceAnalysis(analysis.id, {
+				const updated = await api.updateEvidenceAnalysis(analysis.id, {
 					fact_type: formData.fact_type,
 					subject_id: formData.subject_id.trim(),
 					conclusion: formData.conclusion.trim(),
@@ -145,7 +152,8 @@
 					citation_ids: formData.citation_ids,
 					version: analysis.version
 				});
-				await loadAnalysis(analysis.id);
+				analysis = updated;
+				resetForm();
 				editing = false;
 			}
 		} catch (e) {

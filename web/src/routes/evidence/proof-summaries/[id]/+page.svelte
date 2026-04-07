@@ -44,7 +44,11 @@
 
 	let newAnalysisId = $state('');
 
+	// Monotonic request id to guard against stale async completions on fast route changes.
+	let loadSeq = 0;
+
 	async function loadSummary(id: string, urlSubjectId?: string) {
+		const seq = ++loadSeq;
 		if (id === 'new') {
 			summary = null;
 			linkedAnalyses = [];
@@ -69,22 +73,26 @@
 		error = null;
 		linkedAnalyses = [];
 		try {
-			summary = await api.getProofSummary(id);
+			const result = await api.getProofSummary(id);
+			if (seq !== loadSeq) return;
+			summary = result;
 			resetForm();
 			// Fetch linked analyses
-			if (summary.analysis_ids && summary.analysis_ids.length > 0) {
+			if (result.analysis_ids && result.analysis_ids.length > 0) {
 				const results = await Promise.allSettled(
-					summary.analysis_ids.map((aid) => api.getEvidenceAnalysis(aid))
+					result.analysis_ids.map((aid) => api.getEvidenceAnalysis(aid))
 				);
+				if (seq !== loadSeq) return;
 				linkedAnalyses = results
 					.filter((r): r is PromiseFulfilledResult<EvidenceAnalysisResponse> => r.status === 'fulfilled')
 					.map((r) => r.value);
 			}
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			error = (e as { message?: string }).message || 'Failed to load proof summary';
 			summary = null;
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 
@@ -156,7 +164,7 @@
 				const created = await api.createProofSummary(data);
 				goto(`/evidence/proof-summaries/${created.id}`);
 			} else if (summary) {
-				await api.updateProofSummary(summary.id, {
+				const updated = await api.updateProofSummary(summary.id, {
 					fact_type: formData.fact_type,
 					subject_id: formData.subject_id.trim(),
 					conclusion: formData.conclusion.trim(),
@@ -165,7 +173,19 @@
 					analysis_ids: formData.analysis_ids,
 					version: summary.version
 				});
-				await loadSummary(summary.id);
+				summary = updated;
+				resetForm();
+				// Refresh linked analyses since analysis_ids may have changed.
+				if (updated.analysis_ids && updated.analysis_ids.length > 0) {
+					const results = await Promise.allSettled(
+						updated.analysis_ids.map((aid) => api.getEvidenceAnalysis(aid))
+					);
+					linkedAnalyses = results
+						.filter((r): r is PromiseFulfilledResult<EvidenceAnalysisResponse> => r.status === 'fulfilled')
+						.map((r) => r.value);
+				} else {
+					linkedAnalyses = [];
+				}
 				editing = false;
 			}
 		} catch (e) {
