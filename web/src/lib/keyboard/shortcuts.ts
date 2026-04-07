@@ -66,6 +66,12 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		context: 'global'
 	},
 	{
+		keys: ['g', 'e'],
+		action: 'go-evidence',
+		description: 'Go to evidence analysis',
+		context: 'global'
+	},
+	{
 		keys: ['g', '/'],
 		action: 'go-search',
 		description: 'Go to advanced search',

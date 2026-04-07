@@ -40,6 +40,7 @@
 		'go-people': () => goto('/persons'),
 		'go-families': () => goto('/families'),
 		'go-sources': () => goto('/sources'),
+		'go-evidence': () => goto('/evidence'),
 		'go-search': () => goto('/search'),
 		'focus-search': () => searchBoxRef?.focus(),
 		'show-help': () => {
@@ -100,6 +101,7 @@
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
+			<a href="/evidence" class:active={$page.url.pathname.startsWith('/evidence')}>Evidence</a>
 			<a href="/history" class:active={$page.url.pathname.startsWith('/history')}>History</a>
 			<a href="/map" class:active={$page.url.pathname.startsWith('/map')}>Map</a>
 			<a href="/analytics" class:active={$page.url.pathname.startsWith('/analytics')}>Analytics</a>
