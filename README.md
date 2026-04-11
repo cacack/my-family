@@ -41,7 +41,7 @@ open http://localhost:8080
 ### Building from Source
 
 Prerequisites:
-- Go 1.25+
+- Go 1.26+
 - Node.js 22+
 - SQLite 3.x (for local development)
 
