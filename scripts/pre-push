@@ -9,6 +9,7 @@
 #   # Or run: make setup
 
 set -e
+set -o pipefail
 
 echo "Running pre-push checks..."
 

@@ -108,6 +108,7 @@ jobs:
         # and internal/web are excluded in .testcoverage.yml; skipping them here
         # keeps CI in sync with `make check-coverage` and scripts/pre-push (#408).
         run: |
+          set -euo pipefail
           COVERAGE_PKGS=$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$')
           if [ -z "$COVERAGE_PKGS" ]; then
             echo "Error: failed to resolve coverage package list"
