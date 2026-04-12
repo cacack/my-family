@@ -33,6 +33,10 @@ echo "→ Running tests with coverage..."
 # a Go toolchain rebuild of internal cover helpers that trips version
 # mismatches in mixed-toolchain environments (see #408).
 COVERAGE_PKGS=$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$')
+if [ -z "$COVERAGE_PKGS" ]; then
+  echo "Error: failed to resolve coverage package list"
+  exit 1
+fi
 go test -coverprofile=coverage.out $COVERAGE_PKGS
 
 echo "→ Checking coverage thresholds (85% per-package, 75% total)..."

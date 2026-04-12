@@ -114,7 +114,12 @@ check-coverage: ## Check coverage thresholds (same as CI)
 	# and `internal/web` are excluded in .testcoverage.yml; skipping them here
 	# avoids a Go toolchain rebuild of internal cover helpers that trips
 	# version mismatches in mixed-toolchain environments (see #408).
-	go test -coverprofile=coverage.out $$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$$')
+	@COVERAGE_PKGS=$$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$$'); \
+	if [ -z "$$COVERAGE_PKGS" ]; then \
+		echo "ERROR: check-coverage: failed to resolve coverage package list"; \
+		exit 1; \
+	fi; \
+	go test -coverprofile=coverage.out $$COVERAGE_PKGS
 	@GO_TEST_COVERAGE=$$(command -v go-test-coverage || echo "$$HOME/go/bin/go-test-coverage"); \
 	if [ ! -x "$$GO_TEST_COVERAGE" ]; then \
 		GO_TEST_COVERAGE="$$(go env GOPATH)/bin/go-test-coverage"; \

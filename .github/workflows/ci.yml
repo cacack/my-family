@@ -109,6 +109,10 @@ jobs:
         # keeps CI in sync with `make check-coverage` and scripts/pre-push (#408).
         run: |
           COVERAGE_PKGS=$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$')
+          if [ -z "$COVERAGE_PKGS" ]; then
+            echo "Error: failed to resolve coverage package list"
+            exit 1
+          fi
           go test -race -coverprofile=coverage.out $COVERAGE_PKGS
 
       - name: Check coverage threshold
