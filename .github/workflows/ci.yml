@@ -104,7 +104,12 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
           POSTGRES_DB: myfamily_test
-        run: go test -race -coverprofile=coverage.out ./...
+        # Scope the build to packages that contribute to coverage. cmd/myfamily
+        # and internal/web are excluded in .testcoverage.yml; skipping them here
+        # keeps CI in sync with `make check-coverage` and scripts/pre-push (#408).
+        run: |
+          COVERAGE_PKGS=$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$')
+          go test -race -coverprofile=coverage.out $COVERAGE_PKGS
 
       - name: Check coverage threshold
         run: |

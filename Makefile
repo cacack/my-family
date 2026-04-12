@@ -110,7 +110,11 @@ check-full: fmt vet lint test ## Full CI check including lint
 	cd web && npm run check
 
 check-coverage: ## Check coverage thresholds (same as CI)
-	go test -coverprofile=coverage.out ./...
+	# Scope the build to packages that contribute to coverage. `cmd/myfamily`
+	# and `internal/web` are excluded in .testcoverage.yml; skipping them here
+	# avoids a Go toolchain rebuild of internal cover helpers that trips
+	# version mismatches in mixed-toolchain environments (see #408).
+	go test -coverprofile=coverage.out $$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$$')
 	@GO_TEST_COVERAGE=$$(command -v go-test-coverage || echo "$$HOME/go/bin/go-test-coverage"); \
 	if [ ! -x "$$GO_TEST_COVERAGE" ]; then \
 		GO_TEST_COVERAGE="$$(go env GOPATH)/bin/go-test-coverage"; \
