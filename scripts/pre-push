@@ -9,6 +9,7 @@
 #   # Or run: make setup
 
 set -e
+set -o pipefail
 
 echo "Running pre-push checks..."
 
@@ -28,7 +29,16 @@ fi
 
 # --- Coverage Threshold Check ---
 echo "→ Running tests with coverage..."
-go test -coverprofile=coverage.out ./...
+# Scope the build to packages that contribute to coverage. `cmd/myfamily` and
+# `internal/web` are excluded in .testcoverage.yml; skipping them here avoids
+# a Go toolchain rebuild of internal cover helpers that trips version
+# mismatches in mixed-toolchain environments (see #408).
+COVERAGE_PKGS=$(go list ./... | grep -vE '(cmd/myfamily|internal/web)$')
+if [ -z "$COVERAGE_PKGS" ]; then
+  echo "Error: failed to resolve coverage package list"
+  exit 1
+fi
+go test -coverprofile=coverage.out $COVERAGE_PKGS
 
 echo "→ Checking coverage thresholds (85% per-package, 75% total)..."
 if ! "$GO_TEST_COVERAGE" --config=.testcoverage.yml --profile=coverage.out; then
