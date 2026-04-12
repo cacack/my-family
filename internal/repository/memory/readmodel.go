@@ -1945,6 +1945,20 @@ func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain
 	return results, nil
 }
 
+// GetAnalysesBySubject returns all evidence analyses for a given subject, regardless of fact type.
+func (s *ReadModelStore) GetAnalysesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.EvidenceAnalysisReadModel
+	for _, a := range s.evidenceAnalyses {
+		if a.SubjectID == subjectID {
+			results = append(results, *a)
+		}
+	}
+	return results, nil
+}
+
 // SaveEvidenceAnalysis saves or updates an evidence analysis.
 func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
 	s.mu.Lock()
@@ -2238,6 +2252,20 @@ func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, factType 
 	var results []repository.ProofSummaryReadModel
 	for _, ps := range s.proofSummaries {
 		if ps.FactType == factType && ps.SubjectID == subjectID {
+			results = append(results, *ps)
+		}
+	}
+	return results, nil
+}
+
+// GetProofSummariesBySubject returns all proof summaries for a given subject, regardless of fact type.
+func (s *ReadModelStore) GetProofSummariesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.ProofSummaryReadModel
+	for _, ps := range s.proofSummaries {
+		if ps.SubjectID == subjectID {
 			results = append(results, *ps)
 		}
 	}

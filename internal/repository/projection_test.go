@@ -2777,6 +2777,338 @@ func TestProjector_PersonMerged_AttributeTransfer(t *testing.T) {
 	}
 }
 
+func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create evidence analysis for merged person
+	ea := &domain.EvidenceAnalysis{
+		ID:             uuid.New(),
+		FactType:       domain.FactPersonBirth,
+		SubjectID:      merged.ID,
+		CitationIDs:    []uuid.UUID{uuid.New()},
+		Conclusion:     "Birth date confirmed",
+		ResearchStatus: domain.ResearchStatusCertain,
+		Notes:          "Based on birth certificate",
+	}
+	if err := projector.Project(ctx, domain.NewEvidenceAnalysisCreated(ea), 2); err != nil {
+		t.Fatalf("Project EvidenceAnalysisCreated failed: %v", err)
+	}
+
+	// Verify analysis is on merged person before merge
+	mergedAnalyses, _ := readStore.GetAnalysesBySubject(ctx, merged.ID)
+	if len(mergedAnalyses) != 1 {
+		t.Fatalf("Expected 1 analysis for merged person, got %d", len(mergedAnalyses))
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	if err := projector.Project(ctx, event, 3); err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify analysis was transferred to survivor
+	survivorAnalyses, err := readStore.GetAnalysesBySubject(ctx, survivor.ID)
+	if err != nil {
+		t.Fatalf("GetAnalysesBySubject(survivor) failed: %v", err)
+	}
+	if len(survivorAnalyses) != 1 {
+		t.Fatalf("Expected 1 analysis for survivor, got %d", len(survivorAnalyses))
+	}
+	if survivorAnalyses[0].SubjectID != survivor.ID {
+		t.Errorf("Analysis SubjectID = %v, want %v", survivorAnalyses[0].SubjectID, survivor.ID)
+	}
+	if survivorAnalyses[0].ID != ea.ID {
+		t.Errorf("Analysis ID = %v, want %v", survivorAnalyses[0].ID, ea.ID)
+	}
+
+	// Verify analysis no longer returned for merged person ID
+	mergedAnalyses, err = readStore.GetAnalysesBySubject(ctx, merged.ID)
+	if err != nil {
+		t.Fatalf("GetAnalysesBySubject(merged) failed: %v", err)
+	}
+	if len(mergedAnalyses) != 0 {
+		t.Errorf("Expected 0 analyses for merged person after merge, got %d", len(mergedAnalyses))
+	}
+
+	// Verify record read back directly has the new SubjectID
+	rm, _ := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	if rm == nil {
+		t.Fatal("EvidenceAnalysis should still exist after merge")
+	}
+	if rm.SubjectID != survivor.ID {
+		t.Errorf("Direct read SubjectID = %v, want %v", rm.SubjectID, survivor.ID)
+	}
+}
+
+func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create evidence conflict for merged person
+	ec := &domain.EvidenceConflict{
+		ID:          uuid.New(),
+		FactType:    domain.FactPersonBirth,
+		SubjectID:   merged.ID,
+		AnalysisIDs: []uuid.UUID{uuid.New(), uuid.New()},
+		Description: "Conflicting birth dates",
+		Status:      domain.ConflictStatusOpen,
+	}
+	if err := projector.Project(ctx, domain.NewEvidenceConflictDetected(ec), 2); err != nil {
+		t.Fatalf("Project EvidenceConflictDetected failed: %v", err)
+	}
+
+	// Verify conflict is on merged person before merge
+	mergedConflicts, _ := readStore.GetConflictsForSubject(ctx, merged.ID)
+	if len(mergedConflicts) != 1 {
+		t.Fatalf("Expected 1 conflict for merged person, got %d", len(mergedConflicts))
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	if err := projector.Project(ctx, event, 3); err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify conflict was transferred to survivor
+	survivorConflicts, err := readStore.GetConflictsForSubject(ctx, survivor.ID)
+	if err != nil {
+		t.Fatalf("GetConflictsForSubject(survivor) failed: %v", err)
+	}
+	if len(survivorConflicts) != 1 {
+		t.Fatalf("Expected 1 conflict for survivor, got %d", len(survivorConflicts))
+	}
+	if survivorConflicts[0].SubjectID != survivor.ID {
+		t.Errorf("Conflict SubjectID = %v, want %v", survivorConflicts[0].SubjectID, survivor.ID)
+	}
+	if survivorConflicts[0].ID != ec.ID {
+		t.Errorf("Conflict ID = %v, want %v", survivorConflicts[0].ID, ec.ID)
+	}
+
+	// Verify conflict no longer returned for merged person ID
+	mergedConflicts, err = readStore.GetConflictsForSubject(ctx, merged.ID)
+	if err != nil {
+		t.Fatalf("GetConflictsForSubject(merged) failed: %v", err)
+	}
+	if len(mergedConflicts) != 0 {
+		t.Errorf("Expected 0 conflicts for merged person after merge, got %d", len(mergedConflicts))
+	}
+
+	// Verify record read back directly has the new SubjectID
+	rm, _ := readStore.GetEvidenceConflict(ctx, ec.ID)
+	if rm == nil {
+		t.Fatal("EvidenceConflict should still exist after merge")
+	}
+	if rm.SubjectID != survivor.ID {
+		t.Errorf("Direct read SubjectID = %v, want %v", rm.SubjectID, survivor.ID)
+	}
+}
+
+func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create research log for merged person
+	rl := &domain.ResearchLog{
+		ID:                uuid.New(),
+		SubjectID:         merged.ID,
+		SubjectType:       "person",
+		Repository:        "National Archives",
+		SearchDescription: "Census records",
+		Outcome:           domain.ResearchOutcomeFound,
+		Notes:             "Found in 1850 census",
+		SearchDate:        time.Now().UTC(),
+	}
+	if err := projector.Project(ctx, domain.NewResearchLogCreated(rl), 2); err != nil {
+		t.Fatalf("Project ResearchLogCreated failed: %v", err)
+	}
+
+	// Verify log is on merged person before merge
+	mergedLogs, _ := readStore.GetResearchLogsForSubject(ctx, merged.ID)
+	if len(mergedLogs) != 1 {
+		t.Fatalf("Expected 1 research log for merged person, got %d", len(mergedLogs))
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	if err := projector.Project(ctx, event, 3); err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify research log was transferred to survivor
+	survivorLogs, err := readStore.GetResearchLogsForSubject(ctx, survivor.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLogsForSubject(survivor) failed: %v", err)
+	}
+	if len(survivorLogs) != 1 {
+		t.Fatalf("Expected 1 research log for survivor, got %d", len(survivorLogs))
+	}
+	if survivorLogs[0].SubjectID != survivor.ID {
+		t.Errorf("ResearchLog SubjectID = %v, want %v", survivorLogs[0].SubjectID, survivor.ID)
+	}
+	if survivorLogs[0].ID != rl.ID {
+		t.Errorf("ResearchLog ID = %v, want %v", survivorLogs[0].ID, rl.ID)
+	}
+
+	// Verify log no longer returned for merged person ID
+	mergedLogs, err = readStore.GetResearchLogsForSubject(ctx, merged.ID)
+	if err != nil {
+		t.Fatalf("GetResearchLogsForSubject(merged) failed: %v", err)
+	}
+	if len(mergedLogs) != 0 {
+		t.Errorf("Expected 0 research logs for merged person after merge, got %d", len(mergedLogs))
+	}
+
+	// Verify record read back directly has the new SubjectID
+	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	if rm == nil {
+		t.Fatal("ResearchLog should still exist after merge")
+	}
+	if rm.SubjectID != survivor.ID {
+		t.Errorf("Direct read SubjectID = %v, want %v", rm.SubjectID, survivor.ID)
+	}
+}
+
+func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Create persons
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+
+	// Create proof summary for merged person
+	ps := &domain.ProofSummary{
+		ID:             uuid.New(),
+		FactType:       domain.FactPersonBirth,
+		SubjectID:      merged.ID,
+		Conclusion:     "Birth year is 1850",
+		Argument:       "Multiple sources agree on this date",
+		AnalysisIDs:    []uuid.UUID{uuid.New()},
+		ResearchStatus: domain.ResearchStatusProbable,
+	}
+	if err := projector.Project(ctx, domain.NewProofSummaryCreated(ps), 2); err != nil {
+		t.Fatalf("Project ProofSummaryCreated failed: %v", err)
+	}
+
+	// Verify summary is on merged person before merge
+	mergedSummaries, _ := readStore.GetProofSummariesBySubject(ctx, merged.ID)
+	if len(mergedSummaries) != 1 {
+		t.Fatalf("Expected 1 proof summary for merged person, got %d", len(mergedSummaries))
+	}
+
+	// Merge
+	event := domain.NewPersonMerged(
+		survivor.ID,
+		merged.ID,
+		map[string]any{},
+		map[string]any{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+		[]uuid.UUID{},
+	)
+
+	if err := projector.Project(ctx, event, 3); err != nil {
+		t.Fatalf("Project PersonMerged failed: %v", err)
+	}
+
+	// Verify proof summary was transferred to survivor
+	survivorSummaries, err := readStore.GetProofSummariesBySubject(ctx, survivor.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummariesBySubject(survivor) failed: %v", err)
+	}
+	if len(survivorSummaries) != 1 {
+		t.Fatalf("Expected 1 proof summary for survivor, got %d", len(survivorSummaries))
+	}
+	if survivorSummaries[0].SubjectID != survivor.ID {
+		t.Errorf("ProofSummary SubjectID = %v, want %v", survivorSummaries[0].SubjectID, survivor.ID)
+	}
+	if survivorSummaries[0].ID != ps.ID {
+		t.Errorf("ProofSummary ID = %v, want %v", survivorSummaries[0].ID, ps.ID)
+	}
+
+	// Verify summary no longer returned for merged person ID
+	mergedSummaries, err = readStore.GetProofSummariesBySubject(ctx, merged.ID)
+	if err != nil {
+		t.Fatalf("GetProofSummariesBySubject(merged) failed: %v", err)
+	}
+	if len(mergedSummaries) != 0 {
+		t.Errorf("Expected 0 proof summaries for merged person after merge, got %d", len(mergedSummaries))
+	}
+
+	// Verify record read back directly has the new SubjectID
+	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	if rm == nil {
+		t.Fatal("ProofSummary should still exist after merge")
+	}
+	if rm.SubjectID != survivor.ID {
+		t.Errorf("Direct read SubjectID = %v, want %v", rm.SubjectID, survivor.ID)
+	}
+}
+
 func TestProjector_PersonMerged_PedigreeEdgeTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	projector := repository.NewProjector(readStore)

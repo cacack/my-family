@@ -1300,19 +1300,19 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	// 4. Reassign citations from merged person to survivor
 	citations, err := p.readStore.GetCitationsForPerson(ctx, e.MergedID)
 	if err != nil {
-		return err
+		return fmt.Errorf("fetch citations for merged person %s: %w", e.MergedID, err)
 	}
 	for _, citation := range citations {
 		citation.FactOwnerID = e.SurvivorID
 		if err := p.readStore.SaveCitation(ctx, &citation); err != nil {
-			return err
+			return fmt.Errorf("migrate citation %s for merged person %s: %w", citation.ID, e.MergedID, err)
 		}
 	}
 
 	// 5. Transfer PersonName records from merged to survivor
 	names, err := p.readStore.GetPersonNames(ctx, e.MergedID)
 	if err != nil {
-		return err
+		return fmt.Errorf("fetch person names for merged person %s: %w", e.MergedID, err)
 	}
 	for _, name := range names {
 		// Change the person ID to survivor and mark as non-primary
@@ -1320,48 +1320,96 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		name.IsPrimary = false // Transferred names become alternate names
 		name.UpdatedAt = e.OccurredAt()
 		if err := p.readStore.SavePersonName(ctx, &name); err != nil {
-			return err
+			return fmt.Errorf("migrate person name %s for merged person %s: %w", name.ID, e.MergedID, err)
 		}
 	}
 
 	// 6. Transfer life events from merged person to survivor
 	events, err := p.readStore.ListEventsForPerson(ctx, e.MergedID)
 	if err != nil {
-		return err
+		return fmt.Errorf("fetch events for merged person %s: %w", e.MergedID, err)
 	}
 	for _, event := range events {
 		event.OwnerID = e.SurvivorID
 		if err := p.readStore.SaveEvent(ctx, &event); err != nil {
-			return err
+			return fmt.Errorf("migrate event %s for merged person %s: %w", event.ID, e.MergedID, err)
 		}
 	}
 
 	// 7. Transfer media from merged person to survivor
 	mediaList, _, err := p.readStore.ListMediaForEntity(ctx, "person", e.MergedID, ListOptions{Limit: 10000})
 	if err != nil {
-		return err
+		return fmt.Errorf("fetch media for merged person %s: %w", e.MergedID, err)
 	}
 	for _, media := range mediaList {
 		media.EntityID = e.SurvivorID
 		media.UpdatedAt = e.OccurredAt()
 		if err := p.readStore.SaveMedia(ctx, &media); err != nil {
-			return err
+			return fmt.Errorf("migrate media %s for merged person %s: %w", media.ID, e.MergedID, err)
 		}
 	}
 
 	// 8. Transfer attributes from merged person to survivor
 	attributes, err := p.readStore.ListAttributesForPerson(ctx, e.MergedID)
 	if err != nil {
-		return err
+		return fmt.Errorf("fetch attributes for merged person %s: %w", e.MergedID, err)
 	}
 	for _, attr := range attributes {
 		attr.PersonID = e.SurvivorID
 		if err := p.readStore.SaveAttribute(ctx, &attr); err != nil {
-			return err
+			return fmt.Errorf("migrate attribute %s for merged person %s: %w", attr.ID, e.MergedID, err)
 		}
 	}
 
-	// 9. Delete merged person from read model
+	// 9. Transfer evidence analyses from merged person to survivor
+	analyses, err := p.readStore.GetAnalysesBySubject(ctx, e.MergedID)
+	if err != nil {
+		return fmt.Errorf("fetch evidence analyses for merged person %s: %w", e.MergedID, err)
+	}
+	for _, analysis := range analyses {
+		analysis.SubjectID = e.SurvivorID
+		if err := p.readStore.SaveEvidenceAnalysis(ctx, &analysis); err != nil {
+			return fmt.Errorf("migrate evidence analysis %s for merged person %s: %w", analysis.ID, e.MergedID, err)
+		}
+	}
+
+	// 10. Transfer evidence conflicts from merged person to survivor
+	conflicts, err := p.readStore.GetConflictsForSubject(ctx, e.MergedID)
+	if err != nil {
+		return fmt.Errorf("fetch evidence conflicts for merged person %s: %w", e.MergedID, err)
+	}
+	for _, conflict := range conflicts {
+		conflict.SubjectID = e.SurvivorID
+		if err := p.readStore.SaveEvidenceConflict(ctx, &conflict); err != nil {
+			return fmt.Errorf("migrate evidence conflict %s for merged person %s: %w", conflict.ID, e.MergedID, err)
+		}
+	}
+
+	// 11. Transfer research logs from merged person to survivor
+	researchLogs, err := p.readStore.GetResearchLogsForSubject(ctx, e.MergedID)
+	if err != nil {
+		return fmt.Errorf("fetch research logs for merged person %s: %w", e.MergedID, err)
+	}
+	for _, log := range researchLogs {
+		log.SubjectID = e.SurvivorID
+		if err := p.readStore.SaveResearchLog(ctx, &log); err != nil {
+			return fmt.Errorf("migrate research log %s for merged person %s: %w", log.ID, e.MergedID, err)
+		}
+	}
+
+	// 12. Transfer proof summaries from merged person to survivor
+	summaries, err := p.readStore.GetProofSummariesBySubject(ctx, e.MergedID)
+	if err != nil {
+		return fmt.Errorf("fetch proof summaries for merged person %s: %w", e.MergedID, err)
+	}
+	for _, summary := range summaries {
+		summary.SubjectID = e.SurvivorID
+		if err := p.readStore.SaveProofSummary(ctx, &summary); err != nil {
+			return fmt.Errorf("migrate proof summary %s for merged person %s: %w", summary.ID, e.MergedID, err)
+		}
+	}
+
+	// 13. Delete merged person from read model
 	return p.readStore.DeletePerson(ctx, e.MergedID)
 }
 

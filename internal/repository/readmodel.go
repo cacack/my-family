@@ -397,6 +397,7 @@ type ReadModelStore interface {
 	GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*EvidenceAnalysisReadModel, error)
 	ListEvidenceAnalyses(ctx context.Context, opts ListOptions) ([]EvidenceAnalysisReadModel, int, error)
 	GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
+	GetAnalysesBySubject(ctx context.Context, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
 	SaveEvidenceAnalysis(ctx context.Context, analysis *EvidenceAnalysisReadModel) error
 	DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error
 
@@ -419,6 +420,7 @@ type ReadModelStore interface {
 	GetProofSummary(ctx context.Context, id uuid.UUID) (*ProofSummaryReadModel, error)
 	ListProofSummaries(ctx context.Context, opts ListOptions) ([]ProofSummaryReadModel, int, error)
 	GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
+	GetProofSummariesBySubject(ctx context.Context, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
 	SaveProofSummary(ctx context.Context, summary *ProofSummaryReadModel) error
 	DeleteProofSummary(ctx context.Context, id uuid.UUID) error
 
