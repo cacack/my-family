@@ -350,6 +350,9 @@ func (m *mockReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repo
 func (m *mockReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) GetAnalysesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
 	return nil
 }
@@ -402,6 +405,9 @@ func (m *mockReadModelStore) ListProofSummaries(ctx context.Context, opts reposi
 	return nil, 0, nil
 }
 func (m *mockReadModelStore) GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) GetProofSummariesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) SaveProofSummary(ctx context.Context, summary *repository.ProofSummaryReadModel) error {

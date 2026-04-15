@@ -4537,6 +4537,56 @@ func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain
 	return results, rows.Err()
 }
 
+// GetAnalysesBySubject returns all evidence analyses for a given subject, regardless of fact type.
+func (s *ReadModelStore) GetAnalysesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
+		FROM evidence_analyses
+		WHERE subject_id = ?
+	`, subjectID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query analyses by subject: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.EvidenceAnalysisReadModel
+	for rows.Next() {
+		var a repository.EvidenceAnalysisReadModel
+		var idStr, subjectIDStr string
+		var citationIDs, researchStatus, notes sql.NullString
+		var createdAtStr, updatedAtStr string
+
+		if err := rows.Scan(
+			&idStr, &a.FactType, &subjectIDStr, &citationIDs,
+			&a.Conclusion, &researchStatus, &notes,
+			&a.Version, &createdAtStr, &updatedAtStr,
+		); err != nil {
+			return nil, fmt.Errorf("scan evidence_analysis: %w", err)
+		}
+
+		a.ID, _ = uuid.Parse(idStr)
+		a.SubjectID, _ = uuid.Parse(subjectIDStr)
+		if citationIDs.Valid {
+			a.CitationIDsJSON = citationIDs.String
+		}
+		if researchStatus.Valid {
+			a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+		}
+		if notes.Valid {
+			a.Notes = notes.String
+		}
+		if t, err := parseTimestamp(createdAtStr); err == nil {
+			a.CreatedAt = t
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			a.UpdatedAt = t
+		}
+		results = append(results, a)
+	}
+
+	return results, rows.Err()
+}
+
 // SaveEvidenceAnalysis saves or updates an evidence analysis.
 func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
 	var citationIDs, researchStatus, notes any
@@ -5133,6 +5183,53 @@ func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, factType 
 	`, string(factType), subjectID.String())
 	if err != nil {
 		return nil, fmt.Errorf("query proof summaries for fact: %w", err)
+	}
+	defer rows.Close()
+
+	var results []repository.ProofSummaryReadModel
+	for rows.Next() {
+		var ps repository.ProofSummaryReadModel
+		var idStr, subjectIDStr string
+		var analysisIDs, researchStatus sql.NullString
+		var createdAtStr, updatedAtStr string
+
+		if err := rows.Scan(
+			&idStr, &ps.FactType, &subjectIDStr, &ps.Conclusion,
+			&ps.Argument, &analysisIDs, &researchStatus,
+			&ps.Version, &createdAtStr, &updatedAtStr,
+		); err != nil {
+			return nil, fmt.Errorf("scan proof_summary: %w", err)
+		}
+
+		ps.ID, _ = uuid.Parse(idStr)
+		ps.SubjectID, _ = uuid.Parse(subjectIDStr)
+		if analysisIDs.Valid {
+			ps.AnalysisIDsJSON = analysisIDs.String
+		}
+		if researchStatus.Valid {
+			ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+		}
+		if t, err := parseTimestamp(createdAtStr); err == nil {
+			ps.CreatedAt = t
+		}
+		if t, err := parseTimestamp(updatedAtStr); err == nil {
+			ps.UpdatedAt = t
+		}
+		results = append(results, ps)
+	}
+
+	return results, rows.Err()
+}
+
+// GetProofSummariesBySubject returns all proof summaries for a given subject, regardless of fact type.
+func (s *ReadModelStore) GetProofSummariesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
+		FROM proof_summaries
+		WHERE subject_id = ?
+	`, subjectID.String())
+	if err != nil {
+		return nil, fmt.Errorf("query proof summaries by subject: %w", err)
 	}
 	defer rows.Close()
 
