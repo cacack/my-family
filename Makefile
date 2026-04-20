@@ -130,7 +130,7 @@ setup: deps ## Set up development environment
 	@echo "Installing development tools..."
 	go install github.com/vladopajic/go-test-coverage/v2@$(GO_TEST_COVERAGE_VERSION)
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.6.0
 	ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 	ln -sf ../../scripts/pre-push .git/hooks/pre-push
 	@echo ""
