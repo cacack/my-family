@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
-  security-events: write
 
 jobs:
   fuzz:
@@ -60,6 +58,9 @@ jobs:
     name: Security Scan (Nightly)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
     steps:
     - name: Harden Runner
       uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # v2.16.1
@@ -143,6 +144,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [fuzz, security]
     if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
     steps:
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
