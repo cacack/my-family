@@ -44,3 +44,18 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
+
+  # Docker base images in Dockerfile (SHA-pinned; Dependabot keeps digests fresh)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "docker"

@@ -73,7 +73,9 @@ jobs:
         run: go mod download
 
       - name: Install oapi-codegen
-        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+        # Pin to the version declared in go.mod to satisfy Scorecard's
+        # Pinned-Dependencies check and keep generator output reproducible.
+        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.6.0
 
       - name: Verify Go generated code
         run: |
@@ -315,7 +317,7 @@ jobs:
       # Semgrep: Rule-based static analysis
       - name: Semgrep scan
         if: success() || failure()
-        uses: docker://semgrep/semgrep:latest
+        uses: docker://semgrep/semgrep:latest@sha256:d7d67e1e0c0ed26278ab35f0be082f0afdfd7a880f4927aee86f8127fdbce617
         with:
           args: semgrep scan --config p/security-audit --config p/secrets --config p/golang --config p/typescript --sarif --output semgrep.sarif .
 
