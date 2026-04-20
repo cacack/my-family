@@ -5,6 +5,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/cacack/my-family)](https://goreportcard.com/report/github.com/cacack/my-family)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/cacack/my-family)](https://github.com/cacack/my-family)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cacack/my-family/badge)](https://scorecard.dev/viewer/?uri=github.com/cacack/my-family)
 
 Self-hosted genealogy software written in Go with an embedded Svelte frontend.
 
