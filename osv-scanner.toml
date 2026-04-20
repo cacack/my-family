@@ -1,0 +1,30 @@
+# Vulnerability ignores consumed by OSV-Scanner and the OSSF Scorecard
+# Vulnerabilities check. Each entry documents why the finding is not
+# reachable or otherwise not actionable for this project.
+#
+# Review quarterly; remove entries as soon as upstreams publish fixes on
+# the module paths we actually depend on.
+
+[[IgnoredVulns]]
+id = "GO-2026-4883"
+# Moby/Docker off-by-one in plugin privilege validation. Reached only via
+# `github.com/docker/docker` (pulled by `testcontainers-go` for postgres
+# test harnesses). Our code never invokes the affected AuthZ/plugin paths
+# and `govulncheck` reports the symbol as unreachable. Upstream fix lives
+# on `github.com/moby/moby/v2` v2.0.0-beta.8+; no fix has been published
+# on the legacy `github.com/docker/docker` module path that our dep graph
+# uses. Re-evaluate when testcontainers-go migrates to moby/v2.
+
+[[IgnoredVulns]]
+id = "GO-2026-4887"
+# Same dependency/reachability story as GO-2026-4883: Moby AuthZ plugin
+# bypass on oversized request bodies, only fixed on the moby/v2 module
+# path, unreachable from this codebase.
+
+[[IgnoredVulns]]
+id = "GHSA-pxg6-pf52-xh8x"
+# `cookie` <0.7.0 accepts out-of-bounds characters. Pulled transitively
+# via `@sveltejs/kit` server runtime. This project ships the SvelteKit
+# app as a statically built SPA embedded in the Go binary; the SvelteKit
+# server and its cookie parsing are never executed. Will clear on the
+# next @sveltejs/kit major bump, which Dependabot tracks.

@@ -17,23 +17,23 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Check PR title is not conventional commit format
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          TITLE="${{ github.event.pull_request.title }}"
-
           # Exempt release-please PRs
-          if echo "$TITLE" | grep -qE "^chore\(main\): release [0-9]"; then
+          if echo "$PR_TITLE" | grep -qE "^chore\(main\): release [0-9]"; then
             echo "✅ Release-please PR exempt"
             exit 0
           fi
 
           # Exempt Dependabot PRs
-          if echo "$TITLE" | grep -qE "^chore\(deps(-dev)?\): [Bb]ump "; then
+          if echo "$PR_TITLE" | grep -qE "^chore\(deps(-dev)?\): [Bb]ump "; then
             echo "✅ Dependabot PR exempt"
             exit 0
           fi
 
           PATTERN="^(feat|fix|perf|docs|refactor|ci|chore)(\(.+\))?!?:"
-          if echo "$TITLE" | grep -qE "$PATTERN"; then
+          if echo "$PR_TITLE" | grep -qE "$PATTERN"; then
             echo "::error::PR title should NOT use conventional commit format."
             echo "::error::Use a descriptive title instead (e.g., 'Add date support' not 'feat: add date support')"
             echo "::error::Conventional commit format is for commit messages only."
