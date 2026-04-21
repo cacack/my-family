@@ -20,7 +20,7 @@
 	},
 	"devDependencies": {
 		"@fontsource-variable/inter": "^5.2.8",
-		"@internationalized/date": "^3.12.0",
+		"@internationalized/date": "^3.12.1",
 		"@lucide/svelte": "^1.8.0",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-static": "^3.0.0",
