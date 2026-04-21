@@ -29,6 +29,11 @@ jobs:
             time: 2m
 
     steps:
+    - name: Harden Runner
+      uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+      with:
+        egress-policy: audit
+
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -90,7 +95,7 @@ jobs:
         echo "placeholder" > internal/web/dist/.gitkeep
 
     - name: Install frontend dependencies
-      run: cd web && npm ci
+      run: cd web && npm ci --ignore-scripts && npm run prepare
 
     - name: Run govulncheck
       uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1
@@ -148,6 +153,11 @@ jobs:
       contents: read
       issues: write
     steps:
+    - name: Harden Runner
+      uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+      with:
+        egress-policy: audit
+
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

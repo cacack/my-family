@@ -16,6 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - name: Check PR title is not conventional commit format
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -61,6 +66,11 @@ jobs:
           --health-retries 5
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
@@ -178,6 +188,11 @@ jobs:
         working-directory: web
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Node.js
@@ -188,7 +203,11 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        # Block transitive postinstall/preinstall scripts (supply-chain mitigation).
+        # `npm run prepare` runs the project's own prepare (svelte-kit sync).
+        run: |
+          npm ci --ignore-scripts
+          npm run prepare
 
       - name: Verify TypeScript generated types
         run: |
@@ -213,6 +232,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Dependency Review
@@ -228,6 +252,11 @@ jobs:
       security-events: write
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0  # Full history for gitleaks
@@ -254,7 +283,7 @@ jobs:
           echo "placeholder" > internal/web/dist/.gitkeep
 
       - name: Install frontend dependencies
-        run: cd web && npm ci
+        run: cd web && npm ci --ignore-scripts && npm run prepare
 
       # Supply chain: Go dependency vulnerabilities
       - name: Go vulnerability check
@@ -334,6 +363,11 @@ jobs:
     needs: [backend, frontend, security]
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Set up Go
@@ -352,7 +386,8 @@ jobs:
       - name: Build frontend
         run: |
           cd web
-          npm ci
+          npm ci --ignore-scripts
+          npm run prepare
           npm run build
 
       - name: Build binary with embedded frontend
@@ -372,6 +407,11 @@ jobs:
     needs: [backend, frontend]
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Build Docker image
@@ -411,6 +451,11 @@ jobs:
     needs: [backend, frontend, security, integration, docker-smoke-test, dependency-review]
     if: always()
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@8d3c67de8e2fe68ef647c8db1e6a09f647780f40 # v2.19.0
+        with:
+          egress-policy: audit
+
       - name: Check all jobs passed
         run: |
           if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
