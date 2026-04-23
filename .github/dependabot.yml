@@ -8,6 +8,10 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
+    cooldown:
+      default-days: 5
+      include:
+        - "*"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -23,6 +27,10 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
+    cooldown:
+      default-days: 5
+      include:
+        - "*"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -38,6 +46,10 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
+    cooldown:
+      default-days: 5
+      include:
+        - "*"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -53,6 +65,10 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     rebase-strategy: "auto"
+    cooldown:
+      default-days: 5
+      include:
+        - "*"
     commit-message:
       prefix: "chore"
       include: "scope"
