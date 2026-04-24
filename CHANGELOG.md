@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.10.0](https://github.com/cacack/my-family/compare/v0.9.0...v0.10.0) (2026-04-24)
+
+
+### Features
+
+* add audit skills and align all skill personas to real-world roles ([441bd91](https://github.com/cacack/my-family/commit/441bd91fbcbf21439eb90cc827b2f437b6208ff8))
+* add brand identity, logo, and favicon ([04fbdca](https://github.com/cacack/my-family/commit/04fbdca25613dd263a8f7f3626602320f6a937cc))
+* add YAML frontmatter to audit persona prompts and track in git ([dfec9d2](https://github.com/cacack/my-family/commit/dfec9d230d98b843b76938cd37941ceb04f4c447))
+* **api:** add gedcom_xref field to Citation API schema ([6be5d3a](https://github.com/cacack/my-family/commit/6be5d3a15fc1570c933890288a3d7af31403350e))
+* **citation:** add Evidence Explained citation templates ([4ab7085](https://github.com/cacack/my-family/commit/4ab7085a7db07fe9d14437c34d787b742047268e))
+* **domain:** support negative assertions (NO tag) in import/export ([c32189b](https://github.com/cacack/my-family/commit/c32189bd2328d20cc3046fa596fbd3ea3762d2a1))
+* **evidence:** add evidence analysis UI ([#93](https://github.com/cacack/my-family/issues/93)) ([9b3c8c9](https://github.com/cacack/my-family/commit/9b3c8c92d37c9f5a4e2f2585862a1f36189f4e81))
+* **evidence:** add GPS-compliant evidence analysis and conflict tracking ([#51](https://github.com/cacack/my-family/issues/51)) ([04ba17c](https://github.com/cacack/my-family/commit/04ba17c8f96fdf0a15cd7b0e736e248833bf1416))
+* **export:** add citations export endpoint and UI ([60b7f98](https://github.com/cacack/my-family/commit/60b7f9892763813e874deb947d12e48c2dc9e235))
+* **frontend:** add Evidence Explained citation template UI ([#155](https://github.com/cacack/my-family/issues/155)) ([e396b39](https://github.com/cacack/my-family/commit/e396b39d6f91a4bed2d99f93c41d3edaa2700ff3))
+* **frontend:** migrate custom CSS to shadcn-svelte components ([#366](https://github.com/cacack/my-family/issues/366)) ([09f584e](https://github.com/cacack/my-family/commit/09f584e1619d26e7f798cf077a5e13c387e9737c))
+* **query:** load citations for negated events in group sheet ([6036f4f](https://github.com/cacack/my-family/commit/6036f4f653a5e67eb2110db876d91ee6056af7cf))
+
+
+### Bug Fixes
+
+* add migration for is_negated column on existing databases ([ba0fbf0](https://github.com/cacack/my-family/commit/ba0fbf01b12c94d93930f6990caa2a75924d28a9))
+* address CodeRabbit review feedback on negative assertions ([b5bc577](https://github.com/cacack/my-family/commit/b5bc5775573a1aae08fbb218fa305853aa0c8787))
+* **audit:** change devil-advocate model from gpt-5-mini to gpt-5.2 ([5022cea](https://github.com/cacack/my-family/commit/5022ceadd2ed3db09f87e2b5241ba8a68ae59da8))
+* **build:** enable pipefail in pre-push and CI coverage steps ([f4b4118](https://github.com/cacack/my-family/commit/f4b411824df2c68a6687e5ce79f6d5913f25cdb4))
+* **build:** scope coverage test to packages that contribute ([3d66ee4](https://github.com/cacack/my-family/commit/3d66ee4cf1ab31b1487ce384e17e475f62c28339)), closes [#408](https://github.com/cacack/my-family/issues/408)
+* **build:** validate coverage package list before running tests ([7e075b2](https://github.com/cacack/my-family/commit/7e075b215b2f79c007a562dd2e92ce3457487f3c))
+* **ci:** handle gosec findings exit code and missing trivy SARIF in nightly ([1aeae9d](https://github.com/cacack/my-family/commit/1aeae9d1cdf46fa1f2cfb9a6bf19dedd2eaf7f2f))
+* **ci:** pin gosec and govulncheck actions to commit SHAs ([dc47a9f](https://github.com/cacack/my-family/commit/dc47a9f61147865dc0ccf759e20dbc05c9d97686))
+* **ci:** use official actions for gosec and govulncheck ([1396b52](https://github.com/cacack/my-family/commit/1396b526cc26031f18f708f79fd2ba4fcbf1a738))
+* **deps:** bump Go toolchain to 1.26.2 to patch 5 stdlib vulnerabilities ([643bbe6](https://github.com/cacack/my-family/commit/643bbe6b404886a8eb78d9f7d20489d61c48ac9e)), closes [#406](https://github.com/cacack/my-family/issues/406)
+* **deps:** bump grpc and x/net to resolve security vulnerabilities ([8ab8866](https://github.com/cacack/my-family/commit/8ab8866ab46782680a61e5eaa680d5a85b59b41d))
+* **deps:** pin kin-openapi to v0.133.0 for oapi-codegen compatibility ([6e92acb](https://github.com/cacack/my-family/commit/6e92acb469e4e4bed5719dedc952da4c8096606b))
+* **deps:** pin kin-openapi to v0.133.0 for oapi-codegen compatibility ([ab9c83f](https://github.com/cacack/my-family/commit/ab9c83f87ef22482331f6642344959c180340a71))
+* **deps:** resolve npm audit vulnerabilities in frontend dependencies ([dafd9c9](https://github.com/cacack/my-family/commit/dafd9c9a4f92daedf6923688da8bba435449d4a2))
+* **docker:** bump Go version to 1.25.8 to match go.mod ([e88bf2b](https://github.com/cacack/my-family/commit/e88bf2be14d557a1629aa1a4cb21559ba112b761))
+* **evidence:** add role=alert to form errors and track subjectId reactively ([55370a6](https://github.com/cacack/my-family/commit/55370a640c377204596cbed1cd38c8a137c112c3))
+* **evidence:** address CodeRabbit review findings ([6063d16](https://github.com/cacack/my-family/commit/6063d1627ffd10f3981bbc0ea1df8d58e7534354))
+* **evidence:** address CodeRabbit review findings for [#51](https://github.com/cacack/my-family/issues/51) ([ed53621](https://github.com/cacack/my-family/commit/ed536216643b201ba909d69a37101f2e4047ff28))
+* **evidence:** address fifth round of CodeRabbit review findings ([8cd226b](https://github.com/cacack/my-family/commit/8cd226b00ad85a36a7a6591996c3449571d9b8e3))
+* **evidence:** address fourth round of CodeRabbit review findings ([8a7c696](https://github.com/cacack/my-family/commit/8a7c6969a30fef7ddeb5b1fc213c152ccb96e4b0))
+* **evidence:** address second round of CodeRabbit review findings ([f23d473](https://github.com/cacack/my-family/commit/f23d4738c92ca4c7fd2e7f9e7aded1f7c15c1464))
+* **evidence:** address second round of CodeRabbit review nitpicks ([f05368b](https://github.com/cacack/my-family/commit/f05368b29043c0d310ba44b38106aef1ca32790e))
+* **evidence:** address third round of CodeRabbit review findings ([0179023](https://github.com/cacack/my-family/commit/0179023879c152d71da4714d913ff52a7a2776c1))
+* **evidence:** extract form factory, harden delete, fix aria ([20f184c](https://github.com/cacack/my-family/commit/20f184ce74a4b592cffcd620b0aa673847ac74d3))
+* **evidence:** use PUT response and guard against stale async loads ([3690a0f](https://github.com/cacack/my-family/commit/3690a0f160a82f481079380bc0fe00650a0f2b5b))
+* **frontend:** add type=button and aria-hidden to SourceCard ([87c2332](https://github.com/cacack/my-family/commit/87c2332c529aec0316fcfb0db0889d2c82833a79))
+* **frontend:** address CodeRabbit review feedback for [#155](https://github.com/cacack/my-family/issues/155) ([7655b44](https://github.com/cacack/my-family/commit/7655b442a90b838ce35ca1e613534eb41973493d))
+* **frontend:** address CodeRabbit review findings ([b01d409](https://github.com/cacack/my-family/commit/b01d4097bf0595deeeec5b840ddb6a93fed4e573))
+* **frontend:** constrain template select dropdown height ([7c5a1a3](https://github.com/cacack/my-family/commit/7c5a1a308c4e638a61d4fe46935f27d6cc61a366))
+* **frontend:** remove redundant templateId assignment in callback ([6665b08](https://github.com/cacack/my-family/commit/6665b088b47d3576c8f9f72bd5adeda25e15377f))
+* handle nil address in projectLifeEventUpdated type switch ([7816a10](https://github.com/cacack/my-family/commit/7816a109f74b1b065b63d70c891bf04ef4393dd9))
+* **postgres:** align ReadGlobalByTime zero-value handling with SQLite ([61d70f1](https://github.com/cacack/my-family/commit/61d70f10590bf1d4c7ffc03d0fc76cfaccf1b15c))
+* **query:** make ReadGlobalByTime pagination deterministic ([bb55860](https://github.com/cacack/my-family/commit/bb558604d66d142f7b3c9273c0365a381268069e))
+* **query:** map child link/unlink events to valid OpenAPI action types ([180bf9c](https://github.com/cacack/my-family/commit/180bf9c7614ba5dc752e59d8fdf2ede326288ca4))
+* **query:** resolve relationship path intermediate nodes to display names ([18b86c1](https://github.com/cacack/my-family/commit/18b86c17057d8b6d5f1f1903d1be2c397d89b400))
+* regenerate API code and bump Go to 1.25.8 ([d63ebc1](https://github.com/cacack/my-family/commit/d63ebc1a5e85318bbcabdc32cf5392c8c391e42d))
+* **repository:** migrate evidence entities on person merge ([fac5422](https://github.com/cacack/my-family/commit/fac5422827045ae8f660e39342dd70bf7e63e03c)), closes [#386](https://github.com/cacack/my-family/issues/386)
+* resolve CodeRabbit review findings for event type coverage ([e7bbaa5](https://github.com/cacack/my-family/commit/e7bbaa564a3ce45229d1a332d334f45a56b2fe61))
+* **security:** address code scanning findings ([e91fc84](https://github.com/cacack/my-family/commit/e91fc844acbb6d2f94c28ca143355b589d44ab1f))
+* **web:** bump @sveltejs/kit to 2.57.1 to patch high-severity advisories ([c433273](https://github.com/cacack/my-family/commit/c4332733c71cd9bcf1363abcacc0536614db7786)), closes [#406](https://github.com/cacack/my-family/issues/406)
+* **web:** resolve npm audit moderate/high vulnerabilities ([101b8f8](https://github.com/cacack/my-family/commit/101b8f8d07a0bf65773e5e166f6cb23ac411cc98))
+* **web:** update RelationshipPath manual types in client.ts ([441f782](https://github.com/cacack/my-family/commit/441f782387a12b55c9ef68cefad81d301c696466))
+* wire 5 missing event types into DecodeEvent and projection handlers ([12deaf7](https://github.com/cacack/my-family/commit/12deaf7a1a1a679406a363cf7acdcab4f280065f))
+
 ## [0.9.0](https://github.com/cacack/my-family/compare/v0.8.0...v0.9.0) (2026-02-16)
 
 
