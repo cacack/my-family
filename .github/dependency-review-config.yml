@@ -13,3 +13,9 @@ allow-licenses:
   # Google patent license used by all golang.org/x packages (as compound expression)
   - LicenseRef-scancode-google-patent-license-golang
   - "BSD-3-Clause AND LicenseRef-scancode-google-patent-license-golang"
+
+# License-check exemptions for CI-only tooling. These run in the pipeline,
+# are never linked into the shipped binary, and so do not impose license
+# obligations on the project.
+allow-dependencies-licenses:
+  - 'pkg:githubactions/vladopajic/go-test-coverage'
