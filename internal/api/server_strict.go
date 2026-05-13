@@ -1452,7 +1452,7 @@ func (ss *StrictServer) ExportGedcom(ctx context.Context, _ ExportGedcomRequestO
 		Body:          strings.NewReader(sb.String()),
 		ContentLength: int64(sb.Len()),
 		Headers: ExportGedcom200ResponseHeaders{
-			ContentDisposition: "attachment; filename=export.ged",
+			ContentDisposition: strPtr("attachment; filename=export.ged"),
 		},
 	}, nil
 }
