@@ -133,8 +133,11 @@ jobs:
 
       - name: Check coverage threshold
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-          echo "Total coverage: $COVERAGE%"
+          # Exclude generated files to match .testcoverage.yml so this coarse
+          # gate behaves consistently with the per-package check below.
+          grep -v "generated.go" coverage.out > coverage.filtered.out
+          COVERAGE=$(go tool cover -func=coverage.filtered.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage (excluding generated): $COVERAGE%"
           # Fail if coverage drops below 60%
           if (( $(echo "$COVERAGE < 60" | bc -l) )); then
             echo "Coverage ($COVERAGE%) is below 60% threshold"
