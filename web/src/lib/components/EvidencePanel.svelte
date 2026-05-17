@@ -8,7 +8,13 @@
 	} from '$lib/api/client';
 	import UncertaintyBadge from './UncertaintyBadge.svelte';
 	import { Badge } from '$lib/components/ui/badge';
-	import { formatFactTypeShort, subjectRoute, formatDate } from '$lib/utils/evidence';
+	import {
+		formatFactTypeShort,
+		formatDate,
+		outcomeBadgeProps,
+		conflictBadgeProps,
+		conflictRowClass
+	} from '$lib/utils/evidence';
 
 	interface Props {
 		subjectId: string;
@@ -38,17 +44,6 @@
 
 	// Use formatFactTypeShort in person/family context where prefix is redundant
 	const formatFactType = formatFactTypeShort;
-
-	function outcomeBadgeClass(outcome: string): string {
-		switch (outcome) {
-			case 'found':
-				return 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400';
-			case 'not_found':
-				return 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400';
-			default:
-				return 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400';
-		}
-	}
 
 	function summaryText(): string {
 		const parts: string[] = [];
@@ -97,57 +92,100 @@
 	});
 </script>
 
-<div class="evidence-panel">
-	<button class="panel-header" onclick={() => (expanded = !expanded)} aria-expanded={expanded} aria-controls="evidence-panel-content">
-		<h2>
-			Evidence & Research
+<div class="mt-6 border-t border-slate-200 pt-6">
+	<button
+		class="flex w-full cursor-pointer items-center justify-between border-none bg-transparent p-0 text-left"
+		onclick={() => (expanded = !expanded)}
+		aria-expanded={expanded}
+		aria-controls="evidence-panel-content"
+	>
+		<h2 class="m-0 flex items-center text-sm font-semibold uppercase tracking-wider text-slate-500">
+			Evidence &amp; Research
 			{#if !loading && hasData}
-				<span class="summary-text">{summaryText()}</span>
+				<span class="ml-3 text-xs font-normal normal-case tracking-normal text-slate-400">
+					{summaryText()}
+				</span>
 			{/if}
 			{#if openConflictCount > 0}
 				<Badge variant="destructive" class="ml-1 text-[0.625rem]">{openConflictCount}</Badge>
 			{/if}
 		</h2>
-		<span class="expand-icon">{expanded ? '\u2212' : '+'}</span>
+		<span class="text-xl font-semibold text-slate-500">{expanded ? '−' : '+'}</span>
 	</button>
 
 	{#if expanded}
-		<div class="panel-content" id="evidence-panel-content">
+		<div class="mt-4" id="evidence-panel-content">
 			{#if loading}
-				<div class="loading-state" role="status" aria-live="polite">Loading evidence data...</div>
+				<div class="p-6 text-center text-sm text-slate-500" role="status" aria-live="polite">
+					Loading evidence data...
+				</div>
 			{:else if error}
-				<div class="error-state" role="alert">{error}</div>
+				<div
+					class="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
+					role="alert"
+				>
+					{error}
+				</div>
 			{:else if !hasData}
-				<div class="empty-state">
-					<p>No evidence data yet. Start by adding an analysis or logging your research.</p>
-					<div class="empty-actions">
-						<a href="/evidence/analyses/new?subjectId={subjectId}" class="action-link"
-							>Add Analysis</a
+				<div class="p-6 text-center text-sm text-slate-500">
+					<p class="m-0 mb-4">
+						No evidence data yet. Start by adding an analysis or logging your research.
+					</p>
+					<div class="flex justify-center gap-4">
+						<a
+							href="/evidence/analyses/new?subjectId={subjectId}"
+							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-blue-500 no-underline hover:bg-slate-100"
 						>
-						<a href="/evidence/research-logs/new?subjectId={subjectId}" class="action-link"
-							>Log Research</a
+							Add Analysis
+						</a>
+						<a
+							href="/evidence/research-logs/new?subjectId={subjectId}"
+							class="rounded-md border border-slate-200 px-3 py-1.5 text-[0.8125rem] text-blue-500 no-underline hover:bg-slate-100"
 						>
+							Log Research
+						</a>
 					</div>
 				</div>
 			{:else}
 				<!-- Analyses -->
 				{#if analyses.length > 0}
-					<div class="sub-section">
-						<div class="sub-header">
-							<h3>Analyses <span class="count-badge">{analyses.length}</span></h3>
-							<a href="/evidence/analyses/new?subjectId={subjectId}" class="add-link"
-								>Add Analysis</a
+					<div class="mb-5 last:mb-0">
+						<div class="mb-2 flex items-center justify-between">
+							<h3 class="m-0 flex items-center gap-2 text-[0.8125rem] font-semibold text-slate-600">
+								Analyses
+								<span
+									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-blue-500"
+								>
+									{analyses.length}
+								</span>
+							</h3>
+							<a
+								href="/evidence/analyses/new?subjectId={subjectId}"
+								class="text-xs text-blue-500 no-underline hover:underline"
 							>
+								Add Analysis
+							</a>
 						</div>
 						{#each [...analysesByFactType.entries()] as [factType, items]}
-							<div class="fact-group">
-								<h4 class="fact-type-label">{formatFactType(factType)}</h4>
-								<ul class="analysis-list">
+							<div class="mb-3 last:mb-0">
+								<h4
+									class="m-0 mb-1 text-xs font-medium uppercase tracking-wide text-slate-400"
+								>
+									{formatFactType(factType)}
+								</h4>
+								<ul class="m-0 list-none p-0">
 									{#each items as analysis}
-										<li class="analysis-item">
-											<a href="/evidence/analyses/{analysis.id}" class="analysis-link">
-												<span class="analysis-conclusion">{analysis.conclusion}</span>
-												<span class="analysis-meta">
+										<li class="mb-1">
+											<a
+												href="/evidence/analyses/{analysis.id}"
+												class="flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-slate-800 no-underline transition-colors hover:bg-slate-100"
+											>
+												<span
+													class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[0.8125rem]"
+												>
+													{analysis.conclusion}
+												</span>
+												<span class="flex flex-shrink-0 items-center gap-2">
 													{#if analysis.research_status}
 														<UncertaintyBadge
 															status={analysis.research_status}
@@ -156,12 +194,10 @@
 														/>
 													{/if}
 													{#if analysis.citation_ids && analysis.citation_ids.length > 0}
-														<span class="citation-count"
-															>{analysis.citation_ids.length}
-															{analysis.citation_ids.length === 1
-																? 'citation'
-																: 'citations'}</span
-														>
+														<span class="text-[0.6875rem] text-slate-400">
+															{analysis.citation_ids.length}
+															{analysis.citation_ids.length === 1 ? 'citation' : 'citations'}
+														</span>
 													{/if}
 												</span>
 											</a>
@@ -175,34 +211,39 @@
 
 				<!-- Conflicts -->
 				{#if conflicts.length > 0}
-					<div class="sub-section">
-						<div class="sub-header">
-							<h3>Conflicts <span class="count-badge">{conflicts.length}</span></h3>
-						</div>
-						<ul class="conflict-list">
-							{#each conflicts as conflict}
-								<li
-									class="conflict-item"
-									class:conflict-open={conflict.status === 'open'}
-									class:conflict-resolved={conflict.status === 'resolved'}
+					<div class="mb-5 last:mb-0">
+						<div class="mb-2 flex items-center justify-between">
+							<h3 class="m-0 flex items-center gap-2 text-[0.8125rem] font-semibold text-slate-600">
+								Conflicts
+								<span
+									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-blue-500"
 								>
-									<a href="/evidence/conflicts/{conflict.id}" class="conflict-link">
-										<div class="conflict-header-row">
-											<span class="conflict-description">{conflict.description}</span>
+									{conflicts.length}
+								</span>
+							</h3>
+						</div>
+						<ul class="m-0 list-none p-0">
+							{#each conflicts as conflict}
+								{@const statusBadge = conflictBadgeProps(conflict.status)}
+								<li class="mb-2 overflow-hidden rounded-md border {conflictRowClass(conflict.status)}">
+									<a
+										href="/evidence/conflicts/{conflict.id}"
+										class="block px-3 py-2.5 text-slate-800 no-underline hover:opacity-85"
+									>
+										<div class="flex items-center justify-between gap-2">
+											<span class="flex-1 text-[0.8125rem]">{conflict.description}</span>
 											<Badge
-												variant={conflict.status === 'open' ? 'destructive' : 'secondary'}
-												class="text-[0.625rem] uppercase"
+												variant={statusBadge.variant}
+												class="text-[0.625rem] uppercase {statusBadge.class}"
 											>
 												{conflict.status}
 											</Badge>
 										</div>
 										{#if conflict.analysis_ids && conflict.analysis_ids.length > 0}
-											<span class="conflict-analyses"
-												>{conflict.analysis_ids.length} linked
-												{conflict.analysis_ids.length === 1
-													? 'analysis'
-													: 'analyses'}</span
-											>
+											<span class="mt-1 block text-[0.6875rem] text-slate-400">
+												{conflict.analysis_ids.length} linked
+												{conflict.analysis_ids.length === 1 ? 'analysis' : 'analyses'}
+											</span>
 										{/if}
 									</a>
 								</li>
@@ -213,31 +254,40 @@
 
 				<!-- Research Logs -->
 				{#if researchLogs.length > 0}
-					<div class="sub-section">
-						<div class="sub-header">
-							<h3>
-								Research Logs <span class="count-badge">{researchLogs.length}</span>
+					<div class="mb-5 last:mb-0">
+						<div class="mb-2 flex items-center justify-between">
+							<h3 class="m-0 flex items-center gap-2 text-[0.8125rem] font-semibold text-slate-600">
+								Research Logs
+								<span
+									class="inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-blue-100 px-[0.3rem] text-[0.625rem] font-semibold text-blue-500"
+								>
+									{researchLogs.length}
+								</span>
 							</h3>
 							<a
 								href="/evidence/research-logs/new?subjectId={subjectId}"
-								class="add-link">Log Research</a
+								class="text-xs text-blue-500 no-underline hover:underline"
 							>
+								Log Research
+							</a>
 						</div>
-						<ul class="log-list">
+						<ul class="m-0 list-none p-0">
 							{#each researchLogs as log}
-								<li class="log-item">
-									<div class="log-date">{formatDate(log.search_date)}</div>
-									<div class="log-body">
-										<div class="log-header-row">
-											<span class="log-repository">{log.repository}</span>
-											<Badge
-												variant="outline"
-												class={outcomeBadgeClass(log.outcome)}
-											>
-												{log.outcome.replace('_', ' ')}
+								{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
+								<li class="flex gap-3 border-b border-slate-100 py-2 last:border-b-0">
+									<div class="min-w-20 flex-shrink-0 pt-0.5 text-[0.6875rem] text-slate-400">
+										{formatDate(log.search_date)}
+									</div>
+									<div class="min-w-0 flex-1">
+										<div class="mb-0.5 flex items-center gap-2">
+											<span class="text-[0.8125rem] font-medium text-slate-800">
+												{log.repository}
+											</span>
+											<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
+												{outcomeBadge.label}
 											</Badge>
 										</div>
-										<span class="log-description">{log.search_description}</span>
+										<span class="block text-xs text-slate-500">{log.search_description}</span>
 									</div>
 								</li>
 							{/each}
@@ -248,300 +298,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.evidence-panel {
-		margin-top: 1.5rem;
-		padding-top: 1.5rem;
-		border-top: 1px solid #e2e8f0;
-	}
-
-	.panel-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 0;
-		border: none;
-		background: none;
-		cursor: pointer;
-		text-align: left;
-	}
-
-	.panel-header h2 {
-		display: flex;
-		align-items: center;
-		margin: 0;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: #64748b;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.summary-text {
-		margin-left: 0.75rem;
-		font-size: 0.75rem;
-		font-weight: 400;
-		color: #94a3b8;
-		text-transform: none;
-		letter-spacing: 0;
-	}
-
-	.expand-icon {
-		font-size: 1.25rem;
-		font-weight: 600;
-		color: #64748b;
-	}
-
-	.panel-content {
-		margin-top: 1rem;
-	}
-
-	.loading-state,
-	.empty-state {
-		text-align: center;
-		padding: 1.5rem;
-		color: #64748b;
-		font-size: 0.875rem;
-	}
-
-	.empty-state p {
-		margin: 0 0 1rem;
-	}
-
-	.empty-actions {
-		display: flex;
-		gap: 1rem;
-		justify-content: center;
-	}
-
-	.error-state {
-		padding: 0.75rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		color: #dc2626;
-		font-size: 0.875rem;
-	}
-
-	.sub-section {
-		margin-bottom: 1.25rem;
-	}
-
-	.sub-section:last-child {
-		margin-bottom: 0;
-	}
-
-	.sub-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.5rem;
-	}
-
-	.sub-header h3 {
-		margin: 0;
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: #475569;
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.count-badge {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1.125rem;
-		height: 1.125rem;
-		padding: 0 0.3rem;
-		background: #dbeafe;
-		border-radius: 9999px;
-		font-size: 0.625rem;
-		font-weight: 600;
-		color: #3b82f6;
-	}
-
-	.add-link {
-		font-size: 0.75rem;
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	.add-link:hover {
-		text-decoration: underline;
-	}
-
-	.action-link {
-		font-size: 0.8125rem;
-		color: #3b82f6;
-		text-decoration: none;
-		padding: 0.375rem 0.75rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-	}
-
-	.action-link:hover {
-		background: #f1f5f9;
-	}
-
-	/* Analyses */
-	.fact-group {
-		margin-bottom: 0.75rem;
-	}
-
-	.fact-group:last-child {
-		margin-bottom: 0;
-	}
-
-	.fact-type-label {
-		margin: 0 0 0.25rem;
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: #94a3b8;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-
-	.analysis-list,
-	.conflict-list,
-	.log-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-	}
-
-	.analysis-item {
-		margin-bottom: 0.25rem;
-	}
-
-	.analysis-link {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
-		padding: 0.5rem 0.625rem;
-		border-radius: 6px;
-		text-decoration: none;
-		color: #1e293b;
-		transition: background 0.15s;
-	}
-
-	.analysis-link:hover {
-		background: #f1f5f9;
-	}
-
-	.analysis-conclusion {
-		font-size: 0.8125rem;
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.analysis-meta {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-shrink: 0;
-	}
-
-	.citation-count {
-		font-size: 0.6875rem;
-		color: #94a3b8;
-	}
-
-	/* Conflicts */
-	.conflict-item {
-		margin-bottom: 0.5rem;
-		border-radius: 6px;
-		overflow: hidden;
-	}
-
-	.conflict-item.conflict-open {
-		background: #fffbeb;
-		border: 1px solid #fde68a;
-	}
-
-	.conflict-item.conflict-resolved {
-		background: #f8fafc;
-		border: 1px solid #e2e8f0;
-	}
-
-	.conflict-link {
-		display: block;
-		padding: 0.625rem 0.75rem;
-		text-decoration: none;
-		color: #1e293b;
-	}
-
-	.conflict-link:hover {
-		opacity: 0.85;
-	}
-
-	.conflict-header-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-	}
-
-	.conflict-description {
-		font-size: 0.8125rem;
-		flex: 1;
-	}
-
-	.conflict-analyses {
-		display: block;
-		font-size: 0.6875rem;
-		color: #94a3b8;
-		margin-top: 0.25rem;
-	}
-
-	/* Research Logs */
-	.log-item {
-		display: flex;
-		gap: 0.75rem;
-		padding: 0.5rem 0;
-		border-bottom: 1px solid #f1f5f9;
-	}
-
-	.log-item:last-child {
-		border-bottom: none;
-	}
-
-	.log-date {
-		flex-shrink: 0;
-		font-size: 0.6875rem;
-		color: #94a3b8;
-		min-width: 5rem;
-		padding-top: 0.125rem;
-	}
-
-	.log-body {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.log-header-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.125rem;
-	}
-
-	.log-repository {
-		font-size: 0.8125rem;
-		font-weight: 500;
-		color: #1e293b;
-	}
-
-	.log-description {
-		display: block;
-		font-size: 0.75rem;
-		color: #64748b;
-	}
-</style>
