@@ -24,6 +24,25 @@ export type RestorePointsResponse = components['schemas']['RestorePointsResponse
 export type RollbackRequest = components['schemas']['RollbackRequest'];
 export type RollbackResponse = components['schemas']['RollbackResponse'];
 
+// Re-export Quality/Validation types from generated file
+export type ValidationIssue = components['schemas']['ValidationIssue'];
+export type ValidationIssuesResponse = components['schemas']['ValidationIssuesResponse'];
+
+// Re-export Duplicate detection & merge types from generated file
+export type DuplicatePair = components['schemas']['DuplicatePair'];
+export type DuplicatesResponse = components['schemas']['DuplicatesResponse'];
+export type MergePersonsRequest = components['schemas']['MergePersonsRequest'];
+export type MergePersonsResponse = components['schemas']['MergePersonsResponse'];
+export type MergeSummary = components['schemas']['MergeSummary'];
+export type DismissDuplicateRequest = components['schemas']['DismissDuplicateRequest'];
+export type DuplicatePairRef = components['schemas']['DuplicatePairRef'];
+export type BatchMergeRequest = components['schemas']['BatchMergeRequest'];
+export type BatchMergeResponse = components['schemas']['BatchMergeResponse'];
+export type BatchMergeResult = components['schemas']['BatchMergeResult'];
+export type BatchDismissRequest = components['schemas']['BatchDismissRequest'];
+export type BatchDismissResponse = components['schemas']['BatchDismissResponse'];
+export type BatchDismissResult = components['schemas']['BatchDismissResult'];
+
 const API_BASE = '/api/v1';
 
 // Types based on OpenAPI schemas
@@ -1770,6 +1789,73 @@ class ApiClient {
 		return this.request<ProofSummaryResponse[]>(
 			'GET',
 			`/proof-summaries/by-fact?${params.toString()}`
+		);
+	}
+
+	// Quality / validation endpoints
+	async getValidationIssues(params?: {
+		severity?: 'error' | 'warning' | 'info';
+		limit?: number;
+		offset?: number;
+	}): Promise<ValidationIssuesResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.severity) searchParams.set('severity', params.severity);
+		if (params?.limit != null) searchParams.set('limit', params.limit.toString());
+		if (params?.offset != null) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<ValidationIssuesResponse>(
+			'GET',
+			`/quality/validation${query ? `?${query}` : ''}`
+		);
+	}
+
+	// Duplicate detection endpoints
+	async getPersonsDuplicates(params?: {
+		limit?: number;
+		offset?: number;
+	}): Promise<DuplicatesResponse> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit != null) searchParams.set('limit', params.limit.toString());
+		if (params?.offset != null) searchParams.set('offset', params.offset.toString());
+
+		const query = searchParams.toString();
+		return this.request<DuplicatesResponse>(
+			'GET',
+			`/persons/duplicates${query ? `?${query}` : ''}`
+		);
+	}
+
+	async dismissDuplicate(
+		person1Id: string,
+		person2Id: string,
+		req?: DismissDuplicateRequest
+	): Promise<void> {
+		return this.request<void>(
+			'POST',
+			`/persons/duplicates/${encodeURIComponent(person1Id)}/${encodeURIComponent(person2Id)}/dismiss`,
+			req
+		);
+	}
+
+	// Merge endpoints
+	async mergePersons(req: MergePersonsRequest): Promise<MergePersonsResponse> {
+		return this.requestWithConflictRetry<MergePersonsResponse>(
+			'POST',
+			'/persons/merge',
+			req
+		);
+	}
+
+	async batchMergePersons(req: BatchMergeRequest): Promise<BatchMergeResponse> {
+		return this.request<BatchMergeResponse>('POST', '/persons/merge/batch', req);
+	}
+
+	async batchDismissDuplicates(req: BatchDismissRequest): Promise<BatchDismissResponse> {
+		return this.request<BatchDismissResponse>(
+			'POST',
+			'/persons/duplicates/dismiss/batch',
+			req
 		);
 	}
 }

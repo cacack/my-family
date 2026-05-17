@@ -162,8 +162,21 @@ func (s *ValidationService) FindDuplicates(ctx context.Context, limit, offset in
 	return results, total, nil
 }
 
-// GetValidationIssues returns validation issues, optionally filtered by severity.
-func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFilter string) ([]ValidationIssueResult, error) {
+// ValidationIssuesPage is the result of a paginated validation-issues query.
+// Counts always reflect the full unfiltered issue set; Total reflects the
+// post-severity-filter, pre-pagination count.
+type ValidationIssuesPage struct {
+	Issues       []ValidationIssueResult
+	Total        int
+	ErrorCount   int
+	WarningCount int
+	InfoCount    int
+}
+
+// GetValidationIssues returns validation issues, optionally filtered by
+// severity and paginated. limit <= 0 means "no limit"; offset < 0 is treated
+// as 0.
+func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFilter string, limit, offset int) (*ValidationIssuesPage, error) {
 	// Build gedcom document from read model
 	doc, xrefMap, err := s.buildGedcomDocument(ctx)
 	if err != nil {
@@ -175,14 +188,30 @@ func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFil
 		Strictness: validator.StrictnessStrict,
 	})
 
-	// Get all validation issues
-	issues := v.ValidateAll(doc)
+	// Get all validation issues (unfiltered) so we can compute global counts
+	// even when a severity filter is applied.
+	allIssues := v.ValidateAll(doc)
+
+	page := &ValidationIssuesPage{
+		Issues: []ValidationIssueResult{},
+	}
+	for _, issue := range allIssues {
+		switch issue.Severity {
+		case validator.SeverityError:
+			page.ErrorCount++
+		case validator.SeverityWarning:
+			page.WarningCount++
+		case validator.SeverityInfo:
+			page.InfoCount++
+		}
+	}
 
 	// Filter by severity if specified
+	issues := allIssues
 	if severityFilter != "" {
-		var filtered []validator.Issue
+		filtered := make([]validator.Issue, 0, len(allIssues))
 		targetSeverity := severityStringToConst(severityFilter)
-		for _, issue := range issues {
+		for _, issue := range allIssues {
 			if issue.Severity == targetSeverity {
 				filtered = append(filtered, issue)
 			}
@@ -190,9 +219,27 @@ func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFil
 		issues = filtered
 	}
 
+	page.Total = len(issues)
+
+	// Apply pagination. Defensive bounds: clamp offset/limit to [0, len].
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(issues) {
+		return page, nil
+	}
+	end := len(issues)
+	if limit > 0 {
+		end = offset + limit
+		if end > len(issues) {
+			end = len(issues)
+		}
+	}
+	pageIssues := issues[offset:end]
+
 	// Convert to ValidationIssueResult
-	results := make([]ValidationIssueResult, 0, len(issues))
-	for _, issue := range issues {
+	results := make([]ValidationIssueResult, 0, len(pageIssues))
+	for _, issue := range pageIssues {
 		result := ValidationIssueResult{
 			Severity: severityConstToString(issue.Severity),
 			Code:     issue.Code,
@@ -214,7 +261,8 @@ func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFil
 		results = append(results, result)
 	}
 
-	return results, nil
+	page.Issues = results
+	return page, nil
 }
 
 // buildGedcomDocument reconstructs a gedcom.Document from read model data.

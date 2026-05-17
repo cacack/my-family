@@ -3713,18 +3713,24 @@ type ValidationIssue struct {
 // ValidationIssueSeverity Severity level of the issue
 type ValidationIssueSeverity string
 
-// ValidationIssuesResponse Response containing validation issues categorized by severity
+// ValidationIssuesResponse Response containing validation issues categorized by severity.
+// Counts always cover the full unfiltered, unpaginated issue set;
+// `total` is the count of issues after the severity filter (if any)
+// but before pagination, suitable for driving page navigation.
 type ValidationIssuesResponse struct {
-	// ErrorCount Total number of error-level issues
+	// ErrorCount Total number of error-level issues (unfiltered)
 	ErrorCount int `json:"error_count"`
 
-	// InfoCount Total number of info-level issues
+	// InfoCount Total number of info-level issues (unfiltered)
 	InfoCount int `json:"info_count"`
 
-	// Issues List of validation issues
+	// Issues List of validation issues (paginated slice)
 	Issues []ValidationIssue `json:"issues"`
 
-	// WarningCount Total number of warning-level issues
+	// Total Total number of issues matching the severity filter (pre-pagination)
+	Total int `json:"total"`
+
+	// WarningCount Total number of warning-level issues (unfiltered)
 	WarningCount int `json:"warning_count"`
 }
 
@@ -4109,6 +4115,12 @@ type DeleteProofSummaryParams struct {
 type GetValidationIssuesParams struct {
 	// Severity Filter by severity level
 	Severity *GetValidationIssuesParamsSeverity `form:"severity,omitempty" json:"severity,omitempty"`
+
+	// Limit Maximum number of issues to return (post-severity-filter)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of issues to skip (post-severity-filter)
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // GetValidationIssuesParamsSeverity defines parameters for GetValidationIssues.
@@ -6849,6 +6861,20 @@ func (w *ServerInterfaceWrapper) GetValidationIssues(ctx echo.Context) error {
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "severity", ctx.QueryParams(), &params.Severity, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter severity: %s", err))
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
 	// Invoke the callback with all the unmarshaled arguments

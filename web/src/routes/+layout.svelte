@@ -105,6 +105,7 @@
 			<a href="/history" class:active={$page.url.pathname.startsWith('/history')}>History</a>
 			<a href="/map" class:active={$page.url.pathname.startsWith('/map')}>Map</a>
 			<a href="/analytics" class:active={$page.url.pathname.startsWith('/analytics')}>Analytics</a>
+			<a href="/quality" class:active={$page.url.pathname.startsWith('/quality')}>Quality</a>
 			<a href="/relationship" class:active={$page.url.pathname.startsWith('/relationship')}>Relationship</a>
 			<a href="/import" class:active={$page.url.pathname === '/import'}>Import</a>
 			<a href="/search" class:active={$page.url.pathname.startsWith('/search')}>Search</a>

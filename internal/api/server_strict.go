@@ -2497,15 +2497,24 @@ func (ss *StrictServer) GetValidationIssues(ctx context.Context, request GetVali
 		severityFilter = string(*request.Params.Severity)
 	}
 
-	results, err := ss.server.validationService.GetValidationIssues(ctx, severityFilter)
+	// Extract limit/offset with defaults matching the OpenAPI spec.
+	limit := 100
+	offset := 0
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+
+	page, err := ss.server.validationService.GetValidationIssues(ctx, severityFilter, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 
-	// Map to API types and count issues by severity
-	issues := make([]ValidationIssue, len(results))
-	errorCount, warningCount, infoCount := 0, 0, 0
-	for i, r := range results {
+	// Map to API types
+	issues := make([]ValidationIssue, len(page.Issues))
+	for i, r := range page.Issues {
 		issues[i] = ValidationIssue{
 			Severity: ValidationIssueSeverity(r.Severity),
 			Code:     r.Code,
@@ -2515,23 +2524,14 @@ func (ss *StrictServer) GetValidationIssues(ctx context.Context, request GetVali
 		if r.RelatedRecordID != nil {
 			issues[i].RelatedRecordId = r.RelatedRecordID
 		}
-
-		// Count by severity
-		switch r.Severity {
-		case "error":
-			errorCount++
-		case "warning":
-			warningCount++
-		case "info":
-			infoCount++
-		}
 	}
 
 	return GetValidationIssues200JSONResponse{
 		Issues:       issues,
-		ErrorCount:   errorCount,
-		WarningCount: warningCount,
-		InfoCount:    infoCount,
+		Total:        page.Total,
+		ErrorCount:   page.ErrorCount,
+		WarningCount: page.WarningCount,
+		InfoCount:    page.InfoCount,
 	}, nil
 }
 

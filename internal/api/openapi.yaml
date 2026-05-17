@@ -2017,7 +2017,11 @@ paths:
     get:
       operationId: getValidationIssues
       summary: Get validation issues
-      description: Returns date logic and reference validation issues categorized by severity
+      description: |
+        Returns date logic and reference validation issues categorized by
+        severity. Supports pagination so a large tree does not produce an
+        unbounded response. The error/warning/info counts always reflect the
+        full unfiltered, unpaginated issue set.
       tags: [quality]
       parameters:
         - name: severity
@@ -2026,6 +2030,21 @@ paths:
           schema:
             type: string
             enum: [error, warning, info]
+        - name: limit
+          in: query
+          description: Maximum number of issues to return (post-severity-filter)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: offset
+          in: query
+          description: Number of issues to skip (post-severity-filter)
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Validation issues
@@ -5591,23 +5610,30 @@ components:
 
     ValidationIssuesResponse:
       type: object
-      description: Response containing validation issues categorized by severity
-      required: [issues, error_count, warning_count, info_count]
+      description: |
+        Response containing validation issues categorized by severity.
+        Counts always cover the full unfiltered, unpaginated issue set;
+        `total` is the count of issues after the severity filter (if any)
+        but before pagination, suitable for driving page navigation.
+      required: [issues, total, error_count, warning_count, info_count]
       properties:
         issues:
           type: array
           items:
             $ref: '#/components/schemas/ValidationIssue'
-          description: List of validation issues
+          description: List of validation issues (paginated slice)
+        total:
+          type: integer
+          description: Total number of issues matching the severity filter (pre-pagination)
         error_count:
           type: integer
-          description: Total number of error-level issues
+          description: Total number of error-level issues (unfiltered)
         warning_count:
           type: integer
-          description: Total number of warning-level issues
+          description: Total number of warning-level issues (unfiltered)
         info_count:
           type: integer
-          description: Total number of info-level issues
+          description: Total number of info-level issues (unfiltered)
 
     Statistics:
       type: object
