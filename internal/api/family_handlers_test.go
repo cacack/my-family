@@ -130,11 +130,88 @@ func TestListFamilies(t *testing.T) {
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal(rec.Body.Bytes(), &result)
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal list response: %v (body: %s)", err, rec.Body.String())
+	}
 
 	families := result["items"].([]interface{})
 	if len(families) != 1 {
-		t.Errorf("Expected 1 family, got %d", len(families))
+		t.Fatalf("Expected 1 family, got %d", len(families))
+	}
+
+	// Regression: list endpoint must populate partner1/partner2 so the
+	// frontend can render names without an extra round trip (issue #252).
+	// The read model stores the partner's full name as a single string and
+	// places it in given_name (see partnerSummary in server_strict.go); until
+	// that is split, asserting on the full string is the correct contract.
+	family := families[0].(map[string]interface{})
+	partner1, ok := family["partner1"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected partner1 object in list response, got %v", family["partner1"])
+	}
+	if got := partner1["given_name"]; got != "John Doe" {
+		t.Errorf("partner1.given_name: want %q, got %q", "John Doe", got)
+	}
+	partner2, ok := family["partner2"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected partner2 object in list response, got %v", family["partner2"])
+	}
+	if got := partner2["given_name"]; got != "Jane Smith" {
+		t.Errorf("partner2.given_name: want %q, got %q", "Jane Smith", got)
+	}
+}
+
+func TestListFamilies_SinglePartner(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	// Models a family where only one partner is recorded. Using partner2_id
+	// (rather than partner1_id) exercises the asymmetric absence path: the
+	// list response must omit BOTH partner1 and partner1_id, while partner2
+	// and partner2_id must be present. This guards against partial-population
+	// inconsistencies where one field appears without the other.
+	person := createTestPerson(t, server, "Jane", "Doe")
+	body := map[string]interface{}{
+		"partner2_id": person["id"],
+	}
+	jsonBody, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Setup: create family failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal list response: %v (body: %s)", err, rec.Body.String())
+	}
+	families := result["items"].([]interface{})
+	if len(families) != 1 {
+		t.Fatalf("Expected 1 family, got %d", len(families))
+	}
+
+	family := families[0].(map[string]interface{})
+	if _, present := family["partner1"]; present {
+		t.Errorf("Expected partner1 to be omitted for single-partner family, got %v", family["partner1"])
+	}
+	if _, present := family["partner1_id"]; present {
+		t.Errorf("Expected partner1_id to be omitted alongside partner1, got %v", family["partner1_id"])
+	}
+	partner2, ok := family["partner2"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected partner2 object in list response, got %v", family["partner2"])
+	}
+	if got := partner2["given_name"]; got != "Jane Doe" {
+		t.Errorf("partner2.given_name: want %q, got %q", "Jane Doe", got)
 	}
 }
 

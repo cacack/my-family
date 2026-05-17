@@ -3535,6 +3535,21 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	return resp
 }
 
+// partnerSummary builds a PersonSummary for a family partner from the
+// denormalized full name carried by the FamilyReadModel. The name is stored
+// as a single string (see internal/repository/projection.go:289 where it is
+// assigned from PersonReadModel.FullName), so Surname is left empty and the
+// full display name is placed in GivenName. Until the read model carries the
+// name parts separately, callers reading PersonSummary.Surname on a partner
+// will see an empty string. See issue #483.
+func partnerSummary(id uuid.UUID, fullName string) *PersonSummary {
+	return &PersonSummary{
+		Id:        id,
+		GivenName: fullName,
+		Surname:   "",
+	}
+}
+
 // convertQueryFamilyDetailToGenerated converts a query.FamilyDetail to the generated FamilyDetail type.
 func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 	resp := FamilyDetail{
@@ -3563,18 +3578,10 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 
 	// Add partner details if available
 	if fd.Partner1ID != nil && fd.Partner1Name != nil {
-		resp.Partner1 = &PersonSummary{
-			Id:        *fd.Partner1ID,
-			GivenName: *fd.Partner1Name,
-			Surname:   "",
-		}
+		resp.Partner1 = partnerSummary(*fd.Partner1ID, *fd.Partner1Name)
 	}
 	if fd.Partner2ID != nil && fd.Partner2Name != nil {
-		resp.Partner2 = &PersonSummary{
-			Id:        *fd.Partner2ID,
-			GivenName: *fd.Partner2Name,
-			Surname:   "",
-		}
+		resp.Partner2 = partnerSummary(*fd.Partner2ID, *fd.Partner2Name)
 	}
 
 	if len(fd.Children) > 0 {
@@ -3621,6 +3628,13 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 	}
 	if f.MarriagePlace != nil {
 		resp.MarriagePlace = f.MarriagePlace
+	}
+
+	if f.Partner1ID != nil && f.Partner1Name != nil {
+		resp.Partner1 = partnerSummary(*f.Partner1ID, *f.Partner1Name)
+	}
+	if f.Partner2ID != nil && f.Partner2Name != nil {
+		resp.Partner2 = partnerSummary(*f.Partner2ID, *f.Partner2Name)
 	}
 
 	return resp

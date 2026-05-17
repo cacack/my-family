@@ -2243,7 +2243,21 @@ export interface components {
             version: number;
         };
         FamilyDetail: components["schemas"]["Family"] & {
+            /**
+             * @description Partner 1 summary. May be absent even when partner1_id is set
+             *     if the partner's name has not been projected yet. The given_name
+             *     field carries the partner's full display name until the read
+             *     model is split into separate given/surname components; surname
+             *     will be empty.
+             */
             partner1?: components["schemas"]["PersonSummary"];
+            /**
+             * @description Partner 2 summary. May be absent even when partner2_id is set
+             *     if the partner's name has not been projected yet. The given_name
+             *     field carries the partner's full display name until the read
+             *     model is split into separate given/surname components; surname
+             *     will be empty.
+             */
             partner2?: components["schemas"]["PersonSummary"];
             children?: components["schemas"]["FamilyChild"][];
         };
