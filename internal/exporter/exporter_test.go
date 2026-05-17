@@ -62,11 +62,13 @@ func createTestFamily(t *testing.T, store *memory.ReadModelStore, partner1, part
 	}
 	if partner1 != nil {
 		family.Partner1ID = &partner1.ID
-		family.Partner1Name = partner1.FullName
+		family.Partner1GivenName = partner1.GivenName
+		family.Partner1Surname = partner1.Surname
 	}
 	if partner2 != nil {
 		family.Partner2ID = &partner2.ID
-		family.Partner2Name = partner2.FullName
+		family.Partner2GivenName = partner2.GivenName
+		family.Partner2Surname = partner2.Surname
 	}
 	err := store.SaveFamily(context.Background(), &family)
 	require.NoError(t, err)
@@ -415,10 +417,12 @@ func TestCSVExporter_ExportFamilies_WithData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, records, 2) // Header + 1 data row
 
-	// Check data contains expected values
+	// Check data contains expected values (split per issue #483)
 	allData := buf.String()
-	assert.Contains(t, allData, "John Doe")
-	assert.Contains(t, allData, "Jane Smith")
+	assert.Contains(t, allData, "John")
+	assert.Contains(t, allData, "Doe")
+	assert.Contains(t, allData, "Jane")
+	assert.Contains(t, allData, "Smith")
 	assert.Contains(t, allData, "marriage")
 }
 
@@ -433,7 +437,7 @@ func TestCSVExporter_ExportFamilies_CustomFields(t *testing.T) {
 	exp := exporter.NewDataExporter(store)
 
 	var buf bytes.Buffer
-	customFields := []string{"id", "partner1_name", "partner2_name"}
+	customFields := []string{"id", "partner1_given_name", "partner1_surname", "partner2_given_name", "partner2_surname"}
 	result, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
 		Format:     exporter.FormatCSV,
 		EntityType: exporter.EntityTypeFamilies,
@@ -452,8 +456,8 @@ func TestCSVExporter_ExportFamilies_CustomFields(t *testing.T) {
 	// Check headers match custom fields
 	assert.Equal(t, customFields, records[0])
 
-	// Check row has only 3 columns
-	assert.Len(t, records[1], 3)
+	// Check row has only 5 columns
+	assert.Len(t, records[1], 5)
 }
 
 func TestCSVExporter_ExportFamilies_InvalidField(t *testing.T) {
@@ -595,17 +599,19 @@ func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
 
 	// Create family with all fields populated
 	family := repository.FamilyReadModel{
-		ID:               uuid.New(),
-		Partner1ID:       &person1.ID,
-		Partner1Name:     person1.FullName,
-		Partner2ID:       &person2.ID,
-		Partner2Name:     person2.FullName,
-		RelationshipType: domain.RelationMarriage,
-		MarriageDateRaw:  "10 JUN 1875",
-		MarriagePlace:    "Springfield, IL",
-		ChildCount:       3,
-		Version:          2,
-		UpdatedAt:        now,
+		ID:                uuid.New(),
+		Partner1ID:        &person1.ID,
+		Partner1GivenName: person1.GivenName,
+		Partner1Surname:   person1.Surname,
+		Partner2ID:        &person2.ID,
+		Partner2GivenName: person2.GivenName,
+		Partner2Surname:   person2.Surname,
+		RelationshipType:  domain.RelationMarriage,
+		MarriageDateRaw:   "10 JUN 1875",
+		MarriagePlace:     "Springfield, IL",
+		ChildCount:        3,
+		Version:           2,
+		UpdatedAt:         now,
 	}
 	err = store.SaveFamily(context.Background(), &family)
 	require.NoError(t, err)
@@ -614,7 +620,8 @@ func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
 
 	// Test all available family fields
 	allFields := []string{
-		"id", "partner1_id", "partner1_name", "partner2_id", "partner2_name",
+		"id", "partner1_id", "partner1_given_name", "partner1_surname",
+		"partner2_id", "partner2_given_name", "partner2_surname",
 		"relationship_type", "marriage_date", "marriage_place", "child_count",
 		"version", "updated_at",
 	}
@@ -639,15 +646,17 @@ func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
 	row := records[1]
 	assert.Equal(t, family.ID.String(), row[0])  // id
 	assert.Equal(t, person1.ID.String(), row[1]) // partner1_id
-	assert.Equal(t, "John Doe", row[2])          // partner1_name
-	assert.Equal(t, person2.ID.String(), row[3]) // partner2_id
-	assert.Equal(t, "Jane Smith", row[4])        // partner2_name
-	assert.Equal(t, "marriage", row[5])          // relationship_type
-	assert.Equal(t, "10 JUN 1875", row[6])       // marriage_date
-	assert.Equal(t, "Springfield, IL", row[7])   // marriage_place
-	assert.Equal(t, "3", row[8])                 // child_count
-	assert.Equal(t, "2", row[9])                 // version
-	assert.NotEmpty(t, row[10])                  // updated_at
+	assert.Equal(t, "John", row[2])              // partner1_given_name
+	assert.Equal(t, "Doe", row[3])               // partner1_surname
+	assert.Equal(t, person2.ID.String(), row[4]) // partner2_id
+	assert.Equal(t, "Jane", row[5])              // partner2_given_name
+	assert.Equal(t, "Smith", row[6])             // partner2_surname
+	assert.Equal(t, "marriage", row[7])          // relationship_type
+	assert.Equal(t, "10 JUN 1875", row[8])       // marriage_date
+	assert.Equal(t, "Springfield, IL", row[9])   // marriage_place
+	assert.Equal(t, "3", row[10])                // child_count
+	assert.Equal(t, "2", row[11])                // version
+	assert.NotEmpty(t, row[12])                  // updated_at
 }
 
 func TestCSVExporter_FamilyWithNilPartners(t *testing.T) {

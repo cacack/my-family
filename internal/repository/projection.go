@@ -270,32 +270,36 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 		}
 	}
 
-	// Get partner names if available
-	var partner1Name, partner2Name string
+	// Get partner names if available (split into given/surname for API contract)
+	var partner1GivenName, partner1Surname, partner2GivenName, partner2Surname string
 	if e.Partner1ID != nil {
 		if p1, _ := p.readStore.GetPerson(ctx, *e.Partner1ID); p1 != nil {
-			partner1Name = p1.FullName
+			partner1GivenName = p1.GivenName
+			partner1Surname = p1.Surname
 		}
 	}
 	if e.Partner2ID != nil {
 		if p2, _ := p.readStore.GetPerson(ctx, *e.Partner2ID); p2 != nil {
-			partner2Name = p2.FullName
+			partner2GivenName = p2.GivenName
+			partner2Surname = p2.Surname
 		}
 	}
 
 	family := &FamilyReadModel{
-		ID:               e.FamilyID,
-		Partner1ID:       e.Partner1ID,
-		Partner1Name:     partner1Name,
-		Partner2ID:       e.Partner2ID,
-		Partner2Name:     partner2Name,
-		RelationshipType: e.RelationshipType,
-		MarriageDateRaw:  marriageDateRaw,
-		MarriageDateSort: marriageDateSort,
-		MarriagePlace:    e.MarriagePlace,
-		ChildCount:       0,
-		Version:          version,
-		UpdatedAt:        e.OccurredAt(),
+		ID:                e.FamilyID,
+		Partner1ID:        e.Partner1ID,
+		Partner1GivenName: partner1GivenName,
+		Partner1Surname:   partner1Surname,
+		Partner2ID:        e.Partner2ID,
+		Partner2GivenName: partner2GivenName,
+		Partner2Surname:   partner2Surname,
+		RelationshipType:  e.RelationshipType,
+		MarriageDateRaw:   marriageDateRaw,
+		MarriageDateSort:  marriageDateSort,
+		MarriagePlace:     e.MarriagePlace,
+		ChildCount:        0,
+		Version:           version,
+		UpdatedAt:         e.OccurredAt(),
 	}
 
 	return p.readStore.SaveFamily(ctx, family)
@@ -346,16 +350,18 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 }
 
 func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily) error {
-	// Get child name
-	var childName string
+	// Get child name (split into given/surname)
+	var childGivenName, childSurname string
 	if child, _ := p.readStore.GetPerson(ctx, e.PersonID); child != nil {
-		childName = child.FullName
+		childGivenName = child.GivenName
+		childSurname = child.Surname
 	}
 
 	fc := &FamilyChildReadModel{
 		FamilyID:         e.FamilyID,
 		PersonID:         e.PersonID,
-		PersonName:       childName,
+		PersonGivenName:  childGivenName,
+		PersonSurname:    childSurname,
 		RelationshipType: e.RelationshipType,
 		Sequence:         e.Sequence,
 	}
@@ -1219,11 +1225,13 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	for _, family := range families {
 		if family.Partner1ID != nil && *family.Partner1ID == e.MergedID {
 			family.Partner1ID = &e.SurvivorID
-			family.Partner1Name = survivor.FullName
+			family.Partner1GivenName = survivor.GivenName
+			family.Partner1Surname = survivor.Surname
 		}
 		if family.Partner2ID != nil && *family.Partner2ID == e.MergedID {
 			family.Partner2ID = &e.SurvivorID
-			family.Partner2Name = survivor.FullName
+			family.Partner2GivenName = survivor.GivenName
+			family.Partner2Surname = survivor.Surname
 		}
 		family.UpdatedAt = e.OccurredAt()
 		if err := p.readStore.SaveFamily(ctx, &family); err != nil {
@@ -1266,7 +1274,8 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 				fc := &FamilyChildReadModel{
 					FamilyID:         mergedChildFamily.ID,
 					PersonID:         e.SurvivorID,
-					PersonName:       survivor.FullName,
+					PersonGivenName:  survivor.GivenName,
+					PersonSurname:    survivor.Surname,
 					RelationshipType: domain.ChildBiological, // Default, could be improved
 				}
 				if err := p.readStore.SaveFamilyChild(ctx, fc); err != nil {

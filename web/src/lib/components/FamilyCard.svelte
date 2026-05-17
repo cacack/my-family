@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { FamilyDetail } from '$lib/api/client';
-	import { formatGenDate } from '$lib/api/client';
+	import { formatGenDate, formatPersonName } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
 
@@ -12,8 +12,8 @@
 
 	let { family, href, onclick }: Props = $props();
 
-	const partner1Name = family.partner1?.given_name ?? 'Unknown';
-	const partner2Name = family.partner2?.given_name ?? null;
+	const partner1Name = formatPersonName(family.partner1);
+	const partner2Name = family.partner2 ? formatPersonName(family.partner2) : null;
 	const marriageDate = family.marriage_date ? formatGenDate(family.marriage_date) : null;
 	const childCount = family.child_count ?? family.children?.length ?? 0;
 </script>

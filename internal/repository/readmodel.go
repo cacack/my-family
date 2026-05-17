@@ -39,9 +39,11 @@ type PersonReadModel struct {
 type FamilyReadModel struct {
 	ID                uuid.UUID           `json:"id"`
 	Partner1ID        *uuid.UUID          `json:"partner1_id,omitempty"`
-	Partner1Name      string              `json:"partner1_name,omitempty"`
+	Partner1GivenName string              `json:"partner1_given_name,omitempty"`
+	Partner1Surname   string              `json:"partner1_surname,omitempty"`
 	Partner2ID        *uuid.UUID          `json:"partner2_id,omitempty"`
-	Partner2Name      string              `json:"partner2_name,omitempty"`
+	Partner2GivenName string              `json:"partner2_given_name,omitempty"`
+	Partner2Surname   string              `json:"partner2_surname,omitempty"`
 	RelationshipType  domain.RelationType `json:"relationship_type,omitempty"`
 	MarriageDateRaw   string              `json:"marriage_date_raw,omitempty"`
 	MarriageDateSort  *time.Time          `json:"marriage_date_sort,omitempty"`
@@ -57,7 +59,8 @@ type FamilyReadModel struct {
 type FamilyChildReadModel struct {
 	FamilyID         uuid.UUID                `json:"family_id"`
 	PersonID         uuid.UUID                `json:"person_id"`
-	PersonName       string                   `json:"person_name"`
+	PersonGivenName  string                   `json:"person_given_name"`
+	PersonSurname    string                   `json:"person_surname"`
 	RelationshipType domain.ChildRelationType `json:"relationship_type"`
 	Sequence         *int                     `json:"sequence,omitempty"`
 }

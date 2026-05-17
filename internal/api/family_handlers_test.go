@@ -141,23 +141,28 @@ func TestListFamilies(t *testing.T) {
 
 	// Regression: list endpoint must populate partner1/partner2 so the
 	// frontend can render names without an extra round trip (issue #252).
-	// The read model stores the partner's full name as a single string and
-	// places it in given_name (see partnerSummary in server_strict.go); until
-	// that is split, asserting on the full string is the correct contract.
+	// Partner summaries must carry split given_name/surname per the
+	// PersonSummary contract (issue #483).
 	family := families[0].(map[string]interface{})
 	partner1, ok := family["partner1"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("Expected partner1 object in list response, got %v", family["partner1"])
 	}
-	if got := partner1["given_name"]; got != "John Doe" {
-		t.Errorf("partner1.given_name: want %q, got %q", "John Doe", got)
+	if got := partner1["given_name"]; got != "John" {
+		t.Errorf("partner1.given_name: want %q, got %q", "John", got)
+	}
+	if got := partner1["surname"]; got != "Doe" {
+		t.Errorf("partner1.surname: want %q, got %q", "Doe", got)
 	}
 	partner2, ok := family["partner2"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("Expected partner2 object in list response, got %v", family["partner2"])
 	}
-	if got := partner2["given_name"]; got != "Jane Smith" {
-		t.Errorf("partner2.given_name: want %q, got %q", "Jane Smith", got)
+	if got := partner2["given_name"]; got != "Jane" {
+		t.Errorf("partner2.given_name: want %q, got %q", "Jane", got)
+	}
+	if got := partner2["surname"]; got != "Smith" {
+		t.Errorf("partner2.surname: want %q, got %q", "Smith", got)
 	}
 }
 
@@ -210,8 +215,11 @@ func TestListFamilies_SinglePartner(t *testing.T) {
 	if !ok {
 		t.Fatalf("Expected partner2 object in list response, got %v", family["partner2"])
 	}
-	if got := partner2["given_name"]; got != "Jane Doe" {
-		t.Errorf("partner2.given_name: want %q, got %q", "Jane Doe", got)
+	if got := partner2["given_name"]; got != "Jane" {
+		t.Errorf("partner2.given_name: want %q, got %q", "Jane", got)
+	}
+	if got := partner2["surname"]; got != "Doe" {
+		t.Errorf("partner2.surname: want %q, got %q", "Doe", got)
 	}
 }
 
@@ -252,6 +260,75 @@ func TestGetFamily(t *testing.T) {
 
 	if result["marriage_place"] != "Chicago, IL" {
 		t.Errorf("Expected marriage_place 'Chicago, IL', got %v", result["marriage_place"])
+	}
+}
+
+func TestGetFamily_ChildrenHaveSplitNames(t *testing.T) {
+	server := setupFamilyTestServer(t)
+
+	// Parents + child with distinct given/surname values to verify the split.
+	parent1 := createTestPerson(t, server, "John", "Doe")
+	parent2 := createTestPerson(t, server, "Jane", "Smith")
+	child := createTestPerson(t, server, "Alice", "Doe")
+
+	familyBody := map[string]interface{}{
+		"partner1_id":       parent1["id"],
+		"partner2_id":       parent2["id"],
+		"relationship_type": "marriage",
+	}
+	jsonBody, _ := json.Marshal(familyBody)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Setup: create family failed: %d %s", rec.Code, rec.Body.String())
+	}
+	var family map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &family); err != nil {
+		t.Fatalf("unmarshal family: %v", err)
+	}
+	familyID := family["id"].(string)
+
+	// Add the child.
+	childBody := map[string]interface{}{
+		"person_id":         child["id"],
+		"relationship_type": "biological",
+	}
+	jsonBody, _ = json.Marshal(childBody)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/families/"+familyID+"/children", bytes.NewReader(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Setup: add child failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Fetch family detail and assert the child's person summary has split names.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID, http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET family: %d %s", rec.Code, rec.Body.String())
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	children, ok := result["children"].([]interface{})
+	if !ok || len(children) != 1 {
+		t.Fatalf("expected 1 child in response, got %v", result["children"])
+	}
+	childEntry := children[0].(map[string]interface{})
+	person, ok := childEntry["person"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected child.person object, got %v", childEntry["person"])
+	}
+	if got := person["given_name"]; got != "Alice" {
+		t.Errorf("child.person.given_name: want %q, got %q", "Alice", got)
+	}
+	if got := person["surname"]; got != "Doe" {
+		t.Errorf("child.person.surname: want %q, got %q", "Doe", got)
 	}
 }
 

@@ -359,11 +359,17 @@ func TestGetFamily_AllOptionalFields(t *testing.T) {
 		t.Fatalf("GetFamily failed: %v", err)
 	}
 
-	if family.Partner1Name == nil {
-		t.Error("Partner1Name should be set")
+	if family.Partner1GivenName == nil {
+		t.Error("Partner1GivenName should be set")
 	}
-	if family.Partner2Name == nil {
-		t.Error("Partner2Name should be set")
+	if family.Partner1Surname == nil {
+		t.Error("Partner1Surname should be set")
+	}
+	if family.Partner2GivenName == nil {
+		t.Error("Partner2GivenName should be set")
+	}
+	if family.Partner2Surname == nil {
+		t.Error("Partner2Surname should be set")
 	}
 	if family.RelationshipType == nil {
 		t.Error("RelationshipType should be set")

@@ -1841,8 +1841,29 @@ export function formatGenDate(date?: GenDate): string {
 	return parts.join(' ');
 }
 
-export function formatPersonName(person: { given_name: string; surname: string }): string {
-	return `${person.given_name} ${person.surname}`;
+/**
+ * Format a person's display name from given_name + surname.
+ *
+ * Handles missing/empty fields without producing dangling spaces. Returns
+ * 'Unknown' when no usable name parts are available — matches the historical
+ * fallback used by FamilyCard before the surname field was populated by the
+ * backend (issue #483).
+ *
+ * Examples:
+ *   formatPersonName({ given_name: 'Jane', surname: 'Smith' }) -> 'Jane Smith'
+ *   formatPersonName({ given_name: 'Jane', surname: '' })      -> 'Jane'
+ *   formatPersonName({ given_name: '', surname: 'Smith' })     -> 'Smith'
+ *   formatPersonName({})                                       -> 'Unknown'
+ *   formatPersonName(null)                                     -> 'Unknown'
+ */
+export function formatPersonName(
+	person: { given_name?: string; surname?: string } | null | undefined
+): string {
+	if (!person) return 'Unknown';
+	const parts = [person.given_name, person.surname]
+		.map((s) => (s ?? '').trim())
+		.filter((s) => s.length > 0);
+	return parts.length > 0 ? parts.join(' ') : 'Unknown';
 }
 
 export function formatLifespan(person: { birth_date?: GenDate; death_date?: GenDate }): string {

@@ -794,9 +794,11 @@ func TestGetEntityName(t *testing.T) {
 		getFamilyFunc: func(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
 			if id == familyID {
 				return &repository.FamilyReadModel{
-					ID:           familyID,
-					Partner1Name: "John Smith",
-					Partner2Name: "Jane Doe",
+					ID:                familyID,
+					Partner1GivenName: "John",
+					Partner1Surname:   "Smith",
+					Partner2GivenName: "Jane",
+					Partner2Surname:   "Doe",
 				}, nil
 			}
 			return nil, repository.ErrStreamNotFound
@@ -942,36 +944,36 @@ func TestGetFamilyNameVariations(t *testing.T) {
 		{
 			name: "both partners",
 			family: &repository.FamilyReadModel{
-				ID:           familyID,
-				Partner1Name: "John Smith",
-				Partner2Name: "Jane Doe",
+				ID:                familyID,
+				Partner1GivenName: "John",
+				Partner1Surname:   "Smith",
+				Partner2GivenName: "Jane",
+				Partner2Surname:   "Doe",
 			},
 			wantName: "John Smith & Jane Doe",
 		},
 		{
 			name: "partner1 only",
 			family: &repository.FamilyReadModel{
-				ID:           familyID,
-				Partner1Name: "John Smith",
-				Partner2Name: "",
+				ID:                familyID,
+				Partner1GivenName: "John",
+				Partner1Surname:   "Smith",
 			},
 			wantName: "John Smith",
 		},
 		{
 			name: "partner2 only",
 			family: &repository.FamilyReadModel{
-				ID:           familyID,
-				Partner1Name: "",
-				Partner2Name: "Jane Doe",
+				ID:                familyID,
+				Partner2GivenName: "Jane",
+				Partner2Surname:   "Doe",
 			},
 			wantName: "Jane Doe",
 		},
 		{
 			name: "no partners (deleted)",
 			family: &repository.FamilyReadModel{
-				ID:           familyID,
-				Partner1Name: "",
-				Partner2Name: "",
+				ID: familyID,
 			},
 			wantName: familyID.String(),
 		},
@@ -1142,9 +1144,11 @@ func TestChildLinkedToFamilyProducesUpdatedAction(t *testing.T) {
 		getFamilyFunc: func(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
 			if id == familyID {
 				return &repository.FamilyReadModel{
-					ID:           familyID,
-					Partner1Name: "John Smith",
-					Partner2Name: "Jane Smith",
+					ID:                familyID,
+					Partner1GivenName: "John",
+					Partner1Surname:   "Smith",
+					Partner2GivenName: "Jane",
+					Partner2Surname:   "Smith",
 				}, nil
 			}
 			return nil, repository.ErrStreamNotFound
@@ -1199,9 +1203,11 @@ func TestChildUnlinkedFromFamilyProducesUpdatedAction(t *testing.T) {
 		getFamilyFunc: func(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
 			if id == familyID {
 				return &repository.FamilyReadModel{
-					ID:           familyID,
-					Partner1Name: "John Smith",
-					Partner2Name: "Jane Smith",
+					ID:                familyID,
+					Partner1GivenName: "John",
+					Partner1Surname:   "Smith",
+					Partner2GivenName: "Jane",
+					Partner2Surname:   "Smith",
 				}, nil
 			}
 			return nil, repository.ErrStreamNotFound

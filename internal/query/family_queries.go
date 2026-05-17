@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -21,16 +22,18 @@ func NewFamilyService(readStore repository.ReadModelStore) *FamilyService {
 
 // Family represents a family in query results.
 type Family struct {
-	ID               uuid.UUID       `json:"id"`
-	Partner1ID       *uuid.UUID      `json:"partner1_id,omitempty"`
-	Partner1Name     *string         `json:"partner1_name,omitempty"`
-	Partner2ID       *uuid.UUID      `json:"partner2_id,omitempty"`
-	Partner2Name     *string         `json:"partner2_name,omitempty"`
-	RelationshipType *string         `json:"relationship_type,omitempty"`
-	MarriageDate     *domain.GenDate `json:"marriage_date,omitempty"`
-	MarriagePlace    *string         `json:"marriage_place,omitempty"`
-	ChildCount       int             `json:"child_count"`
-	Version          int64           `json:"version"`
+	ID                uuid.UUID       `json:"id"`
+	Partner1ID        *uuid.UUID      `json:"partner1_id,omitempty"`
+	Partner1GivenName *string         `json:"partner1_given_name,omitempty"`
+	Partner1Surname   *string         `json:"partner1_surname,omitempty"`
+	Partner2ID        *uuid.UUID      `json:"partner2_id,omitempty"`
+	Partner2GivenName *string         `json:"partner2_given_name,omitempty"`
+	Partner2Surname   *string         `json:"partner2_surname,omitempty"`
+	RelationshipType  *string         `json:"relationship_type,omitempty"`
+	MarriageDate      *domain.GenDate `json:"marriage_date,omitempty"`
+	MarriagePlace     *string         `json:"marriage_place,omitempty"`
+	ChildCount        int             `json:"child_count"`
+	Version           int64           `json:"version"`
 }
 
 // FamilyDetail includes children information.
@@ -42,7 +45,8 @@ type FamilyDetail struct {
 // FamilyChildInfo represents a child in a family.
 type FamilyChildInfo struct {
 	ID               uuid.UUID `json:"id"`
-	Name             string    `json:"name"`
+	GivenName        string    `json:"given_name"`
+	Surname          string    `json:"surname"`
 	RelationshipType string    `json:"relationship_type"`
 }
 
@@ -116,7 +120,8 @@ func (s *FamilyService) GetFamily(ctx context.Context, id uuid.UUID) (*FamilyDet
 	for _, c := range children {
 		detail.Children = append(detail.Children, FamilyChildInfo{
 			ID:               c.PersonID,
-			Name:             c.PersonName,
+			GivenName:        c.PersonGivenName,
+			Surname:          c.PersonSurname,
 			RelationshipType: string(c.RelationshipType),
 		})
 	}
@@ -149,11 +154,21 @@ func convertReadModelToFamily(rm repository.FamilyReadModel) Family {
 		Version:    rm.Version,
 	}
 
-	if rm.Partner1Name != "" {
-		f.Partner1Name = &rm.Partner1Name
+	if rm.Partner1GivenName != "" {
+		v := rm.Partner1GivenName
+		f.Partner1GivenName = &v
 	}
-	if rm.Partner2Name != "" {
-		f.Partner2Name = &rm.Partner2Name
+	if rm.Partner1Surname != "" {
+		v := rm.Partner1Surname
+		f.Partner1Surname = &v
+	}
+	if rm.Partner2GivenName != "" {
+		v := rm.Partner2GivenName
+		f.Partner2GivenName = &v
+	}
+	if rm.Partner2Surname != "" {
+		v := rm.Partner2Surname
+		f.Partner2Surname = &v
 	}
 	if rm.RelationshipType != "" {
 		rt := string(rm.RelationshipType)
@@ -404,12 +419,12 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, child repository
 			// Find the other partner
 			if fam.Partner1ID != nil && *fam.Partner1ID != person.ID {
 				gsc.SpouseID = fam.Partner1ID
-				gsc.SpouseName = fam.Partner1Name
+				gsc.SpouseName = strings.TrimSpace(fam.Partner1GivenName + " " + fam.Partner1Surname)
 				break
 			}
 			if fam.Partner2ID != nil && *fam.Partner2ID != person.ID {
 				gsc.SpouseID = fam.Partner2ID
-				gsc.SpouseName = fam.Partner2Name
+				gsc.SpouseName = strings.TrimSpace(fam.Partner2GivenName + " " + fam.Partner2Surname)
 				break
 			}
 		}

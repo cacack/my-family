@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -307,14 +308,16 @@ func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, 
 	// Try to get from read model first
 	family, err := s.readStore.GetFamily(ctx, familyID)
 	if err == nil && family != nil {
-		if family.Partner1Name != "" && family.Partner2Name != "" {
-			return fmt.Sprintf("%s & %s", family.Partner1Name, family.Partner2Name)
+		p1Name := strings.TrimSpace(family.Partner1GivenName + " " + family.Partner1Surname)
+		p2Name := strings.TrimSpace(family.Partner2GivenName + " " + family.Partner2Surname)
+		if p1Name != "" && p2Name != "" {
+			return fmt.Sprintf("%s & %s", p1Name, p2Name)
 		}
-		if family.Partner1Name != "" {
-			return family.Partner1Name
+		if p1Name != "" {
+			return p1Name
 		}
-		if family.Partner2Name != "" {
-			return family.Partner2Name
+		if p2Name != "" {
+			return p2Name
 		}
 	}
 

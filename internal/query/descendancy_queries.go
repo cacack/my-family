@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -166,10 +167,10 @@ func (s *DescendancyService) getSpouseInfo(family repository.FamilyReadModel, pe
 	// Find the other partner
 	if family.Partner1ID != nil && *family.Partner1ID != personID {
 		spouseID = family.Partner1ID
-		spouseName = family.Partner1Name
+		spouseName = strings.TrimSpace(family.Partner1GivenName + " " + family.Partner1Surname)
 	} else if family.Partner2ID != nil && *family.Partner2ID != personID {
 		spouseID = family.Partner2ID
-		spouseName = family.Partner2Name
+		spouseName = strings.TrimSpace(family.Partner2GivenName + " " + family.Partner2Surname)
 	}
 
 	if spouseID == nil {

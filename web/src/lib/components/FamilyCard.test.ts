@@ -45,10 +45,11 @@ describe('FamilyCard', () => {
 		expect(screen.getByText('Unknown')).toBeTruthy();
 	});
 
-	it('renders an empty name verbatim rather than falling back to "Unknown"', () => {
-		// ?? (nullish coalescing) only triggers on null/undefined, not on "".
-		// A partner with a deliberately-empty name should render blank, not be
-		// mislabeled "Unknown" — which would imply the partner record is absent.
+	it('falls back to "Unknown" when partner has empty given_name and surname', () => {
+		// Issue #483: rendering now flows through formatPersonName, which trims
+		// and filters both name parts and falls back to 'Unknown' when nothing
+		// usable remains. This intentionally replaces the older ?? behavior that
+		// would render a blank partner.
 		const family: FamilyDetail = {
 			id: 'fam-4',
 			version: 1,
@@ -58,6 +59,24 @@ describe('FamilyCard', () => {
 
 		render(FamilyCard, { props: { family } });
 
-		expect(screen.queryByText('Unknown')).toBeNull();
+		expect(screen.getByText('Unknown')).toBeTruthy();
+	});
+
+	it('renders given_name and surname together as a single spaced string', () => {
+		// Issue #483: backend now populates real surnames on FamilyDetail.partner*.
+		// The card must combine both parts rather than reading just given_name.
+		const family: FamilyDetail = {
+			id: 'fam-5',
+			version: 1,
+			partner1_id: 'p1',
+			partner2_id: 'p2',
+			partner1: { id: 'p1', given_name: 'Jane', surname: 'Smith' },
+			partner2: { id: 'p2', given_name: 'John', surname: 'Doe' }
+		};
+
+		render(FamilyCard, { props: { family } });
+
+		expect(screen.getByText('Jane Smith')).toBeTruthy();
+		expect(screen.getByText('John Doe')).toBeTruthy();
 	});
 });
