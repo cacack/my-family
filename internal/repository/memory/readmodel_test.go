@@ -508,15 +508,17 @@ func TestReadModelStore_SaveAndGetFamily(t *testing.T) {
 	partner1ID := uuid.New()
 	partner2ID := uuid.New()
 	family := &repository.FamilyReadModel{
-		ID:               uuid.New(),
-		Partner1ID:       &partner1ID,
-		Partner1Name:     "John Doe",
-		Partner2ID:       &partner2ID,
-		Partner2Name:     "Jane Doe",
-		RelationshipType: domain.RelationMarriage,
-		ChildCount:       2,
-		Version:          1,
-		UpdatedAt:        time.Now(),
+		ID:                uuid.New(),
+		Partner1ID:        &partner1ID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &partner2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
+		RelationshipType:  domain.RelationMarriage,
+		ChildCount:        2,
+		Version:           1,
+		UpdatedAt:         time.Now(),
 	}
 
 	// Save family
@@ -590,7 +592,8 @@ func TestReadModelStore_DeleteFamily(t *testing.T) {
 	child := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         childID,
-		PersonName:       "Child",
+		PersonGivenName:  "Child",
+		PersonSurname:    "",
 		RelationshipType: domain.ChildBiological,
 	}
 	err = store.SaveFamilyChild(ctx, child)
@@ -774,7 +777,8 @@ func TestReadModelStore_SaveAndGetFamilyChildren(t *testing.T) {
 	child := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         childID,
-		PersonName:       "Child Doe",
+		PersonGivenName:  "Child",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
 
@@ -816,7 +820,8 @@ func TestReadModelStore_SaveFamilyChildUpdate(t *testing.T) {
 	child := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         childID,
-		PersonName:       "Child Doe",
+		PersonGivenName:  "Child",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
 
@@ -860,7 +865,8 @@ func TestReadModelStore_DeleteFamilyChild(t *testing.T) {
 	child1 := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         child1ID,
-		PersonName:       "Child 1",
+		PersonGivenName:  "Child 1",
+		PersonSurname:    "",
 		RelationshipType: domain.ChildBiological,
 	}
 	err := store.SaveFamilyChild(ctx, child1)
@@ -871,7 +877,8 @@ func TestReadModelStore_DeleteFamilyChild(t *testing.T) {
 	child2 := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         child2ID,
-		PersonName:       "Child 2",
+		PersonGivenName:  "Child 2",
+		PersonSurname:    "",
 		RelationshipType: domain.ChildBiological,
 	}
 	err = store.SaveFamilyChild(ctx, child2)
@@ -937,7 +944,8 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 	child1 := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         child1ID,
-		PersonName:       "Alice Doe",
+		PersonGivenName:  "Alice",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
 	err = store.SaveFamilyChild(ctx, child1)
@@ -948,7 +956,8 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 	child2 := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         child2ID,
-		PersonName:       "Bob Doe",
+		PersonGivenName:  "Bob",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
 	err = store.SaveFamilyChild(ctx, child2)
@@ -1003,7 +1012,8 @@ func TestReadModelStore_GetChildFamily(t *testing.T) {
 	child := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         childID,
-		PersonName:       "Child Doe",
+		PersonGivenName:  "Child",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
 	err = store.SaveFamilyChild(ctx, child)
@@ -1173,7 +1183,8 @@ func TestReadModelStore_Reset(t *testing.T) {
 	child := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         personID,
-		PersonName:       "John Doe",
+		PersonGivenName:  "John",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
 	err = store.SaveFamilyChild(ctx, child)

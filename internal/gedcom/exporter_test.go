@@ -64,14 +64,16 @@ func setupExportTestData(t *testing.T, readStore *memory.ReadModelStore) (uuid.U
 	// Create family
 	familyID := uuid.New()
 	family := &repository.FamilyReadModel{
-		ID:               familyID,
-		Partner1ID:       &john,
-		Partner1Name:     "John Doe",
-		Partner2ID:       &jane,
-		Partner2Name:     "Jane Smith",
-		RelationshipType: domain.RelationMarriage,
-		MarriageDateRaw:  "10 JUN 1875",
-		MarriagePlace:    "Springfield, IL",
+		ID:                familyID,
+		Partner1ID:        &john,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &jane,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Smith",
+		RelationshipType:  domain.RelationMarriage,
+		MarriageDateRaw:   "10 JUN 1875",
+		MarriagePlace:     "Springfield, IL",
 	}
 	if err := readStore.SaveFamily(ctx, family); err != nil {
 		t.Fatal(err)
@@ -81,7 +83,8 @@ func setupExportTestData(t *testing.T, readStore *memory.ReadModelStore) (uuid.U
 	child := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         junior,
-		PersonName:       "Junior Doe",
+		PersonGivenName:  "Junior",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
 	if err := readStore.SaveFamilyChild(ctx, child); err != nil {
@@ -323,14 +326,16 @@ func TestExport_SingleParentFamily(t *testing.T) {
 
 	familyID := uuid.New()
 	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
-		ID:           familyID,
-		Partner2ID:   &mother,
-		Partner2Name: "Jane Doe",
+		ID:                familyID,
+		Partner2ID:        &mother,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
 	})
 	readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
-		FamilyID:   familyID,
-		PersonID:   child,
-		PersonName: "Child Doe",
+		FamilyID:        familyID,
+		PersonID:        child,
+		PersonGivenName: "Child",
+		PersonSurname:   "Doe",
 	})
 
 	exporter := gedcom.NewExporter(readStore)
@@ -2133,12 +2138,14 @@ func TestExport_LDSOrdinances(t *testing.T) {
 	}
 
 	family := &repository.FamilyReadModel{
-		ID:               familyID,
-		Partner1ID:       &personID,
-		Partner1Name:     "John Doe",
-		Partner2ID:       &partner2ID,
-		Partner2Name:     "Jane Smith",
-		RelationshipType: domain.RelationMarriage,
+		ID:                familyID,
+		Partner1ID:        &personID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &partner2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Smith",
+		RelationshipType:  domain.RelationMarriage,
 	}
 	if err := readStore.SaveFamily(ctx, family); err != nil {
 		t.Fatal(err)

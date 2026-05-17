@@ -82,9 +82,11 @@ func (s *ReadModelStore) createTables() error {
 		CREATE TABLE IF NOT EXISTS families (
 			id UUID PRIMARY KEY,
 			partner1_id UUID REFERENCES persons(id),
-			partner1_name VARCHAR(200),
+			partner1_given_name VARCHAR(200),
+			partner1_surname VARCHAR(200),
 			partner2_id UUID REFERENCES persons(id),
-			partner2_name VARCHAR(200),
+			partner2_given_name VARCHAR(200),
+			partner2_surname VARCHAR(200),
 			relationship_type VARCHAR(20),
 			marriage_date_raw VARCHAR(100),
 			marriage_date_sort DATE,
@@ -101,7 +103,8 @@ func (s *ReadModelStore) createTables() error {
 		CREATE TABLE IF NOT EXISTS family_children (
 			family_id UUID NOT NULL REFERENCES families(id) ON DELETE CASCADE,
 			person_id UUID NOT NULL REFERENCES persons(id),
-			person_name VARCHAR(200),
+			person_given_name VARCHAR(200),
+			person_surname VARCHAR(200),
 			relationship_type VARCHAR(20) NOT NULL DEFAULT 'biological',
 			sequence INTEGER,
 			PRIMARY KEY (family_id, person_id)
@@ -446,6 +449,45 @@ func (s *ReadModelStore) runMigrations() {
 
 	// Add is_negated column for negative assertions / NO tags (issue #222)
 	_, _ = s.db.Exec(`ALTER TABLE events ADD COLUMN IF NOT EXISTS is_negated BOOLEAN NOT NULL DEFAULT FALSE`)
+
+	// Split family partner names and family-child names into given_name / surname (issue #483).
+	// Wrapped in a single transaction so a mid-migration crash leaves either the pre-migration
+	// or post-migration state, never a half-state where legacy columns are dropped before the
+	// new ones are populated. SQLite-side does NOT drop the legacy columns (project convention
+	// never drops columns on SQLite), so the two backends diverge intentionally here.
+	if tx, err := s.db.Begin(); err == nil {
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner1_given_name VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner1_surname VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner2_given_name VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner2_surname VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_given_name VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_surname VARCHAR(200)`)
+
+		// Backfill split fields from persons table; idempotent via IS NULL guard.
+		_, _ = tx.Exec(`
+			UPDATE families f SET
+				partner1_given_name = p.given_name,
+				partner1_surname    = p.surname
+			FROM persons p WHERE f.partner1_id = p.id AND f.partner1_given_name IS NULL
+		`)
+		_, _ = tx.Exec(`
+			UPDATE families f SET
+				partner2_given_name = p.given_name,
+				partner2_surname    = p.surname
+			FROM persons p WHERE f.partner2_id = p.id AND f.partner2_given_name IS NULL
+		`)
+		_, _ = tx.Exec(`
+			UPDATE family_children fc SET
+				person_given_name = p.given_name,
+				person_surname    = p.surname
+			FROM persons p WHERE fc.person_id = p.id AND fc.person_given_name IS NULL
+		`)
+
+		// Drop legacy denormalized columns once the split is populated.
+		_, _ = tx.Exec(`ALTER TABLE families DROP COLUMN IF EXISTS partner1_name, DROP COLUMN IF EXISTS partner2_name`)
+		_, _ = tx.Exec(`ALTER TABLE family_children DROP COLUMN IF EXISTS person_name`)
+		_ = tx.Commit()
+	}
 }
 
 // GetPerson retrieves a person by ID.
@@ -905,7 +947,8 @@ func scanPersonNameRow(rows *sql.Rows) (*repository.PersonNameReadModel, error) 
 // GetFamily retrieves a family by ID.
 func (s *ReadModelStore) GetFamily(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, partner1_id, partner1_name, partner2_id, partner2_name,
+		SELECT id, partner1_id, partner1_given_name, partner1_surname,
+			   partner2_id, partner2_given_name, partner2_surname,
 			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 			   marriage_place_lat, marriage_place_long,
 			   child_count, version, updated_at
@@ -924,7 +967,8 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, partner1_id, partner1_name, partner2_id, partner2_name,
+		SELECT id, partner1_id, partner1_given_name, partner1_surname,
+			   partner2_id, partner2_given_name, partner2_surname,
 			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 			   marriage_place_lat, marriage_place_long,
 			   child_count, version, updated_at
@@ -952,7 +996,8 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 // GetFamiliesForPerson returns all families where the person is a partner.
 func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.FamilyReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, partner1_id, partner1_name, partner2_id, partner2_name,
+		SELECT id, partner1_id, partner1_given_name, partner1_surname,
+			   partner2_id, partner2_given_name, partner2_surname,
 			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 			   marriage_place_lat, marriage_place_long,
 			   child_count, version, updated_at
@@ -979,16 +1024,19 @@ func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid
 // SaveFamily saves or updates a family.
 func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.FamilyReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO families (id, partner1_id, partner1_name, partner2_id, partner2_name,
+		INSERT INTO families (id, partner1_id, partner1_given_name, partner1_surname,
+							  partner2_id, partner2_given_name, partner2_surname,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 							  marriage_place_lat, marriage_place_long,
 							  child_count, version, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		ON CONFLICT(id) DO UPDATE SET
 			partner1_id = EXCLUDED.partner1_id,
-			partner1_name = EXCLUDED.partner1_name,
+			partner1_given_name = EXCLUDED.partner1_given_name,
+			partner1_surname = EXCLUDED.partner1_surname,
 			partner2_id = EXCLUDED.partner2_id,
-			partner2_name = EXCLUDED.partner2_name,
+			partner2_given_name = EXCLUDED.partner2_given_name,
+			partner2_surname = EXCLUDED.partner2_surname,
 			relationship_type = EXCLUDED.relationship_type,
 			marriage_date_raw = EXCLUDED.marriage_date_raw,
 			marriage_date_sort = EXCLUDED.marriage_date_sort,
@@ -998,8 +1046,9 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.Fami
 			child_count = EXCLUDED.child_count,
 			version = EXCLUDED.version,
 			updated_at = EXCLUDED.updated_at
-	`, family.ID, nullableUUID(family.Partner1ID), nullableString(family.Partner1Name),
-		nullableUUID(family.Partner2ID), nullableString(family.Partner2Name),
+	`, family.ID,
+		nullableUUID(family.Partner1ID), nullableString(family.Partner1GivenName), nullableString(family.Partner1Surname),
+		nullableUUID(family.Partner2ID), nullableString(family.Partner2GivenName), nullableString(family.Partner2Surname),
 		nullableString(string(family.RelationshipType)), nullableString(family.MarriageDateRaw),
 		nullableTime(family.MarriageDateSort), nullableString(family.MarriagePlace),
 		nullableStringPtr(family.MarriagePlaceLat), nullableStringPtr(family.MarriagePlaceLong),
@@ -1017,10 +1066,10 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, id uuid.UUID) error {
 // GetFamilyChildren returns all children for a family.
 func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT family_id, person_id, person_name, relationship_type, sequence
+		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence
 		FROM family_children
 		WHERE family_id = $1
-		ORDER BY sequence NULLS LAST, person_name
+		ORDER BY sequence NULLS LAST, person_surname, person_given_name
 	`, familyID)
 	if err != nil {
 		return nil, fmt.Errorf("query family children: %w", err)
@@ -1030,11 +1079,12 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UU
 	var children []repository.FamilyChildReadModel
 	for rows.Next() {
 		var (
-			familyID, personID  uuid.UUID
-			personName, relType string
-			sequence            sql.NullInt64
+			familyID, personID             uuid.UUID
+			personGivenName, personSurname sql.NullString
+			relType                        string
+			sequence                       sql.NullInt64
 		)
-		err := rows.Scan(&familyID, &personID, &personName, &relType, &sequence)
+		err := rows.Scan(&familyID, &personID, &personGivenName, &personSurname, &relType, &sequence)
 		if err != nil {
 			return nil, fmt.Errorf("scan family child: %w", err)
 		}
@@ -1042,7 +1092,8 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UU
 		child := repository.FamilyChildReadModel{
 			FamilyID:         familyID,
 			PersonID:         personID,
-			PersonName:       personName,
+			PersonGivenName:  personGivenName.String,
+			PersonSurname:    personSurname.String,
 			RelationshipType: domain.ChildRelationType(relType),
 		}
 		if sequence.Valid {
@@ -1088,7 +1139,8 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.
 // GetChildFamily returns the family where the person is a child.
 func (s *ReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID) (*repository.FamilyReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT f.id, f.partner1_id, f.partner1_name, f.partner2_id, f.partner2_name,
+		SELECT f.id, f.partner1_id, f.partner1_given_name, f.partner1_surname,
+			   f.partner2_id, f.partner2_given_name, f.partner2_surname,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
 			   f.marriage_place_lat, f.marriage_place_long,
 			   f.child_count, f.version, f.updated_at
@@ -1103,13 +1155,15 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID)
 // SaveFamilyChild saves a family child relationship.
 func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, child *repository.FamilyChildReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO family_children (family_id, person_id, person_name, relationship_type, sequence)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO family_children (family_id, person_id, person_given_name, person_surname, relationship_type, sequence)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT(family_id, person_id) DO UPDATE SET
-			person_name = EXCLUDED.person_name,
+			person_given_name = EXCLUDED.person_given_name,
+			person_surname = EXCLUDED.person_surname,
 			relationship_type = EXCLUDED.relationship_type,
 			sequence = EXCLUDED.sequence
-	`, child.FamilyID, child.PersonID, child.PersonName, string(child.RelationshipType), nullableInt(child.Sequence))
+	`, child.FamilyID, child.PersonID, nullableString(child.PersonGivenName), nullableString(child.PersonSurname),
+		string(child.RelationshipType), nullableInt(child.Sequence))
 
 	return err
 }
@@ -1273,7 +1327,8 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	var (
 		id                                      uuid.UUID
 		partner1ID, partner2ID                  sql.NullString
-		partner1Name, partner2Name              sql.NullString
+		partner1GivenName, partner1Surname      sql.NullString
+		partner2GivenName, partner2Surname      sql.NullString
 		relType, marriageDateRaw, marriagePlace sql.NullString
 		marriagePlaceLat, marriagePlaceLong     sql.NullString
 		marriageDateSort                        sql.NullTime
@@ -1282,7 +1337,9 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 		updatedAt                               time.Time
 	)
 
-	err := row.Scan(&id, &partner1ID, &partner1Name, &partner2ID, &partner2Name,
+	err := row.Scan(&id,
+		&partner1ID, &partner1GivenName, &partner1Surname,
+		&partner2ID, &partner2GivenName, &partner2Surname,
 		&relType, &marriageDateRaw, &marriageDateSort, &marriagePlace,
 		&marriagePlaceLat, &marriagePlaceLong,
 		&childCount, &version, &updatedAt)
@@ -1295,15 +1352,17 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 	}
 
 	f := &repository.FamilyReadModel{
-		ID:               id,
-		Partner1Name:     partner1Name.String,
-		Partner2Name:     partner2Name.String,
-		RelationshipType: domain.RelationType(relType.String),
-		MarriageDateRaw:  marriageDateRaw.String,
-		MarriagePlace:    marriagePlace.String,
-		ChildCount:       childCount,
-		Version:          version,
-		UpdatedAt:        updatedAt,
+		ID:                id,
+		Partner1GivenName: partner1GivenName.String,
+		Partner1Surname:   partner1Surname.String,
+		Partner2GivenName: partner2GivenName.String,
+		Partner2Surname:   partner2Surname.String,
+		RelationshipType:  domain.RelationType(relType.String),
+		MarriageDateRaw:   marriageDateRaw.String,
+		MarriagePlace:     marriagePlace.String,
+		ChildCount:        childCount,
+		Version:           version,
+		UpdatedAt:         updatedAt,
 	}
 
 	if partner1ID.Valid {

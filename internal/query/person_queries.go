@@ -301,11 +301,11 @@ func convertToFamilySummary(rm repository.FamilyReadModel) FamilySummary {
 	s := FamilySummary{
 		ID: rm.ID,
 	}
-	if rm.Partner1Name != "" {
-		s.Partner1Name = &rm.Partner1Name
+	if p1 := fullName(rm.Partner1GivenName, rm.Partner1Surname); p1 != "" {
+		s.Partner1Name = &p1
 	}
-	if rm.Partner2Name != "" {
-		s.Partner2Name = &rm.Partner2Name
+	if p2 := fullName(rm.Partner2GivenName, rm.Partner2Surname); p2 != "" {
+		s.Partner2Name = &p2
 	}
 	if rm.RelationshipType != "" {
 		rt := string(rm.RelationshipType)

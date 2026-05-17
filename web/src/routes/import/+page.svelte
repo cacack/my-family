@@ -35,8 +35,10 @@
 
 	const familyFields = [
 		{ id: 'id', label: 'ID' },
-		{ id: 'partner1_name', label: 'Partner 1 Name' },
-		{ id: 'partner2_name', label: 'Partner 2 Name' },
+		{ id: 'partner1_given_name', label: 'Partner 1 Given Name' },
+		{ id: 'partner1_surname', label: 'Partner 1 Surname' },
+		{ id: 'partner2_given_name', label: 'Partner 2 Given Name' },
+		{ id: 'partner2_surname', label: 'Partner 2 Surname' },
 		{ id: 'relationship_type', label: 'Relationship Type' },
 		{ id: 'marriage_date', label: 'Marriage Date' },
 		{ id: 'marriage_place', label: 'Marriage Place' },

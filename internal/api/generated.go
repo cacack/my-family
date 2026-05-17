@@ -2311,19 +2311,11 @@ type FamilyDetail struct {
 	// MarriagePlaceLongitude Longitude in GEDCOM format (e.g., "W89.6501")
 	MarriagePlaceLongitude *string `json:"marriage_place_longitude,omitempty"`
 
-	// Partner1 Partner 1 summary. May be absent even when partner1_id is set
-	// if the partner's name has not been projected yet. The given_name
-	// field carries the partner's full display name until the read
-	// model is split into separate given/surname components; surname
-	// will be empty.
+	// Partner1 Partner 1 summary. Present whenever partner1_id is set; given_name and surname may be empty strings if the partner has no recorded name.
 	Partner1   *PersonSummary      `json:"partner1,omitempty"`
 	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
 
-	// Partner2 Partner 2 summary. May be absent even when partner2_id is set
-	// if the partner's name has not been projected yet. The given_name
-	// field carries the partner's full display name until the read
-	// model is split into separate given/surname components; surname
-	// will be empty.
+	// Partner2 Partner 2 summary. Present whenever partner2_id is set; given_name and surname may be empty strings if the partner has no recorded name.
 	Partner2         *PersonSummary                `json:"partner2,omitempty"`
 	Partner2Id       *openapi_types.UUID           `json:"partner2_id,omitempty"`
 	RelationshipType *FamilyDetailRelationshipType `json:"relationship_type,omitempty"`

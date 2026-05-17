@@ -277,17 +277,19 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 	// Create family
 	familyID := uuid.New()
 	family := &repository.FamilyReadModel{
-		ID:               familyID,
-		Partner1ID:       &partner1ID,
-		Partner1Name:     "John Doe",
-		Partner2ID:       &partner2ID,
-		Partner2Name:     "Jane Doe",
-		RelationshipType: domain.RelationMarriage,
-		MarriageDateRaw:  "15 JUN 1875",
-		MarriagePlace:    "Boston, MA",
-		ChildCount:       0,
-		Version:          1,
-		UpdatedAt:        now,
+		ID:                familyID,
+		Partner1ID:        &partner1ID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &partner2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
+		RelationshipType:  domain.RelationMarriage,
+		MarriageDateRaw:   "15 JUN 1875",
+		MarriagePlace:     "Boston, MA",
+		ChildCount:        0,
+		Version:           1,
+		UpdatedAt:         now,
 	}
 
 	err := store.SaveFamily(ctx, family)
@@ -304,8 +306,8 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 		t.Fatal("family not found")
 	}
 
-	if retrieved.Partner1Name != "John Doe" {
-		t.Errorf("expected Partner1Name John Doe, got %s", retrieved.Partner1Name)
+	if retrieved.Partner1GivenName != "John" || retrieved.Partner1Surname != "Doe" {
+		t.Errorf("expected Partner1 John/Doe, got %q/%q", retrieved.Partner1GivenName, retrieved.Partner1Surname)
 	}
 	if retrieved.RelationshipType != domain.RelationMarriage {
 		t.Errorf("expected RelationshipType married, got %s", retrieved.RelationshipType)
@@ -367,14 +369,16 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	// Create family
 	familyID := uuid.New()
 	family := &repository.FamilyReadModel{
-		ID:           familyID,
-		Partner1ID:   &partner1ID,
-		Partner1Name: "John Doe",
-		Partner2ID:   &partner2ID,
-		Partner2Name: "Jane Doe",
-		ChildCount:   0,
-		Version:      1,
-		UpdatedAt:    now,
+		ID:                familyID,
+		Partner1ID:        &partner1ID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &partner2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
+		ChildCount:        0,
+		Version:           1,
+		UpdatedAt:         now,
 	}
 
 	if err := store.SaveFamily(ctx, family); err != nil {
@@ -386,7 +390,8 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	child := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         childID,
-		PersonName:       "Jimmy Doe",
+		PersonGivenName:  "Jimmy",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 		Sequence:         &seq,
 	}
@@ -403,8 +408,8 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	if len(children) != 1 {
 		t.Fatalf("expected 1 child, got %d", len(children))
 	}
-	if children[0].PersonName != "Jimmy Doe" {
-		t.Errorf("expected child name Jimmy Doe, got %s", children[0].PersonName)
+	if children[0].PersonGivenName != "Jimmy" || children[0].PersonSurname != "Doe" {
+		t.Errorf("expected child Jimmy/Doe, got %q/%q", children[0].PersonGivenName, children[0].PersonSurname)
 	}
 
 	// Get child family
@@ -547,14 +552,16 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 	// Create family
 	familyID := uuid.New()
 	family := &repository.FamilyReadModel{
-		ID:           familyID,
-		Partner1ID:   &partner1ID,
-		Partner1Name: "John Doe",
-		Partner2ID:   &partner2ID,
-		Partner2Name: "Jane Doe",
-		ChildCount:   2,
-		Version:      1,
-		UpdatedAt:    now,
+		ID:                familyID,
+		Partner1ID:        &partner1ID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &partner2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
+		ChildCount:        2,
+		Version:           1,
+		UpdatedAt:         now,
 	}
 
 	if err := store.SaveFamily(ctx, family); err != nil {
@@ -564,8 +571,8 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 	// Add children
 	seq1, seq2 := 1, 2
 	children := []*repository.FamilyChildReadModel{
-		{FamilyID: familyID, PersonID: child1ID, PersonName: "Jimmy Doe", RelationshipType: domain.ChildBiological, Sequence: &seq1},
-		{FamilyID: familyID, PersonID: child2ID, PersonName: "Jenny Doe", RelationshipType: domain.ChildBiological, Sequence: &seq2},
+		{FamilyID: familyID, PersonID: child1ID, PersonGivenName: "Jimmy", PersonSurname: "Doe", RelationshipType: domain.ChildBiological, Sequence: &seq1},
+		{FamilyID: familyID, PersonID: child2ID, PersonGivenName: "Jenny", PersonSurname: "Doe", RelationshipType: domain.ChildBiological, Sequence: &seq2},
 	}
 
 	for _, c := range children {

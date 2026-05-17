@@ -3535,18 +3535,12 @@ func convertQueryFamilyToGenerated(f query.Family) Family {
 	return resp
 }
 
-// partnerSummary builds a PersonSummary for a family partner from the
-// denormalized full name carried by the FamilyReadModel. The name is stored
-// as a single string (see internal/repository/projection.go:289 where it is
-// assigned from PersonReadModel.FullName), so Surname is left empty and the
-// full display name is placed in GivenName. Until the read model carries the
-// name parts separately, callers reading PersonSummary.Surname on a partner
-// will see an empty string. See issue #483.
-func partnerSummary(id uuid.UUID, fullName string) *PersonSummary {
+// partnerSummary builds a PersonSummary for a family partner.
+func partnerSummary(id uuid.UUID, given, surname string) *PersonSummary {
 	return &PersonSummary{
 		Id:        id,
-		GivenName: fullName,
-		Surname:   "",
+		GivenName: given,
+		Surname:   surname,
 	}
 }
 
@@ -3576,12 +3570,15 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 		resp.MarriagePlace = fd.MarriagePlace
 	}
 
-	// Add partner details if available
-	if fd.Partner1ID != nil && fd.Partner1Name != nil {
-		resp.Partner1 = partnerSummary(*fd.Partner1ID, *fd.Partner1Name)
+	// Emit the partner summary whenever the partner ID is set so callers can
+	// always pair partner1_id with a partner1 object. Either name part may be
+	// nil for legacy or unprojected data; missing parts render as empty
+	// strings rather than dropping the whole summary.
+	if fd.Partner1ID != nil {
+		resp.Partner1 = partnerSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname))
 	}
-	if fd.Partner2ID != nil && fd.Partner2Name != nil {
-		resp.Partner2 = partnerSummary(*fd.Partner2ID, *fd.Partner2Name)
+	if fd.Partner2ID != nil {
+		resp.Partner2 = partnerSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname))
 	}
 
 	if len(fd.Children) > 0 {
@@ -3592,8 +3589,8 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 				RelationshipType: FamilyChildRelationshipType(c.RelationshipType),
 				Person: &PersonSummary{
 					Id:        c.ID,
-					GivenName: c.Name,
-					Surname:   "",
+					GivenName: c.GivenName,
+					Surname:   c.Surname,
 				},
 			}
 		}
@@ -3630,14 +3627,24 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 		resp.MarriagePlace = f.MarriagePlace
 	}
 
-	if f.Partner1ID != nil && f.Partner1Name != nil {
-		resp.Partner1 = partnerSummary(*f.Partner1ID, *f.Partner1Name)
+	if f.Partner1ID != nil {
+		resp.Partner1 = partnerSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname))
 	}
-	if f.Partner2ID != nil && f.Partner2Name != nil {
-		resp.Partner2 = partnerSummary(*f.Partner2ID, *f.Partner2Name)
+	if f.Partner2ID != nil {
+		resp.Partner2 = partnerSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname))
 	}
 
 	return resp
+}
+
+// stringValue dereferences a string pointer, treating nil as the empty string.
+// Used when converting query-layer `*string` fields into the API's required
+// string fields, where a nil pointer represents "absent in the read model".
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // convertQueryGroupSheetToGenerated converts a query.GroupSheet to the generated FamilyGroupSheet type.

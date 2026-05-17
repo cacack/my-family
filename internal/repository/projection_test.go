@@ -157,11 +157,11 @@ func TestProjector_FamilyCreated(t *testing.T) {
 	if rm == nil {
 		t.Fatal("Family not found in read model")
 	}
-	if rm.Partner1Name != "John Doe" {
-		t.Errorf("Partner1Name = %s, want John Doe", rm.Partner1Name)
+	if rm.Partner1GivenName != "John" || rm.Partner1Surname != "Doe" {
+		t.Errorf("Partner1 split = %q/%q, want John/Doe", rm.Partner1GivenName, rm.Partner1Surname)
 	}
-	if rm.Partner2Name != "Jane Doe" {
-		t.Errorf("Partner2Name = %s, want Jane Doe", rm.Partner2Name)
+	if rm.Partner2GivenName != "Jane" || rm.Partner2Surname != "Doe" {
+		t.Errorf("Partner2 split = %q/%q, want Jane/Doe", rm.Partner2GivenName, rm.Partner2Surname)
 	}
 	if rm.RelationshipType != domain.RelationMarriage {
 		t.Errorf("RelationshipType = %s, want marriage", rm.RelationshipType)
@@ -381,6 +381,57 @@ func TestProjector_FamilyUpdated(t *testing.T) {
 				t.Errorf("Version = %d, want 2", rm.Version)
 			}
 		})
+	}
+}
+
+func TestProjector_FamilyUpdated_PartnerSwap(t *testing.T) {
+	// Issue #483: changing partner1_id / partner2_id via FamilyUpdated must
+	// refresh the denormalized split-name fields, otherwise the family row
+	// keeps showing the former partner's name next to the new partner's ID.
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Seed three persons: the initial partners and a replacement.
+	p1 := &domain.Person{ID: uuid.New(), GivenName: "John", Surname: "Doe"}
+	p2 := &domain.Person{ID: uuid.New(), GivenName: "Jane", Surname: "Doe"}
+	p3 := &domain.Person{ID: uuid.New(), GivenName: "Mary", Surname: "Smith"}
+	for i, p := range []*domain.Person{p1, p2, p3} {
+		if err := projector.Project(ctx, domain.NewPersonCreated(p), int64(i+1)); err != nil {
+			t.Fatalf("seed person %d: %v", i, err)
+		}
+	}
+
+	// Create the family with p1 and p2.
+	family := domain.NewFamily()
+	family.Partner1ID = &p1.ID
+	family.Partner2ID = &p2.ID
+	family.RelationshipType = domain.RelationMarriage
+	if err := projector.Project(ctx, domain.NewFamilyCreated(family), 4); err != nil {
+		t.Fatalf("create family: %v", err)
+	}
+
+	// Swap partner1 to p3.
+	update := domain.NewFamilyUpdated(family.ID, map[string]any{
+		"partner1_id": p3.ID.String(),
+	})
+	if err := projector.Project(ctx, update, 5); err != nil {
+		t.Fatalf("project update: %v", err)
+	}
+
+	rm, err := readStore.GetFamily(ctx, family.ID)
+	if err != nil || rm == nil {
+		t.Fatalf("get family: %v (rm=%v)", err, rm)
+	}
+	if rm.Partner1ID == nil || *rm.Partner1ID != p3.ID {
+		t.Errorf("Partner1ID = %v, want %v", rm.Partner1ID, p3.ID)
+	}
+	if rm.Partner1GivenName != "Mary" || rm.Partner1Surname != "Smith" {
+		t.Errorf("Partner1 name = %q %q, want Mary Smith", rm.Partner1GivenName, rm.Partner1Surname)
+	}
+	// Partner2 must be untouched.
+	if rm.Partner2GivenName != "Jane" || rm.Partner2Surname != "Doe" {
+		t.Errorf("Partner2 name = %q %q, want Jane Doe", rm.Partner2GivenName, rm.Partner2Surname)
 	}
 }
 
@@ -2212,11 +2263,11 @@ func TestProjector_FamilyCreated_NoPartners(t *testing.T) {
 	if rm == nil {
 		t.Fatal("Family not found")
 	}
-	if rm.Partner1Name != "" {
-		t.Errorf("Partner1Name = %s, want empty string", rm.Partner1Name)
+	if rm.Partner1GivenName != "" || rm.Partner1Surname != "" {
+		t.Errorf("Partner1 split = %q/%q, want empty", rm.Partner1GivenName, rm.Partner1Surname)
 	}
-	if rm.Partner2Name != "" {
-		t.Errorf("Partner2Name = %s, want empty string", rm.Partner2Name)
+	if rm.Partner2GivenName != "" || rm.Partner2Surname != "" {
+		t.Errorf("Partner2 split = %q/%q, want empty", rm.Partner2GivenName, rm.Partner2Surname)
 	}
 }
 
@@ -2428,8 +2479,8 @@ func TestProjector_PersonMerged_FamilyPartnerUpdate(t *testing.T) {
 
 	// Verify initial family state
 	familyRM, _ := readStore.GetFamily(ctx, family.ID)
-	if familyRM.Partner1Name != "Johnny Doe" {
-		t.Errorf("Initial Partner1Name = %s, want 'Johnny Doe'", familyRM.Partner1Name)
+	if familyRM.Partner1GivenName != "Johnny" || familyRM.Partner1Surname != "Doe" {
+		t.Errorf("Initial Partner1 split = %q/%q, want Johnny/Doe", familyRM.Partner1GivenName, familyRM.Partner1Surname)
 	}
 
 	// Merge merged into survivor
@@ -2455,8 +2506,8 @@ func TestProjector_PersonMerged_FamilyPartnerUpdate(t *testing.T) {
 	if familyRM.Partner1ID == nil || *familyRM.Partner1ID != survivor.ID {
 		t.Error("Partner1ID should be updated to survivor ID")
 	}
-	if familyRM.Partner1Name != "John Doe" {
-		t.Errorf("Partner1Name = %s, want 'John Doe'", familyRM.Partner1Name)
+	if familyRM.Partner1GivenName != "John" || familyRM.Partner1Surname != "Doe" {
+		t.Errorf("Partner1 split = %q/%q, want John/Doe", familyRM.Partner1GivenName, familyRM.Partner1Surname)
 	}
 }
 
@@ -2505,8 +2556,8 @@ func TestProjector_PersonMerged_FamilyPartner2Update(t *testing.T) {
 	if familyRM.Partner2ID == nil || *familyRM.Partner2ID != survivor.ID {
 		t.Error("Partner2ID should be updated to survivor ID")
 	}
-	if familyRM.Partner2Name != "Jane Doe" {
-		t.Errorf("Partner2Name = %s, want 'Jane Doe'", familyRM.Partner2Name)
+	if familyRM.Partner2GivenName != "Jane" || familyRM.Partner2Surname != "Doe" {
+		t.Errorf("Partner2 split = %q/%q, want Jane/Doe", familyRM.Partner2GivenName, familyRM.Partner2Surname)
 	}
 }
 

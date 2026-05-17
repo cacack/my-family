@@ -287,17 +287,19 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 	familyID := uuid.New()
 	marriageDate := time.Date(1875, 6, 15, 0, 0, 0, 0, time.UTC)
 	family := &repository.FamilyReadModel{
-		ID:               familyID,
-		Partner1ID:       &person1ID,
-		Partner1Name:     "John Doe",
-		Partner2ID:       &person2ID,
-		Partner2Name:     "Jane Doe",
-		RelationshipType: domain.RelationMarriage,
-		MarriageDateRaw:  "15 JUN 1875",
-		MarriageDateSort: &marriageDate,
-		MarriagePlace:    "Springfield, IL",
-		Version:          1,
-		UpdatedAt:        time.Now(),
+		ID:                familyID,
+		Partner1ID:        &person1ID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &person2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
+		RelationshipType:  domain.RelationMarriage,
+		MarriageDateRaw:   "15 JUN 1875",
+		MarriageDateSort:  &marriageDate,
+		MarriagePlace:     "Springfield, IL",
+		Version:           1,
+		UpdatedAt:         time.Now(),
 	}
 
 	err := store.SaveFamily(ctx, family)
@@ -314,8 +316,8 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 		t.Fatal("expected family, got nil")
 	}
 
-	if retrieved.Partner1Name != "John Doe" {
-		t.Errorf("expected Partner1Name John Doe, got %s", retrieved.Partner1Name)
+	if retrieved.Partner1GivenName != "John" || retrieved.Partner1Surname != "Doe" {
+		t.Errorf("expected Partner1 John/Doe, got %q/%q", retrieved.Partner1GivenName, retrieved.Partner1Surname)
 	}
 	if retrieved.RelationshipType != domain.RelationMarriage {
 		t.Errorf("expected RelationshipType marriage, got %s", retrieved.RelationshipType)
@@ -373,14 +375,16 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	// Create family
 	familyID := uuid.New()
 	family := &repository.FamilyReadModel{
-		ID:           familyID,
-		Partner1ID:   &parent1ID,
-		Partner1Name: "John Doe",
-		Partner2ID:   &parent2ID,
-		Partner2Name: "Jane Doe",
-		ChildCount:   0,
-		Version:      1,
-		UpdatedAt:    time.Now(),
+		ID:                familyID,
+		Partner1ID:        &parent1ID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &parent2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
+		ChildCount:        0,
+		Version:           1,
+		UpdatedAt:         time.Now(),
 	}
 	store.SaveFamily(ctx, family)
 
@@ -389,7 +393,8 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	familyChild := &repository.FamilyChildReadModel{
 		FamilyID:         familyID,
 		PersonID:         childID,
-		PersonName:       "Bobby Doe",
+		PersonGivenName:  "Bobby",
+		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 		Sequence:         &seq,
 	}
@@ -407,8 +412,8 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	if len(children) != 1 {
 		t.Fatalf("expected 1 child, got %d", len(children))
 	}
-	if children[0].PersonName != "Bobby Doe" {
-		t.Errorf("expected PersonName Bobby Doe, got %s", children[0].PersonName)
+	if children[0].PersonGivenName != "Bobby" || children[0].PersonSurname != "Doe" {
+		t.Errorf("expected child Bobby/Doe, got %q/%q", children[0].PersonGivenName, children[0].PersonSurname)
 	}
 
 	// Get child family
@@ -588,20 +593,23 @@ func TestReadModelStore_ListFamilies(t *testing.T) {
 	family2ID := uuid.New()
 
 	family1 := &repository.FamilyReadModel{
-		ID:           family1ID,
-		Partner1ID:   &person1ID,
-		Partner1Name: "John Doe",
-		Partner2ID:   &person2ID,
-		Partner2Name: "Jane Doe",
-		Version:      1,
-		UpdatedAt:    time.Now().Add(-1 * time.Hour), // Older
+		ID:                family1ID,
+		Partner1ID:        &person1ID,
+		Partner1GivenName: "John",
+		Partner1Surname:   "Doe",
+		Partner2ID:        &person2ID,
+		Partner2GivenName: "Jane",
+		Partner2Surname:   "Doe",
+		Version:           1,
+		UpdatedAt:         time.Now().Add(-1 * time.Hour), // Older
 	}
 	family2 := &repository.FamilyReadModel{
-		ID:           family2ID,
-		Partner1ID:   &person3ID,
-		Partner1Name: "Bob Smith",
-		Version:      1,
-		UpdatedAt:    time.Now(), // Newer
+		ID:                family2ID,
+		Partner1ID:        &person3ID,
+		Partner1GivenName: "Bob",
+		Partner1Surname:   "Smith",
+		Version:           1,
+		UpdatedAt:         time.Now(), // Newer
 	}
 
 	store.SaveFamily(ctx, family1)

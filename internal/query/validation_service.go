@@ -469,7 +469,7 @@ func getDisplayNameFromIndividual(ind *gedcom.Individual) string {
 		return strings.ReplaceAll(strings.ReplaceAll(name.Full, "/", ""), "  ", " ")
 	}
 	if name.Given != "" || name.Surname != "" {
-		return strings.TrimSpace(name.Given + " " + name.Surname)
+		return fullName(name.Given, name.Surname)
 	}
 	return ""
 }
