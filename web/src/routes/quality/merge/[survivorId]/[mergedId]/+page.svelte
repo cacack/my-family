@@ -57,10 +57,11 @@
 	let submitting = $state(false);
 	let result = $state<MergePersonsResponse | null>(null);
 	let resolution = $state<Record<string, Side>>({});
-	// Captured at load time so the post-merge redirect uses the trusted route
-	// param, not survivor.id from the API response (which could be tampered with
-	// upstream).
+	// Captured at load time so both the merge request payload and the post-merge
+	// redirect bind to the trusted route params, not the IDs in the API response
+	// body (which could be tampered with upstream).
 	let routeSurvivorId = $state<string | null>(null);
+	let routeMergedId = $state<string | null>(null);
 
 	$effect(() => {
 		const params = $page.params as Record<string, string | undefined>;
@@ -88,6 +89,7 @@
 		merged = null;
 		result = null;
 		routeSurvivorId = null;
+		routeMergedId = null;
 
 		if (!SAFE_ID_PATTERN.test(survivorId) || !SAFE_ID_PATTERN.test(mergedId)) {
 			error = 'Invalid person ID in URL.';
@@ -106,6 +108,7 @@
 			survivor = s;
 			merged = m;
 			routeSurvivorId = survivorId;
+			routeMergedId = mergedId;
 			resolution = buildInitialResolution(s, m);
 		} catch (e) {
 			error = truncateError(e, 'Failed to load one or both persons.');
@@ -193,21 +196,24 @@
 	}
 
 	async function handleMerge() {
-		if (!survivor || !merged || !routeSurvivorId) return;
-		const redirectTarget = routeSurvivorId;
+		if (!survivor || !merged || !routeSurvivorId || !routeMergedId) return;
+		const survivorTarget = routeSurvivorId;
+		const mergedTarget = routeMergedId;
 		submitting = true;
 		error = null;
 		try {
 			const req: MergePersonsRequest = {
-				survivor_id: survivor.id,
-				merged_id: merged.id,
+				// IDs come from the trusted route params, not the API response body
+				// — defence-in-depth in case the response was tampered with.
+				survivor_id: survivorTarget,
+				merged_id: mergedTarget,
 				survivor_version: survivor.version,
 				merged_version: merged.version,
 				field_resolution: { ...resolution }
 			};
 			result = await api.mergePersons(req);
 			setTimeout(() => {
-				goto(`/persons/${encodeURIComponent(redirectTarget)}`);
+				goto(`/persons/${encodeURIComponent(survivorTarget)}`);
 			}, MERGE_REDIRECT_DELAY_MS);
 		} catch (e) {
 			error = truncateError(e, 'Merge failed');

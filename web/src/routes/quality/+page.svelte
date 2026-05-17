@@ -106,15 +106,36 @@
 
 	// --- Data loading ---
 
+	// Returns the page actually fetched. When the requested page was beyond the
+	// post-mutation total (e.g. user dismissed the last items on page 3), the
+	// caller can re-issue with the returned page or update local state.
+	function clampPage(requested: number, total: number): number {
+		const maxPage = Math.max(1, Math.ceil(total / pageSize));
+		return Math.min(Math.max(1, requested), maxPage);
+	}
+
 	async function loadValidationIssues() {
 		validationLoading = true;
 		validationError = null;
 		try {
-			const result = await api.getValidationIssues({
-				severity: severityFilter === 'all' ? undefined : severityFilter,
+			const severityParam = severityFilter === 'all' ? undefined : severityFilter;
+			const requestedPage = validationPage;
+			let result = await api.getValidationIssues({
+				severity: severityParam,
 				limit: pageSize,
-				offset: (validationPage - 1) * pageSize
+				offset: (requestedPage - 1) * pageSize
 			});
+			// If a previous fetch / filter switch / external mutation left
+			// validationPage past the new total, clamp and refetch the valid page.
+			const target = clampPage(requestedPage, result.total);
+			if (target !== requestedPage && result.total > 0) {
+				validationPage = target;
+				result = await api.getValidationIssues({
+					severity: severityParam,
+					limit: pageSize,
+					offset: (target - 1) * pageSize
+				});
+			}
 			issues = result.issues;
 			validationTotal = result.total;
 			// Counts always reflect the full unfiltered set from the backend, so
@@ -133,10 +154,22 @@
 		duplicatesLoading = true;
 		duplicatesError = null;
 		try {
-			const result = await api.getPersonsDuplicates({
+			const requestedPage = duplicatesPage;
+			let result = await api.getPersonsDuplicates({
 				limit: pageSize,
-				offset: (duplicatesPage - 1) * pageSize
+				offset: (requestedPage - 1) * pageSize
 			});
+			// If a dismiss reduced the total below the active page (e.g. user
+			// dismissed the last items on page 3), clamp and refetch so the UI
+			// shows the correct page rather than an empty out-of-range slice.
+			const target = clampPage(requestedPage, result.total);
+			if (target !== requestedPage && result.total > 0) {
+				duplicatesPage = target;
+				result = await api.getPersonsDuplicates({
+					limit: pageSize,
+					offset: (target - 1) * pageSize
+				});
+			}
 			duplicates = result.duplicates;
 			duplicatesTotal = result.total;
 		} catch (e) {
@@ -201,7 +234,7 @@
 	// Derived values
 	const totalIssuesCount = $derived(errorCount + warningCount + infoCount);
 	const validationTotalPages = $derived(Math.max(1, Math.ceil(validationTotal / pageSize)));
-	const duplicatesTotalPages = $derived(Math.ceil(duplicatesTotal / pageSize));
+	const duplicatesTotalPages = $derived(Math.max(1, Math.ceil(duplicatesTotal / pageSize)));
 
 	const filterPills = $derived([
 		{ key: 'all' as const, label: 'All', count: totalIssuesCount },
