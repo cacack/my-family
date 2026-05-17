@@ -441,7 +441,7 @@ func TestGetValidationIssues_ResponseSchema(t *testing.T) {
 	}
 
 	// Check required fields
-	requiredFields := []string{"issues", "error_count", "warning_count", "info_count"}
+	requiredFields := []string{"issues", "total", "error_count", "warning_count", "info_count"}
 	for _, field := range requiredFields {
 		if _, ok := raw[field]; !ok {
 			t.Errorf("Missing required field: %s", field)

@@ -358,13 +358,16 @@ func TestValidationService_GetValidationIssues_Empty(t *testing.T) {
 	service, _ := setupValidationService()
 	ctx := context.Background()
 
-	issues, err := service.GetValidationIssues(ctx, "")
+	page, err := service.GetValidationIssues(ctx, "", 0, 0)
 	if err != nil {
 		t.Fatalf("GetValidationIssues returned error: %v", err)
 	}
 
-	if len(issues) != 0 {
-		t.Errorf("Issues = %d, want 0", len(issues))
+	if len(page.Issues) != 0 {
+		t.Errorf("Issues = %d, want 0", len(page.Issues))
+	}
+	if page.Total != 0 {
+		t.Errorf("Total = %d, want 0", page.Total)
 	}
 }
 
@@ -375,19 +378,19 @@ func TestValidationService_GetValidationIssues_DateLogicIssues(t *testing.T) {
 	// Add a person with death before birth (invalid)
 	addPersonWithDeath(store, "Invalid", "Dates", "2000", "1950")
 
-	issues, err := service.GetValidationIssues(ctx, "")
+	page, err := service.GetValidationIssues(ctx, "", 0, 0)
 	if err != nil {
 		t.Fatalf("GetValidationIssues returned error: %v", err)
 	}
 
 	// Should have at least one issue
-	if len(issues) == 0 {
+	if len(page.Issues) == 0 {
 		t.Error("Expected issues for person with death before birth")
 	}
 
 	// At least one issue should relate to date logic
 	hasDateIssue := false
-	for _, issue := range issues {
+	for _, issue := range page.Issues {
 		if issue.Code != "" {
 			hasDateIssue = true
 			break
@@ -406,14 +409,14 @@ func TestValidationService_GetValidationIssues_SeverityLevels(t *testing.T) {
 	addPerson(store, "John", "Doe", "")                           // Missing birth date
 	addPersonWithDeath(store, "Invalid", "Dates", "2000", "1900") // Death before birth
 
-	issues, err := service.GetValidationIssues(ctx, "")
+	page, err := service.GetValidationIssues(ctx, "", 0, 0)
 	if err != nil {
 		t.Fatalf("GetValidationIssues returned error: %v", err)
 	}
 
 	// Verify severity levels are valid
 	validSeverities := map[string]bool{"error": true, "warning": true, "info": true}
-	for _, issue := range issues {
+	for _, issue := range page.Issues {
 		if !validSeverities[issue.Severity] {
 			t.Errorf("Invalid severity: %s", issue.Severity)
 		}
@@ -429,41 +432,51 @@ func TestValidationService_GetValidationIssues_SeverityFilter(t *testing.T) {
 	addPerson(store, "Missing", "Data", "")
 
 	// Get all issues first
-	allIssues, err := service.GetValidationIssues(ctx, "")
+	allPage, err := service.GetValidationIssues(ctx, "", 0, 0)
 	if err != nil {
 		t.Fatalf("GetValidationIssues returned error: %v", err)
 	}
 
 	// Filter by error
-	errorIssues, err := service.GetValidationIssues(ctx, "error")
+	errorPage, err := service.GetValidationIssues(ctx, "error", 0, 0)
 	if err != nil {
 		t.Fatalf("GetValidationIssues (error filter) returned error: %v", err)
 	}
 
 	// All filtered issues should have error severity
-	for _, issue := range errorIssues {
+	for _, issue := range errorPage.Issues {
 		if issue.Severity != "error" {
 			t.Errorf("Issue severity = %s, want error", issue.Severity)
 		}
 	}
 
 	// Filter by warning
-	warningIssues, err := service.GetValidationIssues(ctx, "warning")
+	warningPage, err := service.GetValidationIssues(ctx, "warning", 0, 0)
 	if err != nil {
 		t.Fatalf("GetValidationIssues (warning filter) returned error: %v", err)
 	}
 
 	// All filtered issues should have warning severity
-	for _, issue := range warningIssues {
+	for _, issue := range warningPage.Issues {
 		if issue.Severity != "warning" {
 			t.Errorf("Issue severity = %s, want warning", issue.Severity)
 		}
 	}
 
 	// Filtered counts should not exceed total
-	if len(errorIssues)+len(warningIssues) > len(allIssues) {
+	if len(errorPage.Issues)+len(warningPage.Issues) > len(allPage.Issues) {
 		// This could happen if there are info issues too
 		t.Log("Filtered counts may include info issues")
+	}
+
+	// Global counts should be stable across filters.
+	if errorPage.ErrorCount != allPage.ErrorCount {
+		t.Errorf("ErrorCount across filters differs: error-filtered=%d, all=%d",
+			errorPage.ErrorCount, allPage.ErrorCount)
+	}
+	if warningPage.WarningCount != allPage.WarningCount {
+		t.Errorf("WarningCount across filters differs: warning-filtered=%d, all=%d",
+			warningPage.WarningCount, allPage.WarningCount)
 	}
 }
 
@@ -474,13 +487,13 @@ func TestValidationService_GetValidationIssues_RecordMapping(t *testing.T) {
 	// Add a person with issues
 	personID := addPersonWithDeath(store, "Invalid", "Person", "2000", "1900")
 
-	issues, err := service.GetValidationIssues(ctx, "")
+	page, err := service.GetValidationIssues(ctx, "", 0, 0)
 	if err != nil {
 		t.Fatalf("GetValidationIssues returned error: %v", err)
 	}
 
 	// If there are issues related to our person, the RecordID should be mapped
-	for _, issue := range issues {
+	for _, issue := range page.Issues {
 		if issue.RecordID != nil {
 			// Verify it's a valid UUID (not nil)
 			if *issue.RecordID == uuid.Nil {
@@ -491,6 +504,61 @@ func TestValidationService_GetValidationIssues_RecordMapping(t *testing.T) {
 				t.Log("Successfully mapped issue to person ID")
 			}
 		}
+	}
+}
+
+func TestValidationService_GetValidationIssues_Pagination(t *testing.T) {
+	service, store := setupValidationService()
+	ctx := context.Background()
+
+	// Seed enough issue-producing persons that the issue list exceeds a small page.
+	for i := 0; i < 5; i++ {
+		addPersonWithDeath(store, "Bad", "Dates", "2000", "1900")
+	}
+
+	// All issues at once for a baseline.
+	all, err := service.GetValidationIssues(ctx, "", 0, 0)
+	if err != nil {
+		t.Fatalf("GetValidationIssues (all) returned error: %v", err)
+	}
+	if all.Total != len(all.Issues) {
+		t.Errorf("Total=%d should equal len(Issues)=%d when no pagination", all.Total, len(all.Issues))
+	}
+	if all.Total < 2 {
+		t.Skipf("Need at least 2 issues to exercise pagination; got %d", all.Total)
+	}
+
+	// First page of 1.
+	first, err := service.GetValidationIssues(ctx, "", 1, 0)
+	if err != nil {
+		t.Fatalf("GetValidationIssues (first page) returned error: %v", err)
+	}
+	if len(first.Issues) != 1 {
+		t.Errorf("First page Issues = %d, want 1", len(first.Issues))
+	}
+	if first.Total != all.Total {
+		t.Errorf("First page Total = %d, want %d (matches unfiltered total)", first.Total, all.Total)
+	}
+
+	// Second page of 1.
+	second, err := service.GetValidationIssues(ctx, "", 1, 1)
+	if err != nil {
+		t.Fatalf("GetValidationIssues (second page) returned error: %v", err)
+	}
+	if len(second.Issues) != 1 {
+		t.Errorf("Second page Issues = %d, want 1", len(second.Issues))
+	}
+
+	// Offset beyond available issues yields an empty page but the same Total.
+	beyond, err := service.GetValidationIssues(ctx, "", 10, all.Total+100)
+	if err != nil {
+		t.Fatalf("GetValidationIssues (beyond) returned error: %v", err)
+	}
+	if len(beyond.Issues) != 0 {
+		t.Errorf("Beyond-end page Issues = %d, want 0", len(beyond.Issues))
+	}
+	if beyond.Total != all.Total {
+		t.Errorf("Beyond-end page Total = %d, want %d", beyond.Total, all.Total)
 	}
 }
 

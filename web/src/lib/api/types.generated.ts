@@ -1278,7 +1278,10 @@ export interface paths {
         };
         /**
          * Get validation issues
-         * @description Returns date logic and reference validation issues categorized by severity
+         * @description Returns date logic and reference validation issues categorized by
+         *     severity. Supports pagination so a large tree does not produce an
+         *     unbounded response. The error/warning/info counts always reflect the
+         *     full unfiltered, unpaginated issue set.
          */
         get: operations["getValidationIssues"];
         put?: never;
@@ -3305,15 +3308,22 @@ export interface components {
              */
             related_record_id?: string;
         };
-        /** @description Response containing validation issues categorized by severity */
+        /**
+         * @description Response containing validation issues categorized by severity.
+         *     Counts always cover the full unfiltered, unpaginated issue set;
+         *     `total` is the count of issues after the severity filter (if any)
+         *     but before pagination, suitable for driving page navigation.
+         */
         ValidationIssuesResponse: {
-            /** @description List of validation issues */
+            /** @description List of validation issues (paginated slice) */
             issues: components["schemas"]["ValidationIssue"][];
-            /** @description Total number of error-level issues */
+            /** @description Total number of issues matching the severity filter (pre-pagination) */
+            total: number;
+            /** @description Total number of error-level issues (unfiltered) */
             error_count: number;
-            /** @description Total number of warning-level issues */
+            /** @description Total number of warning-level issues (unfiltered) */
             warning_count: number;
-            /** @description Total number of info-level issues */
+            /** @description Total number of info-level issues (unfiltered) */
             info_count: number;
         };
         Statistics: {
@@ -6158,6 +6168,10 @@ export interface operations {
             query?: {
                 /** @description Filter by severity level */
                 severity?: "error" | "warning" | "info";
+                /** @description Maximum number of issues to return (post-severity-filter) */
+                limit?: number;
+                /** @description Number of issues to skip (post-severity-filter) */
+                offset?: number;
             };
             header?: never;
             path?: never;
