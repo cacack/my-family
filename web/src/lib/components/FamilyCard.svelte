@@ -12,8 +12,8 @@
 
 	let { family, href, onclick }: Props = $props();
 
-	const partner1Name = family.partner1_name || 'Unknown';
-	const partner2Name = family.partner2_name || null;
+	const partner1Name = family.partner1?.given_name ?? 'Unknown';
+	const partner2Name = family.partner2?.given_name ?? null;
 	const marriageDate = family.marriage_date ? formatGenDate(family.marriage_date) : null;
 	const childCount = family.child_count ?? family.children?.length ?? 0;
 </script>
