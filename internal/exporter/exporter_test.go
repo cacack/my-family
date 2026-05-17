@@ -417,13 +417,54 @@ func TestCSVExporter_ExportFamilies_WithData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, records, 2) // Header + 1 data row
 
-	// Check data contains expected values (split per issue #483)
-	allData := buf.String()
-	assert.Contains(t, allData, "John")
-	assert.Contains(t, allData, "Doe")
-	assert.Contains(t, allData, "Jane")
-	assert.Contains(t, allData, "Smith")
-	assert.Contains(t, allData, "marriage")
+	// Bind given name to surname per partner so a regression that swapped
+	// surnames between partners (e.g., "John Smith" / "Jane Doe") would fail
+	// here. Look up each name column by header index and assert the matching
+	// values land together.
+	headers := records[0]
+	row := records[1]
+	idx := func(col string) int {
+		for i, h := range headers {
+			if h == col {
+				return i
+			}
+		}
+		t.Fatalf("missing column %q in CSV header %v", col, headers)
+		return -1
+	}
+	assert.Equal(t, "John", row[idx("partner1_given_name")])
+	assert.Equal(t, "Doe", row[idx("partner1_surname")])
+	assert.Equal(t, "Jane", row[idx("partner2_given_name")])
+	assert.Equal(t, "Smith", row[idx("partner2_surname")])
+	assert.Contains(t, buf.String(), "marriage")
+}
+
+// TestCSVExporter_DeprecatedFamilyNameFields covers backward compatibility for
+// callers (saved export configs, scripts) that still pass the pre-#483 field
+// keys "partner1_name" / "partner2_name". They must validate and render the
+// trimmed "given surname" concatenation.
+func TestCSVExporter_DeprecatedFamilyNameFields(t *testing.T) {
+	store := setupTestStore(t)
+	person1 := createTestPerson(t, store, "John", "Doe", domain.GenderMale)
+	person2 := createTestPerson(t, store, "Jane", "Smith", domain.GenderFemale)
+	_ = createTestFamily(t, store, &person1, &person2)
+
+	exp := exporter.NewDataExporter(store)
+	var buf bytes.Buffer
+	_, err := exp.Export(context.Background(), &buf, exporter.ExportOptions{
+		Format:     exporter.FormatCSV,
+		EntityType: exporter.EntityTypeFamilies,
+		Fields:     []string{"id", "partner1_name", "partner2_name"},
+	})
+	require.NoError(t, err)
+
+	reader := csv.NewReader(strings.NewReader(buf.String()))
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, records, 2)
+	assert.Equal(t, []string{"id", "partner1_name", "partner2_name"}, records[0])
+	assert.Equal(t, "John Doe", records[1][1])
+	assert.Equal(t, "Jane Smith", records[1][2])
 }
 
 func TestCSVExporter_ExportFamilies_CustomFields(t *testing.T) {

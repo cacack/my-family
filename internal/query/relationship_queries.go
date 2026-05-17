@@ -166,7 +166,7 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 
 // personDisplayName returns a display name for a person.
 func personDisplayName(p Person) string {
-	name := strings.TrimSpace(p.GivenName + " " + p.Surname)
+	name := fullName(p.GivenName, p.Surname)
 	if name == "" {
 		return "Unknown"
 	}

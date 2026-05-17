@@ -3570,13 +3570,15 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 		resp.MarriagePlace = fd.MarriagePlace
 	}
 
-	// Add partner details if available. Either part may be missing on legacy data;
-	// fall back to empty string so we still render whatever we have.
-	if fd.Partner1ID != nil && (fd.Partner1GivenName != nil || fd.Partner1Surname != nil) {
-		resp.Partner1 = partnerSummary(*fd.Partner1ID, derefString(fd.Partner1GivenName), derefString(fd.Partner1Surname))
+	// Emit the partner summary whenever the partner ID is set so callers can
+	// always pair partner1_id with a partner1 object. Either name part may be
+	// nil for legacy or unprojected data; missing parts render as empty
+	// strings rather than dropping the whole summary.
+	if fd.Partner1ID != nil {
+		resp.Partner1 = partnerSummary(*fd.Partner1ID, stringValue(fd.Partner1GivenName), stringValue(fd.Partner1Surname))
 	}
-	if fd.Partner2ID != nil && (fd.Partner2GivenName != nil || fd.Partner2Surname != nil) {
-		resp.Partner2 = partnerSummary(*fd.Partner2ID, derefString(fd.Partner2GivenName), derefString(fd.Partner2Surname))
+	if fd.Partner2ID != nil {
+		resp.Partner2 = partnerSummary(*fd.Partner2ID, stringValue(fd.Partner2GivenName), stringValue(fd.Partner2Surname))
 	}
 
 	if len(fd.Children) > 0 {
@@ -3625,18 +3627,20 @@ func convertQueryFamilyToFamilyDetail(f query.Family) FamilyDetail {
 		resp.MarriagePlace = f.MarriagePlace
 	}
 
-	if f.Partner1ID != nil && (f.Partner1GivenName != nil || f.Partner1Surname != nil) {
-		resp.Partner1 = partnerSummary(*f.Partner1ID, derefString(f.Partner1GivenName), derefString(f.Partner1Surname))
+	if f.Partner1ID != nil {
+		resp.Partner1 = partnerSummary(*f.Partner1ID, stringValue(f.Partner1GivenName), stringValue(f.Partner1Surname))
 	}
-	if f.Partner2ID != nil && (f.Partner2GivenName != nil || f.Partner2Surname != nil) {
-		resp.Partner2 = partnerSummary(*f.Partner2ID, derefString(f.Partner2GivenName), derefString(f.Partner2Surname))
+	if f.Partner2ID != nil {
+		resp.Partner2 = partnerSummary(*f.Partner2ID, stringValue(f.Partner2GivenName), stringValue(f.Partner2Surname))
 	}
 
 	return resp
 }
 
-// derefString returns *s, or "" if s is nil.
-func derefString(s *string) string {
+// stringValue dereferences a string pointer, treating nil as the empty string.
+// Used when converting query-layer `*string` fields into the API's required
+// string fields, where a nil pointer represents "absent in the read model".
+func stringValue(s *string) string {
 	if s == nil {
 		return ""
 	}

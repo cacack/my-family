@@ -450,37 +450,44 @@ func (s *ReadModelStore) runMigrations() {
 	// Add is_negated column for negative assertions / NO tags (issue #222)
 	_, _ = s.db.Exec(`ALTER TABLE events ADD COLUMN IF NOT EXISTS is_negated BOOLEAN NOT NULL DEFAULT FALSE`)
 
-	// Split family partner names and family-child names into given_name / surname (issue #483)
-	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner1_given_name VARCHAR(200)`)
-	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner1_surname VARCHAR(200)`)
-	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner2_given_name VARCHAR(200)`)
-	_, _ = s.db.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner2_surname VARCHAR(200)`)
-	_, _ = s.db.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_given_name VARCHAR(200)`)
-	_, _ = s.db.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_surname VARCHAR(200)`)
+	// Split family partner names and family-child names into given_name / surname (issue #483).
+	// Wrapped in a single transaction so a mid-migration crash leaves either the pre-migration
+	// or post-migration state, never a half-state where legacy columns are dropped before the
+	// new ones are populated. SQLite-side does NOT drop the legacy columns (project convention
+	// never drops columns on SQLite), so the two backends diverge intentionally here.
+	if tx, err := s.db.Begin(); err == nil {
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner1_given_name VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner1_surname VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner2_given_name VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE families ADD COLUMN IF NOT EXISTS partner2_surname VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_given_name VARCHAR(200)`)
+		_, _ = tx.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_surname VARCHAR(200)`)
 
-	// Backfill split fields from persons table; idempotent via IS NULL guard.
-	_, _ = s.db.Exec(`
-		UPDATE families f SET
-			partner1_given_name = p.given_name,
-			partner1_surname    = p.surname
-		FROM persons p WHERE f.partner1_id = p.id AND f.partner1_given_name IS NULL
-	`)
-	_, _ = s.db.Exec(`
-		UPDATE families f SET
-			partner2_given_name = p.given_name,
-			partner2_surname    = p.surname
-		FROM persons p WHERE f.partner2_id = p.id AND f.partner2_given_name IS NULL
-	`)
-	_, _ = s.db.Exec(`
-		UPDATE family_children fc SET
-			person_given_name = p.given_name,
-			person_surname    = p.surname
-		FROM persons p WHERE fc.person_id = p.id AND fc.person_given_name IS NULL
-	`)
+		// Backfill split fields from persons table; idempotent via IS NULL guard.
+		_, _ = tx.Exec(`
+			UPDATE families f SET
+				partner1_given_name = p.given_name,
+				partner1_surname    = p.surname
+			FROM persons p WHERE f.partner1_id = p.id AND f.partner1_given_name IS NULL
+		`)
+		_, _ = tx.Exec(`
+			UPDATE families f SET
+				partner2_given_name = p.given_name,
+				partner2_surname    = p.surname
+			FROM persons p WHERE f.partner2_id = p.id AND f.partner2_given_name IS NULL
+		`)
+		_, _ = tx.Exec(`
+			UPDATE family_children fc SET
+				person_given_name = p.given_name,
+				person_surname    = p.surname
+			FROM persons p WHERE fc.person_id = p.id AND fc.person_given_name IS NULL
+		`)
 
-	// Drop legacy denormalized columns once the split is populated.
-	_, _ = s.db.Exec(`ALTER TABLE families DROP COLUMN IF EXISTS partner1_name, DROP COLUMN IF EXISTS partner2_name`)
-	_, _ = s.db.Exec(`ALTER TABLE family_children DROP COLUMN IF EXISTS person_name`)
+		// Drop legacy denormalized columns once the split is populated.
+		_, _ = tx.Exec(`ALTER TABLE families DROP COLUMN IF EXISTS partner1_name, DROP COLUMN IF EXISTS partner2_name`)
+		_, _ = tx.Exec(`ALTER TABLE family_children DROP COLUMN IF EXISTS person_name`)
+		_ = tx.Commit()
+	}
 }
 
 // GetPerson retrieves a person by ID.

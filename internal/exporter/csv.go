@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/cacack/my-family/internal/repository"
 )
@@ -97,14 +98,19 @@ var AvailablePersonFields = map[string]bool{
 }
 
 // AvailableFamilyFields lists all fields that can be exported for families.
+// The deprecated keys "partner1_name" and "partner2_name" remain valid for
+// backward compatibility with saved export configurations from before #483;
+// they render the trimmed "given surname" concatenation.
 var AvailableFamilyFields = map[string]bool{
 	"id":                  true,
 	"partner1_id":         true,
 	"partner1_given_name": true,
 	"partner1_surname":    true,
+	"partner1_name":       true, // deprecated alias, kept for backcompat
 	"partner2_id":         true,
 	"partner2_given_name": true,
 	"partner2_surname":    true,
+	"partner2_name":       true, // deprecated alias, kept for backcompat
 	"relationship_type":   true,
 	"marriage_date":       true,
 	"marriage_place":      true,
@@ -380,6 +386,8 @@ func getFamilyFieldValue(f repository.FamilyReadModel, field string) string {
 		return f.Partner1GivenName
 	case "partner1_surname":
 		return f.Partner1Surname
+	case "partner1_name": // deprecated; concatenated for callers using the pre-#483 field
+		return strings.TrimSpace(f.Partner1GivenName + " " + f.Partner1Surname)
 	case "partner2_id":
 		if f.Partner2ID != nil {
 			return f.Partner2ID.String()
@@ -389,6 +397,8 @@ func getFamilyFieldValue(f repository.FamilyReadModel, field string) string {
 		return f.Partner2GivenName
 	case "partner2_surname":
 		return f.Partner2Surname
+	case "partner2_name": // deprecated; concatenated for callers using the pre-#483 field
+		return strings.TrimSpace(f.Partner2GivenName + " " + f.Partner2Surname)
 	case "relationship_type":
 		return string(f.RelationshipType)
 	case "marriage_date":

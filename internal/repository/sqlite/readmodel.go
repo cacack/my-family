@@ -438,22 +438,25 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE family_children ADD COLUMN person_surname TEXT`)
 
 	// Backfill split fields from persons; idempotent via IS NULL guard.
+	// COALESCE the subquery to '' so an orphan partner_id (no matching persons row)
+	// converges to a written empty string rather than NULL, which would otherwise
+	// re-trigger the backfill on every startup.
 	_, _ = s.db.Exec(`
 		UPDATE families SET
-			partner1_given_name = (SELECT given_name FROM persons WHERE id = partner1_id),
-			partner1_surname    = (SELECT surname    FROM persons WHERE id = partner1_id)
+			partner1_given_name = COALESCE((SELECT given_name FROM persons WHERE id = partner1_id), ''),
+			partner1_surname    = COALESCE((SELECT surname    FROM persons WHERE id = partner1_id), '')
 		WHERE partner1_id IS NOT NULL AND partner1_given_name IS NULL
 	`)
 	_, _ = s.db.Exec(`
 		UPDATE families SET
-			partner2_given_name = (SELECT given_name FROM persons WHERE id = partner2_id),
-			partner2_surname    = (SELECT surname    FROM persons WHERE id = partner2_id)
+			partner2_given_name = COALESCE((SELECT given_name FROM persons WHERE id = partner2_id), ''),
+			partner2_surname    = COALESCE((SELECT surname    FROM persons WHERE id = partner2_id), '')
 		WHERE partner2_id IS NOT NULL AND partner2_given_name IS NULL
 	`)
 	_, _ = s.db.Exec(`
 		UPDATE family_children SET
-			person_given_name = (SELECT given_name FROM persons WHERE id = person_id),
-			person_surname    = (SELECT surname    FROM persons WHERE id = person_id)
+			person_given_name = COALESCE((SELECT given_name FROM persons WHERE id = person_id), ''),
+			person_surname    = COALESCE((SELECT surname    FROM persons WHERE id = person_id), '')
 		WHERE person_id IS NOT NULL AND person_given_name IS NULL
 	`)
 }

@@ -2243,9 +2243,9 @@ export interface components {
             version: number;
         };
         FamilyDetail: components["schemas"]["Family"] & {
-            /** @description Partner 1 summary. May be absent even when partner1_id is set if the partner's name has not been projected yet. */
+            /** @description Partner 1 summary. Present whenever partner1_id is set; given_name and surname may be empty strings if the partner has no recorded name. */
             partner1?: components["schemas"]["PersonSummary"];
-            /** @description Partner 2 summary. May be absent even when partner2_id is set if the partner's name has not been projected yet. */
+            /** @description Partner 2 summary. Present whenever partner2_id is set; given_name and surname may be empty strings if the partner has no recorded name. */
             partner2?: components["schemas"]["PersonSummary"];
             children?: components["schemas"]["FamilyChild"][];
         };

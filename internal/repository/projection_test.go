@@ -384,6 +384,57 @@ func TestProjector_FamilyUpdated(t *testing.T) {
 	}
 }
 
+func TestProjector_FamilyUpdated_PartnerSwap(t *testing.T) {
+	// Issue #483: changing partner1_id / partner2_id via FamilyUpdated must
+	// refresh the denormalized split-name fields, otherwise the family row
+	// keeps showing the former partner's name next to the new partner's ID.
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Seed three persons: the initial partners and a replacement.
+	p1 := &domain.Person{ID: uuid.New(), GivenName: "John", Surname: "Doe"}
+	p2 := &domain.Person{ID: uuid.New(), GivenName: "Jane", Surname: "Doe"}
+	p3 := &domain.Person{ID: uuid.New(), GivenName: "Mary", Surname: "Smith"}
+	for i, p := range []*domain.Person{p1, p2, p3} {
+		if err := projector.Project(ctx, domain.NewPersonCreated(p), int64(i+1)); err != nil {
+			t.Fatalf("seed person %d: %v", i, err)
+		}
+	}
+
+	// Create the family with p1 and p2.
+	family := domain.NewFamily()
+	family.Partner1ID = &p1.ID
+	family.Partner2ID = &p2.ID
+	family.RelationshipType = domain.RelationMarriage
+	if err := projector.Project(ctx, domain.NewFamilyCreated(family), 4); err != nil {
+		t.Fatalf("create family: %v", err)
+	}
+
+	// Swap partner1 to p3.
+	update := domain.NewFamilyUpdated(family.ID, map[string]any{
+		"partner1_id": p3.ID.String(),
+	})
+	if err := projector.Project(ctx, update, 5); err != nil {
+		t.Fatalf("project update: %v", err)
+	}
+
+	rm, err := readStore.GetFamily(ctx, family.ID)
+	if err != nil || rm == nil {
+		t.Fatalf("get family: %v (rm=%v)", err, rm)
+	}
+	if rm.Partner1ID == nil || *rm.Partner1ID != p3.ID {
+		t.Errorf("Partner1ID = %v, want %v", rm.Partner1ID, p3.ID)
+	}
+	if rm.Partner1GivenName != "Mary" || rm.Partner1Surname != "Smith" {
+		t.Errorf("Partner1 name = %q %q, want Mary Smith", rm.Partner1GivenName, rm.Partner1Surname)
+	}
+	// Partner2 must be untouched.
+	if rm.Partner2GivenName != "Jane" || rm.Partner2Surname != "Doe" {
+		t.Errorf("Partner2 name = %q %q, want Jane Doe", rm.Partner2GivenName, rm.Partner2Surname)
+	}
+}
+
 func TestProjector_FamilyUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	projector := repository.NewProjector(readStore)

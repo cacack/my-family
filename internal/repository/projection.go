@@ -318,9 +318,15 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 	for key, value := range e.Changes {
 		switch key {
 		case "partner1_id":
-			// Handle partner ID changes - complex, may need to fetch new name
+			newID, given, surname := p.resolvePartnerChange(ctx, value)
+			family.Partner1ID = newID
+			family.Partner1GivenName = given
+			family.Partner1Surname = surname
 		case "partner2_id":
-			// Handle partner ID changes
+			newID, given, surname := p.resolvePartnerChange(ctx, value)
+			family.Partner2ID = newID
+			family.Partner2GivenName = given
+			family.Partner2Surname = surname
 		case "relationship_type":
 			if v, ok := value.(string); ok {
 				family.RelationshipType = domain.RelationType(v)
@@ -347,6 +353,27 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 	family.UpdatedAt = e.OccurredAt()
 
 	return p.readStore.SaveFamily(ctx, family)
+}
+
+// resolvePartnerChange resolves a partner_id value from a FamilyUpdated.Changes
+// map into the new partner ID and split name fields. Values arrive as untyped
+// JSON: a string UUID for a swap, nil/empty to clear. Unknown person IDs leave
+// the names empty rather than failing — the name will be backfilled the next
+// time the projection sees the person.
+func (p *Projector) resolvePartnerChange(ctx context.Context, value any) (*uuid.UUID, string, string) {
+	s, ok := value.(string)
+	if !ok || s == "" {
+		return nil, "", ""
+	}
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return nil, "", ""
+	}
+	person, _ := p.readStore.GetPerson(ctx, parsed)
+	if person == nil {
+		return &parsed, "", ""
+	}
+	return &parsed, person.GivenName, person.Surname
 }
 
 func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily) error {

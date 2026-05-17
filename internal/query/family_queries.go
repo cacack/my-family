@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -419,12 +418,12 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, child repository
 			// Find the other partner
 			if fam.Partner1ID != nil && *fam.Partner1ID != person.ID {
 				gsc.SpouseID = fam.Partner1ID
-				gsc.SpouseName = strings.TrimSpace(fam.Partner1GivenName + " " + fam.Partner1Surname)
+				gsc.SpouseName = fullName(fam.Partner1GivenName, fam.Partner1Surname)
 				break
 			}
 			if fam.Partner2ID != nil && *fam.Partner2ID != person.ID {
 				gsc.SpouseID = fam.Partner2ID
-				gsc.SpouseName = strings.TrimSpace(fam.Partner2GivenName + " " + fam.Partner2Surname)
+				gsc.SpouseName = fullName(fam.Partner2GivenName, fam.Partner2Surname)
 				break
 			}
 		}
