@@ -9,6 +9,9 @@
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
 
@@ -22,6 +25,11 @@
 	];
 
 	const researchStatuses = ['certain', 'probable', 'possible', 'unknown'] as const;
+
+	// Native <select> styled to match shadcn Input. Matches Input class signature so
+	// focus ring, border, and disabled state stay consistent with other form controls.
+	const nativeSelectClass =
+		'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 	let analysis: EvidenceAnalysisResponse | null = $state(null);
 	let loading = $state(true);
@@ -198,11 +206,13 @@
 	<title>{isNew ? 'New Analysis' : analysis ? 'Analysis' : 'Evidence Analysis'} | My Family</title>
 </svelte:head>
 
-<div class="detail-page">
-	<header class="page-header">
-		<a href="/evidence" class="back-link">&larr; Evidence</a>
+<div class="mx-auto max-w-3xl p-6">
+	<header class="mb-6 flex items-center justify-between">
+		<a href="/evidence" class="text-sm text-slate-500 no-underline hover:text-blue-500">
+			&larr; Evidence
+		</a>
 		{#if analysis && !editing}
-			<div class="actions">
+			<div class="flex gap-2">
 				<Button variant="outline" onclick={startEdit}>Edit</Button>
 				<Button variant="destructive" onclick={deleteAnalysis} disabled={deleting}>
 					{deleting ? 'Deleting...' : 'Delete'}
@@ -212,75 +222,130 @@
 	</header>
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<div class="p-12 text-center text-slate-500">Loading...</div>
 	{:else if error && !analysis && !isNew}
-		<div class="error">
-			<p>{error}</p>
+		<div class="p-12 text-center text-red-600">
+			<p class="m-0 mb-4">{error}</p>
 			<Button variant="outline" onclick={() => loadAnalysis($page.params.id!)}>Retry</Button>
 		</div>
 	{:else if editing}
-		<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveAnalysis(); }}>
-			<h1>{isNew ? 'New Evidence Analysis' : 'Edit Analysis'}</h1>
+		<form
+			class="rounded-xl border border-slate-200 bg-white p-6"
+			onsubmit={(e) => {
+				e.preventDefault();
+				saveAnalysis();
+			}}
+		>
+			<h1 class="m-0 mb-6 text-xl text-slate-800">
+				{isNew ? 'New Evidence Analysis' : 'Edit Analysis'}
+			</h1>
 
 			{#if error}
-				<div class="form-error" role="alert">{error}</div>
+				<div
+					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
+					role="alert"
+				>
+					{error}
+				</div>
 			{/if}
 
-			<div class="form-row">
-				<label>
-					Fact Type <span class="required">*</span>
-					<select bind:value={formData.fact_type} aria-label="Fact Type">
+			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex flex-col gap-1.5">
+					<Label for="fact-type" class="text-sm text-slate-600">
+						Fact Type <span class="text-red-600">*</span>
+					</Label>
+					<select
+						id="fact-type"
+						bind:value={formData.fact_type}
+						aria-label="Fact Type"
+						class={nativeSelectClass}
+					>
 						{#each factTypes as ft}
 							<option value={ft}>{formatFactType(ft)}</option>
 						{/each}
 					</select>
-				</label>
-				<label>
-					Subject ID <span class="required">*</span>
-					<input type="text" bind:value={formData.subject_id} required placeholder="Person or family UUID" aria-label="Subject ID" />
-				</label>
+				</div>
+				<div class="flex flex-col gap-1.5">
+					<Label for="subject-id" class="text-sm text-slate-600">
+						Subject ID <span class="text-red-600">*</span>
+					</Label>
+					<Input
+						id="subject-id"
+						type="text"
+						bind:value={formData.subject_id}
+						required
+						placeholder="Person or family UUID"
+						aria-label="Subject ID"
+					/>
+				</div>
 			</div>
 
-			<label>
-				Conclusion <span class="required">*</span>
-				<textarea bind:value={formData.conclusion} rows="3" required aria-label="Conclusion"></textarea>
-			</label>
+			<div class="mb-4 flex flex-col gap-1.5">
+				<Label for="conclusion" class="text-sm text-slate-600">
+					Conclusion <span class="text-red-600">*</span>
+				</Label>
+				<Textarea
+					id="conclusion"
+					bind:value={formData.conclusion}
+					rows={3}
+					required
+					aria-label="Conclusion"
+				/>
+			</div>
 
-			<div class="form-row">
-				<label>
-					Research Status
-					<select bind:value={formData.research_status} aria-label="Research Status">
+			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex flex-col gap-1.5">
+					<Label for="research-status" class="text-sm text-slate-600">Research Status</Label>
+					<select
+						id="research-status"
+						bind:value={formData.research_status}
+						aria-label="Research Status"
+						class={nativeSelectClass}
+					>
 						{#each researchStatuses as s}
 							<option value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
 						{/each}
 					</select>
-				</label>
+				</div>
 			</div>
 
-			<label>
-				Notes
-				<textarea bind:value={formData.notes} rows="3" aria-label="Notes"></textarea>
-			</label>
+			<div class="mb-4 flex flex-col gap-1.5">
+				<Label for="notes" class="text-sm text-slate-600">Notes</Label>
+				<Textarea id="notes" bind:value={formData.notes} rows={3} aria-label="Notes" />
+			</div>
 
-			<div class="list-field">
-				<h3>Citation IDs</h3>
+			<div class="mb-4">
+				<h3 class="m-0 mb-2 text-sm text-slate-600">Citation IDs</h3>
 				{#if formData.citation_ids.length > 0}
-					<ul class="id-list">
+					<ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0">
 						{#each formData.citation_ids as cid}
-							<li>
-								<code>{cid}</code>
-								<button type="button" class="remove-btn" onclick={() => removeCitation(cid)} aria-label="Remove citation {cid}">x</button>
+							<li class="flex items-center gap-2">
+								<code class="rounded bg-slate-100 px-2 py-1 text-[0.8125rem]">{cid}</code>
+								<button
+									type="button"
+									class="rounded border-none bg-transparent px-1.5 py-0.5 text-sm text-red-600 hover:bg-red-50"
+									onclick={() => removeCitation(cid)}
+									aria-label="Remove citation {cid}"
+								>
+									x
+								</button>
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<div class="add-id-row">
-					<input type="text" bind:value={newCitationId} placeholder="Citation UUID" aria-label="New citation ID" />
+				<div class="flex items-center gap-2">
+					<Input
+						type="text"
+						bind:value={newCitationId}
+						placeholder="Citation UUID"
+						aria-label="New citation ID"
+						class="flex-1"
+					/>
 					<Button type="button" variant="outline" onclick={addCitation}>Add</Button>
 				</div>
 			</div>
 
-			<div class="form-actions">
+			<div class="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
 				<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
 				<Button type="submit" disabled={saving}>
 					{saving ? 'Saving...' : isNew ? 'Create Analysis' : 'Save Changes'}
@@ -288,10 +353,10 @@
 			</div>
 		</form>
 	{:else if analysis}
-		<div class="detail-card">
-			<div class="detail-header">
-				<h1>Evidence Analysis</h1>
-				<div class="header-badges">
+		<div class="rounded-xl border border-slate-200 bg-white p-6">
+			<div class="mb-6 border-b border-slate-200 pb-4">
+				<h1 class="m-0 mb-2 text-2xl text-slate-800">Evidence Analysis</h1>
+				<div class="flex items-center gap-2">
 					<Badge variant="secondary">{formatFactType(analysis.fact_type)}</Badge>
 					{#if analysis.research_status}
 						<UncertaintyBadge status={analysis.research_status} showLabel />
@@ -300,49 +365,88 @@
 			</div>
 
 			{#if error}
-				<div class="form-error" role="alert">{error}</div>
+				<div
+					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
+					role="alert"
+				>
+					{error}
+				</div>
 			{/if}
 
-			<div class="info-grid">
-				<div class="info-section">
-					<h2>Details</h2>
-					<dl>
-						<dt>Subject</dt>
-						<dd><a href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}">{analysis.subject_id}</a></dd>
-						<dt>Fact Type</dt>
-						<dd>{formatFactType(analysis.fact_type)}</dd>
+			<div
+				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-6"
+			>
+				<div class="mb-6">
+					<h2
+						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500"
+					>
+						Details
+					</h2>
+					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+						<dt class="text-[0.8125rem] text-slate-400">Subject</dt>
+						<dd class="m-0 text-sm text-slate-800">
+							<a
+								href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}"
+								class="text-blue-500 no-underline hover:underline"
+							>
+								{analysis.subject_id}
+							</a>
+						</dd>
+						<dt class="text-[0.8125rem] text-slate-400">Fact Type</dt>
+						<dd class="m-0 text-sm text-slate-800">{formatFactType(analysis.fact_type)}</dd>
 						{#if analysis.conflict_id}
-							<dt>Conflict</dt>
-							<dd><a href="/evidence/conflicts/{analysis.conflict_id}">{analysis.conflict_id.slice(0, 8)}...</a></dd>
+							<dt class="text-[0.8125rem] text-slate-400">Conflict</dt>
+							<dd class="m-0 text-sm text-slate-800">
+								<a
+									href="/evidence/conflicts/{analysis.conflict_id}"
+									class="text-blue-500 no-underline hover:underline"
+								>
+									{analysis.conflict_id.slice(0, 8)}...
+								</a>
+							</dd>
 						{/if}
 					</dl>
 				</div>
 			</div>
 
-			<div class="info-section">
-				<h2>Conclusion</h2>
-				<p class="text-content">{analysis.conclusion}</p>
+			<div class="mb-6">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					Conclusion
+				</h2>
+				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+					{analysis.conclusion}
+				</p>
 			</div>
 
 			{#if analysis.notes}
-				<div class="info-section">
-					<h2>Notes</h2>
-					<p class="text-content">{analysis.notes}</p>
+				<div class="mb-6">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+						Notes
+					</h2>
+					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+						{analysis.notes}
+					</p>
 				</div>
 			{/if}
 
 			{#if analysis.citation_ids && analysis.citation_ids.length > 0}
-				<div class="info-section">
-					<h2>Citations ({analysis.citation_ids.length})</h2>
-					<ul class="linked-ids">
+				<div class="mb-6">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+						Citations ({analysis.citation_ids.length})
+					</h2>
+					<ul class="m-0 flex list-none flex-col gap-1.5 p-0">
 						{#each analysis.citation_ids as cid}
-							<li><code>{cid}</code></li>
+							<li>
+								<code class="rounded bg-slate-100 px-2 py-1 text-[0.8125rem]">{cid}</code>
+							</li>
 						{/each}
 					</ul>
 				</div>
 			{/if}
 
-			<div class="meta-footer">
+			<div
+				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-slate-400"
+			>
 				{#if analysis.created_at}
 					<span>Created: {new Date(analysis.created_at).toLocaleDateString()}</span>
 				{/if}
@@ -354,296 +458,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.detail-page {
-		max-width: 800px;
-		margin: 0 auto;
-		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.back-link {
-		color: #64748b;
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: #3b82f6;
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: #64748b;
-	}
-
-	.error {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.error p {
-		margin: 0 0 1rem;
-	}
-
-	.detail-card {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.5rem;
-	}
-
-	.detail-header {
-		margin-bottom: 1.5rem;
-		padding-bottom: 1rem;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	.detail-header h1 {
-		margin: 0 0 0.5rem;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.header-badges {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.info-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-		gap: 1.5rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: #64748b;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.info-section dl {
-		margin: 0;
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.25rem 1rem;
-	}
-
-	.info-section dt {
-		color: #94a3b8;
-		font-size: 0.8125rem;
-	}
-
-	.info-section dd {
-		margin: 0;
-		color: #1e293b;
-		font-size: 0.875rem;
-	}
-
-	.info-section dd a {
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	.info-section dd a:hover {
-		text-decoration: underline;
-	}
-
-	.text-content {
-		margin: 0;
-		color: #475569;
-		font-size: 0.875rem;
-		white-space: pre-wrap;
-		line-height: 1.6;
-	}
-
-	.linked-ids {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.linked-ids code {
-		font-size: 0.8125rem;
-		background: #f1f5f9;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-	}
-
-	.meta-footer {
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-		display: flex;
-		gap: 1.5rem;
-		flex-wrap: wrap;
-		font-size: 0.75rem;
-		color: #94a3b8;
-	}
-
-	/* Edit form styles */
-	.edit-form {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.5rem;
-	}
-
-	.edit-form h1 {
-		margin: 0 0 1.5rem;
-		font-size: 1.25rem;
-		color: #1e293b;
-	}
-
-	.form-error {
-		padding: 0.75rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		color: #dc2626;
-		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.edit-form label {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		font-size: 0.875rem;
-		color: #475569;
-		margin-bottom: 1rem;
-	}
-
-	.required {
-		color: #dc2626;
-	}
-
-	.edit-form input,
-	.edit-form select,
-	.edit-form textarea {
-		padding: 0.625rem 0.75rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		font-size: 0.875rem;
-	}
-
-	.edit-form input:focus,
-	.edit-form select:focus,
-	.edit-form textarea:focus {
-		outline: none;
-		border-color: #3b82f6;
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-	}
-
-	.edit-form textarea {
-		resize: vertical;
-	}
-
-	.list-field {
-		margin-bottom: 1rem;
-	}
-
-	.list-field h3 {
-		margin: 0 0 0.5rem;
-		font-size: 0.875rem;
-		color: #475569;
-	}
-
-	.id-list {
-		list-style: none;
-		padding: 0;
-		margin: 0 0 0.5rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.id-list li {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.id-list code {
-		font-size: 0.8125rem;
-		background: #f1f5f9;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-	}
-
-	.remove-btn {
-		background: none;
-		border: none;
-		color: #dc2626;
-		cursor: pointer;
-		font-size: 0.875rem;
-		padding: 0.125rem 0.375rem;
-		border-radius: 4px;
-	}
-
-	.remove-btn:hover {
-		background: #fef2f2;
-	}
-
-	.add-id-row {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.add-id-row input {
-		flex: 1;
-		padding: 0.5rem 0.75rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		font-size: 0.875rem;
-	}
-
-	.form-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.75rem;
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-	}
-
-	@media (max-width: 640px) {
-		.form-row {
-			grid-template-columns: 1fr;
-		}
-	}
-</style>

@@ -9,9 +9,16 @@
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import { toRFC3339 } from '$lib/utils/evidence';
 
 	const outcomes = ['found', 'not_found', 'inconclusive'] as const;
+
+	// Native <select> styled to match shadcn Input for visual consistency.
+	const nativeSelectClass =
+		'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 	let log: ResearchLogResponse | null = $state(null);
 	let loading = $state(true);
@@ -178,11 +185,13 @@
 	<title>{isNew ? 'New Research Log' : 'Research Log'} | My Family</title>
 </svelte:head>
 
-<div class="detail-page">
-	<header class="page-header">
-		<a href="/evidence" class="back-link">&larr; Evidence</a>
+<div class="mx-auto max-w-3xl p-6">
+	<header class="mb-6 flex items-center justify-between">
+		<a href="/evidence" class="text-sm text-slate-500 no-underline hover:text-blue-500">
+			&larr; Evidence
+		</a>
 		{#if log && !editing}
-			<div class="actions">
+			<div class="flex gap-2">
 				<Button variant="outline" onclick={startEdit}>Edit</Button>
 				<Button variant="destructive" onclick={deleteLog} disabled={deleting}>
 					{deleting ? 'Deleting...' : 'Delete'}
@@ -192,67 +201,109 @@
 	</header>
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<div class="p-12 text-center text-slate-500">Loading...</div>
 	{:else if error && !log && !isNew}
-		<div class="error">
-			<p>{error}</p>
+		<div class="p-12 text-center text-red-600">
+			<p class="m-0 mb-4">{error}</p>
 			<Button variant="outline" onclick={() => loadLog($page.params.id!)}>Retry</Button>
 		</div>
 	{:else if editing}
-		<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveLog(); }}>
-			<h1>{isNew ? 'New Research Log' : 'Edit Research Log'}</h1>
+		<form
+			class="rounded-xl border border-slate-200 bg-white p-6"
+			onsubmit={(e) => {
+				e.preventDefault();
+				saveLog();
+			}}
+		>
+			<h1 class="m-0 mb-6 text-xl text-slate-800">
+				{isNew ? 'New Research Log' : 'Edit Research Log'}
+			</h1>
 
 			{#if error}
-				<div class="form-error" role="alert">{error}</div>
+				<div
+					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
+					role="alert"
+				>
+					{error}
+				</div>
 			{/if}
 
-			<div class="form-row">
-				<label>
-					Subject ID <span class="required">*</span>
-					<input type="text" bind:value={formData.subject_id} required placeholder="Person or family UUID" />
-				</label>
-				<label>
-					Subject Type
-					<select bind:value={formData.subject_type}>
+			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex flex-col gap-1.5">
+					<Label for="subject-id" class="text-sm text-slate-600">
+						Subject ID <span class="text-red-600">*</span>
+					</Label>
+					<Input
+						id="subject-id"
+						type="text"
+						bind:value={formData.subject_id}
+						required
+						placeholder="Person or family UUID"
+					/>
+				</div>
+				<div class="flex flex-col gap-1.5">
+					<Label for="subject-type" class="text-sm text-slate-600">Subject Type</Label>
+					<select
+						id="subject-type"
+						bind:value={formData.subject_type}
+						class={nativeSelectClass}
+					>
 						<option value="person">Person</option>
 						<option value="family">Family</option>
 					</select>
-				</label>
+				</div>
 			</div>
 
-			<div class="form-row">
-				<label>
-					Repository <span class="required">*</span>
-					<input type="text" bind:value={formData.repository} required placeholder="e.g., National Archives" />
-				</label>
-				<label>
-					Search Date <span class="required">*</span>
-					<input type="date" bind:value={formData.search_date} required />
-				</label>
+			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex flex-col gap-1.5">
+					<Label for="repository" class="text-sm text-slate-600">
+						Repository <span class="text-red-600">*</span>
+					</Label>
+					<Input
+						id="repository"
+						type="text"
+						bind:value={formData.repository}
+						required
+						placeholder="e.g., National Archives"
+					/>
+				</div>
+				<div class="flex flex-col gap-1.5">
+					<Label for="search-date" class="text-sm text-slate-600">
+						Search Date <span class="text-red-600">*</span>
+					</Label>
+					<Input id="search-date" type="date" bind:value={formData.search_date} required />
+				</div>
 			</div>
 
-			<label>
-				Search Description <span class="required">*</span>
-				<textarea bind:value={formData.search_description} rows="3" required></textarea>
-			</label>
+			<div class="mb-4 flex flex-col gap-1.5">
+				<Label for="search-description" class="text-sm text-slate-600">
+					Search Description <span class="text-red-600">*</span>
+				</Label>
+				<Textarea
+					id="search-description"
+					bind:value={formData.search_description}
+					rows={3}
+					required
+				/>
+			</div>
 
-			<div class="form-row">
-				<label>
-					Outcome
-					<select bind:value={formData.outcome}>
+			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex flex-col gap-1.5">
+					<Label for="outcome" class="text-sm text-slate-600">Outcome</Label>
+					<select id="outcome" bind:value={formData.outcome} class={nativeSelectClass}>
 						{#each outcomes as o}
 							<option value={o}>{formatOutcome(o)}</option>
 						{/each}
 					</select>
-				</label>
+				</div>
 			</div>
 
-			<label>
-				Notes
-				<textarea bind:value={formData.notes} rows="3"></textarea>
-			</label>
+			<div class="mb-4 flex flex-col gap-1.5">
+				<Label for="notes" class="text-sm text-slate-600">Notes</Label>
+				<Textarea id="notes" bind:value={formData.notes} rows={3} />
+			</div>
 
-			<div class="form-actions">
+			<div class="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
 				<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
 				<Button type="submit" disabled={saving}>
 					{saving ? 'Saving...' : isNew ? 'Create Research Log' : 'Save Changes'}
@@ -260,51 +311,78 @@
 			</div>
 		</form>
 	{:else if log}
-		<div class="detail-card">
-			<div class="detail-header">
-				<h1>Research Log</h1>
-				<div class="header-badges">
+		<div class="rounded-xl border border-slate-200 bg-white p-6">
+			<div class="mb-6 border-b border-slate-200 pb-4">
+				<h1 class="m-0 mb-2 text-2xl text-slate-800">Research Log</h1>
+				<div class="flex items-center gap-2">
 					{#if log.outcome === 'found'}
-						<Badge class="bg-green-50 text-green-700 border-green-200">Found</Badge>
+						<Badge class="border-green-200 bg-green-50 text-green-700">Found</Badge>
 					{:else if log.outcome === 'not_found'}
 						<Badge variant="destructive">Not Found</Badge>
 					{:else}
-						<Badge class="bg-yellow-50 text-yellow-700 border-yellow-200">Inconclusive</Badge>
+						<Badge class="border-yellow-200 bg-yellow-50 text-yellow-700">Inconclusive</Badge>
 					{/if}
 				</div>
 			</div>
 
-			<div class="info-grid">
-				<div class="info-section">
-					<h2>Details</h2>
-					<dl>
-						<dt>Subject</dt>
-						<dd><a href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}">{log.subject_id}</a></dd>
-						<dt>Subject Type</dt>
-						<dd>{log.subject_type.charAt(0).toUpperCase() + log.subject_type.slice(1)}</dd>
-						<dt>Repository</dt>
-						<dd>{log.repository}</dd>
-						<dt>Search Date</dt>
-						<dd>{new Date(log.search_date).toLocaleDateString()}</dd>
-						<dt>Outcome</dt>
-						<dd>{formatOutcome(log.outcome)}</dd>
+			<div
+				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-6"
+			>
+				<div class="mb-6">
+					<h2
+						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500"
+					>
+						Details
+					</h2>
+					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+						<dt class="text-[0.8125rem] text-slate-400">Subject</dt>
+						<dd class="m-0 text-sm text-slate-800">
+							<a
+								href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}"
+								class="text-blue-500 no-underline hover:underline"
+							>
+								{log.subject_id}
+							</a>
+						</dd>
+						<dt class="text-[0.8125rem] text-slate-400">Subject Type</dt>
+						<dd class="m-0 text-sm text-slate-800">
+							{log.subject_type.charAt(0).toUpperCase() + log.subject_type.slice(1)}
+						</dd>
+						<dt class="text-[0.8125rem] text-slate-400">Repository</dt>
+						<dd class="m-0 text-sm text-slate-800">{log.repository}</dd>
+						<dt class="text-[0.8125rem] text-slate-400">Search Date</dt>
+						<dd class="m-0 text-sm text-slate-800">
+							{new Date(log.search_date).toLocaleDateString()}
+						</dd>
+						<dt class="text-[0.8125rem] text-slate-400">Outcome</dt>
+						<dd class="m-0 text-sm text-slate-800">{formatOutcome(log.outcome)}</dd>
 					</dl>
 				</div>
 			</div>
 
-			<div class="info-section">
-				<h2>Search Description</h2>
-				<p class="text-content">{log.search_description}</p>
+			<div class="mb-6">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					Search Description
+				</h2>
+				<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+					{log.search_description}
+				</p>
 			</div>
 
 			{#if log.notes}
-				<div class="info-section">
-					<h2>Notes</h2>
-					<p class="text-content">{log.notes}</p>
+				<div class="mb-6">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+						Notes
+					</h2>
+					<p class="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+						{log.notes}
+					</p>
 				</div>
 			{/if}
 
-			<div class="meta-footer">
+			<div
+				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-slate-400"
+			>
 				{#if log.created_at}
 					<span>Created: {new Date(log.created_at).toLocaleDateString()}</span>
 				{/if}
@@ -316,220 +394,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.detail-page {
-		max-width: 800px;
-		margin: 0 auto;
-		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.back-link {
-		color: #64748b;
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: #3b82f6;
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: #64748b;
-	}
-
-	.error {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.error p {
-		margin: 0 0 1rem;
-	}
-
-	.detail-card {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.5rem;
-	}
-
-	.detail-header {
-		margin-bottom: 1.5rem;
-		padding-bottom: 1rem;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	.detail-header h1 {
-		margin: 0 0 0.5rem;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.header-badges {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.info-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-		gap: 1.5rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: #64748b;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.info-section dl {
-		margin: 0;
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.25rem 1rem;
-	}
-
-	.info-section dt {
-		color: #94a3b8;
-		font-size: 0.8125rem;
-	}
-
-	.info-section dd {
-		margin: 0;
-		color: #1e293b;
-		font-size: 0.875rem;
-	}
-
-	.info-section dd a {
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	.info-section dd a:hover {
-		text-decoration: underline;
-	}
-
-	.text-content {
-		margin: 0;
-		color: #475569;
-		font-size: 0.875rem;
-		white-space: pre-wrap;
-		line-height: 1.6;
-	}
-
-	.meta-footer {
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-		display: flex;
-		gap: 1.5rem;
-		flex-wrap: wrap;
-		font-size: 0.75rem;
-		color: #94a3b8;
-	}
-
-	/* Edit form styles */
-	.edit-form {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.5rem;
-	}
-
-	.edit-form h1 {
-		margin: 0 0 1.5rem;
-		font-size: 1.25rem;
-		color: #1e293b;
-	}
-
-	.form-error {
-		padding: 0.75rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		color: #dc2626;
-		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.edit-form label {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		font-size: 0.875rem;
-		color: #475569;
-		margin-bottom: 1rem;
-	}
-
-	.required {
-		color: #dc2626;
-	}
-
-	.edit-form input,
-	.edit-form select,
-	.edit-form textarea {
-		padding: 0.625rem 0.75rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		font-size: 0.875rem;
-	}
-
-	.edit-form input:focus,
-	.edit-form select:focus,
-	.edit-form textarea:focus {
-		outline: none;
-		border-color: #3b82f6;
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-	}
-
-	.edit-form textarea {
-		resize: vertical;
-	}
-
-	.form-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.75rem;
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-	}
-
-	@media (max-width: 640px) {
-		.form-row {
-			grid-template-columns: 1fr;
-		}
-	}
-</style>

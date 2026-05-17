@@ -165,11 +165,32 @@
 	<title>Evidence Analysis | My Family</title>
 </svelte:head>
 
-<div class="evidence-page">
-	<header class="page-header">
+{#snippet pagination(currentPage: number, totalPages: number, loading: boolean, onPrev: () => void, onNext: () => void)}
+	<div
+		class="mt-8 flex items-center justify-center gap-4 border-t border-slate-200 pt-4"
+	>
+		<Button variant="outline" size="sm" onclick={onPrev} disabled={currentPage === 1 || loading}>
+			Previous
+		</Button>
+		<span class="text-sm text-slate-500">Page {currentPage} of {totalPages}</span>
+		<Button
+			variant="outline"
+			size="sm"
+			onclick={onNext}
+			disabled={currentPage >= totalPages || loading}
+		>
+			Next
+		</Button>
+	</div>
+{/snippet}
+
+<div class="mx-auto max-w-screen-xl p-6">
+	<header class="mb-6">
 		<div>
-			<h1>Evidence Analysis</h1>
-			<p class="subtitle">GPS-compliant research tracking and proof management</p>
+			<h1 class="m-0 text-2xl text-slate-800">Evidence Analysis</h1>
+			<p class="mt-1 text-sm text-slate-500">
+				GPS-compliant research tracking and proof management
+			</p>
 		</div>
 	</header>
 
@@ -179,7 +200,9 @@
 			<Tabs.Trigger value="conflicts">
 				Conflicts
 				{#if openConflictsCount > 0}
-					<Badge variant="destructive" class="ml-1 h-5 min-w-5 px-1.5 text-xs">{openConflictsCount}</Badge>
+					<Badge variant="destructive" class="ml-1 h-5 min-w-5 px-1.5 text-xs">
+						{openConflictsCount}
+					</Badge>
 				{/if}
 			</Tabs.Trigger>
 			<Tabs.Trigger value="logs">Research Logs</Tabs.Trigger>
@@ -188,51 +211,80 @@
 
 		<!-- Analyses Tab -->
 		<Tabs.Content value="analyses">
-			<div class="tab-header">
-				<span class="tab-count">{analysesTotal} {analysesTotal === 1 ? 'analysis' : 'analyses'}</span>
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
+				<span class="text-sm text-slate-500">
+					{analysesTotal} {analysesTotal === 1 ? 'analysis' : 'analyses'}
+				</span>
 				<Button href="/evidence/analyses/new">New Analysis</Button>
 			</div>
 
 			{#if analysesLoading}
-				<div class="loading">Loading analyses...</div>
+				<div class="p-12 text-center text-slate-500">Loading analyses...</div>
 			{:else if analysesError}
-				<div class="error-state">
-					<p>{analysesError}</p>
+				<div class="p-12 text-center text-red-600">
+					<p class="m-0 mb-4">{analysesError}</p>
 					<Button variant="outline" onclick={loadAnalyses}>Retry</Button>
 				</div>
 			{:else if analyses.length === 0}
-				<div class="empty">
-					<p>No evidence analyses yet.</p>
-					<p class="empty-hint">Create an analysis to evaluate evidence for a genealogical fact.</p>
+				<div class="p-12 text-center text-slate-500">
+					<p class="m-0 mb-2">No evidence analyses yet.</p>
+					<p class="mb-4 text-[0.8125rem] text-slate-400">
+						Create an analysis to evaluate evidence for a genealogical fact.
+					</p>
 					<Button href="/evidence/analyses/new">New Analysis</Button>
 				</div>
 			{:else}
 				<!-- Desktop table -->
-				<div class="table-wrapper desktop-only">
-					<table>
+				<div class="hidden overflow-x-auto md:block">
+					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th>Fact Type</th>
-								<th>Subject</th>
-								<th>Conclusion</th>
-								<th>Status</th>
-								<th>Citations</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Fact Type</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Conclusion</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Status</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Citations</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each analyses as analysis}
-								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/analyses/${analysis.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/analyses/${analysis.id}`); } }}>
-									<td class="fact-type">{formatFactType(analysis.fact_type)}</td>
-									<td><a href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}" onclick={(e) => e.stopPropagation()}>{analysis.subject_id.slice(0, 8)}...</a></td>
-									<td class="truncated">{truncate(analysis.conclusion)}</td>
-									<td>
+								<tr
+									class="cursor-pointer transition-colors hover:bg-slate-50"
+									tabindex="0"
+									role="link"
+									onclick={() => goto(`/evidence/analyses/${analysis.id}`)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											goto(`/evidence/analyses/${analysis.id}`);
+										}
+									}}
+								>
+									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 font-medium text-slate-800">
+										{formatFactType(analysis.fact_type)}
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+										<a
+											href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}"
+											class="text-blue-500 no-underline hover:underline"
+											onclick={(e) => e.stopPropagation()}
+										>
+											{analysis.subject_id.slice(0, 8)}...
+										</a>
+									</td>
+									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
+										{truncate(analysis.conclusion)}
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
 										{#if analysis.research_status}
 											<UncertaintyBadge status={analysis.research_status} showLabel />
 										{:else}
-											<span class="text-muted">--</span>
+											<span class="text-slate-400">--</span>
 										{/if}
 									</td>
-									<td class="count">{analysis.citation_ids?.length ?? 0}</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-center text-slate-800">
+										{analysis.citation_ids?.length ?? 0}
+									</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -240,17 +292,24 @@
 				</div>
 
 				<!-- Mobile cards -->
-				<div class="cards-wrapper mobile-only">
+				<div class="flex flex-col gap-3 md:hidden">
 					{#each analyses as analysis}
-						<a href="/evidence/analyses/{analysis.id}" class="card">
-							<div class="card-top">
-								<span class="card-fact-type">{formatFactType(analysis.fact_type)}</span>
+						<a
+							href="/evidence/analyses/{analysis.id}"
+							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
+						>
+							<div class="mb-2 flex items-center justify-between">
+								<span class="text-sm font-semibold text-slate-800">
+									{formatFactType(analysis.fact_type)}
+								</span>
 								{#if analysis.research_status}
 									<UncertaintyBadge status={analysis.research_status} showLabel size="small" />
 								{/if}
 							</div>
-							<p class="card-conclusion">{truncate(analysis.conclusion, 120)}</p>
-							<div class="card-meta">
+							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
+								{truncate(analysis.conclusion, 120)}
+							</p>
+							<div class="mt-2 text-xs text-slate-400">
 								<span>{analysis.citation_ids?.length ?? 0} citations</span>
 							</div>
 						</a>
@@ -258,61 +317,107 @@
 				</div>
 
 				{#if analysesTotalPages > 1}
-					<div class="pagination">
-						<button onclick={() => { analysesPage--; loadAnalyses(); }} disabled={analysesPage === 1 || analysesLoading}>Previous</button>
-						<span>Page {analysesPage} of {analysesTotalPages}</span>
-						<button onclick={() => { analysesPage++; loadAnalyses(); }} disabled={analysesPage >= analysesTotalPages || analysesLoading}>Next</button>
-					</div>
+					{@render pagination(
+						analysesPage,
+						analysesTotalPages,
+						analysesLoading,
+						() => {
+							analysesPage--;
+							loadAnalyses();
+						},
+						() => {
+							analysesPage++;
+							loadAnalyses();
+						}
+					)}
 				{/if}
 			{/if}
 		</Tabs.Content>
 
 		<!-- Conflicts Tab -->
 		<Tabs.Content value="conflicts">
-			<div class="tab-header">
-				<div class="filter-buttons">
-					<button class="filter-btn" class:active={conflictStatusFilter === 'all'} aria-pressed={conflictStatusFilter === 'all'} onclick={() => { conflictStatusFilter = 'all'; conflictsPage = 1; loadConflicts(); }}>All</button>
-					<button class="filter-btn" class:active={conflictStatusFilter === 'open'} aria-pressed={conflictStatusFilter === 'open'} onclick={() => { conflictStatusFilter = 'open'; conflictsPage = 1; loadConflicts(); }}>Open</button>
-					<button class="filter-btn" class:active={conflictStatusFilter === 'resolved'} aria-pressed={conflictStatusFilter === 'resolved'} onclick={() => { conflictStatusFilter = 'resolved'; conflictsPage = 1; loadConflicts(); }}>Resolved</button>
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
+				<div class="flex gap-1">
+					{#each [{ key: 'all', label: 'All' }, { key: 'open', label: 'Open' }, { key: 'resolved', label: 'Resolved' }] as filter}
+						<Button
+							variant={conflictStatusFilter === filter.key ? 'default' : 'outline'}
+							size="sm"
+							aria-pressed={conflictStatusFilter === filter.key}
+							onclick={() => {
+								conflictStatusFilter = filter.key as 'all' | 'open' | 'resolved';
+								conflictsPage = 1;
+								loadConflicts();
+							}}
+						>
+							{filter.label}
+						</Button>
+					{/each}
 				</div>
-				<span class="tab-count">{conflictsTotal} {conflictsTotal === 1 ? 'conflict' : 'conflicts'}</span>
+				<span class="text-sm text-slate-500">
+					{conflictsTotal} {conflictsTotal === 1 ? 'conflict' : 'conflicts'}
+				</span>
 			</div>
 
 			{#if conflictsLoading}
-				<div class="loading">Loading conflicts...</div>
+				<div class="p-12 text-center text-slate-500">Loading conflicts...</div>
 			{:else if conflictsError}
-				<div class="error-state">
-					<p>{conflictsError}</p>
+				<div class="p-12 text-center text-red-600">
+					<p class="m-0 mb-4">{conflictsError}</p>
 					<Button variant="outline" onclick={loadConflicts}>Retry</Button>
 				</div>
 			{:else if conflicts.length === 0}
-				<div class="empty">
-					<p>No conflicts found.</p>
-					<p class="empty-hint">Conflicts are auto-detected when analyses for the same fact disagree.</p>
+				<div class="p-12 text-center text-slate-500">
+					<p class="m-0 mb-2">No conflicts found.</p>
+					<p class="mb-4 text-[0.8125rem] text-slate-400">
+						Conflicts are auto-detected when analyses for the same fact disagree.
+					</p>
 				</div>
 			{:else}
 				<!-- Desktop table -->
-				<div class="table-wrapper desktop-only">
-					<table>
+				<div class="hidden overflow-x-auto md:block">
+					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th>Fact Type</th>
-								<th>Subject</th>
-								<th>Description</th>
-								<th>Status</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Fact Type</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Description</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Status</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each conflicts as conflict}
-								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/conflicts/${conflict.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/conflicts/${conflict.id}`); } }}>
-									<td class="fact-type">{formatFactType(conflict.fact_type)}</td>
-									<td><a href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}" onclick={(e) => e.stopPropagation()}>{conflict.subject_id.slice(0, 8)}...</a></td>
-									<td class="truncated">{truncate(conflict.description)}</td>
-									<td>
+								<tr
+									class="cursor-pointer transition-colors hover:bg-slate-50"
+									tabindex="0"
+									role="link"
+									onclick={() => goto(`/evidence/conflicts/${conflict.id}`)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											goto(`/evidence/conflicts/${conflict.id}`);
+										}
+									}}
+								>
+									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 font-medium text-slate-800">
+										{formatFactType(conflict.fact_type)}
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+										<a
+											href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}"
+											class="text-blue-500 no-underline hover:underline"
+											onclick={(e) => e.stopPropagation()}
+										>
+											{conflict.subject_id.slice(0, 8)}...
+										</a>
+									</td>
+									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
+										{truncate(conflict.description)}
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
 										{#if conflict.status === 'open'}
 											<Badge variant="destructive">Open</Badge>
 										{:else}
-											<Badge class="bg-green-50 text-green-700 border-green-200">Resolved</Badge>
+											<Badge class="border-green-200 bg-green-50 text-green-700">Resolved</Badge>
 										{/if}
 									</td>
 								</tr>
@@ -322,81 +427,123 @@
 				</div>
 
 				<!-- Mobile cards -->
-				<div class="cards-wrapper mobile-only">
+				<div class="flex flex-col gap-3 md:hidden">
 					{#each conflicts as conflict}
-						<a href="/evidence/conflicts/{conflict.id}" class="card">
-							<div class="card-top">
-								<span class="card-fact-type">{formatFactType(conflict.fact_type)}</span>
+						<a
+							href="/evidence/conflicts/{conflict.id}"
+							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
+						>
+							<div class="mb-2 flex items-center justify-between">
+								<span class="text-sm font-semibold text-slate-800">
+									{formatFactType(conflict.fact_type)}
+								</span>
 								{#if conflict.status === 'open'}
 									<Badge variant="destructive">Open</Badge>
 								{:else}
-									<Badge class="bg-green-50 text-green-700 border-green-200">Resolved</Badge>
+									<Badge class="border-green-200 bg-green-50 text-green-700">Resolved</Badge>
 								{/if}
 							</div>
-							<p class="card-conclusion">{truncate(conflict.description, 120)}</p>
+							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
+								{truncate(conflict.description, 120)}
+							</p>
 						</a>
 					{/each}
 				</div>
 
 				{#if conflictsTotalPages > 1}
-					<div class="pagination">
-						<button onclick={() => { conflictsPage--; loadConflicts(); }} disabled={conflictsPage === 1 || conflictsLoading}>Previous</button>
-						<span>Page {conflictsPage} of {conflictsTotalPages}</span>
-						<button onclick={() => { conflictsPage++; loadConflicts(); }} disabled={conflictsPage >= conflictsTotalPages || conflictsLoading}>Next</button>
-					</div>
+					{@render pagination(
+						conflictsPage,
+						conflictsTotalPages,
+						conflictsLoading,
+						() => {
+							conflictsPage--;
+							loadConflicts();
+						},
+						() => {
+							conflictsPage++;
+							loadConflicts();
+						}
+					)}
 				{/if}
 			{/if}
 		</Tabs.Content>
 
 		<!-- Research Logs Tab -->
 		<Tabs.Content value="logs">
-			<div class="tab-header">
-				<span class="tab-count">{logsTotal} {logsTotal === 1 ? 'log entry' : 'log entries'}</span>
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
+				<span class="text-sm text-slate-500">
+					{logsTotal} {logsTotal === 1 ? 'log entry' : 'log entries'}
+				</span>
 				<Button href="/evidence/research-logs/new">New Research Log</Button>
 			</div>
 
 			{#if logsLoading}
-				<div class="loading">Loading research logs...</div>
+				<div class="p-12 text-center text-slate-500">Loading research logs...</div>
 			{:else if logsError}
-				<div class="error-state">
-					<p>{logsError}</p>
+				<div class="p-12 text-center text-red-600">
+					<p class="m-0 mb-4">{logsError}</p>
 					<Button variant="outline" onclick={loadLogs}>Retry</Button>
 				</div>
 			{:else if logs.length === 0}
-				<div class="empty">
-					<p>No research logs yet.</p>
-					<p class="empty-hint">Log your research activities to track what repositories and records you have searched.</p>
+				<div class="p-12 text-center text-slate-500">
+					<p class="m-0 mb-2">No research logs yet.</p>
+					<p class="mb-4 text-[0.8125rem] text-slate-400">
+						Log your research activities to track what repositories and records you have searched.
+					</p>
 					<Button href="/evidence/research-logs/new">New Research Log</Button>
 				</div>
 			{:else}
 				<!-- Desktop table -->
-				<div class="table-wrapper desktop-only">
-					<table>
+				<div class="hidden overflow-x-auto md:block">
+					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th>Subject</th>
-								<th>Repository</th>
-								<th>Search Description</th>
-								<th>Outcome</th>
-								<th>Date</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Repository</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Search Description</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Outcome</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Date</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each logs as log}
-								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/research-logs/${log.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/research-logs/${log.id}`); } }}>
-									<td><a href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}" onclick={(e) => e.stopPropagation()}>{log.subject_id.slice(0, 8)}...</a></td>
-									<td>{log.repository}</td>
-									<td class="truncated">{truncate(log.search_description)}</td>
-									<td>
+								<tr
+									class="cursor-pointer transition-colors hover:bg-slate-50"
+									tabindex="0"
+									role="link"
+									onclick={() => goto(`/evidence/research-logs/${log.id}`)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											goto(`/evidence/research-logs/${log.id}`);
+										}
+									}}
+								>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+										<a
+											href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}"
+											class="text-blue-500 no-underline hover:underline"
+											onclick={(e) => e.stopPropagation()}
+										>
+											{log.subject_id.slice(0, 8)}...
+										</a>
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">{log.repository}</td>
+									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
+										{truncate(log.search_description)}
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
 										{#if log.outcome === 'found'}
-											<Badge class="bg-green-50 text-green-700 border-green-200">Found</Badge>
+											<Badge class="border-green-200 bg-green-50 text-green-700">Found</Badge>
 										{:else if log.outcome === 'not_found'}
 											<Badge variant="destructive">Not Found</Badge>
 										{:else}
-											<Badge class="bg-yellow-50 text-yellow-700 border-yellow-200">Inconclusive</Badge>
+											<Badge class="border-yellow-200 bg-yellow-50 text-yellow-700">Inconclusive</Badge>
 										{/if}
 									</td>
-									<td class="date">{formatDate(log.search_date)}</td>
+									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
+										{formatDate(log.search_date)}
+									</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -404,21 +551,26 @@
 				</div>
 
 				<!-- Mobile cards -->
-				<div class="cards-wrapper mobile-only">
+				<div class="flex flex-col gap-3 md:hidden">
 					{#each logs as log}
-						<a href="/evidence/research-logs/{log.id}" class="card">
-							<div class="card-top">
-								<span class="card-fact-type">{log.repository}</span>
+						<a
+							href="/evidence/research-logs/{log.id}"
+							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
+						>
+							<div class="mb-2 flex items-center justify-between">
+								<span class="text-sm font-semibold text-slate-800">{log.repository}</span>
 								{#if log.outcome === 'found'}
-									<Badge class="bg-green-50 text-green-700 border-green-200">Found</Badge>
+									<Badge class="border-green-200 bg-green-50 text-green-700">Found</Badge>
 								{:else if log.outcome === 'not_found'}
 									<Badge variant="destructive">Not Found</Badge>
 								{:else}
-									<Badge class="bg-yellow-50 text-yellow-700 border-yellow-200">Inconclusive</Badge>
+									<Badge class="border-yellow-200 bg-yellow-50 text-yellow-700">Inconclusive</Badge>
 								{/if}
 							</div>
-							<p class="card-conclusion">{truncate(log.search_description, 120)}</p>
-							<div class="card-meta">
+							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
+								{truncate(log.search_description, 120)}
+							</p>
+							<div class="mt-2 text-xs text-slate-400">
 								<span>{formatDate(log.search_date)}</span>
 							</div>
 						</a>
@@ -426,62 +578,99 @@
 				</div>
 
 				{#if logsTotalPages > 1}
-					<div class="pagination">
-						<button onclick={() => { logsPage--; loadLogs(); }} disabled={logsPage === 1 || logsLoading}>Previous</button>
-						<span>Page {logsPage} of {logsTotalPages}</span>
-						<button onclick={() => { logsPage++; loadLogs(); }} disabled={logsPage >= logsTotalPages || logsLoading}>Next</button>
-					</div>
+					{@render pagination(
+						logsPage,
+						logsTotalPages,
+						logsLoading,
+						() => {
+							logsPage--;
+							loadLogs();
+						},
+						() => {
+							logsPage++;
+							loadLogs();
+						}
+					)}
 				{/if}
 			{/if}
 		</Tabs.Content>
 
 		<!-- Proof Summaries Tab -->
 		<Tabs.Content value="summaries">
-			<div class="tab-header">
-				<span class="tab-count">{summariesTotal} {summariesTotal === 1 ? 'summary' : 'summaries'}</span>
+			<div class="mb-4 flex flex-wrap items-center justify-between gap-2 pt-2">
+				<span class="text-sm text-slate-500">
+					{summariesTotal} {summariesTotal === 1 ? 'summary' : 'summaries'}
+				</span>
 				<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
 			</div>
 
 			{#if summariesLoading}
-				<div class="loading">Loading proof summaries...</div>
+				<div class="p-12 text-center text-slate-500">Loading proof summaries...</div>
 			{:else if summariesError}
-				<div class="error-state">
-					<p>{summariesError}</p>
+				<div class="p-12 text-center text-red-600">
+					<p class="m-0 mb-4">{summariesError}</p>
 					<Button variant="outline" onclick={loadSummaries}>Retry</Button>
 				</div>
 			{:else if summaries.length === 0}
-				<div class="empty">
-					<p>No proof summaries yet.</p>
-					<p class="empty-hint">Create a proof summary to document your conclusions about a genealogical fact.</p>
+				<div class="p-12 text-center text-slate-500">
+					<p class="m-0 mb-2">No proof summaries yet.</p>
+					<p class="mb-4 text-[0.8125rem] text-slate-400">
+						Create a proof summary to document your conclusions about a genealogical fact.
+					</p>
 					<Button href="/evidence/proof-summaries/new">New Proof Summary</Button>
 				</div>
 			{:else}
 				<!-- Desktop table -->
-				<div class="table-wrapper desktop-only">
-					<table>
+				<div class="hidden overflow-x-auto md:block">
+					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th>Fact Type</th>
-								<th>Subject</th>
-								<th>Conclusion</th>
-								<th>Status</th>
-								<th>Analyses</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Fact Type</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Conclusion</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Status</th>
+								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Analyses</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each summaries as summary}
-								<tr class="clickable" tabindex="0" role="link" onclick={() => goto(`/evidence/proof-summaries/${summary.id}`)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goto(`/evidence/proof-summaries/${summary.id}`); } }}>
-									<td class="fact-type">{formatFactType(summary.fact_type)}</td>
-									<td><a href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}" onclick={(e) => e.stopPropagation()}>{summary.subject_id.slice(0, 8)}...</a></td>
-									<td class="truncated">{truncate(summary.conclusion)}</td>
-									<td>
+								<tr
+									class="cursor-pointer transition-colors hover:bg-slate-50"
+									tabindex="0"
+									role="link"
+									onclick={() => goto(`/evidence/proof-summaries/${summary.id}`)}
+									onkeydown={(e) => {
+										if (e.key === 'Enter' || e.key === ' ') {
+											e.preventDefault();
+											goto(`/evidence/proof-summaries/${summary.id}`);
+										}
+									}}
+								>
+									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 font-medium text-slate-800">
+										{formatFactType(summary.fact_type)}
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+										<a
+											href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}"
+											class="text-blue-500 no-underline hover:underline"
+											onclick={(e) => e.stopPropagation()}
+										>
+											{summary.subject_id.slice(0, 8)}...
+										</a>
+									</td>
+									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
+										{truncate(summary.conclusion)}
+									</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
 										{#if summary.research_status}
 											<UncertaintyBadge status={summary.research_status} showLabel />
 										{:else}
-											<span class="text-muted">--</span>
+											<span class="text-slate-400">--</span>
 										{/if}
 									</td>
-									<td class="count">{summary.analysis_ids?.length ?? 0}</td>
+									<td class="border-b border-slate-100 px-4 py-3 text-center text-slate-800">
+										{summary.analysis_ids?.length ?? 0}
+									</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -489,17 +678,24 @@
 				</div>
 
 				<!-- Mobile cards -->
-				<div class="cards-wrapper mobile-only">
+				<div class="flex flex-col gap-3 md:hidden">
 					{#each summaries as summary}
-						<a href="/evidence/proof-summaries/{summary.id}" class="card">
-							<div class="card-top">
-								<span class="card-fact-type">{formatFactType(summary.fact_type)}</span>
+						<a
+							href="/evidence/proof-summaries/{summary.id}"
+							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
+						>
+							<div class="mb-2 flex items-center justify-between">
+								<span class="text-sm font-semibold text-slate-800">
+									{formatFactType(summary.fact_type)}
+								</span>
 								{#if summary.research_status}
 									<UncertaintyBadge status={summary.research_status} showLabel size="small" />
 								{/if}
 							</div>
-							<p class="card-conclusion">{truncate(summary.conclusion, 120)}</p>
-							<div class="card-meta">
+							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
+								{truncate(summary.conclusion, 120)}
+							</p>
+							<div class="mt-2 text-xs text-slate-400">
 								<span>{summary.analysis_ids?.length ?? 0} linked analyses</span>
 							</div>
 						</a>
@@ -507,280 +703,21 @@
 				</div>
 
 				{#if summariesTotalPages > 1}
-					<div class="pagination">
-						<button onclick={() => { summariesPage--; loadSummaries(); }} disabled={summariesPage === 1 || summariesLoading}>Previous</button>
-						<span>Page {summariesPage} of {summariesTotalPages}</span>
-						<button onclick={() => { summariesPage++; loadSummaries(); }} disabled={summariesPage >= summariesTotalPages || summariesLoading}>Next</button>
-					</div>
+					{@render pagination(
+						summariesPage,
+						summariesTotalPages,
+						summariesLoading,
+						() => {
+							summariesPage--;
+							loadSummaries();
+						},
+						() => {
+							summariesPage++;
+							loadSummaries();
+						}
+					)}
 				{/if}
 			{/if}
 		</Tabs.Content>
 	</Tabs.Root>
 </div>
-
-<style>
-	.evidence-page {
-		max-width: 1200px;
-		margin: 0 auto;
-		padding: 1.5rem;
-	}
-
-	.page-header {
-		margin-bottom: 1.5rem;
-	}
-
-	.page-header h1 {
-		margin: 0;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.subtitle {
-		margin: 0.25rem 0 0;
-		font-size: 0.875rem;
-		color: #64748b;
-	}
-
-	.tab-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-		padding-top: 0.5rem;
-	}
-
-	.tab-count {
-		font-size: 0.875rem;
-		color: #64748b;
-	}
-
-	.filter-buttons {
-		display: flex;
-		gap: 0.25rem;
-	}
-
-	.filter-btn {
-		padding: 0.375rem 0.75rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.8125rem;
-		color: #64748b;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.filter-btn:hover {
-		background: #f1f5f9;
-		color: #1e293b;
-	}
-
-	.filter-btn.active {
-		background: #eff6ff;
-		color: #3b82f6;
-		border-color: #3b82f6;
-	}
-
-	/* Table styles */
-	.table-wrapper {
-		overflow-x: auto;
-	}
-
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.875rem;
-	}
-
-	th {
-		text-align: left;
-		padding: 0.75rem 1rem;
-		border-bottom: 2px solid #e2e8f0;
-		color: #475569;
-		font-weight: 600;
-		white-space: nowrap;
-	}
-
-	td {
-		padding: 0.75rem 1rem;
-		border-bottom: 1px solid #f1f5f9;
-		color: #1e293b;
-	}
-
-	tr.clickable {
-		cursor: pointer;
-		transition: background 0.1s;
-	}
-
-	tr.clickable:hover {
-		background: #f8fafc;
-	}
-
-	.fact-type {
-		font-weight: 500;
-		white-space: nowrap;
-	}
-
-	.truncated {
-		max-width: 300px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.count {
-		text-align: center;
-	}
-
-	.date {
-		white-space: nowrap;
-	}
-
-	td a {
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	td a:hover {
-		text-decoration: underline;
-	}
-
-	.text-muted {
-		color: #94a3b8;
-	}
-
-	/* Card styles (mobile) */
-	.cards-wrapper {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.card {
-		display: block;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
-		padding: 1rem;
-		text-decoration: none;
-		color: inherit;
-		transition: border-color 0.15s, box-shadow 0.15s;
-	}
-
-	.card:hover {
-		border-color: #cbd5e1;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-	}
-
-	.card-top {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.5rem;
-	}
-
-	.card-fact-type {
-		font-weight: 600;
-		font-size: 0.875rem;
-		color: #1e293b;
-	}
-
-	.card-conclusion {
-		margin: 0;
-		font-size: 0.8125rem;
-		color: #475569;
-		line-height: 1.4;
-	}
-
-	.card-meta {
-		margin-top: 0.5rem;
-		font-size: 0.75rem;
-		color: #94a3b8;
-	}
-
-	/* Responsive: show table on desktop, cards on mobile */
-	.desktop-only {
-		display: block;
-	}
-
-	.mobile-only {
-		display: none;
-	}
-
-	@media (max-width: 768px) {
-		.desktop-only {
-			display: none;
-		}
-
-		.mobile-only {
-			display: flex;
-		}
-
-		.tab-header {
-			flex-wrap: wrap;
-			gap: 0.5rem;
-		}
-	}
-
-	/* Loading / empty / error states */
-	.loading,
-	.empty {
-		text-align: center;
-		padding: 3rem;
-		color: #64748b;
-	}
-
-	.empty p {
-		margin: 0 0 0.5rem;
-	}
-
-	.empty-hint {
-		font-size: 0.8125rem;
-		color: #94a3b8;
-		margin-bottom: 1rem !important;
-	}
-
-	.error-state {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.error-state p {
-		margin: 0 0 1rem;
-	}
-
-	/* Pagination */
-	.pagination {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		gap: 1rem;
-		margin-top: 2rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-	}
-
-	.pagination button {
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-	}
-
-	.pagination button:hover:not(:disabled) {
-		background: #f1f5f9;
-	}
-
-	.pagination button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.pagination span {
-		font-size: 0.875rem;
-		color: #64748b;
-	}
-</style>

@@ -10,6 +10,9 @@
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
 
@@ -23,6 +26,10 @@
 	];
 
 	const researchStatuses = ['certain', 'probable', 'possible', 'unknown'] as const;
+
+	// Native <select> styled to match shadcn Input for visual consistency.
+	const nativeSelectClass =
+		'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 	let summary: ProofSummaryResponse | null = $state(null);
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
@@ -230,11 +237,13 @@
 	<title>{isNew ? 'New Proof Summary' : 'Proof Summary'} | My Family</title>
 </svelte:head>
 
-<div class="detail-page">
-	<header class="page-header">
-		<a href="/evidence" class="back-link">&larr; Evidence</a>
+<div class="mx-auto max-w-3xl p-6">
+	<header class="mb-6 flex items-center justify-between">
+		<a href="/evidence" class="text-sm text-slate-500 no-underline hover:text-blue-500">
+			&larr; Evidence
+		</a>
 		{#if summary && !editing}
-			<div class="actions">
+			<div class="flex gap-2">
 				<Button variant="outline" onclick={startEdit}>Edit</Button>
 				<Button variant="destructive" onclick={deleteSummary} disabled={deleting}>
 					{deleting ? 'Deleting...' : 'Delete'}
@@ -244,75 +253,139 @@
 	</header>
 
 	{#if loading}
-		<div class="loading">Loading...</div>
+		<div class="p-12 text-center text-slate-500">Loading...</div>
 	{:else if error && !summary && !isNew}
-		<div class="error">
-			<p>{error}</p>
+		<div class="p-12 text-center text-red-600">
+			<p class="m-0 mb-4">{error}</p>
 			<Button variant="outline" onclick={() => loadSummary($page.params.id!)}>Retry</Button>
 		</div>
 	{:else if editing}
-		<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveSummary(); }}>
-			<h1>{isNew ? 'New Proof Summary' : 'Edit Proof Summary'}</h1>
+		<form
+			class="rounded-xl border border-slate-200 bg-white p-6"
+			onsubmit={(e) => {
+				e.preventDefault();
+				saveSummary();
+			}}
+		>
+			<h1 class="m-0 mb-6 text-xl text-slate-800">
+				{isNew ? 'New Proof Summary' : 'Edit Proof Summary'}
+			</h1>
 
 			{#if error}
-				<div class="form-error" role="alert">{error}</div>
+				<div
+					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
+					role="alert"
+				>
+					{error}
+				</div>
 			{/if}
 
-			<div class="form-row">
-				<label>
-					Fact Type <span class="required">*</span>
-					<select bind:value={formData.fact_type} aria-label="Fact Type">
+			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex flex-col gap-1.5">
+					<Label for="fact-type" class="text-sm text-slate-600">
+						Fact Type <span class="text-red-600">*</span>
+					</Label>
+					<select
+						id="fact-type"
+						bind:value={formData.fact_type}
+						aria-label="Fact Type"
+						class={nativeSelectClass}
+					>
 						{#each factTypes as ft}
 							<option value={ft}>{formatFactType(ft)}</option>
 						{/each}
 					</select>
-				</label>
-				<label>
-					Subject ID <span class="required">*</span>
-					<input type="text" bind:value={formData.subject_id} required placeholder="Person or family UUID" aria-label="Subject ID" />
-				</label>
+				</div>
+				<div class="flex flex-col gap-1.5">
+					<Label for="subject-id" class="text-sm text-slate-600">
+						Subject ID <span class="text-red-600">*</span>
+					</Label>
+					<Input
+						id="subject-id"
+						type="text"
+						bind:value={formData.subject_id}
+						required
+						placeholder="Person or family UUID"
+						aria-label="Subject ID"
+					/>
+				</div>
 			</div>
 
-			<label>
-				Conclusion <span class="required">*</span>
-				<input type="text" bind:value={formData.conclusion} required aria-label="Conclusion" />
-			</label>
+			<div class="mb-4 flex flex-col gap-1.5">
+				<Label for="conclusion" class="text-sm text-slate-600">
+					Conclusion <span class="text-red-600">*</span>
+				</Label>
+				<Input
+					id="conclusion"
+					type="text"
+					bind:value={formData.conclusion}
+					required
+					aria-label="Conclusion"
+				/>
+			</div>
 
-			<label>
-				Argument <span class="required">*</span>
-				<textarea bind:value={formData.argument} rows="10" required placeholder="Present the full proof argument, evaluating each piece of evidence..." aria-label="Argument"></textarea>
-			</label>
+			<div class="mb-4 flex flex-col gap-1.5">
+				<Label for="argument" class="text-sm text-slate-600">
+					Argument <span class="text-red-600">*</span>
+				</Label>
+				<Textarea
+					id="argument"
+					bind:value={formData.argument}
+					rows={10}
+					required
+					placeholder="Present the full proof argument, evaluating each piece of evidence..."
+					aria-label="Argument"
+				/>
+			</div>
 
-			<div class="form-row">
-				<label>
-					Research Status
-					<select bind:value={formData.research_status} aria-label="Research Status">
+			<div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+				<div class="flex flex-col gap-1.5">
+					<Label for="research-status" class="text-sm text-slate-600">Research Status</Label>
+					<select
+						id="research-status"
+						bind:value={formData.research_status}
+						aria-label="Research Status"
+						class={nativeSelectClass}
+					>
 						{#each researchStatuses as s}
 							<option value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
 						{/each}
 					</select>
-				</label>
+				</div>
 			</div>
 
-			<div class="list-field">
-				<h3>Linked Analysis IDs</h3>
+			<div class="mb-4">
+				<h3 class="m-0 mb-2 text-sm text-slate-600">Linked Analysis IDs</h3>
 				{#if formData.analysis_ids.length > 0}
-					<ul class="id-list">
+					<ul class="m-0 mb-2 flex list-none flex-col gap-1 p-0">
 						{#each formData.analysis_ids as aid}
-							<li>
-								<code>{aid}</code>
-								<button type="button" class="remove-btn" onclick={() => removeAnalysis(aid)} aria-label="Remove analysis {aid}">x</button>
+							<li class="flex items-center gap-2">
+								<code class="rounded bg-slate-100 px-2 py-1 text-[0.8125rem]">{aid}</code>
+								<button
+									type="button"
+									class="rounded border-none bg-transparent px-1.5 py-0.5 text-sm text-red-600 hover:bg-red-50"
+									onclick={() => removeAnalysis(aid)}
+									aria-label="Remove analysis {aid}"
+								>
+									x
+								</button>
 							</li>
 						{/each}
 					</ul>
 				{/if}
-				<div class="add-id-row">
-					<input type="text" bind:value={newAnalysisId} placeholder="Analysis UUID" aria-label="New analysis ID" />
+				<div class="flex items-center gap-2">
+					<Input
+						type="text"
+						bind:value={newAnalysisId}
+						placeholder="Analysis UUID"
+						aria-label="New analysis ID"
+						class="flex-1"
+					/>
 					<Button type="button" variant="outline" onclick={addAnalysis}>Add</Button>
 				</div>
 			</div>
 
-			<div class="form-actions">
+			<div class="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-4">
 				<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
 				<Button type="submit" disabled={saving}>
 					{saving ? 'Saving...' : isNew ? 'Create Proof Summary' : 'Save Changes'}
@@ -320,10 +393,10 @@
 			</div>
 		</form>
 	{:else if summary}
-		<div class="detail-card">
-			<div class="detail-header">
-				<h1>Proof Summary</h1>
-				<div class="header-badges">
+		<div class="rounded-xl border border-slate-200 bg-white p-6">
+			<div class="mb-6 border-b border-slate-200 pb-4">
+				<h1 class="m-0 mb-2 text-2xl text-slate-800">Proof Summary</h1>
+				<div class="flex items-center gap-2">
 					<Badge variant="secondary">{formatFactType(summary.fact_type)}</Badge>
 					{#if summary.research_status}
 						<UncertaintyBadge status={summary.research_status} showLabel />
@@ -332,63 +405,111 @@
 			</div>
 
 			{#if error}
-				<div class="form-error" role="alert">{error}</div>
+				<div
+					class="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600"
+					role="alert"
+				>
+					{error}
+				</div>
 			{/if}
 
-			<div class="info-grid">
-				<div class="info-section">
-					<h2>Details</h2>
-					<dl>
-						<dt>Subject</dt>
-						<dd><a href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}">{summary.subject_id}</a></dd>
-						<dt>Fact Type</dt>
-						<dd>{formatFactType(summary.fact_type)}</dd>
+			<div
+				class="mb-6 grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-6"
+			>
+				<div class="mb-6">
+					<h2
+						class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500"
+					>
+						Details
+					</h2>
+					<dl class="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+						<dt class="text-[0.8125rem] text-slate-400">Subject</dt>
+						<dd class="m-0 text-sm text-slate-800">
+							<a
+								href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}"
+								class="text-blue-500 no-underline hover:underline"
+							>
+								{summary.subject_id}
+							</a>
+						</dd>
+						<dt class="text-[0.8125rem] text-slate-400">Fact Type</dt>
+						<dd class="m-0 text-sm text-slate-800">{formatFactType(summary.fact_type)}</dd>
 					</dl>
 				</div>
 			</div>
 
-			<div class="info-section">
-				<h2>Conclusion</h2>
-				<p class="text-content conclusion-text">{summary.conclusion}</p>
+			<div class="mb-6">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					Conclusion
+				</h2>
+				<p
+					class="m-0 whitespace-pre-wrap text-base font-medium leading-relaxed text-slate-800"
+				>
+					{summary.conclusion}
+				</p>
 			</div>
 
-			<div class="info-section argument-section">
-				<h2>Argument</h2>
-				<div class="argument-text">{summary.argument}</div>
+			<div class="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
+				<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+					Argument
+				</h2>
+				<div class="m-0 whitespace-pre-wrap text-[0.9375rem] leading-loose text-slate-700">
+					{summary.argument}
+				</div>
 			</div>
 
 			{#if linkedAnalyses.length > 0}
-				<div class="info-section">
-					<h2>Supporting Analyses ({linkedAnalyses.length})</h2>
-					<div class="analysis-cards">
+				<div class="mb-6">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+						Supporting Analyses ({linkedAnalyses.length})
+					</h2>
+					<div class="flex flex-col gap-3">
 						{#each linkedAnalyses as la}
-							<a href="/evidence/analyses/{la.id}" class="analysis-card">
-								<div class="analysis-card-header">
-									<span class="analysis-fact-type">{formatFactType(la.fact_type)}</span>
+							<a
+								href="/evidence/analyses/{la.id}"
+								class="block rounded-lg border border-slate-200 p-4 text-inherit no-underline transition-colors hover:border-blue-500"
+							>
+								<div class="mb-2 flex items-center justify-between">
+									<span class="text-sm font-semibold text-slate-800">
+										{formatFactType(la.fact_type)}
+									</span>
 									{#if la.research_status}
 										<UncertaintyBadge status={la.research_status} showLabel size="small" />
 									{/if}
 								</div>
-								<p class="analysis-conclusion">{la.conclusion}</p>
+								<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">{la.conclusion}</p>
 								{#if la.citation_ids && la.citation_ids.length > 0}
-									<span class="analysis-meta">{la.citation_ids.length} citations</span>
+									<span class="mt-2 inline-block text-xs text-slate-400">
+										{la.citation_ids.length} citations
+									</span>
 								{/if}
 							</a>
 						{/each}
 					</div>
 				</div>
 			{:else if summary.analysis_ids && summary.analysis_ids.length > 0}
-				<div class="info-section">
-					<h2>Linked Analysis IDs ({summary.analysis_ids.length})</h2>
-					<ul class="linked-ids">
+				<div class="mb-6">
+					<h2 class="m-0 mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
+						Linked Analysis IDs ({summary.analysis_ids.length})
+					</h2>
+					<ul class="m-0 flex list-none flex-col gap-1.5 p-0">
 						{#each summary.analysis_ids as aid}
-							<li><a href="/evidence/analyses/{aid}"><code>{aid}</code></a></li>
+							<li>
+								<a
+									href="/evidence/analyses/{aid}"
+									class="text-blue-500 no-underline hover:underline"
+								>
+									<code class="rounded bg-slate-100 px-2 py-1 text-[0.8125rem]">{aid}</code>
+								</a>
+							</li>
 						{/each}
 					</ul>
 				</div>
 			{/if}
 
-			<div class="meta-footer">
+			<div
+				class="mt-6 flex flex-wrap gap-6 border-t border-slate-200 pt-4 text-xs text-slate-400"
+			>
 				{#if summary.created_at}
 					<span>Created: {new Date(summary.created_at).toLocaleDateString()}</span>
 				{/if}
@@ -400,373 +521,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.detail-page {
-		max-width: 800px;
-		margin: 0 auto;
-		padding: 1.5rem;
-	}
-
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.back-link {
-		color: #64748b;
-		text-decoration: none;
-		font-size: 0.875rem;
-	}
-
-	.back-link:hover {
-		color: #3b82f6;
-	}
-
-	.actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	.loading {
-		text-align: center;
-		padding: 3rem;
-		color: #64748b;
-	}
-
-	.error {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.error p {
-		margin: 0 0 1rem;
-	}
-
-	.detail-card {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.5rem;
-	}
-
-	.detail-header {
-		margin-bottom: 1.5rem;
-		padding-bottom: 1rem;
-		border-bottom: 1px solid #e2e8f0;
-	}
-
-	.detail-header h1 {
-		margin: 0 0 0.5rem;
-		font-size: 1.5rem;
-		color: #1e293b;
-	}
-
-	.header-badges {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.info-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-		gap: 1.5rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.info-section h2 {
-		margin: 0 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: #64748b;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.info-section dl {
-		margin: 0;
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 0.25rem 1rem;
-	}
-
-	.info-section dt {
-		color: #94a3b8;
-		font-size: 0.8125rem;
-	}
-
-	.info-section dd {
-		margin: 0;
-		color: #1e293b;
-		font-size: 0.875rem;
-	}
-
-	.info-section dd a {
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	.info-section dd a:hover {
-		text-decoration: underline;
-	}
-
-	.text-content {
-		margin: 0;
-		color: #475569;
-		font-size: 0.875rem;
-		white-space: pre-wrap;
-		line-height: 1.6;
-	}
-
-	.conclusion-text {
-		font-weight: 500;
-		font-size: 1rem;
-		color: #1e293b;
-	}
-
-	.argument-section {
-		background: #f8fafc;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
-		padding: 1.25rem;
-	}
-
-	.argument-text {
-		margin: 0;
-		color: #334155;
-		font-size: 0.9375rem;
-		white-space: pre-wrap;
-		line-height: 1.8;
-	}
-
-	.linked-ids {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.linked-ids a {
-		color: #3b82f6;
-		text-decoration: none;
-	}
-
-	.linked-ids a:hover {
-		text-decoration: underline;
-	}
-
-	.linked-ids code {
-		font-size: 0.8125rem;
-		background: #f1f5f9;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-	}
-
-	.analysis-cards {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.analysis-card {
-		display: block;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
-		padding: 1rem;
-		text-decoration: none;
-		color: inherit;
-		transition: border-color 0.15s;
-	}
-
-	.analysis-card:hover {
-		border-color: #3b82f6;
-	}
-
-	.analysis-card-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 0.5rem;
-	}
-
-	.analysis-fact-type {
-		font-weight: 600;
-		font-size: 0.875rem;
-		color: #1e293b;
-	}
-
-	.analysis-conclusion {
-		margin: 0;
-		font-size: 0.8125rem;
-		color: #475569;
-		line-height: 1.4;
-	}
-
-	.analysis-meta {
-		display: inline-block;
-		margin-top: 0.5rem;
-		font-size: 0.75rem;
-		color: #94a3b8;
-	}
-
-	.meta-footer {
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-		display: flex;
-		gap: 1.5rem;
-		flex-wrap: wrap;
-		font-size: 0.75rem;
-		color: #94a3b8;
-	}
-
-	/* Edit form styles */
-	.edit-form {
-		background: white;
-		border-radius: 12px;
-		border: 1px solid #e2e8f0;
-		padding: 1.5rem;
-	}
-
-	.edit-form h1 {
-		margin: 0 0 1.5rem;
-		font-size: 1.25rem;
-		color: #1e293b;
-	}
-
-	.form-error {
-		padding: 0.75rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		color: #dc2626;
-		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
-
-	.form-row {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.edit-form label {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-		font-size: 0.875rem;
-		color: #475569;
-		margin-bottom: 1rem;
-	}
-
-	.required {
-		color: #dc2626;
-	}
-
-	.edit-form input,
-	.edit-form select,
-	.edit-form textarea {
-		padding: 0.625rem 0.75rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		font-size: 0.875rem;
-	}
-
-	.edit-form input:focus,
-	.edit-form select:focus,
-	.edit-form textarea:focus {
-		outline: none;
-		border-color: #3b82f6;
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-	}
-
-	.edit-form textarea {
-		resize: vertical;
-	}
-
-	.list-field {
-		margin-bottom: 1rem;
-	}
-
-	.list-field h3 {
-		margin: 0 0 0.5rem;
-		font-size: 0.875rem;
-		color: #475569;
-	}
-
-	.id-list {
-		list-style: none;
-		padding: 0;
-		margin: 0 0 0.5rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.id-list li {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.id-list code {
-		font-size: 0.8125rem;
-		background: #f1f5f9;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-	}
-
-	.remove-btn {
-		background: none;
-		border: none;
-		color: #dc2626;
-		cursor: pointer;
-		font-size: 0.875rem;
-		padding: 0.125rem 0.375rem;
-		border-radius: 4px;
-	}
-
-	.remove-btn:hover {
-		background: #fef2f2;
-	}
-
-	.add-id-row {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.add-id-row input {
-		flex: 1;
-		padding: 0.5rem 0.75rem;
-		border: 1px solid #e2e8f0;
-		border-radius: 6px;
-		font-size: 0.875rem;
-	}
-
-	.form-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.75rem;
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-	}
-
-	@media (max-width: 640px) {
-		.form-row {
-			grid-template-columns: 1fr;
-		}
-	}
-</style>
