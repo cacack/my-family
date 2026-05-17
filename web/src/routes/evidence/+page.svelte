@@ -12,9 +12,27 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import { formatFactType, subjectRoute, formatDate } from '$lib/utils/evidence';
+	import {
+		formatFactType,
+		subjectRoute,
+		formatDate,
+		outcomeBadgeProps,
+		conflictBadgeProps
+	} from '$lib/utils/evidence';
 
 	const pageSize = 20;
+
+	// Shared class strings for the desktop tables. Same pattern as the
+	// {#snippet pagination} below — single place to change when the table styling
+	// evolves, rather than 20+ <th>/<td> sites.
+	const TH_CLASS =
+		'whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600';
+	const TD_CLASS = 'border-b border-slate-100 px-4 py-3 text-slate-800';
+	const TD_NOWRAP = `${TD_CLASS} whitespace-nowrap font-medium`;
+	const TD_TRUNCATE = `${TD_CLASS} max-w-xs overflow-hidden text-ellipsis whitespace-nowrap`;
+	const TD_CENTER = `${TD_CLASS} text-center`;
+	const ROW_CLICKABLE = 'cursor-pointer transition-colors hover:bg-slate-50';
+	const SUBJECT_LINK = 'text-blue-500 no-underline hover:underline';
 
 	// Active tab
 	let activeTab = $state('analyses');
@@ -169,19 +187,44 @@
 	<div
 		class="mt-8 flex items-center justify-center gap-4 border-t border-slate-200 pt-4"
 	>
-		<Button variant="outline" size="sm" onclick={onPrev} disabled={currentPage === 1 || loading}>
+		<Button
+			variant="outline"
+			size="sm"
+			onclick={() => {
+				if (currentPage > 1) onPrev();
+			}}
+			disabled={currentPage === 1 || loading}
+		>
 			Previous
 		</Button>
 		<span class="text-sm text-slate-500">Page {currentPage} of {totalPages}</span>
 		<Button
 			variant="outline"
 			size="sm"
-			onclick={onNext}
+			onclick={() => {
+				if (currentPage < totalPages) onNext();
+			}}
 			disabled={currentPage >= totalPages || loading}
 		>
 			Next
 		</Button>
 	</div>
+{/snippet}
+
+{#snippet mobileCard(href: string, topLeft: string, body: string, meta: string | null, badge: import('svelte').Snippet)}
+	<a
+		href={href}
+		class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
+	>
+		<div class="mb-2 flex items-center justify-between">
+			<span class="text-sm font-semibold text-slate-800">{topLeft}</span>
+			{@render badge()}
+		</div>
+		<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">{body}</p>
+		{#if meta}
+			<div class="mt-2 text-xs text-slate-400">{meta}</div>
+		{/if}
+	</a>
 {/snippet}
 
 <div class="mx-auto max-w-screen-xl p-6">
@@ -239,17 +282,17 @@
 					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Fact Type</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Conclusion</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Status</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Citations</th>
+								<th class={TH_CLASS}>Fact Type</th>
+								<th class={TH_CLASS}>Subject</th>
+								<th class={TH_CLASS}>Conclusion</th>
+								<th class={TH_CLASS}>Status</th>
+								<th class={TH_CLASS}>Citations</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each analyses as analysis}
 								<tr
-									class="cursor-pointer transition-colors hover:bg-slate-50"
+									class={ROW_CLICKABLE}
 									tabindex="0"
 									role="link"
 									onclick={() => goto(`/evidence/analyses/${analysis.id}`)}
@@ -260,31 +303,25 @@
 										}
 									}}
 								>
-									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 font-medium text-slate-800">
-										{formatFactType(analysis.fact_type)}
-									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+									<td class={TD_NOWRAP}>{formatFactType(analysis.fact_type)}</td>
+									<td class={TD_CLASS}>
 										<a
 											href="/{subjectRoute(analysis.fact_type)}/{analysis.subject_id}"
-											class="text-blue-500 no-underline hover:underline"
+											class={SUBJECT_LINK}
 											onclick={(e) => e.stopPropagation()}
 										>
 											{analysis.subject_id.slice(0, 8)}...
 										</a>
 									</td>
-									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
-										{truncate(analysis.conclusion)}
-									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+									<td class={TD_TRUNCATE}>{truncate(analysis.conclusion)}</td>
+									<td class={TD_CLASS}>
 										{#if analysis.research_status}
 											<UncertaintyBadge status={analysis.research_status} showLabel />
 										{:else}
 											<span class="text-slate-400">--</span>
 										{/if}
 									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-center text-slate-800">
-										{analysis.citation_ids?.length ?? 0}
-									</td>
+									<td class={TD_CENTER}>{analysis.citation_ids?.length ?? 0}</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -294,25 +331,22 @@
 				<!-- Mobile cards -->
 				<div class="flex flex-col gap-3 md:hidden">
 					{#each analyses as analysis}
-						<a
-							href="/evidence/analyses/{analysis.id}"
-							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
-						>
-							<div class="mb-2 flex items-center justify-between">
-								<span class="text-sm font-semibold text-slate-800">
-									{formatFactType(analysis.fact_type)}
-								</span>
-								{#if analysis.research_status}
-									<UncertaintyBadge status={analysis.research_status} showLabel size="small" />
-								{/if}
-							</div>
-							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
-								{truncate(analysis.conclusion, 120)}
-							</p>
-							<div class="mt-2 text-xs text-slate-400">
-								<span>{analysis.citation_ids?.length ?? 0} citations</span>
-							</div>
-						</a>
+						{#snippet analysisBadge()}
+							{#if analysis.research_status}
+								<UncertaintyBadge
+									status={analysis.research_status}
+									showLabel
+									size="small"
+								/>
+							{/if}
+						{/snippet}
+						{@render mobileCard(
+							`/evidence/analyses/${analysis.id}`,
+							formatFactType(analysis.fact_type),
+							truncate(analysis.conclusion, 120),
+							`${analysis.citation_ids?.length ?? 0} citations`,
+							analysisBadge
+						)}
 					{/each}
 				</div>
 
@@ -378,16 +412,17 @@
 					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Fact Type</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Description</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Status</th>
+								<th class={TH_CLASS}>Fact Type</th>
+								<th class={TH_CLASS}>Subject</th>
+								<th class={TH_CLASS}>Description</th>
+								<th class={TH_CLASS}>Status</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each conflicts as conflict}
+								{@const statusBadge = conflictBadgeProps(conflict.status)}
 								<tr
-									class="cursor-pointer transition-colors hover:bg-slate-50"
+									class={ROW_CLICKABLE}
 									tabindex="0"
 									role="link"
 									onclick={() => goto(`/evidence/conflicts/${conflict.id}`)}
@@ -398,27 +433,21 @@
 										}
 									}}
 								>
-									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 font-medium text-slate-800">
-										{formatFactType(conflict.fact_type)}
-									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+									<td class={TD_NOWRAP}>{formatFactType(conflict.fact_type)}</td>
+									<td class={TD_CLASS}>
 										<a
 											href="/{subjectRoute(conflict.fact_type)}/{conflict.subject_id}"
-											class="text-blue-500 no-underline hover:underline"
+											class={SUBJECT_LINK}
 											onclick={(e) => e.stopPropagation()}
 										>
 											{conflict.subject_id.slice(0, 8)}...
 										</a>
 									</td>
-									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
-										{truncate(conflict.description)}
-									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
-										{#if conflict.status === 'open'}
-											<Badge variant="destructive">Open</Badge>
-										{:else}
-											<Badge class="border-green-200 bg-green-50 text-green-700">Resolved</Badge>
-										{/if}
+									<td class={TD_TRUNCATE}>{truncate(conflict.description)}</td>
+									<td class={TD_CLASS}>
+										<Badge variant={statusBadge.variant} class={statusBadge.class}>
+											{statusBadge.label}
+										</Badge>
 									</td>
 								</tr>
 							{/each}
@@ -429,24 +458,19 @@
 				<!-- Mobile cards -->
 				<div class="flex flex-col gap-3 md:hidden">
 					{#each conflicts as conflict}
-						<a
-							href="/evidence/conflicts/{conflict.id}"
-							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
-						>
-							<div class="mb-2 flex items-center justify-between">
-								<span class="text-sm font-semibold text-slate-800">
-									{formatFactType(conflict.fact_type)}
-								</span>
-								{#if conflict.status === 'open'}
-									<Badge variant="destructive">Open</Badge>
-								{:else}
-									<Badge class="border-green-200 bg-green-50 text-green-700">Resolved</Badge>
-								{/if}
-							</div>
-							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
-								{truncate(conflict.description, 120)}
-							</p>
-						</a>
+						{@const statusBadge = conflictBadgeProps(conflict.status)}
+						{#snippet conflictMobileBadge()}
+							<Badge variant={statusBadge.variant} class={statusBadge.class}>
+								{statusBadge.label}
+							</Badge>
+						{/snippet}
+						{@render mobileCard(
+							`/evidence/conflicts/${conflict.id}`,
+							formatFactType(conflict.fact_type),
+							truncate(conflict.description, 120),
+							null,
+							conflictMobileBadge
+						)}
 					{/each}
 				</div>
 
@@ -498,17 +522,18 @@
 					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Repository</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Search Description</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Outcome</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Date</th>
+								<th class={TH_CLASS}>Subject</th>
+								<th class={TH_CLASS}>Repository</th>
+								<th class={TH_CLASS}>Search Description</th>
+								<th class={TH_CLASS}>Outcome</th>
+								<th class={TH_CLASS}>Date</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each logs as log}
+								{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
 								<tr
-									class="cursor-pointer transition-colors hover:bg-slate-50"
+									class={ROW_CLICKABLE}
 									tabindex="0"
 									role="link"
 									onclick={() => goto(`/evidence/research-logs/${log.id}`)}
@@ -519,29 +544,23 @@
 										}
 									}}
 								>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+									<td class={TD_CLASS}>
 										<a
 											href="/{log.subject_type === 'family' ? 'families' : 'persons'}/{log.subject_id}"
-											class="text-blue-500 no-underline hover:underline"
+											class={SUBJECT_LINK}
 											onclick={(e) => e.stopPropagation()}
 										>
 											{log.subject_id.slice(0, 8)}...
 										</a>
 									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">{log.repository}</td>
-									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
-										{truncate(log.search_description)}
+									<td class={TD_CLASS}>{log.repository}</td>
+									<td class={TD_TRUNCATE}>{truncate(log.search_description)}</td>
+									<td class={TD_CLASS}>
+										<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
+											{outcomeBadge.label}
+										</Badge>
 									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
-										{#if log.outcome === 'found'}
-											<Badge class="border-green-200 bg-green-50 text-green-700">Found</Badge>
-										{:else if log.outcome === 'not_found'}
-											<Badge variant="destructive">Not Found</Badge>
-										{:else}
-											<Badge class="border-yellow-200 bg-yellow-50 text-yellow-700">Inconclusive</Badge>
-										{/if}
-									</td>
-									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
+									<td class={`${TD_CLASS} whitespace-nowrap`}>
 										{formatDate(log.search_date)}
 									</td>
 								</tr>
@@ -553,27 +572,19 @@
 				<!-- Mobile cards -->
 				<div class="flex flex-col gap-3 md:hidden">
 					{#each logs as log}
-						<a
-							href="/evidence/research-logs/{log.id}"
-							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
-						>
-							<div class="mb-2 flex items-center justify-between">
-								<span class="text-sm font-semibold text-slate-800">{log.repository}</span>
-								{#if log.outcome === 'found'}
-									<Badge class="border-green-200 bg-green-50 text-green-700">Found</Badge>
-								{:else if log.outcome === 'not_found'}
-									<Badge variant="destructive">Not Found</Badge>
-								{:else}
-									<Badge class="border-yellow-200 bg-yellow-50 text-yellow-700">Inconclusive</Badge>
-								{/if}
-							</div>
-							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
-								{truncate(log.search_description, 120)}
-							</p>
-							<div class="mt-2 text-xs text-slate-400">
-								<span>{formatDate(log.search_date)}</span>
-							</div>
-						</a>
+						{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
+						{#snippet logMobileBadge()}
+							<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
+								{outcomeBadge.label}
+							</Badge>
+						{/snippet}
+						{@render mobileCard(
+							`/evidence/research-logs/${log.id}`,
+							log.repository,
+							truncate(log.search_description, 120),
+							formatDate(log.search_date),
+							logMobileBadge
+						)}
 					{/each}
 				</div>
 
@@ -625,17 +636,17 @@
 					<table class="w-full border-collapse text-sm">
 						<thead>
 							<tr>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Fact Type</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Subject</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Conclusion</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Status</th>
-								<th class="whitespace-nowrap border-b-2 border-slate-200 px-4 py-3 text-left font-semibold text-slate-600">Analyses</th>
+								<th class={TH_CLASS}>Fact Type</th>
+								<th class={TH_CLASS}>Subject</th>
+								<th class={TH_CLASS}>Conclusion</th>
+								<th class={TH_CLASS}>Status</th>
+								<th class={TH_CLASS}>Analyses</th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each summaries as summary}
 								<tr
-									class="cursor-pointer transition-colors hover:bg-slate-50"
+									class={ROW_CLICKABLE}
 									tabindex="0"
 									role="link"
 									onclick={() => goto(`/evidence/proof-summaries/${summary.id}`)}
@@ -646,31 +657,25 @@
 										}
 									}}
 								>
-									<td class="whitespace-nowrap border-b border-slate-100 px-4 py-3 font-medium text-slate-800">
-										{formatFactType(summary.fact_type)}
-									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+									<td class={TD_NOWRAP}>{formatFactType(summary.fact_type)}</td>
+									<td class={TD_CLASS}>
 										<a
 											href="/{subjectRoute(summary.fact_type)}/{summary.subject_id}"
-											class="text-blue-500 no-underline hover:underline"
+											class={SUBJECT_LINK}
 											onclick={(e) => e.stopPropagation()}
 										>
 											{summary.subject_id.slice(0, 8)}...
 										</a>
 									</td>
-									<td class="max-w-xs overflow-hidden text-ellipsis whitespace-nowrap border-b border-slate-100 px-4 py-3 text-slate-800">
-										{truncate(summary.conclusion)}
-									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-slate-800">
+									<td class={TD_TRUNCATE}>{truncate(summary.conclusion)}</td>
+									<td class={TD_CLASS}>
 										{#if summary.research_status}
 											<UncertaintyBadge status={summary.research_status} showLabel />
 										{:else}
 											<span class="text-slate-400">--</span>
 										{/if}
 									</td>
-									<td class="border-b border-slate-100 px-4 py-3 text-center text-slate-800">
-										{summary.analysis_ids?.length ?? 0}
-									</td>
+									<td class={TD_CENTER}>{summary.analysis_ids?.length ?? 0}</td>
 								</tr>
 							{/each}
 						</tbody>
@@ -680,25 +685,22 @@
 				<!-- Mobile cards -->
 				<div class="flex flex-col gap-3 md:hidden">
 					{#each summaries as summary}
-						<a
-							href="/evidence/proof-summaries/{summary.id}"
-							class="block rounded-lg border border-slate-200 bg-white p-4 text-inherit no-underline transition-shadow hover:border-slate-300 hover:shadow-sm"
-						>
-							<div class="mb-2 flex items-center justify-between">
-								<span class="text-sm font-semibold text-slate-800">
-									{formatFactType(summary.fact_type)}
-								</span>
-								{#if summary.research_status}
-									<UncertaintyBadge status={summary.research_status} showLabel size="small" />
-								{/if}
-							</div>
-							<p class="m-0 text-[0.8125rem] leading-snug text-slate-600">
-								{truncate(summary.conclusion, 120)}
-							</p>
-							<div class="mt-2 text-xs text-slate-400">
-								<span>{summary.analysis_ids?.length ?? 0} linked analyses</span>
-							</div>
-						</a>
+						{#snippet summaryBadge()}
+							{#if summary.research_status}
+								<UncertaintyBadge
+									status={summary.research_status}
+									showLabel
+									size="small"
+								/>
+							{/if}
+						{/snippet}
+						{@render mobileCard(
+							`/evidence/proof-summaries/${summary.id}`,
+							formatFactType(summary.fact_type),
+							truncate(summary.conclusion, 120),
+							`${summary.analysis_ids?.length ?? 0} linked analyses`,
+							summaryBadge
+						)}
 					{/each}
 				</div>
 

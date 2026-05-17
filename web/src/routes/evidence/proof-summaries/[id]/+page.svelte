@@ -15,6 +15,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
+	import { nativeSelectClass } from '$lib/utils/forms';
 
 	const factTypes = [
 		'person_birth', 'person_death', 'person_name', 'person_gender',
@@ -26,10 +27,6 @@
 	];
 
 	const researchStatuses = ['certain', 'probable', 'possible', 'unknown'] as const;
-
-	// Native <select> styled to match shadcn Input for visual consistency.
-	const nativeSelectClass =
-		'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 	let summary: ProofSummaryResponse | null = $state(null);
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);

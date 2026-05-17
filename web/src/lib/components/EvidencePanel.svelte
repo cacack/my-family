@@ -8,7 +8,13 @@
 	} from '$lib/api/client';
 	import UncertaintyBadge from './UncertaintyBadge.svelte';
 	import { Badge } from '$lib/components/ui/badge';
-	import { formatFactTypeShort, subjectRoute, formatDate } from '$lib/utils/evidence';
+	import {
+		formatFactTypeShort,
+		formatDate,
+		outcomeBadgeProps,
+		conflictBadgeProps,
+		conflictRowClass
+	} from '$lib/utils/evidence';
 
 	interface Props {
 		subjectId: string;
@@ -38,17 +44,6 @@
 
 	// Use formatFactTypeShort in person/family context where prefix is redundant
 	const formatFactType = formatFactTypeShort;
-
-	function outcomeBadgeClass(outcome: string): string {
-		switch (outcome) {
-			case 'found':
-				return 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-400';
-			case 'not_found':
-				return 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400';
-			default:
-				return 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-400';
-		}
-	}
 
 	function summaryText(): string {
 		const parts: string[] = [];
@@ -229,11 +224,8 @@
 						</div>
 						<ul class="m-0 list-none p-0">
 							{#each conflicts as conflict}
-								<li
-									class="mb-2 overflow-hidden rounded-md border {conflict.status === 'open'
-										? 'border-amber-200 bg-amber-50'
-										: 'border-slate-200 bg-slate-50'}"
-								>
+								{@const statusBadge = conflictBadgeProps(conflict.status)}
+								<li class="mb-2 overflow-hidden rounded-md border {conflictRowClass(conflict.status)}">
 									<a
 										href="/evidence/conflicts/{conflict.id}"
 										class="block px-3 py-2.5 text-slate-800 no-underline hover:opacity-85"
@@ -241,8 +233,8 @@
 										<div class="flex items-center justify-between gap-2">
 											<span class="flex-1 text-[0.8125rem]">{conflict.description}</span>
 											<Badge
-												variant={conflict.status === 'open' ? 'destructive' : 'secondary'}
-												class="text-[0.625rem] uppercase"
+												variant={statusBadge.variant}
+												class="text-[0.625rem] uppercase {statusBadge.class}"
 											>
 												{conflict.status}
 											</Badge>
@@ -281,6 +273,7 @@
 						</div>
 						<ul class="m-0 list-none p-0">
 							{#each researchLogs as log}
+								{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
 								<li class="flex gap-3 border-b border-slate-100 py-2 last:border-b-0">
 									<div class="min-w-20 flex-shrink-0 pt-0.5 text-[0.6875rem] text-slate-400">
 										{formatDate(log.search_date)}
@@ -290,8 +283,8 @@
 											<span class="text-[0.8125rem] font-medium text-slate-800">
 												{log.repository}
 											</span>
-											<Badge variant="outline" class={outcomeBadgeClass(log.outcome)}>
-												{log.outcome.replace('_', ' ')}
+											<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
+												{outcomeBadge.label}
 											</Badge>
 										</div>
 										<span class="block text-xs text-slate-500">{log.search_description}</span>

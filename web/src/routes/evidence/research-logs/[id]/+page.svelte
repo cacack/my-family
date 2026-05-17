@@ -12,13 +12,10 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { toRFC3339 } from '$lib/utils/evidence';
+	import { toRFC3339, outcomeBadgeProps } from '$lib/utils/evidence';
+	import { nativeSelectClass } from '$lib/utils/forms';
 
 	const outcomes = ['found', 'not_found', 'inconclusive'] as const;
-
-	// Native <select> styled to match shadcn Input for visual consistency.
-	const nativeSelectClass =
-		'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 	let log: ResearchLogResponse | null = $state(null);
 	let loading = $state(true);
@@ -311,17 +308,14 @@
 			</div>
 		</form>
 	{:else if log}
+		{@const outcomeBadge = outcomeBadgeProps(log.outcome)}
 		<div class="rounded-xl border border-slate-200 bg-white p-6">
 			<div class="mb-6 border-b border-slate-200 pb-4">
 				<h1 class="m-0 mb-2 text-2xl text-slate-800">Research Log</h1>
 				<div class="flex items-center gap-2">
-					{#if log.outcome === 'found'}
-						<Badge class="border-green-200 bg-green-50 text-green-700">Found</Badge>
-					{:else if log.outcome === 'not_found'}
-						<Badge variant="destructive">Not Found</Badge>
-					{:else}
-						<Badge class="border-yellow-200 bg-yellow-50 text-yellow-700">Inconclusive</Badge>
-					{/if}
+					<Badge variant={outcomeBadge.variant} class={outcomeBadge.class}>
+						{outcomeBadge.label}
+					</Badge>
 				</div>
 			</div>
 

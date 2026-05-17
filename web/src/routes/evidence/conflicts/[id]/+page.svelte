@@ -11,7 +11,11 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
+	import {
+		formatFactType,
+		subjectRoute,
+		conflictBadgeProps
+	} from '$lib/utils/evidence';
 
 	let conflict: EvidenceConflictResponse | null = $state(null);
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
@@ -98,16 +102,15 @@
 			<Button variant="outline" onclick={() => loadConflict($page.params.id!)}>Retry</Button>
 		</div>
 	{:else if conflict}
+		{@const statusBadge = conflictBadgeProps(conflict.status)}
 		<div class="rounded-xl border border-slate-200 bg-white p-6">
 			<div class="mb-6 border-b border-slate-200 pb-4">
 				<h1 class="m-0 mb-2 text-2xl text-slate-800">Evidence Conflict</h1>
 				<div class="flex items-center gap-2">
 					<Badge variant="secondary">{formatFactType(conflict.fact_type)}</Badge>
-					{#if conflict.status === 'open'}
-						<Badge variant="destructive">Open</Badge>
-					{:else}
-						<Badge class="border-green-200 bg-green-50 text-green-700">Resolved</Badge>
-					{/if}
+					<Badge variant={statusBadge.variant} class={statusBadge.class}>
+						{statusBadge.label}
+					</Badge>
 				</div>
 			</div>
 
