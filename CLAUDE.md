@@ -97,11 +97,12 @@ This project uses `github.com/cacack/gedcom-go`. For local development, uncommen
 
 When changes to gedcom-go are needed:
 
-1. **Keep changes atomic**: Each gedcom-go enhancement should be a single logical unit
-2. **Always add tests**: Any new gedcom-go functionality must include tests in that repo
-3. **Run both test suites**: After gedcom-go changes, run `go test ./...` in both repos
-4. **Commit separately**: gedcom-go changes should be committed to that repo independently
-5. **Document the dependency**: Note what my-family feature required the gedcom-go change
+1. **File upstream first**: If you hit a gedcom-go gap (missing feature, awkward API, bug) and are about to add a workaround in `internal/gedcom/`, file an issue against `cacack/gedcom-go` first — workarounds rot, upstream fixes don't.
+2. **Keep changes atomic**: Each gedcom-go enhancement should be a single logical unit
+3. **Always add tests**: Any new gedcom-go functionality must include tests in that repo
+4. **Run both test suites**: After gedcom-go changes, run `go test ./...` in both repos
+5. **Commit separately**: gedcom-go changes should be committed to that repo independently
+6. **Document the dependency**: Note what my-family feature required the gedcom-go change
 
 ## Gotchas
 
