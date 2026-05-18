@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cacack/gedcom-go/gedcom"
-	"github.com/cacack/gedcom-go/validator"
+	"github.com/cacack/gedcom-go/v2/gedcom"
+	"github.com/cacack/gedcom-go/v2/validator"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
@@ -73,7 +73,7 @@ func (s *ValidationService) GetQualityReport(ctx context.Context) (*ValidationRe
 	}
 
 	// Create validator with strict mode to get all severity levels
-	v := validator.NewWithConfig(&validator.ValidatorConfig{
+	v := validator.NewWithOptions(&validator.ValidateOptions{
 		Strictness: validator.StrictnessStrict,
 	})
 
@@ -184,7 +184,7 @@ func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFil
 	}
 
 	// Create validator with strict mode to get all severity levels
-	v := validator.NewWithConfig(&validator.ValidatorConfig{
+	v := validator.NewWithOptions(&validator.ValidateOptions{
 		Strictness: validator.StrictnessStrict,
 	})
 

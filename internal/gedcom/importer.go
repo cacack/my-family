@@ -8,9 +8,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/cacack/gedcom-go/decoder"
-	"github.com/cacack/gedcom-go/gedcom"
-	"github.com/cacack/gedcom-go/validator"
+	"github.com/cacack/gedcom-go/v2/decoder"
+	"github.com/cacack/gedcom-go/v2/gedcom"
+	"github.com/cacack/gedcom-go/v2/validator"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
