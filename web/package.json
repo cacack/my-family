@@ -34,7 +34,7 @@
 		"clsx": "^2.1.1",
 		"jsdom": "^29.1.1",
 		"openapi-typescript": "^7.13.0",
-		"svelte": "^5.55.7",
+		"svelte": "^5.55.9",
 		"svelte-check": "^4.4.8",
 		"tailwind-merge": "^3.6.0",
 		"tailwind-variants": "^3.2.2",
