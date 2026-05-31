@@ -5418,7 +5418,6 @@ components:
       properties:
         person:
           $ref: '#/components/schemas/Person'
-          description: The survivor person after merge
         merge_summary:
           $ref: '#/components/schemas/MergeSummary'
 
