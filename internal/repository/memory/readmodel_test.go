@@ -4177,12 +4177,22 @@ func TestReadModelStore_ListRepositories(t *testing.T) {
 		t.Errorf("len(results) = %d, want 0", len(results))
 	}
 
-	// Ascending order is honored.
-	results, _, err = store.ListRepositories(ctx, repository.ListOptions{Limit: 10, Order: "asc"})
+	// Default sort is updated_at descending (matches postgres/sqlite), so the
+	// most recently updated repository (Repo 2) comes first.
+	results, _, err = store.ListRepositories(ctx, repository.ListOptions{Limit: 10})
 	if err != nil {
-		t.Fatalf("ListRepositories(asc) failed: %v", err)
+		t.Fatalf("ListRepositories(default) failed: %v", err)
+	}
+	if len(results) == 3 && results[0].Name != "Repo 2" {
+		t.Errorf("default order: first = %s, want Repo 2 (newest updated_at)", results[0].Name)
+	}
+
+	// Explicit name sort orders alphabetically regardless of updated_at.
+	results, _, err = store.ListRepositories(ctx, repository.ListOptions{Limit: 10, Sort: "name", Order: "asc"})
+	if err != nil {
+		t.Fatalf("ListRepositories(sort=name) failed: %v", err)
 	}
 	if len(results) == 3 && results[0].Name != "Repo 0" {
-		t.Errorf("ascending order: first = %s, want Repo 0", results[0].Name)
+		t.Errorf("name sort ascending: first = %s, want Repo 0", results[0].Name)
 	}
 }

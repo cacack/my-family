@@ -1681,13 +1681,24 @@ func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.L
 
 	total := len(results)
 
-	// Sort by name
+	// Sort by name or updated_at (matches the postgres/sqlite implementations,
+	// which default to updated_at and switch to name when opts.Sort == "name").
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
-		if asc {
-			return results[i].Name < results[j].Name
+		var cmp int
+		if sortField == "name" {
+			cmp = strings.Compare(results[i].Name, results[j].Name)
+		} else {
+			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
 		}
-		return results[i].Name > results[j].Name
+		if asc {
+			return cmp < 0
+		}
+		return cmp > 0
 	})
 
 	// Apply pagination
