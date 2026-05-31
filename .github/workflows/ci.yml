@@ -310,7 +310,7 @@ jobs:
 
       # SAST: Go security issues
       - name: Go security scan (gosec)
-        uses: securego/gosec@de65614d10a6b84029e3e1215567b8ce7e490f23 # master (docker: 2.25.0)
+        uses: securego/gosec@bd17b2589eb634e511b352f14fc30cb40863eefe # master (docker: 2.25.0)
         with:
           args: '-no-fail -exclude=G104 -exclude-generated -fmt sarif -out gosec-results.sarif ./...'
 
