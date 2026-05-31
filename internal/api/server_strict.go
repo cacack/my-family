@@ -4517,6 +4517,205 @@ func convertDomainAddressToGenerated(a *domain.Address) *Address {
 	}
 }
 
+// Repository endpoints
+// ---------------------
+
+// ListRepositories implements StrictServerInterface.
+func (ss *StrictServer) ListRepositories(ctx context.Context, request ListRepositoriesRequestObject) (ListRepositoriesResponseObject, error) {
+	limit := 20
+	offset := 0
+	sort := "updated_at"
+	order := "desc"
+
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	if request.Params.Offset != nil {
+		offset = *request.Params.Offset
+	}
+	if request.Params.Sort != nil {
+		sort = string(*request.Params.Sort)
+	}
+	if request.Params.Order != nil {
+		order = string(*request.Params.Order)
+	}
+
+	result, err := ss.server.repositoryService.ListRepositories(ctx, query.ListRepositoriesInput{
+		Limit:     limit,
+		Offset:    offset,
+		Sort:      sort,
+		SortOrder: order,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	repositories := make([]Repository, len(result.Repositories))
+	for i, r := range result.Repositories {
+		repositories[i] = convertQueryRepositoryToGenerated(r)
+	}
+
+	limitVal := result.Limit
+	offsetVal := result.Offset
+	return ListRepositories200JSONResponse{
+		Repositories: repositories,
+		Total:        result.Total,
+		Limit:        &limitVal,
+		Offset:       &offsetVal,
+	}, nil
+}
+
+// CreateRepository implements StrictServerInterface.
+func (ss *StrictServer) CreateRepository(ctx context.Context, request CreateRepositoryRequestObject) (CreateRepositoryResponseObject, error) {
+	input := command.CreateRepositoryInput{
+		Name: request.Body.Name,
+	}
+	if request.Body.Address != nil {
+		input.Address = convertGeneratedAddressToDomain(request.Body.Address)
+	}
+	if request.Body.Notes != nil {
+		input.Notes = *request.Body.Notes
+	}
+	if request.Body.GedcomXref != nil {
+		input.GedcomXref = *request.Body.GedcomXref
+	}
+
+	result, err := ss.server.commandHandler.CreateRepository(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrInvalidInput) {
+			return CreateRepository400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	// Fetch the created repository
+	repo, err := ss.server.repositoryService.GetRepository(ctx, result.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateRepository201JSONResponse(convertQueryRepositoryToGenerated(*repo)), nil
+}
+
+// GetRepository implements StrictServerInterface.
+func (ss *StrictServer) GetRepository(ctx context.Context, request GetRepositoryRequestObject) (GetRepositoryResponseObject, error) {
+	repo, err := ss.server.repositoryService.GetRepository(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, query.ErrNotFound) {
+			return GetRepository404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Repository not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return GetRepository200JSONResponse(convertQueryRepositoryToGenerated(*repo)), nil
+}
+
+// UpdateRepository implements StrictServerInterface.
+func (ss *StrictServer) UpdateRepository(ctx context.Context, request UpdateRepositoryRequestObject) (UpdateRepositoryResponseObject, error) {
+	input := command.UpdateRepositoryInput{
+		ID:      request.Id,
+		Version: request.Body.Version,
+	}
+	if request.Body.Name != nil {
+		input.Name = request.Body.Name
+	}
+	if request.Body.Address != nil {
+		input.Address = convertGeneratedAddressToDomain(request.Body.Address)
+	}
+	if request.Body.Notes != nil {
+		input.Notes = request.Body.Notes
+	}
+	if request.Body.GedcomXref != nil {
+		input.GedcomXref = request.Body.GedcomXref
+	}
+
+	_, err := ss.server.commandHandler.UpdateRepository(ctx, input)
+	if err != nil {
+		if errors.Is(err, command.ErrRepositoryNotFound) {
+			return UpdateRepository404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Repository not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return UpdateRepository409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict",
+			}}, nil
+		}
+		if errors.Is(err, command.ErrInvalidInput) {
+			return UpdateRepository400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_input",
+				Message: err.Error(),
+			}}, nil
+		}
+		return nil, err
+	}
+
+	// Fetch the updated repository
+	repo, err := ss.server.repositoryService.GetRepository(ctx, request.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	return UpdateRepository200JSONResponse(convertQueryRepositoryToGenerated(*repo)), nil
+}
+
+// DeleteRepository implements StrictServerInterface.
+func (ss *StrictServer) DeleteRepository(ctx context.Context, request DeleteRepositoryRequestObject) (DeleteRepositoryResponseObject, error) {
+	version := int64(0)
+	if request.Params.Version != nil {
+		version = *request.Params.Version
+	}
+
+	err := ss.server.commandHandler.DeleteRepository(ctx, request.Id, version, "")
+	if err != nil {
+		if errors.Is(err, command.ErrRepositoryNotFound) {
+			return DeleteRepository404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Repository not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return DeleteRepository409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return DeleteRepository204Response{}, nil
+}
+
+// convertQueryRepositoryToGenerated converts a query.Repository to the generated Repository type.
+func convertQueryRepositoryToGenerated(r query.Repository) Repository {
+	resp := Repository{
+		Id:        r.ID,
+		Name:      r.Name,
+		Version:   r.Version,
+		UpdatedAt: &r.UpdatedAt,
+	}
+
+	if r.Address != nil {
+		resp.Address = convertDomainAddressToGenerated(r.Address)
+	}
+	if r.Notes != nil {
+		resp.Notes = r.Notes
+	}
+	if r.GedcomXref != nil {
+		resp.GedcomXref = r.GedcomXref
+	}
+
+	return resp
+}
+
 // Association endpoints
 // ---------------------
 

@@ -104,6 +104,11 @@ linters:
           - revive
         path: internal/api/middleware\.go
         text: type name will be used as api.APIError
+      # Repository (genealogy archive) entity shares its name with the repository package
+      - linters:
+          - revive
+        path: internal/repository/readmodel\.go
+        text: type name will be used as repository.RepositoryReadModel
       # Test helper functions designed for flexibility
       - linters:
           - unparam

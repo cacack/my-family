@@ -26,6 +26,7 @@ type ExportResult struct {
 	AttributesExported    int
 	NotesExported         int
 	SubmittersExported    int
+	RepositoriesExported  int
 	AssociationsExported  int
 	LDSOrdinancesExported int
 }
@@ -106,15 +107,21 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		return nil, fmt.Errorf("failed to list submitters: %w", err)
 	}
 
+	repositories, err := repository.ListAll(ctx, 1000, exp.readStore.ListRepositories)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list repositories: %w", err)
+	}
+
 	// Calculate total items for progress tracking
 	// Weight persons more heavily since they have the most processing
-	totalItems := len(sources) + len(persons)*2 + len(families) + len(notes) + len(submitters) + 1 // +1 for encoding
+	totalItems := len(sources) + len(persons)*2 + len(families) + len(notes) + len(submitters) + len(repositories) + 1 // +1 for encoding
 	processedItems := 0
 
 	// Create XREF mappings (UUID -> @Xn@)
 	personXrefs := make(map[uuid.UUID]string)
 	familyXrefs := make(map[uuid.UUID]string)
 	sourceXrefs := make(map[uuid.UUID]string)
+	repositoryXrefs := make(map[uuid.UUID]string)
 
 	// Sort persons by ID for stable output
 	sort.Slice(persons, func(i, j int) bool {
@@ -145,6 +152,25 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		}
 	}
 
+	// Sort repositories by ID for stable output and assign xrefs.
+	sort.Slice(repositories, func(i, j int) bool {
+		return repositories[i].ID.String() < repositories[j].ID.String()
+	})
+	// repoNameToXref lets sources that reference a repository by name be linked
+	// to the standalone REPO record via a SOUR.REPO cross-reference.
+	repoNameToXref := make(map[string]string)
+	for i, r := range repositories {
+		// Use GedcomXref if available (for round-trip), otherwise generate.
+		if r.GedcomXref != "" {
+			repositoryXrefs[r.ID] = r.GedcomXref
+		} else {
+			repositoryXrefs[r.ID] = fmt.Sprintf("@R%d@", i+1)
+		}
+		if r.Name != "" {
+			repoNameToXref[r.Name] = repositoryXrefs[r.ID]
+		}
+	}
+
 	// Build GEDCOM document
 	doc := &gedcom.Document{
 		Header: &gedcom.Header{
@@ -158,7 +184,7 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		src := toGedcomSource(s)
+		src := toGedcomSource(s, repoNameToXref)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeSource,
@@ -321,6 +347,28 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		}
 	}
 
+	// Add repository records (REPO). Standalone records that sources reference
+	// via SOUR.REPO cross-references.
+	for i, r := range repositories {
+		xref := repositoryXrefs[r.ID]
+		repo := toGedcomRepository(r)
+		doc.Records = append(doc.Records, &gedcom.Record{
+			XRef:   xref,
+			Type:   gedcom.RecordTypeRepository,
+			Entity: repo,
+		})
+		result.RepositoriesExported++
+		processedItems++
+
+		// Report progress every 10 items or at the end
+		if i%10 == 0 || i == len(repositories)-1 {
+			pct := float64(processedItems) / float64(totalItems) * 100
+			if err := reportProgress("repositories", i+1, len(repositories), pct); err != nil {
+				return result, err
+			}
+		}
+	}
+
 	// Bump to GEDCOM 7.0 if any negated events are present (NO tags require 7.0)
 	if hasNegatedEvents(doc) {
 		doc.Header.Version = gedcom.Version70
@@ -364,7 +412,12 @@ func (cw *countingWriter) Write(p []byte) (n int, err error) {
 
 // toGedcomSource converts a repository SourceReadModel to a gedcom.Source entity.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
-func toGedcomSource(s repository.SourceReadModel) *gedcom.Source {
+//
+// repoNameToXref maps a Repository's name (and any @XREF@ used as a name) to the
+// xref of its standalone REPO record. When a source references a repository that
+// exists as a Repository entity, emit a SOUR.REPO cross-reference to that record;
+// otherwise fall back to an inline repository definition (name-only sources).
+func toGedcomSource(s repository.SourceReadModel, repoNameToXref map[string]string) *gedcom.Source {
 	src := &gedcom.Source{}
 
 	// Title
@@ -384,11 +437,16 @@ func toGedcomSource(s repository.SourceReadModel) *gedcom.Source {
 
 	// Repository
 	if s.RepositoryName != "" {
-		// If it looks like an XREF, use RepositoryRef
-		if strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@") {
+		switch {
+		case repoNameToXref[s.RepositoryName] != "":
+			// Source references a Repository entity by name: emit a SOUR.REPO
+			// cross-reference to the standalone REPO record.
+			src.RepositoryRef = repoNameToXref[s.RepositoryName]
+		case strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@"):
+			// Already an XREF (e.g. an unresolved import reference): preserve it.
 			src.RepositoryRef = s.RepositoryName
-		} else {
-			// Inline repository with NAME subordinate
+		default:
+			// Inline repository with NAME subordinate (name-only / unlinked source).
 			src.Repository = &gedcom.InlineRepository{Name: s.RepositoryName}
 		}
 	}
@@ -937,6 +995,26 @@ func toGedcomSubmitter(s repository.SubmitterReadModel) *gedcom.Submitter {
 	}
 
 	return subm
+}
+
+// toGedcomRepository converts a repository RepositoryReadModel to a gedcom.Repository entity.
+// The encoder will automatically convert this to GEDCOM tags (NAME, ADDR, NOTE).
+func toGedcomRepository(r repository.RepositoryReadModel) *gedcom.Repository {
+	repo := &gedcom.Repository{
+		Name: r.Name,
+	}
+
+	// Convert address if present (includes phone/email/website).
+	if r.Address != nil && !r.Address.IsEmpty() {
+		repo.Address = convertDomainAddressToGedcom(r.Address)
+	}
+
+	// Notes - encoder handles CONT/CONC automatically for multiline text.
+	if r.Notes != "" {
+		repo.Notes = []string{r.Notes}
+	}
+
+	return repo
 }
 
 // toGedcomLDSOrdinance converts a repository LDSOrdinanceReadModel to a gedcom.LDSOrdinance.

@@ -4074,3 +4074,115 @@ func TestReadModelStore_ListProofSummaries(t *testing.T) {
 		t.Errorf("len(results) = %d, want 3", len(results))
 	}
 }
+
+func TestReadModelStore_SaveAndGetRepository(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	repo := &repository.RepositoryReadModel{
+		ID:         uuid.New(),
+		Name:       "National Archives",
+		Address:    &domain.Address{City: "Washington", State: "DC", Phone: "+1-866-272-6272"},
+		Notes:      "Primary federal records repository",
+		GedcomXref: "@R1@",
+		Version:    1,
+		UpdatedAt:  time.Now(),
+	}
+
+	if err := store.SaveRepository(ctx, repo); err != nil {
+		t.Fatalf("SaveRepository() failed: %v", err)
+	}
+
+	retrieved, err := store.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("GetRepository() failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("Repository not found")
+	}
+	if retrieved.Name != "National Archives" {
+		t.Errorf("Name = %s, want National Archives", retrieved.Name)
+	}
+	if retrieved.Notes != "Primary federal records repository" {
+		t.Errorf("Notes = %s, want Primary federal records repository", retrieved.Notes)
+	}
+	if retrieved.GedcomXref != "@R1@" {
+		t.Errorf("GedcomXref = %s, want @R1@", retrieved.GedcomXref)
+	}
+	if retrieved.Address == nil || retrieved.Address.City != "Washington" {
+		t.Errorf("Address not round-tripped: %+v", retrieved.Address)
+	}
+
+	// Test delete
+	if err := store.DeleteRepository(ctx, repo.ID); err != nil {
+		t.Fatalf("DeleteRepository() failed: %v", err)
+	}
+	deleted, err := store.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("GetRepository() after delete failed: %v", err)
+	}
+	if deleted != nil {
+		t.Error("Repository should be deleted")
+	}
+}
+
+func TestReadModelStore_ListRepositories(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		repo := &repository.RepositoryReadModel{
+			ID:        uuid.New(),
+			Name:      fmt.Sprintf("Repo %d", i),
+			Version:   1,
+			UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
+		}
+		if err := store.SaveRepository(ctx, repo); err != nil {
+			t.Fatalf("SaveRepository() failed: %v", err)
+		}
+	}
+
+	results, total, err := store.ListRepositories(ctx, repository.ListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListRepositories() failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Errorf("len(results) = %d, want 3", len(results))
+	}
+
+	// Limit truncation: total still reflects all rows, page is capped.
+	results, total, err = store.ListRepositories(ctx, repository.ListOptions{Limit: 2})
+	if err != nil {
+		t.Fatalf("ListRepositories(limit=2) failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 2 {
+		t.Errorf("len(results) = %d, want 2", len(results))
+	}
+
+	// Offset past the end returns an empty page.
+	results, total, err = store.ListRepositories(ctx, repository.ListOptions{Limit: 10, Offset: 5})
+	if err != nil {
+		t.Fatalf("ListRepositories(offset=5) failed: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 0 {
+		t.Errorf("len(results) = %d, want 0", len(results))
+	}
+
+	// Ascending order is honored.
+	results, _, err = store.ListRepositories(ctx, repository.ListOptions{Limit: 10, Order: "asc"})
+	if err != nil {
+		t.Fatalf("ListRepositories(asc) failed: %v", err)
+	}
+	if len(results) == 3 && results[0].Name != "Repo 0" {
+		t.Errorf("ascending order: first = %s, want Repo 0", results[0].Name)
+	}
+}

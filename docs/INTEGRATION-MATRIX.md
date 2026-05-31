@@ -167,7 +167,7 @@ Current implementation status for tracking completeness.
 | LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
 | LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
 | Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
-| Repository | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | Partial |
+| Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Snapshot | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | N/A | Partial |
 
 Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing

@@ -203,6 +203,18 @@ type SubmitterReadModel struct {
 	UpdatedAt  time.Time       `json:"updated_at"`
 }
 
+// RepositoryReadModel represents a GEDCOM REPO (Repository) record in the read model.
+// Repositories track physical or digital locations where source documents are stored.
+type RepositoryReadModel struct {
+	ID         uuid.UUID       `json:"id"`
+	Name       string          `json:"name"`                  // NAME - Repository name
+	Address    *domain.Address `json:"address,omitempty"`     // ADDR - Structured address (incl. phone/email/website)
+	Notes      string          `json:"notes,omitempty"`       // NOTE - Inline note text
+	GedcomXref string          `json:"gedcom_xref,omitempty"` // GEDCOM cross-reference ID for round-trip
+	Version    int64           `json:"version"`
+	UpdatedAt  time.Time       `json:"updated_at"`
+}
+
 // AssociationReadModel represents a GEDCOM ASSO (Association) record in the read model.
 // Associations capture non-family relationships like godparents, witnesses, mentors, etc.
 type AssociationReadModel struct {
@@ -380,6 +392,12 @@ type ReadModelStore interface {
 	ListSubmitters(ctx context.Context, opts ListOptions) ([]SubmitterReadModel, int, error)
 	SaveSubmitter(ctx context.Context, submitter *SubmitterReadModel) error
 	DeleteSubmitter(ctx context.Context, id uuid.UUID) error
+
+	// Repository operations
+	GetRepository(ctx context.Context, id uuid.UUID) (*RepositoryReadModel, error)
+	ListRepositories(ctx context.Context, opts ListOptions) ([]RepositoryReadModel, int, error)
+	SaveRepository(ctx context.Context, repository *RepositoryReadModel) error
+	DeleteRepository(ctx context.Context, id uuid.UUID) error
 
 	// Association operations
 	GetAssociation(ctx context.Context, id uuid.UUID) (*AssociationReadModel, error)

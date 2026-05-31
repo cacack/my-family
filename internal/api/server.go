@@ -63,6 +63,7 @@ type Server struct {
 	relationshipService *query.RelationshipService
 	noteService         *query.NoteService
 	submitterService    *query.SubmitterService
+	repositoryService   *query.RepositoryService
 	associationService  *query.AssociationService
 	ldsOrdinanceService *query.LDSOrdinanceService
 	exportService       *query.ExportService
@@ -122,6 +123,7 @@ func NewServer(
 	relationshipSvc := query.NewRelationshipService(readStore)
 	noteSvc := query.NewNoteService(readStore)
 	submitterSvc := query.NewSubmitterService(readStore)
+	repositorySvc := query.NewRepositoryService(readStore)
 	associationSvc := query.NewAssociationService(readStore)
 	ldsOrdinanceSvc := query.NewLDSOrdinanceService(readStore)
 	exportSvc := query.NewExportService(readStore)
@@ -147,6 +149,7 @@ func NewServer(
 		relationshipService: relationshipSvc,
 		noteService:         noteSvc,
 		submitterService:    submitterSvc,
+		repositoryService:   repositorySvc,
 		associationService:  associationSvc,
 		ldsOrdinanceService: ldsOrdinanceSvc,
 		exportService:       exportSvc,

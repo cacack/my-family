@@ -303,6 +303,20 @@ func (m *mockReadModelStore) DeleteSubmitter(ctx context.Context, id uuid.UUID) 
 	return nil
 }
 
+// Repository stub methods
+func (m *mockReadModelStore) GetRepository(ctx context.Context, id uuid.UUID) (*repository.RepositoryReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ListRepositories(ctx context.Context, opts repository.ListOptions) ([]repository.RepositoryReadModel, int, error) {
+	return nil, 0, nil
+}
+func (m *mockReadModelStore) SaveRepository(ctx context.Context, repo *repository.RepositoryReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
 // Association stub methods
 func (m *mockReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
 	return nil, nil

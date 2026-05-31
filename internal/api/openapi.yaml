@@ -53,6 +53,8 @@ tags:
     description: GEDCOM NOTE record management
   - name: submitters
     description: GEDCOM SUBM record management (file provenance)
+  - name: repositories
+    description: GEDCOM REPO record management (where sources are stored)
   - name: associations
     description: GEDCOM ASSO record management (non-family relationships)
   - name: lds-ordinances
@@ -2584,6 +2586,114 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  # Repositories endpoints
+  /repositories:
+    get:
+      operationId: listRepositories
+      summary: List all repositories
+      description: Returns paginated list of GEDCOM REPO (repository) records
+      tags: [repositories]
+      parameters:
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/offsetParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [name, updated_at]
+            default: updated_at
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: List of repositories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepositoryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      operationId: createRepository
+      summary: Create a new repository
+      tags: [repositories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepositoryCreate'
+      responses:
+        '201':
+          description: Repository created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /repositories/{id}:
+    parameters:
+      - $ref: '#/components/parameters/repositoryId'
+
+    get:
+      operationId: getRepository
+      summary: Get a repository by ID
+      tags: [repositories]
+      responses:
+        '200':
+          description: Repository details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      operationId: updateRepository
+      summary: Update a repository
+      tags: [repositories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RepositoryUpdate'
+      responses:
+        '200':
+          description: Repository updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      operationId: deleteRepository
+      summary: Delete a repository
+      tags: [repositories]
+      parameters:
+        - $ref: '#/components/parameters/versionParam'
+      responses:
+        '204':
+          description: Repository deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
   # Associations endpoints
   /associations:
     get:
@@ -3426,6 +3536,15 @@ components:
       in: path
       required: true
       description: Submitter UUID
+      schema:
+        type: string
+        format: uuid
+
+    repositoryId:
+      name: id
+      in: path
+      required: true
+      description: Repository UUID
       schema:
         type: string
         format: uuid
@@ -6030,6 +6149,90 @@ components:
         total:
           type: integer
           description: Total number of submitters
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Repository schemas
+    Repository:
+      type: object
+      description: A GEDCOM REPO (repository) record describing where source documents are stored
+      required: [id, name, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Repository's name
+        address:
+          $ref: '#/components/schemas/Address'
+        notes:
+          type: string
+          description: Free-form notes about the repository
+        gedcom_xref:
+          type: string
+          description: GEDCOM cross-reference ID for round-trip support
+        version:
+          type: integer
+          format: int64
+          description: Optimistic locking version
+        updated_at:
+          type: string
+          format: date-time
+
+    RepositoryCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Repository's name
+          minLength: 1
+          maxLength: 200
+        address:
+          $ref: '#/components/schemas/Address'
+        notes:
+          type: string
+          description: Free-form notes about the repository
+        gedcom_xref:
+          type: string
+          description: Optional GEDCOM cross-reference ID for import
+
+    RepositoryUpdate:
+      type: object
+      required: [version]
+      properties:
+        name:
+          type: string
+          description: Updated repository name
+          minLength: 1
+          maxLength: 200
+        address:
+          $ref: '#/components/schemas/Address'
+        notes:
+          type: string
+          description: Updated notes
+        gedcom_xref:
+          type: string
+          description: Updated GEDCOM cross-reference ID
+        version:
+          type: integer
+          format: int64
+          description: Current version for optimistic locking
+
+    RepositoryList:
+      type: object
+      required: [repositories, total]
+      properties:
+        repositories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Repository'
+        total:
+          type: integer
+          description: Total number of repositories
         limit:
           type: integer
         offset:

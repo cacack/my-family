@@ -1620,6 +1620,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/repositories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all repositories
+         * @description Returns paginated list of GEDCOM REPO (repository) records
+         */
+        get: operations["listRepositories"];
+        put?: never;
+        /** Create a new repository */
+        post: operations["createRepository"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/repositories/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Repository UUID */
+                id: components["parameters"]["repositoryId"];
+            };
+            cookie?: never;
+        };
+        /** Get a repository by ID */
+        get: operations["getRepository"];
+        /** Update a repository */
+        put: operations["updateRepository"];
+        post?: never;
+        /** Delete a repository */
+        delete: operations["deleteRepository"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/associations": {
         parameters: {
             query?: never;
@@ -3559,6 +3602,55 @@ export interface components {
             limit?: number;
             offset?: number;
         };
+        /** @description A GEDCOM REPO (repository) record describing where source documents are stored */
+        Repository: {
+            /** Format: uuid */
+            id: string;
+            /** @description Repository's name */
+            name: string;
+            address?: components["schemas"]["Address"];
+            /** @description Free-form notes about the repository */
+            notes?: string;
+            /** @description GEDCOM cross-reference ID for round-trip support */
+            gedcom_xref?: string;
+            /**
+             * Format: int64
+             * @description Optimistic locking version
+             */
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        RepositoryCreate: {
+            /** @description Repository's name */
+            name: string;
+            address?: components["schemas"]["Address"];
+            /** @description Free-form notes about the repository */
+            notes?: string;
+            /** @description Optional GEDCOM cross-reference ID for import */
+            gedcom_xref?: string;
+        };
+        RepositoryUpdate: {
+            /** @description Updated repository name */
+            name?: string;
+            address?: components["schemas"]["Address"];
+            /** @description Updated notes */
+            notes?: string;
+            /** @description Updated GEDCOM cross-reference ID */
+            gedcom_xref?: string;
+            /**
+             * Format: int64
+             * @description Current version for optimistic locking
+             */
+            version: number;
+        };
+        RepositoryList: {
+            repositories: components["schemas"]["Repository"][];
+            /** @description Total number of repositories */
+            total: number;
+            limit?: number;
+            offset?: number;
+        };
         Association: {
             /** Format: uuid */
             id: string;
@@ -4006,6 +4098,8 @@ export interface components {
         noteId: string;
         /** @description Submitter UUID */
         submitterId: string;
+        /** @description Repository UUID */
+        repositoryId: string;
         /** @description Association UUID */
         associationId: string;
         /** @description LDS Ordinance UUID */
@@ -6779,6 +6873,137 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Submitter deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listRepositories: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["limitParam"];
+                offset?: components["parameters"]["offsetParam"];
+                sort?: "name" | "updated_at";
+                order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of repositories */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositoryList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    createRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepositoryCreate"];
+            };
+        };
+        responses: {
+            /** @description Repository created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Repository"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Repository UUID */
+                id: components["parameters"]["repositoryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repository details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Repository"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateRepository: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Repository UUID */
+                id: components["parameters"]["repositoryId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RepositoryUpdate"];
+            };
+        };
+        responses: {
+            /** @description Repository updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Repository"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteRepository: {
+        parameters: {
+            query?: {
+                /** @description Entity version for optimistic locking */
+                version?: components["parameters"]["versionParam"];
+            };
+            header?: never;
+            path: {
+                /** @description Repository UUID */
+                id: components["parameters"]["repositoryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repository deleted */
             204: {
                 headers: {
                     [name: string]: unknown;

@@ -1043,19 +1043,76 @@ func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.Attrib
 	return p.readStore.SaveAttribute(ctx, attribute)
 }
 
-// projectRepositoryCreated is a no-op until RepositoryReadModel is implemented (#239).
-func (p *Projector) projectRepositoryCreated(_ context.Context, _ domain.RepositoryCreated, _ int64) error {
-	return nil
+func (p *Projector) projectRepositoryCreated(ctx context.Context, e domain.RepositoryCreated, version int64) error {
+	// Build a domain.Repository to reuse GetAddress() for mapping the flat
+	// address fields into a structured *domain.Address.
+	r := &domain.Repository{
+		ID:            e.RepositoryID,
+		Name:          e.Name,
+		StreetAddress: e.StreetAddress,
+		City:          e.City,
+		State:         e.State,
+		PostalCode:    e.PostalCode,
+		Country:       e.Country,
+		Phone:         e.Phone,
+		Email:         e.Email,
+		Website:       e.Website,
+		Notes:         e.Notes,
+		GedcomXref:    e.GedcomXref,
+	}
+
+	repo := &RepositoryReadModel{
+		ID:         e.RepositoryID,
+		Name:       e.Name,
+		Address:    r.GetAddress(),
+		Notes:      e.Notes,
+		GedcomXref: e.GedcomXref,
+		Version:    version,
+		UpdatedAt:  e.OccurredAt(),
+	}
+
+	return p.readStore.SaveRepository(ctx, repo)
 }
 
-// projectRepositoryUpdated is a no-op until RepositoryReadModel is implemented (#239).
-func (p *Projector) projectRepositoryUpdated(_ context.Context, _ domain.RepositoryUpdated, _ int64) error {
-	return nil
+func (p *Projector) projectRepositoryUpdated(ctx context.Context, e domain.RepositoryUpdated, version int64) error {
+	repo, err := p.readStore.GetRepository(ctx, e.RepositoryID)
+	if err != nil {
+		return err
+	}
+	if repo == nil {
+		return nil // Repository doesn't exist in read model, skip
+	}
+
+	// Apply changes
+	for key, value := range e.Changes {
+		switch key {
+		case "name":
+			if v, ok := value.(string); ok {
+				repo.Name = v
+			}
+		case "address":
+			if v, ok := value.(*domain.Address); ok {
+				repo.Address = v
+			}
+		case "notes":
+			if v, ok := value.(string); ok {
+				repo.Notes = v
+			}
+		case "gedcom_xref":
+			if v, ok := value.(string); ok {
+				repo.GedcomXref = v
+			}
+		}
+	}
+
+	repo.Version = version
+	repo.UpdatedAt = e.OccurredAt()
+
+	return p.readStore.SaveRepository(ctx, repo)
 }
 
-// projectRepositoryDeleted is a no-op until RepositoryReadModel is implemented (#239).
-func (p *Projector) projectRepositoryDeleted(_ context.Context, _ domain.RepositoryDeleted) error {
-	return nil
+func (p *Projector) projectRepositoryDeleted(ctx context.Context, e domain.RepositoryDeleted) error {
+	return p.readStore.DeleteRepository(ctx, e.RepositoryID)
 }
 
 func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64) error {
