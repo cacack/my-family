@@ -3178,7 +3178,6 @@ export interface components {
         };
         /** @description Result of merging two persons */
         MergePersonsResponse: {
-            /** @description The survivor person after merge */
             person: components["schemas"]["Person"];
             merge_summary: components["schemas"]["MergeSummary"];
         };

@@ -5418,7 +5418,6 @@ components:
       properties:
         person:
           $ref: '#/components/schemas/Person'
-          description: The survivor person after merge
         merge_summary:
           $ref: '#/components/schemas/MergeSummary'
 
@@ -6387,7 +6386,6 @@ components:
           type: string
           description: The conclusion drawn from the evidence
         research_status:
-          type: string
           $ref: '#/components/schemas/ResearchStatus'
         notes:
           type: string
