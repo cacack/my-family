@@ -1091,8 +1091,22 @@ func (p *Projector) projectRepositoryUpdated(ctx context.Context, e domain.Repos
 				repo.Name = v
 			}
 		case "address":
-			if v, ok := value.(*domain.Address); ok {
-				repo.Address = v
+			// On replay the event is decoded from JSON, so the address arrives
+			// as map[string]any rather than *domain.Address. Handle both, plus
+			// nil to clear. Mirrors projectLifeEventUpdated.
+			if value == nil {
+				repo.Address = nil
+			} else {
+				switch v := value.(type) {
+				case *domain.Address:
+					repo.Address = v
+				case map[string]any:
+					b, _ := json.Marshal(v)
+					var addr domain.Address
+					if json.Unmarshal(b, &addr) == nil {
+						repo.Address = &addr
+					}
+				}
 			}
 		case "notes":
 			if v, ok := value.(string); ok {

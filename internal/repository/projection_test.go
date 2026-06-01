@@ -4398,6 +4398,39 @@ func TestProjector_RepositoryUpdated(t *testing.T) {
 	}
 }
 
+// TestProjector_RepositoryUpdated_ReplayAddress simulates reprojection from the
+// event store, where Changes is decoded from JSON and "address" arrives as
+// map[string]any rather than *domain.Address. The projection must still apply it.
+func TestProjector_RepositoryUpdated_ReplayAddress(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	repo := domain.NewRepository("Old Name")
+	if err := projector.Project(ctx, domain.NewRepositoryCreated(repo), 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// As it would look after JSON round-trip through the event store.
+	updateEvent := domain.NewRepositoryUpdated(repo.ID, map[string]any{
+		"address": map[string]any{"city": "Boston", "state": "MA"},
+	})
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	rm, err := readStore.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("GetRepository() failed: %v", err)
+	}
+	if rm == nil || rm.Address == nil {
+		t.Fatalf("Address dropped on replay: %+v", rm)
+	}
+	if rm.Address.City != "Boston" || rm.Address.State != "MA" {
+		t.Errorf("Address = %+v, want City=Boston State=MA", rm.Address)
+	}
+}
+
 func TestProjector_RepositoryUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	projector := repository.NewProjector(readStore)

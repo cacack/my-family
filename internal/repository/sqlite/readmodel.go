@@ -3844,12 +3844,13 @@ func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.L
 	}
 
 	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	// id is a stable tie-breaker so LIMIT/OFFSET pagination is deterministic when sort keys collide.
 	query := fmt.Sprintf(`
 		SELECT id, name, address, notes, gedcom_xref, version, updated_at
 		FROM repositories
-		ORDER BY %s %s
+		ORDER BY %s %s, id %s
 		LIMIT ? OFFSET ?
-	`, orderColumn, orderDir)
+	`, orderColumn, orderDir, orderDir)
 
 	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
 	if err != nil {

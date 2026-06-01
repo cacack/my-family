@@ -1695,6 +1695,11 @@ func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.L
 		} else {
 			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
 		}
+		// id is a stable tie-breaker so pagination is deterministic when sort
+		// keys collide, matching the postgres/sqlite implementations.
+		if cmp == 0 {
+			cmp = strings.Compare(results[i].ID.String(), results[j].ID.String())
+		}
 		if asc {
 			return cmp < 0
 		}
