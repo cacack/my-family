@@ -2532,3 +2532,235 @@ func TestExport_NegatedEventRoundTrip(t *testing.T) {
 		t.Error("Round-trip should preserve birth date")
 	}
 }
+
+func TestExport_Repositories(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Repository linked to a source by name.
+	repoID := uuid.New()
+	repo := &repository.RepositoryReadModel{
+		ID:   repoID,
+		Name: "National Archives",
+		Address: &domain.Address{
+			Line1:   "700 Pennsylvania Ave NW",
+			City:    "Washington",
+			State:   "DC",
+			Country: "USA",
+		},
+		Notes:      "Federal repository",
+		GedcomXref: "@R1@",
+	}
+	if err := readStore.SaveRepository(ctx, repo); err != nil {
+		t.Fatal(err)
+	}
+
+	// Source whose RepositoryName matches the repository: should become a
+	// SOUR.REPO cross-reference, not an inline repository.
+	linkedSource := &repository.SourceReadModel{
+		ID:             uuid.New(),
+		SourceType:     "book",
+		Title:          "Census Records",
+		RepositoryName: "National Archives",
+		GedcomXref:     "@S1@",
+	}
+	if err := readStore.SaveSource(ctx, linkedSource); err != nil {
+		t.Fatal(err)
+	}
+
+	// Source referencing a repository only by name (no Repository entity):
+	// should keep the inline repository fallback.
+	unlinkedSource := &repository.SourceReadModel{
+		ID:             uuid.New(),
+		SourceType:     "book",
+		Title:          "Parish Register",
+		RepositoryName: "St. Mary's Church",
+		GedcomXref:     "@S2@",
+	}
+	if err := readStore.SaveSource(ctx, unlinkedSource); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.RepositoriesExported != 1 {
+		t.Errorf("RepositoriesExported = %d, want 1", result.RepositoriesExported)
+	}
+
+	output := buf.String()
+
+	// Standalone REPO record with name and address.
+	if !strings.Contains(output, "0 @R1@ REPO\n") {
+		t.Errorf("Output should contain standalone REPO record; got:\n%s", output)
+	}
+	if !strings.Contains(output, "1 NAME National Archives\n") {
+		t.Error("Output should contain repository NAME")
+	}
+	if !strings.Contains(output, "700 Pennsylvania Ave NW") {
+		t.Error("Output should contain repository address")
+	}
+	if !strings.Contains(output, "Federal repository") {
+		t.Error("Output should contain repository note")
+	}
+
+	// Linked source uses a SOUR.REPO cross-reference (no inline NAME).
+	if !strings.Contains(output, "1 REPO @R1@\n") {
+		t.Errorf("Linked source should reference REPO via xref; got:\n%s", output)
+	}
+
+	// Unlinked source keeps the inline repository fallback.
+	if !strings.Contains(output, "2 NAME St. Mary's Church\n") {
+		t.Errorf("Unlinked source should keep inline repository name; got:\n%s", output)
+	}
+}
+
+// TestExport_RepositoryRoundTrip imports a GEDCOM containing REPO records and
+// SOUR.REPO cross-references, exports it, and asserts the repositories and the
+// source->repository links survive with no dropped data.
+func TestExport_RepositoryRoundTrip(t *testing.T) {
+	gedcomInput := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL 1900 Census
+1 REPO @R1@
+0 @S2@ SOUR
+1 TITL Family Bible
+0 @R1@ REPO
+1 NAME National Archives
+1 ADDR 700 Pennsylvania Ave NW
+2 CITY Washington
+2 STAE DC
+2 CTRY USA
+0 @I1@ INDI
+1 NAME Test /Person/
+0 TRLR
+`
+	ctx := context.Background()
+
+	// Step 1: Import.
+	importer := gedcom.NewImporter()
+	_, persons, _, sources, _, repositories, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomInput))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(repositories) != 1 {
+		t.Fatalf("Import should produce 1 repository, got %d", len(repositories))
+	}
+	if len(sources) != 2 {
+		t.Fatalf("Import should produce 2 sources, got %d", len(sources))
+	}
+
+	// Step 2: Store in read model.
+	readStore := memory.NewReadModelStore()
+
+	// Map repository xref -> name so linked sources can be re-linked by name.
+	// (The SourceReadModel carries only RepositoryName, not RepositoryID.)
+	repoNameByID := make(map[uuid.UUID]string)
+	for _, r := range repositories {
+		var addr *domain.Address
+		if r.Address != "" || r.City != "" || r.State != "" || r.Country != "" {
+			addr = &domain.Address{
+				Line1:   r.Address,
+				City:    r.City,
+				State:   r.State,
+				Country: r.Country,
+			}
+		}
+		rm := &repository.RepositoryReadModel{
+			ID:         r.ID,
+			Name:       r.Name,
+			Address:    addr,
+			Notes:      r.Notes,
+			GedcomXref: r.GedcomXref,
+			Version:    1,
+		}
+		if err := readStore.SaveRepository(ctx, rm); err != nil {
+			t.Fatalf("Failed to save repository: %v", err)
+		}
+		repoNameByID[r.ID] = r.Name
+	}
+
+	for _, s := range sources {
+		// Resolved SOUR.REPO references set RepositoryID; bridge it to the
+		// repository name the read model stores for display/export.
+		repoName := s.RepositoryName
+		if s.RepositoryID != nil {
+			if name, ok := repoNameByID[*s.RepositoryID]; ok {
+				repoName = name
+			}
+		}
+		sm := &repository.SourceReadModel{
+			ID:             s.ID,
+			SourceType:     domain.SourceType(s.SourceType),
+			Title:          s.Title,
+			Author:         s.Author,
+			Publisher:      s.Publisher,
+			RepositoryName: repoName,
+			Notes:          s.Notes,
+			GedcomXref:     s.GedcomXref,
+			Version:        1,
+		}
+		if err := readStore.SaveSource(ctx, sm); err != nil {
+			t.Fatalf("Failed to save source: %v", err)
+		}
+	}
+
+	for _, p := range persons {
+		pm := &repository.PersonReadModel{
+			ID:        p.ID,
+			GivenName: p.GivenName,
+			Surname:   p.Surname,
+			FullName:  p.GivenName + " " + p.Surname,
+		}
+		if err := readStore.SavePerson(ctx, pm); err != nil {
+			t.Fatalf("Failed to save person: %v", err)
+		}
+	}
+
+	// Step 3: Export.
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	if result.RepositoriesExported != 1 {
+		t.Errorf("RepositoriesExported = %d, want 1", result.RepositoriesExported)
+	}
+	if result.SourcesExported != 2 {
+		t.Errorf("SourcesExported = %d, want 2", result.SourcesExported)
+	}
+
+	output := buf.String()
+
+	// Step 4: Assert nothing dropped.
+	// Standalone REPO record preserved with its original xref and name.
+	if !strings.Contains(output, "0 @R1@ REPO\n") {
+		t.Errorf("Round-trip should preserve standalone REPO record; got:\n%s", output)
+	}
+	if !strings.Contains(output, "1 NAME National Archives\n") {
+		t.Error("Round-trip should preserve repository NAME")
+	}
+	if !strings.Contains(output, "700 Pennsylvania Ave NW") {
+		t.Error("Round-trip should preserve repository address")
+	}
+
+	// Linked source (@S1@) keeps its SOUR.REPO cross-reference.
+	if !strings.Contains(output, "1 REPO @R1@\n") {
+		t.Errorf("Round-trip should preserve SOUR.REPO xref for linked source; got:\n%s", output)
+	}
+
+	// Source without a repository (@S2@) survives without a spurious REPO link.
+	if !strings.Contains(output, "1 TITL Family Bible\n") {
+		t.Errorf("Round-trip should preserve unlinked source; got:\n%s", output)
+	}
+}

@@ -1312,6 +1312,42 @@ func (e GetValidationIssuesParamsSeverity) Valid() bool {
 	}
 }
 
+// Defines values for ListRepositoriesParamsSort.
+const (
+	ListRepositoriesParamsSortName      ListRepositoriesParamsSort = "name"
+	ListRepositoriesParamsSortUpdatedAt ListRepositoriesParamsSort = "updated_at"
+)
+
+// Valid indicates whether the value is a known member of the ListRepositoriesParamsSort enum.
+func (e ListRepositoriesParamsSort) Valid() bool {
+	switch e {
+	case ListRepositoriesParamsSortName:
+		return true
+	case ListRepositoriesParamsSortUpdatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListRepositoriesParamsOrder.
+const (
+	ListRepositoriesParamsOrderAsc  ListRepositoriesParamsOrder = "asc"
+	ListRepositoriesParamsOrderDesc ListRepositoriesParamsOrder = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListRepositoriesParamsOrder enum.
+func (e ListRepositoriesParamsOrder) Valid() bool {
+	switch e {
+	case ListRepositoriesParamsOrderAsc:
+		return true
+	case ListRepositoriesParamsOrderDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListResearchLogsParamsSort.
 const (
 	ListResearchLogsParamsSortCreatedAt  ListResearchLogsParamsSort = "created_at"
@@ -1395,22 +1431,22 @@ func (e SearchPersonsParamsOrder) Valid() bool {
 
 // Defines values for ListSourcesParamsSort.
 const (
-	CreatedAt  ListSourcesParamsSort = "created_at"
-	SourceType ListSourcesParamsSort = "source_type"
-	Title      ListSourcesParamsSort = "title"
-	UpdatedAt  ListSourcesParamsSort = "updated_at"
+	ListSourcesParamsSortCreatedAt  ListSourcesParamsSort = "created_at"
+	ListSourcesParamsSortSourceType ListSourcesParamsSort = "source_type"
+	ListSourcesParamsSortTitle      ListSourcesParamsSort = "title"
+	ListSourcesParamsSortUpdatedAt  ListSourcesParamsSort = "updated_at"
 )
 
 // Valid indicates whether the value is a known member of the ListSourcesParamsSort enum.
 func (e ListSourcesParamsSort) Valid() bool {
 	switch e {
-	case CreatedAt:
+	case ListSourcesParamsSortCreatedAt:
 		return true
-	case SourceType:
+	case ListSourcesParamsSortSourceType:
 		return true
-	case Title:
+	case ListSourcesParamsSortTitle:
 		return true
-	case UpdatedAt:
+	case ListSourcesParamsSortUpdatedAt:
 		return true
 	default:
 		return false
@@ -1455,16 +1491,16 @@ func (e ListSubmittersParamsSort) Valid() bool {
 
 // Defines values for ListSubmittersParamsOrder.
 const (
-	ListSubmittersParamsOrderAsc  ListSubmittersParamsOrder = "asc"
-	ListSubmittersParamsOrderDesc ListSubmittersParamsOrder = "desc"
+	Asc  ListSubmittersParamsOrder = "asc"
+	Desc ListSubmittersParamsOrder = "desc"
 )
 
 // Valid indicates whether the value is a known member of the ListSubmittersParamsOrder enum.
 func (e ListSubmittersParamsOrder) Valid() bool {
 	switch e {
-	case ListSubmittersParamsOrderAsc:
+	case Asc:
 		return true
-	case ListSubmittersParamsOrderDesc:
+	case Desc:
 		return true
 	default:
 		return false
@@ -3271,6 +3307,69 @@ type RelationshipResult struct {
 	Summary *string `json:"summary,omitempty"`
 }
 
+// Repository A GEDCOM REPO (repository) record describing where source documents are stored
+type Repository struct {
+	// Address Structured GEDCOM address (embedded in other entities)
+	Address *Address `json:"address,omitempty"`
+
+	// GedcomXref GEDCOM cross-reference ID for round-trip support
+	GedcomXref *string            `json:"gedcom_xref,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Name Repository's name
+	Name string `json:"name"`
+
+	// Notes Free-form notes about the repository
+	Notes     *string    `json:"notes,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+
+	// Version Optimistic locking version
+	Version int64 `json:"version"`
+}
+
+// RepositoryCreate defines model for RepositoryCreate.
+type RepositoryCreate struct {
+	// Address Structured GEDCOM address (embedded in other entities)
+	Address *Address `json:"address,omitempty"`
+
+	// GedcomXref Optional GEDCOM cross-reference ID for import
+	GedcomXref *string `json:"gedcom_xref,omitempty"`
+
+	// Name Repository's name
+	Name string `json:"name"`
+
+	// Notes Free-form notes about the repository
+	Notes *string `json:"notes,omitempty"`
+}
+
+// RepositoryList defines model for RepositoryList.
+type RepositoryList struct {
+	Limit        *int         `json:"limit,omitempty"`
+	Offset       *int         `json:"offset,omitempty"`
+	Repositories []Repository `json:"repositories"`
+
+	// Total Total number of repositories
+	Total int `json:"total"`
+}
+
+// RepositoryUpdate defines model for RepositoryUpdate.
+type RepositoryUpdate struct {
+	// Address Structured GEDCOM address (embedded in other entities)
+	Address *Address `json:"address,omitempty"`
+
+	// GedcomXref Updated GEDCOM cross-reference ID
+	GedcomXref *string `json:"gedcom_xref,omitempty"`
+
+	// Name Updated repository name
+	Name *string `json:"name,omitempty"`
+
+	// Notes Updated notes
+	Notes *string `json:"notes,omitempty"`
+
+	// Version Current version for optimistic locking
+	Version int64 `json:"version"`
+}
+
 // ResearchLog defines model for ResearchLog.
 type ResearchLog struct {
 	CreatedAt *time.Time         `json:"created_at,omitempty"`
@@ -3764,6 +3863,9 @@ type PersonId = openapi_types.UUID
 // ProofSummaryId defines model for proofSummaryId.
 type ProofSummaryId = openapi_types.UUID
 
+// RepositoryId defines model for repositoryId.
+type RepositoryId = openapi_types.UUID
+
 // ResearchLogId defines model for researchLogId.
 type ResearchLogId = openapi_types.UUID
 
@@ -4126,6 +4228,26 @@ type GetValidationIssuesParams struct {
 // GetValidationIssuesParamsSeverity defines parameters for GetValidationIssues.
 type GetValidationIssuesParamsSeverity string
 
+// ListRepositoriesParams defines parameters for ListRepositories.
+type ListRepositoriesParams struct {
+	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *OffsetParam                 `form:"offset,omitempty" json:"offset,omitempty"`
+	Sort   *ListRepositoriesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
+	Order  *ListRepositoriesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
+}
+
+// ListRepositoriesParamsSort defines parameters for ListRepositories.
+type ListRepositoriesParamsSort string
+
+// ListRepositoriesParamsOrder defines parameters for ListRepositories.
+type ListRepositoriesParamsOrder string
+
+// DeleteRepositoryParams defines parameters for DeleteRepository.
+type DeleteRepositoryParams struct {
+	// Version Entity version for optimistic locking
+	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+}
+
 // ListResearchLogsParams defines parameters for ListResearchLogs.
 type ListResearchLogsParams struct {
 	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -4346,6 +4468,12 @@ type CreateProofSummaryJSONRequestBody = ProofSummaryCreate
 
 // UpdateProofSummaryJSONRequestBody defines body for UpdateProofSummary for application/json ContentType.
 type UpdateProofSummaryJSONRequestBody = ProofSummaryUpdate
+
+// CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
+type CreateRepositoryJSONRequestBody = RepositoryCreate
+
+// UpdateRepositoryJSONRequestBody defines body for UpdateRepository for application/json ContentType.
+type UpdateRepositoryJSONRequestBody = RepositoryUpdate
 
 // CreateResearchLogJSONRequestBody defines body for CreateResearchLog for application/json ContentType.
 type CreateResearchLogJSONRequestBody = ResearchLogCreate
@@ -4703,6 +4831,21 @@ type ServerInterface interface {
 	// Calculate relationship between two people
 	// (GET /relationship/{personId1}/{personId2})
 	GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID) error
+	// List all repositories
+	// (GET /repositories)
+	ListRepositories(ctx echo.Context, params ListRepositoriesParams) error
+	// Create a new repository
+	// (POST /repositories)
+	CreateRepository(ctx echo.Context) error
+	// Delete a repository
+	// (DELETE /repositories/{id})
+	DeleteRepository(ctx echo.Context, id RepositoryId, params DeleteRepositoryParams) error
+	// Get a repository by ID
+	// (GET /repositories/{id})
+	GetRepository(ctx echo.Context, id RepositoryId) error
+	// Update a repository
+	// (PUT /repositories/{id})
+	UpdateRepository(ctx echo.Context, id RepositoryId) error
 	// List all research log entries
 	// (GET /research-logs)
 	ListResearchLogs(ctx echo.Context, params ListResearchLogsParams) error
@@ -6906,6 +7049,111 @@ func (w *ServerInterfaceWrapper) GetRelationship(ctx echo.Context) error {
 	return err
 }
 
+// ListRepositories converts echo context to params.
+func (w *ServerInterfaceWrapper) ListRepositories(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRepositoriesParams
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", ctx.QueryParams(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", ctx.QueryParams(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter sort: %s", err))
+	}
+
+	// ------------- Optional query parameter "order" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "order", ctx.QueryParams(), &params.Order, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter order: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListRepositories(ctx, params)
+	return err
+}
+
+// CreateRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateRepository(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateRepository(ctx)
+	return err
+}
+
+// DeleteRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteRepository(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id RepositoryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteRepositoryParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteRepository(ctx, id, params)
+	return err
+}
+
+// GetRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) GetRepository(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id RepositoryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetRepository(ctx, id)
+	return err
+}
+
+// UpdateRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateRepository(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id RepositoryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateRepository(ctx, id)
+	return err
+}
+
 // ListResearchLogs converts echo context to params.
 func (w *ServerInterfaceWrapper) ListResearchLogs(ctx echo.Context) error {
 	var err error
@@ -7700,6 +7948,11 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/quality/report", wrapper.GetQualityReport, options.OperationMiddlewares["getQualityReport"]...)
 	router.GET(options.BaseURL+"/quality/validation", wrapper.GetValidationIssues, options.OperationMiddlewares["getValidationIssues"]...)
 	router.GET(options.BaseURL+"/relationship/:personId1/:personId2", wrapper.GetRelationship, options.OperationMiddlewares["getRelationship"]...)
+	router.GET(options.BaseURL+"/repositories", wrapper.ListRepositories, options.OperationMiddlewares["listRepositories"]...)
+	router.POST(options.BaseURL+"/repositories", wrapper.CreateRepository, options.OperationMiddlewares["createRepository"]...)
+	router.DELETE(options.BaseURL+"/repositories/:id", wrapper.DeleteRepository, options.OperationMiddlewares["deleteRepository"]...)
+	router.GET(options.BaseURL+"/repositories/:id", wrapper.GetRepository, options.OperationMiddlewares["getRepository"]...)
+	router.PUT(options.BaseURL+"/repositories/:id", wrapper.UpdateRepository, options.OperationMiddlewares["updateRepository"]...)
 	router.GET(options.BaseURL+"/research-logs", wrapper.ListResearchLogs, options.OperationMiddlewares["listResearchLogs"]...)
 	router.POST(options.BaseURL+"/research-logs", wrapper.CreateResearchLog, options.OperationMiddlewares["createResearchLog"]...)
 	router.GET(options.BaseURL+"/research-logs/by-subject/:subjectId", wrapper.GetResearchLogsBySubject, options.OperationMiddlewares["getResearchLogsBySubject"]...)
@@ -12070,6 +12323,224 @@ func (response GetRelationship404JSONResponse) VisitGetRelationshipResponse(w ht
 	return err
 }
 
+type ListRepositoriesRequestObject struct {
+	Params ListRepositoriesParams
+}
+
+type ListRepositoriesResponseObject interface {
+	VisitListRepositoriesResponse(w http.ResponseWriter) error
+}
+
+type ListRepositories200JSONResponse RepositoryList
+
+func (response ListRepositories200JSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListRepositories400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListRepositories400JSONResponse) VisitListRepositoriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRepositoryRequestObject struct {
+	Body *CreateRepositoryJSONRequestBody
+}
+
+type CreateRepositoryResponseObject interface {
+	VisitCreateRepositoryResponse(w http.ResponseWriter) error
+}
+
+type CreateRepository201JSONResponse Repository
+
+func (response CreateRepository201JSONResponse) VisitCreateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRepository400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateRepository400JSONResponse) VisitCreateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRepositoryRequestObject struct {
+	Id     RepositoryId `json:"id"`
+	Params DeleteRepositoryParams
+}
+
+type DeleteRepositoryResponseObject interface {
+	VisitDeleteRepositoryResponse(w http.ResponseWriter) error
+}
+
+type DeleteRepository204Response struct {
+}
+
+func (response DeleteRepository204Response) VisitDeleteRepositoryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteRepository404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteRepository404JSONResponse) VisitDeleteRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteRepository409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteRepository409JSONResponse) VisitDeleteRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRepositoryRequestObject struct {
+	Id RepositoryId `json:"id"`
+}
+
+type GetRepositoryResponseObject interface {
+	VisitGetRepositoryResponse(w http.ResponseWriter) error
+}
+
+type GetRepository200JSONResponse Repository
+
+func (response GetRepository200JSONResponse) VisitGetRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRepository404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetRepository404JSONResponse) VisitGetRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRepositoryRequestObject struct {
+	Id   RepositoryId `json:"id"`
+	Body *UpdateRepositoryJSONRequestBody
+}
+
+type UpdateRepositoryResponseObject interface {
+	VisitUpdateRepositoryResponse(w http.ResponseWriter) error
+}
+
+type UpdateRepository200JSONResponse Repository
+
+func (response UpdateRepository200JSONResponse) VisitUpdateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRepository400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateRepository400JSONResponse) VisitUpdateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRepository404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateRepository404JSONResponse) VisitUpdateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateRepository409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateRepository409JSONResponse) VisitUpdateRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListResearchLogsRequestObject struct {
 	Params ListResearchLogsParams
 }
@@ -13506,6 +13977,21 @@ type StrictServerInterface interface {
 	// Calculate relationship between two people
 	// (GET /relationship/{personId1}/{personId2})
 	GetRelationship(ctx context.Context, request GetRelationshipRequestObject) (GetRelationshipResponseObject, error)
+	// List all repositories
+	// (GET /repositories)
+	ListRepositories(ctx context.Context, request ListRepositoriesRequestObject) (ListRepositoriesResponseObject, error)
+	// Create a new repository
+	// (POST /repositories)
+	CreateRepository(ctx context.Context, request CreateRepositoryRequestObject) (CreateRepositoryResponseObject, error)
+	// Delete a repository
+	// (DELETE /repositories/{id})
+	DeleteRepository(ctx context.Context, request DeleteRepositoryRequestObject) (DeleteRepositoryResponseObject, error)
+	// Get a repository by ID
+	// (GET /repositories/{id})
+	GetRepository(ctx context.Context, request GetRepositoryRequestObject) (GetRepositoryResponseObject, error)
+	// Update a repository
+	// (PUT /repositories/{id})
+	UpdateRepository(ctx context.Context, request UpdateRepositoryRequestObject) (UpdateRepositoryResponseObject, error)
 	// List all research log entries
 	// (GET /research-logs)
 	ListResearchLogs(ctx context.Context, request ListResearchLogsRequestObject) (ListResearchLogsResponseObject, error)
@@ -16517,6 +17003,142 @@ func (sh *strictHandler) GetRelationship(ctx echo.Context, personId1 openapi_typ
 		return err
 	} else if validResponse, ok := response.(GetRelationshipResponseObject); ok {
 		return validResponse.VisitGetRelationshipResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListRepositories operation middleware
+func (sh *strictHandler) ListRepositories(ctx echo.Context, params ListRepositoriesParams) error {
+	var request ListRepositoriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRepositories(ctx.Request().Context(), request.(ListRepositoriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRepositories")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListRepositoriesResponseObject); ok {
+		return validResponse.VisitListRepositoriesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateRepository operation middleware
+func (sh *strictHandler) CreateRepository(ctx echo.Context) error {
+	var request CreateRepositoryRequestObject
+
+	var body CreateRepositoryJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRepository(ctx.Request().Context(), request.(CreateRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRepository")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateRepositoryResponseObject); ok {
+		return validResponse.VisitCreateRepositoryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteRepository operation middleware
+func (sh *strictHandler) DeleteRepository(ctx echo.Context, id RepositoryId, params DeleteRepositoryParams) error {
+	var request DeleteRepositoryRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRepository(ctx.Request().Context(), request.(DeleteRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRepository")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteRepositoryResponseObject); ok {
+		return validResponse.VisitDeleteRepositoryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetRepository operation middleware
+func (sh *strictHandler) GetRepository(ctx echo.Context, id RepositoryId) error {
+	var request GetRepositoryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRepository(ctx.Request().Context(), request.(GetRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRepository")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetRepositoryResponseObject); ok {
+		return validResponse.VisitGetRepositoryResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateRepository operation middleware
+func (sh *strictHandler) UpdateRepository(ctx echo.Context, id RepositoryId) error {
+	var request UpdateRepositoryRequestObject
+
+	request.Id = id
+
+	var body UpdateRepositoryJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateRepository(ctx.Request().Context(), request.(UpdateRepositoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateRepository")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateRepositoryResponseObject); ok {
+		return validResponse.VisitUpdateRepositoryResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

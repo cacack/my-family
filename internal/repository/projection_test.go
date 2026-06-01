@@ -4299,3 +4299,171 @@ func TestProjector_ProofSummaryDeleted(t *testing.T) {
 		t.Error("ProofSummary should be deleted")
 	}
 }
+
+func TestProjector_RepositoryCreated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	repo := domain.NewRepository("National Archives")
+	repo.StreetAddress = "700 Pennsylvania Ave NW"
+	repo.City = "Washington"
+	repo.State = "DC"
+	repo.PostalCode = "20408"
+	repo.Country = "USA"
+	repo.Phone = "+1-866-272-6272"
+	repo.Email = "archives@example.gov"
+	repo.Website = "https://www.archives.gov"
+	repo.Notes = "Primary federal records repository"
+	repo.GedcomXref = "@R1@"
+
+	createEvent := domain.NewRepositoryCreated(repo)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	rm, err := readStore.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("GetRepository() failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Repository should exist after create")
+	}
+	if rm.Name != "National Archives" {
+		t.Errorf("Name = %s, want National Archives", rm.Name)
+	}
+	if rm.Notes != "Primary federal records repository" {
+		t.Errorf("Notes = %s, want Primary federal records repository", rm.Notes)
+	}
+	if rm.GedcomXref != "@R1@" {
+		t.Errorf("GedcomXref = %s, want @R1@", rm.GedcomXref)
+	}
+	if rm.Version != 1 {
+		t.Errorf("Version = %d, want 1", rm.Version)
+	}
+	if rm.Address == nil {
+		t.Fatal("Address should be populated from flat fields")
+	}
+	if rm.Address.City != "Washington" {
+		t.Errorf("Address.City = %s, want Washington", rm.Address.City)
+	}
+	if rm.Address.Phone != "+1-866-272-6272" {
+		t.Errorf("Address.Phone = %s, want +1-866-272-6272", rm.Address.Phone)
+	}
+}
+
+func TestProjector_RepositoryUpdated(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	repo := domain.NewRepository("Old Name")
+	createEvent := domain.NewRepositoryCreated(repo)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	newAddr := &domain.Address{City: "Boston", State: "MA"}
+	updateEvent := domain.NewRepositoryUpdated(repo.ID, map[string]any{
+		"name":        "New Name",
+		"address":     newAddr,
+		"notes":       "Updated notes",
+		"gedcom_xref": "@R9@",
+	})
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	rm, err := readStore.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("GetRepository() failed: %v", err)
+	}
+	if rm == nil {
+		t.Fatal("Repository should exist after update")
+	}
+	if rm.Name != "New Name" {
+		t.Errorf("Name = %s, want New Name", rm.Name)
+	}
+	if rm.Notes != "Updated notes" {
+		t.Errorf("Notes = %s, want Updated notes", rm.Notes)
+	}
+	if rm.GedcomXref != "@R9@" {
+		t.Errorf("GedcomXref = %s, want @R9@", rm.GedcomXref)
+	}
+	if rm.Address == nil || rm.Address.City != "Boston" {
+		t.Errorf("Address not updated: %+v", rm.Address)
+	}
+	if rm.Version != 2 {
+		t.Errorf("Version = %d, want 2", rm.Version)
+	}
+}
+
+// TestProjector_RepositoryUpdated_ReplayAddress simulates reprojection from the
+// event store, where Changes is decoded from JSON and "address" arrives as
+// map[string]any rather than *domain.Address. The projection must still apply it.
+func TestProjector_RepositoryUpdated_ReplayAddress(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	repo := domain.NewRepository("Old Name")
+	if err := projector.Project(ctx, domain.NewRepositoryCreated(repo), 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// As it would look after JSON round-trip through the event store.
+	updateEvent := domain.NewRepositoryUpdated(repo.ID, map[string]any{
+		"address": map[string]any{"city": "Boston", "state": "MA"},
+	})
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	rm, err := readStore.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("GetRepository() failed: %v", err)
+	}
+	if rm == nil || rm.Address == nil {
+		t.Fatalf("Address dropped on replay: %+v", rm)
+	}
+	if rm.Address.City != "Boston" || rm.Address.State != "MA" {
+		t.Errorf("Address = %+v, want City=Boston State=MA", rm.Address)
+	}
+}
+
+func TestProjector_RepositoryUpdated_NonExistent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	// Updating a repository absent from the read model is a no-op (no error).
+	updateEvent := domain.NewRepositoryUpdated(uuid.New(), map[string]any{"name": "Ghost"})
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update of missing repository should be a no-op, got: %v", err)
+	}
+}
+
+func TestProjector_RepositoryDeleted(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	repo := domain.NewRepository("To Delete")
+	createEvent := domain.NewRepositoryCreated(repo)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	deleteEvent := domain.NewRepositoryDeleted(repo.ID, "test")
+	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+		t.Fatalf("Project delete failed: %v", err)
+	}
+
+	rm, err := readStore.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("GetRepository() failed: %v", err)
+	}
+	if rm != nil {
+		t.Error("Repository should be deleted")
+	}
+}

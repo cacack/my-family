@@ -1068,3 +1068,113 @@ func TestSearchPersons_BackwardCompatible(t *testing.T) {
 		}
 	})
 }
+
+func TestReadModelStore_RepositoryCRUD(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().Truncate(time.Microsecond)
+
+	repo := &repository.RepositoryReadModel{
+		ID:         uuid.New(),
+		Name:       "National Archives",
+		Address:    &domain.Address{City: "Washington", State: "DC", Phone: "+1-866-272-6272"},
+		Notes:      "Primary federal records repository",
+		GedcomXref: "@R1@",
+		Version:    1,
+		UpdatedAt:  now,
+	}
+
+	if err := store.SaveRepository(ctx, repo); err != nil {
+		t.Fatalf("save repository: %v", err)
+	}
+
+	retrieved, err := store.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("get repository: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("repository not found")
+	}
+	if retrieved.Name != "National Archives" {
+		t.Errorf("expected Name National Archives, got %s", retrieved.Name)
+	}
+	if retrieved.Notes != "Primary federal records repository" {
+		t.Errorf("expected Notes set, got %s", retrieved.Notes)
+	}
+	if retrieved.GedcomXref != "@R1@" {
+		t.Errorf("expected GedcomXref @R1@, got %s", retrieved.GedcomXref)
+	}
+	if retrieved.Address == nil || retrieved.Address.City != "Washington" || retrieved.Address.Phone != "+1-866-272-6272" {
+		t.Errorf("address not round-tripped: %+v", retrieved.Address)
+	}
+
+	// Update
+	repo.Name = "US National Archives"
+	repo.Version = 2
+	if err := store.SaveRepository(ctx, repo); err != nil {
+		t.Fatalf("update repository: %v", err)
+	}
+	retrieved, err = store.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("get updated repository: %v", err)
+	}
+	if retrieved.Name != "US National Archives" || retrieved.Version != 2 {
+		t.Errorf("update not persisted: name=%s version=%d", retrieved.Name, retrieved.Version)
+	}
+
+	// Delete
+	if err := store.DeleteRepository(ctx, repo.ID); err != nil {
+		t.Fatalf("delete repository: %v", err)
+	}
+	retrieved, err = store.GetRepository(ctx, repo.ID)
+	if err != nil {
+		t.Fatalf("get deleted repository: %v", err)
+	}
+	if retrieved != nil {
+		t.Error("repository should have been deleted")
+	}
+}
+
+func TestReadModelStore_ListRepositories(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	names := []string{"Alpha Archive", "Beta Library", "Gamma Collection"}
+	for i, name := range names {
+		repo := &repository.RepositoryReadModel{
+			ID:        uuid.New(),
+			Name:      name,
+			Version:   1,
+			UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
+		}
+		if err := store.SaveRepository(ctx, repo); err != nil {
+			t.Fatalf("save repository: %v", err)
+		}
+	}
+
+	results, total, err := store.ListRepositories(ctx, repository.ListOptions{Limit: 10, Sort: "name", Order: "asc"})
+	if err != nil {
+		t.Fatalf("list repositories: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(results) != 3 {
+		t.Fatalf("len(results) = %d, want 3", len(results))
+	}
+	if results[0].Name != "Alpha Archive" {
+		t.Errorf("first result = %s, want Alpha Archive (asc by name)", results[0].Name)
+	}
+}

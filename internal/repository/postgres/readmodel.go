@@ -267,6 +267,19 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_submitters_gedcom_xref ON submitters(gedcom_xref);
 
+		-- Repositories table (GEDCOM REPO records for source document locations)
+		CREATE TABLE IF NOT EXISTS repositories (
+			id UUID PRIMARY KEY,
+			name VARCHAR(200) NOT NULL,
+			address JSONB,
+			notes TEXT,
+			gedcom_xref VARCHAR(50),
+			version BIGINT NOT NULL DEFAULT 1,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_repositories_gedcom_xref ON repositories(gedcom_xref);
+
 		-- Associations table (GEDCOM ASSO records for non-family relationships)
 		CREATE TABLE IF NOT EXISTS associations (
 			id UUID PRIMARY KEY,
@@ -3280,6 +3293,152 @@ func (s *ReadModelStore) DeleteSubmitter(ctx context.Context, id uuid.UUID) erro
 	_, err := s.db.ExecContext(ctx, "DELETE FROM submitters WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("delete submitter: %w", err)
+	}
+	return nil
+}
+
+// GetRepository retrieves a repository by ID.
+func (s *ReadModelStore) GetRepository(ctx context.Context, id uuid.UUID) (*repository.RepositoryReadModel, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, name, address, notes, gedcom_xref, version, updated_at
+		FROM repositories WHERE id = $1
+	`, id)
+
+	var repo repository.RepositoryReadModel
+	var addressJSON []byte
+	var notes, gedcomXref sql.NullString
+	err := row.Scan(
+		&repo.ID,
+		&repo.Name,
+		&addressJSON,
+		&notes,
+		&gedcomXref,
+		&repo.Version,
+		&repo.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan repository: %w", err)
+	}
+	if notes.Valid {
+		repo.Notes = notes.String
+	}
+	if gedcomXref.Valid {
+		repo.GedcomXref = gedcomXref.String
+	}
+	if len(addressJSON) > 0 {
+		var addr domain.Address
+		if err := json.Unmarshal(addressJSON, &addr); err == nil {
+			repo.Address = &addr
+		}
+	}
+	return &repo, nil
+}
+
+// ListRepositories returns a paginated list of repositories.
+func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.ListOptions) ([]repository.RepositoryReadModel, int, error) {
+	// Count total
+	var total int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM repositories").Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count repositories: %w", err)
+	}
+
+	// Build order clause
+	orderColumn := "updated_at"
+	if opts.Sort == "name" {
+		orderColumn = "name"
+	}
+	orderDir := "DESC"
+	if opts.Order == "asc" {
+		orderDir = "ASC"
+	}
+
+	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	// id is a stable tie-breaker so LIMIT/OFFSET pagination is deterministic when sort keys collide.
+	query := fmt.Sprintf(`
+		SELECT id, name, address, notes, gedcom_xref, version, updated_at
+		FROM repositories
+		ORDER BY %s %s, id %s
+		LIMIT $1 OFFSET $2
+	`, orderColumn, orderDir, orderDir)
+
+	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query repositories: %w", err)
+	}
+	defer rows.Close()
+
+	var repositories []repository.RepositoryReadModel
+	for rows.Next() {
+		var repo repository.RepositoryReadModel
+		var addressJSON []byte
+		var notes, gedcomXref sql.NullString
+		if err := rows.Scan(
+			&repo.ID,
+			&repo.Name,
+			&addressJSON,
+			&notes,
+			&gedcomXref,
+			&repo.Version,
+			&repo.UpdatedAt,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan repository: %w", err)
+		}
+		if notes.Valid {
+			repo.Notes = notes.String
+		}
+		if gedcomXref.Valid {
+			repo.GedcomXref = gedcomXref.String
+		}
+		if len(addressJSON) > 0 {
+			var addr domain.Address
+			if err := json.Unmarshal(addressJSON, &addr); err == nil {
+				repo.Address = &addr
+			}
+		}
+		repositories = append(repositories, repo)
+	}
+
+	return repositories, total, rows.Err()
+}
+
+// SaveRepository saves or updates a repository.
+func (s *ReadModelStore) SaveRepository(ctx context.Context, repo *repository.RepositoryReadModel) error {
+	var addressJSON []byte
+	var err error
+
+	if repo.Address != nil {
+		addressJSON, err = json.Marshal(repo.Address)
+		if err != nil {
+			return fmt.Errorf("marshal address: %w", err)
+		}
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO repositories (id, name, address, notes, gedcom_xref, version, updated_at)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, $7)
+		ON CONFLICT (id) DO UPDATE SET
+			name = EXCLUDED.name,
+			address = EXCLUDED.address,
+			notes = EXCLUDED.notes,
+			gedcom_xref = EXCLUDED.gedcom_xref,
+			version = EXCLUDED.version,
+			updated_at = EXCLUDED.updated_at
+	`, repo.ID, repo.Name, addressJSON, repo.Notes, repo.GedcomXref, repo.Version, repo.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("save repository: %w", err)
+	}
+	return nil
+}
+
+// DeleteRepository deletes a repository by ID.
+func (s *ReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM repositories WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("delete repository: %w", err)
 	}
 	return nil
 }

@@ -29,6 +29,7 @@ type ReadModelStore struct {
 	attributes        map[uuid.UUID]*repository.AttributeReadModel
 	notes             map[uuid.UUID]*repository.NoteReadModel
 	submitters        map[uuid.UUID]*repository.SubmitterReadModel
+	repositories      map[uuid.UUID]*repository.RepositoryReadModel
 	associations      map[uuid.UUID]*repository.AssociationReadModel
 	ldsOrdinances     map[uuid.UUID]*repository.LDSOrdinanceReadModel
 	evidenceAnalyses  map[uuid.UUID]*repository.EvidenceAnalysisReadModel
@@ -52,6 +53,7 @@ func NewReadModelStore() *ReadModelStore {
 		attributes:        make(map[uuid.UUID]*repository.AttributeReadModel),
 		notes:             make(map[uuid.UUID]*repository.NoteReadModel),
 		submitters:        make(map[uuid.UUID]*repository.SubmitterReadModel),
+		repositories:      make(map[uuid.UUID]*repository.RepositoryReadModel),
 		associations:      make(map[uuid.UUID]*repository.AssociationReadModel),
 		ldsOrdinances:     make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
 		evidenceAnalyses:  make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel),
@@ -650,6 +652,7 @@ func (s *ReadModelStore) Reset() {
 	s.attributes = make(map[uuid.UUID]*repository.AttributeReadModel)
 	s.notes = make(map[uuid.UUID]*repository.NoteReadModel)
 	s.submitters = make(map[uuid.UUID]*repository.SubmitterReadModel)
+	s.repositories = make(map[uuid.UUID]*repository.RepositoryReadModel)
 	s.associations = make(map[uuid.UUID]*repository.AssociationReadModel)
 	s.ldsOrdinances = make(map[uuid.UUID]*repository.LDSOrdinanceReadModel)
 	s.evidenceAnalyses = make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel)
@@ -1650,6 +1653,88 @@ func (s *ReadModelStore) DeleteSubmitter(ctx context.Context, id uuid.UUID) erro
 	defer s.mu.Unlock()
 
 	delete(s.submitters, id)
+	return nil
+}
+
+// GetRepository retrieves a repository by ID.
+func (s *ReadModelStore) GetRepository(ctx context.Context, id uuid.UUID) (*repository.RepositoryReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	repo, exists := s.repositories[id]
+	if !exists {
+		return nil, nil
+	}
+	result := *repo
+	return &result, nil
+}
+
+// ListRepositories returns a paginated list of repositories.
+func (s *ReadModelStore) ListRepositories(ctx context.Context, opts repository.ListOptions) ([]repository.RepositoryReadModel, int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var results []repository.RepositoryReadModel
+	for _, repo := range s.repositories {
+		results = append(results, *repo)
+	}
+
+	total := len(results)
+
+	// Sort by name or updated_at (matches the postgres/sqlite implementations,
+	// which default to updated_at and switch to name when opts.Sort == "name").
+	sortField := opts.Sort
+	if sortField == "" {
+		sortField = "updated_at"
+	}
+	asc := opts.Order == "asc"
+	sort.Slice(results, func(i, j int) bool {
+		var cmp int
+		if sortField == "name" {
+			cmp = strings.Compare(results[i].Name, results[j].Name)
+		} else {
+			cmp = compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
+		}
+		// id is a stable tie-breaker so pagination is deterministic when sort
+		// keys collide, matching the postgres/sqlite implementations.
+		if cmp == 0 {
+			cmp = strings.Compare(results[i].ID.String(), results[j].ID.String())
+		}
+		if asc {
+			return cmp < 0
+		}
+		return cmp > 0
+	})
+
+	// Apply pagination
+	if opts.Offset > 0 && opts.Offset < len(results) {
+		results = results[opts.Offset:]
+	} else if opts.Offset >= len(results) {
+		results = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(results) {
+		results = results[:opts.Limit]
+	}
+
+	return results, total, nil
+}
+
+// SaveRepository saves or updates a repository.
+func (s *ReadModelStore) SaveRepository(ctx context.Context, repo *repository.RepositoryReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	result := *repo
+	s.repositories[repo.ID] = &result
+	return nil
+}
+
+// DeleteRepository removes a repository.
+func (s *ReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.repositories, id)
 	return nil
 }
 
