@@ -186,6 +186,10 @@ func (s *Server) registerRoutes() {
 	// API documentation (outside generated routes)
 	s.registerDocsRoutes(api)
 
+	// Streaming GEDCOM import with Server-Sent Events progress (outside generated
+	// routes; SSE does not map onto the OpenAPI strict server).
+	s.registerImportProgressRoutes(api)
+
 	// Use generated strict handler registration for all API routes
 	// This provides compile-time type safety for all endpoints
 	strictServer := NewStrictServer(s)

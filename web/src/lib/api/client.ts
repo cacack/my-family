@@ -313,6 +313,12 @@ export interface ImportResult {
 	errors?: ImportError[];
 }
 
+export interface ImportProgress {
+	bytes_read: number;
+	total_bytes: number; // -1 when unknown
+	percent: number; // 0-100, or -1 when total is unknown
+}
+
 // Export estimation types
 export interface ExportEstimate {
 	person_count: number;

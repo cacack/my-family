@@ -16,6 +16,12 @@ type ImportGedcomInput struct {
 	Filename string
 	FileSize int64
 	Reader   io.Reader
+
+	// OnProgress, when non-nil, is invoked periodically while the GEDCOM file is
+	// being parsed. bytesRead is the cumulative bytes read and totalBytes is the
+	// expected total (FileSize), or -1 when unknown. Used to surface real-time
+	// import progress to clients. When nil there is zero overhead.
+	OnProgress gedcom.ImportProgressCallback
 }
 
 // ImportGedcomResult contains the result of a GEDCOM import.
@@ -40,8 +46,11 @@ type ImportGedcomResult struct {
 func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*ImportGedcomResult, error) {
 	importer := gedcom.NewImporter()
 
-	// Parse the GEDCOM file
-	importResult, persons, families, sources, citations, repositories, events, attributes, notes, submitters, associations, ldsOrdinances, _, err := importer.Import(ctx, input.Reader)
+	// Parse the GEDCOM file, forwarding progress callbacks when requested.
+	importResult, persons, families, sources, citations, repositories, events, attributes, notes, submitters, associations, ldsOrdinances, _, err := importer.ImportWithOptions(ctx, input.Reader, gedcom.ImportOptions{
+		TotalSize:  input.FileSize,
+		OnProgress: input.OnProgress,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse GEDCOM file: %w", err)
 	}
