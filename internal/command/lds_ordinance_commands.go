@@ -68,7 +68,7 @@ func (h *Handler) CreateLDSOrdinance(ctx context.Context, input CreateLDSOrdinan
 	// Execute command (append + project)
 	version, err := h.execute(ctx, ordinance.ID.String(), "LDSOrdinance", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create LDS ordinance command: %w", err)
 	}
 
 	return &CreateLDSOrdinanceResult{
@@ -97,7 +97,7 @@ func (h *Handler) UpdateLDSOrdinance(ctx context.Context, input UpdateLDSOrdinan
 	// Get current ordinance from read model
 	current, err := h.readStore.GetLDSOrdinance(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting LDS ordinance: %w", err)
 	}
 	if current == nil {
 		return nil, ErrLDSOrdinanceNotFound
@@ -135,7 +135,7 @@ func (h *Handler) UpdateLDSOrdinance(ctx context.Context, input UpdateLDSOrdinan
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "LDSOrdinance", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update LDS ordinance command: %w", err)
 	}
 
 	return &UpdateLDSOrdinanceResult{Version: version}, nil
@@ -146,7 +146,7 @@ func (h *Handler) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID, version 
 	// Get current ordinance from read model
 	current, err := h.readStore.GetLDSOrdinance(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting LDS ordinance: %w", err)
 	}
 	if current == nil {
 		return ErrLDSOrdinanceNotFound
@@ -162,5 +162,8 @@ func (h *Handler) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID, version 
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "LDSOrdinance", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete LDS ordinance command: %w", err)
+	}
+	return nil
 }

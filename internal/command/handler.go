@@ -4,6 +4,7 @@ package command
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -147,7 +148,7 @@ func (h *Handler) rollbackEntity(ctx context.Context, entityType string, entityI
 		if errors.Is(err, repository.ErrStreamNotFound) {
 			return nil, query.ErrNoEvents
 		}
-		return nil, err
+		return nil, fmt.Errorf("getting stream version: %w", err)
 	}
 
 	// Validate target version is less than current version
@@ -161,7 +162,7 @@ func (h *Handler) rollbackEntity(ctx context.Context, entityType string, entityI
 	// Check if entity is currently deleted (follow-up feature to handle recreation)
 	deleted, err := isDeleted(entityID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("checking if entity is deleted: %w", err)
 	}
 	if deleted {
 		return nil, ErrRollbackDeletedEntity
@@ -170,7 +171,7 @@ func (h *Handler) rollbackEntity(ctx context.Context, entityType string, entityI
 	// Compute rollback changes using RollbackService
 	changes, err := h.rollbackService.ComputeRollbackChanges(ctx, entityType, entityID, targetVersion)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("computing rollback changes: %w", err)
 	}
 
 	// If no changes needed, this is a no-op
@@ -203,7 +204,7 @@ func (h *Handler) rollbackEntity(ctx context.Context, entityType string, entityI
 	// Append event with optimistic locking
 	newVersion, err := h.execute(ctx, entityID.String(), entityType, []domain.Event{event}, currentVersion)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing rollback event: %w", err)
 	}
 
 	return &RollbackResult{

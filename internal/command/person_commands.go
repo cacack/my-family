@@ -81,7 +81,7 @@ func (h *Handler) CreatePerson(ctx context.Context, input CreatePersonInput) (*C
 	// Execute command (append + project)
 	version, err := h.execute(ctx, person.ID.String(), "Person", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create person command: %w", err)
 	}
 
 	return &CreatePersonResult{
@@ -115,7 +115,7 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 	// Get current person from read model
 	current, err := h.readStore.GetPerson(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting person: %w", err)
 	}
 	if current == nil {
 		return nil, ErrPersonNotFound
@@ -203,7 +203,7 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Person", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update person command: %w", err)
 	}
 
 	return &UpdatePersonResult{Version: version}, nil
@@ -221,7 +221,7 @@ func (h *Handler) DeletePerson(ctx context.Context, input DeletePersonInput) err
 	// Get current person from read model
 	current, err := h.readStore.GetPerson(ctx, input.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting person: %w", err)
 	}
 	if current == nil {
 		return ErrPersonNotFound
@@ -235,7 +235,7 @@ func (h *Handler) DeletePerson(ctx context.Context, input DeletePersonInput) err
 	// Check if person is linked to any families as partner
 	families, err := h.readStore.GetFamiliesForPerson(ctx, input.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("checking families for person: %w", err)
 	}
 	if len(families) > 0 {
 		return ErrPersonHasFamilies
@@ -244,7 +244,7 @@ func (h *Handler) DeletePerson(ctx context.Context, input DeletePersonInput) err
 	// Check if person is a child in any family
 	childFamily, err := h.readStore.GetChildFamily(ctx, input.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting child family: %w", err)
 	}
 	if childFamily != nil {
 		return ErrPersonHasFamilies
@@ -255,7 +255,10 @@ func (h *Handler) DeletePerson(ctx context.Context, input DeletePersonInput) err
 
 	// Execute command
 	_, err = h.execute(ctx, input.ID.String(), "Person", []domain.Event{event}, input.Version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete person command: %w", err)
+	}
+	return nil
 }
 
 // parseUUID parses a string to UUID.

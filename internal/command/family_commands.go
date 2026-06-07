@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 
@@ -46,7 +47,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	if input.Partner1ID != nil {
 		p, err := h.readStore.GetPerson(ctx, *input.Partner1ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("getting partner1: %w", err)
 		}
 		if p == nil {
 			return nil, errors.New("invalid family input: partner1 not found")
@@ -55,7 +56,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	if input.Partner2ID != nil {
 		p, err := h.readStore.GetPerson(ctx, *input.Partner2ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("getting partner2: %w", err)
 		}
 		if p == nil {
 			return nil, errors.New("invalid family input: partner2 not found")
@@ -93,12 +94,12 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	// Append to event store
 	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("appending family created event: %w", err)
 	}
 
 	// Update read model
 	if err := h.projector.Apply(ctx, event); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("applying family created event: %w", err)
 	}
 
 	return &CreateFamilyResult{
@@ -128,7 +129,7 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	// Check family exists
 	family, err := h.readStore.GetFamily(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting family: %w", err)
 	}
 	if family == nil {
 		return nil, ErrFamilyNotFound
@@ -170,12 +171,12 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return nil, repository.ErrConcurrencyConflict
 		}
-		return nil, err
+		return nil, fmt.Errorf("appending family updated event: %w", err)
 	}
 
 	// Update read model
 	if err := h.projector.Apply(ctx, event); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("applying family updated event: %w", err)
 	}
 
 	return &UpdateFamilyResult{
@@ -194,7 +195,7 @@ func (h *Handler) DeleteFamily(ctx context.Context, input DeleteFamilyInput) err
 	// Check family exists
 	family, err := h.readStore.GetFamily(ctx, input.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting family: %w", err)
 	}
 	if family == nil {
 		return ErrFamilyNotFound
@@ -203,7 +204,7 @@ func (h *Handler) DeleteFamily(ctx context.Context, input DeleteFamilyInput) err
 	// Check for children
 	children, err := h.readStore.GetChildrenOfFamily(ctx, input.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting children of family: %w", err)
 	}
 	if len(children) > 0 {
 		return ErrFamilyHasChildren
@@ -218,7 +219,7 @@ func (h *Handler) DeleteFamily(ctx context.Context, input DeleteFamilyInput) err
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return repository.ErrConcurrencyConflict
 		}
-		return err
+		return fmt.Errorf("appending family deleted event: %w", err)
 	}
 
 	// Update read model
@@ -242,7 +243,7 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 	// Verify family exists
 	family, err := h.readStore.GetFamily(ctx, input.FamilyID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting family: %w", err)
 	}
 	if family == nil {
 		return nil, ErrFamilyNotFound
@@ -251,7 +252,7 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 	// Verify child exists
 	child, err := h.readStore.GetPerson(ctx, input.ChildID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting child: %w", err)
 	}
 	if child == nil {
 		return nil, ErrPersonNotFound
@@ -260,7 +261,7 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 	// Check if child is already linked to a family
 	existingFamily, err := h.readStore.GetChildFamily(ctx, input.ChildID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting child family: %w", err)
 	}
 	if existingFamily != nil {
 		return nil, ErrChildAlreadyLinked
@@ -269,14 +270,14 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 	// Circular ancestry check: child cannot be an ancestor of either partner
 	if family.Partner1ID != nil {
 		if isAncestor, err := h.isAncestor(ctx, input.ChildID, *family.Partner1ID); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checking circular ancestry: %w", err)
 		} else if isAncestor {
 			return nil, ErrCircularAncestry
 		}
 	}
 	if family.Partner2ID != nil {
 		if isAncestor, err := h.isAncestor(ctx, input.ChildID, *family.Partner2ID); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("checking circular ancestry: %w", err)
 		} else if isAncestor {
 			return nil, ErrCircularAncestry
 		}
@@ -298,12 +299,12 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return nil, repository.ErrConcurrencyConflict
 		}
-		return nil, err
+		return nil, fmt.Errorf("appending child linked event: %w", err)
 	}
 
 	// Update read model
 	if err := h.projector.Apply(ctx, event); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("applying child linked event: %w", err)
 	}
 
 	return &LinkChildResult{
@@ -322,7 +323,7 @@ func (h *Handler) UnlinkChild(ctx context.Context, input UnlinkChildInput) error
 	// Verify family exists
 	family, err := h.readStore.GetFamily(ctx, input.FamilyID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting family: %w", err)
 	}
 	if family == nil {
 		return ErrFamilyNotFound
@@ -331,7 +332,7 @@ func (h *Handler) UnlinkChild(ctx context.Context, input UnlinkChildInput) error
 	// Verify child is in this family
 	childFamily, err := h.readStore.GetChildFamily(ctx, input.ChildID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting child family: %w", err)
 	}
 	if childFamily == nil || childFamily.ID != input.FamilyID {
 		return ErrChildNotInFamily
@@ -346,7 +347,7 @@ func (h *Handler) UnlinkChild(ctx context.Context, input UnlinkChildInput) error
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return repository.ErrConcurrencyConflict
 		}
-		return err
+		return fmt.Errorf("appending child unlinked event: %w", err)
 	}
 
 	// Update read model

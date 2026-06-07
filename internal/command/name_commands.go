@@ -48,7 +48,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 	// Verify person exists
 	person, err := h.readStore.GetPerson(ctx, input.PersonID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting person: %w", err)
 	}
 	if person == nil {
 		return nil, ErrPersonNotFound
@@ -57,7 +57,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 	// Get existing names to check primary status
 	existingNames, err := h.readStore.GetPersonNames(ctx, input.PersonID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting person names: %w", err)
 	}
 
 	// Create the person name entity
@@ -111,7 +111,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 	// Execute command
 	_, err = h.execute(ctx, input.PersonID.String(), "Person", events, person.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing add name command: %w", err)
 	}
 
 	return &AddNameResult{
@@ -174,7 +174,7 @@ func applyNameUpdates(pn *domain.PersonName, input UpdateNameInput) {
 func (h *Handler) UpdateName(ctx context.Context, input UpdateNameInput) (*UpdateNameResult, error) {
 	person, existingName, err := h.validateNameUpdate(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validating name update: %w", err)
 	}
 
 	// Build updated name from existing
@@ -187,11 +187,11 @@ func (h *Handler) UpdateName(ctx context.Context, input UpdateNameInput) (*Updat
 
 	events, err := h.buildNameUpdateEvents(ctx, pn, existingName, input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("building name update events: %w", err)
 	}
 
 	if _, err = h.execute(ctx, input.PersonID.String(), "Person", events, person.Version); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update name command: %w", err)
 	}
 
 	return &UpdateNameResult{
@@ -246,7 +246,7 @@ func (h *Handler) buildNameUpdateEvents(ctx context.Context, pn *domain.PersonNa
 	if pn.IsPrimary && !existingName.IsPrimary {
 		existingNames, err := h.readStore.GetPersonNames(ctx, input.PersonID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("getting person names: %w", err)
 		}
 		for _, existing := range existingNames {
 			if existing.IsPrimary && existing.ID != input.NameID {
@@ -273,7 +273,7 @@ func (h *Handler) DeleteName(ctx context.Context, input DeleteNameInput) error {
 	// Verify person exists
 	person, err := h.readStore.GetPerson(ctx, input.PersonID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting person: %w", err)
 	}
 	if person == nil {
 		return ErrPersonNotFound
@@ -282,7 +282,7 @@ func (h *Handler) DeleteName(ctx context.Context, input DeleteNameInput) error {
 	// Get all names for the person
 	existingNames, err := h.readStore.GetPersonNames(ctx, input.PersonID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting person names: %w", err)
 	}
 
 	// Find the name to delete
@@ -317,5 +317,8 @@ func (h *Handler) DeleteName(ctx context.Context, input DeleteNameInput) error {
 
 	// Execute command
 	_, err = h.execute(ctx, input.PersonID.String(), "Person", []domain.Event{event}, person.Version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete name command: %w", err)
+	}
+	return nil
 }

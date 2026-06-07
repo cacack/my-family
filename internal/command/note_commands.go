@@ -48,7 +48,7 @@ func (h *Handler) CreateNote(ctx context.Context, input CreateNoteInput) (*Creat
 	// Execute command (append + project)
 	version, err := h.execute(ctx, note.ID.String(), "Note", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create note command: %w", err)
 	}
 
 	return &CreateNoteResult{
@@ -74,7 +74,7 @@ func (h *Handler) UpdateNote(ctx context.Context, input UpdateNoteInput) (*Updat
 	// Get current note from read model
 	current, err := h.readStore.GetNote(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting note: %w", err)
 	}
 	if current == nil {
 		return nil, ErrNoteNotFound
@@ -103,7 +103,7 @@ func (h *Handler) UpdateNote(ctx context.Context, input UpdateNoteInput) (*Updat
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Note", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update note command: %w", err)
 	}
 
 	return &UpdateNoteResult{Version: version}, nil
@@ -114,7 +114,7 @@ func (h *Handler) DeleteNote(ctx context.Context, id uuid.UUID, version int64, r
 	// Get current note from read model
 	current, err := h.readStore.GetNote(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting note: %w", err)
 	}
 	if current == nil {
 		return ErrNoteNotFound
@@ -130,5 +130,8 @@ func (h *Handler) DeleteNote(ctx context.Context, id uuid.UUID, version int64, r
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "Note", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete note command: %w", err)
+	}
+	return nil
 }
