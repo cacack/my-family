@@ -259,6 +259,25 @@ type LDSOrdinanceData struct {
 	Status   string                  // Status: COMPLETED, BIC, CHILD, EXCLUDED, etc.
 }
 
+// ImportProgressCallback reports parsing progress during a GEDCOM import.
+// bytesRead is the cumulative number of bytes read from the input so far.
+// totalBytes is the expected total size in bytes, or -1 when the size is unknown.
+type ImportProgressCallback func(bytesRead, totalBytes int64)
+
+// ImportOptions configures an import operation.
+type ImportOptions struct {
+	// TotalSize is the expected total size of the input in bytes. When greater
+	// than zero it allows OnProgress to report a meaningful percentage. Leave
+	// as zero when the size is unknown.
+	TotalSize int64
+
+	// OnProgress, when non-nil, is invoked periodically during parsing with the
+	// cumulative bytes read and the total size (or -1 when unknown). The callback
+	// must be cheap and non-blocking; parsing happens on the calling goroutine.
+	// When nil there is zero progress-reporting overhead.
+	OnProgress ImportProgressCallback
+}
+
 // Importer handles GEDCOM file parsing and conversion to domain events.
 type Importer struct{}
 
@@ -269,6 +288,13 @@ func NewImporter() *Importer {
 
 // Import parses a GEDCOM file and returns structured data for import.
 func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, []RepositoryData, []EventData, []AttributeData, []NoteData, []SubmitterData, []AssociationData, []LDSOrdinanceData, []MediaData, error) {
+	return imp.ImportWithOptions(ctx, reader, ImportOptions{})
+}
+
+// ImportWithOptions parses a GEDCOM file with the given options and returns
+// structured data for import. It is identical to Import but allows callers to
+// receive progress callbacks during decoding (see ImportOptions).
+func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, importOpts ImportOptions) (*ImportResult, []PersonData, []FamilyData, []SourceData, []CitationData, []RepositoryData, []EventData, []AttributeData, []NoteData, []SubmitterData, []AssociationData, []LDSOrdinanceData, []MediaData, error) {
 	result := &ImportResult{
 		PersonXrefToID:     make(map[string]uuid.UUID),
 		FamilyXrefToID:     make(map[string]uuid.UUID),
@@ -284,6 +310,14 @@ func (imp *Importer) Import(ctx context.Context, reader io.Reader) (*ImportResul
 	// Lenient mode collects parse errors as diagnostics instead of failing
 	opts := decoder.DefaultOptions()
 	opts.Context = ctx
+
+	// Wire progress reporting through to the decoder when requested. The decoder
+	// reports -1 as the total when TotalSize is unknown (zero), matching our
+	// ProgressCallback contract, so we forward callbacks unchanged.
+	if importOpts.OnProgress != nil {
+		opts.TotalSize = importOpts.TotalSize
+		opts.OnProgress = decoder.ProgressCallback(importOpts.OnProgress)
+	}
 
 	decodeResult, err := decoder.DecodeWithDiagnostics(reader, opts)
 	if err != nil {
