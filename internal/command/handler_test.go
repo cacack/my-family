@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -387,7 +388,7 @@ func TestRollbackPerson_ConcurrencyConflict(t *testing.T) {
 
 	// Try to rollback - should fail with concurrency error
 	_, err = handler.RollbackPerson(ctx, createResult.ID, 1)
-	if err != repository.ErrConcurrencyConflict {
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Errorf("Expected ErrConcurrencyConflict, got %v", err)
 	}
 }

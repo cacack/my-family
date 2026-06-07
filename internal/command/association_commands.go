@@ -79,7 +79,7 @@ func (h *Handler) CreateAssociation(ctx context.Context, input CreateAssociation
 	// Execute command (append + project)
 	version, err := h.execute(ctx, association.ID.String(), "Association", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create association command: %w", err)
 	}
 
 	return &CreateAssociationResult{
@@ -108,7 +108,7 @@ func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociation
 	// Get current association from read model
 	current, err := h.readStore.GetAssociation(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting association: %w", err)
 	}
 	if current == nil {
 		return nil, ErrAssociationNotFound
@@ -163,7 +163,7 @@ func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociation
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Association", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update association command: %w", err)
 	}
 
 	return &UpdateAssociationResult{Version: version}, nil
@@ -174,7 +174,7 @@ func (h *Handler) DeleteAssociation(ctx context.Context, id uuid.UUID, version i
 	// Get current association from read model
 	current, err := h.readStore.GetAssociation(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting association: %w", err)
 	}
 	if current == nil {
 		return ErrAssociationNotFound
@@ -190,7 +190,10 @@ func (h *Handler) DeleteAssociation(ctx context.Context, id uuid.UUID, version i
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "Association", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete association command: %w", err)
+	}
+	return nil
 }
 
 // equalStringSlices compares two string slices for equality.

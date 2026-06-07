@@ -68,7 +68,7 @@ func (h *Handler) CreateSubmitter(ctx context.Context, input CreateSubmitterInpu
 	// Execute command (append + project)
 	version, err := h.execute(ctx, submitter.ID.String(), "Submitter", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create submitter command: %w", err)
 	}
 
 	return &CreateSubmitterResult{
@@ -99,7 +99,7 @@ func (h *Handler) UpdateSubmitter(ctx context.Context, input UpdateSubmitterInpu
 	// Get current submitter from read model
 	current, err := h.readStore.GetSubmitter(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting submitter: %w", err)
 	}
 	if current == nil {
 		return nil, ErrSubmitterNotFound
@@ -143,7 +143,7 @@ func (h *Handler) UpdateSubmitter(ctx context.Context, input UpdateSubmitterInpu
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Submitter", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update submitter command: %w", err)
 	}
 
 	return &UpdateSubmitterResult{Version: version}, nil
@@ -154,7 +154,7 @@ func (h *Handler) DeleteSubmitter(ctx context.Context, id uuid.UUID, version int
 	// Get current submitter from read model
 	current, err := h.readStore.GetSubmitter(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting submitter: %w", err)
 	}
 	if current == nil {
 		return ErrSubmitterNotFound
@@ -170,5 +170,8 @@ func (h *Handler) DeleteSubmitter(ctx context.Context, id uuid.UUID, version int
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "Submitter", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete submitter command: %w", err)
+	}
+	return nil
 }

@@ -56,7 +56,7 @@ func (h *Handler) CreateRepository(ctx context.Context, input CreateRepositoryIn
 	// Execute command (append + project)
 	version, err := h.execute(ctx, repo.ID.String(), "Repository", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create repository command: %w", err)
 	}
 
 	return &CreateRepositoryResult{
@@ -85,7 +85,7 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 	// Get current repository from read model
 	current, err := h.readStore.GetRepository(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting repository: %w", err)
 	}
 	if current == nil {
 		return nil, ErrRepositoryNotFound
@@ -124,7 +124,7 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Repository", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update repository command: %w", err)
 	}
 
 	return &UpdateRepositoryResult{Version: version}, nil
@@ -135,7 +135,7 @@ func (h *Handler) DeleteRepository(ctx context.Context, id uuid.UUID, version in
 	// Get current repository from read model
 	current, err := h.readStore.GetRepository(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting repository: %w", err)
 	}
 	if current == nil {
 		return ErrRepositoryNotFound
@@ -151,5 +151,8 @@ func (h *Handler) DeleteRepository(ctx context.Context, id uuid.UUID, version in
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "Repository", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete repository command: %w", err)
+	}
+	return nil
 }

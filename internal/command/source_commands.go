@@ -85,7 +85,7 @@ func (h *Handler) CreateSource(ctx context.Context, input CreateSourceInput) (*C
 	// Execute command (append + project)
 	version, err := h.execute(ctx, source.ID.String(), "Source", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create source command: %w", err)
 	}
 
 	return &CreateSourceResult{
@@ -120,7 +120,7 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 	// Get current source from read model
 	current, err := h.readStore.GetSource(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting source: %w", err)
 	}
 	if current == nil {
 		return nil, ErrSourceNotFound
@@ -211,7 +211,7 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Source", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update source command: %w", err)
 	}
 
 	return &UpdateSourceResult{Version: version}, nil
@@ -222,7 +222,7 @@ func (h *Handler) DeleteSource(ctx context.Context, id uuid.UUID, version int64,
 	// Get current source from read model
 	current, err := h.readStore.GetSource(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting source: %w", err)
 	}
 	if current == nil {
 		return ErrSourceNotFound
@@ -236,7 +236,7 @@ func (h *Handler) DeleteSource(ctx context.Context, id uuid.UUID, version int64,
 	// Check if source has citations (referential integrity)
 	citations, err := h.readStore.GetCitationsForSource(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting citations for source: %w", err)
 	}
 	if len(citations) > 0 {
 		return ErrSourceHasCitations
@@ -247,7 +247,10 @@ func (h *Handler) DeleteSource(ctx context.Context, id uuid.UUID, version int64,
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "Source", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete source command: %w", err)
+	}
+	return nil
 }
 
 // CreateCitationInput contains the data for creating a new citation.
@@ -286,7 +289,7 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 	// Verify source exists
 	source, err := h.readStore.GetSource(ctx, input.SourceID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting source: %w", err)
 	}
 	if source == nil {
 		return nil, fmt.Errorf("%w: source does not exist", ErrInvalidInput)
@@ -341,7 +344,7 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 	// Execute command (append + project)
 	version, err := h.execute(ctx, citation.ID.String(), "Citation", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create citation command: %w", err)
 	}
 
 	return &CreateCitationResult{
@@ -378,7 +381,7 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 	// Get current citation from read model
 	current, err := h.readStore.GetCitation(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting citation: %w", err)
 	}
 	if current == nil {
 		return nil, ErrCitationNotFound
@@ -412,7 +415,7 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 		// Verify source exists
 		source, err := h.readStore.GetSource(ctx, *input.SourceID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("getting source: %w", err)
 		}
 		if source == nil {
 			return nil, fmt.Errorf("%w: source does not exist", ErrInvalidInput)
@@ -481,7 +484,7 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Citation", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update citation command: %w", err)
 	}
 
 	return &UpdateCitationResult{Version: version}, nil
@@ -492,7 +495,7 @@ func (h *Handler) DeleteCitation(ctx context.Context, id uuid.UUID, version int6
 	// Get current citation from read model
 	current, err := h.readStore.GetCitation(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting citation: %w", err)
 	}
 	if current == nil {
 		return ErrCitationNotFound
@@ -508,5 +511,8 @@ func (h *Handler) DeleteCitation(ctx context.Context, id uuid.UUID, version int6
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "Citation", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete citation command: %w", err)
+	}
+	return nil
 }

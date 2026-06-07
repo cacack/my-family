@@ -266,12 +266,12 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	// Append to event store
 	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending person created event: %w", err)
 	}
 
 	// Project to read model
 	if err := h.projector.Project(ctx, event, 1); err != nil {
-		return err
+		return fmt.Errorf("projecting person created event: %w", err)
 	}
 
 	// Update read model with GEDCOM coordinates (not in event schema)
@@ -308,13 +308,13 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		// Append name event to person stream with version tracking
 		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, currentVersion)
 		if err != nil {
-			return err
+			return fmt.Errorf("appending name added event: %w", err)
 		}
 		currentVersion++
 
 		// Project to read model with correct version
 		if err := h.projector.Project(ctx, nameEvent, currentVersion); err != nil {
-			return err
+			return fmt.Errorf("projecting name added event: %w", err)
 		}
 	}
 
@@ -351,7 +351,7 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 	// Append to event store
 	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending family created event: %w", err)
 	}
 
 	// Project to read model
@@ -393,7 +393,7 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 	// Append to event store
 	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending source created event: %w", err)
 	}
 
 	// Project to read model
@@ -425,7 +425,7 @@ func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData)
 	// Append to event store
 	err := h.eventStore.Append(ctx, repo.ID, "repository", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending repository created event: %w", err)
 	}
 
 	// Project to read model
@@ -477,7 +477,7 @@ func (h *Handler) importCitation(ctx context.Context, c gedcom.CitationData, sou
 	// Append to event store
 	err := h.eventStore.Append(ctx, citation.ID, "citation", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending citation created event: %w", err)
 	}
 
 	// Project to read model
@@ -489,7 +489,7 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 	// Check if child is already linked
 	existingFamily, err := h.readStore.GetChildFamily(ctx, childID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting child family: %w", err)
 	}
 	if existingFamily != nil {
 		// Child already in a family, skip
@@ -503,7 +503,7 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 	// Get current family version
 	family, err := h.readStore.GetFamily(ctx, familyID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting family: %w", err)
 	}
 	if family == nil {
 		return nil // Family doesn't exist, skip
@@ -512,7 +512,7 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 	// Append to event store
 	err = h.eventStore.Append(ctx, familyID, "family", []domain.Event{event}, family.Version)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending child linked event: %w", err)
 	}
 
 	// Project to read model
@@ -549,12 +549,12 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	// Append to event store using owner's stream
 	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending life event created event: %w", err)
 	}
 
 	// Project to read model
 	if err := h.projector.Project(ctx, event, 1); err != nil {
-		return err
+		return fmt.Errorf("projecting life event created event: %w", err)
 	}
 
 	// Update read model with GEDCOM coordinates (not in event schema)
@@ -595,7 +595,7 @@ func (h *Handler) importAttribute(ctx context.Context, a gedcom.AttributeData) e
 	// Append to event store
 	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending attribute created event: %w", err)
 	}
 
 	// Project to read model
@@ -614,7 +614,7 @@ func (h *Handler) importNote(ctx context.Context, n gedcom.NoteData) error {
 	// Append to event store
 	err := h.eventStore.Append(ctx, note.ID, "note", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending note created event: %w", err)
 	}
 
 	// Project to read model
@@ -646,7 +646,7 @@ func (h *Handler) importSubmitter(ctx context.Context, s gedcom.SubmitterData) e
 	// Append to event store
 	err := h.eventStore.Append(ctx, submitter.ID, "submitter", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending submitter created event: %w", err)
 	}
 
 	// Project to read model
@@ -671,7 +671,7 @@ func (h *Handler) importAssociation(ctx context.Context, a gedcom.AssociationDat
 	// Append to event store
 	err := h.eventStore.Append(ctx, association.ID, "association", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending association created event: %w", err)
 	}
 
 	// Project to read model
@@ -708,7 +708,7 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 	// Append to event store
 	err := h.eventStore.Append(ctx, ordinance.ID, "LDSOrdinance", []domain.Event{event}, -1)
 	if err != nil {
-		return err
+		return fmt.Errorf("appending LDS ordinance created event: %w", err)
 	}
 
 	// Project to read model

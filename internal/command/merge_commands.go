@@ -56,24 +56,24 @@ func (h *Handler) MergePersons(ctx context.Context, input MergePersonsInput) (*M
 	// 2. Fetch and validate both persons exist with version check
 	survivor, merged, err := h.validateMergePersons(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validating merge persons: %w", err)
 	}
 
 	// 3. Check for circular ancestry and child-family conflicts
 	if err := h.validateMergeRelationships(ctx, input.SurvivorID, input.MergedID); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validating merge relationships: %w", err)
 	}
 
 	// 4. Build merge event and execute
 	event, fieldsUpdated, err := h.buildMergeEvent(ctx, input, survivor, merged)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("building merge event: %w", err)
 	}
 
 	// 5. Execute command (append + project)
 	version, err := h.execute(ctx, input.SurvivorID.String(), "Person", []domain.Event{event}, input.SurvivorVersion)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing merge persons command: %w", err)
 	}
 
 	// 6. Build summary
@@ -127,12 +127,12 @@ func (h *Handler) validateMergePersons(ctx context.Context, input MergePersonsIn
 func (h *Handler) validateMergeRelationships(ctx context.Context, survivorID, mergedID uuid.UUID) error {
 	// Circular ancestry check: neither person can be an ancestor of the other
 	if isAnc, err := h.isAncestor(ctx, mergedID, survivorID); err != nil {
-		return err
+		return fmt.Errorf("checking circular ancestry: %w", err)
 	} else if isAnc {
 		return ErrCircularMerge
 	}
 	if isAnc, err := h.isAncestor(ctx, survivorID, mergedID); err != nil {
-		return err
+		return fmt.Errorf("checking circular ancestry: %w", err)
 	} else if isAnc {
 		return ErrCircularMerge
 	}
@@ -140,11 +140,11 @@ func (h *Handler) validateMergeRelationships(ctx context.Context, survivorID, me
 	// Child-family conflict check: if both are children in different families, block
 	survivorChildFamily, err := h.readStore.GetChildFamily(ctx, survivorID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting survivor child family: %w", err)
 	}
 	mergedChildFamily, err := h.readStore.GetChildFamily(ctx, mergedID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting merged child family: %w", err)
 	}
 	if survivorChildFamily != nil && mergedChildFamily != nil &&
 		survivorChildFamily.ID != mergedChildFamily.ID {
@@ -287,7 +287,7 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 func (h *Handler) collectAffectedFamilies(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
 	families, err := h.readStore.GetFamiliesForPerson(ctx, mergedID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting families for person: %w", err)
 	}
 
 	ids := make([]uuid.UUID, len(families))
@@ -301,7 +301,7 @@ func (h *Handler) collectAffectedFamilies(ctx context.Context, mergedID uuid.UUI
 func (h *Handler) collectAffectedCitations(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
 	citations, err := h.readStore.GetCitationsForPerson(ctx, mergedID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting citations for person: %w", err)
 	}
 
 	ids := make([]uuid.UUID, len(citations))
@@ -315,7 +315,7 @@ func (h *Handler) collectAffectedCitations(ctx context.Context, mergedID uuid.UU
 func (h *Handler) collectTransferredNames(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
 	names, err := h.readStore.GetPersonNames(ctx, mergedID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting person names: %w", err)
 	}
 
 	ids := make([]uuid.UUID, len(names))
@@ -329,7 +329,7 @@ func (h *Handler) collectTransferredNames(ctx context.Context, mergedID uuid.UUI
 func (h *Handler) collectTransferredEvents(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
 	events, err := h.readStore.ListEventsForPerson(ctx, mergedID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing events for person: %w", err)
 	}
 
 	ids := make([]uuid.UUID, len(events))
@@ -343,7 +343,7 @@ func (h *Handler) collectTransferredEvents(ctx context.Context, mergedID uuid.UU
 func (h *Handler) collectTransferredMedia(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
 	media, _, err := h.readStore.ListMediaForEntity(ctx, "person", mergedID, repository.ListOptions{Limit: 10000})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing media for person: %w", err)
 	}
 
 	ids := make([]uuid.UUID, len(media))

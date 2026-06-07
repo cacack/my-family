@@ -95,7 +95,7 @@ func (h *Handler) UploadMedia(ctx context.Context, input UploadMediaInput) (*Upl
 	// Execute command (append + project)
 	version, err := h.execute(ctx, m.ID.String(), "Media", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing upload media command: %w", err)
 	}
 
 	return &UploadMediaResult{
@@ -127,7 +127,7 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	// Get current media from read model
 	current, err := h.readStore.GetMedia(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting media: %w", err)
 	}
 	if current == nil {
 		return nil, ErrMediaNotFound
@@ -174,7 +174,7 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "Media", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update media command: %w", err)
 	}
 
 	return &UpdateMediaResult{Version: version}, nil
@@ -185,7 +185,7 @@ func (h *Handler) DeleteMedia(ctx context.Context, id uuid.UUID, version int64, 
 	// Get current media from read model
 	current, err := h.readStore.GetMedia(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting media: %w", err)
 	}
 	if current == nil {
 		return ErrMediaNotFound
@@ -201,7 +201,10 @@ func (h *Handler) DeleteMedia(ctx context.Context, id uuid.UUID, version int64, 
 
 	// Execute command
 	_, err = h.execute(ctx, id.String(), "Media", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete media command: %w", err)
+	}
+	return nil
 }
 
 // RollbackMedia rolls back media to a specific version.

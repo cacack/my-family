@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -178,7 +179,7 @@ func TestMergePersons_SurvivorVersionConflict(t *testing.T) {
 		SurvivorVersion: 999, // Wrong version
 		MergedVersion:   merged.Version,
 	})
-	if err != repository.ErrConcurrencyConflict {
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Errorf("Expected ErrConcurrencyConflict, got %v", err)
 	}
 }
@@ -204,7 +205,7 @@ func TestMergePersons_MergedVersionConflict(t *testing.T) {
 		SurvivorVersion: survivor.Version,
 		MergedVersion:   999, // Wrong version
 	})
-	if err != repository.ErrConcurrencyConflict {
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
 		t.Errorf("Expected ErrConcurrencyConflict, got %v", err)
 	}
 }
@@ -244,7 +245,7 @@ func TestMergePersons_CircularMerge_SurvivorIsAncestor(t *testing.T) {
 		SurvivorVersion: child.Version,
 		MergedVersion:   parent.Version,
 	})
-	if err != command.ErrCircularMerge {
+	if !errors.Is(err, command.ErrCircularMerge) {
 		t.Errorf("Expected ErrCircularMerge, got %v", err)
 	}
 }
@@ -284,7 +285,7 @@ func TestMergePersons_CircularMerge_MergedIsAncestor(t *testing.T) {
 		SurvivorVersion: parent.Version,
 		MergedVersion:   child.Version,
 	})
-	if err != command.ErrCircularMerge {
+	if !errors.Is(err, command.ErrCircularMerge) {
 		t.Errorf("Expected ErrCircularMerge, got %v", err)
 	}
 }
@@ -342,7 +343,7 @@ func TestMergePersons_ChildFamilyConflict(t *testing.T) {
 		SurvivorVersion: child1.Version,
 		MergedVersion:   child2.Version,
 	})
-	if err != command.ErrChildFamilyConflict {
+	if !errors.Is(err, command.ErrChildFamilyConflict) {
 		t.Errorf("Expected ErrChildFamilyConflict, got %v", err)
 	}
 }

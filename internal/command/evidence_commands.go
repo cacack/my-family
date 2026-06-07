@@ -70,7 +70,7 @@ func (h *Handler) CreateEvidenceAnalysis(ctx context.Context, input CreateEviden
 	// Execute command (append + project)
 	version, err := h.execute(ctx, analysis.ID.String(), "EvidenceAnalysis", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create evidence analysis command: %w", err)
 	}
 
 	result := &CreateEvidenceAnalysisResult{
@@ -113,7 +113,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 	// Get current from read model
 	current, err := h.readStore.GetEvidenceAnalysis(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting evidence analysis: %w", err)
 	}
 	if current == nil {
 		return nil, ErrEvidenceAnalysisNotFound
@@ -186,7 +186,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 	// Execute command
 	version, err := h.execute(ctx, input.ID.String(), "EvidenceAnalysis", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update evidence analysis command: %w", err)
 	}
 
 	result := &UpdateEvidenceAnalysisResult{Version: version}
@@ -206,7 +206,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 func (h *Handler) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	current, err := h.readStore.GetEvidenceAnalysis(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting evidence analysis: %w", err)
 	}
 	if current == nil {
 		return ErrEvidenceAnalysisNotFound
@@ -217,7 +217,10 @@ func (h *Handler) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID, vers
 
 	event := domain.NewEvidenceAnalysisDeleted(id, reason)
 	_, err = h.execute(ctx, id.String(), "EvidenceAnalysis", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete evidence analysis command: %w", err)
+	}
+	return nil
 }
 
 // --- EvidenceConflict management ---
@@ -231,7 +234,7 @@ type ResolveEvidenceConflictResult struct {
 func (h *Handler) ResolveEvidenceConflict(ctx context.Context, id uuid.UUID, resolution string, version int64) (*ResolveEvidenceConflictResult, error) {
 	current, err := h.readStore.GetEvidenceConflict(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting evidence conflict: %w", err)
 	}
 	if current == nil {
 		return nil, ErrEvidenceConflictNotFound
@@ -248,7 +251,7 @@ func (h *Handler) ResolveEvidenceConflict(ctx context.Context, id uuid.UUID, res
 
 	newVersion, err := h.execute(ctx, id.String(), "EvidenceConflict", []domain.Event{event}, version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing resolve evidence conflict command: %w", err)
 	}
 
 	return &ResolveEvidenceConflictResult{Version: newVersion}, nil
@@ -295,7 +298,7 @@ func (h *Handler) CreateResearchLog(ctx context.Context, input CreateResearchLog
 	event := domain.NewResearchLogCreated(log)
 	version, err := h.execute(ctx, log.ID.String(), "ResearchLog", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create research log command: %w", err)
 	}
 
 	return &CreateResearchLogResult{ID: log.ID, Version: version}, nil
@@ -323,7 +326,7 @@ type UpdateResearchLogResult struct {
 func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLogInput) (*UpdateResearchLogResult, error) {
 	current, err := h.readStore.GetResearchLog(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting research log: %w", err)
 	}
 	if current == nil {
 		return nil, ErrResearchLogNotFound
@@ -385,7 +388,7 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 	event := domain.NewResearchLogUpdated(input.ID, changes)
 	version, err := h.execute(ctx, input.ID.String(), "ResearchLog", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update research log command: %w", err)
 	}
 
 	return &UpdateResearchLogResult{Version: version}, nil
@@ -395,7 +398,7 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 func (h *Handler) DeleteResearchLog(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	current, err := h.readStore.GetResearchLog(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting research log: %w", err)
 	}
 	if current == nil {
 		return ErrResearchLogNotFound
@@ -406,7 +409,10 @@ func (h *Handler) DeleteResearchLog(ctx context.Context, id uuid.UUID, version i
 
 	event := domain.NewResearchLogDeleted(id, reason)
 	_, err = h.execute(ctx, id.String(), "ResearchLog", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete research log command: %w", err)
+	}
+	return nil
 }
 
 // --- ProofSummary CRUD ---
@@ -450,7 +456,7 @@ func (h *Handler) CreateProofSummary(ctx context.Context, input CreateProofSumma
 	event := domain.NewProofSummaryCreated(summary)
 	version, err := h.execute(ctx, summary.ID.String(), "ProofSummary", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create proof summary command: %w", err)
 	}
 
 	return &CreateProofSummaryResult{ID: summary.ID, Version: version}, nil
@@ -477,7 +483,7 @@ type UpdateProofSummaryResult struct {
 func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSummaryInput) (*UpdateProofSummaryResult, error) {
 	current, err := h.readStore.GetProofSummary(ctx, input.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting proof summary: %w", err)
 	}
 	if current == nil {
 		return nil, ErrProofSummaryNotFound
@@ -541,7 +547,7 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 	event := domain.NewProofSummaryUpdated(input.ID, changes)
 	version, err := h.execute(ctx, input.ID.String(), "ProofSummary", []domain.Event{event}, input.Version)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing update proof summary command: %w", err)
 	}
 
 	return &UpdateProofSummaryResult{Version: version}, nil
@@ -551,7 +557,7 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 func (h *Handler) DeleteProofSummary(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	current, err := h.readStore.GetProofSummary(ctx, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting proof summary: %w", err)
 	}
 	if current == nil {
 		return ErrProofSummaryNotFound
@@ -562,7 +568,10 @@ func (h *Handler) DeleteProofSummary(ctx context.Context, id uuid.UUID, version 
 
 	event := domain.NewProofSummaryDeleted(id, reason)
 	_, err = h.execute(ctx, id.String(), "ProofSummary", []domain.Event{event}, version)
-	return err
+	if err != nil {
+		return fmt.Errorf("executing delete proof summary command: %w", err)
+	}
+	return nil
 }
 
 // --- Conflict auto-detection helper ---
@@ -573,7 +582,7 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 	// Get analyses for the same fact type and subject
 	analyses, err := h.readStore.GetAnalysesForFact(ctx, factType, subjectID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting analyses for fact: %w", err)
 	}
 
 	var conflicting []uuid.UUID
@@ -590,7 +599,7 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 	// Check for existing open conflict to avoid duplicates
 	existingConflicts, err := h.readStore.GetConflictsForSubject(ctx, subjectID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting conflicts for subject: %w", err)
 	}
 	for _, c := range existingConflicts {
 		if c.FactType == factType && c.Status == domain.ConflictStatusOpen {
@@ -610,7 +619,7 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 	event := domain.NewEvidenceConflictDetected(conflict)
 	_, err = h.execute(ctx, conflict.ID.String(), "EvidenceConflict", []domain.Event{event}, -1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing create evidence conflict command: %w", err)
 	}
 
 	return &conflict.ID, nil
