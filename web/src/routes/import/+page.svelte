@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { api, type ImportResult } from '$lib/api/client';
+	import { api, type ImportResult, type ImportProgress } from '$lib/api/client';
 	import { ExportButton } from '$lib/components/export';
+	import ImportProgressBar from '$lib/components/import/ImportProgress.svelte';
 	import { Button } from '$lib/components/ui/button';
 
 	let file: File | null = $state(null);
@@ -9,6 +9,7 @@
 	let result: ImportResult | null = $state(null);
 	let error: string | null = $state(null);
 	let dragOver = $state(false);
+	let progress: ImportProgress | null = $state(null);
 
 	// Export state
 	type EntityType = 'tree' | 'persons' | 'families' | 'sources' | 'citations' | 'events' | 'attributes';
@@ -246,13 +247,17 @@
 		importing = true;
 		error = null;
 		result = null;
+		progress = null;
 
 		try {
-			result = await api.importGedcom(file);
+			result = await api.importGedcomStream(file, (p) => {
+				progress = p;
+			});
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Import failed';
 		} finally {
 			importing = false;
+			progress = null;
 		}
 	}
 
@@ -260,6 +265,7 @@
 		file = null;
 		result = null;
 		error = null;
+		progress = null;
 	}
 
 	async function exportData() {
@@ -436,6 +442,12 @@
 
 				{#if error}
 					<p class="error-message" role="alert">{error}</p>
+				{/if}
+
+				{#if importing && progress}
+					<div class="import-progress-wrap">
+						<ImportProgressBar {progress} />
+					</div>
 				{/if}
 
 				{#if file}
@@ -753,6 +765,10 @@
 	.remove-btn:hover {
 		background: #e2e8f0;
 		color: #1e293b;
+	}
+
+	.import-progress-wrap {
+		margin-top: 1rem;
 	}
 
 	.error-message {

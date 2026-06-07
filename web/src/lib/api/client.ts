@@ -1059,6 +1059,83 @@ class ApiClient {
 		return response.json();
 	}
 
+	/**
+	 * Import a GEDCOM file while receiving real-time parse progress via Server-Sent
+	 * Events. onProgress is invoked with each progress update; the resolved value is
+	 * the final import result. Falls back cleanly if the browser/stream provides no
+	 * progress events (onProgress simply won't be called).
+	 */
+	async importGedcomStream(
+		file: File,
+		onProgress?: (progress: ImportProgress) => void
+	): Promise<ImportResult> {
+		const formData = new FormData();
+		formData.append('file', file);
+
+		const response = await fetch(`${API_BASE}/gedcom/import/stream`, {
+			method: 'POST',
+			body: formData
+		});
+
+		if (!response.ok || !response.body) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			error.status = response.status;
+			throw error;
+		}
+
+		const reader = response.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = '';
+		let result: ImportResult | null = null;
+		let streamError: string | null = null;
+
+		// Parse the SSE stream: events are separated by a blank line and consist of
+		// `event: <name>` and `data: <json>` lines.
+		const handleEvent = (raw: string) => {
+			let eventName = 'message';
+			const dataLines: string[] = [];
+			for (const line of raw.split('\n')) {
+				if (line.startsWith('event:')) eventName = line.slice(6).trim();
+				else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+			}
+			if (dataLines.length === 0) return;
+			const data = JSON.parse(dataLines.join('\n'));
+			if (eventName === 'progress') {
+				onProgress?.(data as ImportProgress);
+			} else if (eventName === 'result') {
+				result = data as ImportResult;
+			} else if (eventName === 'error') {
+				streamError = (data as { message?: string }).message || 'Import failed';
+			}
+		};
+
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+			let sep: number;
+			// Process complete events (delimited by a blank line).
+			while ((sep = buffer.indexOf('\n\n')) !== -1) {
+				const rawEvent = buffer.slice(0, sep);
+				buffer = buffer.slice(sep + 2);
+				if (rawEvent.trim()) handleEvent(rawEvent);
+			}
+		}
+		// Flush any trailing event without a terminating blank line.
+		if (buffer.trim()) handleEvent(buffer);
+
+		if (streamError !== null) {
+			throw { code: 'IMPORT_ERROR', message: streamError } as ApiError;
+		}
+		if (result === null) {
+			throw { code: 'IMPORT_ERROR', message: 'Import stream ended without a result' } as ApiError;
+		}
+		return result;
+	}
+
 	async exportGedcom(): Promise<string> {
 		const response = await fetch(`${API_BASE}/gedcom/export`);
 
