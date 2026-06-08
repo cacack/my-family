@@ -43,6 +43,13 @@ export type BatchDismissRequest = components['schemas']['BatchDismissRequest'];
 export type BatchDismissResponse = components['schemas']['BatchDismissResponse'];
 export type BatchDismissResult = components['schemas']['BatchDismissResult'];
 
+// Re-export Repository types from generated file (single source of truth)
+export type Repository = components['schemas']['Repository'];
+export type RepositoryCreate = components['schemas']['RepositoryCreate'];
+export type RepositoryUpdate = components['schemas']['RepositoryUpdate'];
+export type RepositoryList = components['schemas']['RepositoryList'];
+export type Address = components['schemas']['Address'];
+
 const API_BASE = '/api/v1';
 
 // Types based on OpenAPI schemas
@@ -1311,6 +1318,39 @@ class ApiClient {
 
 	async deleteSource(id: string, version: number): Promise<void> {
 		return this.request<void>('DELETE', `/sources/${id}?version=${version}`);
+	}
+
+	// Repository endpoints
+	async listRepositories(params?: {
+		limit?: number;
+		offset?: number;
+		sort?: 'name' | 'updated_at';
+		order?: 'asc' | 'desc';
+	}): Promise<RepositoryList> {
+		const searchParams = new URLSearchParams();
+		if (params?.limit) searchParams.set('limit', params.limit.toString());
+		if (params?.offset) searchParams.set('offset', params.offset.toString());
+		if (params?.sort) searchParams.set('sort', params.sort);
+		if (params?.order) searchParams.set('order', params.order);
+
+		const query = searchParams.toString();
+		return this.request<RepositoryList>('GET', `/repositories${query ? `?${query}` : ''}`);
+	}
+
+	async getRepository(id: string): Promise<Repository> {
+		return this.request<Repository>('GET', `/repositories/${id}`);
+	}
+
+	async createRepository(data: RepositoryCreate): Promise<Repository> {
+		return this.request<Repository>('POST', '/repositories', data);
+	}
+
+	async updateRepository(id: string, data: RepositoryUpdate): Promise<Repository> {
+		return this.request<Repository>('PUT', `/repositories/${id}`, data);
+	}
+
+	async deleteRepository(id: string, version: number): Promise<void> {
+		return this.request<void>('DELETE', `/repositories/${id}?version=${version}`);
 	}
 
 	async searchSources(q: string, limit?: number): Promise<SourceSearchResponse> {
