@@ -360,6 +360,33 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 // JSON: a string UUID for a swap, nil/empty to clear. Unknown person IDs leave
 // the names empty rather than failing — the name will be backfilled the next
 // time the projection sees the person.
+// parseOptionalUUID coerces a change-map value into an optional UUID. Values may
+// arrive as a string (the JSON-decoded form after event replay), a uuid.UUID, or a
+// *uuid.UUID (freshly built in-memory). A nil, empty, or unparseable value yields
+// nil, which clears the link.
+func parseOptionalUUID(value any) *uuid.UUID {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case *uuid.UUID:
+		return v
+	case uuid.UUID:
+		id := v
+		return &id
+	case string:
+		if v == "" {
+			return nil
+		}
+		id, err := uuid.Parse(v)
+		if err != nil {
+			return nil
+		}
+		return &id
+	default:
+		return nil
+	}
+}
+
 func (p *Projector) resolvePartnerChange(ctx context.Context, value any) (*uuid.UUID, string, string) {
 	s, ok := value.(string)
 	if !ok || s == "" {
@@ -513,6 +540,7 @@ func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCre
 		PublishDateRaw:  publishDateRaw,
 		PublishDateSort: publishDateSort,
 		URL:             e.URL,
+		RepositoryID:    e.RepositoryID,
 		RepositoryName:  e.RepositoryName,
 		CollectionName:  e.CollectionName,
 		CallNumber:      e.CallNumber,
@@ -569,6 +597,8 @@ func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpd
 			if v, ok := value.(string); ok {
 				source.URL = v
 			}
+		case "repository_id":
+			source.RepositoryID = parseOptionalUUID(value)
 		case "repository_name":
 			if v, ok := value.(string); ok {
 				source.RepositoryName = v

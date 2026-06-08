@@ -121,6 +121,7 @@ func (s *ReadModelStore) createTables() error {
 			publish_date_raw TEXT,
 			publish_date_sort TEXT,
 			url TEXT,
+			repository_id TEXT,
 			repository_name TEXT,
 			collection_name TEXT,
 			call_number TEXT,
@@ -472,6 +473,9 @@ func (s *ReadModelStore) runMigrations() {
 			person_surname    = COALESCE((SELECT surname    FROM persons WHERE id = person_id), '')
 		WHERE person_id IS NOT NULL AND person_given_name IS NULL
 	`)
+
+	// Add repository_id to sources for ID-based source→repository linkage (issue #525).
+	_, _ = s.db.Exec(`ALTER TABLE sources ADD COLUMN repository_id TEXT`)
 }
 
 // tryCreateFTS5 attempts to create FTS5 virtual table for full-text search.
@@ -1815,7 +1819,7 @@ func escapeFTS5Query(query string) string {
 func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 			   citation_count, version, updated_at
 		FROM sources WHERE id = ?
 	`, id.String())
@@ -1833,7 +1837,7 @@ func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOp
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 			   citation_count, version, updated_at
 		FROM sources
 		ORDER BY title ASC
@@ -1862,7 +1866,7 @@ func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit 
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 			   citation_count, version, updated_at
 		FROM sources
 		WHERE LOWER(title) LIKE ? OR LOWER(author) LIKE ?
@@ -1892,11 +1896,16 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.Sour
 		publishDateSort = sql.NullString{String: source.PublishDateSort.Format("2006-01-02"), Valid: true}
 	}
 
+	var repositoryID sql.NullString
+	if source.RepositoryID != nil {
+		repositoryID = sql.NullString{String: source.RepositoryID.String(), Valid: true}
+	}
+
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sources (id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-							 url, repository_name, collection_name, call_number, notes, gedcom_xref,
+							 url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 							 citation_count, version, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source_type = excluded.source_type,
 			title = excluded.title,
@@ -1905,6 +1914,7 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.Sour
 			publish_date_raw = excluded.publish_date_raw,
 			publish_date_sort = excluded.publish_date_sort,
 			url = excluded.url,
+			repository_id = excluded.repository_id,
 			repository_name = excluded.repository_name,
 			collection_name = excluded.collection_name,
 			call_number = excluded.call_number,
@@ -1914,7 +1924,7 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.Sour
 			version = excluded.version,
 			updated_at = excluded.updated_at
 	`, source.ID.String(), string(source.SourceType), source.Title, source.Author, source.Publisher,
-		source.PublishDateRaw, publishDateSort, source.URL, source.RepositoryName, source.CollectionName,
+		source.PublishDateRaw, publishDateSort, source.URL, repositoryID, source.RepositoryName, source.CollectionName,
 		source.CallNumber, source.Notes, source.GedcomXref, source.CitationCount, source.Version,
 		formatTimestamp(source.UpdatedAt))
 
@@ -2377,16 +2387,16 @@ func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) erro
 
 func scanSource(row rowScanner) (*repository.SourceReadModel, error) {
 	var (
-		idStr, sourceType, title                            string
-		author, publisher, publishDateRaw, publishDateSort  sql.NullString
-		url, repoName, collName, callNum, notes, gedcomXref sql.NullString
-		citationCount                                       int
-		version                                             int64
-		updatedAt                                           string
+		idStr, sourceType, title                                    string
+		author, publisher, publishDateRaw, publishDateSort          sql.NullString
+		url, repoID, repoName, collName, callNum, notes, gedcomXref sql.NullString
+		citationCount                                               int
+		version                                                     int64
+		updatedAt                                                   string
 	)
 
 	err := row.Scan(&idStr, &sourceType, &title, &author, &publisher, &publishDateRaw, &publishDateSort,
-		&url, &repoName, &collName, &callNum, &notes, &gedcomXref,
+		&url, &repoID, &repoName, &collName, &callNum, &notes, &gedcomXref,
 		&citationCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -2414,6 +2424,11 @@ func scanSource(row rowScanner) (*repository.SourceReadModel, error) {
 		Version:        version,
 	}
 
+	if repoID.Valid {
+		if rid, err := uuid.Parse(repoID.String); err == nil {
+			src.RepositoryID = &rid
+		}
+	}
 	if publishDateSort.Valid {
 		if t, err := time.Parse("2006-01-02", publishDateSort.String); err == nil {
 			src.PublishDateSort = &t
