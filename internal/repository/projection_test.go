@@ -816,6 +816,49 @@ func TestProjector_SourceCreated(t *testing.T) {
 	}
 }
 
+// TestProjector_SourceRepositoryID verifies the RepositoryID link carried by the
+// SourceCreated/SourceUpdated events is projected onto the read model rather than
+// dropped (issue #525).
+func TestProjector_SourceRepositoryID(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	repoID := uuid.New()
+	source := domain.NewSource("Linked Source", domain.SourceBook)
+	source.RepositoryID = &repoID
+
+	if err := projector.Project(ctx, domain.NewSourceCreated(source), 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	rm, err := readStore.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("GetSource failed: %v", err)
+	}
+	if rm.RepositoryID == nil {
+		t.Fatal("RepositoryID was dropped by the projection")
+	}
+	if *rm.RepositoryID != repoID {
+		t.Errorf("RepositoryID = %s, want %s", rm.RepositoryID, repoID)
+	}
+
+	// Update the link to a different repository via a change-map (string form, as
+	// it arrives after event replay).
+	newRepoID := uuid.New()
+	changes := map[string]any{"repository_id": newRepoID.String()}
+	if err := projector.Project(ctx, domain.NewSourceUpdated(source.ID, changes), 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+	rm, err = readStore.GetSource(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("GetSource failed: %v", err)
+	}
+	if rm.RepositoryID == nil || *rm.RepositoryID != newRepoID {
+		t.Errorf("RepositoryID after update = %v, want %s", rm.RepositoryID, newRepoID)
+	}
+}
+
 func TestProjector_SourceUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	projector := repository.NewProjector(readStore)

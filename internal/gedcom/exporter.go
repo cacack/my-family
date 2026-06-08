@@ -157,8 +157,10 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		return repositories[i].ID.String() < repositories[j].ID.String()
 	})
 	// repoNameToXref lets sources that reference a repository by name be linked
-	// to the standalone REPO record via a SOUR.REPO cross-reference.
+	// to the standalone REPO record via a SOUR.REPO cross-reference. repoIDToXref
+	// is the authoritative ID-based map, preferred over name matching (issue #525).
 	repoNameToXref := make(map[string]string)
+	repoIDToXref := make(map[uuid.UUID]string)
 	for i, r := range repositories {
 		// Use GedcomXref if available (for round-trip), otherwise generate.
 		if r.GedcomXref != "" {
@@ -166,6 +168,7 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		} else {
 			repositoryXrefs[r.ID] = fmt.Sprintf("@R%d@", i+1)
 		}
+		repoIDToXref[r.ID] = repositoryXrefs[r.ID]
 		if r.Name != "" {
 			repoNameToXref[r.Name] = repositoryXrefs[r.ID]
 		}
@@ -184,7 +187,7 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		src := toGedcomSource(s, repoNameToXref)
+		src := toGedcomSource(s, repoIDToXref, repoNameToXref)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeSource,
@@ -413,11 +416,12 @@ func (cw *countingWriter) Write(p []byte) (n int, err error) {
 // toGedcomSource converts a repository SourceReadModel to a gedcom.Source entity.
 // The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC.
 //
-// repoNameToXref maps a Repository's name (and any @XREF@ used as a name) to the
-// xref of its standalone REPO record. When a source references a repository that
-// exists as a Repository entity, emit a SOUR.REPO cross-reference to that record;
-// otherwise fall back to an inline repository definition (name-only sources).
-func toGedcomSource(s repository.SourceReadModel, repoNameToXref map[string]string) *gedcom.Source {
+// repoIDToXref maps a Repository's ID to the xref of its standalone REPO record;
+// it is the authoritative link and is preferred when the source carries a
+// RepositoryID. repoNameToXref maps a Repository's name (and any @XREF@ used as a
+// name) to the same xref, used as a fallback for legacy sources linked only by
+// name. When neither resolves, fall back to an inline repository definition.
+func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]string, repoNameToXref map[string]string) *gedcom.Source {
 	src := &gedcom.Source{}
 
 	// Title
@@ -435,20 +439,25 @@ func toGedcomSource(s repository.SourceReadModel, repoNameToXref map[string]stri
 		src.Publication = s.Publisher
 	}
 
-	// Repository
-	if s.RepositoryName != "" {
-		switch {
-		case repoNameToXref[s.RepositoryName] != "":
-			// Source references a Repository entity by name: emit a SOUR.REPO
-			// cross-reference to the standalone REPO record.
-			src.RepositoryRef = repoNameToXref[s.RepositoryName]
-		case strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@"):
-			// Already an XREF (e.g. an unresolved import reference): preserve it.
-			src.RepositoryRef = s.RepositoryName
-		default:
-			// Inline repository with NAME subordinate (name-only / unlinked source).
-			src.Repository = &gedcom.InlineRepository{Name: s.RepositoryName}
-		}
+	// Repository. Prefer the authoritative RepositoryID link (issue #525): it is
+	// robust against duplicate or renamed repository names. Fall back to name
+	// matching only when no ID is present (e.g. legacy data).
+	switch {
+	case s.RepositoryID != nil && repoIDToXref[*s.RepositoryID] != "":
+		// Source links to a Repository entity by ID: emit a SOUR.REPO
+		// cross-reference to the standalone REPO record.
+		src.RepositoryRef = repoIDToXref[*s.RepositoryID]
+	case s.RepositoryName == "":
+		// No repository link at all.
+	case repoNameToXref[s.RepositoryName] != "":
+		// Legacy: source references a Repository entity by name.
+		src.RepositoryRef = repoNameToXref[s.RepositoryName]
+	case strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@"):
+		// Already an XREF (e.g. an unresolved import reference): preserve it.
+		src.RepositoryRef = s.RepositoryName
+	default:
+		// Inline repository with NAME subordinate (name-only / unlinked source).
+		src.Repository = &gedcom.InlineRepository{Name: s.RepositoryName}
 	}
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text

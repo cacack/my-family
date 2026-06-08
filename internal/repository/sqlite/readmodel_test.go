@@ -41,6 +41,57 @@ func setupTestReadModelDB(t *testing.T) (*sqlite.ReadModelStore, func()) {
 	}
 }
 
+// TestReadModelStore_SourceRepositoryID verifies the repository_id column round-trips
+// through SaveSource/GetSource, including the nil case (issue #525).
+func TestReadModelStore_SourceRepositoryID(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	repoID := uuid.New()
+	linked := &repository.SourceReadModel{
+		ID:             uuid.New(),
+		SourceType:     domain.SourceBook,
+		Title:          "Linked Source",
+		RepositoryID:   &repoID,
+		RepositoryName: "National Archives",
+		Version:        1,
+	}
+	if err := store.SaveSource(ctx, linked); err != nil {
+		t.Fatalf("SaveSource (linked): %v", err)
+	}
+
+	got, err := store.GetSource(ctx, linked.ID)
+	if err != nil {
+		t.Fatalf("GetSource: %v", err)
+	}
+	if got.RepositoryID == nil {
+		t.Fatal("RepositoryID was not persisted")
+	}
+	if *got.RepositoryID != repoID {
+		t.Errorf("RepositoryID = %s, want %s", got.RepositoryID, repoID)
+	}
+
+	// A source without a RepositoryID must round-trip as nil, not a zero UUID.
+	unlinked := &repository.SourceReadModel{
+		ID:         uuid.New(),
+		SourceType: domain.SourceBook,
+		Title:      "Unlinked Source",
+		Version:    1,
+	}
+	if err := store.SaveSource(ctx, unlinked); err != nil {
+		t.Fatalf("SaveSource (unlinked): %v", err)
+	}
+	got, err = store.GetSource(ctx, unlinked.ID)
+	if err != nil {
+		t.Fatalf("GetSource: %v", err)
+	}
+	if got.RepositoryID != nil {
+		t.Errorf("RepositoryID = %s, want nil", got.RepositoryID)
+	}
+}
+
 func TestReadModelStore_PersonCRUD(t *testing.T) {
 	store, cleanup := setupTestReadModelDB(t)
 	defer cleanup()

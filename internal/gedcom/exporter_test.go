@@ -2619,6 +2619,62 @@ func TestExport_Repositories(t *testing.T) {
 	}
 }
 
+// TestExport_SourceLinkedByRepositoryID verifies that a source linked to a
+// repository by RepositoryID exports the correct SOUR.REPO cross-reference even
+// when another repository shares the same name — the ID link must win over the
+// fragile name match (issue #525).
+func TestExport_SourceLinkedByRepositoryID(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Two repositories with the SAME name but different IDs and xrefs.
+	repoA := &repository.RepositoryReadModel{
+		ID:         uuid.New(),
+		Name:       "National Archives",
+		GedcomXref: "@RA@",
+	}
+	repoB := &repository.RepositoryReadModel{
+		ID:         uuid.New(),
+		Name:       "National Archives",
+		GedcomXref: "@RB@",
+	}
+	if err := readStore.SaveRepository(ctx, repoA); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SaveRepository(ctx, repoB); err != nil {
+		t.Fatal(err)
+	}
+
+	// Source authoritatively linked to repoB by ID (its name would match either).
+	repoBID := repoB.ID
+	source := &repository.SourceReadModel{
+		ID:             uuid.New(),
+		SourceType:     "book",
+		Title:          "Census Records",
+		RepositoryID:   &repoBID,
+		RepositoryName: "National Archives",
+		GedcomXref:     "@S1@",
+	}
+	if err := readStore.SaveSource(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	if _, err := exporter.Export(ctx, buf); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+
+	// The source must reference repoB's xref (by ID), not repoA's.
+	if !strings.Contains(output, "1 REPO @RB@\n") {
+		t.Errorf("Source should reference repoB (@RB@) via its RepositoryID; got:\n%s", output)
+	}
+	if strings.Contains(output, "1 REPO @RA@\n") {
+		t.Errorf("Source must not be mislinked to repoA (@RA@) by name; got:\n%s", output)
+	}
+}
+
 // TestExport_RepositoryRoundTrip imports a GEDCOM containing REPO records and
 // SOUR.REPO cross-references, exports it, and asserts the repositories and the
 // source->repository links survive with no dropped data.

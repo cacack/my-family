@@ -134,6 +134,7 @@ func (s *ReadModelStore) createTables() error {
 			publish_date_raw VARCHAR(100),
 			publish_date_sort DATE,
 			url VARCHAR(500),
+			repository_id UUID,
 			repository_name VARCHAR(200),
 			collection_name VARCHAR(200),
 			call_number VARCHAR(100),
@@ -501,6 +502,9 @@ func (s *ReadModelStore) runMigrations() {
 		_, _ = tx.Exec(`ALTER TABLE family_children DROP COLUMN IF EXISTS person_name`)
 		_ = tx.Commit()
 	}
+
+	// Add repository_id to sources for ID-based source→repository linkage (issue #525).
+	_, _ = s.db.Exec(`ALTER TABLE sources ADD COLUMN IF NOT EXISTS repository_id UUID`)
 }
 
 // GetPerson retrieves a person by ID.
@@ -1457,7 +1461,7 @@ func nullableBytes(b []byte) any {
 func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 			   citation_count, version, updated_at
 		FROM sources WHERE id = $1
 	`, id)
@@ -1475,7 +1479,7 @@ func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOp
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 			   citation_count, version, updated_at
 		FROM sources
 		ORDER BY title ASC
@@ -1502,7 +1506,7 @@ func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOp
 func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit int) ([]repository.SourceReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_name, collection_name, call_number, notes, gedcom_xref,
+			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 			   citation_count, version, updated_at
 		FROM sources
 		WHERE title ILIKE '%' || $1 || '%' OR author ILIKE '%' || $1 || '%'
@@ -1530,9 +1534,9 @@ func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit 
 func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.SourceReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO sources (id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-							 url, repository_name, collection_name, call_number, notes, gedcom_xref,
+							 url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
 							 citation_count, version, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT(id) DO UPDATE SET
 			source_type = EXCLUDED.source_type,
 			title = EXCLUDED.title,
@@ -1541,6 +1545,7 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.Sour
 			publish_date_raw = EXCLUDED.publish_date_raw,
 			publish_date_sort = EXCLUDED.publish_date_sort,
 			url = EXCLUDED.url,
+			repository_id = EXCLUDED.repository_id,
 			repository_name = EXCLUDED.repository_name,
 			collection_name = EXCLUDED.collection_name,
 			call_number = EXCLUDED.call_number,
@@ -1552,7 +1557,7 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.Sour
 	`, source.ID, nullableString(string(source.SourceType)), source.Title,
 		nullableString(source.Author), nullableString(source.Publisher),
 		nullableString(source.PublishDateRaw), nullableTime(source.PublishDateSort),
-		nullableString(source.URL), nullableString(source.RepositoryName),
+		nullableString(source.URL), nullableUUID(source.RepositoryID), nullableString(source.RepositoryName),
 		nullableString(source.CollectionName), nullableString(source.CallNumber),
 		nullableString(source.Notes), nullableString(source.GedcomXref),
 		source.CitationCount, source.Version, source.UpdatedAt)
@@ -1996,8 +2001,8 @@ func scanSourceRow(row rowScanner) (*repository.SourceReadModel, error) {
 		id                                uuid.UUID
 		sourceType, title                 string
 		author, publisher, publishDateRaw sql.NullString
-		url, repoName, collName, callNum  sql.NullString
-		notes, gedcomXref                 sql.NullString
+		url, repoID, repoName, collName   sql.NullString
+		callNum, notes, gedcomXref        sql.NullString
 		publishDateSort                   sql.NullTime
 		citationCount                     int
 		version                           int64
@@ -2005,7 +2010,7 @@ func scanSourceRow(row rowScanner) (*repository.SourceReadModel, error) {
 	)
 
 	err := row.Scan(&id, &sourceType, &title, &author, &publisher, &publishDateRaw, &publishDateSort,
-		&url, &repoName, &collName, &callNum, &notes, &gedcomXref,
+		&url, &repoID, &repoName, &collName, &callNum, &notes, &gedcomXref,
 		&citationCount, &version, &updatedAt)
 
 	if err == sql.ErrNoRows {
@@ -2033,6 +2038,11 @@ func scanSourceRow(row rowScanner) (*repository.SourceReadModel, error) {
 		UpdatedAt:      updatedAt,
 	}
 
+	if repoID.Valid {
+		if rid, err := uuid.Parse(repoID.String); err == nil {
+			src.RepositoryID = &rid
+		}
+	}
 	if publishDateSort.Valid {
 		src.PublishDateSort = &publishDateSort.Time
 	}

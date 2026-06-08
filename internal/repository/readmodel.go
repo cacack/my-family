@@ -84,6 +84,7 @@ type SourceReadModel struct {
 	PublishDateRaw  string            `json:"publish_date_raw,omitempty"`
 	PublishDateSort *time.Time        `json:"publish_date_sort,omitempty"`
 	URL             string            `json:"url,omitempty"`
+	RepositoryID    *uuid.UUID        `json:"repository_id,omitempty"`
 	RepositoryName  string            `json:"repository_name,omitempty"`
 	CollectionName  string            `json:"collection_name,omitempty"`
 	CallNumber      string            `json:"call_number,omitempty"`
