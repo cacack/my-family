@@ -2423,6 +2423,58 @@ func TestExport_NegatedEvents(t *testing.T) {
 	}
 }
 
+// TestExport_NonNegated7xTriggerBumpsVersion verifies that a document using a
+// GEDCOM 7.0-only structure that is NOT a negated event still bumps the export to
+// 7.0. The old hasNegatedEvents helper only caught NO tags and would have emitted
+// lossy 5.5.1 here; the library's RequiresGEDCOM7 catches the association PHRASE
+// (issue #539).
+func TestExport_NonNegated7xTriggerBumpsVersion(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	associateID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "Alice",
+		Surname:   "Smith",
+		FullName:  "Alice Smith",
+		Gender:    domain.GenderFemale,
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID:        associateID,
+		GivenName: "Bob",
+		Surname:   "Jones",
+		FullName:  "Bob Jones",
+		Gender:    domain.GenderMale,
+	})
+
+	// An association with a PHRASE — a 7.0-only structure, not a negated event.
+	readStore.SaveAssociation(ctx, &repository.AssociationReadModel{
+		ID:          uuid.New(),
+		PersonID:    personID,
+		AssociateID: associateID,
+		Role:        domain.RoleGodparent,
+		Phrase:      "Lifelong family friend",
+		Version:     1,
+	})
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	if _, err := exporter.Export(ctx, buf); err != nil {
+		t.Fatal(err)
+	}
+	output := buf.String()
+
+	if !strings.Contains(output, "2 VERS 7.0\n") {
+		t.Errorf("Export with a 7.0-only PHRASE should bump the header to 7.0; got:\n%s", output)
+	}
+	// Sanity: this was not triggered by a negated event.
+	if strings.Contains(output, "1 NO ") {
+		t.Error("Test should exercise a non-negated 7.0 trigger, but found a NO tag")
+	}
+}
+
 func TestExport_NegatedEventRoundTrip(t *testing.T) {
 	// Import GEDCOM with NO tags, then export and verify NO tags are preserved.
 	gedcomInput := `0 HEAD

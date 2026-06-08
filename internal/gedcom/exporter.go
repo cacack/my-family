@@ -372,8 +372,11 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		}
 	}
 
-	// Bump to GEDCOM 7.0 if any negated events are present (NO tags require 7.0)
-	if hasNegatedEvents(doc) {
+	// Bump to GEDCOM 7.0 if the document uses any 7.0-only structures. The library's
+	// RequiresGEDCOM7 inspects the whole document — negated events (NO), EXID, SNOTE,
+	// SCHMA, TRAN, association PHRASE, media CROP, SDATE, CREA — so such documents are
+	// emitted as 7.0 instead of silently lossy 5.5.1 (issue #539).
+	if doc.RequiresGEDCOM7() {
 		doc.Header.Version = gedcom.Version70
 	}
 
@@ -1035,25 +1038,4 @@ func toGedcomLDSOrdinance(ord repository.LDSOrdinanceReadModel) *gedcom.LDSOrdin
 		Place:  ord.Place,
 		Status: ord.Status,
 	}
-}
-
-// hasNegatedEvents checks if any events in the document have IsNegative set.
-func hasNegatedEvents(doc *gedcom.Document) bool {
-	for _, rec := range doc.Records {
-		if indi, ok := rec.Entity.(*gedcom.Individual); ok {
-			for _, evt := range indi.Events {
-				if evt.IsNegative {
-					return true
-				}
-			}
-		}
-		if fam, ok := rec.Entity.(*gedcom.Family); ok {
-			for _, evt := range fam.Events {
-				if evt.IsNegative {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
