@@ -9,7 +9,7 @@ COPY web/ ./
 RUN npm run build
 
 # Build stage: Backend
-FROM golang:1.26.4-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS backend-builder
+FROM golang:1.26.4-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS backend-builder
 
 # Install build dependencies for CGO (required for SQLite)
 RUN apk add --no-cache gcc musl-dev
@@ -36,7 +36,7 @@ ENV CGO_ENABLED=1
 RUN go build -o myfamily -ldflags="-s -w" ./cmd/myfamily
 
 # Runtime stage
-FROM alpine:3.23.4@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 # Install runtime dependencies
 RUN apk add --no-cache ca-certificates tzdata
