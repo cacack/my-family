@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.0](https://github.com/cacack/my-family/compare/v0.10.0...v0.11.0) (2026-06-29)
+
+
+### Features
+
+* **gedcom:** link source to repository by ID, not name ([#525](https://github.com/cacack/my-family/issues/525)) ([214048a](https://github.com/cacack/my-family/commit/214048a6a9aa6a1b361e8ebe85054623c790723d))
+* **import:** add frontend progress bar and tests for streaming import ([#191](https://github.com/cacack/my-family/issues/191)) ([b20b1f1](https://github.com/cacack/my-family/commit/b20b1f106fd63768314075f4995d055fda50b491))
+* **import:** add SSE progress streaming endpoint and import progress callbacks ([#191](https://github.com/cacack/my-family/issues/191)) ([de2c5c1](https://github.com/cacack/my-family/commit/de2c5c19939e7f8bf73107de8ffeb0f64b751831))
+* **repository:** complete Repository entity integration across all 7 layers ([06514cc](https://github.com/cacack/my-family/commit/06514cc237ddbaad7d09760387719c82781ba664)), closes [#239](https://github.com/cacack/my-family/issues/239)
+* **web:** add Repository management UI ([#524](https://github.com/cacack/my-family/issues/524)) ([4e0c5f1](https://github.com/cacack/my-family/commit/4e0c5f1dc00f9e430c4fa271b0d33323e8b8d6b1))
+
+
+### Bug Fixes
+
+* **api:** remove invalid sibling description from MergePersonsResponse.person ([9beedbb](https://github.com/cacack/my-family/commit/9beedbb971f59c1d89109700061c601b1defa428))
+* **api:** remove invalid sibling type field from EvidenceAnalysis.research_status ([897342a](https://github.com/cacack/my-family/commit/897342a2e0785538e433aa2211a32b8df3e8ddee))
+* **command:** wrap bare error returns with operation context ([#240](https://github.com/cacack/my-family/issues/240)) ([fe4b03b](https://github.com/cacack/my-family/commit/fe4b03b62f064249bb8f85484364510bbba8c200))
+* **repository:** honor updated_at sort in memory ListRepositories ([48bcca3](https://github.com/cacack/my-family/commit/48bcca3ea4e18cd46a4f5affbf09f5c862305492))
+* **repository:** replay-safe address projection + deterministic list ordering ([7d92a8a](https://github.com/cacack/my-family/commit/7d92a8a5143d1fc177ed88bbd2783c57d1c9a7fe))
+
 ## [0.10.0](https://github.com/cacack/my-family/compare/v0.9.0...v0.10.0) (2026-05-17)
 
 
