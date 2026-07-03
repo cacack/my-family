@@ -4510,3 +4510,30 @@ func TestProjector_RepositoryDeleted(t *testing.T) {
 		t.Error("Repository should be deleted")
 	}
 }
+
+func TestProjector_PersonUpdated_UnknownKeyIgnored(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore)
+	ctx := context.Background()
+
+	person := domain.NewPerson("John", "Doe")
+	createEvent := domain.NewPersonCreated(person)
+	if err := projector.Project(ctx, createEvent, 1); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+
+	// An unrecognized change key is logged and skipped; known keys still apply.
+	changes := map[string]any{
+		"given_name":  "Jane",
+		"no_such_key": "value",
+	}
+	updateEvent := domain.NewPersonUpdated(person.ID, changes)
+	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+		t.Fatalf("Project update failed: %v", err)
+	}
+
+	rm, _ := readStore.GetPerson(ctx, person.ID)
+	if rm.GivenName != "Jane" {
+		t.Errorf("GivenName = %s, want Jane", rm.GivenName)
+	}
+}
