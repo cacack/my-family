@@ -45,6 +45,8 @@ jobs:
             index.docker.io:443
             registry-1.docker.io:443
             production.cloudflare.docker.com:443
+            docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com:443
+            *.r2.cloudflarestorage.com:443
 
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
