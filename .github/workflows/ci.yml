@@ -97,6 +97,10 @@ jobs:
             api.codecov.io:443
             cli.codecov.io:443
             ingest.codecov.io:443
+            auth.docker.io:443
+            index.docker.io:443
+            registry-1.docker.io:443
+            production.cloudflare.docker.com:443
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
