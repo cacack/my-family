@@ -611,24 +611,7 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 
 // DeleteCitation implements StrictServerInterface.
 func (ss *StrictServer) DeleteCitation(ctx context.Context, request DeleteCitationRequestObject) (DeleteCitationResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	} else {
-		cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
-		if err != nil {
-			if errors.Is(err, query.ErrNotFound) {
-				return DeleteCitation404JSONResponse{NotFoundJSONResponse{
-					Code:    "not_found",
-					Message: "Citation not found",
-				}}, nil
-			}
-			return nil, err
-		}
-		version = cit.Version
-	}
-
-	err := ss.server.commandHandler.DeleteCitation(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteCitation(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteCitation404JSONResponse{NotFoundJSONResponse{
@@ -1567,26 +1550,7 @@ func (ss *StrictServer) ListHistory(ctx context.Context, request ListHistoryRequ
 
 // DeleteMedia implements StrictServerInterface.
 func (ss *StrictServer) DeleteMedia(ctx context.Context, request DeleteMediaRequestObject) (DeleteMediaResponseObject, error) {
-	// Get version from params or fetch current version
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	} else {
-		// Fetch current version if not provided
-		media, err := ss.server.readStore.GetMedia(ctx, request.Id)
-		if err != nil {
-			return nil, err
-		}
-		if media == nil {
-			return DeleteMedia404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Media not found",
-			}}, nil
-		}
-		version = media.Version
-	}
-
-	if err := ss.server.commandHandler.DeleteMedia(ctx, request.Id, version, "user request"); err != nil {
+	if err := ss.server.commandHandler.DeleteMedia(ctx, request.Id, request.Params.Version, "user request"); err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteMedia404JSONResponse{NotFoundJSONResponse{
 				Code:    "not_found",
@@ -3136,24 +3100,7 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 
 // DeleteSource implements StrictServerInterface.
 func (ss *StrictServer) DeleteSource(ctx context.Context, request DeleteSourceRequestObject) (DeleteSourceResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	} else {
-		source, err := ss.server.sourceService.GetSource(ctx, request.Id)
-		if err != nil {
-			if errors.Is(err, query.ErrNotFound) {
-				return DeleteSource404JSONResponse{NotFoundJSONResponse{
-					Code:    "not_found",
-					Message: "Source not found",
-				}}, nil
-			}
-			return nil, err
-		}
-		version = source.Version
-	}
-
-	err := ss.server.commandHandler.DeleteSource(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteSource(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteSource404JSONResponse{NotFoundJSONResponse{
@@ -4228,12 +4175,7 @@ func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteReques
 
 // DeleteNote implements StrictServerInterface.
 func (ss *StrictServer) DeleteNote(ctx context.Context, request DeleteNoteRequestObject) (DeleteNoteResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteNote(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteNote(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrNoteNotFound) {
 			return DeleteNote404JSONResponse{NotFoundJSONResponse{
@@ -4440,12 +4382,7 @@ func (ss *StrictServer) UpdateSubmitter(ctx context.Context, request UpdateSubmi
 
 // DeleteSubmitter implements StrictServerInterface.
 func (ss *StrictServer) DeleteSubmitter(ctx context.Context, request DeleteSubmitterRequestObject) (DeleteSubmitterResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteSubmitter(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteSubmitter(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrSubmitterNotFound) {
 			return DeleteSubmitter404JSONResponse{NotFoundJSONResponse{
@@ -4669,12 +4606,7 @@ func (ss *StrictServer) UpdateRepository(ctx context.Context, request UpdateRepo
 
 // DeleteRepository implements StrictServerInterface.
 func (ss *StrictServer) DeleteRepository(ctx context.Context, request DeleteRepositoryRequestObject) (DeleteRepositoryResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteRepository(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteRepository(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrRepositoryNotFound) {
 			return DeleteRepository404JSONResponse{NotFoundJSONResponse{
@@ -4862,12 +4794,7 @@ func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAss
 
 // DeleteAssociation implements StrictServerInterface.
 func (ss *StrictServer) DeleteAssociation(ctx context.Context, request DeleteAssociationRequestObject) (DeleteAssociationResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteAssociation(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteAssociation(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrAssociationNotFound) {
 			return DeleteAssociation404JSONResponse{NotFoundJSONResponse{
@@ -5144,12 +5071,7 @@ func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLD
 
 // DeleteLDSOrdinance implements StrictServerInterface.
 func (ss *StrictServer) DeleteLDSOrdinance(ctx context.Context, request DeleteLDSOrdinanceRequestObject) (DeleteLDSOrdinanceResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteLDSOrdinance(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteLDSOrdinance(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrLDSOrdinanceNotFound) {
 			return DeleteLDSOrdinance404JSONResponse{NotFoundJSONResponse{

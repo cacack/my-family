@@ -5519,9 +5519,9 @@ export interface operations {
     };
     deleteMedia: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -5539,6 +5539,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -5727,9 +5728,9 @@ export interface operations {
     };
     deleteSource: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -5746,6 +5747,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -5861,9 +5863,9 @@ export interface operations {
     };
     deleteCitation: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -5880,6 +5882,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -6728,9 +6731,9 @@ export interface operations {
     };
     deleteNote: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -6748,6 +6751,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -6859,9 +6863,9 @@ export interface operations {
     };
     deleteSubmitter: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -6879,6 +6883,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -6990,9 +6995,9 @@ export interface operations {
     };
     deleteRepository: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -7010,6 +7015,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -7121,9 +7127,9 @@ export interface operations {
     };
     deleteAssociation: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -7141,6 +7147,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -7275,9 +7282,9 @@ export interface operations {
     };
     deleteLDSOrdinance: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -7295,6 +7302,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -7452,9 +7460,9 @@ export interface operations {
     };
     deleteEvidenceAnalysis: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -7472,6 +7480,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -7709,9 +7718,9 @@ export interface operations {
     };
     deleteResearchLog: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -7729,6 +7738,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -7862,9 +7872,9 @@ export interface operations {
     };
     deleteProofSummary: {
         parameters: {
-            query?: {
+            query: {
                 /** @description Entity version for optimistic locking */
-                version?: components["parameters"]["versionParam"];
+                version: components["parameters"]["versionParam"];
             };
             header?: never;
             path: {
@@ -7882,6 +7892,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };

@@ -182,12 +182,7 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 
 // DeleteEvidenceAnalysis implements StrictServerInterface.
 func (ss *StrictServer) DeleteEvidenceAnalysis(ctx context.Context, request DeleteEvidenceAnalysisRequestObject) (DeleteEvidenceAnalysisResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteEvidenceAnalysis(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteEvidenceAnalysis(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrEvidenceAnalysisNotFound) {
 			return DeleteEvidenceAnalysis404JSONResponse{NotFoundJSONResponse{
@@ -494,12 +489,7 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 
 // DeleteResearchLog implements StrictServerInterface.
 func (ss *StrictServer) DeleteResearchLog(ctx context.Context, request DeleteResearchLogRequestObject) (DeleteResearchLogResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteResearchLog(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteResearchLog(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrResearchLogNotFound) {
 			return DeleteResearchLog404JSONResponse{NotFoundJSONResponse{
@@ -695,12 +685,7 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 
 // DeleteProofSummary implements StrictServerInterface.
 func (ss *StrictServer) DeleteProofSummary(ctx context.Context, request DeleteProofSummaryRequestObject) (DeleteProofSummaryResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteProofSummary(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteProofSummary(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrProofSummaryNotFound) {
 			return DeleteProofSummary404JSONResponse{NotFoundJSONResponse{
