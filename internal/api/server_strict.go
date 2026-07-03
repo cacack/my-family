@@ -34,6 +34,12 @@ func NewStrictServer(server *Server) *StrictServer {
 	return &StrictServer{server: server}
 }
 
+// validEnumParam reports whether an optional enum query parameter holds a
+// value the spec allows. A nil pointer (parameter omitted) is valid.
+func validEnumParam[T interface{ Valid() bool }](p *T) bool {
+	return p == nil || (*p).Valid()
+}
+
 // ============================================================================
 // Ahnentafel endpoints
 // ============================================================================
@@ -611,24 +617,7 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 
 // DeleteCitation implements StrictServerInterface.
 func (ss *StrictServer) DeleteCitation(ctx context.Context, request DeleteCitationRequestObject) (DeleteCitationResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	} else {
-		cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
-		if err != nil {
-			if errors.Is(err, query.ErrNotFound) {
-				return DeleteCitation404JSONResponse{NotFoundJSONResponse{
-					Code:    "not_found",
-					Message: "Citation not found",
-				}}, nil
-			}
-			return nil, err
-		}
-		version = cit.Version
-	}
-
-	err := ss.server.commandHandler.DeleteCitation(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteCitation(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteCitation404JSONResponse{NotFoundJSONResponse{
@@ -1567,26 +1556,7 @@ func (ss *StrictServer) ListHistory(ctx context.Context, request ListHistoryRequ
 
 // DeleteMedia implements StrictServerInterface.
 func (ss *StrictServer) DeleteMedia(ctx context.Context, request DeleteMediaRequestObject) (DeleteMediaResponseObject, error) {
-	// Get version from params or fetch current version
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	} else {
-		// Fetch current version if not provided
-		media, err := ss.server.readStore.GetMedia(ctx, request.Id)
-		if err != nil {
-			return nil, err
-		}
-		if media == nil {
-			return DeleteMedia404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Media not found",
-			}}, nil
-		}
-		version = media.Version
-	}
-
-	if err := ss.server.commandHandler.DeleteMedia(ctx, request.Id, version, "user request"); err != nil {
+	if err := ss.server.commandHandler.DeleteMedia(ctx, request.Id, request.Params.Version, "user request"); err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteMedia404JSONResponse{NotFoundJSONResponse{
 				Code:    "not_found",
@@ -1792,6 +1762,12 @@ func (ss *StrictServer) GetDescendancy(ctx context.Context, request GetDescendan
 
 // ListPersons implements StrictServerInterface.
 func (ss *StrictServer) ListPersons(ctx context.Context, request ListPersonsRequestObject) (ListPersonsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := ""
@@ -2844,6 +2820,12 @@ func stringFromParam(s *string) string {
 
 // SearchPersons implements StrictServerInterface.
 func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return SearchPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	queryStr := stringFromParam(request.Params.Q)
 	birthPlace := stringFromParam(request.Params.BirthPlace)
 	deathPlace := stringFromParam(request.Params.DeathPlace)
@@ -2937,6 +2919,12 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 
 // ListSources implements StrictServerInterface.
 func (ss *StrictServer) ListSources(ctx context.Context, request ListSourcesRequestObject) (ListSourcesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListSources400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sortBy := ""
@@ -3136,24 +3124,7 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 
 // DeleteSource implements StrictServerInterface.
 func (ss *StrictServer) DeleteSource(ctx context.Context, request DeleteSourceRequestObject) (DeleteSourceResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	} else {
-		source, err := ss.server.sourceService.GetSource(ctx, request.Id)
-		if err != nil {
-			if errors.Is(err, query.ErrNotFound) {
-				return DeleteSource404JSONResponse{NotFoundJSONResponse{
-					Code:    "not_found",
-					Message: "Source not found",
-				}}, nil
-			}
-			return nil, err
-		}
-		version = source.Version
-	}
-
-	err := ss.server.commandHandler.DeleteSource(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteSource(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteSource404JSONResponse{NotFoundJSONResponse{
@@ -4100,6 +4071,12 @@ func (ss *StrictServer) GetRelationship(ctx context.Context, request GetRelation
 
 // ListNotes implements StrictServerInterface.
 func (ss *StrictServer) ListNotes(ctx context.Context, request ListNotesRequestObject) (ListNotesResponseObject, error) {
+	if !validEnumParam(request.Params.Order) {
+		return ListNotes400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	order := "desc"
@@ -4228,12 +4205,7 @@ func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteReques
 
 // DeleteNote implements StrictServerInterface.
 func (ss *StrictServer) DeleteNote(ctx context.Context, request DeleteNoteRequestObject) (DeleteNoteResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteNote(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteNote(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrNoteNotFound) {
 			return DeleteNote404JSONResponse{NotFoundJSONResponse{
@@ -4275,6 +4247,12 @@ func convertQueryNoteToGenerated(n query.Note) Note {
 
 // ListSubmitters implements StrictServerInterface.
 func (ss *StrictServer) ListSubmitters(ctx context.Context, request ListSubmittersRequestObject) (ListSubmittersResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListSubmitters400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "updated_at"
@@ -4440,12 +4418,7 @@ func (ss *StrictServer) UpdateSubmitter(ctx context.Context, request UpdateSubmi
 
 // DeleteSubmitter implements StrictServerInterface.
 func (ss *StrictServer) DeleteSubmitter(ctx context.Context, request DeleteSubmitterRequestObject) (DeleteSubmitterResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteSubmitter(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteSubmitter(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrSubmitterNotFound) {
 			return DeleteSubmitter404JSONResponse{NotFoundJSONResponse{
@@ -4522,6 +4495,12 @@ func convertDomainAddressToGenerated(a *domain.Address) *Address {
 
 // ListRepositories implements StrictServerInterface.
 func (ss *StrictServer) ListRepositories(ctx context.Context, request ListRepositoriesRequestObject) (ListRepositoriesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListRepositories400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "updated_at"
@@ -4669,12 +4648,7 @@ func (ss *StrictServer) UpdateRepository(ctx context.Context, request UpdateRepo
 
 // DeleteRepository implements StrictServerInterface.
 func (ss *StrictServer) DeleteRepository(ctx context.Context, request DeleteRepositoryRequestObject) (DeleteRepositoryResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteRepository(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteRepository(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrRepositoryNotFound) {
 			return DeleteRepository404JSONResponse{NotFoundJSONResponse{
@@ -4721,6 +4695,12 @@ func convertQueryRepositoryToGenerated(r query.Repository) Repository {
 
 // ListAssociations implements StrictServerInterface.
 func (ss *StrictServer) ListAssociations(ctx context.Context, request ListAssociationsRequestObject) (ListAssociationsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListAssociations400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	opts := repository.ListOptions{
 		Limit:  20,
 		Offset: 0,
@@ -4862,12 +4842,7 @@ func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAss
 
 // DeleteAssociation implements StrictServerInterface.
 func (ss *StrictServer) DeleteAssociation(ctx context.Context, request DeleteAssociationRequestObject) (DeleteAssociationResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteAssociation(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteAssociation(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrAssociationNotFound) {
 			return DeleteAssociation404JSONResponse{NotFoundJSONResponse{
@@ -4994,6 +4969,12 @@ func convertGeneratedAddressToDomain(a *Address) *domain.Address {
 
 // ListLDSOrdinances implements StrictServerInterface.
 func (ss *StrictServer) ListLDSOrdinances(ctx context.Context, request ListLDSOrdinancesRequestObject) (ListLDSOrdinancesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListLDSOrdinances400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	input := query.ListLDSOrdinancesInput{
 		Limit:  20,
 		Offset: 0,
@@ -5144,12 +5125,7 @@ func (ss *StrictServer) UpdateLDSOrdinance(ctx context.Context, request UpdateLD
 
 // DeleteLDSOrdinance implements StrictServerInterface.
 func (ss *StrictServer) DeleteLDSOrdinance(ctx context.Context, request DeleteLDSOrdinanceRequestObject) (DeleteLDSOrdinanceResponseObject, error) {
-	var version int64
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteLDSOrdinance(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteLDSOrdinance(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrLDSOrdinanceNotFound) {
 			return DeleteLDSOrdinance404JSONResponse{NotFoundJSONResponse{

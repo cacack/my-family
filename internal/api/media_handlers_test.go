@@ -544,15 +544,13 @@ func TestDeleteMedia_InvalidID(t *testing.T) {
 func TestDeleteMedia_MissingVersion(t *testing.T) {
 	server := setupTestServer()
 
-	// Deleting non-existent media returns 404 (not 400 for missing version)
-	// because the server fetches the current version from DB if not provided.
-	// A non-existent UUID results in 404 "Media not found".
+	// version is required for optimistic locking; omitting it is a 400.
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/media/00000000-0000-0000-0000-000000000001", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
 

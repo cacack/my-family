@@ -211,7 +211,7 @@ func TestDeleteSource(t *testing.T) {
 	sourceID := createResp["id"].(string)
 
 	// Delete the source
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID, http.NoBody)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID+"?version=1", http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -469,7 +469,7 @@ func TestDeleteCitation(t *testing.T) {
 	citationID := createResp["id"].(string)
 
 	// Delete the citation
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/"+citationID, http.NoBody)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/"+citationID+"?version=1", http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -520,7 +520,7 @@ func TestDeleteSource_WithCitations(t *testing.T) {
 	server.Echo().ServeHTTP(citationRec, citationReq)
 
 	// Try to delete source (should fail)
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID, http.NoBody)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/sources/"+sourceID+"?version=1", http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 
@@ -732,7 +732,7 @@ func TestDeleteCitation_NotFound(t *testing.T) {
 	server := setupTestServer()
 
 	// Try to delete non-existent citation
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/00000000-0000-0000-0000-000000000001", http.NoBody)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/citations/00000000-0000-0000-0000-000000000001?version=1", http.NoBody)
 	deleteRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(deleteRec, deleteReq)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -245,6 +246,8 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 			if v, ok := value.(string); ok {
 				person.ResearchStatus = domain.ParseResearchStatus(v)
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "PersonUpdated", "key", key)
 		}
 	}
 
@@ -346,6 +349,8 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 			if v, ok := value.(string); ok {
 				family.MarriagePlace = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "FamilyUpdated", "key", key)
 		}
 	}
 
@@ -615,6 +620,8 @@ func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpd
 			if v, ok := value.(string); ok {
 				source.Notes = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "SourceUpdated", "key", key)
 		}
 	}
 
@@ -760,6 +767,8 @@ func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.Citatio
 			if b, err := json.Marshal(value); err == nil {
 				citation.FieldsJSON = string(b)
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "CitationUpdated", "key", key)
 		}
 	}
 
@@ -871,6 +880,8 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 			if v, ok := value.([]string); ok {
 				media.Translations = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "MediaUpdated", "key", key)
 		}
 	}
 
@@ -1023,6 +1034,8 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 			if v, ok := value.(bool); ok {
 				event.IsNegated = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "LifeEventUpdated", "key", key)
 		}
 	}
 
@@ -1065,6 +1078,8 @@ func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.Attrib
 			if v, ok := value.(string); ok {
 				attribute.Place = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "AttributeUpdated", "key", key)
 		}
 	}
 
@@ -1146,6 +1161,8 @@ func (p *Projector) projectRepositoryUpdated(ctx context.Context, e domain.Repos
 			if v, ok := value.(string); ok {
 				repo.GedcomXref = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "RepositoryUpdated", "key", key)
 		}
 	}
 
@@ -1335,6 +1352,8 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			if v, ok := value.(string); ok {
 				survivor.ResearchStatus = domain.ParseResearchStatus(v)
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "PersonMerged", "key", key)
 		}
 	}
 
@@ -1647,6 +1666,8 @@ func (p *Projector) projectSubmitterUpdated(ctx context.Context, e domain.Submit
 			if v, ok := value.(*uuid.UUID); ok {
 				submitter.MediaID = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "SubmitterUpdated", "key", key)
 		}
 	}
 
@@ -1720,6 +1741,8 @@ func (p *Projector) projectAssociationUpdated(ctx context.Context, e domain.Asso
 			if v, ok := value.([]uuid.UUID); ok {
 				association.NoteIDs = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "AssociationUpdated", "key", key)
 		}
 	}
 
@@ -1809,6 +1832,8 @@ func (p *Projector) projectLDSOrdinanceUpdated(ctx context.Context, e domain.LDS
 			if v, ok := value.(string); ok {
 				ordinance.Status = v
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "LDSOrdinanceUpdated", "key", key)
 		}
 	}
 
@@ -1883,6 +1908,8 @@ func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain
 			if b, err := json.Marshal(value); err == nil {
 				analysis.CitationIDsJSON = string(b)
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "EvidenceAnalysisUpdated", "key", key)
 		}
 	}
 
@@ -1997,6 +2024,8 @@ func (p *Projector) projectResearchLogUpdated(ctx context.Context, e domain.Rese
 					log.SearchDate = t
 				}
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "ResearchLogUpdated", "key", key)
 		}
 	}
 
@@ -2071,6 +2100,8 @@ func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.Pro
 			if b, err := json.Marshal(value); err == nil {
 				summary.AnalysisIDsJSON = string(b)
 			}
+		default:
+			slog.Warn("projection: ignoring unknown change key", "event", "ProofSummaryUpdated", "key", key)
 		}
 	}
 

@@ -1374,6 +1374,8 @@ paths:
       responses:
         '204':
           description: Media deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1581,6 +1583,8 @@ paths:
       responses:
         '204':
           description: Source deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1693,6 +1697,8 @@ paths:
       responses:
         '204':
           description: Citation deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2473,6 +2479,8 @@ paths:
       responses:
         '204':
           description: Note deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2581,6 +2589,8 @@ paths:
       responses:
         '204':
           description: Submitter deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2689,6 +2699,8 @@ paths:
       responses:
         '204':
           description: Repository deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2798,6 +2810,8 @@ paths:
       responses:
         '204':
           description: Association deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -2927,6 +2941,8 @@ paths:
       responses:
         '204':
           description: LDS ordinance deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3076,6 +3092,8 @@ paths:
       responses:
         '204':
           description: Evidence analysis deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3306,6 +3324,8 @@ paths:
       responses:
         '204':
           description: Research log entry deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3436,6 +3456,8 @@ paths:
       responses:
         '204':
           description: Proof summary deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3508,6 +3530,7 @@ components:
     versionParam:
       name: version
       in: query
+      required: true
       description: Entity version for optimistic locking
       schema:
         type: integer

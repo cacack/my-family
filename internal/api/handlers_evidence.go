@@ -15,6 +15,12 @@ import (
 
 // ListEvidenceAnalyses implements StrictServerInterface.
 func (ss *StrictServer) ListEvidenceAnalyses(ctx context.Context, request ListEvidenceAnalysesRequestObject) (ListEvidenceAnalysesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListEvidenceAnalyses400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "created_at"
@@ -182,12 +188,7 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 
 // DeleteEvidenceAnalysis implements StrictServerInterface.
 func (ss *StrictServer) DeleteEvidenceAnalysis(ctx context.Context, request DeleteEvidenceAnalysisRequestObject) (DeleteEvidenceAnalysisResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteEvidenceAnalysis(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteEvidenceAnalysis(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrEvidenceAnalysisNotFound) {
 			return DeleteEvidenceAnalysis404JSONResponse{NotFoundJSONResponse{
@@ -337,6 +338,12 @@ func (ss *StrictServer) GetConflictsBySubject(ctx context.Context, request GetCo
 
 // ListResearchLogs implements StrictServerInterface.
 func (ss *StrictServer) ListResearchLogs(ctx context.Context, request ListResearchLogsRequestObject) (ListResearchLogsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListResearchLogs400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "created_at"
@@ -494,12 +501,7 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 
 // DeleteResearchLog implements StrictServerInterface.
 func (ss *StrictServer) DeleteResearchLog(ctx context.Context, request DeleteResearchLogRequestObject) (DeleteResearchLogResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteResearchLog(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteResearchLog(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrResearchLogNotFound) {
 			return DeleteResearchLog404JSONResponse{NotFoundJSONResponse{
@@ -540,6 +542,12 @@ func (ss *StrictServer) GetResearchLogsBySubject(ctx context.Context, request Ge
 
 // ListProofSummaries implements StrictServerInterface.
 func (ss *StrictServer) ListProofSummaries(ctx context.Context, request ListProofSummariesRequestObject) (ListProofSummariesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListProofSummaries400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "created_at"
@@ -695,12 +703,7 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 
 // DeleteProofSummary implements StrictServerInterface.
 func (ss *StrictServer) DeleteProofSummary(ctx context.Context, request DeleteProofSummaryRequestObject) (DeleteProofSummaryResponseObject, error) {
-	version := int64(0)
-	if request.Params.Version != nil {
-		version = *request.Params.Version
-	}
-
-	err := ss.server.commandHandler.DeleteProofSummary(ctx, request.Id, version, "")
+	err := ss.server.commandHandler.DeleteProofSummary(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrProofSummaryNotFound) {
 			return DeleteProofSummary404JSONResponse{NotFoundJSONResponse{

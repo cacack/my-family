@@ -3921,7 +3921,7 @@ type ListAssociationsParamsOrder string
 // DeleteAssociationParams defines parameters for DeleteAssociation.
 type DeleteAssociationParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // GetBrickWallsParams defines parameters for GetBrickWalls.
@@ -3974,7 +3974,7 @@ type PreviewCitationTemplateJSONBody struct {
 // DeleteCitationParams defines parameters for DeleteCitation.
 type DeleteCitationParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // GetCitationRestorePointsParams defines parameters for GetCitationRestorePoints.
@@ -4012,7 +4012,7 @@ type GetAnalysesByFactParams struct {
 // DeleteEvidenceAnalysisParams defines parameters for DeleteEvidenceAnalysis.
 type DeleteEvidenceAnalysisParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // ListEvidenceConflictsParams defines parameters for ListEvidenceConflicts.
@@ -4085,13 +4085,13 @@ type ListLDSOrdinancesParamsOrder string
 // DeleteLDSOrdinanceParams defines parameters for DeleteLDSOrdinance.
 type DeleteLDSOrdinanceParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // DeleteMediaParams defines parameters for DeleteMedia.
 type DeleteMediaParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // ListNotesParams defines parameters for ListNotes.
@@ -4107,7 +4107,7 @@ type ListNotesParamsOrder string
 // DeleteNoteParams defines parameters for DeleteNote.
 type DeleteNoteParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // GetPedigreeParams defines parameters for GetPedigree.
@@ -4210,7 +4210,7 @@ type GetProofSummaryByFactParams struct {
 // DeleteProofSummaryParams defines parameters for DeleteProofSummary.
 type DeleteProofSummaryParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // GetValidationIssuesParams defines parameters for GetValidationIssues.
@@ -4245,7 +4245,7 @@ type ListRepositoriesParamsOrder string
 // DeleteRepositoryParams defines parameters for DeleteRepository.
 type DeleteRepositoryParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // ListResearchLogsParams defines parameters for ListResearchLogs.
@@ -4265,7 +4265,7 @@ type ListResearchLogsParamsOrder string
 // DeleteResearchLogParams defines parameters for DeleteResearchLog.
 type DeleteResearchLogParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // SearchPersonsParams defines parameters for SearchPersons.
@@ -4338,7 +4338,7 @@ type SearchSourcesParams struct {
 // DeleteSourceParams defines parameters for DeleteSource.
 type DeleteSourceParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // GetSourceHistoryParams defines parameters for GetSourceHistory.
@@ -4370,7 +4370,7 @@ type ListSubmittersParamsOrder string
 // DeleteSubmitterParams defines parameters for DeleteSubmitter.
 type DeleteSubmitterParams struct {
 	// Version Entity version for optimistic locking
-	Version *VersionParam `form:"version,omitempty" json:"version,omitempty"`
+	Version VersionParam `form:"version" json:"version"`
 }
 
 // CreateAssociationJSONRequestBody defines body for CreateAssociation for application/json ContentType.
@@ -5048,9 +5048,9 @@ func (w *ServerInterfaceWrapper) DeleteAssociation(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteAssociationParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -5323,9 +5323,9 @@ func (w *ServerInterfaceWrapper) DeleteCitation(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteCitationParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -5542,9 +5542,9 @@ func (w *ServerInterfaceWrapper) DeleteEvidenceAnalysis(ctx echo.Context) error 
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteEvidenceAnalysisParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -6097,9 +6097,9 @@ func (w *ServerInterfaceWrapper) DeleteLDSOrdinance(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteLDSOrdinanceParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -6163,9 +6163,9 @@ func (w *ServerInterfaceWrapper) DeleteMedia(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteMediaParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -6293,9 +6293,9 @@ func (w *ServerInterfaceWrapper) DeleteNote(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteNoteParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -6915,9 +6915,9 @@ func (w *ServerInterfaceWrapper) DeleteProofSummary(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteProofSummaryParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -7110,9 +7110,9 @@ func (w *ServerInterfaceWrapper) DeleteRepository(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteRepositoryParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -7231,9 +7231,9 @@ func (w *ServerInterfaceWrapper) DeleteResearchLog(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteResearchLogParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -7537,9 +7537,9 @@ func (w *ServerInterfaceWrapper) DeleteSource(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteSourceParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -7747,9 +7747,9 @@ func (w *ServerInterfaceWrapper) DeleteSubmitter(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteSubmitterParams
-	// ------------- Optional query parameter "version" -------------
+	// ------------- Required query parameter "version" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
 	}
@@ -8161,6 +8161,20 @@ type DeleteAssociation204Response struct {
 func (response DeleteAssociation204Response) VisitDeleteAssociationResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteAssociation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteAssociation400JSONResponse) VisitDeleteAssociationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteAssociation404JSONResponse struct{ NotFoundJSONResponse }
@@ -8624,6 +8638,20 @@ func (response DeleteCitation204Response) VisitDeleteCitationResponse(w http.Res
 	return nil
 }
 
+type DeleteCitation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteCitation400JSONResponse) VisitDeleteCitationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteCitation404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteCitation404JSONResponse) VisitDeleteCitationResponse(w http.ResponseWriter) error {
@@ -9051,6 +9079,20 @@ type DeleteEvidenceAnalysis204Response struct {
 func (response DeleteEvidenceAnalysis204Response) VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteEvidenceAnalysis400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteEvidenceAnalysis400JSONResponse) VisitDeleteEvidenceAnalysisResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteEvidenceAnalysis404JSONResponse struct{ NotFoundJSONResponse }
@@ -10202,6 +10244,20 @@ func (response DeleteLDSOrdinance204Response) VisitDeleteLDSOrdinanceResponse(w 
 	return nil
 }
 
+type DeleteLDSOrdinance400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteLDSOrdinance400JSONResponse) VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteLDSOrdinance404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteLDSOrdinance404JSONResponse) VisitDeleteLDSOrdinanceResponse(w http.ResponseWriter) error {
@@ -10367,6 +10423,20 @@ type DeleteMedia204Response struct {
 func (response DeleteMedia204Response) VisitDeleteMediaResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteMedia400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteMedia400JSONResponse) VisitDeleteMediaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteMedia404JSONResponse struct{ NotFoundJSONResponse }
@@ -10749,6 +10819,20 @@ type DeleteNote204Response struct {
 func (response DeleteNote204Response) VisitDeleteNoteResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteNote400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteNote400JSONResponse) VisitDeleteNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteNote404JSONResponse struct{ NotFoundJSONResponse }
@@ -12057,6 +12141,20 @@ func (response DeleteProofSummary204Response) VisitDeleteProofSummaryResponse(w 
 	return nil
 }
 
+type DeleteProofSummary400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteProofSummary400JSONResponse) VisitDeleteProofSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteProofSummary404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteProofSummary404JSONResponse) VisitDeleteProofSummaryResponse(w http.ResponseWriter) error {
@@ -12412,6 +12510,20 @@ func (response DeleteRepository204Response) VisitDeleteRepositoryResponse(w http
 	return nil
 }
 
+type DeleteRepository400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteRepository400JSONResponse) VisitDeleteRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteRepository404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteRepository404JSONResponse) VisitDeleteRepositoryResponse(w http.ResponseWriter) error {
@@ -12650,6 +12762,20 @@ type DeleteResearchLog204Response struct {
 func (response DeleteResearchLog204Response) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteResearchLog400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteResearchLog400JSONResponse) VisitDeleteResearchLogResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteResearchLog404JSONResponse struct{ NotFoundJSONResponse }
@@ -13102,6 +13228,20 @@ func (response DeleteSource204Response) VisitDeleteSourceResponse(w http.Respons
 	return nil
 }
 
+type DeleteSource400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteSource400JSONResponse) VisitDeleteSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteSource404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response DeleteSource404JSONResponse) VisitDeleteSourceResponse(w http.ResponseWriter) error {
@@ -13514,6 +13654,20 @@ type DeleteSubmitter204Response struct {
 func (response DeleteSubmitter204Response) VisitDeleteSubmitterResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteSubmitter400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteSubmitter400JSONResponse) VisitDeleteSubmitterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteSubmitter404JSONResponse struct{ NotFoundJSONResponse }
