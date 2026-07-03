@@ -34,6 +34,12 @@ func NewStrictServer(server *Server) *StrictServer {
 	return &StrictServer{server: server}
 }
 
+// validEnumParam reports whether an optional enum query parameter holds a
+// value the spec allows. A nil pointer (parameter omitted) is valid.
+func validEnumParam[T interface{ Valid() bool }](p *T) bool {
+	return p == nil || (*p).Valid()
+}
+
 // ============================================================================
 // Ahnentafel endpoints
 // ============================================================================
@@ -1756,6 +1762,12 @@ func (ss *StrictServer) GetDescendancy(ctx context.Context, request GetDescendan
 
 // ListPersons implements StrictServerInterface.
 func (ss *StrictServer) ListPersons(ctx context.Context, request ListPersonsRequestObject) (ListPersonsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := ""
@@ -2808,6 +2820,12 @@ func stringFromParam(s *string) string {
 
 // SearchPersons implements StrictServerInterface.
 func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return SearchPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	queryStr := stringFromParam(request.Params.Q)
 	birthPlace := stringFromParam(request.Params.BirthPlace)
 	deathPlace := stringFromParam(request.Params.DeathPlace)
@@ -2901,6 +2919,12 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 
 // ListSources implements StrictServerInterface.
 func (ss *StrictServer) ListSources(ctx context.Context, request ListSourcesRequestObject) (ListSourcesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListSources400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sortBy := ""
@@ -4047,6 +4071,12 @@ func (ss *StrictServer) GetRelationship(ctx context.Context, request GetRelation
 
 // ListNotes implements StrictServerInterface.
 func (ss *StrictServer) ListNotes(ctx context.Context, request ListNotesRequestObject) (ListNotesResponseObject, error) {
+	if !validEnumParam(request.Params.Order) {
+		return ListNotes400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	order := "desc"
@@ -4217,6 +4247,12 @@ func convertQueryNoteToGenerated(n query.Note) Note {
 
 // ListSubmitters implements StrictServerInterface.
 func (ss *StrictServer) ListSubmitters(ctx context.Context, request ListSubmittersRequestObject) (ListSubmittersResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListSubmitters400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "updated_at"
@@ -4459,6 +4495,12 @@ func convertDomainAddressToGenerated(a *domain.Address) *Address {
 
 // ListRepositories implements StrictServerInterface.
 func (ss *StrictServer) ListRepositories(ctx context.Context, request ListRepositoriesRequestObject) (ListRepositoriesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListRepositories400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "updated_at"
@@ -4653,6 +4695,12 @@ func convertQueryRepositoryToGenerated(r query.Repository) Repository {
 
 // ListAssociations implements StrictServerInterface.
 func (ss *StrictServer) ListAssociations(ctx context.Context, request ListAssociationsRequestObject) (ListAssociationsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListAssociations400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	opts := repository.ListOptions{
 		Limit:  20,
 		Offset: 0,
@@ -4921,6 +4969,12 @@ func convertGeneratedAddressToDomain(a *Address) *domain.Address {
 
 // ListLDSOrdinances implements StrictServerInterface.
 func (ss *StrictServer) ListLDSOrdinances(ctx context.Context, request ListLDSOrdinancesRequestObject) (ListLDSOrdinancesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListLDSOrdinances400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	input := query.ListLDSOrdinancesInput{
 		Limit:  20,
 		Offset: 0,

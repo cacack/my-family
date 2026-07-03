@@ -689,3 +689,37 @@ func TestGetFamilyGroupSheet_NotFound(t *testing.T) {
 		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
+
+func TestListEndpoints_InvalidSortOrder(t *testing.T) {
+	server := setupTestServer()
+
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"persons invalid sort", "/api/v1/persons?sort=bogus"},
+		{"persons invalid order", "/api/v1/persons?order=bogus"},
+		{"search invalid sort", "/api/v1/search?q=x&sort=bogus"},
+		{"sources invalid sort", "/api/v1/sources?sort=bogus"},
+		{"notes invalid order", "/api/v1/notes?order=bogus"},
+		{"submitters invalid sort", "/api/v1/submitters?sort=bogus"},
+		{"repositories invalid sort", "/api/v1/repositories?sort=bogus"},
+		{"associations invalid sort", "/api/v1/associations?sort=bogus"},
+		{"lds-ordinances invalid sort", "/api/v1/lds-ordinances?sort=bogus"},
+		{"evidence-analyses invalid sort", "/api/v1/evidence-analyses?sort=bogus"},
+		{"research-logs invalid sort", "/api/v1/research-logs?sort=bogus"},
+		{"proof-summaries invalid sort", "/api/v1/proof-summaries?sort=bogus"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.url, http.NoBody)
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
+			}
+		})
+	}
+}

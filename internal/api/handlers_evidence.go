@@ -15,6 +15,12 @@ import (
 
 // ListEvidenceAnalyses implements StrictServerInterface.
 func (ss *StrictServer) ListEvidenceAnalyses(ctx context.Context, request ListEvidenceAnalysesRequestObject) (ListEvidenceAnalysesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListEvidenceAnalyses400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "created_at"
@@ -332,6 +338,12 @@ func (ss *StrictServer) GetConflictsBySubject(ctx context.Context, request GetCo
 
 // ListResearchLogs implements StrictServerInterface.
 func (ss *StrictServer) ListResearchLogs(ctx context.Context, request ListResearchLogsRequestObject) (ListResearchLogsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListResearchLogs400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "created_at"
@@ -530,6 +542,12 @@ func (ss *StrictServer) GetResearchLogsBySubject(ctx context.Context, request Ge
 
 // ListProofSummaries implements StrictServerInterface.
 func (ss *StrictServer) ListProofSummaries(ctx context.Context, request ListProofSummariesRequestObject) (ListProofSummariesResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return ListProofSummaries400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
 	limit := 20
 	offset := 0
 	sort := "created_at"
