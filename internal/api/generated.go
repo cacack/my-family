@@ -2430,6 +2430,8 @@ type FormattedCitation struct {
 
 // GenDate Genealogical date with flexible precision
 type GenDate struct {
+	// Calendar Calendar system for the date, using the GEDCOM escape token (DGREGORIAN, DJULIAN, DHEBREW, or "DFRENCH R"). Absent or DGREGORIAN means the Gregorian calendar.
+	Calendar  *string           `json:"calendar,omitempty"`
 	Day       *int              `json:"day,omitempty"`
 	Day2      *int              `json:"day2,omitempty"`
 	Month     *int              `json:"month,omitempty"`

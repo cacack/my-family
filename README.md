@@ -15,6 +15,7 @@ A genealogy platform designed for research rigor and data ownership.
 
 - **GEDCOM 5.5 import/export** - Full round-trip fidelity with your existing data
 - **Flexible date handling** - Supports exact, approximate, ranges, and "before/after"
+- **Historical calendars** - Parses, displays, and round-trips Julian, Hebrew, and French Republican dates, with optional Gregorian conversion for comparison
 - **Family relationships** - Biological, adopted, step, and foster qualifiers
 - **Geographic heat map** - Interactive world map showing family locations with zoom/pan
 - **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation

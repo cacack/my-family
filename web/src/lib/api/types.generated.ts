@@ -2153,6 +2153,11 @@ export interface components {
              * @enum {string}
              */
             qualifier?: "exact" | "abt" | "cal" | "est" | "bef" | "aft" | "bet" | "from";
+            /**
+             * @description Calendar system for the date, using the GEDCOM escape token (DGREGORIAN, DJULIAN, DHEBREW, or "DFRENCH R"). Absent or DGREGORIAN means the Gregorian calendar.
+             * @example DJULIAN
+             */
+            calendar?: string;
             /** @example 1850 */
             year?: number;
             month?: number;

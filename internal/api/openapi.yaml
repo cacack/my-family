@@ -3735,13 +3735,20 @@ components:
           type: string
           enum: [exact, abt, cal, est, bef, aft, bet, from]
           example: "abt"
+        calendar:
+          type: string
+          description: >-
+            Calendar system for the date, using the GEDCOM escape token
+            (DGREGORIAN, DJULIAN, DHEBREW, or "DFRENCH R"). Absent or DGREGORIAN
+            means the Gregorian calendar.
+          example: "DJULIAN"
         year:
           type: integer
           example: 1850
         month:
           type: integer
           minimum: 1
-          maximum: 12
+          maximum: 13
         day:
           type: integer
           minimum: 1
