@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type ExportEstimate, type ExportProgress } from '$lib/api/client';
+	import { api, type ExportEstimate, type ExportProgress, type GedcomVersion } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import ExportEstimateDisplay from './ExportEstimate.svelte';
 	import ExportProgressBar from './ExportProgress.svelte';
 	import ExportConfirmDialog from './ExportConfirmDialog.svelte';
+	import ExportVersionSelect from './ExportVersionSelect.svelte';
 
 	interface Props {
 		/** Label for the export button */
@@ -34,6 +35,9 @@
 	}: Props = $props();
 
 	let estimate: ExportEstimate | null = $state(null);
+	// Selected GEDCOM version: 'auto' lets the server pick (5.5, upgraded to 7.0
+	// when the data needs it); an explicit version may force a lossy downgrade.
+	let selectedVersion = $state<'auto' | GedcomVersion>('auto');
 	let exporting = $state(false);
 	let showConfirmDialog = $state(false);
 	let progress: ExportProgress | null = $state(null);
@@ -86,7 +90,9 @@
 		}
 
 		try {
-			const gedcom = await api.exportGedcom();
+			const gedcom = await api.exportGedcom(
+				selectedVersion === 'auto' ? undefined : selectedVersion
+			);
 
 			// Complete the progress
 			if (shouldShowProgress) {
@@ -173,6 +179,10 @@
 	{#if showEstimate && !exporting}
 		<ExportEstimateDisplay onEstimateLoaded={handleEstimateLoaded} />
 	{/if}
+
+	<!-- Always mounted (disabled during export) so switching to export and back
+	     doesn't remount and re-fire the expensive preview for the same version. -->
+	<ExportVersionSelect bind:value={selectedVersion} disabled={exporting} />
 
 	{#if exporting && progress}
 		<div class="progress-container" aria-live="polite">
