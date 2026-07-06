@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { api, type ExportPreview } from '$lib/api/client';
+	import { api, type ExportPreview, type GedcomVersion } from '$lib/api/client';
 	import { Label } from '$lib/components/ui/label';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 
 	interface Props {
-		/** Selected GEDCOM version: 'auto' (default) or an explicit version string. */
-		value?: string;
+		/** Selected version: 'auto' (default, server picks) or an explicit version. */
+		value?: 'auto' | GedcomVersion;
 		/** Disable the selector while an export is running. */
 		disabled?: boolean;
 	}
@@ -30,8 +30,9 @@
 	// Whenever the selected version changes, fetch a fresh data-loss preview.
 	// 'auto' never downgrades (it upgrades to 7.0 when the data needs it), so
 	// there is nothing to warn about and no need to hit the preview endpoint.
-	// Stale in-flight requests are cancelled so a slow response can't overwrite
-	// a newer selection.
+	// The previous request is aborted when the selection changes (the preview
+	// endpoint is as expensive as a full export server-side), so a superseded
+	// request neither runs to completion nor overwrites a newer selection.
 	$effect(() => {
 		const v = value;
 		preview = null;
@@ -40,28 +41,37 @@
 			loading = false;
 			return;
 		}
-		let cancelled = false;
+		const controller = new AbortController();
 		loading = true;
 		api
-			.previewGedcomExport(v)
+			.previewGedcomExport(v as GedcomVersion, controller.signal)
 			.then((p) => {
-				if (!cancelled) preview = p;
+				// Guard state writes too, so a superseded response can't overwrite a
+				// newer selection even if the underlying call ignored the abort signal.
+				if (!controller.signal.aborted) preview = p;
 			})
 			.catch((e) => {
-				if (!cancelled) error = (e as { message?: string }).message || 'Could not check for data loss';
+				// An aborted request (superseded selection) is expected — ignore it.
+				if (controller.signal.aborted) return;
+				error = `Could not check for data loss: ${(e as { message?: string }).message ?? 'request failed'}`;
 			})
 			.finally(() => {
-				if (!cancelled) loading = false;
+				if (!controller.signal.aborted) loading = false;
 			});
 		return () => {
-			cancelled = true;
+			controller.abort();
 		};
 	});
 </script>
 
 <div class="version-select">
 	<Label for="export-version">GEDCOM version</Label>
-	<Select type="single" {value} onValueChange={(v) => (value = v ?? 'auto')} {disabled}>
+	<Select
+		type="single"
+		{value}
+		onValueChange={(v) => (value = (v ?? 'auto') as 'auto' | GedcomVersion)}
+		{disabled}
+	>
 		<SelectTrigger id="export-version" class="w-full">
 			{labelFor(value)}
 		</SelectTrigger>
@@ -84,6 +94,8 @@
 					? ''
 					: 's'} not standard in that version:
 			</p>
+			<!-- item.affectedRecords is intentionally not shown: per the API it holds
+			     ephemeral export XREFs that don't resolve to entities the UI can link. -->
 			<ul>
 				{#each preview.dataLoss as item}
 					<li><strong>{item.feature}</strong> — {item.reason}</li>

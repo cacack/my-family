@@ -91,6 +91,7 @@ Environment variables:
 - `GET /api/v1/search?q=...` - Search persons
 - `POST /api/v1/gedcom/import` - Import GEDCOM file
 - `GET /api/v1/gedcom/export` - Export as GEDCOM (optional `?version=5.5|5.5.1|7.0`; defaults to 5.5, auto-upgraded to 7.0 when the data uses 7.0-only features)
+- `GET /api/v1/gedcom/export/preview` - Preview an export conversion (optional `?version=`); reports data loss without producing a file
 - `GET /api/v1/export/tree` - Export complete tree as JSON
 - `GET /api/v1/export/persons` - Export persons as JSON or CSV
 - `GET /api/v1/export/families` - Export families as JSON or CSV

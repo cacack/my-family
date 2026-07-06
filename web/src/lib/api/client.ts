@@ -358,6 +358,9 @@ export interface ExportProgress {
 export type ExportPreview = components['schemas']['ExportPreview'];
 export type DataLossItem = components['schemas']['DataLossItem'];
 
+// GEDCOM versions the export/preview endpoints accept (matches the OpenAPI enum).
+export type GedcomVersion = '5.5' | '5.5.1' | '7.0';
+
 export interface ApiError {
 	code: string;
 	message: string;
@@ -1154,7 +1157,7 @@ class ApiClient {
 		return result;
 	}
 
-	async exportGedcom(version?: string): Promise<string> {
+	async exportGedcom(version?: GedcomVersion): Promise<string> {
 		const query = version ? `?version=${encodeURIComponent(version)}` : '';
 		const response = await fetch(`${API_BASE}/gedcom/export${query}`);
 
@@ -1173,11 +1176,12 @@ class ApiClient {
 	/**
 	 * Preview a GEDCOM export at the given version, reporting any data loss,
 	 * without producing a file. Backed by a full server-side export build, so
-	 * call it on demand (e.g. when the version selection changes), not reactively.
+	 * call it when the resolved version selection changes — not on every
+	 * keystroke or render. Pass an AbortSignal to cancel a superseded request.
 	 */
-	async previewGedcomExport(version?: string): Promise<ExportPreview> {
+	async previewGedcomExport(version?: GedcomVersion, signal?: AbortSignal): Promise<ExportPreview> {
 		const query = version ? `?version=${encodeURIComponent(version)}` : '';
-		const response = await fetch(`${API_BASE}/gedcom/export/preview${query}`);
+		const response = await fetch(`${API_BASE}/gedcom/export/preview${query}`, { signal });
 
 		if (!response.ok) {
 			const error: ApiError = await response.json().catch(() => ({

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type ExportEstimate, type ExportProgress } from '$lib/api/client';
+	import { api, type ExportEstimate, type ExportProgress, type GedcomVersion } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import ExportEstimateDisplay from './ExportEstimate.svelte';
 	import ExportProgressBar from './ExportProgress.svelte';
@@ -37,7 +37,7 @@
 	let estimate: ExportEstimate | null = $state(null);
 	// Selected GEDCOM version: 'auto' lets the server pick (5.5, upgraded to 7.0
 	// when the data needs it); an explicit version may force a lossy downgrade.
-	let selectedVersion = $state('auto');
+	let selectedVersion = $state<'auto' | GedcomVersion>('auto');
 	let exporting = $state(false);
 	let showConfirmDialog = $state(false);
 	let progress: ExportProgress | null = $state(null);
@@ -181,7 +181,7 @@
 	{/if}
 
 	{#if !exporting}
-		<ExportVersionSelect bind:value={selectedVersion} disabled={exporting} />
+		<ExportVersionSelect bind:value={selectedVersion} />
 	{/if}
 
 	{#if exporting && progress}
