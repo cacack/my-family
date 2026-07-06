@@ -180,9 +180,9 @@
 		<ExportEstimateDisplay onEstimateLoaded={handleEstimateLoaded} />
 	{/if}
 
-	{#if !exporting}
-		<ExportVersionSelect bind:value={selectedVersion} />
-	{/if}
+	<!-- Always mounted (disabled during export) so switching to export and back
+	     doesn't remount and re-fire the expensive preview for the same version. -->
+	<ExportVersionSelect bind:value={selectedVersion} disabled={exporting} />
 
 	{#if exporting && progress}
 		<div class="progress-container" aria-live="polite">
