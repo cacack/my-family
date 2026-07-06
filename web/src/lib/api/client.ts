@@ -58,6 +58,11 @@ export type ResearchStatus = 'certain' | 'probable' | 'possible' | 'unknown';
 export interface GenDate {
 	raw?: string;
 	qualifier?: 'exact' | 'abt' | 'cal' | 'est' | 'bef' | 'aft' | 'bet' | 'from' | 'int';
+	/**
+	 * Calendar system as a GEDCOM escape token (DGREGORIAN, DJULIAN, DHEBREW,
+	 * "DFRENCH R"). Absent or DGREGORIAN means the Gregorian calendar.
+	 */
+	calendar?: string;
 	year?: number;
 	month?: number;
 	day?: number;
@@ -1994,9 +1999,51 @@ export function isConflictError(error: unknown): boolean {
 }
 
 // Utility functions for formatting
+/**
+ * Human-readable label for a GEDCOM calendar escape token, or '' for the
+ * default Gregorian calendar (or an unknown token).
+ */
+export function calendarLabel(calendar?: string): string {
+	switch (calendar) {
+		case 'DJULIAN':
+			return 'Julian';
+		case 'DHEBREW':
+			return 'Hebrew';
+		case 'DFRENCH R':
+			return 'French Republican';
+		default:
+			return '';
+	}
+}
+
+/**
+ * Remove a GEDCOM calendar escape sequence (e.g. "@#DJULIAN@") from a string,
+ * returning the cleaned string and the escape token that was stripped (without
+ * the "@#"/"@" delimiters), if any.
+ */
+function stripCalendarEscape(raw: string): { text: string; token?: string } {
+	const match = raw.match(/@#(D[^@]*)@/);
+	return {
+		text: raw.replace(/@#D[^@]*@\s*/g, '').trim(),
+		token: match?.[1]
+	};
+}
+
 export function formatGenDate(date?: GenDate): string {
 	if (!date) return '';
-	if (date.raw) return date.raw;
+
+	if (date.raw) {
+		// Show the date as originally recorded, without the raw escape sequence,
+		// annotated with the calendar system when it is not Gregorian. Derive the
+		// label from date.calendar, falling back to the escape token in the raw
+		// string so a stripped escape never disappears without annotation.
+		const stripped = stripCalendarEscape(date.raw);
+		const rawLabel = calendarLabel(date.calendar) || calendarLabel(stripped.token);
+		return stripped.text + (rawLabel ? ` (${rawLabel})` : '');
+	}
+
+	const label = calendarLabel(date.calendar);
+	const suffix = label ? ` (${label})` : '';
 
 	const parts: string[] = [];
 
@@ -2053,7 +2100,7 @@ export function formatGenDate(date?: GenDate): string {
 		parts.push(`(${date.interpreted_from})`);
 	}
 
-	return parts.join(' ');
+	return parts.join(' ') + suffix;
 }
 
 /**

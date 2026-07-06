@@ -15,6 +15,7 @@ A genealogy platform designed for research rigor and data ownership.
 
 - **GEDCOM 5.5 import/export** - Full round-trip fidelity with your existing data
 - **Flexible date handling** - Supports exact, approximate, ranges, and "before/after"
+- **Historical calendars** - Parses, displays, and round-trips Julian, Hebrew, and French Republican dates, with optional Gregorian conversion for comparison
 - **Family relationships** - Biological, adopted, step, and foster qualifiers
 - **Geographic heat map** - Interactive world map showing family locations with zoom/pan
 - **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation
@@ -89,7 +90,7 @@ Environment variables:
 - `GET /api/v1/map/locations` - Get geographic locations for map
 - `GET /api/v1/search?q=...` - Search persons
 - `POST /api/v1/gedcom/import` - Import GEDCOM file
-- `GET /api/v1/gedcom/export` - Export as GEDCOM
+- `GET /api/v1/gedcom/export` - Export as GEDCOM (optional `?version=5.5|5.5.1|7.0`; defaults to 5.5, auto-upgraded to 7.0 when the data uses 7.0-only features)
 - `GET /api/v1/export/tree` - Export complete tree as JSON
 - `GET /api/v1/export/persons` - Export persons as JSON or CSV
 - `GET /api/v1/export/families` - Export families as JSON or CSV

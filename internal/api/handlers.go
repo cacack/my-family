@@ -58,6 +58,12 @@ func convertDomainGenDateToGenerated(qd *domain.GenDate) *GenDate {
 		q := GenDateQualifier(string(qd.Qualifier))
 		gd.Qualifier = &q
 	}
+	// Expose non-Gregorian calendars so clients can display and convert dates in
+	// their original calendar system. Gregorian (the default) is left unset.
+	if qd.Calendar != "" && qd.Calendar != domain.CalendarGregorian {
+		cal := qd.Calendar
+		gd.Calendar = &cal
+	}
 	if qd.Raw != "" {
 		gd.Raw = &qd.Raw
 	}

@@ -298,6 +298,47 @@ func TestImportDateRanges(t *testing.T) {
 	}
 }
 
+func TestImportHistoricalCalendars(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Julian /Person/
+1 BIRT
+2 DATE @#DJULIAN@ 14 FEB 1689
+1 DEAT
+2 DATE @#DHEBREW@ 15 NSN 5785
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+
+	// The raw escape sequence must be preserved for lossless export.
+	if persons[0].BirthDate != "@#DJULIAN@ 14 FEB 1689" {
+		t.Errorf("BirthDate = %q, want Julian escape preserved", persons[0].BirthDate)
+	}
+	if persons[0].DeathDate != "@#DHEBREW@ 15 NSN 5785" {
+		t.Errorf("DeathDate = %q, want Hebrew escape preserved", persons[0].DeathDate)
+	}
+
+	// The calendar system must be detected when the raw date is parsed.
+	if got := domain.ParseGenDate(persons[0].BirthDate); got.Calendar != domain.CalendarJulian {
+		t.Errorf("birth calendar = %q, want %q", got.Calendar, domain.CalendarJulian)
+	}
+	if got := domain.ParseGenDate(persons[0].DeathDate); got.Calendar != domain.CalendarHebrew {
+		t.Errorf("death calendar = %q, want %q", got.Calendar, domain.CalendarHebrew)
+	}
+}
+
 func TestValidateImportData(t *testing.T) {
 	// Empty data should fail
 	err := gedcom.ValidateImportData(nil, nil)
