@@ -321,12 +321,10 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 			xref = fmt.Sprintf("@N%d@", i+1)
 		}
 
-		note := toGedcomNote(n)
-		doc.Records = append(doc.Records, &gedcom.Record{
-			XRef:   xref,
-			Type:   gedcom.RecordTypeNote,
-			Entity: note,
-		})
+		// Notes carrying GEDCOM 7.0 metadata (MIME, language, or translations)
+		// round-trip as SNOTE records; plain notes stay as NOTE records for
+		// GEDCOM 5.5.1 compatibility.
+		doc.Records = append(doc.Records, toGedcomNoteRecord(xref, n))
 		result.NotesExported++
 		processedItems++
 
@@ -1026,12 +1024,65 @@ func mapFactTypeToGedcomTag(factType domain.FactType) string {
 	}
 }
 
-// toGedcomNote converts a repository NoteReadModel to a gedcom.Note entity.
-// The encoder will automatically convert this to GEDCOM tags, handling CONT/CONC for multiline text.
-func toGedcomNote(n repository.NoteReadModel) *gedcom.Note {
-	return &gedcom.Note{
-		Text: n.Text,
+// toGedcomNoteRecord converts a repository NoteReadModel to a top-level GEDCOM
+// note record. A note carrying GEDCOM 7.0 metadata (MIME media type, language
+// tag, or translations) becomes an SNOTE record; a plain note becomes a NOTE
+// record for GEDCOM 5.5.1 compatibility.
+//
+// The note text lives on the level-0 record line, with any additional lines
+// emitted as CONT subordinates. SNOTE tags are built directly (rather than via
+// the gedcom.SharedNote entity) so that the CONT continuation precedes the
+// MIME/LANG/TRAN substructures, which the encoder's entity conversion cannot
+// guarantee.
+func toGedcomNoteRecord(xref string, n repository.NoteReadModel) *gedcom.Record {
+	firstLine, contLines := splitNoteText(n.Text)
+
+	if n.MIME == "" && n.Language == "" && len(n.Translations) == 0 {
+		return &gedcom.Record{
+			XRef:   xref,
+			Type:   gedcom.RecordTypeNote,
+			Value:  firstLine,
+			Entity: &gedcom.Note{Text: firstLine, Continuation: contLines},
+		}
 	}
+
+	var tags []*gedcom.Tag
+	for _, line := range contLines {
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "CONT", Value: line})
+	}
+	if n.MIME != "" {
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "MIME", Value: n.MIME})
+	}
+	if n.Language != "" {
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "LANG", Value: n.Language})
+	}
+	for _, tran := range n.Translations {
+		tranFirst, tranCont := splitNoteText(tran.Text)
+		tags = append(tags, &gedcom.Tag{Level: 1, Tag: "TRAN", Value: tranFirst})
+		for _, line := range tranCont {
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "CONT", Value: line})
+		}
+		if tran.MIME != "" {
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "MIME", Value: tran.MIME})
+		}
+		if tran.Language != "" {
+			tags = append(tags, &gedcom.Tag{Level: 2, Tag: "LANG", Value: tran.Language})
+		}
+	}
+
+	return &gedcom.Record{
+		XRef:  xref,
+		Type:  gedcom.RecordTypeSharedNote,
+		Value: firstLine,
+		Tags:  tags,
+	}
+}
+
+// splitNoteText splits note text into the first line (written on the record's
+// level-0 line) and the remaining lines (emitted as CONT continuation tags).
+func splitNoteText(text string) (first string, rest []string) {
+	lines := strings.Split(text, "\n")
+	return lines[0], lines[1:]
 }
 
 // toGedcomSubmitter converts a repository SubmitterReadModel to a gedcom.Submitter entity.

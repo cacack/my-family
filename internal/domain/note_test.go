@@ -125,3 +125,47 @@ func TestNoteValidationError_Error(t *testing.T) {
 		t.Errorf("Error() = %v, want %v", err.Error(), expected)
 	}
 }
+
+func TestNote_SetSharedNoteMetadata(t *testing.T) {
+	n := NewNote("Rich text")
+
+	if n.IsShared() {
+		t.Error("a plain note should not report as shared")
+	}
+
+	trans := []NoteTranslation{{Text: "Texto", MIME: "text/plain", Language: "es"}}
+	n.SetSharedNoteMetadata("text/html", "en", trans)
+
+	if n.MIME != "text/html" {
+		t.Errorf("MIME = %q, want %q", n.MIME, "text/html")
+	}
+	if n.Language != "en" {
+		t.Errorf("Language = %q, want %q", n.Language, "en")
+	}
+	if len(n.Translations) != 1 || n.Translations[0].Language != "es" {
+		t.Errorf("Translations = %+v, want one Spanish translation", n.Translations)
+	}
+	if !n.IsShared() {
+		t.Error("a note with SNOTE metadata should report as shared")
+	}
+}
+
+func TestNote_IsShared(t *testing.T) {
+	cases := []struct {
+		name string
+		note *Note
+		want bool
+	}{
+		{"plain", &Note{Text: "x"}, false},
+		{"mime only", &Note{MIME: "text/html"}, true},
+		{"language only", &Note{Language: "en"}, true},
+		{"translation only", &Note{Translations: []NoteTranslation{{Text: "t"}}}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.note.IsShared(); got != tc.want {
+				t.Errorf("IsShared() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

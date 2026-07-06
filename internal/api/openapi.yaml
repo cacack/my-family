@@ -5988,6 +5988,21 @@ components:
         text:
           type: string
           description: Full note text (may contain embedded newlines from CONT/CONC lines)
+        mime:
+          type: string
+          description: >-
+            GEDCOM 7.0 shared note (SNOTE) media type of the text, e.g.
+            "text/plain" or "text/html". Empty for plain NOTE records.
+        language:
+          type: string
+          description: >-
+            GEDCOM 7.0 shared note (SNOTE) BCP 47 language tag for the text,
+            e.g. "en" or "zh-Hans".
+        translations:
+          type: array
+          description: GEDCOM 7.0 shared note (SNOTE) alternate-language renderings
+          items:
+            $ref: '#/components/schemas/NoteTranslation'
         gedcom_xref:
           type: string
           description: GEDCOM cross-reference ID (e.g., "@N1@") for round-trip support
@@ -5998,6 +6013,21 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    NoteTranslation:
+      type: object
+      description: An alternate-language rendering of a shared note (GEDCOM 7.0 SNOTE TRAN)
+      required: [text]
+      properties:
+        text:
+          type: string
+          description: Translated note content
+        mime:
+          type: string
+          description: Media type of the translated text, e.g. "text/plain" or "text/html"
+        language:
+          type: string
+          description: BCP 47 language tag for this translation, e.g. "es"
 
     NoteCreate:
       type: object

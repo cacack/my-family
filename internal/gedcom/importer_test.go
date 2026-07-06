@@ -2912,3 +2912,60 @@ func TestImportExternalIDsAndSchema(t *testing.T) {
 		t.Errorf("Jane.ExternalIDs len = %d, want 0", len(jane.ExternalIDs))
 	}
 }
+
+func TestImportSharedNote(t *testing.T) {
+	// GEDCOM 7.0 shared note (SNOTE) with MIME, language, and a translation.
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 7.0
+0 @N1@ SNOTE <p>Rich text note</p>
+1 MIME text/html
+1 LANG en
+1 TRAN Nota en texto plano
+2 MIME text/plain
+2 LANG es
+0 TRLR
+`
+
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, _, _, _, _, _, _, _, notes, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if result.NotesImported != 1 {
+		t.Fatalf("NotesImported = %d, want 1", result.NotesImported)
+	}
+	if len(notes) != 1 {
+		t.Fatalf("len(notes) = %d, want 1", len(notes))
+	}
+
+	n := notes[0]
+	if n.GedcomXref != "@N1@" {
+		t.Errorf("GedcomXref = %q, want %q", n.GedcomXref, "@N1@")
+	}
+	if n.Text != "<p>Rich text note</p>" {
+		t.Errorf("Text = %q, want the HTML note body", n.Text)
+	}
+	if n.MIME != "text/html" {
+		t.Errorf("MIME = %q, want %q", n.MIME, "text/html")
+	}
+	if n.Language != "en" {
+		t.Errorf("Language = %q, want %q", n.Language, "en")
+	}
+	if len(n.Translations) != 1 {
+		t.Fatalf("len(Translations) = %d, want 1", len(n.Translations))
+	}
+	tran := n.Translations[0]
+	if tran.Text != "Nota en texto plano" {
+		t.Errorf("Translation.Text = %q, want the Spanish text", tran.Text)
+	}
+	if tran.MIME != "text/plain" {
+		t.Errorf("Translation.MIME = %q, want %q", tran.MIME, "text/plain")
+	}
+	if tran.Language != "es" {
+		t.Errorf("Translation.Language = %q, want %q", tran.Language, "es")
+	}
+}

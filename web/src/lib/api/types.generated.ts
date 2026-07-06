@@ -3481,6 +3481,12 @@ export interface components {
             id: string;
             /** @description Full note text (may contain embedded newlines from CONT/CONC lines) */
             text: string;
+            /** @description GEDCOM 7.0 shared note (SNOTE) media type of the text, e.g. "text/plain" or "text/html". Empty for plain NOTE records. */
+            mime?: string;
+            /** @description GEDCOM 7.0 shared note (SNOTE) BCP 47 language tag for the text, e.g. "en" or "zh-Hans". */
+            language?: string;
+            /** @description GEDCOM 7.0 shared note (SNOTE) alternate-language renderings */
+            translations?: components["schemas"]["NoteTranslation"][];
             /** @description GEDCOM cross-reference ID (e.g., "@N1@") for round-trip support */
             gedcom_xref?: string;
             /**
@@ -3490,6 +3496,15 @@ export interface components {
             version: number;
             /** Format: date-time */
             updated_at?: string;
+        };
+        /** @description An alternate-language rendering of a shared note (GEDCOM 7.0 SNOTE TRAN) */
+        NoteTranslation: {
+            /** @description Translated note content */
+            text: string;
+            /** @description Media type of the translated text, e.g. "text/plain" or "text/html" */
+            mime?: string;
+            /** @description BCP 47 language tag for this translation, e.g. "es" */
+            language?: string;
         };
         NoteCreate: {
             /** @description Note text content */
