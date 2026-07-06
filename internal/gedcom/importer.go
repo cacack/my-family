@@ -616,24 +616,11 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		RelationshipType: domain.RelationUnknown,
 	}
 
-	// Link husband/wife (partner1/partner2)
-	// In cacack/gedcom-go, Husband and Wife are XRef strings
-	if fam.Husband != "" {
-		if id, ok := result.PersonXrefToID[fam.Husband]; ok {
-			family.Partner1ID = &id
-		} else {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Family %s: husband %s not found", fam.XRef, fam.Husband))
-		}
-	}
-	if fam.Wife != "" {
-		if id, ok := result.PersonXrefToID[fam.Wife]; ok {
-			family.Partner2ID = &id
-		} else {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Family %s: wife %s not found", fam.XRef, fam.Wife))
-		}
-	}
+	// Link husband/wife (partner1/partner2) using gedcom-go's nil-safe
+	// relationship traversal, which resolves the XRef against the document
+	// and returns nil for missing/broken references.
+	family.Partner1ID = resolvePartner(fam.Husband, fam.HusbandIndividual(doc), fam.XRef, "husband", result)
+	family.Partner2ID = resolvePartner(fam.Wife, fam.WifeIndividual(doc), fam.XRef, "wife", result)
 
 	// Parse events for marriage with date validation
 	for _, event := range fam.Events {
@@ -669,32 +656,54 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		}
 	}
 
-	// Link children - look up PEDI from individual's FAMC links
-	for _, childXRef := range fam.Children {
-		if id, ok := result.PersonXrefToID[childXRef]; ok {
-			family.ChildIDs = append(family.ChildIDs, id)
+	// Link children using gedcom-go's nil-safe relationship traversal.
+	// ChildrenIndividuals resolves each child XRef against the document and
+	// silently drops broken references; we detect and warn about those below.
+	resolvedChildren := fam.ChildrenIndividuals(doc)
+	for _, child := range resolvedChildren {
+		id := result.PersonXrefToID[child.XRef]
+		family.ChildIDs = append(family.ChildIDs, id)
 
-			// Look up the child's PEDI for this family
-			relType := getPedigreeType(childXRef, fam.XRef, doc)
-			family.ChildRelTypes = append(family.ChildRelTypes, relType)
-		} else {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Family %s: child %s not found", fam.XRef, childXRef))
+		// Look up the child's PEDI for this family
+		family.ChildRelTypes = append(family.ChildRelTypes, childPedigreeType(child, fam.XRef))
+	}
+	// Warn about child references that could not be resolved.
+	if len(resolvedChildren) < len(fam.Children) {
+		resolved := make(map[string]bool, len(resolvedChildren))
+		for _, child := range resolvedChildren {
+			resolved[child.XRef] = true
+		}
+		for _, childXRef := range fam.Children {
+			if !resolved[childXRef] {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("Family %s: child %s not found", fam.XRef, childXRef))
+			}
 		}
 	}
 
 	return family
 }
 
-// getPedigreeType looks up the pedigree linkage type for a child in a family.
-// Returns the appropriate ChildRelationType based on GEDCOM PEDI tag.
-func getPedigreeType(childXRef, familyXRef string, doc *gedcom.Document) domain.ChildRelationType {
-	// Look up the individual
-	indi := doc.GetIndividual(childXRef)
-	if indi == nil {
-		return domain.ChildBiological // Default if not found
+// resolvePartner maps a resolved partner individual to its internal UUID.
+// xref is the raw GEDCOM reference (empty when no partner is declared) and
+// indi is the result of gedcom-go's nil-safe traversal for that partner.
+// A declared-but-unresolvable reference produces a warning and a nil result.
+func resolvePartner(xref string, indi *gedcom.Individual, familyXRef, role string, result *ImportResult) *uuid.UUID {
+	if xref == "" {
+		return nil
 	}
+	if indi == nil {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Family %s: %s %s not found", familyXRef, role, xref))
+		return nil
+	}
+	id := result.PersonXrefToID[indi.XRef]
+	return &id
+}
 
+// childPedigreeType returns the pedigree linkage type for a child in a family
+// based on the GEDCOM PEDI tag on the child's FAMC link.
+func childPedigreeType(indi *gedcom.Individual, familyXRef string) domain.ChildRelationType {
 	// Find the FAMC link for this family and check its Pedigree
 	for _, famLink := range indi.ChildInFamilies {
 		if famLink.FamilyXRef == familyXRef {
