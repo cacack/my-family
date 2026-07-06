@@ -611,15 +611,9 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 		}
 	}
 
-	// External identifiers (GEDCOM 7.0 EXID). We populate the typed model so the
-	// export becomes lossless as soon as the encoder learns to serialize them.
-	//
-	// NOTE: gedcom-go v2.2.0's encoder only writes EXID for SharedNote (SNOTE)
-	// records — individualToTags does not emit Individual.ExternalIDs. Until an
-	// upstream release adds individual EXID encoding, these values are captured on
-	// import and exposed via the API but are dropped by the encoder on export.
-	// Tracked upstream against cacack/gedcom-go (encoder EXID support for
-	// individuals/families/sources/repositories).
+	// External identifiers (GEDCOM 7.0 EXID). The encoder emits each as an
+	// `EXID <value>` / `TYPE <uri>` structure on the individual (gedcom-go
+	// v2.2.1+), which also upgrades the export to GEDCOM 7.0 via RequiresGEDCOM7.
 	if externalIDs, err := readStore.GetPersonExternalIDs(ctx, p.ID); err == nil {
 		for _, ext := range externalIDs {
 			indi.ExternalIDs = append(indi.ExternalIDs, &gedcom.ExternalID{
