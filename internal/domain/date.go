@@ -44,7 +44,24 @@ type GenDate struct {
 	Calendar  string        `json:"calendar,omitempty"` // DGREGORIAN (default), DJULIAN, etc.
 }
 
-// GEDCOM month abbreviations
+// Calendar identifiers stored in GenDate.Calendar. These match the token inside
+// a GEDCOM calendar escape sequence (e.g. "@#DJULIAN@" -> "DJULIAN").
+const (
+	CalendarGregorian = "DGREGORIAN" // Default, modern calendar
+	CalendarJulian    = "DJULIAN"    // Julian calendar (pre-1752 English records)
+	CalendarHebrew    = "DHEBREW"    // Hebrew calendar (Jewish records)
+	CalendarFrench    = "DFRENCH R"  // French Republican calendar (1792-1805)
+)
+
+// calendarTokens is the set of recognized calendar escape tokens.
+var calendarTokens = map[string]bool{
+	CalendarGregorian: true,
+	CalendarJulian:    true,
+	CalendarHebrew:    true,
+	CalendarFrench:    true,
+}
+
+// GEDCOM month abbreviations (Gregorian and Julian share these).
 var monthMap = map[string]int{
 	"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
 	"JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
@@ -53,6 +70,68 @@ var monthMap = map[string]int{
 var reverseMonthMap = map[int]string{
 	1: "JAN", 2: "FEB", 3: "MAR", 4: "APR", 5: "MAY", 6: "JUN",
 	7: "JUL", 8: "AUG", 9: "SEP", 10: "OCT", 11: "NOV", 12: "DEC",
+}
+
+// hebrewMonthMap maps Hebrew month codes to month numbers (GEDCOM numbering,
+// Tishrei=1). Adar II (ADS=7) only exists in leap years.
+var hebrewMonthMap = map[string]int{
+	"TSH": 1, "CSH": 2, "KSL": 3, "TVT": 4, "SHV": 5, "ADR": 6, "ADS": 7,
+	"NSN": 8, "IYR": 9, "SVN": 10, "TMZ": 11, "AAV": 12, "ELL": 13,
+}
+
+var reverseHebrewMonthMap = reverseMonthCodes(hebrewMonthMap)
+
+// frenchMonthMap maps French Republican month codes to month numbers. Month 13
+// (COMP) is the complementary days (Sans-culottides).
+//
+//nolint:misspell // THER is the GEDCOM code for Thermidor, not "there"
+var frenchMonthMap = map[string]int{
+	"VEND": 1, "BRUM": 2, "FRIM": 3, "NIVO": 4, "PLUV": 5, "VENT": 6, "GERM": 7,
+	"FLOR": 8, "PRAI": 9, "MESS": 10, "THER": 11, "FRUC": 12, "COMP": 13,
+}
+
+var reverseFrenchMonthMap = reverseMonthCodes(frenchMonthMap)
+
+// reverseMonthCodes inverts a month-code map for formatting.
+func reverseMonthCodes(m map[string]int) map[int]string {
+	r := make(map[int]string, len(m))
+	for code, num := range m {
+		r[num] = code
+	}
+	return r
+}
+
+// monthMapFor returns the month-code lookup table for the given calendar.
+func monthMapFor(calendar string) map[string]int {
+	switch calendar {
+	case CalendarHebrew:
+		return hebrewMonthMap
+	case CalendarFrench:
+		return frenchMonthMap
+	default: // Gregorian and Julian
+		return monthMap
+	}
+}
+
+// reverseMonthMapFor returns the month-number to code table for the given calendar.
+func reverseMonthMapFor(calendar string) map[int]string {
+	switch calendar {
+	case CalendarHebrew:
+		return reverseHebrewMonthMap
+	case CalendarFrench:
+		return reverseFrenchMonthMap
+	default: // Gregorian and Julian
+		return reverseMonthMap
+	}
+}
+
+// maxMonthFor returns the highest valid month number for the given calendar.
+// Hebrew and French Republican calendars have a 13th month.
+func maxMonthFor(calendar string) int {
+	if calendar == CalendarHebrew || calendar == CalendarFrench {
+		return 13
+	}
+	return 12
 }
 
 // qualifierPrefixes maps GEDCOM date prefixes to their qualifiers.
@@ -72,7 +151,10 @@ var qualifierPrefixes = []struct {
 	{"FROM ", DateFrom},
 }
 
-// ParseGenDate parses a GEDCOM-format date string into a GenDate.
+// ParseGenDate parses a GEDCOM-format date string into a GenDate. It detects and
+// strips a leading calendar escape sequence (e.g. "@#DJULIAN@") into Calendar,
+// interpreting month codes according to that calendar; unrecognized escapes are
+// left in place and the date is treated as Gregorian.
 func ParseGenDate(s string) GenDate {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -82,48 +164,75 @@ func ParseGenDate(s string) GenDate {
 	gd := GenDate{
 		Raw:       s,
 		Qualifier: DateExact,
-		Calendar:  "DGREGORIAN",
+		Calendar:  CalendarGregorian,
 	}
 
-	upper := strings.ToUpper(s)
+	work := strings.ToUpper(s)
+
+	// Extract a calendar escape sequence (e.g. "@#DJULIAN@") if present. It may
+	// appear before or after a qualifier, so we strip it first.
+	if cal, rest, ok := extractCalendarEscape(work); ok {
+		gd.Calendar = cal
+		work = rest
+	}
 
 	// Check for qualifiers using table-driven lookup
 	for _, qp := range qualifierPrefixes {
-		if strings.HasPrefix(upper, qp.prefix) {
+		if strings.HasPrefix(work, qp.prefix) {
 			gd.Qualifier = qp.qualifier
-			s = strings.TrimPrefix(upper, qp.prefix)
+			work = strings.TrimPrefix(work, qp.prefix)
 			break
 		}
-	}
-	if gd.Qualifier == DateExact {
-		s = upper
 	}
 
 	// Handle ranges (BET ... AND ..., FROM ... TO ...)
 	if gd.Qualifier == DateBet {
-		if parts := strings.SplitN(s, " AND ", 2); len(parts) == 2 {
-			parseSimpleDate(strings.TrimSpace(parts[0]), &gd.Year, &gd.Month, &gd.Day)
-			parseSimpleDate(strings.TrimSpace(parts[1]), &gd.Year2, &gd.Month2, &gd.Day2)
+		if parts := strings.SplitN(work, " AND ", 2); len(parts) == 2 {
+			parseSimpleDate(strings.TrimSpace(parts[0]), gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
+			parseSimpleDate(strings.TrimSpace(parts[1]), gd.Calendar, &gd.Year2, &gd.Month2, &gd.Day2)
 			return gd
 		}
 	}
 	if gd.Qualifier == DateFrom {
-		if parts := strings.SplitN(s, " TO ", 2); len(parts) == 2 {
-			parseSimpleDate(strings.TrimSpace(parts[0]), &gd.Year, &gd.Month, &gd.Day)
-			parseSimpleDate(strings.TrimSpace(parts[1]), &gd.Year2, &gd.Month2, &gd.Day2)
+		if parts := strings.SplitN(work, " TO ", 2); len(parts) == 2 {
+			parseSimpleDate(strings.TrimSpace(parts[0]), gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
+			parseSimpleDate(strings.TrimSpace(parts[1]), gd.Calendar, &gd.Year2, &gd.Month2, &gd.Day2)
 			return gd
 		}
 	}
 
 	// Parse simple date
-	parseSimpleDate(s, &gd.Year, &gd.Month, &gd.Day)
+	parseSimpleDate(work, gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
 	return gd
 }
 
+// extractCalendarEscape finds and removes a GEDCOM calendar escape sequence
+// (e.g. "@#DJULIAN@") from an upper-cased date string. It returns the calendar
+// token, the remaining string with whitespace normalized, and whether a known
+// escape was found. Unknown escapes are left in place and reported as not found.
+func extractCalendarEscape(s string) (calendar, rest string, found bool) {
+	start := strings.Index(s, "@#")
+	if start == -1 {
+		return "", s, false
+	}
+	end := strings.Index(s[start+2:], "@")
+	if end == -1 {
+		return "", s, false
+	}
+	token := s[start+2 : start+2+end]
+	if !calendarTokens[token] {
+		return "", s, false
+	}
+	remainder := s[:start] + " " + s[start+2+end+1:]
+	return token, strings.Join(strings.Fields(remainder), " "), true
+}
+
 // parseSimpleDate parses a simple date like "1 JAN 1850", "JAN 1850", or "1850".
-func parseSimpleDate(s string, year, month, day **int) {
+// Month codes are interpreted according to the given calendar system.
+func parseSimpleDate(s, calendar string, year, month, day **int) {
 	s = strings.TrimSpace(s)
 	parts := strings.Fields(s)
+	months := monthMapFor(calendar)
 
 	switch len(parts) {
 	case 1:
@@ -133,7 +242,7 @@ func parseSimpleDate(s string, year, month, day **int) {
 		}
 	case 2:
 		// Month Year: "JAN 1850"
-		if m, ok := monthMap[parts[0]]; ok {
+		if m, ok := months[parts[0]]; ok {
 			*month = &m
 			if y, err := strconv.Atoi(parts[1]); err == nil {
 				*year = &y
@@ -144,7 +253,7 @@ func parseSimpleDate(s string, year, month, day **int) {
 		if d, err := strconv.Atoi(parts[0]); err == nil {
 			*day = &d
 		}
-		if m, ok := monthMap[parts[1]]; ok {
+		if m, ok := months[parts[1]]; ok {
 			*month = &m
 		}
 		if y, err := strconv.Atoi(parts[2]); err == nil {
@@ -167,37 +276,50 @@ func (g *GenDate) Format() string {
 		return ""
 	}
 
-	var prefix string
+	// GEDCOM order is qualifier then calendar escape, e.g. "ABT @#DJULIAN@ 1600".
+	var qualPrefix string
 	switch g.Qualifier {
 	case DateAbout:
-		prefix = "ABT "
+		qualPrefix = "ABT "
 	case DateCalc:
-		prefix = "CAL "
+		qualPrefix = "CAL "
 	case DateEst:
-		prefix = "EST "
+		qualPrefix = "EST "
 	case DateBef:
-		prefix = "BEF "
+		qualPrefix = "BEF "
 	case DateAft:
-		prefix = "AFT "
+		qualPrefix = "AFT "
 	case DateBet:
-		return fmt.Sprintf("BET %s AND %s", formatSimpleDate(g.Year, g.Month, g.Day), formatSimpleDate(g.Year2, g.Month2, g.Day2))
+		return fmt.Sprintf("BET %s AND %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), formatSimpleDate(g.Calendar, g.Year2, g.Month2, g.Day2))
 	case DateFrom:
-		return fmt.Sprintf("FROM %s TO %s", formatSimpleDate(g.Year, g.Month, g.Day), formatSimpleDate(g.Year2, g.Month2, g.Day2))
+		return fmt.Sprintf("FROM %s TO %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), formatSimpleDate(g.Calendar, g.Year2, g.Month2, g.Day2))
 	}
 
-	return prefix + formatSimpleDate(g.Year, g.Month, g.Day)
+	return qualPrefix + g.calendarEscape() + formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day)
 }
 
-func formatSimpleDate(year, month, day *int) string {
+// calendarEscape returns the GEDCOM escape prefix (with trailing space) for a
+// non-Gregorian calendar, or an empty string for Gregorian/unset calendars.
+func (g *GenDate) calendarEscape() string {
+	if g.Calendar == "" || g.Calendar == CalendarGregorian {
+		return ""
+	}
+	return "@#" + g.Calendar + "@ "
+}
+
+func formatSimpleDate(calendar string, year, month, day *int) string {
 	if year == nil {
 		return ""
 	}
+	months := reverseMonthMapFor(calendar)
 	var parts []string
 	if day != nil {
 		parts = append(parts, strconv.Itoa(*day))
 	}
-	if month != nil && *month >= 1 && *month <= 12 {
-		parts = append(parts, reverseMonthMap[*month])
+	if month != nil {
+		if code, ok := months[*month]; ok {
+			parts = append(parts, code)
+		}
 	}
 	parts = append(parts, strconv.Itoa(*year))
 	return strings.Join(parts, " ")
@@ -213,6 +335,16 @@ func (g *GenDate) IsEmpty() bool {
 func (g *GenDate) ToTime() time.Time {
 	if g.Year == nil {
 		return time.Time{}
+	}
+	// Historical (non-Gregorian) calendar dates cannot be placed on a Gregorian
+	// timeline directly, so convert them first. A conversion failure (e.g. a
+	// malformed date) sorts as unknown rather than at an arbitrary instant.
+	if g.Calendar != "" && g.Calendar != CalendarGregorian {
+		greg, err := g.ToGregorian()
+		if err != nil {
+			return time.Time{}
+		}
+		return greg.ToTime()
 	}
 	year := *g.Year
 	month := time.January
@@ -236,13 +368,14 @@ func (g *GenDate) SortDate() time.Time {
 
 // Validate checks if the date components are valid.
 func (g *GenDate) Validate() error {
-	if g.Month != nil && (*g.Month < 1 || *g.Month > 12) {
+	maxMonth := maxMonthFor(g.Calendar)
+	if g.Month != nil && (*g.Month < 1 || *g.Month > maxMonth) {
 		return fmt.Errorf("invalid month: %d", *g.Month)
 	}
 	if g.Day != nil && (*g.Day < 1 || *g.Day > 31) {
 		return fmt.Errorf("invalid day: %d", *g.Day)
 	}
-	if g.Month2 != nil && (*g.Month2 < 1 || *g.Month2 > 12) {
+	if g.Month2 != nil && (*g.Month2 < 1 || *g.Month2 > maxMonth) {
 		return fmt.Errorf("invalid month2: %d", *g.Month2)
 	}
 	if g.Day2 != nil && (*g.Day2 < 1 || *g.Day2 > 31) {
