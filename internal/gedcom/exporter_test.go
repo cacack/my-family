@@ -2949,11 +2949,9 @@ func TestExport_TargetVersionOverridesAutoUpgrade(t *testing.T) {
 }
 
 func TestExport_ExternalIDs(t *testing.T) {
-	// Exercises the exporter path for a person carrying GEDCOM 7.0 external
-	// identifiers. The typed model is populated so export becomes lossless once
-	// gedcom-go's encoder gains individual EXID support; until then the encoder
-	// (v2.2.0) drops them, so we only assert the export succeeds and still emits
-	// the individual. See the NOTE in exporter.go / toGedcomIndividual.
+	// A person carrying GEDCOM 7.0 external identifiers must export each as an
+	// `EXID <value>` / `TYPE <uri>` structure on the individual, which also
+	// upgrades the export to GEDCOM 7.0.
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()
 
@@ -2980,8 +2978,67 @@ func TestExport_ExternalIDs(t *testing.T) {
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "1 NAME Test /Person/") {
-		t.Errorf("export should still emit the individual; got:\n%s", output)
+	// EXID presence is a 7.0-only structure, so the export must be GEDCOM 7.0.
+	if !strings.Contains(output, "2 VERS 7.0") {
+		t.Errorf("EXID data should upgrade export to GEDCOM 7.0; got:\n%s", output)
+	}
+	for _, want := range []string{
+		"1 EXID KWCJ-QN7",
+		"2 TYPE http://www.familysearch.org/ark",
+		"1 EXID 12345",
+		"2 TYPE https://www.findagrave.com/",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("export should contain %q; got:\n%s", want, output)
+		}
+	}
+}
+
+func TestExternalIDs_RoundTrip(t *testing.T) {
+	// External identifiers on an individual must survive export → re-import
+	// unchanged (GEDCOM 7.0 EXID/TYPE).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person := &repository.PersonReadModel{
+		ID:        uuid.New(),
+		GivenName: "Test",
+		Surname:   "Person",
+		FullName:  "Test Person",
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+	want := []repository.PersonExternalIDReadModel{
+		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
+		{Value: "12345", Type: "https://www.findagrave.com/"},
+	}
+	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, want); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	importer := gedcom.NewImporter()
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(buf.String()))
+	if err != nil {
+		t.Fatalf("Import failed: %v\n%s", err, buf.String())
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1\n%s", len(persons), buf.String())
+	}
+
+	got := persons[0].ExternalIDs
+	if len(got) != len(want) {
+		t.Fatalf("len(ExternalIDs) = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i].Value != w.Value || got[i].Type != w.Type {
+			t.Errorf("ExternalIDs[%d] = {%q, %q}, want {%q, %q}", i, got[i].Value, got[i].Type, w.Value, w.Type)
+		}
 	}
 }
 
