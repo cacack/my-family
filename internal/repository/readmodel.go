@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,13 +26,16 @@ func MarshalNoteTranslations(translations []domain.NoteTranslation) string {
 }
 
 // UnmarshalNoteTranslations parses shared-note (SNOTE) translations from a
-// text/JSON column. It returns nil for empty or malformed input.
+// text/JSON column. It returns nil for empty input, and logs and returns nil
+// for malformed input so corrupt/legacy rows are visible rather than silently
+// dropped.
 func UnmarshalNoteTranslations(data string) []domain.NoteTranslation {
 	if data == "" {
 		return nil
 	}
 	var translations []domain.NoteTranslation
 	if err := json.Unmarshal([]byte(data), &translations); err != nil {
+		slog.Warn("failed to unmarshal note translations; dropping", "error", err)
 		return nil
 	}
 	return translations
