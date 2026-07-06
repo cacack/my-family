@@ -1460,6 +1460,44 @@ func (ss *StrictServer) ExportGedcom(ctx context.Context, request ExportGedcomRe
 	}, nil
 }
 
+// PreviewGedcomExport implements StrictServerInterface. It reports whether
+// exporting at the requested version would lose data, without producing a file,
+// so the UI can warn before a downgraded download (issue #189).
+func (ss *StrictServer) PreviewGedcomExport(ctx context.Context, request PreviewGedcomExportRequestObject) (PreviewGedcomExportResponseObject, error) {
+	var targetVersion gcgedcom.Version
+	if request.Params.Version != nil {
+		targetVersion = gcgedcom.Version(*request.Params.Version)
+		if !targetVersion.IsValid() {
+			return PreviewGedcomExport400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_version",
+				Message: "Invalid version: must be one of '5.5', '5.5.1', or '7.0'",
+			}}, nil
+		}
+	}
+
+	result, err := gedcom.NewExporter(ss.server.readStore).PreviewConversion(ctx, targetVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	dataLoss := make([]DataLossItem, len(result.DataLoss))
+	for i, d := range result.DataLoss {
+		item := DataLossItem{Feature: d.Feature, Reason: d.Reason}
+		if len(d.AffectedRecords) > 0 {
+			records := d.AffectedRecords
+			item.AffectedRecords = &records
+		}
+		dataLoss[i] = item
+	}
+
+	return PreviewGedcomExport200JSONResponse{
+		SourceVersion: string(result.SourceVersion),
+		TargetVersion: string(result.Version),
+		HasDataLoss:   len(dataLoss) > 0,
+		DataLoss:      dataLoss,
+	}, nil
+}
+
 // ImportGedcom implements StrictServerInterface.
 func (ss *StrictServer) ImportGedcom(ctx context.Context, request ImportGedcomRequestObject) (ImportGedcomResponseObject, error) {
 	if request.Body == nil {

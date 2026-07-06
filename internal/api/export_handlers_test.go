@@ -638,6 +638,87 @@ func TestExportGedcom_VersionParam(t *testing.T) {
 	}
 }
 
+const exportPreviewGedcom = `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Test /Person/
+1 EXID KWCJ-QN7
+2 TYPE http://www.familysearch.org/ark
+0 TRLR
+`
+
+func TestPreviewGedcomExport(t *testing.T) {
+	server := setupExportTestServer(t)
+
+	// Import data carrying a 7.0-only feature (EXID).
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.ged")
+	io.WriteString(part, exportPreviewGedcom)
+	writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Import failed: %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Downgrade preview to 5.5.1 reports EXID data loss without producing a file.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export/preview?version=5.5.1", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Preview failed: %d: %s", rec.Code, rec.Body.String())
+	}
+	var preview api.ExportPreview
+	if err := json.Unmarshal(rec.Body.Bytes(), &preview); err != nil {
+		t.Fatalf("decode: %v; body=%s", err, rec.Body.String())
+	}
+	if preview.SourceVersion != "7.0" || preview.TargetVersion != "5.5.1" {
+		t.Errorf("source=%q target=%q, want 7.0/5.5.1", preview.SourceVersion, preview.TargetVersion)
+	}
+	if !preview.HasDataLoss || len(preview.DataLoss) == 0 {
+		t.Fatalf("expected data loss downgrading EXID; got %+v", preview)
+	}
+	foundEXID := false
+	for _, d := range preview.DataLoss {
+		if strings.Contains(d.Feature, "EXID") {
+			foundEXID = true
+		}
+	}
+	if !foundEXID {
+		t.Errorf("data loss should mention EXID; got %+v", preview.DataLoss)
+	}
+
+	// Preview at 7.0 keeps everything; no loss.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export/preview?version=7.0", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Preview 7.0 failed: %d: %s", rec.Code, rec.Body.String())
+	}
+	var preview70 api.ExportPreview
+	if err := json.Unmarshal(rec.Body.Bytes(), &preview70); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if preview70.HasDataLoss {
+		t.Errorf("7.0 preview should have no data loss; got %+v", preview70.DataLoss)
+	}
+}
+
+func TestPreviewGedcomExport_InvalidVersion(t *testing.T) {
+	server := setupExportTestServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export/preview?version=9.9", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400; got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestExportGedcom_InvalidVersion(t *testing.T) {
 	server := setupExportTestServer(t)
 

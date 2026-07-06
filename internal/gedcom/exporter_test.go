@@ -3177,3 +3177,108 @@ func TestSharedNote_RoundTrip(t *testing.T) {
 		t.Errorf("Translation = %+v, want %+v", got, want)
 	}
 }
+
+func TestExport_DowngradeReportsDataLoss(t *testing.T) {
+	// Exporting 7.0-only data (EXID) to 5.5.1 forces a downgrade conversion,
+	// which must be reported in ExportResult.DataLoss.
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Test", Surname: "Person", FullName: "Test Person"}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	res, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: gcgedcom.Version551})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if res.Version != gcgedcom.Version551 {
+		t.Errorf("Version = %q, want 5.5.1", res.Version)
+	}
+	if res.SourceVersion != gcgedcom.Version70 {
+		t.Errorf("SourceVersion = %q, want 7.0 (data requires 7.0)", res.SourceVersion)
+	}
+	if len(res.DataLoss) == 0 {
+		t.Fatalf("expected data loss downgrading EXID to 5.5.1; got none")
+	}
+	foundEXID := false
+	for _, d := range res.DataLoss {
+		if strings.Contains(d.Feature, "EXID") {
+			foundEXID = true
+		}
+	}
+	if !foundEXID {
+		t.Errorf("data loss should mention EXID; got %+v", res.DataLoss)
+	}
+	if !strings.Contains(buf.String(), "2 VERS 5.5.1\n") {
+		t.Errorf("output should be emitted as 5.5.1; got:\n%s", buf.String())
+	}
+}
+
+func TestExport_NoDowngradeNoDataLoss(t *testing.T) {
+	// Data with no 7.0-only structures needs no conversion: no data loss, and
+	// SourceVersion equals the emitted version.
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Plain", Surname: "Person", FullName: "Plain Person"}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	res, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: gcgedcom.Version551})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(res.DataLoss) != 0 {
+		t.Errorf("plain data should have no data loss; got %+v", res.DataLoss)
+	}
+	if res.SourceVersion != gcgedcom.Version551 {
+		t.Errorf("SourceVersion = %q, want 5.5.1 (no conversion)", res.SourceVersion)
+	}
+}
+
+func TestPreviewConversion(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Test", Surname: "Person", FullName: "Test Person"}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+
+	// A downgrade preview reports loss without writing a file.
+	down, err := exporter.PreviewConversion(ctx, gcgedcom.Version551)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if down.SourceVersion != gcgedcom.Version70 || len(down.DataLoss) == 0 {
+		t.Errorf("preview 5.5.1: source=%q dataLoss=%d, want source 7.0 with loss", down.SourceVersion, len(down.DataLoss))
+	}
+
+	// Previewing at 7.0 keeps everything; no loss.
+	up, err := exporter.PreviewConversion(ctx, gcgedcom.Version70)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(up.DataLoss) != 0 {
+		t.Errorf("preview 7.0 should have no data loss; got %+v", up.DataLoss)
+	}
+}

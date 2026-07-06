@@ -440,6 +440,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gedcom/export/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview a GEDCOM export conversion and report data loss
+         * @description Reports what would change if the data were exported at the given GEDCOM version, without producing a file. Use it to warn about data loss before downloading a downgraded export.
+         */
+        get: operations["previewGedcomExport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/history": {
         parameters: {
             query?: never;
@@ -2085,6 +2105,36 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
+        };
+        DataLossItem: {
+            /**
+             * @description Name of the feature that cannot be represented in the target version.
+             * @example EXID tags
+             */
+            feature: string;
+            /**
+             * @description Why the feature would be lost.
+             * @example Tag not supported in GEDCOM 5.5.1
+             */
+            reason: string;
+            /** @description XREFs of the records affected by this loss. */
+            affectedRecords?: string[];
+        };
+        ExportPreview: {
+            /**
+             * @description The GEDCOM version the data naturally requires before any downgrade.
+             * @example 7.0
+             */
+            sourceVersion: string;
+            /**
+             * @description The GEDCOM version that would be emitted.
+             * @example 5.5.1
+             */
+            targetVersion: string;
+            /** @description True when downgrading to targetVersion drops one or more features. */
+            hasDataLoss: boolean;
+            /** @description Features that cannot be represented in the target version. */
+            dataLoss: components["schemas"]["DataLossItem"][];
         };
         ExportEstimate: {
             /**
@@ -4902,6 +4952,30 @@ export interface operations {
                 };
                 content: {
                     "application/x-gedcom": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    previewGedcomExport: {
+        parameters: {
+            query?: {
+                /** @description GEDCOM version to preview. When omitted, defaults to 5.5 and is automatically upgraded to 7.0 if the data uses 7.0-only features. */
+                version?: "5.5" | "5.5.1" | "7.0";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Conversion preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportPreview"];
                 };
             };
             400: components["responses"]["BadRequest"];

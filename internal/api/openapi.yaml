@@ -779,6 +779,34 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /gedcom/export/preview:
+    get:
+      operationId: previewGedcomExport
+      summary: Preview a GEDCOM export conversion and report data loss
+      description: >-
+        Reports what would change if the data were exported at the given GEDCOM
+        version, without producing a file. Use it to warn about data loss before
+        downloading a downgraded export.
+      tags: [gedcom]
+      parameters:
+        - name: version
+          in: query
+          description: >-
+            GEDCOM version to preview. When omitted, defaults to 5.5 and is
+            automatically upgraded to 7.0 if the data uses 7.0-only features.
+          schema:
+            type: string
+            enum: ['5.5', '5.5.1', '7.0']
+      responses:
+        '200':
+          description: Conversion preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /history:
     get:
       operationId: listHistory
@@ -3675,6 +3703,45 @@ components:
         details:
           type: object
           additionalProperties: true
+
+    DataLossItem:
+      type: object
+      required: [feature, reason]
+      properties:
+        feature:
+          type: string
+          description: Name of the feature that cannot be represented in the target version.
+          example: EXID tags
+        reason:
+          type: string
+          description: Why the feature would be lost.
+          example: Tag not supported in GEDCOM 5.5.1
+        affectedRecords:
+          type: array
+          items:
+            type: string
+          description: XREFs of the records affected by this loss.
+
+    ExportPreview:
+      type: object
+      required: [sourceVersion, targetVersion, hasDataLoss, dataLoss]
+      properties:
+        sourceVersion:
+          type: string
+          description: The GEDCOM version the data naturally requires before any downgrade.
+          example: '7.0'
+        targetVersion:
+          type: string
+          description: The GEDCOM version that would be emitted.
+          example: 5.5.1
+        hasDataLoss:
+          type: boolean
+          description: True when downgrading to targetVersion drops one or more features.
+        dataLoss:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataLossItem'
+          description: Features that cannot be represented in the target version.
 
     ExportEstimate:
       type: object

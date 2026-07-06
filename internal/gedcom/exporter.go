@@ -1,12 +1,15 @@
 package gedcom
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 
+	"github.com/cacack/gedcom-go/v2/converter"
+	"github.com/cacack/gedcom-go/v2/decoder"
 	"github.com/cacack/gedcom-go/v2/encoder"
 	"github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
@@ -15,10 +18,29 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// DataLossDetail describes one feature that could not be represented when a
+// GEDCOM export was downgraded to an older version (e.g. 7.0 data emitted as
+// 5.5.1). It mirrors gedcom.DataLossItem in a JSON-friendly shape.
+type DataLossDetail struct {
+	// Feature is the name of the lost feature (e.g. "EXID external IDs").
+	Feature string `json:"feature"`
+	// Reason explains why it was lost (e.g. "Not supported in GEDCOM 5.5.1").
+	Reason string `json:"reason"`
+	// AffectedRecords lists the XREFs of records that were affected.
+	AffectedRecords []string `json:"affectedRecords,omitempty"`
+}
+
 // ExportResult contains the results of a GEDCOM export operation.
 type ExportResult struct {
 	// Version is the GEDCOM version that was actually emitted.
-	Version               gedcom.Version
+	Version gedcom.Version
+	// SourceVersion is the version the data naturally requires before any
+	// downgrade conversion. It equals Version unless a downgrade occurred, in
+	// which case it is the higher source version (e.g. 7.0 → 5.5.1).
+	SourceVersion gedcom.Version
+	// DataLoss lists features dropped when a downgrade conversion could not
+	// represent them in the target version. Empty when nothing was lost.
+	DataLoss              []DataLossDetail
 	BytesWritten          int64
 	PersonsExported       int
 	FamiliesExported      int
@@ -405,6 +427,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		}
 	}
 	result.Version = targetVersion
+	result.SourceVersion = targetVersion
 
 	// Report encoding phase
 	if err := reportProgress("encoding", 0, 1, 99.0); err != nil {
@@ -414,11 +437,29 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Use a counting writer to track bytes written
 	cw := &countingWriter{w: w}
 
-	// Encode using gedcom-go encoder with LF line endings. TargetVersion selects
-	// the emitted version without mutating doc.Header.Version (issue #189).
-	encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}
-	if err := encoder.EncodeWithOptions(cw, doc, encOpts); err != nil {
-		return result, fmt.Errorf("failed to write GEDCOM: %w", err)
+	if doc.RequiresGEDCOM7() && targetVersion != gedcom.Version70 {
+		// Downgrade path (issue #189, Option B): the caller forced a version that
+		// cannot represent the document's 7.0-only structures. Transform the
+		// document via the converter so the emitted file is internally consistent
+		// and report exactly what is dropped — rather than emitting a document
+		// mislabeled as 5.5.x that still contains 7.0 structures.
+		//
+		// The converter operates on parsed tags, which the exporter's
+		// entity-based document does not carry, so materialize it first by
+		// encoding at 7.0 (lossless) and re-parsing.
+		report, err := exp.encodeDowngraded(cw, doc, targetVersion)
+		if err != nil {
+			return result, err
+		}
+		result.SourceVersion = report.SourceVersion
+		result.DataLoss = toDataLossDetails(report)
+	} else {
+		// Encode using gedcom-go encoder with LF line endings. TargetVersion
+		// selects the emitted version without mutating doc.Header.Version.
+		encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}
+		if err := encoder.EncodeWithOptions(cw, doc, encOpts); err != nil {
+			return result, fmt.Errorf("failed to write GEDCOM: %w", err)
+		}
 	}
 
 	result.BytesWritten = cw.count
@@ -429,6 +470,57 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	}
 
 	return result, nil
+}
+
+// encodeDowngraded emits doc to w at targetVersion (an older version than the
+// document's 7.0 content requires) and returns the conversion report describing
+// what was transformed or dropped. Because the gedcom-go converter works on
+// parsed tags rather than the exporter's typed entities, the document is first
+// encoded at 7.0 (lossless) and re-parsed, then converted to targetVersion, then
+// encoded to w.
+func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetVersion gedcom.Version) (*gedcom.ConversionReport, error) {
+	var full bytes.Buffer
+	if err := encoder.EncodeWithOptions(&full, doc, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: gedcom.Version70}); err != nil {
+		return nil, fmt.Errorf("failed to encode document for conversion: %w", err)
+	}
+	parsed, err := decoder.Decode(bytes.NewReader(full.Bytes()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-parse document for conversion: %w", err)
+	}
+	converted, report, err := converter.ConvertWithOptions(parsed, targetVersion, converter.DefaultOptions())
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert export to %s: %w", targetVersion, err)
+	}
+	if err := encoder.EncodeWithOptions(w, converted, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}); err != nil {
+		return nil, fmt.Errorf("failed to write GEDCOM: %w", err)
+	}
+	return report, nil
+}
+
+// PreviewConversion reports what a GEDCOM export at targetVersion would change,
+// without writing any output. It builds the same document the exporter would
+// emit and runs the downgrade conversion, so callers can warn about data loss
+// before initiating a download. The returned ExportResult carries SourceVersion
+// and DataLoss; byte/entity counts are incidental.
+func (exp *Exporter) PreviewConversion(ctx context.Context, targetVersion gedcom.Version) (*ExportResult, error) {
+	return exp.ExportWithOptions(ctx, io.Discard, ExportOptions{TargetVersion: targetVersion})
+}
+
+// toDataLossDetails distills a conversion report's feature-level data loss into
+// the JSON-friendly ExportResult representation.
+func toDataLossDetails(report *gedcom.ConversionReport) []DataLossDetail {
+	if report == nil || len(report.DataLoss) == 0 {
+		return nil
+	}
+	details := make([]DataLossDetail, 0, len(report.DataLoss))
+	for _, item := range report.DataLoss {
+		details = append(details, DataLossDetail{
+			Feature:         item.Feature,
+			Reason:          item.Reason,
+			AffectedRecords: item.AffectedRecords,
+		})
+	}
+	return details
 }
 
 // countingWriter wraps an io.Writer and counts bytes written.
