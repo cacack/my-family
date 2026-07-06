@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	gcgedcom "github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -1428,11 +1429,24 @@ func (ss *StrictServer) RollbackFamily(ctx context.Context, request RollbackFami
 // ============================================================================
 
 // ExportGedcom implements StrictServerInterface.
-func (ss *StrictServer) ExportGedcom(ctx context.Context, _ ExportGedcomRequestObject) (ExportGedcomResponseObject, error) {
+func (ss *StrictServer) ExportGedcom(ctx context.Context, request ExportGedcomRequestObject) (ExportGedcomResponseObject, error) {
+	// Resolve the optional target version. When omitted, the exporter defaults
+	// to 5.5 and auto-upgrades to 7.0 if the data requires it.
+	var targetVersion gcgedcom.Version
+	if request.Params.Version != nil {
+		targetVersion = gcgedcom.Version(*request.Params.Version)
+		if !targetVersion.IsValid() {
+			return ExportGedcom400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_version",
+				Message: "Invalid version: must be one of '5.5', '5.5.1', or '7.0'",
+			}}, nil
+		}
+	}
+
 	gedcomExporter := gedcom.NewExporter(ss.server.readStore)
 
 	var sb strings.Builder
-	_, err := gedcomExporter.Export(ctx, &sb)
+	_, err := gedcomExporter.ExportWithOptions(ctx, &sb, gedcom.ExportOptions{TargetVersion: targetVersion})
 	if err != nil {
 		return nil, err
 	}

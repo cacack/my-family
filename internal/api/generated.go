@@ -1075,6 +1075,27 @@ func (e ListEvidenceConflictsParamsStatus) Valid() bool {
 	}
 }
 
+// Defines values for ExportGedcomParamsVersion.
+const (
+	N55  ExportGedcomParamsVersion = "5.5"
+	N551 ExportGedcomParamsVersion = "5.5.1"
+	N70  ExportGedcomParamsVersion = "7.0"
+)
+
+// Valid indicates whether the value is a known member of the ExportGedcomParamsVersion enum.
+func (e ExportGedcomParamsVersion) Valid() bool {
+	switch e {
+	case N55:
+		return true
+	case N551:
+		return true
+	case N70:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListHistoryParamsEntityType.
 const (
 	ListHistoryParamsEntityTypeCitation ListHistoryParamsEntityType = "citation"
@@ -4047,6 +4068,15 @@ type GetFamilyRestorePointsParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ExportGedcomParams defines parameters for ExportGedcom.
+type ExportGedcomParams struct {
+	// Version GEDCOM version to emit. When omitted, defaults to 5.5 and is automatically upgraded to 7.0 if the data uses 7.0-only features.
+	Version *ExportGedcomParamsVersion `form:"version,omitempty" json:"version,omitempty"`
+}
+
+// ExportGedcomParamsVersion defines parameters for ExportGedcom.
+type ExportGedcomParamsVersion string
+
 // ImportGedcomMultipartBody defines parameters for ImportGedcom.
 type ImportGedcomMultipartBody struct {
 	// File GEDCOM file to import
@@ -4670,7 +4700,7 @@ type ServerInterface interface {
 	RollbackFamily(ctx echo.Context, id FamilyId) error
 	// Export all data as GEDCOM
 	// (GET /gedcom/export)
-	ExportGedcom(ctx echo.Context) error
+	ExportGedcom(ctx echo.Context, params ExportGedcomParams) error
 	// Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx echo.Context) error
@@ -5978,8 +6008,17 @@ func (w *ServerInterfaceWrapper) RollbackFamily(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ExportGedcom(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportGedcomParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ExportGedcom(ctx)
+	err = w.Handler.ExportGedcom(ctx, params)
 	return err
 }
 
@@ -10051,6 +10090,7 @@ func (response RollbackFamily409JSONResponse) VisitRollbackFamilyResponse(w http
 }
 
 type ExportGedcomRequestObject struct {
+	Params ExportGedcomParams
 }
 
 type ExportGedcomResponseObject interface {
@@ -10082,6 +10122,20 @@ func (response ExportGedcom200ApplicationxGedcomResponse) VisitExportGedcomRespo
 		defer closer.Close()
 	}
 	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportGedcom400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExportGedcom400JSONResponse) VisitExportGedcomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
 	return err
 }
 
@@ -15686,8 +15740,10 @@ func (sh *strictHandler) RollbackFamily(ctx echo.Context, id FamilyId) error {
 }
 
 // ExportGedcom operation middleware
-func (sh *strictHandler) ExportGedcom(ctx echo.Context) error {
+func (sh *strictHandler) ExportGedcom(ctx echo.Context, params ExportGedcomParams) error {
 	var request ExportGedcomRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ExportGedcom(ctx.Request().Context(), request.(ExportGedcomRequestObject))

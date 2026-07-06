@@ -755,6 +755,15 @@ paths:
       operationId: exportGedcom
       summary: Export all data as GEDCOM
       tags: [gedcom]
+      parameters:
+        - name: version
+          in: query
+          description: >-
+            GEDCOM version to emit. When omitted, defaults to 5.5 and is
+            automatically upgraded to 7.0 if the data uses 7.0-only features.
+          schema:
+            type: string
+            enum: ['5.5', '5.5.1', '7.0']
       responses:
         '200':
           description: GEDCOM file
@@ -767,6 +776,8 @@ paths:
               schema:
                 type: string
                 example: attachment; filename="export.ged"
+        '400':
+          $ref: '#/components/responses/BadRequest'
 
   /history:
     get:

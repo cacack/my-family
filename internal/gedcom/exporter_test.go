@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	gcgedcom "github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -2870,5 +2871,79 @@ func TestExport_RepositoryRoundTrip(t *testing.T) {
 	// Source without a repository (@S2@) survives without a spurious REPO link.
 	if !strings.Contains(output, "1 TITL Family Bible\n") {
 		t.Errorf("Round-trip should preserve unlinked source; got:\n%s", output)
+	}
+}
+
+// TestExport_TargetVersion verifies that ExportOptions.TargetVersion selects the
+// emitted GEDCOM version and that an explicit choice always wins over the
+// auto-upgrade rule (issue #189).
+func TestExport_TargetVersion(t *testing.T) {
+	tests := []struct {
+		name        string
+		target      gcgedcom.Version
+		wantVersion gcgedcom.Version
+	}{
+		{name: "explicit 5.5", target: gcgedcom.Version55, wantVersion: gcgedcom.Version55},
+		{name: "explicit 5.5.1", target: gcgedcom.Version551, wantVersion: gcgedcom.Version551},
+		{name: "explicit 7.0", target: gcgedcom.Version70, wantVersion: gcgedcom.Version70},
+		{name: "default auto-selects 5.5", target: "", wantVersion: gcgedcom.Version55},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readStore := memory.NewReadModelStore()
+			setupExportTestData(t, readStore)
+
+			exporter := gedcom.NewExporter(readStore)
+			buf := &bytes.Buffer{}
+			result, err := exporter.ExportWithOptions(context.Background(), buf, gedcom.ExportOptions{TargetVersion: tt.target})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if result.Version != tt.wantVersion {
+				t.Errorf("result.Version = %q, want %q", result.Version, tt.wantVersion)
+			}
+			wantTag := "2 VERS " + tt.wantVersion.String() + "\n"
+			if !strings.Contains(buf.String(), wantTag) {
+				t.Errorf("output should contain %q; got:\n%s", wantTag, buf.String())
+			}
+		})
+	}
+}
+
+// TestExport_TargetVersionOverridesAutoUpgrade verifies that an explicit older
+// target version wins even when the data contains 7.0-only structures, i.e. the
+// caller can force a downgrade (data-loss reporting is deferred to a later phase).
+func TestExport_TargetVersionOverridesAutoUpgrade(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	associateID := uuid.New()
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID: personID, GivenName: "Alice", Surname: "Smith", FullName: "Alice Smith", Gender: domain.GenderFemale,
+	})
+	readStore.SavePerson(ctx, &repository.PersonReadModel{
+		ID: associateID, GivenName: "Bob", Surname: "Jones", FullName: "Bob Jones", Gender: domain.GenderMale,
+	})
+	// A PHRASE is a 7.0-only structure that would normally auto-upgrade to 7.0.
+	readStore.SaveAssociation(ctx, &repository.AssociationReadModel{
+		ID: uuid.New(), PersonID: personID, AssociateID: associateID,
+		Role: domain.RoleGodparent, Phrase: "Lifelong family friend", Version: 1,
+	})
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: gcgedcom.Version55})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.Version != gcgedcom.Version55 {
+		t.Errorf("explicit 5.5 should win over auto-upgrade; result.Version = %q", result.Version)
+	}
+	if !strings.Contains(buf.String(), "2 VERS 5.5\n") {
+		t.Errorf("output should emit 5.5 despite 7.0-only data; got:\n%s", buf.String())
 	}
 }
