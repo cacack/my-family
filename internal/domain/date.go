@@ -19,12 +19,13 @@ const (
 	DateAft   DateQualifier = "aft"   // After (AFT)
 	DateBet   DateQualifier = "bet"   // Between (BET ... AND ...)
 	DateFrom  DateQualifier = "from"  // From/to range (FROM ... TO ...)
+	DateInt   DateQualifier = "int"   // Interpreted (INT <date> (<original phrase>))
 )
 
 // IsValid checks if the date qualifier is valid.
 func (d DateQualifier) IsValid() bool {
 	switch d {
-	case DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom:
+	case DateExact, DateAbout, DateCalc, DateEst, DateBef, DateAft, DateBet, DateFrom, DateInt:
 		return true
 	default:
 		return false
@@ -42,6 +43,11 @@ type GenDate struct {
 	Month2    *int          `json:"month2,omitempty"`   // End month for ranges
 	Day2      *int          `json:"day2,omitempty"`     // End day for ranges
 	Calendar  string        `json:"calendar,omitempty"` // DGREGORIAN (default), DJULIAN, etc.
+
+	// InterpretedFrom holds the original ambiguous phrase for interpreted (INT)
+	// dates, e.g. "about eighteen fifty" from "INT 1850 (about eighteen fifty)".
+	// Preserved for research transparency so others can evaluate the interpretation.
+	InterpretedFrom string `json:"interpreted_from,omitempty"`
 }
 
 // Calendar identifiers stored in GenDate.Calendar. These match the token inside
@@ -176,6 +182,12 @@ func ParseGenDate(s string) GenDate {
 		work = rest
 	}
 
+	// Handle interpreted dates (INT <date> (<original phrase>)) before the other
+	// qualifiers, since the parenthetical phrase must keep its original casing.
+	if strings.HasPrefix(work, "INT ") {
+		return parseInterpretedGenDate(s, gd)
+	}
+
 	// Check for qualifiers using table-driven lookup
 	for _, qp := range qualifierPrefixes {
 		if strings.HasPrefix(work, qp.prefix) {
@@ -203,6 +215,29 @@ func ParseGenDate(s string) GenDate {
 
 	// Parse simple date
 	parseSimpleDate(work, gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
+	return gd
+}
+
+// parseInterpretedGenDate parses an interpreted date of the form
+// "INT <date> (<original phrase>)". The date portion is parsed normally and the
+// parenthetical phrase is preserved (with its original casing) in InterpretedFrom.
+// The "INT " prefix has already been detected by the caller; s is the original
+// (case-preserving) input and gd carries Raw/Calendar defaults.
+func parseInterpretedGenDate(s string, gd GenDate) GenDate {
+	gd.Qualifier = DateInt
+
+	rest := strings.TrimSpace(s[len("INT "):])
+	datePart := rest
+	if start := strings.Index(rest, "("); start != -1 {
+		datePart = strings.TrimSpace(rest[:start])
+		phrase := rest[start+1:]
+		if end := strings.LastIndex(phrase, ")"); end != -1 {
+			phrase = phrase[:end]
+		}
+		gd.InterpretedFrom = phrase
+	}
+
+	parseSimpleDate(strings.ToUpper(datePart), gd.Calendar, &gd.Year, &gd.Month, &gd.Day)
 	return gd
 }
 
@@ -293,6 +328,12 @@ func (g *GenDate) Format() string {
 		return fmt.Sprintf("BET %s AND %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), formatSimpleDate(g.Calendar, g.Year2, g.Month2, g.Day2))
 	case DateFrom:
 		return fmt.Sprintf("FROM %s TO %s", g.calendarEscape()+formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day), formatSimpleDate(g.Calendar, g.Year2, g.Month2, g.Day2))
+	case DateInt:
+		datePart := g.calendarEscape() + formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day)
+		if g.InterpretedFrom != "" {
+			return fmt.Sprintf("INT %s (%s)", datePart, g.InterpretedFrom)
+		}
+		return "INT " + datePart
 	}
 
 	return qualPrefix + g.calendarEscape() + formatSimpleDate(g.Calendar, g.Year, g.Month, g.Day)

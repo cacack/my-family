@@ -57,7 +57,7 @@ export type ResearchStatus = 'certain' | 'probable' | 'possible' | 'unknown';
 
 export interface GenDate {
 	raw?: string;
-	qualifier?: 'exact' | 'abt' | 'cal' | 'est' | 'bef' | 'aft' | 'bet' | 'from';
+	qualifier?: 'exact' | 'abt' | 'cal' | 'est' | 'bef' | 'aft' | 'bet' | 'from' | 'int';
 	/**
 	 * Calendar system as a GEDCOM escape token (DGREGORIAN, DJULIAN, DHEBREW,
 	 * "DFRENCH R"). Absent or DGREGORIAN means the Gregorian calendar.
@@ -69,6 +69,8 @@ export interface GenDate {
 	year2?: number;
 	month2?: number;
 	day2?: number;
+	/** Original ambiguous phrase for interpreted (INT) dates, e.g. "about eighteen fifty" */
+	interpreted_from?: string;
 }
 
 export interface Person {
@@ -2092,6 +2094,10 @@ export function formatGenDate(date?: GenDate): string {
 			parts.push(months[date.month2 - 1]);
 		}
 		parts.push(date.year2.toString());
+	}
+
+	if (date.qualifier === 'int' && date.interpreted_from) {
+		parts.push(`(${date.interpreted_from})`);
 	}
 
 	return parts.join(' ') + suffix;

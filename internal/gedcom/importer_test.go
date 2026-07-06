@@ -134,6 +134,34 @@ func TestImportApproximateDates(t *testing.T) {
 	}
 }
 
+func TestImportInterpretedDate(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5.1
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Test /Person/
+1 BIRT
+2 DATE INT 1850 (about eighteen fifty)
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+	// The raw INT date string is preserved verbatim for round-trip fidelity.
+	if persons[0].BirthDate != "INT 1850 (about eighteen fifty)" {
+		t.Errorf("BirthDate = %q, want 'INT 1850 (about eighteen fifty)'", persons[0].BirthDate)
+	}
+}
+
 func TestImportMissingNames(t *testing.T) {
 	gedcomData := `0 HEAD
 1 GEDC
