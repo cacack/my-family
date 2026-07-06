@@ -113,6 +113,12 @@ func (m *mockReadModelStore) GetPersonNames(ctx context.Context, personID uuid.U
 func (m *mockReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
 	return nil
 }
+func (m *mockReadModelStore) ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
+	return nil, nil
+}
 
 func (m *mockReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	return nil, 0, nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // ImportGedcomInput contains the data for importing a GEDCOM file.
@@ -288,6 +289,23 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 			if err := h.readStore.SavePerson(ctx, readModel); err != nil {
 				return fmt.Errorf("failed to save person coordinates: %w", err)
 			}
+		}
+	}
+
+	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
+	// coordinates, these are GEDCOM metadata that live outside the event schema.
+	if len(p.ExternalIDs) > 0 {
+		ids := make([]repository.PersonExternalIDReadModel, len(p.ExternalIDs))
+		for i, ext := range p.ExternalIDs {
+			ids[i] = repository.PersonExternalIDReadModel{
+				PersonID: person.ID,
+				Sequence: i,
+				Value:    ext.Value,
+				Type:     ext.Type,
+			}
+		}
+		if err := h.readStore.ReplacePersonExternalIDs(ctx, person.ID, ids); err != nil {
+			return fmt.Errorf("failed to save person external identifiers: %w", err)
 		}
 	}
 

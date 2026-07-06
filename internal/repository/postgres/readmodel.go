@@ -241,6 +241,17 @@ func (s *ReadModelStore) createTables() error {
 		CREATE TRIGGER person_names_search_update BEFORE INSERT OR UPDATE ON person_names
 			FOR EACH ROW EXECUTE FUNCTION person_names_search_trigger();
 
+		-- Person external identifiers (GEDCOM 7.0 EXID)
+		CREATE TABLE IF NOT EXISTS person_external_ids (
+			person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (person_id, sequence)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_person_external_ids_person ON person_external_ids(person_id);
+
 		-- Notes table (shared GEDCOM NOTE records)
 		CREATE TABLE IF NOT EXISTS notes (
 			id UUID PRIMARY KEY,
@@ -916,6 +927,64 @@ func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID)
 func (s *ReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM person_names WHERE id = $1", nameID)
 	return err
+}
+
+// ReplacePersonExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
+// for a person within a single transaction.
+func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM person_external_ids WHERE person_id = $1", personID); err != nil {
+		return fmt.Errorf("delete person external ids: %w", err)
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO person_external_ids (person_id, sequence, value, type)
+			VALUES ($1, $2, $3, $4)
+		`, personID, i, id.Value, id.Type); err != nil {
+			return fmt.Errorf("insert person external id: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// GetPersonExternalIDs retrieves all external identifiers for a person, ordered
+// by their original sequence.
+func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sequence, value, type FROM person_external_ids
+		WHERE person_id = $1 ORDER BY sequence
+	`, personID)
+	if err != nil {
+		return nil, fmt.Errorf("query person external ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []repository.PersonExternalIDReadModel
+	for rows.Next() {
+		var (
+			seq   int
+			value string
+			typ   string
+		)
+		if err := rows.Scan(&seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan person external id: %w", err)
+		}
+		result = append(result, repository.PersonExternalIDReadModel{
+			PersonID: personID,
+			Sequence: seq,
+			Value:    value,
+			Type:     typ,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate person external ids: %w", err)
+	}
+	return result, nil
 }
 
 // scanPersonName scans a single person name row.

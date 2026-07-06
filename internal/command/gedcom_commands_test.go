@@ -2046,3 +2046,56 @@ func TestImportGedcom_PersonVersionMatchesStreamVersion(t *testing.T) {
 			person.Version, streamVersion)
 	}
 }
+
+// TestImportGedcom_ExternalIDs verifies GEDCOM 7.0 EXID external identifiers are
+// captured on import and persisted to the read model for the imported person.
+func TestImportGedcom_ExternalIDs(t *testing.T) {
+	const data = `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 EXID KWCJ-QN7
+2 TYPE http://www.familysearch.org/ark
+1 EXID 12345
+2 TYPE https://www.findagrave.com/
+0 TRLR
+`
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	input := command.ImportGedcomInput{
+		Filename: "exid.ged",
+		FileSize: int64(len(data)),
+		Reader:   strings.NewReader(data),
+	}
+	if _, err := handler.ImportGedcom(ctx, input); err != nil {
+		t.Fatalf("ImportGedcom failed: %v", err)
+	}
+
+	persons, _, err := readStore.ListPersons(ctx, repository.DefaultListOptions())
+	if err != nil {
+		t.Fatalf("ListPersons failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("expected 1 person, got %d", len(persons))
+	}
+
+	ids, err := readStore.GetPersonExternalIDs(ctx, persons[0].ID)
+	if err != nil {
+		t.Fatalf("GetPersonExternalIDs failed: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 persisted external ids, got %d", len(ids))
+	}
+	if ids[0].Value != "KWCJ-QN7" || ids[0].Type != "http://www.familysearch.org/ark" {
+		t.Errorf("unexpected first external id: %+v", ids[0])
+	}
+	if ids[1].Value != "12345" || ids[1].Type != "https://www.findagrave.com/" {
+		t.Errorf("unexpected second external id: %+v", ids[1])
+	}
+}

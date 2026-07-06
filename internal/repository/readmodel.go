@@ -324,6 +324,10 @@ type ReadModelStore interface {
 	GetPersonNames(ctx context.Context, personID uuid.UUID) ([]PersonNameReadModel, error)
 	DeletePersonName(ctx context.Context, nameID uuid.UUID) error
 
+	// Person external identifier operations (GEDCOM 7.0 EXID)
+	ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []PersonExternalIDReadModel) error
+	GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]PersonExternalIDReadModel, error)
+
 	// Family operations
 	GetFamily(ctx context.Context, id uuid.UUID) (*FamilyReadModel, error)
 	ListFamilies(ctx context.Context, opts ListOptions) ([]FamilyReadModel, int, error)
@@ -523,6 +527,20 @@ type PersonNameReadModel struct {
 	NameType      domain.NameType `json:"name_type"`
 	IsPrimary     bool            `json:"is_primary"`
 	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+// PersonExternalIDReadModel represents a single GEDCOM 7.0 external identifier
+// (EXID) attached to a person. External identifiers link a person to a record in
+// an external system (FamilySearch, Find a Grave, etc.). They are GEDCOM metadata
+// captured on import and re-emitted on export, so — like place coordinates — they
+// live only in the read model and are not part of the event schema.
+type PersonExternalIDReadModel struct {
+	PersonID uuid.UUID `json:"person_id"`
+	// Sequence preserves the order in which identifiers appeared in the source
+	// file so export round-trips deterministically.
+	Sequence int    `json:"sequence"`
+	Value    string `json:"value"`
+	Type     string `json:"type,omitempty"`
 }
 
 // ListOptions contains options for list queries.
