@@ -6,3 +6,4 @@ export { default as ExportButton } from './ExportButton.svelte';
 export { default as ExportEstimate } from './ExportEstimate.svelte';
 export { default as ExportProgress } from './ExportProgress.svelte';
 export { default as ExportConfirmDialog } from './ExportConfirmDialog.svelte';
+export { default as ExportVersionSelect } from './ExportVersionSelect.svelte';

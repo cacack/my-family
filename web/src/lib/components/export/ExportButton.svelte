@@ -5,6 +5,7 @@
 	import ExportEstimateDisplay from './ExportEstimate.svelte';
 	import ExportProgressBar from './ExportProgress.svelte';
 	import ExportConfirmDialog from './ExportConfirmDialog.svelte';
+	import ExportVersionSelect from './ExportVersionSelect.svelte';
 
 	interface Props {
 		/** Label for the export button */
@@ -34,6 +35,9 @@
 	}: Props = $props();
 
 	let estimate: ExportEstimate | null = $state(null);
+	// Selected GEDCOM version: 'auto' lets the server pick (5.5, upgraded to 7.0
+	// when the data needs it); an explicit version may force a lossy downgrade.
+	let selectedVersion = $state('auto');
 	let exporting = $state(false);
 	let showConfirmDialog = $state(false);
 	let progress: ExportProgress | null = $state(null);
@@ -86,7 +90,9 @@
 		}
 
 		try {
-			const gedcom = await api.exportGedcom();
+			const gedcom = await api.exportGedcom(
+				selectedVersion === 'auto' ? undefined : selectedVersion
+			);
 
 			// Complete the progress
 			if (shouldShowProgress) {
@@ -172,6 +178,10 @@
 <div class="export-button-container">
 	{#if showEstimate && !exporting}
 		<ExportEstimateDisplay onEstimateLoaded={handleEstimateLoaded} />
+	{/if}
+
+	{#if !exporting}
+		<ExportVersionSelect bind:value={selectedVersion} disabled={exporting} />
 	{/if}
 
 	{#if exporting && progress}

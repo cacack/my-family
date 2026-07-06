@@ -354,6 +354,10 @@ export interface ExportProgress {
 	percentage: number;
 }
 
+// GEDCOM export conversion preview (data-loss report) - generated types
+export type ExportPreview = components['schemas']['ExportPreview'];
+export type DataLossItem = components['schemas']['DataLossItem'];
+
 export interface ApiError {
 	code: string;
 	message: string;
@@ -1150,8 +1154,9 @@ class ApiClient {
 		return result;
 	}
 
-	async exportGedcom(): Promise<string> {
-		const response = await fetch(`${API_BASE}/gedcom/export`);
+	async exportGedcom(version?: string): Promise<string> {
+		const query = version ? `?version=${encodeURIComponent(version)}` : '';
+		const response = await fetch(`${API_BASE}/gedcom/export${query}`);
 
 		if (!response.ok) {
 			const error: ApiError = await response.json().catch(() => ({
@@ -1163,6 +1168,27 @@ class ApiClient {
 		}
 
 		return response.text();
+	}
+
+	/**
+	 * Preview a GEDCOM export at the given version, reporting any data loss,
+	 * without producing a file. Backed by a full server-side export build, so
+	 * call it on demand (e.g. when the version selection changes), not reactively.
+	 */
+	async previewGedcomExport(version?: string): Promise<ExportPreview> {
+		const query = version ? `?version=${encodeURIComponent(version)}` : '';
+		const response = await fetch(`${API_BASE}/gedcom/export/preview${query}`);
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'UNKNOWN_ERROR',
+				message: response.statusText
+			}));
+			error.status = response.status;
+			throw error;
+		}
+
+		return response.json();
 	}
 
 	async exportTree(): Promise<string> {
