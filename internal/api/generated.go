@@ -1080,19 +1080,40 @@ func (e ListEvidenceConflictsParamsStatus) Valid() bool {
 
 // Defines values for ExportGedcomParamsVersion.
 const (
-	N55  ExportGedcomParamsVersion = "5.5"
-	N551 ExportGedcomParamsVersion = "5.5.1"
-	N70  ExportGedcomParamsVersion = "7.0"
+	ExportGedcomParamsVersionN55  ExportGedcomParamsVersion = "5.5"
+	ExportGedcomParamsVersionN551 ExportGedcomParamsVersion = "5.5.1"
+	ExportGedcomParamsVersionN70  ExportGedcomParamsVersion = "7.0"
 )
 
 // Valid indicates whether the value is a known member of the ExportGedcomParamsVersion enum.
 func (e ExportGedcomParamsVersion) Valid() bool {
 	switch e {
-	case N55:
+	case ExportGedcomParamsVersionN55:
 		return true
-	case N551:
+	case ExportGedcomParamsVersionN551:
 		return true
-	case N70:
+	case ExportGedcomParamsVersionN70:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PreviewGedcomExportParamsVersion.
+const (
+	PreviewGedcomExportParamsVersionN55  PreviewGedcomExportParamsVersion = "5.5"
+	PreviewGedcomExportParamsVersionN551 PreviewGedcomExportParamsVersion = "5.5.1"
+	PreviewGedcomExportParamsVersionN70  PreviewGedcomExportParamsVersion = "7.0"
+)
+
+// Valid indicates whether the value is a known member of the PreviewGedcomExportParamsVersion enum.
+func (e PreviewGedcomExportParamsVersion) Valid() bool {
+	switch e {
+	case PreviewGedcomExportParamsVersionN55:
+		return true
+	case PreviewGedcomExportParamsVersionN551:
+		return true
+	case PreviewGedcomExportParamsVersionN70:
 		return true
 	default:
 		return false
@@ -2028,6 +2049,18 @@ type CitationValidationIssue struct {
 // CitationValidationIssueLevel defines model for CitationValidationIssue.Level.
 type CitationValidationIssueLevel string
 
+// DataLossItem defines model for DataLossItem.
+type DataLossItem struct {
+	// AffectedRecords Ephemeral GEDCOM XREFs (e.g. "@I1@") of the records affected by this loss, assigned during export from record order. They are for display and debugging only and do NOT resolve back to entity IDs in this API.
+	AffectedRecords *[]string `json:"affectedRecords,omitempty"`
+
+	// Feature Name of the feature that cannot be represented in the target version.
+	Feature string `json:"feature"`
+
+	// Reason Why the feature would be lost.
+	Reason string `json:"reason"`
+}
+
 // DateRange defines model for DateRange.
 type DateRange struct {
 	// EarliestBirth Earliest birth year in the tree
@@ -2309,6 +2342,21 @@ type ExportEstimate struct {
 
 	// TotalRecords Total number of top-level records
 	TotalRecords int `json:"total_records"`
+}
+
+// ExportPreview defines model for ExportPreview.
+type ExportPreview struct {
+	// DataLoss Features that cannot be represented in the target version.
+	DataLoss []DataLossItem `json:"dataLoss"`
+
+	// HasDataLoss True when downgrading to targetVersion drops one or more features.
+	HasDataLoss bool `json:"hasDataLoss"`
+
+	// SourceVersion The GEDCOM version the data naturally requires before any downgrade.
+	SourceVersion string `json:"sourceVersion"`
+
+	// TargetVersion The GEDCOM version that would be emitted.
+	TargetVersion string `json:"targetVersion"`
 }
 
 // Family defines model for Family.
@@ -4104,6 +4152,15 @@ type ExportGedcomParams struct {
 // ExportGedcomParamsVersion defines parameters for ExportGedcom.
 type ExportGedcomParamsVersion string
 
+// PreviewGedcomExportParams defines parameters for PreviewGedcomExport.
+type PreviewGedcomExportParams struct {
+	// Version GEDCOM version to preview. When omitted, defaults to 5.5 and is automatically upgraded to 7.0 if the data uses 7.0-only features.
+	Version *PreviewGedcomExportParamsVersion `form:"version,omitempty" json:"version,omitempty"`
+}
+
+// PreviewGedcomExportParamsVersion defines parameters for PreviewGedcomExport.
+type PreviewGedcomExportParamsVersion string
+
 // ImportGedcomMultipartBody defines parameters for ImportGedcom.
 type ImportGedcomMultipartBody struct {
 	// File GEDCOM file to import
@@ -4728,6 +4785,9 @@ type ServerInterface interface {
 	// Export all data as GEDCOM
 	// (GET /gedcom/export)
 	ExportGedcom(ctx echo.Context, params ExportGedcomParams) error
+	// Preview a GEDCOM export conversion and report data loss
+	// (GET /gedcom/export/preview)
+	PreviewGedcomExport(ctx echo.Context, params PreviewGedcomExportParams) error
 	// Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx echo.Context) error
@@ -6046,6 +6106,24 @@ func (w *ServerInterfaceWrapper) ExportGedcom(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ExportGedcom(ctx, params)
+	return err
+}
+
+// PreviewGedcomExport converts echo context to params.
+func (w *ServerInterfaceWrapper) PreviewGedcomExport(ctx echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PreviewGedcomExportParams
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter version: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PreviewGedcomExport(ctx, params)
 	return err
 }
 
@@ -7962,6 +8040,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/families/:id/restore-points", wrapper.GetFamilyRestorePoints, options.OperationMiddlewares["getFamilyRestorePoints"]...)
 	router.POST(options.BaseURL+"/families/:id/rollback", wrapper.RollbackFamily, options.OperationMiddlewares["rollbackFamily"]...)
 	router.GET(options.BaseURL+"/gedcom/export", wrapper.ExportGedcom, options.OperationMiddlewares["exportGedcom"]...)
+	router.GET(options.BaseURL+"/gedcom/export/preview", wrapper.PreviewGedcomExport, options.OperationMiddlewares["previewGedcomExport"]...)
 	router.POST(options.BaseURL+"/gedcom/import", wrapper.ImportGedcom, options.OperationMiddlewares["importGedcom"]...)
 	router.GET(options.BaseURL+"/history", wrapper.ListHistory, options.OperationMiddlewares["listHistory"]...)
 	router.GET(options.BaseURL+"/lds-ordinances", wrapper.ListLDSOrdinances, options.OperationMiddlewares["listLDSOrdinances"]...)
@@ -10155,6 +10234,42 @@ func (response ExportGedcom200ApplicationxGedcomResponse) VisitExportGedcomRespo
 type ExportGedcom400JSONResponse struct{ BadRequestJSONResponse }
 
 func (response ExportGedcom400JSONResponse) VisitExportGedcomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewGedcomExportRequestObject struct {
+	Params PreviewGedcomExportParams
+}
+
+type PreviewGedcomExportResponseObject interface {
+	VisitPreviewGedcomExportResponse(w http.ResponseWriter) error
+}
+
+type PreviewGedcomExport200JSONResponse ExportPreview
+
+func (response PreviewGedcomExport200JSONResponse) VisitPreviewGedcomExportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewGedcomExport400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PreviewGedcomExport400JSONResponse) VisitPreviewGedcomExportResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -14052,6 +14167,9 @@ type StrictServerInterface interface {
 	// Export all data as GEDCOM
 	// (GET /gedcom/export)
 	ExportGedcom(ctx context.Context, request ExportGedcomRequestObject) (ExportGedcomResponseObject, error)
+	// Preview a GEDCOM export conversion and report data loss
+	// (GET /gedcom/export/preview)
+	PreviewGedcomExport(ctx context.Context, request PreviewGedcomExportRequestObject) (PreviewGedcomExportResponseObject, error)
 	// Import a GEDCOM file
 	// (POST /gedcom/import)
 	ImportGedcom(ctx context.Context, request ImportGedcomRequestObject) (ImportGedcomResponseObject, error)
@@ -15785,6 +15903,31 @@ func (sh *strictHandler) ExportGedcom(ctx echo.Context, params ExportGedcomParam
 		return err
 	} else if validResponse, ok := response.(ExportGedcomResponseObject); ok {
 		return validResponse.VisitExportGedcomResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// PreviewGedcomExport operation middleware
+func (sh *strictHandler) PreviewGedcomExport(ctx echo.Context, params PreviewGedcomExportParams) error {
+	var request PreviewGedcomExportRequestObject
+
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewGedcomExport(ctx.Request().Context(), request.(PreviewGedcomExportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewGedcomExport")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PreviewGedcomExportResponseObject); ok {
+		return validResponse.VisitPreviewGedcomExportResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
