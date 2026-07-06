@@ -2051,7 +2051,7 @@ type CitationValidationIssueLevel string
 
 // DataLossItem defines model for DataLossItem.
 type DataLossItem struct {
-	// AffectedRecords XREFs of the records affected by this loss.
+	// AffectedRecords Ephemeral GEDCOM XREFs (e.g. "@I1@") of the records affected by this loss, assigned during export from record order. They are for display and debugging only and do NOT resolve back to entity IDs in this API.
 	AffectedRecords *[]string `json:"affectedRecords,omitempty"`
 
 	// Feature Name of the feature that cannot be represented in the target version.

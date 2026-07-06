@@ -3213,6 +3213,9 @@ func TestExport_DowngradeReportsDataLoss(t *testing.T) {
 	for _, d := range res.DataLoss {
 		if strings.Contains(d.Feature, "EXID") {
 			foundEXID = true
+			if len(d.AffectedRecords) == 0 {
+				t.Errorf("EXID data loss should list affected records; got %+v", d)
+			}
 		}
 	}
 	if !foundEXID {

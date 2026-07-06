@@ -687,10 +687,32 @@ func TestPreviewGedcomExport(t *testing.T) {
 	for _, d := range preview.DataLoss {
 		if strings.Contains(d.Feature, "EXID") {
 			foundEXID = true
+			// affectedRecords must carry the XREF of the affected individual.
+			if d.AffectedRecords == nil || len(*d.AffectedRecords) == 0 {
+				t.Errorf("EXID data loss should list affectedRecords; got %+v", d)
+			} else if (*d.AffectedRecords)[0] != "@I1@" {
+				t.Errorf("affectedRecords[0] = %q, want @I1@", (*d.AffectedRecords)[0])
+			}
 		}
 	}
 	if !foundEXID {
 		t.Errorf("data loss should mention EXID; got %+v", preview.DataLoss)
+	}
+
+	// Omitting the version defaults to 5.5 but auto-upgrades to 7.0 because the
+	// data requires it, so there is no downgrade and no data loss.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export/preview", http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Preview default failed: %d: %s", rec.Code, rec.Body.String())
+	}
+	var previewDefault api.ExportPreview
+	if err := json.Unmarshal(rec.Body.Bytes(), &previewDefault); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if previewDefault.TargetVersion != "7.0" || previewDefault.HasDataLoss {
+		t.Errorf("default preview: target=%q hasDataLoss=%v, want 7.0 / false", previewDefault.TargetVersion, previewDefault.HasDataLoss)
 	}
 
 	// Preview at 7.0 keeps everything; no loss.

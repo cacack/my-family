@@ -449,7 +449,7 @@ export interface paths {
         };
         /**
          * Preview a GEDCOM export conversion and report data loss
-         * @description Reports what would change if the data were exported at the given GEDCOM version, without producing a file. Use it to warn about data loss before downloading a downgraded export.
+         * @description Reports what would change if the data were exported at the given GEDCOM version, without producing a file. Use it to warn about data loss before downloading a downgraded export. This builds the full export document server-side (the same cost as a real export), so call it on demand — e.g. when the user changes the target version — rather than reactively on every keystroke.
          */
         get: operations["previewGedcomExport"];
         put?: never;
@@ -2117,7 +2117,7 @@ export interface components {
              * @example Tag not supported in GEDCOM 5.5.1
              */
             reason: string;
-            /** @description XREFs of the records affected by this loss. */
+            /** @description Ephemeral GEDCOM XREFs (e.g. "@I1@") of the records affected by this loss, assigned during export from record order. They are for display and debugging only and do NOT resolve back to entity IDs in this API. */
             affectedRecords?: string[];
         };
         ExportPreview: {

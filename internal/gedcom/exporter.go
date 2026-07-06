@@ -500,8 +500,13 @@ func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetV
 // PreviewConversion reports what a GEDCOM export at targetVersion would change,
 // without writing any output. It builds the same document the exporter would
 // emit and runs the downgrade conversion, so callers can warn about data loss
-// before initiating a download. The returned ExportResult carries SourceVersion
-// and DataLoss; byte/entity counts are incidental.
+// before initiating a download.
+//
+// This costs the same as a full export (it reads the whole read model and, for
+// downgrades, runs the encode/re-parse/convert round trip); only the output
+// bytes are discarded. Call it on demand, not reactively. The returned
+// ExportResult carries SourceVersion and DataLoss; its entity and byte counts
+// are also accurate and safe to display.
 func (exp *Exporter) PreviewConversion(ctx context.Context, targetVersion gedcom.Version) (*ExportResult, error) {
 	return exp.ExportWithOptions(ctx, io.Discard, ExportOptions{TargetVersion: targetVersion})
 }

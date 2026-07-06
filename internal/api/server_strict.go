@@ -1490,6 +1490,8 @@ func (ss *StrictServer) PreviewGedcomExport(ctx context.Context, request Preview
 		dataLoss[i] = item
 	}
 
+	// Note the deliberate rename: ExportResult.Version is the version that would
+	// actually be emitted, which is this API's TargetVersion.
 	return PreviewGedcomExport200JSONResponse{
 		SourceVersion: string(result.SourceVersion),
 		TargetVersion: string(result.Version),
