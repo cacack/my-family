@@ -4864,7 +4864,10 @@ export interface operations {
     };
     exportGedcom: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description GEDCOM version to emit. When omitted, defaults to 5.5 and is automatically upgraded to 7.0 if the data uses 7.0-only features. */
+                version?: "5.5" | "5.5.1" | "7.0";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4881,6 +4884,7 @@ export interface operations {
                     "application/x-gedcom": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     listHistory: {

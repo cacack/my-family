@@ -17,6 +17,8 @@ import (
 
 // ExportResult contains the results of a GEDCOM export operation.
 type ExportResult struct {
+	// Version is the GEDCOM version that was actually emitted.
+	Version               gedcom.Version
 	BytesWritten          int64
 	PersonsExported       int
 	FamiliesExported      int
@@ -43,6 +45,18 @@ type ExportProgress struct {
 // Return an error to cancel the export.
 type ProgressCallback func(progress ExportProgress) error
 
+// ExportOptions configures a GEDCOM export.
+type ExportOptions struct {
+	// OnProgress, if non-nil, is called periodically to report progress.
+	OnProgress ProgressCallback
+
+	// TargetVersion selects the GEDCOM version to emit. When empty, the
+	// exporter defaults to 5.5 and automatically upgrades to 7.0 if the data
+	// uses 7.0-only structures. When set, the chosen version is emitted as-is
+	// (the auto-upgrade rule is not applied, so the caller's choice wins).
+	TargetVersion gedcom.Version
+}
+
 // Exporter handles GEDCOM file generation from repository data.
 type Exporter struct {
 	readStore repository.ReadModelStore
@@ -63,6 +77,13 @@ func (exp *Exporter) Export(ctx context.Context, w io.Writer) (*ExportResult, er
 // The onProgress callback is called periodically to report export progress.
 // Pass nil for onProgress to disable progress tracking.
 func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProgress ProgressCallback) (*ExportResult, error) {
+	return exp.ExportWithOptions(ctx, w, ExportOptions{OnProgress: onProgress})
+}
+
+// ExportWithOptions generates a GEDCOM file using the supplied options.
+// It is the underlying implementation for Export and ExportWithProgress.
+func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts ExportOptions) (*ExportResult, error) {
+	onProgress := opts.OnProgress
 	result := &ExportResult{}
 
 	// Helper to report progress (no-op if onProgress is nil)
@@ -372,13 +393,20 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 		}
 	}
 
-	// Bump to GEDCOM 7.0 if the document uses any 7.0-only structures. The library's
-	// RequiresGEDCOM7 inspects the whole document — negated events (NO), EXID, SNOTE,
-	// SCHMA, TRAN, association PHRASE, media CROP, SDATE, CREA — so such documents are
-	// emitted as 7.0 instead of silently lossy 5.5.1 (issue #539).
-	if doc.RequiresGEDCOM7() {
-		doc.Header.Version = gedcom.Version70
+	// Resolve the target GEDCOM version. An explicit caller choice always wins.
+	// Otherwise default to 5.5 and upgrade to 7.0 if the document uses any
+	// 7.0-only structures. The library's RequiresGEDCOM7 inspects the whole
+	// document — negated events (NO), EXID, SNOTE, SCHMA, TRAN, association
+	// PHRASE, media CROP, SDATE, CREA — so such documents are emitted as 7.0
+	// instead of silently lossy 5.5.1 (issue #539).
+	targetVersion := opts.TargetVersion
+	if targetVersion == "" {
+		targetVersion = gedcom.Version55
+		if doc.RequiresGEDCOM7() {
+			targetVersion = gedcom.Version70
+		}
 	}
+	result.Version = targetVersion
 
 	// Report encoding phase
 	if err := reportProgress("encoding", 0, 1, 99.0); err != nil {
@@ -388,9 +416,10 @@ func (exp *Exporter) ExportWithProgress(ctx context.Context, w io.Writer, onProg
 	// Use a counting writer to track bytes written
 	cw := &countingWriter{w: w}
 
-	// Encode using gedcom-go encoder with LF line endings
-	opts := &encoder.EncodeOptions{LineEnding: "\n"}
-	if err := encoder.EncodeWithOptions(cw, doc, opts); err != nil {
+	// Encode using gedcom-go encoder with LF line endings. TargetVersion selects
+	// the emitted version without mutating doc.Header.Version (issue #189).
+	encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}
+	if err := encoder.EncodeWithOptions(cw, doc, encOpts); err != nil {
 		return result, fmt.Errorf("failed to write GEDCOM: %w", err)
 	}
 

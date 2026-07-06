@@ -595,3 +595,68 @@ func TestGetExportEstimate_WithData(t *testing.T) {
 		t.Error("IsLargeExport = true, want false for small data")
 	}
 }
+
+func TestExportGedcom_VersionParam(t *testing.T) {
+	server := setupExportTestServer(t)
+
+	// Import some data first.
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.ged")
+	io.WriteString(part, exportTestGedcom)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gedcom/import", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Import failed: %d: %s", rec.Code, rec.Body.String())
+	}
+
+	tests := []struct {
+		name    string
+		query   string
+		wantTag string
+	}{
+		{name: "explicit 5.5.1", query: "?version=5.5.1", wantTag: "2 VERS 5.5.1\n"},
+		{name: "explicit 7.0", query: "?version=7.0", wantTag: "2 VERS 7.0\n"},
+		{name: "default", query: "", wantTag: "2 VERS 5.5\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export"+tt.query, http.NoBody)
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("Export failed: %d: %s", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tt.wantTag) {
+				t.Errorf("output should contain %q; got:\n%s", tt.wantTag, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestExportGedcom_InvalidVersion(t *testing.T) {
+	server := setupExportTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/gedcom/export?version=9.9", http.NoBody)
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("Failed to decode error response: %v", err)
+	}
+	if errResp.Code != "invalid_version" {
+		t.Errorf("Code = %q, want invalid_version", errResp.Code)
+	}
+}
