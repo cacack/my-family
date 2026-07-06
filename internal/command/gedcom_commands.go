@@ -625,6 +625,8 @@ func (h *Handler) importNote(ctx context.Context, n gedcom.NoteData) error {
 	// Create note entity
 	note := domain.NewNoteWithID(n.ID, n.Text)
 	note.SetGedcomXref(n.GedcomXref)
+	// Preserve GEDCOM 7.0 shared note (SNOTE) metadata when present.
+	note.SetSharedNoteMetadata(n.MIME, n.Language, n.Translations)
 
 	// Create event
 	event := domain.NewNoteCreated(note)

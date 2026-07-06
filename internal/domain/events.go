@@ -893,9 +893,12 @@ func NewPersonMerged(
 // NoteCreated event is emitted when a new note is created.
 type NoteCreated struct {
 	BaseEvent
-	NoteID     uuid.UUID `json:"note_id"`
-	Text       string    `json:"text"`
-	GedcomXref string    `json:"gedcom_xref,omitempty"`
+	NoteID       uuid.UUID         `json:"note_id"`
+	Text         string            `json:"text"`
+	MIME         string            `json:"mime,omitempty"`         // GEDCOM 7.0 SNOTE media type
+	Language     string            `json:"language,omitempty"`     // GEDCOM 7.0 SNOTE BCP 47 language tag
+	Translations []NoteTranslation `json:"translations,omitempty"` // GEDCOM 7.0 SNOTE alternate-language renderings
+	GedcomXref   string            `json:"gedcom_xref,omitempty"`
 }
 
 func (e NoteCreated) EventType() string      { return "NoteCreated" }
@@ -904,10 +907,13 @@ func (e NoteCreated) AggregateID() uuid.UUID { return e.NoteID }
 // NewNoteCreated creates a NoteCreated event from a Note.
 func NewNoteCreated(n *Note) NoteCreated {
 	return NoteCreated{
-		BaseEvent:  NewBaseEvent(),
-		NoteID:     n.ID,
-		Text:       n.Text,
-		GedcomXref: n.GedcomXref,
+		BaseEvent:    NewBaseEvent(),
+		NoteID:       n.ID,
+		Text:         n.Text,
+		MIME:         n.MIME,
+		Language:     n.Language,
+		Translations: n.Translations,
+		GedcomXref:   n.GedcomXref,
 	}
 }
 

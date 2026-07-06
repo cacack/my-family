@@ -1573,11 +1573,14 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 
 func (p *Projector) projectNoteCreated(ctx context.Context, e domain.NoteCreated, version int64) error {
 	note := &NoteReadModel{
-		ID:         e.NoteID,
-		Text:       e.Text,
-		GedcomXref: e.GedcomXref,
-		Version:    version,
-		UpdatedAt:  e.OccurredAt(),
+		ID:           e.NoteID,
+		Text:         e.Text,
+		MIME:         e.MIME,
+		Language:     e.Language,
+		Translations: e.Translations,
+		GedcomXref:   e.GedcomXref,
+		Version:      version,
+		UpdatedAt:    e.OccurredAt(),
 	}
 
 	return p.readStore.SaveNote(ctx, note)

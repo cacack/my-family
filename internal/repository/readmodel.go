@@ -2,12 +2,40 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
 )
+
+// MarshalNoteTranslations serializes shared-note (SNOTE) translations for storage
+// in a text/JSON column. It returns an empty string when there are none, so
+// callers can persist SQL NULL for notes without translations.
+func MarshalNoteTranslations(translations []domain.NoteTranslation) string {
+	if len(translations) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(translations)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// UnmarshalNoteTranslations parses shared-note (SNOTE) translations from a
+// text/JSON column. It returns nil for empty or malformed input.
+func UnmarshalNoteTranslations(data string) []domain.NoteTranslation {
+	if data == "" {
+		return nil
+	}
+	var translations []domain.NoteTranslation
+	if err := json.Unmarshal([]byte(data), &translations); err != nil {
+		return nil
+	}
+	return translations
+}
 
 // PersonReadModel represents a person in the read model.
 type PersonReadModel struct {
@@ -182,11 +210,14 @@ type AttributeReadModel struct {
 // - Inline notes: embedded directly in an entity
 // - Shared notes: top-level NOTE records that can be referenced by multiple entities via @N1@
 type NoteReadModel struct {
-	ID         uuid.UUID `json:"id"`
-	Text       string    `json:"text"`                  // Full text with embedded newlines
-	GedcomXref string    `json:"gedcom_xref,omitempty"` // GEDCOM cross-reference ID (e.g., "@N1@")
-	Version    int64     `json:"version"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID           uuid.UUID                `json:"id"`
+	Text         string                   `json:"text"`                   // Full text with embedded newlines
+	MIME         string                   `json:"mime,omitempty"`         // GEDCOM 7.0 SNOTE media type (e.g., "text/html")
+	Language     string                   `json:"language,omitempty"`     // GEDCOM 7.0 SNOTE BCP 47 language tag (e.g., "en")
+	Translations []domain.NoteTranslation `json:"translations,omitempty"` // GEDCOM 7.0 SNOTE alternate-language renderings
+	GedcomXref   string                   `json:"gedcom_xref,omitempty"`  // GEDCOM cross-reference ID (e.g., "@N1@")
+	Version      int64                    `json:"version"`
+	UpdatedAt    time.Time                `json:"updated_at"`
 }
 
 // SubmitterReadModel represents a GEDCOM SUBM (Submitter) record in the read model.

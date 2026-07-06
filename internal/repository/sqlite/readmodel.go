@@ -227,6 +227,9 @@ func (s *ReadModelStore) createTables() error {
 		CREATE TABLE IF NOT EXISTS notes (
 			id TEXT PRIMARY KEY,
 			text TEXT NOT NULL,
+			mime TEXT,
+			language TEXT,
+			translations TEXT,
 			gedcom_xref TEXT,
 			version INTEGER NOT NULL DEFAULT 1,
 			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -451,6 +454,12 @@ func (s *ReadModelStore) runMigrations() {
 
 	// Add is_negated column for negative assertions / NO tags (issue #222)
 	_, _ = s.db.Exec(`ALTER TABLE events ADD COLUMN is_negated INTEGER NOT NULL DEFAULT 0`)
+
+	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225).
+	// SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS; rely on the _,_ = swallowing.
+	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN mime TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN language TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE notes ADD COLUMN translations TEXT`)
 
 	// Split family partner names and family-child names into given_name / surname (issue #483).
 	// SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS; rely on the existing _,_ = swallowing.
@@ -3512,18 +3521,21 @@ func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool
 // GetNote retrieves a note by ID.
 func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, text, gedcom_xref, version, updated_at
+		SELECT id, text, mime, language, translations, gedcom_xref, version, updated_at
 		FROM notes WHERE id = ?
 	`, id.String())
 
 	var note repository.NoteReadModel
 	var idStr string
-	var gedcomXref sql.NullString
+	var mime, language, translations, gedcomXref sql.NullString
 	var updatedAtStr string
 
 	err := row.Scan(
 		&idStr,
 		&note.Text,
+		&mime,
+		&language,
+		&translations,
 		&gedcomXref,
 		&note.Version,
 		&updatedAtStr,
@@ -3536,6 +3548,9 @@ func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository
 	}
 
 	note.ID, _ = uuid.Parse(idStr)
+	note.MIME = mime.String
+	note.Language = language.String
+	note.Translations = repository.UnmarshalNoteTranslations(translations.String)
 	if gedcomXref.Valid {
 		note.GedcomXref = gedcomXref.String
 	}
@@ -3564,7 +3579,7 @@ func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOpti
 
 	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
 	query := fmt.Sprintf(`
-		SELECT id, text, gedcom_xref, version, updated_at
+		SELECT id, text, mime, language, translations, gedcom_xref, version, updated_at
 		FROM notes
 		ORDER BY %s %s
 		LIMIT ? OFFSET ?
@@ -3580,12 +3595,15 @@ func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOpti
 	for rows.Next() {
 		var note repository.NoteReadModel
 		var idStr string
-		var gedcomXref sql.NullString
+		var mime, language, translations, gedcomXref sql.NullString
 		var updatedAtStr string
 
 		if err := rows.Scan(
 			&idStr,
 			&note.Text,
+			&mime,
+			&language,
+			&translations,
 			&gedcomXref,
 			&note.Version,
 			&updatedAtStr,
@@ -3594,6 +3612,9 @@ func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOpti
 		}
 
 		note.ID, _ = uuid.Parse(idStr)
+		note.MIME = mime.String
+		note.Language = language.String
+		note.Translations = repository.UnmarshalNoteTranslations(translations.String)
 		if gedcomXref.Valid {
 			note.GedcomXref = gedcomXref.String
 		}
@@ -3612,16 +3633,31 @@ func (s *ReadModelStore) SaveNote(ctx context.Context, note *repository.NoteRead
 	if note.GedcomXref != "" {
 		gedcomXref = note.GedcomXref
 	}
+	var mime any
+	if note.MIME != "" {
+		mime = note.MIME
+	}
+	var language any
+	if note.Language != "" {
+		language = note.Language
+	}
+	var translations any
+	if len(note.Translations) > 0 {
+		translations = repository.MarshalNoteTranslations(note.Translations)
+	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO notes (id, text, gedcom_xref, version, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO notes (id, text, mime, language, translations, gedcom_xref, version, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			text = excluded.text,
+			mime = excluded.mime,
+			language = excluded.language,
+			translations = excluded.translations,
 			gedcom_xref = excluded.gedcom_xref,
 			version = excluded.version,
 			updated_at = excluded.updated_at
-	`, note.ID.String(), note.Text, gedcomXref, note.Version, note.UpdatedAt.Format(time.RFC3339))
+	`, note.ID.String(), note.Text, mime, language, translations, gedcomXref, note.Version, note.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("save note: %w", err)
 	}

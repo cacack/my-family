@@ -4252,6 +4252,27 @@ func convertQueryNoteToGenerated(n query.Note) Note {
 		resp.GedcomXref = n.GedcomXref
 	}
 
+	// GEDCOM 7.0 shared note (SNOTE) metadata.
+	if n.MIME != "" {
+		resp.Mime = &n.MIME
+	}
+	if n.Language != "" {
+		resp.Language = &n.Language
+	}
+	if len(n.Translations) > 0 {
+		translations := make([]NoteTranslation, len(n.Translations))
+		for i, t := range n.Translations {
+			translations[i] = NoteTranslation{Text: t.Text}
+			if t.MIME != "" {
+				translations[i].Mime = &t.MIME
+			}
+			if t.Language != "" {
+				translations[i].Language = &t.Language
+			}
+		}
+		resp.Translations = &translations
+	}
+
 	return resp
 }
 

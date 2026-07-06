@@ -2984,3 +2984,139 @@ func TestExport_ExternalIDs(t *testing.T) {
 		t.Errorf("export should still emit the individual; got:\n%s", output)
 	}
 }
+
+func TestExport_SharedNote(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	note := &repository.NoteReadModel{
+		ID:       uuid.New(),
+		Text:     "<p>Rich text note</p>",
+		MIME:     "text/html",
+		Language: "en",
+		Translations: []domain.NoteTranslation{
+			{Text: "Nota en texto plano", MIME: "text/plain", Language: "es"},
+		},
+	}
+	if err := readStore.SaveNote(ctx, note); err != nil {
+		t.Fatalf("SaveNote failed: %v", err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	result, err := exporter.Export(ctx, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.NotesExported != 1 {
+		t.Errorf("NotesExported = %d, want 1", result.NotesExported)
+	}
+
+	output := buf.String()
+	// A note carrying SNOTE metadata must be emitted as an SNOTE record, which
+	// in turn upgrades the export to GEDCOM 7.0.
+	if !strings.Contains(output, "2 VERS 7.0") {
+		t.Errorf("Output should be GEDCOM 7.0:\n%s", output)
+	}
+	for _, want := range []string{
+		"SNOTE <p>Rich text note</p>",
+		"1 MIME text/html",
+		"1 LANG en",
+		"1 TRAN Nota en texto plano",
+		"2 MIME text/plain",
+		"2 LANG es",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("Output should contain %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestExport_PlainNoteStaysNote(t *testing.T) {
+	// A shared note without any GEDCOM 7.0 metadata must round-trip as a plain
+	// NOTE record, not an SNOTE, to preserve GEDCOM 5.5.1 compatibility.
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	note := &repository.NoteReadModel{
+		ID:   uuid.New(),
+		Text: "A plain shared note",
+	}
+	if err := readStore.SaveNote(ctx, note); err != nil {
+		t.Fatalf("SaveNote failed: %v", err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	if _, err := exporter.Export(ctx, buf); err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "0 @N1@ NOTE A plain shared note") {
+		t.Errorf("Output should contain a plain NOTE record:\n%s", output)
+	}
+	if strings.Contains(output, "SNOTE") {
+		t.Errorf("Plain note must not export as SNOTE:\n%s", output)
+	}
+}
+
+func TestSharedNote_RoundTrip(t *testing.T) {
+	// A shared note with metadata and a translation must survive
+	// export → re-import unchanged.
+	//
+	// Note: multi-line SNOTE text is not exercised here because gedcom-go
+	// v2.2.0's decoder does not fold CONT continuation back into a shared
+	// note's Text (parseSharedNote ignores CONT/CONC). The exporter still
+	// emits valid CONT lines for interoperability with other GEDCOM tools.
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	original := &repository.NoteReadModel{
+		ID:       uuid.New(),
+		Text:     "<p>Rich text note.</p>",
+		MIME:     "text/html",
+		Language: "en",
+		Translations: []domain.NoteTranslation{
+			{Text: "Nota de texto enriquecido.", MIME: "text/plain", Language: "es"},
+		},
+	}
+	if err := readStore.SaveNote(ctx, original); err != nil {
+		t.Fatalf("SaveNote failed: %v", err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	if _, err := exporter.Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	importer := gedcom.NewImporter()
+	_, _, _, _, _, _, _, _, notes, _, _, _, _, err := importer.Import(ctx, strings.NewReader(buf.String()))
+	if err != nil {
+		t.Fatalf("Import failed: %v\n%s", err, buf.String())
+	}
+	if len(notes) != 1 {
+		t.Fatalf("len(notes) = %d, want 1\n%s", len(notes), buf.String())
+	}
+
+	n := notes[0]
+	if n.Text != original.Text {
+		t.Errorf("Text = %q, want %q", n.Text, original.Text)
+	}
+	if n.MIME != original.MIME {
+		t.Errorf("MIME = %q, want %q", n.MIME, original.MIME)
+	}
+	if n.Language != original.Language {
+		t.Errorf("Language = %q, want %q", n.Language, original.Language)
+	}
+	if len(n.Translations) != 1 {
+		t.Fatalf("len(Translations) = %d, want 1", len(n.Translations))
+	}
+	got := n.Translations[0]
+	want := original.Translations[0]
+	if got.Text != want.Text || got.MIME != want.MIME || got.Language != want.Language {
+		t.Errorf("Translation = %+v, want %+v", got, want)
+	}
+}

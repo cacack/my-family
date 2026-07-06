@@ -223,10 +223,16 @@ type AttributeData struct {
 // GEDCOM supports two note styles:
 // - Inline notes: embedded directly in an entity (stored in entity's Notes field)
 // - Shared notes: top-level NOTE records that can be referenced by multiple entities via XRef
+//
+// GEDCOM 7.0 shared notes (SNOTE records) additionally carry a MIME media type,
+// a BCP 47 language tag, and alternate-language translations.
 type NoteData struct {
-	ID         uuid.UUID
-	GedcomXref string // Cross-reference ID (e.g., "@N1@")
-	Text       string // Full text with embedded newlines
+	ID           uuid.UUID
+	GedcomXref   string                   // Cross-reference ID (e.g., "@N1@")
+	Text         string                   // Full text with embedded newlines
+	MIME         string                   // GEDCOM 7.0 SNOTE media type (e.g., "text/html")
+	Language     string                   // GEDCOM 7.0 SNOTE BCP 47 language tag (e.g., "en")
+	Translations []domain.NoteTranslation // GEDCOM 7.0 SNOTE alternate-language renderings
 }
 
 // SubmitterData contains parsed submitter data ready for creation.
@@ -431,6 +437,15 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 		noteData := parseNote(note)
 		notes = append(notes, noteData)
 		result.NoteXrefToID[note.XRef] = noteData.ID
+	}
+
+	// Also parse GEDCOM 7.0 shared note (SNOTE) records. Unlike plain NOTE
+	// records, these carry a MIME media type, language tag, and translations.
+	// SNOTE and NOTE are distinct record types, so there is no overlap.
+	for _, snote := range doc.SharedNotes() {
+		noteData := parseSharedNote(snote)
+		notes = append(notes, noteData)
+		result.NoteXrefToID[snote.XRef] = noteData.ID
 	}
 
 	// Sixth pass: parse SUBM (submitter) records
@@ -862,6 +877,29 @@ func parseNote(note *gedcom.Note) NoteData {
 		GedcomXref: note.XRef,
 		Text:       note.FullText(),
 	}
+}
+
+// parseSharedNote converts a GEDCOM 7.0 shared note (SNOTE) record to NoteData,
+// preserving its MIME media type, language tag, and alternate-language translations.
+func parseSharedNote(snote *gedcom.SharedNote) NoteData {
+	data := NoteData{
+		ID:         uuid.New(),
+		GedcomXref: snote.XRef,
+		Text:       snote.Text,
+		MIME:       snote.MIME,
+		Language:   snote.Language,
+	}
+	for _, tran := range snote.Translations {
+		if tran == nil {
+			continue
+		}
+		data.Translations = append(data.Translations, domain.NoteTranslation{
+			Text:     tran.Value,
+			MIME:     tran.MIME,
+			Language: tran.Language,
+		})
+	}
+	return data
 }
 
 // parseSubmitter converts a GEDCOM submitter record to SubmitterData.

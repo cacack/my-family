@@ -2876,9 +2876,18 @@ type Note struct {
 	GedcomXref *string            `json:"gedcom_xref,omitempty"`
 	Id         openapi_types.UUID `json:"id"`
 
+	// Language GEDCOM 7.0 shared note (SNOTE) BCP 47 language tag for the text, e.g. "en" or "zh-Hans".
+	Language *string `json:"language,omitempty"`
+
+	// Mime GEDCOM 7.0 shared note (SNOTE) media type of the text, e.g. "text/plain" or "text/html". Empty for plain NOTE records.
+	Mime *string `json:"mime,omitempty"`
+
 	// Text Full note text (may contain embedded newlines from CONT/CONC lines)
-	Text      string     `json:"text"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	Text string `json:"text"`
+
+	// Translations GEDCOM 7.0 shared note (SNOTE) alternate-language renderings
+	Translations *[]NoteTranslation `json:"translations,omitempty"`
+	UpdatedAt    *time.Time         `json:"updated_at,omitempty"`
 
 	// Version Optimistic locking version
 	Version int64 `json:"version"`
@@ -2901,6 +2910,18 @@ type NoteList struct {
 
 	// Total Total number of notes
 	Total int `json:"total"`
+}
+
+// NoteTranslation An alternate-language rendering of a shared note (GEDCOM 7.0 SNOTE TRAN)
+type NoteTranslation struct {
+	// Language BCP 47 language tag for this translation, e.g. "es"
+	Language *string `json:"language,omitempty"`
+
+	// Mime Media type of the translated text, e.g. "text/plain" or "text/html"
+	Mime *string `json:"mime,omitempty"`
+
+	// Text Translated note content
+	Text string `json:"text"`
 }
 
 // NoteUpdate defines model for NoteUpdate.

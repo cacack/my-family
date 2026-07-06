@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -21,11 +22,14 @@ func NewNoteService(readStore repository.ReadModelStore) *NoteService {
 
 // Note represents a note in query results.
 type Note struct {
-	ID         uuid.UUID `json:"id"`
-	Text       string    `json:"text"`
-	GedcomXref *string   `json:"gedcom_xref,omitempty"`
-	Version    int64     `json:"version"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID           uuid.UUID                `json:"id"`
+	Text         string                   `json:"text"`
+	MIME         string                   `json:"mime,omitempty"`         // GEDCOM 7.0 SNOTE media type
+	Language     string                   `json:"language,omitempty"`     // GEDCOM 7.0 SNOTE BCP 47 language tag
+	Translations []domain.NoteTranslation `json:"translations,omitempty"` // GEDCOM 7.0 SNOTE alternate-language renderings
+	GedcomXref   *string                  `json:"gedcom_xref,omitempty"`
+	Version      int64                    `json:"version"`
+	UpdatedAt    time.Time                `json:"updated_at"`
 }
 
 // ListNotesInput contains options for listing notes.
@@ -96,10 +100,13 @@ func (s *NoteService) GetNote(ctx context.Context, id uuid.UUID) (*Note, error) 
 // Helper function to convert read model to query result.
 func convertReadModelToNote(rm repository.NoteReadModel) Note {
 	n := Note{
-		ID:        rm.ID,
-		Text:      rm.Text,
-		Version:   rm.Version,
-		UpdatedAt: rm.UpdatedAt,
+		ID:           rm.ID,
+		Text:         rm.Text,
+		MIME:         rm.MIME,
+		Language:     rm.Language,
+		Translations: rm.Translations,
+		Version:      rm.Version,
+		UpdatedAt:    rm.UpdatedAt,
 	}
 
 	if rm.GedcomXref != "" {
