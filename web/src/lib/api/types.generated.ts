@@ -2152,7 +2152,7 @@ export interface components {
              * @example abt
              * @enum {string}
              */
-            qualifier?: "exact" | "abt" | "cal" | "est" | "bef" | "aft" | "bet" | "from";
+            qualifier?: "exact" | "abt" | "cal" | "est" | "bef" | "aft" | "bet" | "from" | "int";
             /** @example 1850 */
             year?: number;
             month?: number;
@@ -2161,6 +2161,11 @@ export interface components {
             year2?: number;
             month2?: number;
             day2?: number;
+            /**
+             * @description Original ambiguous phrase for interpreted (INT) dates, preserved for research transparency (e.g. "about eighteen fifty")
+             * @example about eighteen fifty
+             */
+            interpreted_from?: string;
         };
         Person: {
             /** Format: uuid */

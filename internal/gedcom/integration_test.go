@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/gedcom"
 	"github.com/cacack/my-family/internal/repository"
@@ -135,6 +137,59 @@ func TestIntegration_ImportExportRoundTrip(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestIntegration_InterpretedDateRoundTrip verifies that an interpreted (INT)
+// date, including its original ambiguous phrase, survives an export/re-import
+// cycle so research transparency is preserved.
+func TestIntegration_InterpretedDateRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	const intDate = "INT 1850 (about eighteen fifty)"
+
+	readStore := memory.NewReadModelStore()
+	person := &repository.PersonReadModel{
+		ID:           uuid.New(),
+		GivenName:    "Jane",
+		Surname:      "Doe",
+		FullName:     "Jane Doe",
+		Gender:       domain.GenderFemale,
+		BirthDateRaw: intDate,
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatalf("Failed to save person: %v", err)
+	}
+
+	// Export
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	if _, err := exporter.Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "2 DATE "+intDate) {
+		t.Errorf("Export missing INT date line; output:\n%s", buf.String())
+	}
+
+	// Re-import and confirm the interpreted date survived verbatim.
+	importer := gedcom.NewImporter()
+	_, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("Re-import failed: %v", err)
+	}
+	if len(persons) != 1 {
+		t.Fatalf("len(persons) = %d, want 1", len(persons))
+	}
+	if persons[0].BirthDate != intDate {
+		t.Errorf("BirthDate after round-trip = %q, want %q", persons[0].BirthDate, intDate)
+	}
+
+	// The domain parser surfaces the interpreted phrase for display/API.
+	gd := domain.ParseGenDate(persons[0].BirthDate)
+	if gd.Qualifier != domain.DateInt {
+		t.Errorf("Qualifier = %v, want %v", gd.Qualifier, domain.DateInt)
+	}
+	if gd.InterpretedFrom != "about eighteen fifty" {
+		t.Errorf("InterpretedFrom = %q, want 'about eighteen fifty'", gd.InterpretedFrom)
 	}
 }
 

@@ -61,6 +61,9 @@ func convertDomainGenDateToGenerated(qd *domain.GenDate) *GenDate {
 	if qd.Raw != "" {
 		gd.Raw = &qd.Raw
 	}
+	if qd.InterpretedFrom != "" {
+		gd.InterpretedFrom = &qd.InterpretedFrom
+	}
 	return gd
 }
 

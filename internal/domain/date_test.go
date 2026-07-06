@@ -98,6 +98,26 @@ func TestParseGenDate(t *testing.T) {
 			wantMonth: intPtr(3),
 			wantDay:   intPtr(15),
 		},
+		{
+			name:     "interpreted year with phrase",
+			input:    "INT 1850 (about eighteen fifty)",
+			wantQual: DateInt,
+			wantYear: intPtr(1850),
+		},
+		{
+			name:      "interpreted full date with phrase",
+			input:     "INT 25 DEC 1850 (Christmas day)",
+			wantQual:  DateInt,
+			wantYear:  intPtr(1850),
+			wantMonth: intPtr(12),
+			wantDay:   intPtr(25),
+		},
+		{
+			name:     "interpreted without phrase",
+			input:    "INT 1850",
+			wantQual: DateInt,
+			wantYear: intPtr(1850),
+		},
 	}
 
 	for _, tt := range tests {
@@ -118,6 +138,51 @@ func TestParseGenDate(t *testing.T) {
 			}
 			if !intPtrEqual(got.Year2, tt.wantYear2) {
 				t.Errorf("Year2 = %v, want %v", ptrStr(got.Year2), ptrStr(tt.wantYear2))
+			}
+		})
+	}
+}
+
+func TestParseGenDate_Interpreted(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantFrom string
+	}{
+		{
+			name:     "phrase preserves original casing",
+			input:    "INT 1850 (about eighteen fifty)",
+			wantFrom: "about eighteen fifty",
+		},
+		{
+			name:     "full date with phrase",
+			input:    "INT 25 DEC 1850 (Christmas day)",
+			wantFrom: "Christmas day",
+		},
+		{
+			name:     "no parenthetical phrase",
+			input:    "INT 1850",
+			wantFrom: "",
+		},
+		{
+			name:     "nested parentheses keep inner content",
+			input:    "INT 1850 (guessed (best effort))",
+			wantFrom: "guessed (best effort)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseGenDate(tt.input)
+			if got.Qualifier != DateInt {
+				t.Errorf("Qualifier = %v, want %v", got.Qualifier, DateInt)
+			}
+			if got.InterpretedFrom != tt.wantFrom {
+				t.Errorf("InterpretedFrom = %q, want %q", got.InterpretedFrom, tt.wantFrom)
+			}
+			// Raw must be preserved verbatim for GEDCOM round-trip.
+			if got.Raw != tt.input {
+				t.Errorf("Raw = %q, want %q", got.Raw, tt.input)
 			}
 		})
 	}
@@ -282,6 +347,16 @@ func TestGenDate_Format(t *testing.T) {
 			want: "FROM 1850 TO 1860",
 		},
 		{
+			name: "interpreted date with phrase",
+			date: GenDate{Qualifier: DateInt, Year: intPtr(1850), InterpretedFrom: "about eighteen fifty"},
+			want: "INT 1850 (about eighteen fifty)",
+		},
+		{
+			name: "interpreted date without phrase",
+			date: GenDate{Qualifier: DateInt, Year: intPtr(1850)},
+			want: "INT 1850",
+		},
+		{
 			name: "empty date",
 			date: GenDate{},
 			want: "",
@@ -352,6 +427,11 @@ func TestDateQualifier_IsValid(t *testing.T) {
 		{
 			name:      "from is valid",
 			qualifier: DateFrom,
+			want:      true,
+		},
+		{
+			name:      "interpreted is valid",
+			qualifier: DateInt,
 			want:      true,
 		},
 		{

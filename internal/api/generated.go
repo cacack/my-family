@@ -332,6 +332,7 @@ const (
 	Est   GenDateQualifier = "est"
 	Exact GenDateQualifier = "exact"
 	From  GenDateQualifier = "from"
+	Int   GenDateQualifier = "int"
 )
 
 // Valid indicates whether the value is a known member of the GenDateQualifier enum.
@@ -352,6 +353,8 @@ func (e GenDateQualifier) Valid() bool {
 	case Exact:
 		return true
 	case From:
+		return true
+	case Int:
 		return true
 	default:
 		return false
@@ -2430,11 +2433,14 @@ type FormattedCitation struct {
 
 // GenDate Genealogical date with flexible precision
 type GenDate struct {
-	Day       *int              `json:"day,omitempty"`
-	Day2      *int              `json:"day2,omitempty"`
-	Month     *int              `json:"month,omitempty"`
-	Month2    *int              `json:"month2,omitempty"`
-	Qualifier *GenDateQualifier `json:"qualifier,omitempty"`
+	Day  *int `json:"day,omitempty"`
+	Day2 *int `json:"day2,omitempty"`
+
+	// InterpretedFrom Original ambiguous phrase for interpreted (INT) dates, preserved for research transparency (e.g. "about eighteen fifty")
+	InterpretedFrom *string           `json:"interpreted_from,omitempty"`
+	Month           *int              `json:"month,omitempty"`
+	Month2          *int              `json:"month2,omitempty"`
+	Qualifier       *GenDateQualifier `json:"qualifier,omitempty"`
 
 	// Raw Original date string
 	Raw  *string `json:"raw,omitempty"`

@@ -3733,7 +3733,7 @@ components:
           example: "ABT 1850"
         qualifier:
           type: string
-          enum: [exact, abt, cal, est, bef, aft, bet, from]
+          enum: [exact, abt, cal, est, bef, aft, bet, from, int]
           example: "abt"
         year:
           type: integer
@@ -3753,6 +3753,12 @@ components:
           type: integer
         day2:
           type: integer
+        interpreted_from:
+          type: string
+          description: >-
+            Original ambiguous phrase for interpreted (INT) dates, preserved for
+            research transparency (e.g. "about eighteen fifty")
+          example: "about eighteen fifty"
 
     Person:
       type: object
