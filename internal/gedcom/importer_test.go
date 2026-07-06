@@ -2850,3 +2850,65 @@ more garbage
 		t.Error("Expected error for completely invalid input, got nil")
 	}
 }
+
+func TestImportExternalIDsAndSchema(t *testing.T) {
+	// GEDCOM 7.0 file with EXID external identifiers and a SCHMA header block.
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 7.0
+1 SCHMA
+2 TAG _SKYPEID http://xmlns.com/foaf/0.1/skypeID
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME John /Doe/
+1 SEX M
+1 EXID KWCJ-QN7
+2 TYPE http://www.familysearch.org/ark
+1 EXID 12345
+2 TYPE https://www.findagrave.com/
+0 @I2@ INDI
+1 NAME Jane /Smith/
+1 SEX F
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	result, persons, _, _, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	// SCHMA mappings captured.
+	if got := result.SchemaMappings["_SKYPEID"]; got != "http://xmlns.com/foaf/0.1/skypeID" {
+		t.Errorf("SchemaMappings[_SKYPEID] = %q, want the skypeID URI", got)
+	}
+
+	var john, jane *gedcom.PersonData
+	for i := range persons {
+		switch persons[i].GivenName {
+		case "John":
+			john = &persons[i]
+		case "Jane":
+			jane = &persons[i]
+		}
+	}
+	if john == nil {
+		t.Fatal("John not found")
+	}
+	if len(john.ExternalIDs) != 2 {
+		t.Fatalf("John.ExternalIDs len = %d, want 2", len(john.ExternalIDs))
+	}
+	if john.ExternalIDs[0].Value != "KWCJ-QN7" || john.ExternalIDs[0].Type != "http://www.familysearch.org/ark" {
+		t.Errorf("unexpected first external id: %+v", john.ExternalIDs[0])
+	}
+	if john.ExternalIDs[1].Value != "12345" || john.ExternalIDs[1].Type != "https://www.findagrave.com/" {
+		t.Errorf("unexpected second external id: %+v", john.ExternalIDs[1])
+	}
+	if jane == nil {
+		t.Fatal("Jane not found")
+	}
+	if len(jane.ExternalIDs) != 0 {
+		t.Errorf("Jane.ExternalIDs len = %d, want 0", len(jane.ExternalIDs))
+	}
+}

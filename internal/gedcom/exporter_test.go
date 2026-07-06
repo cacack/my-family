@@ -2947,3 +2947,40 @@ func TestExport_TargetVersionOverridesAutoUpgrade(t *testing.T) {
 		t.Errorf("output should emit 5.5 despite 7.0-only data; got:\n%s", buf.String())
 	}
 }
+
+func TestExport_ExternalIDs(t *testing.T) {
+	// Exercises the exporter path for a person carrying GEDCOM 7.0 external
+	// identifiers. The typed model is populated so export becomes lossless once
+	// gedcom-go's encoder gains individual EXID support; until then the encoder
+	// (v2.2.0) drops them, so we only assert the export succeeds and still emits
+	// the individual. See the NOTE in exporter.go / toGedcomIndividual.
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person := &repository.PersonReadModel{
+		ID:        uuid.New(),
+		GivenName: "Test",
+		Surname:   "Person",
+		FullName:  "Test Person",
+	}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
+		{Value: "12345", Type: "https://www.findagrave.com/"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	if _, err := exporter.Export(ctx, buf); err != nil {
+		t.Fatal(err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "1 NAME Test /Person/") {
+		t.Errorf("export should still emit the individual; got:\n%s", output)
+	}
+}

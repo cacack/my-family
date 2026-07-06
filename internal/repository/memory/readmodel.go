@@ -18,7 +18,8 @@ import (
 type ReadModelStore struct {
 	mu                sync.RWMutex
 	persons           map[uuid.UUID]*repository.PersonReadModel
-	personNames       map[uuid.UUID][]repository.PersonNameReadModel // keyed by person ID
+	personNames       map[uuid.UUID][]repository.PersonNameReadModel       // keyed by person ID
+	personExternalIDs map[uuid.UUID][]repository.PersonExternalIDReadModel // keyed by person ID
 	families          map[uuid.UUID]*repository.FamilyReadModel
 	familyChildren    map[uuid.UUID][]repository.FamilyChildReadModel // keyed by family ID
 	pedigreeEdges     map[uuid.UUID]*repository.PedigreeEdge          // keyed by person ID
@@ -43,6 +44,7 @@ func NewReadModelStore() *ReadModelStore {
 	return &ReadModelStore{
 		persons:           make(map[uuid.UUID]*repository.PersonReadModel),
 		personNames:       make(map[uuid.UUID][]repository.PersonNameReadModel),
+		personExternalIDs: make(map[uuid.UUID][]repository.PersonExternalIDReadModel),
 		families:          make(map[uuid.UUID]*repository.FamilyReadModel),
 		familyChildren:    make(map[uuid.UUID][]repository.FamilyChildReadModel),
 		pedigreeEdges:     make(map[uuid.UUID]*repository.PedigreeEdge),
@@ -359,8 +361,9 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
 	defer s.mu.Unlock()
 
 	delete(s.persons, id)
-	// Also delete associated person names (cascade behavior)
+	// Also delete associated person names and external IDs (cascade behavior)
 	delete(s.personNames, id)
+	delete(s.personExternalIDs, id)
 	return nil
 }
 
@@ -447,6 +450,43 @@ func (s *ReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID)
 		}
 	}
 	return nil
+}
+
+// ReplacePersonExternalIDs replaces all external identifiers for a person.
+func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) == 0 {
+		delete(s.personExternalIDs, personID)
+		return nil
+	}
+	stored := make([]repository.PersonExternalIDReadModel, len(ids))
+	for i, id := range ids {
+		id.PersonID = personID
+		id.Sequence = i
+		stored[i] = id
+	}
+	s.personExternalIDs[personID] = stored
+	return nil
+}
+
+// GetPersonExternalIDs retrieves all external identifiers for a person, ordered
+// by their original sequence.
+func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := s.personExternalIDs[personID]
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	result := make([]repository.PersonExternalIDReadModel, len(ids))
+	copy(result, ids)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Sequence < result[j].Sequence
+	})
+	return result, nil
 }
 
 // GetFamily retrieves a family by ID.

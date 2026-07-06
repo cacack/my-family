@@ -37,6 +37,10 @@ type ImportResult struct {
 	// Empty string if vendor could not be determined.
 	Vendor string
 
+	// SchemaMappings holds GEDCOM 7.0 SCHMA tag→URI definitions from the header,
+	// used to interpret vendor extension tags. Empty when the file has no SCHMA.
+	SchemaMappings map[string]string
+
 	// Mappings from GEDCOM XREFs to internal UUIDs
 	PersonXrefToID     map[string]uuid.UUID
 	FamilyXrefToID     map[string]uuid.UUID
@@ -89,6 +93,10 @@ type PersonData struct {
 	// This is a vendor extension from FamilySearch.org that uniquely identifies
 	// an individual in their Family Tree database. Format: alphanumeric like "KWCJ-QN7".
 	FamilySearchID string
+
+	// ExternalIDs are GEDCOM 7.0 external identifiers (EXID tags) linking this
+	// person to records in external systems (FamilySearch, Find a Grave, etc.).
+	ExternalIDs []domain.ExternalIdentifier
 }
 
 // FamilyData contains parsed family data ready for creation.
@@ -352,6 +360,15 @@ func (imp *Importer) ImportWithOptions(ctx context.Context, reader io.Reader, im
 	// Extract vendor information from the document
 	result.Vendor = string(doc.Vendor)
 
+	// Capture GEDCOM 7.0 schema definitions (SCHMA) so vendor extension tags can
+	// be interpreted by consumers of the import result.
+	if doc.Schema != nil && len(doc.Schema.TagMappings) > 0 {
+		result.SchemaMappings = make(map[string]string, len(doc.Schema.TagMappings))
+		for tag, uri := range doc.Schema.TagMappings {
+			result.SchemaMappings[tag] = uri
+		}
+	}
+
 	// First pass: create repository mappings (before sources)
 	var repositories []RepositoryData
 	for _, repo := range doc.Repositories() {
@@ -604,7 +621,29 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 	// Extract FamilySearch Family Tree ID (vendor extension)
 	person.FamilySearchID = indi.FamilySearchID
 
+	// Extract GEDCOM 7.0 external identifiers (EXID)
+	person.ExternalIDs = toDomainExternalIDs(indi.ExternalIDs)
+
 	return person
+}
+
+// toDomainExternalIDs converts gedcom-go EXID records to domain external
+// identifiers, skipping any with an empty value.
+func toDomainExternalIDs(exids []*gedcom.ExternalID) []domain.ExternalIdentifier {
+	if len(exids) == 0 {
+		return nil
+	}
+	result := make([]domain.ExternalIdentifier, 0, len(exids))
+	for _, exid := range exids {
+		if exid == nil || exid.Value == "" {
+			continue
+		}
+		result = append(result, domain.ExternalIdentifier{
+			Value: exid.Value,
+			Type:  exid.Type,
+		})
+	}
+	return result
 }
 
 // parseFamily converts a GEDCOM family record to FamilyData.
