@@ -112,6 +112,10 @@ type FamilyData struct {
 	MarriagePlaceLong *string // Longitude in GEDCOM format (e.g., "W89.6501")
 	ChildIDs          []uuid.UUID
 	ChildRelTypes     []domain.ChildRelationType
+
+	// ExternalIDs are GEDCOM 7.0 external identifiers (EXID tags) linking this
+	// family to records in external systems.
+	ExternalIDs []domain.ExternalIdentifier
 }
 
 // SourceData contains parsed source data ready for creation.
@@ -127,6 +131,10 @@ type SourceData struct {
 	RepositoryName string     // Fallback for unlinked repositories
 	CallNumber     string     // CALN - location within repository
 	Notes          string
+
+	// ExternalIDs are GEDCOM 7.0 external identifiers (EXID tags) linking this
+	// source to records in external systems.
+	ExternalIDs []domain.ExternalIdentifier
 }
 
 // RepositoryData contains parsed repository data ready for creation.
@@ -143,6 +151,10 @@ type RepositoryData struct {
 	Email      string
 	Website    string
 	Notes      string
+
+	// ExternalIDs are GEDCOM 7.0 external identifiers (EXID tags) linking this
+	// repository to records in external systems.
+	ExternalIDs []domain.ExternalIdentifier
 }
 
 // AncestryAPIDData represents an Ancestry Permanent Identifier from the _APID tag.
@@ -735,6 +747,9 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 		}
 	}
 
+	// Extract GEDCOM 7.0 external identifiers (EXID)
+	family.ExternalIDs = toDomainExternalIDs(fam.ExternalIDs)
+
 	return family
 }
 
@@ -819,6 +834,9 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 	// Default source type to "other" if not specified
 	source.SourceType = string(domain.SourceOther)
 
+	// Extract GEDCOM 7.0 external identifiers (EXID)
+	source.ExternalIDs = toDomainExternalIDs(src.ExternalIDs)
+
 	return source
 }
 
@@ -865,6 +883,9 @@ func parseRepository(repo *gedcom.Repository, _ *ImportResult) RepositoryData {
 	if len(notes) > 0 {
 		repository.Notes = strings.Join(notes, "\n\n")
 	}
+
+	// Extract GEDCOM 7.0 external identifiers (EXID)
+	repository.ExternalIDs = toDomainExternalIDs(repo.ExternalIDs)
 
 	return repository
 }

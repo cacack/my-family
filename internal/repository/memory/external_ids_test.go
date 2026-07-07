@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -81,6 +82,102 @@ func TestMemoryPersonExternalIDsCascadeDelete(t *testing.T) {
 		t.Fatalf("DeletePerson: %v", err)
 	}
 	got, _ := store.GetPersonExternalIDs(ctx, personID)
+	if len(got) != 0 {
+		t.Fatalf("expected external ids cascade-deleted, got %d", len(got))
+	}
+}
+
+func TestMemoryFamilyExternalIDs(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+	familyID := uuid.New()
+	if err := store.SaveFamily(ctx, &repository.FamilyReadModel{ID: familyID, RelationshipType: domain.RelationMarriage, Version: 1}); err != nil {
+		t.Fatalf("SaveFamily: %v", err)
+	}
+
+	got, err := store.GetFamilyExternalIDs(ctx, familyID)
+	if err != nil {
+		t.Fatalf("GetFamilyExternalIDs: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected no external ids, got %d", len(got))
+	}
+
+	ids := []repository.FamilyExternalIDReadModel{
+		{Value: "F-1", Type: "http://example.com/fam"},
+		{Value: "F-2"},
+	}
+	if err := store.ReplaceFamilyExternalIDs(ctx, familyID, ids); err != nil {
+		t.Fatalf("ReplaceFamilyExternalIDs: %v", err)
+	}
+	got, _ = store.GetFamilyExternalIDs(ctx, familyID)
+	if len(got) != 2 || got[0].Value != "F-1" || got[0].Sequence != 0 || got[0].FamilyID != familyID || got[1].Value != "F-2" || got[1].Sequence != 1 {
+		t.Fatalf("unexpected external ids: %+v", got)
+	}
+
+	// Deleting the family cascades to its external ids.
+	if err := store.DeleteFamily(ctx, familyID); err != nil {
+		t.Fatalf("DeleteFamily: %v", err)
+	}
+	got, _ = store.GetFamilyExternalIDs(ctx, familyID)
+	if len(got) != 0 {
+		t.Fatalf("expected external ids cascade-deleted, got %d", len(got))
+	}
+}
+
+func TestMemorySourceExternalIDs(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+	sourceID := uuid.New()
+	if err := store.SaveSource(ctx, &repository.SourceReadModel{ID: sourceID, SourceType: domain.SourceBook, Title: "Test Source", Version: 1}); err != nil {
+		t.Fatalf("SaveSource: %v", err)
+	}
+
+	ids := []repository.SourceExternalIDReadModel{
+		{Value: "S-1", Type: "http://example.com/src"},
+		{Value: "S-2"},
+	}
+	if err := store.ReplaceSourceExternalIDs(ctx, sourceID, ids); err != nil {
+		t.Fatalf("ReplaceSourceExternalIDs: %v", err)
+	}
+	got, _ := store.GetSourceExternalIDs(ctx, sourceID)
+	if len(got) != 2 || got[0].Value != "S-1" || got[0].Sequence != 0 || got[0].SourceID != sourceID || got[1].Value != "S-2" || got[1].Sequence != 1 {
+		t.Fatalf("unexpected external ids: %+v", got)
+	}
+
+	if err := store.DeleteSource(ctx, sourceID); err != nil {
+		t.Fatalf("DeleteSource: %v", err)
+	}
+	got, _ = store.GetSourceExternalIDs(ctx, sourceID)
+	if len(got) != 0 {
+		t.Fatalf("expected external ids cascade-deleted, got %d", len(got))
+	}
+}
+
+func TestMemoryRepositoryExternalIDs(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+	repoID := uuid.New()
+	if err := store.SaveRepository(ctx, &repository.RepositoryReadModel{ID: repoID, Name: "Test Repo", Version: 1}); err != nil {
+		t.Fatalf("SaveRepository: %v", err)
+	}
+
+	ids := []repository.RepositoryExternalIDReadModel{
+		{Value: "R-1", Type: "http://example.com/repo"},
+		{Value: "R-2"},
+	}
+	if err := store.ReplaceRepositoryExternalIDs(ctx, repoID, ids); err != nil {
+		t.Fatalf("ReplaceRepositoryExternalIDs: %v", err)
+	}
+	got, _ := store.GetRepositoryExternalIDs(ctx, repoID)
+	if len(got) != 2 || got[0].Value != "R-1" || got[0].Sequence != 0 || got[0].RepositoryID != repoID || got[1].Value != "R-2" || got[1].Sequence != 1 {
+		t.Fatalf("unexpected external ids: %+v", got)
+	}
+
+	if err := store.DeleteRepository(ctx, repoID); err != nil {
+		t.Fatalf("DeleteRepository: %v", err)
+	}
+	got, _ = store.GetRepositoryExternalIDs(ctx, repoID)
 	if len(got) != 0 {
 		t.Fatalf("expected external ids cascade-deleted, got %d", len(got))
 	}

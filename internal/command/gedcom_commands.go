@@ -373,7 +373,27 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	if err := h.projector.Project(ctx, event, 1); err != nil {
+		return err
+	}
+
+	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
+	// coordinates, these are GEDCOM metadata that live outside the event schema.
+	if len(f.ExternalIDs) > 0 {
+		ids := make([]repository.FamilyExternalIDReadModel, len(f.ExternalIDs))
+		for i, ext := range f.ExternalIDs {
+			ids[i] = repository.FamilyExternalIDReadModel{
+				FamilyID: family.ID,
+				Sequence: i,
+				Value:    ext.Value,
+				Type:     ext.Type,
+			}
+		}
+		if err := h.readStore.ReplaceFamilyExternalIDs(ctx, family.ID, ids); err != nil {
+			return fmt.Errorf("failed to save family external identifiers: %w", err)
+		}
+	}
+	return nil
 }
 
 // importSource creates a source from GEDCOM data.
@@ -415,7 +435,27 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	if err := h.projector.Project(ctx, event, 1); err != nil {
+		return err
+	}
+
+	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
+	// coordinates, these are GEDCOM metadata that live outside the event schema.
+	if len(s.ExternalIDs) > 0 {
+		ids := make([]repository.SourceExternalIDReadModel, len(s.ExternalIDs))
+		for i, ext := range s.ExternalIDs {
+			ids[i] = repository.SourceExternalIDReadModel{
+				SourceID: source.ID,
+				Sequence: i,
+				Value:    ext.Value,
+				Type:     ext.Type,
+			}
+		}
+		if err := h.readStore.ReplaceSourceExternalIDs(ctx, source.ID, ids); err != nil {
+			return fmt.Errorf("failed to save source external identifiers: %w", err)
+		}
+	}
+	return nil
 }
 
 // importRepository creates a repository from GEDCOM data.
@@ -447,7 +487,27 @@ func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData)
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	if err := h.projector.Project(ctx, event, 1); err != nil {
+		return err
+	}
+
+	// Store GEDCOM 7.0 external identifiers (EXID) in the read model. Like place
+	// coordinates, these are GEDCOM metadata that live outside the event schema.
+	if len(r.ExternalIDs) > 0 {
+		ids := make([]repository.RepositoryExternalIDReadModel, len(r.ExternalIDs))
+		for i, ext := range r.ExternalIDs {
+			ids[i] = repository.RepositoryExternalIDReadModel{
+				RepositoryID: repo.ID,
+				Sequence:     i,
+				Value:        ext.Value,
+				Type:         ext.Type,
+			}
+		}
+		if err := h.readStore.ReplaceRepositoryExternalIDs(ctx, repo.ID, ids); err != nil {
+			return fmt.Errorf("failed to save repository external identifiers: %w", err)
+		}
+	}
+	return nil
 }
 
 // importCitation creates a citation from GEDCOM data.

@@ -16,52 +16,58 @@ import (
 
 // ReadModelStore is an in-memory implementation of repository.ReadModelStore for testing.
 type ReadModelStore struct {
-	mu                sync.RWMutex
-	persons           map[uuid.UUID]*repository.PersonReadModel
-	personNames       map[uuid.UUID][]repository.PersonNameReadModel       // keyed by person ID
-	personExternalIDs map[uuid.UUID][]repository.PersonExternalIDReadModel // keyed by person ID
-	families          map[uuid.UUID]*repository.FamilyReadModel
-	familyChildren    map[uuid.UUID][]repository.FamilyChildReadModel // keyed by family ID
-	pedigreeEdges     map[uuid.UUID]*repository.PedigreeEdge          // keyed by person ID
-	sources           map[uuid.UUID]*repository.SourceReadModel
-	citations         map[uuid.UUID]*repository.CitationReadModel
-	media             map[uuid.UUID]*repository.MediaReadModel
-	events            map[uuid.UUID]*repository.EventReadModel
-	attributes        map[uuid.UUID]*repository.AttributeReadModel
-	notes             map[uuid.UUID]*repository.NoteReadModel
-	submitters        map[uuid.UUID]*repository.SubmitterReadModel
-	repositories      map[uuid.UUID]*repository.RepositoryReadModel
-	associations      map[uuid.UUID]*repository.AssociationReadModel
-	ldsOrdinances     map[uuid.UUID]*repository.LDSOrdinanceReadModel
-	evidenceAnalyses  map[uuid.UUID]*repository.EvidenceAnalysisReadModel
-	evidenceConflicts map[uuid.UUID]*repository.EvidenceConflictReadModel
-	researchLogs      map[uuid.UUID]*repository.ResearchLogReadModel
-	proofSummaries    map[uuid.UUID]*repository.ProofSummaryReadModel
+	mu                    sync.RWMutex
+	persons               map[uuid.UUID]*repository.PersonReadModel
+	personNames           map[uuid.UUID][]repository.PersonNameReadModel       // keyed by person ID
+	personExternalIDs     map[uuid.UUID][]repository.PersonExternalIDReadModel // keyed by person ID
+	families              map[uuid.UUID]*repository.FamilyReadModel
+	familyChildren        map[uuid.UUID][]repository.FamilyChildReadModel      // keyed by family ID
+	familyExternalIDs     map[uuid.UUID][]repository.FamilyExternalIDReadModel // keyed by family ID
+	pedigreeEdges         map[uuid.UUID]*repository.PedigreeEdge               // keyed by person ID
+	sources               map[uuid.UUID]*repository.SourceReadModel
+	sourceExternalIDs     map[uuid.UUID][]repository.SourceExternalIDReadModel // keyed by source ID
+	citations             map[uuid.UUID]*repository.CitationReadModel
+	media                 map[uuid.UUID]*repository.MediaReadModel
+	events                map[uuid.UUID]*repository.EventReadModel
+	attributes            map[uuid.UUID]*repository.AttributeReadModel
+	notes                 map[uuid.UUID]*repository.NoteReadModel
+	submitters            map[uuid.UUID]*repository.SubmitterReadModel
+	repositories          map[uuid.UUID]*repository.RepositoryReadModel
+	repositoryExternalIDs map[uuid.UUID][]repository.RepositoryExternalIDReadModel // keyed by repository ID
+	associations          map[uuid.UUID]*repository.AssociationReadModel
+	ldsOrdinances         map[uuid.UUID]*repository.LDSOrdinanceReadModel
+	evidenceAnalyses      map[uuid.UUID]*repository.EvidenceAnalysisReadModel
+	evidenceConflicts     map[uuid.UUID]*repository.EvidenceConflictReadModel
+	researchLogs          map[uuid.UUID]*repository.ResearchLogReadModel
+	proofSummaries        map[uuid.UUID]*repository.ProofSummaryReadModel
 }
 
 // NewReadModelStore creates a new in-memory read model store.
 func NewReadModelStore() *ReadModelStore {
 	return &ReadModelStore{
-		persons:           make(map[uuid.UUID]*repository.PersonReadModel),
-		personNames:       make(map[uuid.UUID][]repository.PersonNameReadModel),
-		personExternalIDs: make(map[uuid.UUID][]repository.PersonExternalIDReadModel),
-		families:          make(map[uuid.UUID]*repository.FamilyReadModel),
-		familyChildren:    make(map[uuid.UUID][]repository.FamilyChildReadModel),
-		pedigreeEdges:     make(map[uuid.UUID]*repository.PedigreeEdge),
-		sources:           make(map[uuid.UUID]*repository.SourceReadModel),
-		citations:         make(map[uuid.UUID]*repository.CitationReadModel),
-		media:             make(map[uuid.UUID]*repository.MediaReadModel),
-		events:            make(map[uuid.UUID]*repository.EventReadModel),
-		attributes:        make(map[uuid.UUID]*repository.AttributeReadModel),
-		notes:             make(map[uuid.UUID]*repository.NoteReadModel),
-		submitters:        make(map[uuid.UUID]*repository.SubmitterReadModel),
-		repositories:      make(map[uuid.UUID]*repository.RepositoryReadModel),
-		associations:      make(map[uuid.UUID]*repository.AssociationReadModel),
-		ldsOrdinances:     make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
-		evidenceAnalyses:  make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel),
-		evidenceConflicts: make(map[uuid.UUID]*repository.EvidenceConflictReadModel),
-		researchLogs:      make(map[uuid.UUID]*repository.ResearchLogReadModel),
-		proofSummaries:    make(map[uuid.UUID]*repository.ProofSummaryReadModel),
+		persons:               make(map[uuid.UUID]*repository.PersonReadModel),
+		personNames:           make(map[uuid.UUID][]repository.PersonNameReadModel),
+		personExternalIDs:     make(map[uuid.UUID][]repository.PersonExternalIDReadModel),
+		families:              make(map[uuid.UUID]*repository.FamilyReadModel),
+		familyChildren:        make(map[uuid.UUID][]repository.FamilyChildReadModel),
+		familyExternalIDs:     make(map[uuid.UUID][]repository.FamilyExternalIDReadModel),
+		pedigreeEdges:         make(map[uuid.UUID]*repository.PedigreeEdge),
+		sources:               make(map[uuid.UUID]*repository.SourceReadModel),
+		sourceExternalIDs:     make(map[uuid.UUID][]repository.SourceExternalIDReadModel),
+		citations:             make(map[uuid.UUID]*repository.CitationReadModel),
+		media:                 make(map[uuid.UUID]*repository.MediaReadModel),
+		events:                make(map[uuid.UUID]*repository.EventReadModel),
+		attributes:            make(map[uuid.UUID]*repository.AttributeReadModel),
+		notes:                 make(map[uuid.UUID]*repository.NoteReadModel),
+		submitters:            make(map[uuid.UUID]*repository.SubmitterReadModel),
+		repositories:          make(map[uuid.UUID]*repository.RepositoryReadModel),
+		repositoryExternalIDs: make(map[uuid.UUID][]repository.RepositoryExternalIDReadModel),
+		associations:          make(map[uuid.UUID]*repository.AssociationReadModel),
+		ldsOrdinances:         make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
+		evidenceAnalyses:      make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel),
+		evidenceConflicts:     make(map[uuid.UUID]*repository.EvidenceConflictReadModel),
+		researchLogs:          make(map[uuid.UUID]*repository.ResearchLogReadModel),
+		proofSummaries:        make(map[uuid.UUID]*repository.ProofSummaryReadModel),
 	}
 }
 
@@ -489,6 +495,117 @@ func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid
 	return result, nil
 }
 
+// ReplaceFamilyExternalIDs replaces all external identifiers for a family.
+func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) == 0 {
+		delete(s.familyExternalIDs, familyID)
+		return nil
+	}
+	stored := make([]repository.FamilyExternalIDReadModel, len(ids))
+	for i, id := range ids {
+		id.FamilyID = familyID
+		id.Sequence = i
+		stored[i] = id
+	}
+	s.familyExternalIDs[familyID] = stored
+	return nil
+}
+
+// GetFamilyExternalIDs retrieves all external identifiers for a family, ordered
+// by their original sequence.
+func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := s.familyExternalIDs[familyID]
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	result := make([]repository.FamilyExternalIDReadModel, len(ids))
+	copy(result, ids)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Sequence < result[j].Sequence
+	})
+	return result, nil
+}
+
+// ReplaceSourceExternalIDs replaces all external identifiers for a source.
+func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) == 0 {
+		delete(s.sourceExternalIDs, sourceID)
+		return nil
+	}
+	stored := make([]repository.SourceExternalIDReadModel, len(ids))
+	for i, id := range ids {
+		id.SourceID = sourceID
+		id.Sequence = i
+		stored[i] = id
+	}
+	s.sourceExternalIDs[sourceID] = stored
+	return nil
+}
+
+// GetSourceExternalIDs retrieves all external identifiers for a source, ordered
+// by their original sequence.
+func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := s.sourceExternalIDs[sourceID]
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	result := make([]repository.SourceExternalIDReadModel, len(ids))
+	copy(result, ids)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Sequence < result[j].Sequence
+	})
+	return result, nil
+}
+
+// ReplaceRepositoryExternalIDs replaces all external identifiers for a repository.
+func (s *ReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []repository.RepositoryExternalIDReadModel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if len(ids) == 0 {
+		delete(s.repositoryExternalIDs, repositoryID)
+		return nil
+	}
+	stored := make([]repository.RepositoryExternalIDReadModel, len(ids))
+	for i, id := range ids {
+		id.RepositoryID = repositoryID
+		id.Sequence = i
+		stored[i] = id
+	}
+	s.repositoryExternalIDs[repositoryID] = stored
+	return nil
+}
+
+// GetRepositoryExternalIDs retrieves all external identifiers for a repository,
+// ordered by their original sequence.
+func (s *ReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := s.repositoryExternalIDs[repositoryID]
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	result := make([]repository.RepositoryExternalIDReadModel, len(ids))
+	copy(result, ids)
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Sequence < result[j].Sequence
+	})
+	return result, nil
+}
+
 // GetFamily retrieves a family by ID.
 func (s *ReadModelStore) GetFamily(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
 	s.mu.RLock()
@@ -559,6 +676,7 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, id uuid.UUID) error {
 
 	delete(s.families, id)
 	delete(s.familyChildren, id)
+	delete(s.familyExternalIDs, id)
 	return nil
 }
 
@@ -787,6 +905,7 @@ func (s *ReadModelStore) DeleteSource(ctx context.Context, id uuid.UUID) error {
 	defer s.mu.Unlock()
 
 	delete(s.sources, id)
+	delete(s.sourceExternalIDs, id)
 	return nil
 }
 
@@ -1775,6 +1894,7 @@ func (s *ReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID) err
 	defer s.mu.Unlock()
 
 	delete(s.repositories, id)
+	delete(s.repositoryExternalIDs, id)
 	return nil
 }
 

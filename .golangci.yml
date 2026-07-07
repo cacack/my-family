@@ -108,7 +108,7 @@ linters:
       - linters:
           - revive
         path: internal/repository/readmodel\.go
-        text: type name will be used as repository.RepositoryReadModel
+        text: type name will be used as repository.Repository(ExternalID)?ReadModel
       # Test helper functions designed for flexibility
       - linters:
           - unparam

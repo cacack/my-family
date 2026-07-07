@@ -370,6 +370,10 @@ type ReadModelStore interface {
 	SaveFamily(ctx context.Context, family *FamilyReadModel) error
 	DeleteFamily(ctx context.Context, id uuid.UUID) error
 
+	// Family external identifier operations (GEDCOM 7.0 EXID)
+	ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []FamilyExternalIDReadModel) error
+	GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]FamilyExternalIDReadModel, error)
+
 	// Family children operations
 	GetFamilyChildren(ctx context.Context, familyID uuid.UUID) ([]FamilyChildReadModel, error)
 	GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]PersonReadModel, error)
@@ -388,6 +392,10 @@ type ReadModelStore interface {
 	SearchSources(ctx context.Context, query string, limit int) ([]SourceReadModel, error)
 	SaveSource(ctx context.Context, source *SourceReadModel) error
 	DeleteSource(ctx context.Context, id uuid.UUID) error
+
+	// Source external identifier operations (GEDCOM 7.0 EXID)
+	ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []SourceExternalIDReadModel) error
+	GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]SourceExternalIDReadModel, error)
 
 	// Citation operations
 	GetCitation(ctx context.Context, id uuid.UUID) (*CitationReadModel, error)
@@ -438,6 +446,10 @@ type ReadModelStore interface {
 	ListRepositories(ctx context.Context, opts ListOptions) ([]RepositoryReadModel, int, error)
 	SaveRepository(ctx context.Context, repository *RepositoryReadModel) error
 	DeleteRepository(ctx context.Context, id uuid.UUID) error
+
+	// Repository external identifier operations (GEDCOM 7.0 EXID)
+	ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []RepositoryExternalIDReadModel) error
+	GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]RepositoryExternalIDReadModel, error)
 
 	// Association operations
 	GetAssociation(ctx context.Context, id uuid.UUID) (*AssociationReadModel, error)
@@ -573,6 +585,42 @@ type PersonExternalIDReadModel struct {
 	PersonID uuid.UUID `json:"person_id"`
 	// Sequence preserves the order in which identifiers appeared in the source
 	// file so export round-trips deterministically.
+	Sequence int    `json:"sequence"`
+	Value    string `json:"value"`
+	Type     string `json:"type,omitempty"`
+}
+
+// FamilyExternalIDReadModel represents a single GEDCOM 7.0 external identifier
+// (EXID) attached to a family. Like PersonExternalIDReadModel, it is GEDCOM
+// metadata captured on import and re-emitted on export, living only in the read
+// model rather than the event schema.
+type FamilyExternalIDReadModel struct {
+	FamilyID uuid.UUID `json:"family_id"`
+	// Sequence preserves source-file order so export round-trips deterministically.
+	Sequence int    `json:"sequence"`
+	Value    string `json:"value"`
+	Type     string `json:"type,omitempty"`
+}
+
+// SourceExternalIDReadModel represents a single GEDCOM 7.0 external identifier
+// (EXID) attached to a source. Like PersonExternalIDReadModel, it is GEDCOM
+// metadata captured on import and re-emitted on export, living only in the read
+// model rather than the event schema.
+type SourceExternalIDReadModel struct {
+	SourceID uuid.UUID `json:"source_id"`
+	// Sequence preserves source-file order so export round-trips deterministically.
+	Sequence int    `json:"sequence"`
+	Value    string `json:"value"`
+	Type     string `json:"type,omitempty"`
+}
+
+// RepositoryExternalIDReadModel represents a single GEDCOM 7.0 external identifier
+// (EXID) attached to a repository. Like PersonExternalIDReadModel, it is GEDCOM
+// metadata captured on import and re-emitted on export, living only in the read
+// model rather than the event schema.
+type RepositoryExternalIDReadModel struct {
+	RepositoryID uuid.UUID `json:"repository_id"`
+	// Sequence preserves source-file order so export round-trips deterministically.
 	Sequence int    `json:"sequence"`
 	Value    string `json:"value"`
 	Type     string `json:"type,omitempty"`

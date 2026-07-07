@@ -230,7 +230,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Add source records
 	for i, s := range sources {
 		xref := sourceXrefs[s.ID]
-		src := toGedcomSource(s, repoIDToXref, repoNameToXref)
+		src := toGedcomSource(s, repoIDToXref, repoNameToXref, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeSource,
@@ -395,7 +395,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// via SOUR.REPO cross-references.
 	for i, r := range repositories {
 		xref := repositoryXrefs[r.ID]
-		repo := toGedcomRepository(r)
+		repo := toGedcomRepository(r, exp.readStore, ctx)
 		doc.Records = append(doc.Records, &gedcom.Record{
 			XRef:   xref,
 			Type:   gedcom.RecordTypeRepository,
@@ -548,7 +548,7 @@ func (cw *countingWriter) Write(p []byte) (n int, err error) {
 // RepositoryID. repoNameToXref maps a Repository's name (and any @XREF@ used as a
 // name) to the same xref, used as a fallback for legacy sources linked only by
 // name. When neither resolves, fall back to an inline repository definition.
-func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]string, repoNameToXref map[string]string) *gedcom.Source {
+func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]string, repoNameToXref map[string]string, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Source {
 	src := &gedcom.Source{}
 
 	// Title
@@ -590,6 +590,16 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 	// Notes - encoder handles CONT/CONC automatically for multiline text
 	if s.Notes != "" {
 		src.Notes = []string{s.Notes}
+	}
+
+	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
+	if externalIDs, err := readStore.GetSourceExternalIDs(ctx, s.ID); err == nil {
+		for _, ext := range externalIDs {
+			src.ExternalIDs = append(src.ExternalIDs, &gedcom.ExternalID{
+				Value: ext.Value,
+				Type:  ext.Type,
+			})
+		}
 	}
 
 	return src
@@ -987,6 +997,16 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 		}
 	}
 
+	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
+	if externalIDs, err := readStore.GetFamilyExternalIDs(ctx, f.ID); err == nil {
+		for _, ext := range externalIDs {
+			fam.ExternalIDs = append(fam.ExternalIDs, &gedcom.ExternalID{
+				Value: ext.Value,
+				Type:  ext.Type,
+			})
+		}
+	}
+
 	return fam
 }
 
@@ -1200,7 +1220,7 @@ func toGedcomSubmitter(s repository.SubmitterReadModel) *gedcom.Submitter {
 
 // toGedcomRepository converts a repository RepositoryReadModel to a gedcom.Repository entity.
 // The encoder will automatically convert this to GEDCOM tags (NAME, ADDR, NOTE).
-func toGedcomRepository(r repository.RepositoryReadModel) *gedcom.Repository {
+func toGedcomRepository(r repository.RepositoryReadModel, readStore repository.ReadModelStore, ctx context.Context) *gedcom.Repository {
 	repo := &gedcom.Repository{
 		Name: r.Name,
 	}
@@ -1213,6 +1233,16 @@ func toGedcomRepository(r repository.RepositoryReadModel) *gedcom.Repository {
 	// Notes - encoder handles CONT/CONC automatically for multiline text.
 	if r.Notes != "" {
 		repo.Notes = []string{r.Notes}
+	}
+
+	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
+	if externalIDs, err := readStore.GetRepositoryExternalIDs(ctx, r.ID); err == nil {
+		for _, ext := range externalIDs {
+			repo.ExternalIDs = append(repo.ExternalIDs, &gedcom.ExternalID{
+				Value: ext.Value,
+				Type:  ext.Type,
+			})
+		}
 	}
 
 	return repo
