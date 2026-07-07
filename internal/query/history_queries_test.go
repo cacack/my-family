@@ -119,6 +119,24 @@ func (m *mockReadModelStore) ReplacePersonExternalIDs(ctx context.Context, perso
 func (m *mockReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []repository.RepositoryExternalIDReadModel) error {
+	return nil
+}
+func (m *mockReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
+	return nil, nil
+}
 
 func (m *mockReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	return nil, 0, nil

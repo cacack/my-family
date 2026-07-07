@@ -3042,6 +3042,110 @@ func TestExternalIDs_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestExternalIDs_RoundTrip_FamilySourceRepository(t *testing.T) {
+	// External identifiers on Family, Source, and Repository records must export
+	// as GEDCOM 7.0 EXID/TYPE structures and survive re-import unchanged, matching
+	// the Individual behavior.
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	// Two partners so the family exports as a FAM record.
+	husbandID, wifeID := uuid.New(), uuid.New()
+	if err := readStore.SavePerson(ctx, &repository.PersonReadModel{ID: husbandID, GivenName: "John", Surname: "Doe", FullName: "John Doe"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.SavePerson(ctx, &repository.PersonReadModel{ID: wifeID, GivenName: "Jane", Surname: "Doe", FullName: "Jane Doe"}); err != nil {
+		t.Fatal(err)
+	}
+
+	familyID := uuid.New()
+	if err := readStore.SaveFamily(ctx, &repository.FamilyReadModel{ID: familyID, Partner1ID: &husbandID, Partner2ID: &wifeID, RelationshipType: domain.RelationMarriage}); err != nil {
+		t.Fatal(err)
+	}
+	sourceID := uuid.New()
+	if err := readStore.SaveSource(ctx, &repository.SourceReadModel{ID: sourceID, SourceType: domain.SourceBook, Title: "Test Source"}); err != nil {
+		t.Fatal(err)
+	}
+	repoID := uuid.New()
+	if err := readStore.SaveRepository(ctx, &repository.RepositoryReadModel{ID: repoID, Name: "Test Repo"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Family carries two identifiers so the round-trip proves Sequence order is
+	// preserved through the encode → decode cycle (not just presence).
+	famIDs := []repository.FamilyExternalIDReadModel{
+		{Value: "FAM-EXID-1", Type: "http://example.com/fam"},
+		{Value: "FAM-EXID-2", Type: "http://example.com/fam2"},
+	}
+	if err := readStore.ReplaceFamilyExternalIDs(ctx, familyID, famIDs); err != nil {
+		t.Fatal(err)
+	}
+	srcIDs := []repository.SourceExternalIDReadModel{{Value: "SRC-EXID-1", Type: "http://example.com/src"}}
+	if err := readStore.ReplaceSourceExternalIDs(ctx, sourceID, srcIDs); err != nil {
+		t.Fatal(err)
+	}
+	repoIDs := []repository.RepositoryExternalIDReadModel{{Value: "REPO-EXID-1", Type: "http://example.com/repo"}}
+	if err := readStore.ReplaceRepositoryExternalIDs(ctx, repoID, repoIDs); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+	output := buf.String()
+
+	// EXID is a 7.0-only structure; each entity's identifier must be present.
+	if !strings.Contains(output, "2 VERS 7.0") {
+		t.Errorf("EXID data should upgrade export to GEDCOM 7.0; got:\n%s", output)
+	}
+	for _, want := range []string{"1 EXID FAM-EXID-1", "1 EXID FAM-EXID-2", "1 EXID SRC-EXID-1", "1 EXID REPO-EXID-1"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("export should contain %q; got:\n%s", want, output)
+		}
+	}
+
+	// Re-import and confirm each entity's external IDs round-trip.
+	_, _, families, sources, _, repositories, _, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, strings.NewReader(output))
+	if err != nil {
+		t.Fatalf("Import failed: %v\n%s", err, output)
+	}
+
+	assertOneExternalID := func(name string, got []domain.ExternalIdentifier, wantValue, wantType string) {
+		t.Helper()
+		if len(got) != 1 {
+			t.Fatalf("%s: len(ExternalIDs) = %d, want 1: %+v", name, len(got), got)
+		}
+		if got[0].Value != wantValue || got[0].Type != wantType {
+			t.Errorf("%s: ExternalIDs[0] = {%q, %q}, want {%q, %q}", name, got[0].Value, got[0].Type, wantValue, wantType)
+		}
+	}
+
+	if len(families) != 1 {
+		t.Fatalf("len(families) = %d, want 1\n%s", len(families), output)
+	}
+	// Both family identifiers must survive re-import in their original order.
+	famGot := families[0].ExternalIDs
+	if len(famGot) != 2 {
+		t.Fatalf("family: len(ExternalIDs) = %d, want 2: %+v", len(famGot), famGot)
+	}
+	for i, want := range famIDs {
+		if famGot[i].Value != want.Value || famGot[i].Type != want.Type {
+			t.Errorf("family: ExternalIDs[%d] = {%q, %q}, want {%q, %q}", i, famGot[i].Value, famGot[i].Type, want.Value, want.Type)
+		}
+	}
+
+	if len(sources) != 1 {
+		t.Fatalf("len(sources) = %d, want 1\n%s", len(sources), output)
+	}
+	assertOneExternalID("source", sources[0].ExternalIDs, "SRC-EXID-1", "http://example.com/src")
+
+	if len(repositories) != 1 {
+		t.Fatalf("len(repositories) = %d, want 1\n%s", len(repositories), output)
+	}
+	assertOneExternalID("repository", repositories[0].ExternalIDs, "REPO-EXID-1", "http://example.com/repo")
+}
+
 func TestExport_SharedNote(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()

@@ -295,6 +295,39 @@ func (s *ReadModelStore) createTables() error {
 
 		CREATE INDEX IF NOT EXISTS idx_repositories_gedcom_xref ON repositories(gedcom_xref);
 
+		-- Family external identifiers (GEDCOM 7.0 EXID)
+		CREATE TABLE IF NOT EXISTS family_external_ids (
+			family_id UUID NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (family_id, sequence)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_family_external_ids_family ON family_external_ids(family_id);
+
+		-- Source external identifiers (GEDCOM 7.0 EXID)
+		CREATE TABLE IF NOT EXISTS source_external_ids (
+			source_id UUID NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (source_id, sequence)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_source_external_ids_source ON source_external_ids(source_id);
+
+		-- Repository external identifiers (GEDCOM 7.0 EXID)
+		CREATE TABLE IF NOT EXISTS repository_external_ids (
+			repository_id UUID NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (repository_id, sequence)
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_repository_external_ids_repository ON repository_external_ids(repository_id);
+
 		-- Associations table (GEDCOM ASSO records for non-family relationships)
 		CREATE TABLE IF NOT EXISTS associations (
 			id UUID PRIMARY KEY,
@@ -991,6 +1024,180 @@ func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate person external ids: %w", err)
+	}
+	return result, nil
+}
+
+// ReplaceFamilyExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
+// for a family within a single transaction.
+func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM family_external_ids WHERE family_id = $1", familyID); err != nil {
+		return fmt.Errorf("delete family external ids: %w", err)
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO family_external_ids (family_id, sequence, value, type)
+			VALUES ($1, $2, $3, $4)
+		`, familyID, i, id.Value, id.Type); err != nil {
+			return fmt.Errorf("insert family external id: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// GetFamilyExternalIDs retrieves all external identifiers for a family, ordered
+// by their original sequence.
+func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sequence, value, type FROM family_external_ids
+		WHERE family_id = $1 ORDER BY sequence
+	`, familyID)
+	if err != nil {
+		return nil, fmt.Errorf("query family external ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []repository.FamilyExternalIDReadModel
+	for rows.Next() {
+		var (
+			seq   int
+			value string
+			typ   string
+		)
+		if err := rows.Scan(&seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan family external id: %w", err)
+		}
+		result = append(result, repository.FamilyExternalIDReadModel{
+			FamilyID: familyID,
+			Sequence: seq,
+			Value:    value,
+			Type:     typ,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate family external ids: %w", err)
+	}
+	return result, nil
+}
+
+// ReplaceSourceExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
+// for a source within a single transaction.
+func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM source_external_ids WHERE source_id = $1", sourceID); err != nil {
+		return fmt.Errorf("delete source external ids: %w", err)
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO source_external_ids (source_id, sequence, value, type)
+			VALUES ($1, $2, $3, $4)
+		`, sourceID, i, id.Value, id.Type); err != nil {
+			return fmt.Errorf("insert source external id: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// GetSourceExternalIDs retrieves all external identifiers for a source, ordered
+// by their original sequence.
+func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sequence, value, type FROM source_external_ids
+		WHERE source_id = $1 ORDER BY sequence
+	`, sourceID)
+	if err != nil {
+		return nil, fmt.Errorf("query source external ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []repository.SourceExternalIDReadModel
+	for rows.Next() {
+		var (
+			seq   int
+			value string
+			typ   string
+		)
+		if err := rows.Scan(&seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan source external id: %w", err)
+		}
+		result = append(result, repository.SourceExternalIDReadModel{
+			SourceID: sourceID,
+			Sequence: seq,
+			Value:    value,
+			Type:     typ,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate source external ids: %w", err)
+	}
+	return result, nil
+}
+
+// ReplaceRepositoryExternalIDs replaces all external identifiers (GEDCOM 7.0
+// EXID) for a repository within a single transaction.
+func (s *ReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []repository.RepositoryExternalIDReadModel) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM repository_external_ids WHERE repository_id = $1", repositoryID); err != nil {
+		return fmt.Errorf("delete repository external ids: %w", err)
+	}
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO repository_external_ids (repository_id, sequence, value, type)
+			VALUES ($1, $2, $3, $4)
+		`, repositoryID, i, id.Value, id.Type); err != nil {
+			return fmt.Errorf("insert repository external id: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// GetRepositoryExternalIDs retrieves all external identifiers for a repository,
+// ordered by their original sequence.
+func (s *ReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]repository.RepositoryExternalIDReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT sequence, value, type FROM repository_external_ids
+		WHERE repository_id = $1 ORDER BY sequence
+	`, repositoryID)
+	if err != nil {
+		return nil, fmt.Errorf("query repository external ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var result []repository.RepositoryExternalIDReadModel
+	for rows.Next() {
+		var (
+			seq   int
+			value string
+			typ   string
+		)
+		if err := rows.Scan(&seq, &value, &typ); err != nil {
+			return nil, fmt.Errorf("scan repository external id: %w", err)
+		}
+		result = append(result, repository.RepositoryExternalIDReadModel{
+			RepositoryID: repositoryID,
+			Sequence:     seq,
+			Value:        value,
+			Type:         typ,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate repository external ids: %w", err)
 	}
 	return result, nil
 }
