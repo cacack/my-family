@@ -3989,6 +3989,41 @@ components:
                 $ref: '#/components/schemas/FamilySummary'
             family_as_child:
               $ref: '#/components/schemas/FamilySummary'
+            external_ids:
+              type: array
+              description: >-
+                GEDCOM 7.0 external identifiers (EXID) with resolved display label and link.
+                Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+              items:
+                $ref: '#/components/schemas/ExternalLink'
+
+    ExternalLink:
+      type: object
+      required: [value, type, label]
+      description: >-
+        A GEDCOM 7.0 external identifier (EXID) with a resolved display label and,
+        for recognized systems, a browsable URL.
+      properties:
+        value:
+          type: string
+          description: The external identifier value (the EXID payload).
+          example: KWCJ-QN7
+        type:
+          type: string
+          description: The type URI identifying the external system.
+          example: http://www.familysearch.org/ark
+        label:
+          type: string
+          description: >-
+            Human-readable system name, the raw type URI when unrecognized, or a
+            generic "External ID" when the source record omitted the type. Never empty.
+          example: FamilySearch
+        url:
+          type: string
+          description: >-
+            Browsable URL for the identifier; omitted when the system is unrecognized.
+            The identifier value is URL-escaped for its position in the template.
+          example: https://www.familysearch.org/tree/person/details/KWCJ-QN7
 
     PersonSummary:
       type: object

@@ -2359,6 +2359,21 @@ type ExportPreview struct {
 	TargetVersion string `json:"targetVersion"`
 }
 
+// ExternalLink A GEDCOM 7.0 external identifier (EXID) with a resolved display label and, for recognized systems, a browsable URL.
+type ExternalLink struct {
+	// Label Human-readable system name, the raw type URI when unrecognized, or a generic "External ID" when the source record omitted the type. Never empty.
+	Label string `json:"label"`
+
+	// Type The type URI identifying the external system.
+	Type string `json:"type"`
+
+	// Url Browsable URL for the identifier; omitted when the system is unrecognized. The identifier value is URL-escaped for its position in the template.
+	Url *string `json:"url,omitempty"`
+
+	// Value The external identifier value (the EXID payload).
+	Value string `json:"value"`
+}
+
 // Family defines model for Family.
 type Family struct {
 	Id openapi_types.UUID `json:"id"`
@@ -3096,12 +3111,15 @@ type PersonDetail struct {
 	DeathPlaceLatitude *string `json:"death_place_latitude,omitempty"`
 
 	// DeathPlaceLongitude Longitude in GEDCOM format (e.g., "W71.0589")
-	DeathPlaceLongitude *string             `json:"death_place_longitude,omitempty"`
-	FamiliesAsPartner   *[]FamilySummary    `json:"families_as_partner,omitempty"`
-	FamilyAsChild       *FamilySummary      `json:"family_as_child,omitempty"`
-	Gender              *PersonDetailGender `json:"gender,omitempty"`
-	GivenName           string              `json:"given_name"`
-	Id                  openapi_types.UUID  `json:"id"`
+	DeathPlaceLongitude *string `json:"death_place_longitude,omitempty"`
+
+	// ExternalIds GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+	ExternalIds       *[]ExternalLink     `json:"external_ids,omitempty"`
+	FamiliesAsPartner *[]FamilySummary    `json:"families_as_partner,omitempty"`
+	FamilyAsChild     *FamilySummary      `json:"family_as_child,omitempty"`
+	Gender            *PersonDetailGender `json:"gender,omitempty"`
+	GivenName         string              `json:"given_name"`
+	Id                openapi_types.UUID  `json:"id"`
 
 	// Names All name variants for the person (birth, married, aliases, etc.)
 	Names *[]PersonName `json:"names,omitempty"`

@@ -14,6 +14,7 @@
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -387,6 +388,15 @@
 						</dl>
 					</div>
 				</div>
+
+				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
+				     "External links" heading is suppressed when there are none. -->
+				{#if person.external_ids && person.external_ids.length > 0}
+					<div class="info-section">
+						<h2>External links</h2>
+						<ExternalLinks externalIds={person.external_ids} />
+					</div>
+				{/if}
 
 				<!-- Brick Wall Section -->
 				<div class="brick-wall-section" class:celebrating={brickWallCelebrating}>

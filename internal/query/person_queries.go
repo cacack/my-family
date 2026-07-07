@@ -60,9 +60,10 @@ type PersonName struct {
 // PersonDetail includes family relationships and names.
 type PersonDetail struct {
 	Person
-	Names             []PersonName    `json:"names,omitempty"`
-	FamiliesAsPartner []FamilySummary `json:"families_as_partner,omitempty"`
-	FamilyAsChild     *FamilySummary  `json:"family_as_child,omitempty"`
+	Names             []PersonName                `json:"names,omitempty"`
+	FamiliesAsPartner []FamilySummary             `json:"families_as_partner,omitempty"`
+	FamilyAsChild     *FamilySummary              `json:"family_as_child,omitempty"`
+	ExternalIDs       []domain.ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 // FamilySummary is a brief family representation.
@@ -172,6 +173,19 @@ func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDet
 	if childFamily != nil {
 		summary := convertToFamilySummary(*childFamily)
 		detail.FamilyAsChild = &summary
+	}
+
+	// Get GEDCOM 7.0 external identifiers (EXID) so the UI can render
+	// "View on <system>" links.
+	externalIDs, err := s.readStore.GetPersonExternalIDs(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, ext := range externalIDs {
+		detail.ExternalIDs = append(detail.ExternalIDs, domain.ExternalIdentifier{
+			Value: ext.Value,
+			Type:  ext.Type,
+		})
 	}
 
 	return detail, nil

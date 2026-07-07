@@ -2293,6 +2293,31 @@ export interface components {
             names?: components["schemas"]["PersonName"][];
             families_as_partner?: components["schemas"]["FamilySummary"][];
             family_as_child?: components["schemas"]["FamilySummary"];
+            /** @description GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint. */
+            external_ids?: components["schemas"]["ExternalLink"][];
+        };
+        /** @description A GEDCOM 7.0 external identifier (EXID) with a resolved display label and, for recognized systems, a browsable URL. */
+        ExternalLink: {
+            /**
+             * @description The external identifier value (the EXID payload).
+             * @example KWCJ-QN7
+             */
+            value: string;
+            /**
+             * @description The type URI identifying the external system.
+             * @example http://www.familysearch.org/ark
+             */
+            type: string;
+            /**
+             * @description Human-readable system name, the raw type URI when unrecognized, or a generic "External ID" when the source record omitted the type. Never empty.
+             * @example FamilySearch
+             */
+            label: string;
+            /**
+             * @description Browsable URL for the identifier; omitted when the system is unrecognized. The identifier value is URL-escaped for its position in the template.
+             * @example https://www.familysearch.org/tree/person/details/KWCJ-QN7
+             */
+            url?: string;
         };
         PersonSummary: {
             /** Format: uuid */

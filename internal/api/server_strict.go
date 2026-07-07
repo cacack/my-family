@@ -3496,6 +3496,24 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 		resp.FamilyAsChild = &fac
 	}
 
+	// Resolve each external identifier's display label and (when the system is
+	// recognized) a browsable URL server-side, so the UI needs no mapping logic.
+	if len(pd.ExternalIDs) > 0 {
+		links := make([]ExternalLink, len(pd.ExternalIDs))
+		for i, ext := range pd.ExternalIDs {
+			link := ExternalLink{
+				Value: ext.Value,
+				Type:  ext.Type,
+				Label: ext.Label(),
+			}
+			if linkURL, ok := ext.URL(); ok {
+				link.Url = &linkURL
+			}
+			links[i] = link
+		}
+		resp.ExternalIds = &links
+	}
+
 	return resp
 }
 
