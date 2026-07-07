@@ -3121,18 +3121,19 @@ func TestExport_PlainNoteStaysNote(t *testing.T) {
 
 func TestSharedNote_RoundTrip(t *testing.T) {
 	// A shared note with metadata and a translation must survive
-	// export → re-import unchanged.
+	// export → re-import unchanged, including multi-line primary text: the
+	// exporter emits CONT continuation lines and gedcom-go's decoder folds
+	// them back into SharedNote.Text (gedcom-go >= v2.2.2, issue #598).
 	//
-	// Note: multi-line SNOTE text is not exercised here because gedcom-go
-	// v2.2.0's decoder does not fold CONT continuation back into a shared
-	// note's Text (parseSharedNote ignores CONT/CONC). The exporter still
-	// emits valid CONT lines for interoperability with other GEDCOM tools.
+	// The translation text stays single-line: gedcom-go folds CONT into the
+	// primary text but not yet under a TRAN sub-value, so a multi-line
+	// translation would truncate on import (upstream cacack/gedcom-go#339).
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()
 
 	original := &repository.NoteReadModel{
 		ID:       uuid.New(),
-		Text:     "<p>Rich text note.</p>",
+		Text:     "<p>Rich text note.</p>\nSecond paragraph.\nThird line.",
 		MIME:     "text/html",
 		Language: "en",
 		Translations: []domain.NoteTranslation{

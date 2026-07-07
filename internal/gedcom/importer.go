@@ -880,7 +880,11 @@ func parseNote(note *gedcom.Note) NoteData {
 }
 
 // parseSharedNote converts a GEDCOM 7.0 shared note (SNOTE) record to NoteData,
-// preserving its MIME media type, language tag, and alternate-language translations.
+// preserving its MIME media type, language tag, and alternate-language
+// translations. Multi-line primary text round-trips (gedcom-go >= v2.2.2 folds
+// CONT/CONC into SharedNote.Text), but multi-line *translation* text is
+// currently truncated to its first line: gedcom-go does not yet fold CONT/CONC
+// under a TRAN sub-value (upstream cacack/gedcom-go#339).
 func parseSharedNote(snote *gedcom.SharedNote) NoteData {
 	data := NoteData{
 		ID:         uuid.New(),
