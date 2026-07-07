@@ -131,9 +131,19 @@ export interface FamilySummary {
 	relationship_type?: string;
 }
 
+// A GEDCOM 7.0 external identifier (EXID) with a server-resolved display label
+// and, for recognized systems, a browsable URL.
+export interface ExternalLink {
+	value: string;
+	type: string;
+	label: string;
+	url?: string;
+}
+
 export interface PersonDetail extends Person {
 	families_as_partner?: FamilySummary[];
 	family_as_child?: FamilySummary;
+	external_ids?: ExternalLink[];
 }
 
 export interface PersonList {
