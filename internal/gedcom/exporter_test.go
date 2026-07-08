@@ -3285,7 +3285,10 @@ func TestSharedNote_RoundTrip(t *testing.T) {
 
 func TestExport_DowngradeReportsDataLoss(t *testing.T) {
 	// Exporting 7.0-only data (EXID) to 5.5.1 forces a downgrade conversion,
-	// which must be reported in ExportResult.DataLoss.
+	// which must be reported in ExportResult.DataLoss. A non-FamilySearch EXID
+	// has no faithful 5.x vendor-tag equivalent, so it is dropped and reported
+	// (a FamilySearch ARK EXID would instead be mapped to _FSFTID — see
+	// TestExport_DowngradeEXIDToVendorTag).
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()
 
@@ -3294,7 +3297,7 @@ func TestExport_DowngradeReportsDataLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
-		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
+		{Value: "12345678", Type: "https://www.findagrave.com"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -3331,6 +3334,44 @@ func TestExport_DowngradeReportsDataLoss(t *testing.T) {
 	}
 }
 
+func TestExport_DowngradeEXIDToVendorTag(t *testing.T) {
+	// EXID is 7.0-only, but a FamilySearch ARK identifier has a faithful 5.x
+	// vendor-tag equivalent (_FSFTID). On a 5.5.1 downgrade it must survive as
+	// _FSFTID rather than being dropped as data loss (issue #599, slice c).
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Test", Surname: "Person", FullName: "Test Person"}
+	if err := readStore.SavePerson(ctx, person); err != nil {
+		t.Fatal(err)
+	}
+	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := &bytes.Buffer{}
+	res, err := gedcom.NewExporter(readStore).ExportWithOptions(ctx, buf, gedcom.ExportOptions{TargetVersion: gcgedcom.Version551})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "1 _FSFTID KWCJ-QN7\n") {
+		t.Errorf("FamilySearch EXID should be emitted as _FSFTID on 5.5.1 downgrade; got:\n%s", out)
+	}
+	if strings.Contains(out, "EXID") {
+		t.Errorf("EXID (7.0-only) should not appear in 5.5.1 output; got:\n%s", out)
+	}
+	// The identifier was converted, not lost — it must not be in DataLoss.
+	for _, d := range res.DataLoss {
+		if strings.Contains(d.Feature, "EXID") {
+			t.Errorf("converted FamilySearch EXID must not be reported as data loss; got %+v", res.DataLoss)
+		}
+	}
+}
+
 func TestExport_NoDowngradeNoDataLoss(t *testing.T) {
 	// Data with no 7.0-only structures needs no conversion: no data loss, and
 	// SourceVersion equals the emitted version.
@@ -3364,8 +3405,10 @@ func TestPreviewConversion(t *testing.T) {
 	if err := readStore.SavePerson(ctx, person); err != nil {
 		t.Fatal(err)
 	}
+	// Use a non-FamilySearch EXID so the downgrade is genuinely lossy: a
+	// FamilySearch ARK would be mapped to _FSFTID and report no loss.
 	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
-		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
+		{Value: "12345678", Type: "https://www.findagrave.com"},
 	}); err != nil {
 		t.Fatal(err)
 	}
