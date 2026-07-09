@@ -161,16 +161,21 @@ Current implementation status for tracking completeness.
 | Source | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Note | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
-| Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
-| Association | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
-| LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | Partial |
+| Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
+| Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
+| Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
+| LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
 | Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
 | Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Snapshot | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | N/A | Partial |
+| Snapshot | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | N/A | Partial |
 
 Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing
+
+Notes on partial rows:
+
+- **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`).
+- **Snapshot**: bypasses the event-sourced pipeline — `SnapshotService` writes directly to `SnapshotStore` (implemented in all three backends, hence ReadModel ✅). A `SnapshotCreated` event type exists in `domain/events.go` but is never emitted, so Events/Commands/Projections remain partial.
 
 ---
 
