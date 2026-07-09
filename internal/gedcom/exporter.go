@@ -456,7 +456,10 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	} else {
 		// Encode using gedcom-go encoder with LF line endings. TargetVersion
 		// selects the emitted version without mutating doc.Header.Version.
-		encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}
+		// PreserveUnknownTags mirrors the downgrade path (and the library's own
+		// nil-opts default) so vendor "_"-prefixed tags are never silently
+		// stripped by the bare-literal zero value.
+		encOpts := &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion, PreserveUnknownTags: true}
 		if err := encoder.EncodeWithOptions(cw, doc, encOpts); err != nil {
 			return result, fmt.Errorf("failed to write GEDCOM: %w", err)
 		}
@@ -480,7 +483,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 // encoded to w.
 func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetVersion gedcom.Version) (*gedcom.ConversionReport, error) {
 	var full bytes.Buffer
-	if err := encoder.EncodeWithOptions(&full, doc, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: gedcom.Version70}); err != nil {
+	if err := encoder.EncodeWithOptions(&full, doc, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: gedcom.Version70, PreserveUnknownTags: true}); err != nil {
 		return nil, fmt.Errorf("failed to encode document for conversion: %w", err)
 	}
 	parsed, err := decoder.Decode(bytes.NewReader(full.Bytes()))
@@ -491,7 +494,11 @@ func (exp *Exporter) encodeDowngraded(w io.Writer, doc *gedcom.Document, targetV
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert export to %s: %w", targetVersion, err)
 	}
-	if err := encoder.EncodeWithOptions(w, converted, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion}); err != nil {
+	// Preserve custom "_"-prefixed tags: the converter deliberately keeps vendor
+	// extensions through a downgrade (and maps 7.0-only EXIDs to vendor tags like
+	// _FSFTID), but EncodeOptions only defaults PreserveUnknownTags to true when
+	// opts is nil — a bare literal would silently strip them. See issue #599.
+	if err := encoder.EncodeWithOptions(w, converted, &encoder.EncodeOptions{LineEnding: "\n", TargetVersion: targetVersion, PreserveUnknownTags: true}); err != nil {
 		return nil, fmt.Errorf("failed to write GEDCOM: %w", err)
 	}
 	return report, nil

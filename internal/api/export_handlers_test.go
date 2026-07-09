@@ -638,14 +638,16 @@ func TestExportGedcom_VersionParam(t *testing.T) {
 	}
 }
 
+// Uses a non-FamilySearch EXID so a 5.5.x downgrade is genuinely lossy: a
+// FamilySearch ARK would be mapped to _FSFTID and report no loss (issue #599).
 const exportPreviewGedcom = `0 HEAD
 1 GEDC
 2 VERS 7.0
 1 CHAR UTF-8
 0 @I1@ INDI
 1 NAME Test /Person/
-1 EXID KWCJ-QN7
-2 TYPE http://www.familysearch.org/ark
+1 EXID 12345678
+2 TYPE https://www.findagrave.com
 0 TRLR
 `
 
