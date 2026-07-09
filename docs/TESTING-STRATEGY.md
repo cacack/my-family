@@ -209,10 +209,15 @@ Location: `testdata/`
 
 | File | Purpose |
 |------|---------|
-| `valid.ged` | Valid GEDCOM for import tests |
-| `edge-cases.ged` | GEDCOM with unusual but valid data |
-| `invalid.ged` | Invalid GEDCOM for error handling tests |
-| `large-tree.ged` | Large GEDCOM for performance tests |
+| `gedcom-5.5/minimal.ged` | Smallest valid GEDCOM for basic import tests |
+| `gedcom-5.5/comprehensive.ged` | Broad feature coverage: multiple families, adoption, sources |
+| `gedcom-5.5/555SAMPLE.GED` | Official GEDCOM 5.5.5 specification sample |
+| `gedcom-5.5/ancestry-sample.ged` | Ancestry.com export with `_APID` vendor tags |
+| `gedcom-5.5/familysearch-sample.ged` | FamilySearch export with `_FSFTID` vendor tags |
+| `gedcom-5.5/royal92.ged` | Large public-domain royal genealogy for realistic-volume tests |
+| `map-test.ged` | Place/coordinate data for geographic map tests |
+
+GEDCOM 7.0 fixtures are tracked in [#622](https://github.com/cacack/my-family/issues/622).
 
 ---
 

@@ -31,7 +31,7 @@ Completed features in my-family genealogy software.
 - **Data Quality Scores** - Analytics page showing records needing attention with actionable issues
 - **Brick Wall Tracker** - Mark research dead ends, add notes, and celebrate breakthroughs with resolution tracking and browse page
 - **Discovery Feed** - Prioritized research suggestions on the dashboard identifying missing data, orphaned records, unassessed persons, and quality gaps
-- **Citation Template UI** - Browse 26 Evidence Explained citation templates by category, select templates when adding citations for dynamic field rendering with live-formatted preview
+- **Citation Template UI** - Browse 25 Evidence Explained citation templates by category, select templates when adding citations for dynamic field rendering with live-formatted preview
 - **Evidence Analysis** - Aggregate multiple citations per fact with researcher conclusions, separating what sources say from what you believe (GPS-compliant)
 - **Conflict Tracking** - Automatic detection of contradictory evidence across analyses for the same fact, with resolution workflow
 - **Research Logs** - Document research activity including repository searched, search description, and outcome (found/not found/inconclusive) for negative evidence tracking
@@ -54,7 +54,7 @@ Completed features in my-family genealogy software.
 ## API & Architecture
 
 - **REST API** - Complete API for all operations with JSON responses
-- **OpenAPI Documentation** - Interactive API docs at `/api/docs`
+- **OpenAPI Documentation** - Interactive API docs at `/api/v1/docs`
 - **Event Sourcing** - Full audit trail with ACID guarantees
 - **Dual Database Support** - SQLite for local/demo use, PostgreSQL for production
 
@@ -68,7 +68,7 @@ Completed features in my-family genealogy software.
 
 - **Svelte 5 + Vite** - Modern reactive frontend
 - **Tailwind CSS** - Utility-first styling
-- **Responsive Layout** - Works on desktop browsers
+- **Desktop Layout** - Optimized for desktop browsers (tablet/mobile responsive design tracked in [#21](https://github.com/cacack/my-family/issues/21))
 
 ## Keyboard Shortcuts
 
