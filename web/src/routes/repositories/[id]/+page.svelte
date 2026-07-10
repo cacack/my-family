@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type Repository, type Address } from '$lib/api/client';
+	import { api, type RepositoryDetail, type Address } from '$lib/api/client';
+	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 
-	let repository: Repository | null = $state(null);
+	let repository: RepositoryDetail | null = $state(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
 	let editing = $state(false);
@@ -289,6 +290,15 @@
 					<div class="info-section">
 						<h2>GEDCOM Xref</h2>
 						<p class="mono">{repository.gedcom_xref}</p>
+					</div>
+				{/if}
+
+				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
+				     "External links" heading is suppressed when there are none. -->
+				{#if repository.external_ids && repository.external_ids.length > 0}
+					<div class="info-section">
+						<h2>External links</h2>
+						<ExternalLinks externalIds={repository.external_ids} />
 					</div>
 				{/if}
 			</div>

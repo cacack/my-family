@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { api, type FamilyDetail, type RollbackResponse, formatGenDate, formatPersonName } from '$lib/api/client';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
+	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
 	import RollbackConfirmDialog from '$lib/components/RollbackConfirmDialog.svelte';
 	import RollbackSuccessBanner from '$lib/components/RollbackSuccessBanner.svelte';
@@ -291,6 +292,15 @@
 					<div class="info-section">
 						<h2>Children</h2>
 						<p class="empty-message">No children recorded</p>
+					</div>
+				{/if}
+
+				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
+				     "External links" heading is suppressed when there are none. -->
+				{#if family.external_ids && family.external_ids.length > 0}
+					<div class="info-section">
+						<h2>External links</h2>
+						<ExternalLinks externalIds={family.external_ids} />
 					</div>
 				{/if}
 

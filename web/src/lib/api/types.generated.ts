@@ -2379,6 +2379,8 @@ export interface components {
             /** @description Partner 2 summary. Present whenever partner2_id is set; given_name and surname may be empty strings if the partner has no recorded name. */
             partner2?: components["schemas"]["PersonSummary"];
             children?: components["schemas"]["FamilyChild"][];
+            /** @description GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint. */
+            external_ids?: components["schemas"]["ExternalLink"][];
         };
         FamilySummary: {
             /** Format: uuid */
@@ -2966,6 +2968,8 @@ export interface components {
         };
         SourceDetail: components["schemas"]["Source"] & {
             citations?: components["schemas"]["Citation"][];
+            /** @description GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint. */
+            external_ids?: components["schemas"]["ExternalLink"][];
         };
         SourceList: {
             sources: components["schemas"]["Source"][];
@@ -3720,6 +3724,10 @@ export interface components {
             version: number;
             /** Format: date-time */
             updated_at?: string;
+        };
+        RepositoryDetail: components["schemas"]["Repository"] & {
+            /** @description GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint. */
+            external_ids?: components["schemas"]["ExternalLink"][];
         };
         RepositoryCreate: {
             /** @description Repository's name */
@@ -7085,7 +7093,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Repository"];
+                    "application/json": components["schemas"]["RepositoryDetail"];
                 };
             };
             404: components["responses"]["NotFound"];

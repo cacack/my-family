@@ -177,3 +177,26 @@ func TestRepositoryService_GetRepository(t *testing.T) {
 		assert.Nil(t, result)
 	})
 }
+
+// TestRepositoryService_GetRepository_ExternalIDs verifies that stored GEDCOM
+// 7.0 external identifiers are surfaced on the repository detail.
+func TestRepositoryService_GetRepository_ExternalIDs(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewRepositoryService(readStore)
+	ctx := context.Background()
+
+	id := uuid.New()
+	require.NoError(t, readStore.SaveRepository(ctx, &repository.RepositoryReadModel{
+		ID:   id,
+		Name: "National Archives",
+	}))
+	require.NoError(t, readStore.ReplaceRepositoryExternalIDs(ctx, id, []repository.RepositoryExternalIDReadModel{
+		{RepositoryID: id, Sequence: 0, Value: "R123", Type: "http://www.familysearch.org/ark"},
+	}))
+
+	result, err := service.GetRepository(ctx, id)
+	require.NoError(t, err)
+	require.Len(t, result.ExternalIDs, 1)
+	assert.Equal(t, "R123", result.ExternalIDs[0].Value)
+	assert.Equal(t, "http://www.familysearch.org/ark", result.ExternalIDs[0].Type)
+}

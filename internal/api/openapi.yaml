@@ -2704,7 +2704,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Repository'
+                $ref: '#/components/schemas/RepositoryDetail'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -4143,6 +4143,13 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/FamilyChild'
+            external_ids:
+              type: array
+              description: >-
+                GEDCOM 7.0 external identifiers (EXID) with resolved display label and link.
+                Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+              items:
+                $ref: '#/components/schemas/ExternalLink'
 
     FamilySummary:
       type: object
@@ -5113,6 +5120,13 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Citation'
+            external_ids:
+              type: array
+              description: >-
+                GEDCOM 7.0 external identifiers (EXID) with resolved display label and link.
+                Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+              items:
+                $ref: '#/components/schemas/ExternalLink'
 
     SourceList:
       type: object
@@ -6366,6 +6380,19 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    RepositoryDetail:
+      allOf:
+        - $ref: '#/components/schemas/Repository'
+        - type: object
+          properties:
+            external_ids:
+              type: array
+              description: >-
+                GEDCOM 7.0 external identifiers (EXID) with resolved display label and link.
+                Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+              items:
+                $ref: '#/components/schemas/ExternalLink'
 
     RepositoryCreate:
       type: object

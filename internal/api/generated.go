@@ -2421,8 +2421,11 @@ type FamilyCreateRelationshipType string
 
 // FamilyDetail defines model for FamilyDetail.
 type FamilyDetail struct {
-	Children *[]FamilyChild     `json:"children,omitempty"`
-	Id       openapi_types.UUID `json:"id"`
+	Children *[]FamilyChild `json:"children,omitempty"`
+
+	// ExternalIds GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+	ExternalIds *[]ExternalLink    `json:"external_ids,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
 
 	// MarriageDate Genealogical date with flexible precision
 	MarriageDate  *GenDate `json:"marriage_date,omitempty"`
@@ -3458,6 +3461,29 @@ type RepositoryCreate struct {
 	Notes *string `json:"notes,omitempty"`
 }
 
+// RepositoryDetail defines model for RepositoryDetail.
+type RepositoryDetail struct {
+	// Address Structured GEDCOM address (embedded in other entities)
+	Address *Address `json:"address,omitempty"`
+
+	// ExternalIds GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+	ExternalIds *[]ExternalLink `json:"external_ids,omitempty"`
+
+	// GedcomXref GEDCOM cross-reference ID for round-trip support
+	GedcomXref *string            `json:"gedcom_xref,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// Name Repository's name
+	Name string `json:"name"`
+
+	// Notes Free-form notes about the repository
+	Notes     *string    `json:"notes,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+
+	// Version Optimistic locking version
+	Version int64 `json:"version"`
+}
+
 // RepositoryList defines model for RepositoryList.
 type RepositoryList struct {
 	Limit        *int         `json:"limit,omitempty"`
@@ -3722,9 +3748,12 @@ type SourceDetail struct {
 	CallNumber *string `json:"call_number,omitempty"`
 
 	// CitationCount Number of citations referencing this source
-	CitationCount  *int               `json:"citation_count,omitempty"`
-	Citations      *[]Citation        `json:"citations,omitempty"`
-	CollectionName *string            `json:"collection_name,omitempty"`
+	CitationCount  *int        `json:"citation_count,omitempty"`
+	Citations      *[]Citation `json:"citations,omitempty"`
+	CollectionName *string     `json:"collection_name,omitempty"`
+
+	// ExternalIds GEDCOM 7.0 external identifiers (EXID) with resolved display label and link. Read-only: populated from GEDCOM import; there is no direct-write endpoint.
+	ExternalIds    *[]ExternalLink    `json:"external_ids,omitempty"`
 	Id             openapi_types.UUID `json:"id"`
 	Notes          *string            `json:"notes,omitempty"`
 	PublishDate    *string            `json:"publish_date,omitempty"`
@@ -12776,7 +12805,7 @@ type GetRepositoryResponseObject interface {
 	VisitGetRepositoryResponse(w http.ResponseWriter) error
 }
 
-type GetRepository200JSONResponse Repository
+type GetRepository200JSONResponse RepositoryDetail
 
 func (response GetRepository200JSONResponse) VisitGetRepositoryResponse(w http.ResponseWriter) error {
 

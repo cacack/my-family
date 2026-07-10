@@ -45,6 +45,7 @@ export type BatchDismissResult = components['schemas']['BatchDismissResult'];
 
 // Re-export Repository types from generated file (single source of truth)
 export type Repository = components['schemas']['Repository'];
+export type RepositoryDetail = components['schemas']['RepositoryDetail'];
 export type RepositoryCreate = components['schemas']['RepositoryCreate'];
 export type RepositoryUpdate = components['schemas']['RepositoryUpdate'];
 export type RepositoryList = components['schemas']['RepositoryList'];
@@ -194,6 +195,7 @@ export interface FamilyDetail extends Family {
 	partner1?: PersonSummary;
 	partner2?: PersonSummary;
 	children?: FamilyChild[];
+	external_ids?: ExternalLink[];
 }
 
 export interface FamilyList {
@@ -547,6 +549,7 @@ export interface Source {
 
 export interface SourceDetail extends Source {
 	citations?: Citation[];
+	external_ids?: ExternalLink[];
 }
 
 export interface SourceListResponse {
@@ -1384,8 +1387,8 @@ class ApiClient {
 		return this.request<RepositoryList>('GET', `/repositories${query ? `?${query}` : ''}`);
 	}
 
-	async getRepository(id: string): Promise<Repository> {
-		return this.request<Repository>('GET', `/repositories/${id}`);
+	async getRepository(id: string): Promise<RepositoryDetail> {
+		return this.request<RepositoryDetail>('GET', `/repositories/${id}`);
 	}
 
 	async createRepository(data: RepositoryCreate): Promise<Repository> {

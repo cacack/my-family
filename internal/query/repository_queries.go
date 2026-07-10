@@ -31,6 +31,12 @@ type Repository struct {
 	UpdatedAt  time.Time       `json:"updated_at"`
 }
 
+// RepositoryDetail includes GEDCOM 7.0 external identifiers.
+type RepositoryDetail struct {
+	Repository
+	ExternalIDs []domain.ExternalIdentifier `json:"external_ids,omitempty"`
+}
+
 // ListRepositoriesInput contains options for listing repositories.
 type ListRepositoriesInput struct {
 	Limit     int
@@ -84,8 +90,8 @@ func (s *RepositoryService) ListRepositories(ctx context.Context, input ListRepo
 	}, nil
 }
 
-// GetRepository returns a repository by ID.
-func (s *RepositoryService) GetRepository(ctx context.Context, id uuid.UUID) (*Repository, error) {
+// GetRepository returns a repository by ID with its external identifiers.
+func (s *RepositoryService) GetRepository(ctx context.Context, id uuid.UUID) (*RepositoryDetail, error) {
 	rm, err := s.readStore.GetRepository(ctx, id)
 	if err != nil {
 		return nil, err
@@ -94,8 +100,24 @@ func (s *RepositoryService) GetRepository(ctx context.Context, id uuid.UUID) (*R
 		return nil, ErrNotFound
 	}
 
-	repo := convertReadModelToRepository(*rm)
-	return &repo, nil
+	detail := &RepositoryDetail{
+		Repository: convertReadModelToRepository(*rm),
+	}
+
+	// Get GEDCOM 7.0 external identifiers (EXID) so the UI can render
+	// "View on <system>" links.
+	externalIDs, err := s.readStore.GetRepositoryExternalIDs(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, ext := range externalIDs {
+		detail.ExternalIDs = append(detail.ExternalIDs, domain.ExternalIdentifier{
+			Value: ext.Value,
+			Type:  ext.Type,
+		})
+	}
+
+	return detail, nil
 }
 
 // Helper function to convert read model to query result.
