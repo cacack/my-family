@@ -2657,8 +2657,8 @@ func TestExport_Repositories(t *testing.T) {
 	if !strings.Contains(output, "700 Pennsylvania Ave NW") {
 		t.Error("Output should contain repository address")
 	}
-	if !strings.Contains(output, "Federal repository") {
-		t.Error("Output should contain repository note")
+	if !strings.Contains(output, "1 NOTE Federal repository\n") {
+		t.Error("Output should contain repository note as inline NOTE")
 	}
 
 	// Linked source uses a SOUR.REPO cross-reference (no inline NAME).
