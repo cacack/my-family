@@ -596,7 +596,7 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text
 	if s.Notes != "" {
-		src.Notes = []string{s.Notes}
+		src.InlineNotes = []string{s.Notes}
 	}
 
 	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
@@ -706,7 +706,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text
 	if p.Notes != "" {
-		indi.Notes = []string{p.Notes}
+		indi.InlineNotes = []string{p.Notes}
 	}
 
 	// Associations (godparents, witnesses, etc.)
@@ -1239,7 +1239,7 @@ func toGedcomRepository(r repository.RepositoryReadModel, readStore repository.R
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text.
 	if r.Notes != "" {
-		repo.Notes = []string{r.Notes}
+		repo.InlineNotes = []string{r.Notes}
 	}
 
 	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
