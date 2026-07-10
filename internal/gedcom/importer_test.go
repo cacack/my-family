@@ -2969,3 +2969,66 @@ func TestImportSharedNote(t *testing.T) {
 		t.Errorf("Translation.Language = %q, want %q", tran.Language, "es")
 	}
 }
+
+// TestImportSource_InlineRepositoryName verifies that a source referencing its
+// repository inline (1 REPO with a NAME subordinate, no xref) imports with
+// RepositoryName populated, and that a CALN subordinate is captured as the
+// call number in both the inline and cross-reference forms (issue #546).
+func TestImportSource_InlineRepositoryName(t *testing.T) {
+	gedcomData := `0 HEAD
+1 GEDC
+2 VERS 5.5
+1 CHAR UTF-8
+0 @S1@ SOUR
+1 TITL Parish Register
+1 REPO
+2 NAME Parish Archive
+2 CALN MS-123
+0 @R1@ REPO
+1 NAME County Records Office
+0 @S2@ SOUR
+1 TITL Land Deeds
+1 REPO @R1@
+2 CALN DEED-42
+0 TRLR
+`
+	importer := gedcom.NewImporter()
+	ctx := context.Background()
+
+	_, _, _, sources, _, repositories, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(gedcomData))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("len(sources) = %d, want 2", len(sources))
+	}
+	if len(repositories) != 1 {
+		t.Fatalf("len(repositories) = %d, want 1", len(repositories))
+	}
+
+	bySrcTitle := map[string]gedcom.SourceData{}
+	for _, s := range sources {
+		bySrcTitle[s.Title] = s
+	}
+
+	// Inline form: name preserved, no entity link.
+	inline := bySrcTitle["Parish Register"]
+	if inline.RepositoryName != "Parish Archive" {
+		t.Errorf("inline RepositoryName = %q, want Parish Archive", inline.RepositoryName)
+	}
+	if inline.RepositoryID != nil {
+		t.Errorf("inline RepositoryID = %v, want nil", inline.RepositoryID)
+	}
+	if inline.CallNumber != "MS-123" {
+		t.Errorf("inline CallNumber = %q, want MS-123", inline.CallNumber)
+	}
+
+	// Cross-reference form: entity link resolved, call number captured.
+	linked := bySrcTitle["Land Deeds"]
+	if linked.RepositoryID == nil || *linked.RepositoryID != repositories[0].ID {
+		t.Errorf("linked RepositoryID = %v, want %v", linked.RepositoryID, repositories[0].ID)
+	}
+	if linked.CallNumber != "DEED-42" {
+		t.Errorf("linked CallNumber = %q, want DEED-42", linked.CallNumber)
+	}
+}

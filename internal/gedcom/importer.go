@@ -806,19 +806,27 @@ func parseSource(src *gedcom.Source, result *ImportResult) SourceData {
 		Publisher:  src.Publication,
 	}
 
-	// Link to repository if available
-	if src.RepositoryRef != "" {
-		if repoID, ok := result.RepositoryXrefToID[src.RepositoryRef]; ok {
-			source.RepositoryID = &repoID
-		} else {
-			// Repository not found, store the XRef as fallback name
-			source.RepositoryName = src.RepositoryRef
+	// Link to repository if available. Use the structured RepositoryLink,
+	// which supersedes gedcom-go's flat RepositoryRef/Repository fields and
+	// carries the inline NAME and CALN subordinates.
+	if link := src.RepositoryLink; link != nil {
+		switch {
+		case link.XRef != "":
+			if repoID, ok := result.RepositoryXrefToID[link.XRef]; ok {
+				source.RepositoryID = &repoID
+			} else {
+				// Repository not found, store the XRef as fallback name
+				source.RepositoryName = link.XRef
+			}
+		case link.Inline != nil && link.Inline.Name != "":
+			// Inline SOUR.REPO with a NAME subordinate (name-only source).
+			source.RepositoryName = link.Inline.Name
+		}
+		// The domain models a single call number; GEDCOM allows several.
+		if len(link.CallNumbers) > 0 {
+			source.CallNumber = link.CallNumbers[0]
 		}
 	}
-
-	// Note: Call number (CALN) extraction requires parsing nested REPO tags
-	// which is not currently supported in the flat tag structure.
-	// This can be added when gedcom-go provides structured REPO references.
 
 	// Collect notes
 	var notes []string

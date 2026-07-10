@@ -575,23 +575,31 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 
 	// Repository. Prefer the authoritative RepositoryID link (issue #525): it is
 	// robust against duplicate or renamed repository names. Fall back to name
-	// matching only when no ID is present (e.g. legacy data).
+	// matching only when no ID is present (e.g. legacy data). Built as a
+	// structured RepositoryLink so the CALN subordinate round-trips too.
+	repoLink := &gedcom.SourceRepositoryLink{}
 	switch {
 	case s.RepositoryID != nil && repoIDToXref[*s.RepositoryID] != "":
 		// Source links to a Repository entity by ID: emit a SOUR.REPO
 		// cross-reference to the standalone REPO record.
-		src.RepositoryRef = repoIDToXref[*s.RepositoryID]
+		repoLink.XRef = repoIDToXref[*s.RepositoryID]
 	case s.RepositoryName == "":
 		// No repository link at all.
 	case repoNameToXref[s.RepositoryName] != "":
 		// Legacy: source references a Repository entity by name.
-		src.RepositoryRef = repoNameToXref[s.RepositoryName]
+		repoLink.XRef = repoNameToXref[s.RepositoryName]
 	case strings.HasPrefix(s.RepositoryName, "@") && strings.HasSuffix(s.RepositoryName, "@"):
 		// Already an XREF (e.g. an unresolved import reference): preserve it.
-		src.RepositoryRef = s.RepositoryName
+		repoLink.XRef = s.RepositoryName
 	default:
 		// Inline repository with NAME subordinate (name-only / unlinked source).
-		src.Repository = &gedcom.InlineRepository{Name: s.RepositoryName}
+		repoLink.Inline = &gedcom.InlineRepository{Name: s.RepositoryName}
+	}
+	if s.CallNumber != "" {
+		repoLink.CallNumbers = []string{s.CallNumber}
+	}
+	if repoLink.XRef != "" || repoLink.Inline != nil || len(repoLink.CallNumbers) > 0 {
+		src.RepositoryLink = repoLink
 	}
 
 	// Notes - encoder handles CONT/CONC automatically for multiline text
