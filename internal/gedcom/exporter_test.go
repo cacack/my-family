@@ -3433,3 +3433,50 @@ func TestPreviewConversion(t *testing.T) {
 		t.Errorf("preview 7.0 should have no data loss; got %+v", up.DataLoss)
 	}
 }
+
+// TestExport_InlineRepositoryNameRoundTrip verifies that a name-only source
+// (inline SOUR.REPO with NAME, no Repository entity) keeps its repository name
+// and call number through an export/re-import cycle (issue #546).
+func TestExport_InlineRepositoryNameRoundTrip(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	if err := readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:             uuid.New(),
+		SourceType:     "book",
+		Title:          "Parish Register",
+		RepositoryName: "Parish Archive",
+		CallNumber:     "MS-123",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	exporter := gedcom.NewExporter(readStore)
+	buf := &bytes.Buffer{}
+	if _, err := exporter.Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	output := buf.String()
+	for _, want := range []string{"1 REPO\n", "2 NAME Parish Archive\n", "2 CALN MS-123\n"} {
+		if !strings.Contains(output, want) {
+			t.Errorf("Export output missing %q; got:\n%s", want, output)
+		}
+	}
+
+	// Re-import the export and assert nothing was dropped.
+	importer := gedcom.NewImporter()
+	_, _, _, sources, _, _, _, _, _, _, _, _, _, err := importer.Import(ctx, strings.NewReader(output))
+	if err != nil {
+		t.Fatalf("Re-import failed: %v", err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("len(sources) = %d, want 1", len(sources))
+	}
+	if sources[0].RepositoryName != "Parish Archive" {
+		t.Errorf("Round-trip RepositoryName = %q, want Parish Archive", sources[0].RepositoryName)
+	}
+	if sources[0].CallNumber != "MS-123" {
+		t.Errorf("Round-trip CallNumber = %q, want MS-123", sources[0].CallNumber)
+	}
+}
