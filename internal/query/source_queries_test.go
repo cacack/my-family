@@ -8,6 +8,7 @@ import (
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/query"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -563,5 +564,38 @@ func TestSearchSources_Limit(t *testing.T) {
 
 	if len(results) > 10 {
 		t.Errorf("Got %d results, expected max 10", len(results))
+	}
+}
+
+// TestGetSource_ExternalIDs verifies that stored GEDCOM 7.0 external
+// identifiers are surfaced on the source detail in sequence order.
+func TestGetSource_ExternalIDs(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	queryService := query.NewSourceService(readStore)
+	ctx := context.Background()
+
+	sourceID := uuid.New()
+	if err := readStore.SaveSource(ctx, &repository.SourceReadModel{
+		ID:         sourceID,
+		SourceType: "book",
+		Title:      "Census Records",
+	}); err != nil {
+		t.Fatalf("SaveSource failed: %v", err)
+	}
+	if err := readStore.ReplaceSourceExternalIDs(ctx, sourceID, []repository.SourceExternalIDReadModel{
+		{SourceID: sourceID, Sequence: 0, Value: "S123", Type: "http://www.familysearch.org/ark"},
+	}); err != nil {
+		t.Fatalf("ReplaceSourceExternalIDs failed: %v", err)
+	}
+
+	detail, err := queryService.GetSource(ctx, sourceID)
+	if err != nil {
+		t.Fatalf("GetSource failed: %v", err)
+	}
+	if len(detail.ExternalIDs) != 1 {
+		t.Fatalf("ExternalIDs len = %d, want 1", len(detail.ExternalIDs))
+	}
+	if detail.ExternalIDs[0].Value != "S123" || detail.ExternalIDs[0].Type != "http://www.familysearch.org/ark" {
+		t.Errorf("ExternalIDs[0] = %+v, want S123/familysearch ark", detail.ExternalIDs[0])
 	}
 }

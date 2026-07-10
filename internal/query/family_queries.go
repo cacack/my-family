@@ -38,7 +38,8 @@ type Family struct {
 // FamilyDetail includes children information.
 type FamilyDetail struct {
 	Family
-	Children []FamilyChildInfo `json:"children,omitempty"`
+	Children    []FamilyChildInfo           `json:"children,omitempty"`
+	ExternalIDs []domain.ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 // FamilyChildInfo represents a child in a family.
@@ -122,6 +123,19 @@ func (s *FamilyService) GetFamily(ctx context.Context, id uuid.UUID) (*FamilyDet
 			GivenName:        c.PersonGivenName,
 			Surname:          c.PersonSurname,
 			RelationshipType: string(c.RelationshipType),
+		})
+	}
+
+	// Get GEDCOM 7.0 external identifiers (EXID) so the UI can render
+	// "View on <system>" links.
+	externalIDs, err := s.readStore.GetFamilyExternalIDs(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, ext := range externalIDs {
+		detail.ExternalIDs = append(detail.ExternalIDs, domain.ExternalIdentifier{
+			Value: ext.Value,
+			Type:  ext.Type,
 		})
 	}
 

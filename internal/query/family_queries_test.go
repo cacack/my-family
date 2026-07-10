@@ -1116,3 +1116,36 @@ func TestGetGroupSheet_NonNegatedEventsStillHaveCitations(t *testing.T) {
 		t.Error("Marriage.IsNegated should be false for non-negated event")
 	}
 }
+
+// TestGetFamily_ExternalIDs verifies that stored GEDCOM 7.0 external
+// identifiers are surfaced on the family detail in sequence order.
+func TestGetFamily_ExternalIDs(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+
+	familyID := uuid.New()
+	if err := readStore.SaveFamily(ctx, &repository.FamilyReadModel{ID: familyID}); err != nil {
+		t.Fatalf("SaveFamily failed: %v", err)
+	}
+	if err := readStore.ReplaceFamilyExternalIDs(ctx, familyID, []repository.FamilyExternalIDReadModel{
+		{FamilyID: familyID, Sequence: 0, Value: "F123", Type: "http://www.familysearch.org/ark"},
+		{FamilyID: familyID, Sequence: 1, Value: "F456", Type: "http://example.com/other"},
+	}); err != nil {
+		t.Fatalf("ReplaceFamilyExternalIDs failed: %v", err)
+	}
+
+	detail, err := service.GetFamily(ctx, familyID)
+	if err != nil {
+		t.Fatalf("GetFamily failed: %v", err)
+	}
+	if len(detail.ExternalIDs) != 2 {
+		t.Fatalf("ExternalIDs len = %d, want 2", len(detail.ExternalIDs))
+	}
+	if detail.ExternalIDs[0].Value != "F123" || detail.ExternalIDs[0].Type != "http://www.familysearch.org/ark" {
+		t.Errorf("ExternalIDs[0] = %+v, want F123/familysearch ark", detail.ExternalIDs[0])
+	}
+	if detail.ExternalIDs[1].Value != "F456" || detail.ExternalIDs[1].Type != "http://example.com/other" {
+		t.Errorf("ExternalIDs[1] = %+v, want F456/example.com", detail.ExternalIDs[1])
+	}
+}

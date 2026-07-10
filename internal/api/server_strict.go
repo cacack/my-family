@@ -3496,25 +3496,31 @@ func convertQueryPersonDetailToGenerated(pd *query.PersonDetail) PersonDetail {
 		resp.FamilyAsChild = &fac
 	}
 
-	// Resolve each external identifier's display label and (when the system is
-	// recognized) a browsable URL server-side, so the UI needs no mapping logic.
-	if len(pd.ExternalIDs) > 0 {
-		links := make([]ExternalLink, len(pd.ExternalIDs))
-		for i, ext := range pd.ExternalIDs {
-			link := ExternalLink{
-				Value: ext.Value,
-				Type:  ext.Type,
-				Label: ext.Label(),
-			}
-			if linkURL, ok := ext.URL(); ok {
-				link.Url = &linkURL
-			}
-			links[i] = link
-		}
-		resp.ExternalIds = &links
-	}
+	resp.ExternalIds = convertExternalIDsToLinks(pd.ExternalIDs)
 
 	return resp
+}
+
+// convertExternalIDsToLinks resolves each external identifier's display label
+// and (when the system is recognized) a browsable URL server-side, so the UI
+// needs no mapping logic. Returns nil when there are no identifiers.
+func convertExternalIDsToLinks(externalIDs []domain.ExternalIdentifier) *[]ExternalLink {
+	if len(externalIDs) == 0 {
+		return nil
+	}
+	links := make([]ExternalLink, len(externalIDs))
+	for i, ext := range externalIDs {
+		link := ExternalLink{
+			Value: ext.Value,
+			Type:  ext.Type,
+			Label: ext.Label(),
+		}
+		if linkURL, ok := ext.URL(); ok {
+			link.Url = &linkURL
+		}
+		links[i] = link
+	}
+	return &links
 }
 
 // convertQueryPersonNameToGenerated converts a query.PersonName to the generated PersonName type.
@@ -3639,6 +3645,8 @@ func convertQueryFamilyDetailToGenerated(fd query.FamilyDetail) FamilyDetail {
 		}
 		resp.Children = &children
 	}
+
+	resp.ExternalIds = convertExternalIDsToLinks(fd.ExternalIDs)
 
 	return resp
 }
@@ -3849,6 +3857,8 @@ func convertQuerySourceDetailToGenerated(sd query.SourceDetail) SourceDetail {
 		}
 		resp.Citations = &citations
 	}
+
+	resp.ExternalIds = convertExternalIDsToLinks(sd.ExternalIDs)
 
 	return resp
 }
@@ -4669,7 +4679,7 @@ func (ss *StrictServer) CreateRepository(ctx context.Context, request CreateRepo
 		return nil, err
 	}
 
-	return CreateRepository201JSONResponse(convertQueryRepositoryToGenerated(*repo)), nil
+	return CreateRepository201JSONResponse(convertQueryRepositoryToGenerated(repo.Repository)), nil
 }
 
 // GetRepository implements StrictServerInterface.
@@ -4685,7 +4695,7 @@ func (ss *StrictServer) GetRepository(ctx context.Context, request GetRepository
 		return nil, err
 	}
 
-	return GetRepository200JSONResponse(convertQueryRepositoryToGenerated(*repo)), nil
+	return GetRepository200JSONResponse(convertQueryRepositoryDetailToGenerated(*repo)), nil
 }
 
 // UpdateRepository implements StrictServerInterface.
@@ -4736,7 +4746,7 @@ func (ss *StrictServer) UpdateRepository(ctx context.Context, request UpdateRepo
 		return nil, err
 	}
 
-	return UpdateRepository200JSONResponse(convertQueryRepositoryToGenerated(*repo)), nil
+	return UpdateRepository200JSONResponse(convertQueryRepositoryToGenerated(repo.Repository)), nil
 }
 
 // DeleteRepository implements StrictServerInterface.
@@ -4781,6 +4791,21 @@ func convertQueryRepositoryToGenerated(r query.Repository) Repository {
 	}
 
 	return resp
+}
+
+// convertQueryRepositoryDetailToGenerated converts a query.RepositoryDetail to the generated RepositoryDetail type.
+func convertQueryRepositoryDetailToGenerated(rd query.RepositoryDetail) RepositoryDetail {
+	repo := convertQueryRepositoryToGenerated(rd.Repository)
+	return RepositoryDetail{
+		Id:          repo.Id,
+		Name:        repo.Name,
+		Address:     repo.Address,
+		Notes:       repo.Notes,
+		GedcomXref:  repo.GedcomXref,
+		Version:     repo.Version,
+		UpdatedAt:   repo.UpdatedAt,
+		ExternalIds: convertExternalIDsToLinks(rd.ExternalIDs),
+	}
 }
 
 // Association endpoints

@@ -63,7 +63,8 @@ type Citation struct {
 // SourceDetail includes citations attached to this source.
 type SourceDetail struct {
 	Source
-	Citations []Citation `json:"citations,omitempty"`
+	Citations   []Citation                  `json:"citations,omitempty"`
+	ExternalIDs []domain.ExternalIdentifier `json:"external_ids,omitempty"`
 }
 
 // ListSourcesInput contains options for listing sources.
@@ -147,6 +148,19 @@ func (s *SourceService) GetSource(ctx context.Context, id uuid.UUID) (*SourceDet
 	detail.Citations = make([]Citation, len(citationRMs))
 	for i, citationRM := range citationRMs {
 		detail.Citations[i] = convertReadModelToCitation(citationRM)
+	}
+
+	// Get GEDCOM 7.0 external identifiers (EXID) so the UI can render
+	// "View on <system>" links.
+	externalIDs, err := s.readStore.GetSourceExternalIDs(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	for _, ext := range externalIDs {
+		detail.ExternalIDs = append(detail.ExternalIDs, domain.ExternalIdentifier{
+			Value: ext.Value,
+			Type:  ext.Type,
+		})
 	}
 
 	return detail, nil

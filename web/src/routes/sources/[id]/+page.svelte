@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, type SourceDetail, type Citation } from '$lib/api/client';
+	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 
@@ -310,6 +311,15 @@
 					<div class="info-section">
 						<h2>Notes</h2>
 						<p class="notes">{source.notes}</p>
+					</div>
+				{/if}
+
+				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
+				     "External links" heading is suppressed when there are none. -->
+				{#if source.external_ids && source.external_ids.length > 0}
+					<div class="info-section">
+						<h2>External links</h2>
+						<ExternalLinks externalIds={source.external_ids} />
 					</div>
 				{/if}
 
