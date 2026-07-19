@@ -395,7 +395,7 @@ jobs:
 
       # SAST: Go security issues
       - name: Go security scan (gosec)
-        uses: securego/gosec@11023e51e1f46c4ea63315bdb7670f073442168f # master (docker: 2.25.0)
+        uses: securego/gosec@9e75c0576c9878035d4221392108d458abe10fc3 # master (docker: 2.25.0)
         with:
           args: '-no-fail -exclude=G104 -exclude-generated -fmt sarif -out gosec-results.sarif ./...'
 
