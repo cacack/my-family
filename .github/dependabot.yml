@@ -56,6 +56,12 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
+    ignore:
+      # TypeScript 7 (native-compiler major) is blocked by SvelteKit's peer cap
+      # (@sveltejs/kit caps typescript at ^6.0.0). Tracked in #655 — remove this
+      # ignore when adopting TS 7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # Docker base images in Dockerfile (SHA-pinned; Dependabot keeps digests fresh)
   - package-ecosystem: "docker"
