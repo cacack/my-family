@@ -31,6 +31,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
 
       - name: Check PR title is not conventional commit format
         env:
@@ -90,6 +91,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
             proxy.golang.org:443
             sum.golang.org:443
             storage.googleapis.com:443
@@ -237,6 +239,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
             registry.npmjs.org:443
             nodejs.org:443
 
@@ -292,6 +295,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
@@ -321,6 +325,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
             proxy.golang.org:443
             sum.golang.org:443
             storage.googleapis.com:443
@@ -459,6 +464,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
             proxy.golang.org:443
             sum.golang.org:443
             storage.googleapis.com:443
@@ -518,6 +524,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
             proxy.golang.org:443
             sum.golang.org:443
             storage.googleapis.com:443
@@ -584,6 +591,7 @@ jobs:
             raw.githubusercontent.com:443
             *.actions.githubusercontent.com:443
             *.blob.core.windows.net:443
+            actions-results-receiver-production.githubapp.com:443
 
       - name: Check all jobs passed
         run: |
