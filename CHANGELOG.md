@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.11.0](https://github.com/cacack/my-family/compare/v0.10.0...v0.11.0) (2026-07-19)
+
+
+### Features
+
+* **api:** expose Family/Source/Repository external IDs on read APIs ([9bedd48](https://github.com/cacack/my-family/commit/9bedd4860690d430e9a63b21a6cff7f13bdf22f8)), closes [#615](https://github.com/cacack/my-family/issues/615)
+* **export:** report data loss when downgrading GEDCOM version ([0b0ae77](https://github.com/cacack/my-family/commit/0b0ae7791e5c4365bf26fb5332cf4f072e6b935a)), closes [#189](https://github.com/cacack/my-family/issues/189)
+* **gedcom:** add GEDCOM version selection for export ([f5ef8bb](https://github.com/cacack/my-family/commit/f5ef8bb411a475e5aca40df883952b9bc9195903)), closes [#189](https://github.com/cacack/my-family/issues/189)
+* **gedcom:** export individual EXID via gedcom-go v2.2.1 ([957a781](https://github.com/cacack/my-family/commit/957a781f9c57cb1533f0b823bfbd752b20c8e7ea)), closes [#224](https://github.com/cacack/my-family/issues/224)
+* **gedcom:** import GEDCOM 7.0 external identifiers (EXID) and schema (SCHMA) ([b1021e4](https://github.com/cacack/my-family/commit/b1021e41aff5e07c244c656161b7b8852e371cbb)), closes [#224](https://github.com/cacack/my-family/issues/224)
+* **gedcom:** link source to repository by ID, not name ([#525](https://github.com/cacack/my-family/issues/525)) ([214048a](https://github.com/cacack/my-family/commit/214048a6a9aa6a1b361e8ebe85054623c790723d))
+* **gedcom:** preserve FamilySearch EXID as _FSFTID on 5.5.x export ([9a9fff7](https://github.com/cacack/my-family/commit/9a9fff72297e7c850bde95aa6dc65acc4faa6978))
+* **gedcom:** round-trip external identifiers for families, sources, repositories ([1fd685f](https://github.com/cacack/my-family/commit/1fd685fccc3ee55c4a9cce7f034c8ff02d2d06ae))
+* **gedcom:** support GEDCOM 7.0 shared notes (SNOTE) in import/export ([34838b6](https://github.com/cacack/my-family/commit/34838b6178fba7588ebd56ad10a5b5d0163284d4)), closes [#225](https://github.com/cacack/my-family/issues/225)
+* **gedcom:** support interpreted dates (INT modifier) ([76aea23](https://github.com/cacack/my-family/commit/76aea231dd0aa2b6250ec033eb729779330993ba)), closes [#223](https://github.com/cacack/my-family/issues/223)
+* **gedcom:** support multi-line SNOTE primary text on import ([70e2269](https://github.com/cacack/my-family/commit/70e226958d7245eb2a4d4b054075f1cd5e3816ea)), closes [#598](https://github.com/cacack/my-family/issues/598)
+* **import:** add frontend progress bar and tests for streaming import ([#191](https://github.com/cacack/my-family/issues/191)) ([b20b1f1](https://github.com/cacack/my-family/commit/b20b1f106fd63768314075f4995d055fda50b491))
+* **import:** add SSE progress streaming endpoint and import progress callbacks ([#191](https://github.com/cacack/my-family/issues/191)) ([de2c5c1](https://github.com/cacack/my-family/commit/de2c5c19939e7f8bf73107de8ffeb0f64b751831))
+* **person:** surface external identifier links on person detail ([7f3ec43](https://github.com/cacack/my-family/commit/7f3ec43155106bf15219b6c4232c306e665ddbde))
+* **repository:** complete Repository entity integration across all 7 layers ([06514cc](https://github.com/cacack/my-family/commit/06514cc237ddbaad7d09760387719c82781ba664)), closes [#239](https://github.com/cacack/my-family/issues/239)
+* support historical calendar systems in dates ([88b2dc1](https://github.com/cacack/my-family/commit/88b2dc1bd728649b75bf7251a5fbf33b965b150c))
+* **web:** add Repository management UI ([#524](https://github.com/cacack/my-family/issues/524)) ([4e0c5f1](https://github.com/cacack/my-family/commit/4e0c5f1dc00f9e430c4fa271b0d33323e8b8d6b1))
+* **web:** GEDCOM export version picker with data-loss warning ([6211d18](https://github.com/cacack/my-family/commit/6211d18d7c35a64469ce80a31715891a5a832cb9)), closes [#189](https://github.com/cacack/my-family/issues/189)
+
+
+### Bug Fixes
+
+* **api:** remove invalid sibling description from MergePersonsResponse.person ([9beedbb](https://github.com/cacack/my-family/commit/9beedbb971f59c1d89109700061c601b1defa428))
+* **api:** remove invalid sibling type field from EvidenceAnalysis.research_status ([897342a](https://github.com/cacack/my-family/commit/897342a2e0785538e433aa2211a32b8df3e8ddee))
+* **api:** require version query param on optimistic-locking DELETEs ([93bc16a](https://github.com/cacack/my-family/commit/93bc16a962a52fa2f7a75d2faab0739c1772db87))
+* **api:** validate sort/order enum params before query layer ([f77bf3d](https://github.com/cacack/my-family/commit/f77bf3daa5fc3143d7d00e67d3d580f2e536e395))
+* **command:** wrap bare error returns with operation context ([#240](https://github.com/cacack/my-family/issues/240)) ([fe4b03b](https://github.com/cacack/my-family/commit/fe4b03b62f064249bb8f85484364510bbba8c200))
+* **gedcom:** preserve inline SOUR.REPO NAME and CALN on import ([46fe00f](https://github.com/cacack/my-family/commit/46fe00ffd0b4b536af98d20a0acde62cc753f083)), closes [#546](https://github.com/cacack/my-family/issues/546)
+* **repository:** honor updated_at sort in memory ListRepositories ([48bcca3](https://github.com/cacack/my-family/commit/48bcca3ea4e18cd46a4f5affbf09f5c862305492))
+* **repository:** log when note translations JSON fails to unmarshal ([4ec0e29](https://github.com/cacack/my-family/commit/4ec0e29acfebc8600ff3eb830a6e8667bf0a4f12))
+* **repository:** replay-safe address projection + deterministic list ordering ([7d92a8a](https://github.com/cacack/my-family/commit/7d92a8a5143d1fc177ed88bbd2783c57d1c9a7fe))
+* **repository:** warn on unknown change keys in projection handlers ([845fffe](https://github.com/cacack/my-family/commit/845fffe98391c5827636f5f5bfbff3eedff08fd3))
+* **web:** keep version selector mounted during export ([fdf4cd9](https://github.com/cacack/my-family/commit/fdf4cd93761a2b4d0a8aee833f9634223d0ae6b7)), closes [#189](https://github.com/cacack/my-family/issues/189)
+
 ## [0.10.0](https://github.com/cacack/my-family/compare/v0.9.0...v0.10.0) (2026-05-17)
 
 
