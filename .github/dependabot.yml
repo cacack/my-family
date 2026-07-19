@@ -37,6 +37,13 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    groups:
+      # The github/codeql-action sub-actions (init/autobuild/analyze) share one
+      # release; bumping them in separate PRs skews their versions and breaks
+      # CodeQL ("config for X but running Y"). Group so they bump together.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # npm (Svelte frontend)
   - package-ecosystem: "npm"
