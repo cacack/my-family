@@ -28,6 +28,7 @@ See [TEMPLATE.md](./TEMPLATE.md) for the ADR structure.
 - [002-dual-database-strategy.md](./002-dual-database-strategy.md) - PostgreSQL primary with SQLite fallback for flexible deployment
 - [003-synchronous-projections.md](./003-synchronous-projections.md) - Synchronous projections for MVP simplicity (with migration path)
 - [004-single-binary-deployment.md](./004-single-binary-deployment.md) - Embedded frontend via go:embed for simple self-hosting
+- [005-research-branch-data-model.md](./005-research-branch-data-model.md) - Research branches as a shared-log/`branch_id`-overlay model, with merge and conflict semantics
 
 ## Related
 

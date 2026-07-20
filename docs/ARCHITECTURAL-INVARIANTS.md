@@ -54,6 +54,15 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **DP-002** | Development mode supports frontend hot reload | Manual verification |
 | **DP-003** | API and frontend served from same origin (no CORS needed) | Configuration check |
 
+### Branch Invariants (BR) - Source: [ADR-005](./adr/005-research-branch-data-model.md)
+
+| ID | Rule | Verification |
+|----|------|--------------|
+| **BR-001** | Every branch event carries a `branch_id`; `main` is the reserved branch id (`uuid.Nil` / `domain.MainBranchID`) | Event schema inspection; factory tests |
+| **BR-002** | Branch events append to the shared global log, never a separate store (upholds ES-002) | Code review: no per-branch event store |
+| **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows | Branch query/overlay tests |
+| **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | Merge replay test |
+
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
 | ID | Rule | Verification |
@@ -110,10 +119,11 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-002 (Dual Database) | DB-001 through DB-005 | 5 |
 | ADR-003 (Sync Projections) | PR-001 through PR-004 | 4 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
+| ADR-005 (Research Branches) | BR-001 through BR-004 | 4 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-004, QA-001 through QA-003 | 13 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **40** |
+| **Total** | | **44** |
 
 ---
 

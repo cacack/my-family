@@ -17,6 +17,10 @@ What is the issue that we're seeing that is motivating this decision or change?
 
 ## Considered Options
 
+<!-- For a compound decision made of several orthogonal choices, group options under
+`### Sub-decision N — <question>` headings, each with its own `#### Option NA/NB` set, and
+combine the winners in the Decision section. See ADR-005 for an example. -->
+
 ### Option 1: [Name]
 
 **Description:** Brief description of this option.

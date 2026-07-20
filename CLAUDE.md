@@ -74,6 +74,7 @@ Key architectural decisions:
 - [Dual Database](./docs/adr/002-dual-database-strategy.md) - PostgreSQL primary, SQLite fallback
 - [Synchronous Projections](./docs/adr/003-synchronous-projections.md) - Immediate consistency for MVP
 - [Single Binary](./docs/adr/004-single-binary-deployment.md) - Embedded frontend for easy deployment
+- [Research Branch Data Model](./docs/adr/005-research-branch-data-model.md) - Shared-log/`branch_id`-overlay branches, merge and conflict semantics
 
 ## Generated Code
 
