@@ -242,7 +242,7 @@ type mockEventStoreExt struct {
 	readAllFunc          func(ctx context.Context, fromPosition int64, limit int) ([]repository.StoredEvent, error)
 }
 
-func (m *mockEventStoreExt) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64) error {
+func (m *mockEventStoreExt) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
 	return nil
 }
 

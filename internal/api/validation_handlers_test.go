@@ -12,6 +12,7 @@ import (
 
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -32,7 +33,7 @@ func setupValidationTestServer() (*api.Server, *memory.ReadModelStore) {
 func addTestPerson(store *memory.ReadModelStore, given, surname, birthDate string) uuid.UUID {
 	id := uuid.New()
 	ctx := context.Background()
-	_ = store.SavePerson(ctx, &repository.PersonReadModel{
+	_ = store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           id,
 		GivenName:    given,
 		Surname:      surname,
@@ -47,7 +48,7 @@ func addTestPerson(store *memory.ReadModelStore, given, surname, birthDate strin
 func addTestPersonWithDeath(store *memory.ReadModelStore, given, surname, birthDate, deathDate string) uuid.UUID {
 	id := uuid.New()
 	ctx := context.Background()
-	_ = store.SavePerson(ctx, &repository.PersonReadModel{
+	_ = store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           id,
 		GivenName:    given,
 		Surname:      surname,

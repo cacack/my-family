@@ -42,6 +42,15 @@ func WithDemoReset(eventStore, readStore, snapshotStore Resetter) ServerOption {
 	}
 }
 
+// WithBranchStore supplies the branch registry store that the command handler's
+// projector routes branch-lifecycle events into (ADR-005). Without it the
+// registry projections no-op; real branch selection is #670.
+func WithBranchStore(branchStore repository.BranchStore) ServerOption {
+	return func(s *Server) {
+		s.branchStore = branchStore
+	}
+}
+
 // Server wraps the Echo server with application dependencies.
 type Server struct {
 	echo                *echo.Echo
@@ -69,7 +78,8 @@ type Server struct {
 	exportService       *query.ExportService
 	evidenceService     *query.EvidenceQueryService
 	frontendFS          fs.FS
-	demo                *demoResetter // nil when not in demo mode
+	demo                *demoResetter          // nil when not in demo mode
+	branchStore         repository.BranchStore // nil unless WithBranchStore supplied
 }
 
 // NewServer creates a new API server with all dependencies.
@@ -106,8 +116,21 @@ func NewServer(
 	// Custom error handler
 	e.HTTPErrorHandler = customErrorHandler
 
+	// Build the server shell and apply options first so the command handler's
+	// projector can route branch-lifecycle events into the configured branch
+	// registry store (set via WithBranchStore).
+	server := &Server{
+		echo:       e,
+		config:     cfg,
+		readStore:  readStore,
+		frontendFS: frontendFS,
+	}
+	for _, opt := range opts {
+		opt(server)
+	}
+
 	// Create services
-	cmdHandler := command.NewHandler(eventStore, readStore)
+	cmdHandler := command.NewHandlerWithBranchStore(eventStore, readStore, server.branchStore)
 	personSvc := query.NewPersonService(readStore)
 	familySvc := query.NewFamilyService(readStore)
 	pedigreeSvc := query.NewPedigreeService(readStore)
@@ -129,38 +152,27 @@ func NewServer(
 	exportSvc := query.NewExportService(readStore)
 	evidenceSvc := query.NewEvidenceQueryService(readStore)
 
-	server := &Server{
-		echo:                e,
-		config:              cfg,
-		readStore:           readStore,
-		commandHandler:      cmdHandler,
-		personService:       personSvc,
-		familyService:       familySvc,
-		pedigreeService:     pedigreeSvc,
-		descendancyService:  descendancySvc,
-		ahnentafelService:   ahnentafelSvc,
-		sourceService:       sourceSvc,
-		historyService:      historySvc,
-		rollbackService:     rollbackSvc,
-		browseService:       browseSvc,
-		qualityService:      qualitySvc,
-		snapshotService:     snapshotSvc,
-		validationService:   validationSvc,
-		relationshipService: relationshipSvc,
-		noteService:         noteSvc,
-		submitterService:    submitterSvc,
-		repositoryService:   repositorySvc,
-		associationService:  associationSvc,
-		ldsOrdinanceService: ldsOrdinanceSvc,
-		exportService:       exportSvc,
-		evidenceService:     evidenceSvc,
-		frontendFS:          frontendFS,
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		opt(server)
-	}
+	server.commandHandler = cmdHandler
+	server.personService = personSvc
+	server.familyService = familySvc
+	server.pedigreeService = pedigreeSvc
+	server.descendancyService = descendancySvc
+	server.ahnentafelService = ahnentafelSvc
+	server.sourceService = sourceSvc
+	server.historyService = historySvc
+	server.rollbackService = rollbackSvc
+	server.browseService = browseSvc
+	server.qualityService = qualitySvc
+	server.snapshotService = snapshotSvc
+	server.validationService = validationSvc
+	server.relationshipService = relationshipSvc
+	server.noteService = noteSvc
+	server.submitterService = submitterSvc
+	server.repositoryService = repositorySvc
+	server.associationService = associationSvc
+	server.ldsOrdinanceService = ldsOrdinanceSvc
+	server.exportService = exportSvc
+	server.evidenceService = evidenceSvc
 
 	// Register routes
 	server.registerRoutes()

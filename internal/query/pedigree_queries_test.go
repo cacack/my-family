@@ -35,7 +35,7 @@ func setupPedigreeTestData(t *testing.T, readStore *memory.ReadModelStore) (chil
 
 	for _, p := range persons {
 		pm := p
-		if err := readStore.SavePerson(ctx, &pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -49,7 +49,7 @@ func setupPedigreeTestData(t *testing.T, readStore *memory.ReadModelStore) (chil
 		MotherID:   &mother,
 		MotherName: "Jane Doe",
 	}
-	if err := readStore.SavePedigreeEdge(ctx, childEdge); err != nil {
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, childEdge); err != nil {
 		t.Fatal(err)
 	}
 
@@ -61,7 +61,7 @@ func setupPedigreeTestData(t *testing.T, readStore *memory.ReadModelStore) (chil
 		MotherID:   &grandmother,
 		MotherName: "Mary Jones",
 	}
-	if err := readStore.SavePedigreeEdge(ctx, fatherEdge); err != nil {
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, fatherEdge); err != nil {
 		t.Fatal(err)
 	}
 
@@ -188,7 +188,7 @@ func TestGetPedigree_NoParents(t *testing.T) {
 
 	// Create a person with no parent data
 	orphan := uuid.New()
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        orphan,
 		GivenName: "Orphan",
 		Surname:   "Child",
@@ -226,7 +226,7 @@ func TestGetAncestors(t *testing.T) {
 	child, father, mother, grandfather, grandmother := setupPedigreeTestData(t, readStore)
 
 	ctx := context.Background()
-	ancestors, err := svc.GetAncestors(ctx, child, 5)
+	ancestors, err := svc.GetAncestors(ctx, domain.MainBranchID, child, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestGetPedigree_CycleDetection(t *testing.T) {
 	person2 := uuid.New()
 
 	// Save persons
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person1,
 		GivenName: "Person1",
 		Surname:   "Test",
@@ -317,7 +317,7 @@ func TestGetPedigree_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err = readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person2,
 		GivenName: "Person2",
 		Surname:   "Test",
@@ -329,7 +329,7 @@ func TestGetPedigree_CycleDetection(t *testing.T) {
 	}
 
 	// Create circular edge (person1's father is person2, and person2's father is person1)
-	err = readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	err = readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   person1,
 		FatherID:   &person2,
 		FatherName: "Person2 Test",
@@ -338,7 +338,7 @@ func TestGetPedigree_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	err = readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   person2,
 		FatherID:   &person1,
 		FatherName: "Person1 Test",
@@ -378,7 +378,7 @@ func TestGetAncestors_MaxGenerationsHardLimit(t *testing.T) {
 	ctx := context.Background()
 
 	// Request with 0 max generations should default to 5
-	ancestors, err := svc.GetAncestors(ctx, child, 0)
+	ancestors, err := svc.GetAncestors(ctx, domain.MainBranchID, child, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestGetAncestors_MaxGenerationsHardLimit(t *testing.T) {
 	}
 
 	// Request with > 10 should be capped to 10
-	ancestors2, err := svc.GetAncestors(ctx, child, 100)
+	ancestors2, err := svc.GetAncestors(ctx, domain.MainBranchID, child, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +407,7 @@ func TestGetAncestors_NegativeMaxGenerations(t *testing.T) {
 	ctx := context.Background()
 
 	// Negative max generations should default to 5
-	ancestors, err := svc.GetAncestors(ctx, child, -1)
+	ancestors, err := svc.GetAncestors(ctx, domain.MainBranchID, child, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +425,7 @@ func TestGetAncestors_NoAncestors(t *testing.T) {
 
 	// Create person with no parents
 	orphan := uuid.New()
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        orphan,
 		GivenName: "Orphan",
 		Surname:   "Child",
@@ -435,7 +435,7 @@ func TestGetAncestors_NoAncestors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ancestors, err := svc.GetAncestors(ctx, orphan, 5)
+	ancestors, err := svc.GetAncestors(ctx, domain.MainBranchID, orphan, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestGetAncestors_CycleDetection(t *testing.T) {
 	person1 := uuid.New()
 	person2 := uuid.New()
 
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person1,
 		GivenName: "Person1",
 		Surname:   "Test",
@@ -465,7 +465,7 @@ func TestGetAncestors_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err = readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person2,
 		GivenName: "Person2",
 		Surname:   "Test",
@@ -476,7 +476,7 @@ func TestGetAncestors_CycleDetection(t *testing.T) {
 	}
 
 	// Create circular edge
-	err = readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	err = readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   person1,
 		FatherID:   &person2,
 		FatherName: "Person2 Test",
@@ -485,7 +485,7 @@ func TestGetAncestors_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	err = readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   person2,
 		FatherID:   &person1,
 		FatherName: "Person1 Test",
@@ -495,7 +495,7 @@ func TestGetAncestors_CycleDetection(t *testing.T) {
 	}
 
 	// Should not infinite loop
-	ancestors, err := svc.GetAncestors(ctx, person1, 5)
+	ancestors, err := svc.GetAncestors(ctx, domain.MainBranchID, person1, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +515,7 @@ func TestBuildNode_AllOptionalFields(t *testing.T) {
 
 	// Create person with all optional fields populated
 	person := uuid.New()
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           person,
 		GivenName:    "John",
 		Surname:      "Doe",
@@ -570,7 +570,7 @@ func TestCountAncestors_NilNode(t *testing.T) {
 
 	// Create person with no parents
 	orphan := uuid.New()
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        orphan,
 		GivenName: "Orphan",
 		Surname:   "Child",
@@ -594,5 +594,78 @@ func TestCountAncestors_NilNode(t *testing.T) {
 	}
 	if result.MaxGeneration != 0 {
 		t.Errorf("MaxGeneration = %d, want 0", result.MaxGeneration)
+	}
+}
+
+// TestPedigreeService_BranchScope verifies pedigree traversal threads a single
+// branchID through every person and edge lookup: the branch overlay wins for the
+// person rows while the (un-overridden) pedigree edge falls back to main, and the
+// MainBranchID traversal is unchanged.
+func TestPedigreeService_BranchScope(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewPedigreeService(readStore)
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	rootID := uuid.New()
+	fatherID := uuid.New()
+
+	// Main rows: root + father, with a pedigree edge linking them.
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: rootID, GivenName: "Root", Surname: "Main", FullName: "Root Main", Version: 1,
+	}); err != nil {
+		t.Fatalf("seed main root: %v", err)
+	}
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: fatherID, GivenName: "Father", Surname: "Main", FullName: "Father Main", Version: 1,
+	}); err != nil {
+		t.Fatalf("seed main father: %v", err)
+	}
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
+		PersonID: rootID, FatherID: &fatherID, FatherName: "Father Main",
+	}); err != nil {
+		t.Fatalf("seed main edge: %v", err)
+	}
+
+	// The branch overrides only the two person rows (surname). The edge is left to
+	// fall back to main, so a correct implementation still finds the father.
+	if err := readStore.SavePerson(ctx, branch, &repository.PersonReadModel{
+		ID: rootID, GivenName: "Root", Surname: "Branch", FullName: "Root Branch", Version: 1,
+	}); err != nil {
+		t.Fatalf("seed branch root: %v", err)
+	}
+	if err := readStore.SavePerson(ctx, branch, &repository.PersonReadModel{
+		ID: fatherID, GivenName: "Father", Surname: "Branch", FullName: "Father Branch", Version: 1,
+	}); err != nil {
+		t.Fatalf("seed branch father: %v", err)
+	}
+
+	// Branch pedigree: both the root and the father resolve to the branch rows.
+	branchPed, err := service.GetPedigree(ctx, query.GetPedigreeInput{PersonID: rootID, MaxGenerations: 3, BranchID: branch})
+	if err != nil {
+		t.Fatalf("GetPedigree branch: %v", err)
+	}
+	if branchPed.Root.Surname != "Branch" {
+		t.Errorf("branch root surname = %q, want Branch", branchPed.Root.Surname)
+	}
+	if branchPed.Root.Father == nil || branchPed.Root.Father.Surname != "Branch" {
+		t.Errorf("branch father = %+v, want Branch surname (edge fell back to main, person overlaid on branch)", branchPed.Root.Father)
+	}
+
+	// Main pedigree is unchanged.
+	mainPed, err := service.GetPedigree(ctx, query.GetPedigreeInput{PersonID: rootID, MaxGenerations: 3})
+	if err != nil {
+		t.Fatalf("GetPedigree main: %v", err)
+	}
+	if mainPed.Root.Surname != "Main" || mainPed.Root.Father == nil || mainPed.Root.Father.Surname != "Main" {
+		t.Errorf("main pedigree root=%q father=%+v, want Main", mainPed.Root.Surname, mainPed.Root.Father)
+	}
+
+	// GetAncestors honors the branch scope too.
+	branchAnc, err := service.GetAncestors(ctx, branch, rootID, 3)
+	if err != nil {
+		t.Fatalf("GetAncestors branch: %v", err)
+	}
+	if len(branchAnc) != 1 || branchAnc[0].Surname != "Branch" {
+		t.Errorf("branch ancestors = %+v, want single Branch father", branchAnc)
 	}
 }

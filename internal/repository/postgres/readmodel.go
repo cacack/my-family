@@ -40,8 +40,12 @@ func (s *ReadModelStore) createTables() error {
 		CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
 
 		-- Persons table
+		-- Branch-aware (ADR-005): (id, branch_id) is the row identity so main and
+		-- a branch can each hold a shadow row for the same entity id; deleted marks
+		-- a branch tombstone. branch_id defaults to the reserved main id (uuid.Nil).
 		CREATE TABLE IF NOT EXISTS persons (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			given_name VARCHAR(100) NOT NULL,
 			surname VARCHAR(100) NOT NULL,
 			full_name VARCHAR(200) GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
@@ -56,7 +60,9 @@ func (s *ReadModelStore) createTables() error {
 			research_status VARCHAR(20),
 			search_vector TSVECTOR,
 			version BIGINT NOT NULL DEFAULT 1,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_persons_surname ON persons(surname, given_name);
@@ -65,6 +71,10 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_persons_surname_trgm ON persons USING GIN(surname gin_trgm_ops);
 		CREATE INDEX IF NOT EXISTS idx_persons_given_name_trgm ON persons USING GIN(given_name gin_trgm_ops);
 		CREATE INDEX IF NOT EXISTS idx_persons_research_status ON persons(research_status);
+		-- Secondary index leading with branch_id so PurgeBranch's DELETE ... WHERE
+		-- branch_id = ? (and the overlay's branch_id IN filter) is index-driven; the
+		-- composite PK leads with id, leaving branch_id otherwise unindexed (#669).
+		CREATE INDEX IF NOT EXISTS idx_persons_branch ON persons(branch_id);
 
 		-- Trigger to update search_vector
 		CREATE OR REPLACE FUNCTION persons_search_trigger() RETURNS trigger AS $$
@@ -79,12 +89,17 @@ func (s *ReadModelStore) createTables() error {
 			FOR EACH ROW EXECUTE FUNCTION persons_search_trigger();
 
 		-- Families table
+		-- Branch-aware (ADR-005): (id, branch_id) row identity + deleted tombstone.
+		-- Cross-table foreign keys to persons(id) are intentionally dropped because
+		-- persons(id) is no longer unique under the branch overlay; cascade behavior
+		-- is replicated in the Delete* methods to mirror the memory reference.
 		CREATE TABLE IF NOT EXISTS families (
-			id UUID PRIMARY KEY,
-			partner1_id UUID REFERENCES persons(id),
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			partner1_id UUID,
 			partner1_given_name VARCHAR(200),
 			partner1_surname VARCHAR(200),
-			partner2_id UUID REFERENCES persons(id),
+			partner2_id UUID,
 			partner2_given_name VARCHAR(200),
 			partner2_surname VARCHAR(200),
 			relationship_type VARCHAR(20),
@@ -93,36 +108,50 @@ func (s *ReadModelStore) createTables() error {
 			marriage_place VARCHAR(255),
 			child_count INTEGER NOT NULL DEFAULT 0,
 			version BIGINT NOT NULL DEFAULT 1,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_families_partner1 ON families(partner1_id);
 		CREATE INDEX IF NOT EXISTS idx_families_partner2 ON families(partner2_id);
+		CREATE INDEX IF NOT EXISTS idx_families_branch ON families(branch_id);
 
 		-- Family children table
+		-- Branch-aware (ADR-005): (family_id, person_id, branch_id) row identity +
+		-- deleted tombstone. FKs to families/persons dropped (see families note).
 		CREATE TABLE IF NOT EXISTS family_children (
-			family_id UUID NOT NULL REFERENCES families(id) ON DELETE CASCADE,
-			person_id UUID NOT NULL REFERENCES persons(id),
+			family_id UUID NOT NULL,
+			person_id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			person_given_name VARCHAR(200),
 			person_surname VARCHAR(200),
 			relationship_type VARCHAR(20) NOT NULL DEFAULT 'biological',
 			sequence INTEGER,
-			PRIMARY KEY (family_id, person_id)
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (family_id, person_id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_family_children_person ON family_children(person_id);
+		CREATE INDEX IF NOT EXISTS idx_family_children_branch ON family_children(branch_id);
 
 		-- Pedigree edges table
+		-- Branch-aware (ADR-005): (person_id, branch_id) row identity + deleted
+		-- tombstone. FKs to persons dropped (see families note).
 		CREATE TABLE IF NOT EXISTS pedigree_edges (
-			person_id UUID PRIMARY KEY REFERENCES persons(id) ON DELETE CASCADE,
-			father_id UUID REFERENCES persons(id),
-			mother_id UUID REFERENCES persons(id),
+			person_id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			father_id UUID,
+			mother_id UUID,
 			father_name VARCHAR(200),
-			mother_name VARCHAR(200)
+			mother_name VARCHAR(200),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (person_id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_pedigree_father ON pedigree_edges(father_id);
 		CREATE INDEX IF NOT EXISTS idx_pedigree_mother ON pedigree_edges(mother_id);
+		CREATE INDEX IF NOT EXISTS idx_pedigree_edges_branch ON pedigree_edges(branch_id);
 
 		-- Sources table
 		CREATE TABLE IF NOT EXISTS sources (
@@ -204,9 +233,12 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_media_type ON media(media_type);
 
 		-- Person names table (for multiple name variants)
+		-- Branch-aware (ADR-005): (id, branch_id) row identity + deleted tombstone.
+		-- FK to persons dropped (see families note).
 		CREATE TABLE IF NOT EXISTS person_names (
-			id UUID PRIMARY KEY,
-			person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			person_id UUID NOT NULL,
 			given_name VARCHAR(100) NOT NULL,
 			surname VARCHAR(100) NOT NULL,
 			full_name VARCHAR(200) GENERATED ALWAYS AS (given_name || ' ' || surname) STORED,
@@ -217,14 +249,17 @@ func (s *ReadModelStore) createTables() error {
 			name_type VARCHAR(20) NOT NULL DEFAULT '',
 			is_primary BOOLEAN NOT NULL DEFAULT FALSE,
 			search_vector TSVECTOR,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_person_names_person ON person_names(person_id);
+		CREATE INDEX IF NOT EXISTS idx_person_names_person ON person_names(person_id, branch_id);
 		CREATE INDEX IF NOT EXISTS idx_person_names_primary ON person_names(person_id, is_primary);
 		CREATE INDEX IF NOT EXISTS idx_person_names_search ON person_names USING GIN(search_vector);
 		CREATE INDEX IF NOT EXISTS idx_person_names_given_trgm ON person_names USING GIN(given_name gin_trgm_ops);
 		CREATE INDEX IF NOT EXISTS idx_person_names_surname_trgm ON person_names USING GIN(surname gin_trgm_ops);
+		CREATE INDEX IF NOT EXISTS idx_person_names_branch ON person_names(branch_id);
 
 		-- Trigger to update search_vector for person_names
 		CREATE OR REPLACE FUNCTION person_names_search_trigger() RETURNS trigger AS $$
@@ -242,15 +277,21 @@ func (s *ReadModelStore) createTables() error {
 			FOR EACH ROW EXECUTE FUNCTION person_names_search_trigger();
 
 		-- Person external identifiers (GEDCOM 7.0 EXID)
+		-- Branch-aware (ADR-005): bucket-scoped by (person_id, branch_id); an empty
+		-- branch bucket is represented by a single deleted marker row (tombstone).
+		-- FK to persons dropped (see families note).
 		CREATE TABLE IF NOT EXISTS person_external_ids (
-			person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+			person_id UUID NOT NULL,
 			sequence INTEGER NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			value TEXT NOT NULL,
 			type TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (person_id, sequence)
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (person_id, sequence, branch_id)
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_person_external_ids_person ON person_external_ids(person_id);
+		CREATE INDEX IF NOT EXISTS idx_person_external_ids_person ON person_external_ids(person_id, branch_id);
+		CREATE INDEX IF NOT EXISTS idx_person_external_ids_branch ON person_external_ids(branch_id);
 
 		-- Notes table (shared GEDCOM NOTE records)
 		CREATE TABLE IF NOT EXISTS notes (
@@ -296,15 +337,20 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_repositories_gedcom_xref ON repositories(gedcom_xref);
 
 		-- Family external identifiers (GEDCOM 7.0 EXID)
+		-- Branch-aware (ADR-005): bucket-scoped by (family_id, branch_id); an empty
+		-- branch bucket is a single deleted marker row. FK to families dropped.
 		CREATE TABLE IF NOT EXISTS family_external_ids (
-			family_id UUID NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+			family_id UUID NOT NULL,
 			sequence INTEGER NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			value TEXT NOT NULL,
 			type TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (family_id, sequence)
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (family_id, sequence, branch_id)
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_family_external_ids_family ON family_external_ids(family_id);
+		CREATE INDEX IF NOT EXISTS idx_family_external_ids_family ON family_external_ids(family_id, branch_id);
+		CREATE INDEX IF NOT EXISTS idx_family_external_ids_branch ON family_external_ids(branch_id);
 
 		-- Source external identifiers (GEDCOM 7.0 EXID)
 		CREATE TABLE IF NOT EXISTS source_external_ids (
@@ -329,11 +375,13 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_repository_external_ids_repository ON repository_external_ids(repository_id);
 
 		-- Associations table (GEDCOM ASSO records for non-family relationships)
+		-- FK references to persons(id) dropped: persons(id) is not unique under the
+		-- branch overlay (ADR-005). This table is not branch-scoped.
 		CREATE TABLE IF NOT EXISTS associations (
 			id UUID PRIMARY KEY,
-			person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+			person_id UUID NOT NULL,
 			person_name VARCHAR(200),
-			associate_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+			associate_id UUID NOT NULL,
 			associate_name VARCHAR(200),
 			role VARCHAR(100) NOT NULL,
 			phrase VARCHAR(500),
@@ -373,9 +421,10 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_events_fact_type ON events(fact_type);
 
 		-- Attributes table (person attributes)
+		-- FK reference to persons(id) dropped (see associations note). Not branch-scoped.
 		CREATE TABLE IF NOT EXISTS attributes (
 			id UUID PRIMARY KEY,
-			person_id UUID NOT NULL REFERENCES persons(id),
+			person_id UUID NOT NULL,
 			fact_type VARCHAR(100) NOT NULL,
 			value TEXT NOT NULL DEFAULT '',
 			date_raw VARCHAR(100),
@@ -557,43 +606,209 @@ func (s *ReadModelStore) runMigrations() {
 
 	// Add repository_id to sources for ID-based source→repository linkage (issue #525).
 	_, _ = s.db.Exec(`ALTER TABLE sources ADD COLUMN IF NOT EXISTS repository_id UUID`)
+
+	// Branch-aware read model (ADR-005 / issue #669). Add branch_id + deleted to
+	// each slice table, drop cross-table FKs to persons(id)/families(id) (no longer
+	// unique under the overlay), and re-key each table on a (…, branch_id) composite
+	// PK. Existing rows backfill to the reserved main branch id (uuid.Nil) via the
+	// column default. Best-effort like the migrations above: errors are ignored so a
+	// DB already at the target shape is left untouched.
+	s.runBranchMigration()
 }
 
-// GetPerson retrieves a person by ID.
-func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
+// runBranchMigration migrates an existing database to the branch-aware slice
+// schema (ADR-005). Each table is migrated in its own transaction so a crash
+// leaves the table either wholly pre- or post-migration. FK drops must precede
+// the persons/families PK swap because a PK cannot be dropped while referenced.
+func (s *ReadModelStore) runBranchMigration() {
+	const mainDefault = `DEFAULT '00000000-0000-0000-0000-000000000000'`
+
+	// Drop every foreign key that references persons(id) or families(id); these
+	// span slice and non-slice tables. Done first (outside the per-table PK swaps)
+	// so the referenced PKs are free to change.
+	dropFKs := []string{
+		`ALTER TABLE families DROP CONSTRAINT IF EXISTS families_partner1_id_fkey`,
+		`ALTER TABLE families DROP CONSTRAINT IF EXISTS families_partner2_id_fkey`,
+		`ALTER TABLE family_children DROP CONSTRAINT IF EXISTS family_children_family_id_fkey`,
+		`ALTER TABLE family_children DROP CONSTRAINT IF EXISTS family_children_person_id_fkey`,
+		`ALTER TABLE pedigree_edges DROP CONSTRAINT IF EXISTS pedigree_edges_person_id_fkey`,
+		`ALTER TABLE pedigree_edges DROP CONSTRAINT IF EXISTS pedigree_edges_father_id_fkey`,
+		`ALTER TABLE pedigree_edges DROP CONSTRAINT IF EXISTS pedigree_edges_mother_id_fkey`,
+		`ALTER TABLE person_names DROP CONSTRAINT IF EXISTS person_names_person_id_fkey`,
+		`ALTER TABLE person_external_ids DROP CONSTRAINT IF EXISTS person_external_ids_person_id_fkey`,
+		`ALTER TABLE family_external_ids DROP CONSTRAINT IF EXISTS family_external_ids_family_id_fkey`,
+		`ALTER TABLE associations DROP CONSTRAINT IF EXISTS associations_person_id_fkey`,
+		`ALTER TABLE associations DROP CONSTRAINT IF EXISTS associations_associate_id_fkey`,
+		`ALTER TABLE attributes DROP CONSTRAINT IF EXISTS attributes_person_id_fkey`,
+	}
+	for _, stmt := range dropFKs {
+		_, _ = s.db.Exec(stmt)
+	}
+
+	// Per-table: add branch_id + deleted, then swap the primary key to include
+	// branch_id. slicePK lists the non-branch key columns of each table's new PK.
+	type sliceTable struct {
+		name string
+		pk   string // comma-separated key columns excluding branch_id
+	}
+	tables := []sliceTable{
+		{"persons", "id"},
+		{"families", "id"},
+		{"family_children", "family_id, person_id"},
+		{"pedigree_edges", "person_id"},
+		{"person_names", "id"},
+		{"person_external_ids", "person_id, sequence"},
+		{"family_external_ids", "family_id, sequence"},
+	}
+	for _, t := range tables {
+		// Column adds are idempotent and safe outside a transaction.
+		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL ` + mainDefault)
+		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE`)
+
+		// Swap the PK atomically. If branch_id is already part of the PK (target
+		// shape reached) the ADD PRIMARY KEY fails and the tx rolls back, leaving
+		// the already-correct PK in place.
+		if tx, err := s.db.Begin(); err == nil {
+			if _, err := tx.Exec(`ALTER TABLE ` + t.name + ` DROP CONSTRAINT IF EXISTS ` + t.name + `_pkey`); err != nil {
+				_ = tx.Rollback()
+				continue
+			}
+			if _, err := tx.Exec(`ALTER TABLE ` + t.name + ` ADD PRIMARY KEY (` + t.pk + `, branch_id)`); err != nil {
+				_ = tx.Rollback()
+				continue
+			}
+			_ = tx.Commit()
+		}
+	}
+
+	// Refresh the collection-table indexes to include branch_id (the overlay filters
+	// on parent + branch). Old single-column variants are replaced.
+	_, _ = s.db.Exec(`DROP INDEX IF EXISTS idx_person_names_person`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_person_names_person ON person_names(person_id, branch_id)`)
+	_, _ = s.db.Exec(`DROP INDEX IF EXISTS idx_person_external_ids_person`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_person_external_ids_person ON person_external_ids(person_id, branch_id)`)
+	_, _ = s.db.Exec(`DROP INDEX IF EXISTS idx_family_external_ids_family`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_family_external_ids_family ON family_external_ids(family_id, branch_id)`)
+
+	// Secondary indexes leading with branch_id so PurgeBranch's DELETE ... WHERE
+	// branch_id = ? (and the overlay's branch_id IN filter) is index-driven rather
+	// than a full-table scan; the composite PK leads with id, so branch_id alone is
+	// otherwise unindexed (issue #669).
+	for _, tbl := range []string{
+		"persons", "families", "family_children", "pedigree_edges",
+		"person_names", "person_external_ids", "family_external_ids",
+	} {
+		_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_` + tbl + `_branch ON ` + tbl + `(branch_id)`)
+	}
+}
+
+// Column lists for the branch overlay queries (ADR-005). The overlay resolves a
+// branch's view of a slice table in a single set-based query: an inner
+// SELECT DISTINCT ON (<identity>) picks the branch's row over main's for each
+// identity, and an OUTER "WHERE NOT deleted" drops identities whose winning row
+// is a tombstone (so a branch tombstone suppresses the main fallback). The NOT
+// deleted filter must be applied AFTER the DISTINCT ON, not inside it.
+const (
+	// personSelectCols is scanPerson's column order (unaliased).
+	personSelectCols = `id, given_name, surname, full_name, gender,
+		birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+		death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+		notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+		version, updated_at`
+
+	// personInsertCols is personSelectCols without the generated full_name column,
+	// for INSERT ... SELECT (a generated column cannot be written).
+	personInsertCols = `id, given_name, surname, gender,
+		birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
+		death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
+		notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
+		version, updated_at`
+
+	// personNameSelectCols is scanPersonName's column order (unaliased).
+	personNameSelectCols = `id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
+		surname_prefix, nickname, name_type, is_primary, updated_at`
+
+	// personNameOverlayCols are the person_names columns SearchPersons needs from
+	// the resolved rpn CTE (matching against alternate names).
+	personNameOverlayCols = `id, person_id, given_name, surname, full_name, nickname, is_primary, search_vector`
+
+	// familySelectCols is scanFamily's column order (unaliased).
+	familySelectCols = `id, partner1_id, partner1_given_name, partner1_surname,
+		partner2_id, partner2_given_name, partner2_surname,
+		relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
+		marriage_place_lat, marriage_place_long,
+		child_count, version, updated_at`
+
+	// familyChildSelectCols matches GetFamilyChildren's scan order (unaliased).
+	familyChildSelectCols = `family_id, person_id, person_given_name, person_surname, relationship_type, sequence`
+
+	// pedigreeSelectCols matches GetPedigreeEdge's scan order (unaliased).
+	pedigreeSelectCols = `person_id, father_id, mother_id, father_name, mother_name`
+)
+
+// GetPerson retrieves a person by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PersonReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-			   version, updated_at
-		FROM persons WHERE id = $1
-	`, id)
+		SELECT `+personSelectCols+` FROM (
+			SELECT DISTINCT ON (id) `+personSelectCols+`, deleted
+			FROM persons WHERE id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o WHERE NOT deleted
+	`, id, branchID.UUID(), domain.MainBranchID.UUID())
 
 	return scanPerson(row)
 }
 
-// ListPersons returns a paginated list of persons.
+// ListPersons returns a paginated list of persons within the branch overlay (ADR-005).
 func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	// Build WHERE clause for research_status filter
-	whereClause := ""
-	var whereArgs []any
-	paramNum := 1
+	// Main-scope fast path (issue #669): main never shadows itself, so persons holds
+	// exactly one row per id. The DISTINCT ON overlay is then pure overhead that also
+	// materializes+sorts the whole table before ORDER BY/LIMIT can apply, defeating
+	// index-driven pagination. Query persons directly so the planner can use the
+	// sort/filter indexes and short-circuit at LIMIT. Non-main keeps the overlay.
+	var cte, fromSrc string
+	var conds []string
+	var args []any
+	var paramNum int
+	if opts.BranchID.IsMain() {
+		fromSrc = "persons"
+		conds = append(conds, "branch_id = $1 AND NOT deleted")
+		args = []any{domain.MainBranchID.UUID()}
+		paramNum = 2
+	} else {
+		fromSrc = "resolved"
+		cte = `WITH resolved AS (
+			SELECT ` + personSelectCols + ` FROM (
+				SELECT DISTINCT ON (id) ` + personSelectCols + `, deleted
+				FROM persons WHERE branch_id IN ($1, $2)
+				ORDER BY id, (branch_id = $1) DESC
+			) o WHERE NOT deleted
+		)`
+		args = []any{opts.BranchID.UUID(), domain.MainBranchID.UUID()}
+		paramNum = 3
+	}
+
+	// research_status filter (params continue after branch/main).
 	if opts.ResearchStatus != nil {
 		if *opts.ResearchStatus == "unset" {
-			whereClause = "WHERE research_status IS NULL OR research_status = ''"
+			conds = append(conds, "(research_status IS NULL OR research_status = '')")
 		} else {
-			whereClause = fmt.Sprintf("WHERE research_status = $%d", paramNum)
-			whereArgs = append(whereArgs, *opts.ResearchStatus)
+			conds = append(conds, fmt.Sprintf("research_status = $%d", paramNum))
+			args = append(args, *opts.ResearchStatus)
 			paramNum++
 		}
+	}
+
+	whereClause := ""
+	if len(conds) > 0 {
+		whereClause = "WHERE " + strings.Join(conds, " AND ")
 	}
 
 	// Count total (with filter if present)
 	var total int
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query -- whereClause uses parameterized placeholders, not user input
-	countQuery := "SELECT COUNT(*) FROM persons " + whereClause
-	err := s.db.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total)
+	countQuery := cte + " SELECT COUNT(*) FROM " + fromSrc + " " + whereClause
+	err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons: %w", err)
 	}
@@ -615,20 +830,16 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 
 	// Build query with filter
 	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
-	query := fmt.Sprintf(`
-		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-			   version, updated_at
-		FROM persons
+	query := cte + fmt.Sprintf(`
+		SELECT `+personSelectCols+`
+		FROM `+fromSrc+`
 		%s
 		ORDER BY %s %s NULLS LAST, given_name %s
 		LIMIT $%d OFFSET $%d
 	`, whereClause, orderColumn, orderDir, orderDir, paramNum, paramNum+1)
 
-	// Build args: where args + limit + offset
-	queryArgs := append(whereArgs, opts.Limit, opts.Offset)
+	// Build args: branch/main + where args + limit + offset
+	queryArgs := append(args, opts.Limit, opts.Offset)
 	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons: %w", err)
@@ -689,11 +900,26 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	var qb strings.Builder
 	params := &searchQueryParams{paramN: 1}
 
+	// Resolve the branch overlay of persons (rp) and person_names (rpn) up front so
+	// all matching runs against the branch's view, never the raw tables (ADR-005).
+	// $branch/$main are the first two params; the name-match CTE and filters below
+	// read from rp/rpn. This keeps the whole search a single set-based statement.
+	branchN := params.add(opts.BranchID.UUID())
+	if opts.BranchID.IsMain() {
+		// Main fast path (issue #669): main never shadows itself, so rp/rpn are the
+		// raw main-scoped rows and matching can use the GIN/trigram indexes directly
+		// instead of paying the DISTINCT ON overlay's materialize+sort.
+		writeResolvedPersonCTEsMain(&qb, branchN)
+	} else {
+		mainN := params.add(domain.MainBranchID.UUID())
+		writeResolvedPersonCTEs(&qb, branchN, mainN)
+	}
+
 	if hasQuery {
 		writeNameMatchCTE(&qb, opts, params)
 		writeDedupSelect(&qb)
 	} else {
-		fmt.Fprintf(&qb, `SELECT %s FROM persons p`, personCols)
+		fmt.Fprintf(&qb, ` SELECT %s FROM rp p`, personCols)
 	}
 
 	writeDatePlaceFilters(&qb, opts, params)
@@ -719,50 +945,99 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return persons, rows.Err()
 }
 
-// writeNameMatchCTE writes the CTE for name matching (fuzzy, soundex, or full-text).
+// writeResolvedPersonCTEs writes the leading "WITH rp AS (...), rpn AS (...)"
+// clause that resolves the branch overlay of persons and person_names for
+// SearchPersons. branchN/mainN are the $-placeholder numbers for the branch and
+// main ids. Downstream clauses read from rp/rpn instead of the raw tables so the
+// entire search resolves the overlay in one set-based statement (no per-row
+// branch lookups). When branch == main this collapses to the main rows.
+func writeResolvedPersonCTEs(qb *strings.Builder, branchN, mainN int) {
+	// rp also carries search_vector (needed by the full-text match), which
+	// personSelectCols omits; the final SELECT only reads personCols so the extra
+	// column is harmless.
+	fmt.Fprintf(qb, `WITH rp AS (
+		SELECT %s, search_vector FROM (
+			SELECT DISTINCT ON (id) %s, search_vector, deleted
+			FROM persons WHERE branch_id IN ($%d, $%d)
+			ORDER BY id, (branch_id = $%d) DESC
+		) o WHERE NOT deleted
+	), rpn AS (
+		SELECT %s FROM (
+			SELECT DISTINCT ON (id) %s, deleted
+			FROM person_names WHERE branch_id IN ($%d, $%d)
+			ORDER BY id, (branch_id = $%d) DESC
+		) o WHERE NOT deleted
+	)`, personSelectCols, personSelectCols, branchN, mainN, branchN,
+		personNameOverlayCols, personNameOverlayCols, branchN, mainN, branchN)
+}
+
+// writeResolvedPersonCTEsMain is the main-scope fast path for
+// writeResolvedPersonCTEs (issue #669). For MainBranchID there is exactly one row
+// per id, so the DISTINCT ON overlay is skipped: rp/rpn are the raw rows filtered
+// to the main branch (tombstones excluded), letting the full-text/trigram indexes
+// drive matching. branchN is the $-placeholder for the main branch id.
+func writeResolvedPersonCTEsMain(qb *strings.Builder, branchN int) {
+	// NOT MATERIALIZED: matched_persons references rp twice (direct match + the
+	// rp JOIN rpn alt-name branch), which would otherwise trigger Postgres 12+'s
+	// default to materialize a CTE used 2+ times. Materializing rp forces a full
+	// branch-filtered scan of persons before the text predicates run, defeating the
+	// GIN/trigram/tsvector indexes. Inlining pushes those predicates down to the base
+	// tables so the indexes drive matching. Safe here because these are plain
+	// branch-filtered selects; the non-main overlay's DISTINCT ON is left to
+	// materialize (see writeResolvedPersonCTEs).
+	fmt.Fprintf(qb, `WITH rp AS NOT MATERIALIZED (
+		SELECT %s, search_vector FROM persons WHERE branch_id = $%d AND NOT deleted
+	), rpn AS NOT MATERIALIZED (
+		SELECT %s FROM person_names WHERE branch_id = $%d AND NOT deleted
+	)`, personSelectCols, branchN, personNameOverlayCols, branchN)
+}
+
+// writeNameMatchCTE appends the matched_persons CTE for name matching (fuzzy,
+// soundex, or full-text). It runs against the resolved rp/rpn CTEs written by
+// writeResolvedPersonCTEs, so it opens with ", matched_persons AS (".
 func writeNameMatchCTE(qb *strings.Builder, opts repository.SearchOptions, params *searchQueryParams) {
 	query := strings.TrimSpace(opts.Query)
 	n := params.add(query)
 
 	switch {
 	case opts.Fuzzy:
-		fmt.Fprintf(qb, `WITH matched_persons AS (
+		fmt.Fprintf(qb, `, matched_persons AS (
 			SELECT %s, TRUE as is_primary,
 				GREATEST(similarity(p.given_name, $%d), similarity(p.surname, $%d), similarity(p.full_name, $%d)) as rank_score
-			FROM persons p
+			FROM rp p
 			WHERE p.given_name %% $%d OR p.surname %% $%d OR p.full_name %% $%d
 			UNION
 			SELECT %s, pn.is_primary,
 				GREATEST(similarity(pn.given_name, $%d), similarity(pn.surname, $%d), similarity(pn.full_name, $%d), similarity(COALESCE(pn.nickname, ''), $%d)) as rank_score
-			FROM persons p JOIN person_names pn ON p.id = pn.person_id
+			FROM rp p JOIN rpn pn ON p.id = pn.person_id
 			WHERE pn.given_name %% $%d OR pn.surname %% $%d OR pn.full_name %% $%d OR pn.nickname %% $%d
 		)`, personCols, n, n, n, n, n, n,
 			personCols, n, n, n, n, n, n, n, n)
 
 	case opts.Soundex:
-		fmt.Fprintf(qb, `WITH matched_persons AS (
+		fmt.Fprintf(qb, `, matched_persons AS (
 			SELECT %s, TRUE as is_primary,
 				GREATEST(difference(p.given_name, $%d), difference(p.surname, $%d))::float as rank_score
-			FROM persons p
+			FROM rp p
 			WHERE difference(p.given_name, $%d) >= 3 OR difference(p.surname, $%d) >= 3
 			UNION
 			SELECT %s, pn.is_primary,
 				GREATEST(difference(pn.given_name, $%d), difference(pn.surname, $%d))::float as rank_score
-			FROM persons p JOIN person_names pn ON p.id = pn.person_id
+			FROM rp p JOIN rpn pn ON p.id = pn.person_id
 			WHERE difference(pn.given_name, $%d) >= 3 OR difference(pn.surname, $%d) >= 3
 		)`, personCols, n, n, n, n,
 			personCols, n, n, n, n)
 
 	default:
-		fmt.Fprintf(qb, `WITH matched_persons AS (
+		fmt.Fprintf(qb, `, matched_persons AS (
 			SELECT %s, TRUE as is_primary,
 				ts_rank(p.search_vector, plainto_tsquery('english', $%d)) as rank_score
-			FROM persons p
+			FROM rp p
 			WHERE p.search_vector @@ plainto_tsquery('english', $%d) OR p.full_name ILIKE '%%' || $%d || '%%'
 			UNION
 			SELECT %s, pn.is_primary,
 				ts_rank(pn.search_vector, plainto_tsquery('english', $%d)) as rank_score
-			FROM persons p JOIN person_names pn ON p.id = pn.person_id
+			FROM rp p JOIN rpn pn ON p.id = pn.person_id
 			WHERE pn.search_vector @@ plainto_tsquery('english', $%d) OR pn.full_name ILIKE '%%' || $%d || '%%' OR pn.nickname ILIKE '%%' || $%d || '%%'
 		)`, personCols, n, n, n,
 			personCols, n, n, n, n)
@@ -854,16 +1129,17 @@ func writeOrderBy(qb *strings.Builder, opts repository.SearchOptions, hasQuery b
 	}
 }
 
-// SavePerson saves or updates a person.
-func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.PersonReadModel) error {
+// SavePerson saves or updates a person on the given branch (ADR-005). The row is
+// keyed by (id, branch_id); a save always clears any prior tombstone (deleted).
+func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchID, person *repository.PersonReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO persons (id, given_name, surname, gender, birth_date_raw, birth_date_sort, birth_place,
+		INSERT INTO persons (id, branch_id, given_name, surname, gender, birth_date_raw, birth_date_sort, birth_place,
 							 birth_place_lat, birth_place_long, death_date_raw, death_date_sort, death_place,
 							 death_place_lat, death_place_long, notes, research_status,
 							 brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-							 version, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-		ON CONFLICT(id) DO UPDATE SET
+							 version, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, FALSE)
+		ON CONFLICT(id, branch_id) DO UPDATE SET
 			given_name = EXCLUDED.given_name,
 			surname = EXCLUDED.surname,
 			gender = EXCLUDED.gender,
@@ -883,8 +1159,9 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 			brick_wall_since = EXCLUDED.brick_wall_since,
 			brick_wall_resolved_at = EXCLUDED.brick_wall_resolved_at,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, person.ID, person.GivenName, person.Surname, nullableGender(person.Gender),
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, person.ID, branchID.UUID(), person.GivenName, person.Surname, nullableGender(person.Gender),
 		nullableString(person.BirthDateRaw), nullableTime(person.BirthDateSort), nullableString(person.BirthPlace),
 		nullableStringPtr(person.BirthPlaceLat), nullableStringPtr(person.BirthPlaceLong),
 		nullableString(person.DeathDateRaw), nullableTime(person.DeathDateSort), nullableString(person.DeathPlace),
@@ -896,19 +1173,109 @@ func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.Pers
 	return err
 }
 
-// DeletePerson removes a person.
-func (s *ReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM persons WHERE id = $1", id)
-	return err
+// DeletePerson removes a person (ADR-005). On main it is a real removal and
+// cascades to the person's names and external IDs (matching the FK cascade that
+// existed before the overlay). On a non-main branch it writes a tombstone for the
+// person plus cascade tombstones for the person's names and external IDs, so the
+// main fallback cannot resurrect them.
+func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	main := domain.MainBranchID.UUID()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if branchID.IsMain() {
+		// Reproduce the pre-#669 ON DELETE CASCADE explicitly: the read-model FKs
+		// were dropped so persons could be keyed by (id, branch_id), so every
+		// dependent the FKs used to cascade must be cleaned up by hand here.
+		// person_names, person_external_ids, pedigree_edges and associations (both
+		// person_id and associate_id) were ON DELETE CASCADE pre-#669. attributes
+		// referenced persons(id) with NO ON DELETE (RESTRICT), which would have
+		// blocked the delete; blocking is not reproducible against an append-only
+		// event log (the event store is the source of truth), so we cascade-delete
+		// orphan attributes too rather than leave dangling read-model rows.
+		// associations/attributes are main-only (no branch_id column).
+		for _, stmt := range []struct {
+			sql  string
+			args []any
+		}{
+			{"DELETE FROM persons WHERE id = $1 AND branch_id = $2", []any{id, main}},
+			{"DELETE FROM person_names WHERE person_id = $1 AND branch_id = $2", []any{id, main}},
+			{"DELETE FROM person_external_ids WHERE person_id = $1 AND branch_id = $2", []any{id, main}},
+			{"DELETE FROM pedigree_edges WHERE person_id = $1 AND branch_id = $2", []any{id, main}},
+			{"DELETE FROM associations WHERE person_id = $1 OR associate_id = $1", []any{id}},
+			{"DELETE FROM attributes WHERE person_id = $1", []any{id}},
+		} {
+			if _, err := tx.ExecContext(ctx, stmt.sql, stmt.args...); err != nil {
+				return fmt.Errorf("delete person: %w", err)
+			}
+		}
+		return tx.Commit()
+	}
+
+	// Branch (non-main) delete: tombstone the person and its branch-scoped
+	// dependents (names, external IDs, pedigree edge). associations/attributes are
+	// main-only (not branch-scoped), so a branch delete does not touch them.
+
+	// Tombstone the person on the branch (copy the resolved row, mark deleted).
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO persons (`+personInsertCols+`, branch_id, deleted)
+		SELECT `+personInsertCols+`, $2, TRUE FROM (
+			SELECT DISTINCT ON (id) `+personInsertCols+`
+			FROM persons WHERE id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o
+		ON CONFLICT (id, branch_id) DO UPDATE SET deleted = TRUE
+	`, id, branchID.UUID(), main); err != nil {
+		return fmt.Errorf("tombstone person: %w", err)
+	}
+
+	// Cascade tombstone the person's names (every name visible on the branch).
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix,
+								  surname_prefix, nickname, name_type, is_primary, updated_at, branch_id, deleted)
+		SELECT id, person_id, given_name, surname, name_prefix, name_suffix,
+			   surname_prefix, nickname, name_type, is_primary, updated_at, $2, TRUE
+		FROM (
+			SELECT DISTINCT ON (id) id, person_id, given_name, surname, name_prefix, name_suffix,
+				   surname_prefix, nickname, name_type, is_primary, updated_at, deleted
+			FROM person_names WHERE person_id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o WHERE NOT o.deleted
+		ON CONFLICT (id, branch_id) DO UPDATE SET deleted = TRUE
+	`, id, branchID.UUID(), main); err != nil {
+		return fmt.Errorf("cascade tombstone person names: %w", err)
+	}
+
+	// Cascade tombstone the person's external IDs as an empty branch bucket marker.
+	if err := tombstoneExternalIDBucket(ctx, tx, "person_external_ids", "person_id", id, branchID.UUID()); err != nil {
+		return err
+	}
+
+	// Cascade tombstone the person's pedigree edge so the mainline edge does not
+	// resurrect through the overlay (mirrors DeletePedigreeEdge).
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO pedigree_edges (person_id, branch_id, deleted)
+		VALUES ($1, $2, TRUE)
+		ON CONFLICT(person_id, branch_id) DO UPDATE SET deleted = TRUE
+	`, id, branchID.UUID()); err != nil {
+		return fmt.Errorf("cascade tombstone pedigree edge: %w", err)
+	}
+
+	return tx.Commit()
 }
 
-// SavePersonName saves or updates a person name variant.
-func (s *ReadModelStore) SavePersonName(ctx context.Context, name *repository.PersonNameReadModel) error {
+// SavePersonName saves or updates a person name variant on the given branch
+// (ADR-005). Keyed by (id, branch_id); untouched names fall back to main via the
+// overlay, so no copy-on-write of the whole bucket is needed here.
+func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.BranchID, name *repository.PersonNameReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix,
-								  surname_prefix, nickname, name_type, is_primary, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		ON CONFLICT(id) DO UPDATE SET
+		INSERT INTO person_names (id, branch_id, person_id, given_name, surname, name_prefix, name_suffix,
+								  surname_prefix, nickname, name_type, is_primary, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE)
+		ON CONFLICT(id, branch_id) DO UPDATE SET
 			person_id = EXCLUDED.person_id,
 			given_name = EXCLUDED.given_name,
 			surname = EXCLUDED.surname,
@@ -918,35 +1285,41 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, name *repository.Pe
 			nickname = EXCLUDED.nickname,
 			name_type = EXCLUDED.name_type,
 			is_primary = EXCLUDED.is_primary,
-			updated_at = EXCLUDED.updated_at
-	`, name.ID, name.PersonID, name.GivenName, name.Surname,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, name.ID, branchID.UUID(), name.PersonID, name.GivenName, name.Surname,
 		nullableString(name.NamePrefix), nullableString(name.NameSuffix),
 		nullableString(name.SurnamePrefix), nullableString(name.Nickname),
-		nullableString(string(name.NameType)), name.IsPrimary, name.UpdatedAt)
+		// name_type is NOT NULL DEFAULT '' — bind the empty string, not NULL
+		// (matches the SQLite backend; a nil here violates the constraint).
+		string(name.NameType), name.IsPrimary, name.UpdatedAt)
 
 	return err
 }
 
-// GetPersonName retrieves a person name by ID.
-func (s *ReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
+// GetPersonName retrieves a person name by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetPersonName(ctx context.Context, branchID domain.BranchID, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
-			   surname_prefix, nickname, name_type, is_primary, updated_at
-		FROM person_names WHERE id = $1
-	`, nameID)
+		SELECT `+personNameSelectCols+` FROM (
+			SELECT DISTINCT ON (id) `+personNameSelectCols+`, deleted
+			FROM person_names WHERE id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o WHERE NOT deleted
+	`, nameID, branchID.UUID(), domain.MainBranchID.UUID())
 
 	return scanPersonName(row)
 }
 
-// GetPersonNames retrieves all name variants for a person.
-func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
+// GetPersonNames retrieves all name variants for a person within the branch overlay.
+func (s *ReadModelStore) GetPersonNames(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, person_id, given_name, surname, full_name, name_prefix, name_suffix,
-			   surname_prefix, nickname, name_type, is_primary, updated_at
-		FROM person_names
-		WHERE person_id = $1
+		SELECT `+personNameSelectCols+` FROM (
+			SELECT DISTINCT ON (id) `+personNameSelectCols+`, deleted
+			FROM person_names WHERE person_id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o WHERE NOT deleted
 		ORDER BY is_primary DESC, name_type
-	`, personID)
+	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query person names: %w", err)
 	}
@@ -964,42 +1337,96 @@ func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID)
 	return names, rows.Err()
 }
 
-// DeletePersonName removes a person name.
-func (s *ReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM person_names WHERE id = $1", nameID)
+// DeletePersonName removes a person name (ADR-005). On main it is a real removal;
+// on a non-main branch it writes a tombstone (copying the resolved name row) so
+// the main fallback does not resurrect it.
+func (s *ReadModelStore) DeletePersonName(ctx context.Context, branchID domain.BranchID, nameID uuid.UUID) error {
+	if branchID.IsMain() {
+		_, err := s.db.ExecContext(ctx, "DELETE FROM person_names WHERE id = $1 AND branch_id = $2", nameID, domain.MainBranchID.UUID())
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix,
+								  surname_prefix, nickname, name_type, is_primary, updated_at, branch_id, deleted)
+		SELECT id, person_id, given_name, surname, name_prefix, name_suffix,
+			   surname_prefix, nickname, name_type, is_primary, updated_at, $2, TRUE
+		FROM (
+			SELECT DISTINCT ON (id) id, person_id, given_name, surname, name_prefix, name_suffix,
+				   surname_prefix, nickname, name_type, is_primary, updated_at
+			FROM person_names WHERE id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o
+		ON CONFLICT (id, branch_id) DO UPDATE SET deleted = TRUE
+	`, nameID, branchID.UUID(), domain.MainBranchID.UUID())
 	return err
 }
 
+// tombstoneExternalIDBucket writes an empty branch bucket marker for an external
+// ID table: it clears the branch's rows for the parent and inserts a single
+// deleted marker row so the branch bucket is present-but-empty (hiding main),
+// mirroring the memory backend's empty-bucket tombstone. Used by branch deletes.
+func tombstoneExternalIDBucket(ctx context.Context, tx *sql.Tx, table, parentCol string, parentID, branchID uuid.UUID) error {
+	// #nosec G201 G202 -- table and parentCol are package-internal literals, not user input
+	if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE "+parentCol+" = $1 AND branch_id = $2", parentID, branchID); err != nil {
+		return fmt.Errorf("clear %s branch bucket: %w", table, err)
+	}
+	// #nosec G201 G202 -- table and parentCol are package-internal literals, not user input
+	if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+" ("+parentCol+", sequence, branch_id, value, type, deleted) VALUES ($1, 0, $2, '', '', TRUE)", parentID, branchID); err != nil {
+		return fmt.Errorf("mark %s empty branch bucket: %w", table, err)
+	}
+	return nil
+}
+
 // ReplacePersonExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
-// for a person within a single transaction.
-func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
+// for a person on the given branch within a single transaction (ADR-005). This is
+// a bucket-scoped replace: it clears only the branch's rows and writes the new
+// set as branch rows. On a non-main branch an empty set writes a present-but-empty
+// tombstone bucket so main's identifiers are hidden; on main an empty set is a
+// plain removal.
+func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM person_external_ids WHERE person_id = $1", personID); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM person_external_ids WHERE person_id = $1 AND branch_id = $2", personID, branchID.UUID()); err != nil {
 		return fmt.Errorf("delete person external ids: %w", err)
+	}
+	if len(ids) == 0 {
+		if !branchID.IsMain() {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO person_external_ids (person_id, sequence, branch_id, value, type, deleted)
+				VALUES ($1, 0, $2, '', '', TRUE)
+			`, personID, branchID.UUID()); err != nil {
+				return fmt.Errorf("mark empty person external id bucket: %w", err)
+			}
+		}
+		return tx.Commit()
 	}
 	for i, id := range ids {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO person_external_ids (person_id, sequence, value, type)
-			VALUES ($1, $2, $3, $4)
-		`, personID, i, id.Value, id.Type); err != nil {
+			INSERT INTO person_external_ids (person_id, sequence, branch_id, value, type, deleted)
+			VALUES ($1, $2, $3, $4, $5, FALSE)
+		`, personID, i, branchID.UUID(), id.Value, id.Type); err != nil {
 			return fmt.Errorf("insert person external id: %w", err)
 		}
 	}
 	return tx.Commit()
 }
 
-// GetPersonExternalIDs retrieves all external identifiers for a person, ordered
-// by their original sequence.
-func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
+// GetPersonExternalIDs retrieves all external identifiers for a person within the
+// branch overlay, ordered by their original sequence (ADR-005). Bucket-scoped: if
+// the branch has any rows for the person (including an empty-bucket tombstone
+// marker) the branch bucket wins wholesale; otherwise it falls back to main.
+func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT sequence, value, type FROM person_external_ids
-		WHERE person_id = $1 ORDER BY sequence
-	`, personID)
+		WHERE person_id = $1 AND NOT deleted AND branch_id = (
+			CASE WHEN EXISTS (SELECT 1 FROM person_external_ids WHERE person_id = $1 AND branch_id = $2)
+			     THEN $2 ELSE $3 END)
+		ORDER BY sequence
+	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query person external ids: %w", err)
 	}
@@ -1029,35 +1456,51 @@ func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid
 }
 
 // ReplaceFamilyExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
-// for a family within a single transaction.
-func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
+// for a family on the given branch within a single transaction (ADR-005). Same
+// bucket-scoped semantics as ReplacePersonExternalIDs.
+func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM family_external_ids WHERE family_id = $1", familyID); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM family_external_ids WHERE family_id = $1 AND branch_id = $2", familyID, branchID.UUID()); err != nil {
 		return fmt.Errorf("delete family external ids: %w", err)
+	}
+	if len(ids) == 0 {
+		if !branchID.IsMain() {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO family_external_ids (family_id, sequence, branch_id, value, type, deleted)
+				VALUES ($1, 0, $2, '', '', TRUE)
+			`, familyID, branchID.UUID()); err != nil {
+				return fmt.Errorf("mark empty family external id bucket: %w", err)
+			}
+		}
+		return tx.Commit()
 	}
 	for i, id := range ids {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO family_external_ids (family_id, sequence, value, type)
-			VALUES ($1, $2, $3, $4)
-		`, familyID, i, id.Value, id.Type); err != nil {
+			INSERT INTO family_external_ids (family_id, sequence, branch_id, value, type, deleted)
+			VALUES ($1, $2, $3, $4, $5, FALSE)
+		`, familyID, i, branchID.UUID(), id.Value, id.Type); err != nil {
 			return fmt.Errorf("insert family external id: %w", err)
 		}
 	}
 	return tx.Commit()
 }
 
-// GetFamilyExternalIDs retrieves all external identifiers for a family, ordered
-// by their original sequence.
-func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
+// GetFamilyExternalIDs retrieves all external identifiers for a family within the
+// branch overlay, ordered by their original sequence (ADR-005). Bucket-scoped
+// resolution, matching GetPersonExternalIDs.
+func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT sequence, value, type FROM family_external_ids
-		WHERE family_id = $1 ORDER BY sequence
-	`, familyID)
+		WHERE family_id = $1 AND NOT deleted AND branch_id = (
+			CASE WHEN EXISTS (SELECT 1 FROM family_external_ids WHERE family_id = $1 AND branch_id = $2)
+			     THEN $2 ELSE $3 END)
+		ORDER BY sequence
+	`, familyID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query family external ids: %w", err)
 	}
@@ -1245,38 +1688,62 @@ func scanPersonNameRow(rows *sql.Rows) (*repository.PersonNameReadModel, error) 
 	return scanPersonName(rows)
 }
 
-// GetFamily retrieves a family by ID.
-func (s *ReadModelStore) GetFamily(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
+// GetFamily retrieves a family by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.FamilyReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, partner1_id, partner1_given_name, partner1_surname,
-			   partner2_id, partner2_given_name, partner2_surname,
-			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-			   marriage_place_lat, marriage_place_long,
-			   child_count, version, updated_at
-		FROM families WHERE id = $1
-	`, id)
+		SELECT `+familySelectCols+` FROM (
+			SELECT DISTINCT ON (id) `+familySelectCols+`, deleted
+			FROM families WHERE id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o WHERE NOT deleted
+	`, id, branchID.UUID(), domain.MainBranchID.UUID())
 
 	return scanFamily(row)
 }
 
-// ListFamilies returns a paginated list of families.
+// ListFamilies returns a paginated list of families within the branch overlay (ADR-005).
 func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
+	// Main-scope fast path (issue #669): main never shadows itself, so query families
+	// directly and let the planner short-circuit at LIMIT instead of materializing+
+	// sorting the whole table through the DISTINCT ON overlay. Non-main keeps the overlay.
+	var cte, fromSrc, whereClause string
+	var args []any
+	var limitParam int
+	if opts.BranchID.IsMain() {
+		fromSrc = "families"
+		whereClause = "WHERE branch_id = $1 AND NOT deleted"
+		args = []any{domain.MainBranchID.UUID()}
+		limitParam = 2
+	} else {
+		fromSrc = "resolved"
+		cte = `WITH resolved AS (
+			SELECT ` + familySelectCols + ` FROM (
+				SELECT DISTINCT ON (id) ` + familySelectCols + `, deleted
+				FROM families WHERE branch_id IN ($1, $2)
+				ORDER BY id, (branch_id = $1) DESC
+			) o WHERE NOT deleted
+		)`
+		args = []any{opts.BranchID.UUID(), domain.MainBranchID.UUID()}
+		limitParam = 3
+	}
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM families").Scan(&total)
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query -- whereClause uses parameterized placeholders, not user input
+	err := s.db.QueryRowContext(ctx, cte+" SELECT COUNT(*) FROM "+fromSrc+" "+whereClause, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count families: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, partner1_id, partner1_given_name, partner1_surname,
-			   partner2_id, partner2_given_name, partner2_surname,
-			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-			   marriage_place_lat, marriage_place_long,
-			   child_count, version, updated_at
-		FROM families
+	// #nosec G201 -- fromSrc/whereClause/limitParam are internal, not user input
+	query := cte + fmt.Sprintf(`
+		SELECT `+familySelectCols+`
+		FROM `+fromSrc+`
+		%s
 		ORDER BY updated_at DESC
-		LIMIT $1 OFFSET $2
-	`, opts.Limit, opts.Offset)
+		LIMIT $%d OFFSET $%d
+	`, whereClause, limitParam, limitParam+1)
+	queryArgs := append(args, opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query families: %w", err)
 	}
@@ -1294,17 +1761,16 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	return families, total, rows.Err()
 }
 
-// GetFamiliesForPerson returns all families where the person is a partner.
-func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.FamilyReadModel, error) {
+// GetFamiliesForPerson returns all families where the person is a partner, within
+// the branch overlay (ADR-005).
+func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.FamilyReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, partner1_id, partner1_given_name, partner1_surname,
-			   partner2_id, partner2_given_name, partner2_surname,
-			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-			   marriage_place_lat, marriage_place_long,
-			   child_count, version, updated_at
-		FROM families
-		WHERE partner1_id = $1 OR partner2_id = $1
-	`, personID)
+		SELECT `+familySelectCols+` FROM (
+			SELECT DISTINCT ON (id) `+familySelectCols+`, deleted
+			FROM families WHERE branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o WHERE NOT deleted AND (partner1_id = $1 OR partner2_id = $1)
+	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query families for person: %w", err)
 	}
@@ -1322,16 +1788,17 @@ func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid
 	return families, rows.Err()
 }
 
-// SaveFamily saves or updates a family.
-func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.FamilyReadModel) error {
+// SaveFamily saves or updates a family on the given branch (ADR-005). Keyed by
+// (id, branch_id); a save clears any prior tombstone.
+func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchID, family *repository.FamilyReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO families (id, partner1_id, partner1_given_name, partner1_surname,
+		INSERT INTO families (id, branch_id, partner1_id, partner1_given_name, partner1_surname,
 							  partner2_id, partner2_given_name, partner2_surname,
 							  relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
 							  marriage_place_lat, marriage_place_long,
-							  child_count, version, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-		ON CONFLICT(id) DO UPDATE SET
+							  child_count, version, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, FALSE)
+		ON CONFLICT(id, branch_id) DO UPDATE SET
 			partner1_id = EXCLUDED.partner1_id,
 			partner1_given_name = EXCLUDED.partner1_given_name,
 			partner1_surname = EXCLUDED.partner1_surname,
@@ -1346,11 +1813,14 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.Fami
 			marriage_place_long = EXCLUDED.marriage_place_long,
 			child_count = EXCLUDED.child_count,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, family.ID,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, family.ID, branchID.UUID(),
 		nullableUUID(family.Partner1ID), nullableString(family.Partner1GivenName), nullableString(family.Partner1Surname),
 		nullableUUID(family.Partner2ID), nullableString(family.Partner2GivenName), nullableString(family.Partner2Surname),
-		nullableString(string(family.RelationshipType)), nullableString(family.MarriageDateRaw),
+		// relationship_type is NOT NULL DEFAULT 'biological' — bind the string value,
+		// not NULL (matches the SQLite backend; a nil here violates the constraint).
+		string(family.RelationshipType), nullableString(family.MarriageDateRaw),
 		nullableTime(family.MarriageDateSort), nullableString(family.MarriagePlace),
 		nullableStringPtr(family.MarriagePlaceLat), nullableStringPtr(family.MarriagePlaceLong),
 		family.ChildCount, family.Version, family.UpdatedAt)
@@ -1358,20 +1828,78 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.Fami
 	return err
 }
 
-// DeleteFamily removes a family.
-func (s *ReadModelStore) DeleteFamily(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM families WHERE id = $1", id)
-	return err
+// DeleteFamily removes a family (ADR-005). On main it is a real removal and
+// cascades to the family's children and external IDs. On a non-main branch it
+// writes a tombstone for the family plus cascade tombstones for its children and
+// external IDs, so the main fallback cannot resurrect them.
+func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	main := domain.MainBranchID.UUID()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if branchID.IsMain() {
+		for _, stmt := range []string{
+			"DELETE FROM families WHERE id = $1 AND branch_id = $2",
+			"DELETE FROM family_children WHERE family_id = $1 AND branch_id = $2",
+			"DELETE FROM family_external_ids WHERE family_id = $1 AND branch_id = $2",
+		} {
+			if _, err := tx.ExecContext(ctx, stmt, id, main); err != nil {
+				return fmt.Errorf("delete family: %w", err)
+			}
+		}
+		return tx.Commit()
+	}
+
+	// Tombstone the family on the branch (copy the resolved row, mark deleted).
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO families (`+familySelectCols+`, branch_id, deleted)
+		SELECT `+familySelectCols+`, $2, TRUE FROM (
+			SELECT DISTINCT ON (id) `+familySelectCols+`
+			FROM families WHERE id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o
+		ON CONFLICT (id, branch_id) DO UPDATE SET deleted = TRUE
+	`, id, branchID.UUID(), main); err != nil {
+		return fmt.Errorf("tombstone family: %w", err)
+	}
+
+	// Cascade tombstone the family's children (every child visible on the branch).
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO family_children (family_id, person_id, person_given_name, person_surname,
+									 relationship_type, sequence, branch_id, deleted)
+		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence, $2, TRUE
+		FROM (
+			SELECT DISTINCT ON (family_id, person_id) family_id, person_id, person_given_name,
+				   person_surname, relationship_type, sequence, deleted
+			FROM family_children WHERE family_id = $1 AND branch_id IN ($2, $3)
+			ORDER BY family_id, person_id, (branch_id = $2) DESC
+		) o WHERE NOT o.deleted
+		ON CONFLICT (family_id, person_id, branch_id) DO UPDATE SET deleted = TRUE
+	`, id, branchID.UUID(), main); err != nil {
+		return fmt.Errorf("cascade tombstone family children: %w", err)
+	}
+
+	// Cascade tombstone the family's external IDs as an empty branch bucket marker.
+	if err := tombstoneExternalIDBucket(ctx, tx, "family_external_ids", "family_id", id, branchID.UUID()); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
-// GetFamilyChildren returns all children for a family.
-func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
+// GetFamilyChildren returns all children for a family within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence
-		FROM family_children
-		WHERE family_id = $1
+		SELECT `+familyChildSelectCols+` FROM (
+			SELECT DISTINCT ON (family_id, person_id) `+familyChildSelectCols+`, deleted
+			FROM family_children WHERE family_id = $1 AND branch_id IN ($2, $3)
+			ORDER BY family_id, person_id, (branch_id = $2) DESC
+		) o WHERE NOT deleted
 		ORDER BY sequence NULLS LAST, person_surname, person_given_name
-	`, familyID)
+	`, familyID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query family children: %w", err)
 	}
@@ -1407,19 +1935,28 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UU
 	return children, rows.Err()
 }
 
-// GetChildrenOfFamily returns person read models for all children in a family.
-func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
+// GetChildrenOfFamily returns person read models for all children in a family,
+// resolving both the children and each person through the branch overlay (ADR-005).
+func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
-			   p.version, p.updated_at
-		FROM persons p
-		JOIN family_children fc ON p.id = fc.person_id
-		WHERE fc.family_id = $1
-		ORDER BY fc.sequence NULLS LAST, p.given_name
-	`, familyID)
+		WITH rc AS (
+			SELECT `+familyChildSelectCols+` FROM (
+				SELECT DISTINCT ON (family_id, person_id) `+familyChildSelectCols+`, deleted
+				FROM family_children WHERE family_id = $1 AND branch_id IN ($2, $3)
+				ORDER BY family_id, person_id, (branch_id = $2) DESC
+			) o WHERE NOT deleted
+		), rp AS (
+			SELECT `+personSelectCols+` FROM (
+				SELECT DISTINCT ON (id) `+personSelectCols+`, deleted
+				FROM persons WHERE branch_id IN ($2, $3)
+				ORDER BY id, (branch_id = $2) DESC
+			) o WHERE NOT deleted
+		)
+		SELECT `+personCols+`
+		FROM rp p
+		JOIN rc ON p.id = rc.person_id
+		ORDER BY rc.sequence NULLS LAST, p.given_name
+	`, familyID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query children of family: %w", err)
 	}
@@ -1437,47 +1974,80 @@ func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.
 	return persons, rows.Err()
 }
 
-// GetChildFamily returns the family where the person is a child.
-func (s *ReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID) (*repository.FamilyReadModel, error) {
+// GetChildFamily returns the family where the person is a child, resolving both
+// the child link and the family through the branch overlay (ADR-005).
+func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*repository.FamilyReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
+		WITH rc AS (
+			SELECT family_id, person_id FROM (
+				SELECT DISTINCT ON (family_id, person_id) family_id, person_id, deleted
+				FROM family_children WHERE person_id = $1 AND branch_id IN ($2, $3)
+				ORDER BY family_id, person_id, (branch_id = $2) DESC
+			) o WHERE NOT deleted
+		), rf AS (
+			SELECT `+familySelectCols+` FROM (
+				SELECT DISTINCT ON (id) `+familySelectCols+`, deleted
+				FROM families WHERE branch_id IN ($2, $3)
+				ORDER BY id, (branch_id = $2) DESC
+			) o WHERE NOT deleted
+		)
 		SELECT f.id, f.partner1_id, f.partner1_given_name, f.partner1_surname,
 			   f.partner2_id, f.partner2_given_name, f.partner2_surname,
 			   f.relationship_type, f.marriage_date_raw, f.marriage_date_sort, f.marriage_place,
 			   f.marriage_place_lat, f.marriage_place_long,
 			   f.child_count, f.version, f.updated_at
-		FROM families f
-		JOIN family_children fc ON f.id = fc.family_id
-		WHERE fc.person_id = $1
-	`, personID)
+		FROM rf f
+		JOIN rc ON f.id = rc.family_id
+		LIMIT 1
+	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
 
 	return scanFamily(row)
 }
 
-// SaveFamilyChild saves a family child relationship.
-func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, child *repository.FamilyChildReadModel) error {
+// SaveFamilyChild saves a family child relationship on the given branch (ADR-005).
+// Keyed by (family_id, person_id, branch_id); untouched children fall back to main.
+func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *repository.FamilyChildReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO family_children (family_id, person_id, person_given_name, person_surname, relationship_type, sequence)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT(family_id, person_id) DO UPDATE SET
+		INSERT INTO family_children (family_id, person_id, branch_id, person_given_name, person_surname, relationship_type, sequence, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+		ON CONFLICT(family_id, person_id, branch_id) DO UPDATE SET
 			person_given_name = EXCLUDED.person_given_name,
 			person_surname = EXCLUDED.person_surname,
 			relationship_type = EXCLUDED.relationship_type,
-			sequence = EXCLUDED.sequence
-	`, child.FamilyID, child.PersonID, nullableString(child.PersonGivenName), nullableString(child.PersonSurname),
+			sequence = EXCLUDED.sequence,
+			deleted = FALSE
+	`, child.FamilyID, child.PersonID, branchID.UUID(), nullableString(child.PersonGivenName), nullableString(child.PersonSurname),
 		string(child.RelationshipType), nullableInt(child.Sequence))
 
 	return err
 }
 
-// DeleteFamilyChild removes a family child relationship.
-func (s *ReadModelStore) DeleteFamilyChild(ctx context.Context, familyID, personID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM family_children WHERE family_id = $1 AND person_id = $2",
-		familyID, personID)
+// DeleteFamilyChild removes a family child relationship (ADR-005). On main it is a
+// real removal; on a non-main branch it writes a tombstone (copying the resolved
+// child row) so the main fallback does not resurrect it.
+func (s *ReadModelStore) DeleteFamilyChild(ctx context.Context, branchID domain.BranchID, familyID, personID uuid.UUID) error {
+	if branchID.IsMain() {
+		_, err := s.db.ExecContext(ctx, "DELETE FROM family_children WHERE family_id = $1 AND person_id = $2 AND branch_id = $3",
+			familyID, personID, domain.MainBranchID.UUID())
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO family_children (family_id, person_id, person_given_name, person_surname,
+									 relationship_type, sequence, branch_id, deleted)
+		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence, $3, TRUE
+		FROM (
+			SELECT DISTINCT ON (family_id, person_id) family_id, person_id, person_given_name,
+				   person_surname, relationship_type, sequence
+			FROM family_children WHERE family_id = $1 AND person_id = $2 AND branch_id IN ($3, $4)
+			ORDER BY family_id, person_id, (branch_id = $3) DESC
+		) o
+		ON CONFLICT (family_id, person_id, branch_id) DO UPDATE SET deleted = TRUE
+	`, familyID, personID, branchID.UUID(), domain.MainBranchID.UUID())
 	return err
 }
 
-// GetPedigreeEdge returns the pedigree edge for a person.
-func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, personID uuid.UUID) (*repository.PedigreeEdge, error) {
+// GetPedigreeEdge returns the pedigree edge for a person within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*repository.PedigreeEdge, error) {
 	var (
 		pID                    uuid.UUID
 		fatherID, motherID     sql.NullString
@@ -1485,10 +2055,12 @@ func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, personID uuid.UUID
 	)
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT person_id, father_id, mother_id, father_name, mother_name
-		FROM pedigree_edges
-		WHERE person_id = $1
-	`, personID).Scan(&pID, &fatherID, &motherID, &fatherName, &motherName)
+		SELECT `+pedigreeSelectCols+` FROM (
+			SELECT DISTINCT ON (person_id) `+pedigreeSelectCols+`, deleted
+			FROM pedigree_edges WHERE person_id = $1 AND branch_id IN ($2, $3)
+			ORDER BY person_id, (branch_id = $2) DESC
+		) o WHERE NOT deleted
+	`, personID, branchID.UUID(), domain.MainBranchID.UUID()).Scan(&pID, &fatherID, &motherID, &fatherName, &motherName)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1515,26 +2087,75 @@ func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, personID uuid.UUID
 	return edge, nil
 }
 
-// SavePedigreeEdge saves a pedigree edge.
-func (s *ReadModelStore) SavePedigreeEdge(ctx context.Context, edge *repository.PedigreeEdge) error {
+// SavePedigreeEdge saves a pedigree edge on the given branch (ADR-005). Keyed by
+// (person_id, branch_id); a save clears any prior tombstone.
+func (s *ReadModelStore) SavePedigreeEdge(ctx context.Context, branchID domain.BranchID, edge *repository.PedigreeEdge) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO pedigree_edges (person_id, father_id, mother_id, father_name, mother_name)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT(person_id) DO UPDATE SET
+		INSERT INTO pedigree_edges (person_id, branch_id, father_id, mother_id, father_name, mother_name, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+		ON CONFLICT(person_id, branch_id) DO UPDATE SET
 			father_id = EXCLUDED.father_id,
 			mother_id = EXCLUDED.mother_id,
 			father_name = EXCLUDED.father_name,
-			mother_name = EXCLUDED.mother_name
-	`, edge.PersonID, nullableUUID(edge.FatherID), nullableUUID(edge.MotherID),
+			mother_name = EXCLUDED.mother_name,
+			deleted = FALSE
+	`, edge.PersonID, branchID.UUID(), nullableUUID(edge.FatherID), nullableUUID(edge.MotherID),
 		nullableString(edge.FatherName), nullableString(edge.MotherName))
 
 	return err
 }
 
-// DeletePedigreeEdge removes a pedigree edge.
-func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, personID uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM pedigree_edges WHERE person_id = $1", personID)
+// DeletePedigreeEdge removes a pedigree edge (ADR-005). On main it is a real
+// removal; on a non-main branch it writes a tombstone so the main fallback does
+// not resurrect the edge.
+func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
+	if branchID.IsMain() {
+		_, err := s.db.ExecContext(ctx, "DELETE FROM pedigree_edges WHERE person_id = $1 AND branch_id = $2", personID, domain.MainBranchID.UUID())
+		return err
+	}
+	// Always record a tombstone for the branch (person_id is the only NOT NULL
+	// column besides branch_id), mirroring the memory backend which tombstones
+	// regardless of whether a resolved edge currently exists.
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO pedigree_edges (person_id, branch_id, deleted)
+		VALUES ($1, $2, TRUE)
+		ON CONFLICT(person_id, branch_id) DO UPDATE SET deleted = TRUE
+	`, personID, branchID.UUID())
 	return err
+}
+
+// PurgeBranch hard-deletes every row for branchID.UUID() across the seven branch-scoped
+// slice tables. It is a no-op for the mainline (domain.MainBranchID), which is
+// never purged. See ADR-005 and the branch-delete projection handler.
+func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
+	if branchID.IsMain() {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// associations/attributes are intentionally excluded: they are main-scoped
+	// (no branch_id column), so a branch-only entity cannot own them and purging
+	// them here would delete mainline data.
+	for _, table := range []string{
+		"persons",
+		"person_names",
+		"person_external_ids",
+		"families",
+		"family_external_ids",
+		"family_children",
+		"pedigree_edges",
+	} {
+		// #nosec G202 -- table is from a hardcoded slice of slice-table names, not user input
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE branch_id = $1", branchID.UUID()); err != nil {
+			return fmt.Errorf("purge branch %s: %w", table, err)
+		}
+	}
+	return tx.Commit()
 }
 
 // Helper functions

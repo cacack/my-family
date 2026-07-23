@@ -36,12 +36,21 @@ type Handler struct {
 	rollbackService *query.RollbackService
 }
 
-// NewHandler creates a new command handler.
+// NewHandler creates a new command handler. Its projector has no branch registry
+// store, so branch-lifecycle events (if any were emitted) would no-op; production
+// callers that need the registry use NewHandlerWithBranchStore instead.
 func NewHandler(eventStore repository.EventStore, readStore repository.ReadModelStore) *Handler {
+	return NewHandlerWithBranchStore(eventStore, readStore, nil)
+}
+
+// NewHandlerWithBranchStore creates a command handler whose projector routes
+// branch-lifecycle events into the given branch registry store. branchStore may
+// be nil (equivalent to NewHandler).
+func NewHandlerWithBranchStore(eventStore repository.EventStore, readStore repository.ReadModelStore, branchStore repository.BranchStore) *Handler {
 	return &Handler{
 		eventStore:      eventStore,
 		readStore:       readStore,
-		projector:       repository.NewProjector(readStore),
+		projector:       repository.NewProjector(readStore, branchStore),
 		rollbackService: query.NewRollbackService(eventStore, readStore),
 	}
 }
@@ -52,7 +61,7 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 	return &Handler{
 		eventStore:      eventStore,
 		readStore:       readStore,
-		projector:       repository.NewProjector(readStore),
+		projector:       repository.NewProjector(readStore, nil),
 		rollbackService: rollbackService,
 	}
 }
@@ -65,8 +74,8 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 		return 0, err
 	}
 
-	// Append events to event store
-	if err := h.eventStore.Append(ctx, id, streamType, events, expectedVersion); err != nil {
+	// Append events to event store on the mainline branch.
+	if err := h.eventStore.Append(ctx, id, streamType, events, expectedVersion, domain.MainBranchID); err != nil {
 		return 0, err
 	}
 
@@ -77,7 +86,8 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 	}
 	for _, event := range events {
 		newVersion++
-		if err := h.projector.Project(ctx, event, newVersion); err != nil {
+		// Real branch selection is #670; the mainline appends/projects on main.
+		if err := h.projector.Project(ctx, event, newVersion, domain.MainBranchID); err != nil {
 			// Projection can be rebuilt; ignore non-critical errors
 			_ = err
 		}
@@ -90,7 +100,7 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 // It computes the changes needed and generates a compensating PersonUpdated event.
 func (h *Handler) RollbackPerson(ctx context.Context, personID uuid.UUID, targetVersion int64) (*RollbackResult, error) {
 	return h.rollbackEntity(ctx, "Person", personID, targetVersion, func(id uuid.UUID) (bool, error) {
-		person, err := h.readStore.GetPerson(ctx, id)
+		person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, id)
 		if err != nil {
 			return false, err
 		}
@@ -102,7 +112,7 @@ func (h *Handler) RollbackPerson(ctx context.Context, personID uuid.UUID, target
 // It computes the changes needed and generates a compensating FamilyUpdated event.
 func (h *Handler) RollbackFamily(ctx context.Context, familyID uuid.UUID, targetVersion int64) (*RollbackResult, error) {
 	return h.rollbackEntity(ctx, "Family", familyID, targetVersion, func(id uuid.UUID) (bool, error) {
-		family, err := h.readStore.GetFamily(ctx, id)
+		family, err := h.readStore.GetFamily(ctx, domain.MainBranchID, id)
 		if err != nil {
 			return false, err
 		}

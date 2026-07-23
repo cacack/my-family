@@ -57,7 +57,7 @@ func (h *Handler) CreateAssociation(ctx context.Context, input CreateAssociation
 	}
 
 	// Verify that PersonID and AssociateID exist
-	person, err := h.readStore.GetPerson(ctx, input.PersonID)
+	person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.PersonID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify person: %w", err)
 	}
@@ -65,7 +65,7 @@ func (h *Handler) CreateAssociation(ctx context.Context, input CreateAssociation
 		return nil, fmt.Errorf("%w: person %s not found", ErrInvalidInput, input.PersonID)
 	}
 
-	associate, err := h.readStore.GetPerson(ctx, input.AssociateID)
+	associate, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.AssociateID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify associate: %w", err)
 	}

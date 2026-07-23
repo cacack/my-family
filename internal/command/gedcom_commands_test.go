@@ -399,8 +399,8 @@ func TestImportFamily_ErrorPaths(t *testing.T) {
 			Version:    1,
 		}
 		event := domain.NewPersonCreated(domainPerson)
-		mockStore.Append(ctx, domainPerson.ID, "person", []domain.Event{event}, -1)
-		readStore.SavePerson(ctx, person)
+		mockStore.Append(ctx, domainPerson.ID, "person", []domain.Event{event}, -1, domain.MainBranchID)
+		readStore.SavePerson(ctx, domain.MainBranchID, person)
 	}
 
 	// Now set error for family imports
@@ -506,7 +506,7 @@ func TestLinkChildToFamily_Success(t *testing.T) {
 	}
 
 	// Check that child is linked
-	children, err := readStore.GetChildrenOfFamily(ctx, families[0].ID)
+	children, err := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, families[0].ID)
 	if err != nil {
 		t.Fatalf("GetChildrenOfFamily failed: %v", err)
 	}
@@ -549,7 +549,7 @@ func TestLinkChildToFamily_AlreadyLinked(t *testing.T) {
 	// Try to link same child to second family (should be skipped in import context)
 	// In the import flow, linkChildToFamily checks for existing family and skips
 	// We can verify this by checking that GetChildFamily returns the first family
-	existingFamily, err := readStore.GetChildFamily(ctx, child.ID)
+	existingFamily, err := readStore.GetChildFamily(ctx, domain.MainBranchID, child.ID)
 	if err != nil {
 		t.Fatalf("GetChildFamily failed: %v", err)
 	}
@@ -679,7 +679,7 @@ func TestImportGedcom_RelationshipTypes(t *testing.T) {
 		t.Fatalf("Expected 1 family, got %d", len(families))
 	}
 
-	children, _ := readStore.GetChildrenOfFamily(ctx, families[0].ID)
+	children, _ := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, families[0].ID)
 	if len(children) != 1 {
 		t.Fatalf("Expected 1 child, got %d", len(children))
 	}
@@ -1398,7 +1398,7 @@ func TestImportGedcom_PedigreeTypes(t *testing.T) {
 		t.Fatalf("Expected 1 family")
 	}
 
-	children, _ := readStore.GetChildrenOfFamily(ctx, families[0].ID)
+	children, _ := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, families[0].ID)
 	if len(children) != 3 {
 		t.Errorf("Expected 3 children in family, got %d", len(children))
 	}
@@ -1861,7 +1861,7 @@ func TestImportGedcom_ChildLinkFailure(t *testing.T) {
 		t.Fatalf("Expected 1 family after first import")
 	}
 
-	children, _ := readStore.GetChildrenOfFamily(ctx, families[0].ID)
+	children, _ := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, families[0].ID)
 	if len(children) != 1 {
 		t.Errorf("Expected 1 child linked after first import, got %d", len(children))
 	}
@@ -2085,7 +2085,7 @@ func TestImportGedcom_ExternalIDs(t *testing.T) {
 		t.Fatalf("expected 1 person, got %d", len(persons))
 	}
 
-	ids, err := readStore.GetPersonExternalIDs(ctx, persons[0].ID)
+	ids, err := readStore.GetPersonExternalIDs(ctx, domain.MainBranchID, persons[0].ID)
 	if err != nil {
 		t.Fatalf("GetPersonExternalIDs failed: %v", err)
 	}

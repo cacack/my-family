@@ -451,7 +451,7 @@ func (ss *StrictServer) GetBrickWalls(ctx context.Context, request GetBrickWalls
 // SetPersonBrickWall implements StrictServerInterface.
 func (ss *StrictServer) SetPersonBrickWall(ctx context.Context, request SetPersonBrickWallRequestObject) (SetPersonBrickWallResponseObject, error) {
 	// Check person exists
-	rm, err := ss.server.readStore.GetPerson(ctx, request.Id)
+	rm, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +469,7 @@ func (ss *StrictServer) SetPersonBrickWall(ctx context.Context, request SetPerso
 // ResolvePersonBrickWall implements StrictServerInterface.
 func (ss *StrictServer) ResolvePersonBrickWall(ctx context.Context, request ResolvePersonBrickWallRequestObject) (ResolvePersonBrickWallResponseObject, error) {
 	// Check person exists
-	rm, err := ss.server.readStore.GetPerson(ctx, request.Id)
+	rm, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,8 +1107,9 @@ func (ss *StrictServer) ListFamilies(ctx context.Context, request ListFamiliesRe
 	}
 
 	result, err := ss.server.familyService.ListFamilies(ctx, query.ListFamiliesInput{
-		Limit:  limit,
-		Offset: offset,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: domain.MainBranchID,
 	})
 	if err != nil {
 		return nil, err
@@ -1156,7 +1157,7 @@ func (ss *StrictServer) CreateFamily(ctx context.Context, request CreateFamilyRe
 		return nil, err
 	}
 
-	family, err := ss.server.familyService.GetFamily(ctx, result.ID)
+	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -1166,7 +1167,7 @@ func (ss *StrictServer) CreateFamily(ctx context.Context, request CreateFamilyRe
 
 // GetFamily implements StrictServerInterface.
 func (ss *StrictServer) GetFamily(ctx context.Context, request GetFamilyRequestObject) (GetFamilyResponseObject, error) {
-	family, err := ss.server.familyService.GetFamily(ctx, request.Id)
+	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamily404JSONResponse{NotFoundJSONResponse{
@@ -1215,7 +1216,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		return nil, err
 	}
 
-	family, err := ss.server.familyService.GetFamily(ctx, request.Id)
+	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1226,7 +1227,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 // DeleteFamily implements StrictServerInterface.
 func (ss *StrictServer) DeleteFamily(ctx context.Context, request DeleteFamilyRequestObject) (DeleteFamilyResponseObject, error) {
 	// Get current version since DELETE doesn't accept version parameter per OpenAPI spec
-	family, err := ss.server.familyService.GetFamily(ctx, request.Id)
+	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteFamily404JSONResponse{NotFoundJSONResponse{
@@ -1308,7 +1309,7 @@ func (ss *StrictServer) RemoveChildFromFamily(ctx context.Context, request Remov
 
 // GetFamilyGroupSheet implements StrictServerInterface.
 func (ss *StrictServer) GetFamilyGroupSheet(ctx context.Context, request GetFamilyGroupSheetRequestObject) (GetFamilyGroupSheetResponseObject, error) {
-	gs, err := ss.server.familyService.GetGroupSheet(ctx, request.Id)
+	gs, err := ss.server.familyService.GetGroupSheet(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamilyGroupSheet404JSONResponse{NotFoundJSONResponse{
@@ -1324,7 +1325,7 @@ func (ss *StrictServer) GetFamilyGroupSheet(ctx context.Context, request GetFami
 
 // GetFamilyHistory implements StrictServerInterface.
 func (ss *StrictServer) GetFamilyHistory(ctx context.Context, request GetFamilyHistoryRequestObject) (GetFamilyHistoryResponseObject, error) {
-	_, err := ss.server.familyService.GetFamily(ctx, request.Id)
+	_, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamilyHistory404JSONResponse{NotFoundJSONResponse{
@@ -1354,7 +1355,7 @@ func (ss *StrictServer) GetFamilyHistory(ctx context.Context, request GetFamilyH
 
 // GetFamilyRestorePoints implements StrictServerInterface.
 func (ss *StrictServer) GetFamilyRestorePoints(ctx context.Context, request GetFamilyRestorePointsRequestObject) (GetFamilyRestorePointsResponseObject, error) {
-	_, err := ss.server.familyService.GetFamily(ctx, request.Id)
+	_, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamilyRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -1390,7 +1391,7 @@ func (ss *StrictServer) GetFamilyRestorePoints(ctx context.Context, request GetF
 
 // RollbackFamily implements StrictServerInterface.
 func (ss *StrictServer) RollbackFamily(ctx context.Context, request RollbackFamilyRequestObject) (RollbackFamilyResponseObject, error) {
-	_, err := ss.server.familyService.GetFamily(ctx, request.Id)
+	_, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return RollbackFamily404JSONResponse{NotFoundJSONResponse{
@@ -1752,6 +1753,7 @@ func (ss *StrictServer) GetPedigree(ctx context.Context, request GetPedigreeRequ
 	result, err := ss.server.pedigreeService.GetPedigree(ctx, query.GetPedigreeInput{
 		PersonID:       request.Id,
 		MaxGenerations: maxGen,
+		BranchID:       domain.MainBranchID,
 	})
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
@@ -1841,10 +1843,11 @@ func (ss *StrictServer) ListPersons(ctx context.Context, request ListPersonsRequ
 	}
 
 	input := query.ListPersonsInput{
-		Limit:  limit,
-		Offset: offset,
-		Sort:   sort,
-		Order:  order,
+		Limit:    limit,
+		Offset:   offset,
+		Sort:     sort,
+		Order:    order,
+		BranchID: domain.MainBranchID,
 	}
 	if request.Params.ResearchStatus != nil {
 		rs := string(*request.Params.ResearchStatus)
@@ -1916,7 +1919,7 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		IsPrimary: true,
 	})
 
-	person, err := ss.server.personService.GetPerson(ctx, result.ID)
+	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -1926,7 +1929,7 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 
 // GetPerson implements StrictServerInterface.
 func (ss *StrictServer) GetPerson(ctx context.Context, request GetPersonRequestObject) (GetPersonResponseObject, error) {
-	person, err := ss.server.personService.GetPerson(ctx, request.Id)
+	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetPerson404JSONResponse{NotFoundJSONResponse{
@@ -1994,7 +1997,7 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, request.Id)
+	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2005,7 +2008,7 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 // DeletePerson implements StrictServerInterface.
 func (ss *StrictServer) DeletePerson(ctx context.Context, request DeletePersonRequestObject) (DeletePersonResponseObject, error) {
 	// Get current version since DELETE doesn't accept version parameter per OpenAPI spec
-	person, err := ss.server.personService.GetPerson(ctx, request.Id)
+	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeletePerson404JSONResponse{NotFoundJSONResponse{
@@ -2059,7 +2062,7 @@ func (ss *StrictServer) GetCitationsForPerson(ctx context.Context, request GetCi
 
 // GetPersonHistory implements StrictServerInterface.
 func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonHistoryRequestObject) (GetPersonHistoryResponseObject, error) {
-	_, err := ss.server.personService.GetPerson(ctx, request.Id)
+	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
@@ -2089,7 +2092,7 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 
 // ListPersonMedia implements StrictServerInterface.
 func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonMediaRequestObject) (ListPersonMediaResponseObject, error) {
-	person, err := ss.server.readStore.GetPerson(ctx, request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2130,7 +2133,7 @@ func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonM
 
 // UploadPersonMedia implements StrictServerInterface.
 func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPersonMediaRequestObject) (UploadPersonMediaResponseObject, error) {
-	person, err := ss.server.readStore.GetPerson(ctx, request.Id)
+	person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2202,7 +2205,7 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 
 // GetPersonNames implements StrictServerInterface.
 func (ss *StrictServer) GetPersonNames(ctx context.Context, request GetPersonNamesRequestObject) (GetPersonNamesResponseObject, error) {
-	names, err := ss.server.readStore.GetPersonNames(ctx, request.Id)
+	names, err := ss.server.readStore.GetPersonNames(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2254,7 +2257,7 @@ func (ss *StrictServer) AddPersonName(ctx context.Context, request AddPersonName
 		return nil, err
 	}
 
-	name, err := ss.server.readStore.GetPersonName(ctx, result.ID)
+	name, err := ss.server.readStore.GetPersonName(ctx, domain.MainBranchID, result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -2294,7 +2297,7 @@ func (ss *StrictServer) UpdatePersonName(ctx context.Context, request UpdatePers
 		return nil, err
 	}
 
-	name, err := ss.server.readStore.GetPersonName(ctx, request.NameId)
+	name, err := ss.server.readStore.GetPersonName(ctx, domain.MainBranchID, request.NameId)
 	if err != nil {
 		return nil, err
 	}
@@ -2323,7 +2326,7 @@ func (ss *StrictServer) DeletePersonName(ctx context.Context, request DeletePers
 
 // GetPersonRestorePoints implements StrictServerInterface.
 func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetPersonRestorePointsRequestObject) (GetPersonRestorePointsResponseObject, error) {
-	_, err := ss.server.personService.GetPerson(ctx, request.Id)
+	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -2359,7 +2362,7 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 
 // RollbackPerson implements StrictServerInterface.
 func (ss *StrictServer) RollbackPerson(ctx context.Context, request RollbackPersonRequestObject) (RollbackPersonResponseObject, error) {
-	_, err := ss.server.personService.GetPerson(ctx, request.Id)
+	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return RollbackPerson404JSONResponse{NotFoundJSONResponse{
@@ -2655,7 +2658,7 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 	}
 
 	// Get updated survivor person
-	person, err := ss.server.personService.GetPerson(ctx, result.SurvivorID)
+	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, result.SurvivorID)
 	if err != nil {
 		return nil, err
 	}
@@ -2677,7 +2680,7 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 // DismissDuplicate implements StrictServerInterface.
 func (ss *StrictServer) DismissDuplicate(ctx context.Context, request DismissDuplicateRequestObject) (DismissDuplicateResponseObject, error) {
 	// Validate both persons exist
-	_, err := ss.server.personService.GetPerson(ctx, request.Person1Id)
+	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Person1Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DismissDuplicate404JSONResponse{NotFoundJSONResponse{
@@ -2687,7 +2690,7 @@ func (ss *StrictServer) DismissDuplicate(ctx context.Context, request DismissDup
 		}
 		return nil, err
 	}
-	_, err = ss.server.personService.GetPerson(ctx, request.Person2Id)
+	_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Person2Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DismissDuplicate404JSONResponse{NotFoundJSONResponse{
@@ -2809,7 +2812,7 @@ func (ss *StrictServer) BatchDismissDuplicates(ctx context.Context, request Batc
 		}
 
 		// Validate person1 exists
-		_, err := ss.server.personService.GetPerson(ctx, dismissal.Person1Id)
+		_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, dismissal.Person1Id)
 		if err != nil {
 			failed++
 			results[i].Success = false
@@ -2824,7 +2827,7 @@ func (ss *StrictServer) BatchDismissDuplicates(ctx context.Context, request Batc
 		}
 
 		// Validate person2 exists
-		_, err = ss.server.personService.GetPerson(ctx, dismissal.Person2Id)
+		_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, dismissal.Person2Id)
 		if err != nil {
 			failed++
 			results[i].Success = false
@@ -2937,6 +2940,7 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 		Sort:          sortField,
 		Order:         order,
 		Limit:         limit,
+		BranchID:      domain.MainBranchID,
 	})
 	if err != nil {
 		return nil, err
@@ -4983,7 +4987,7 @@ func (ss *StrictServer) DeleteAssociation(ctx context.Context, request DeleteAss
 // ListAssociationsForPerson implements StrictServerInterface.
 func (ss *StrictServer) ListAssociationsForPerson(ctx context.Context, request ListAssociationsForPersonRequestObject) (ListAssociationsForPersonResponseObject, error) {
 	// First check if person exists
-	person, err := ss.server.personService.GetPerson(ctx, request.Id)
+	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil || person == nil {
 		return ListAssociationsForPerson404JSONResponse{NotFoundJSONResponse{
 			Code:    "not_found",

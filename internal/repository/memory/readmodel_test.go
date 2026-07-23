@@ -38,13 +38,13 @@ func TestReadModelStore_SaveAndGetPerson(t *testing.T) {
 	}
 
 	// Save person
-	err := store.SavePerson(ctx, person)
+	err := store.SavePerson(ctx, domain.MainBranchID, person)
 	if err != nil {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
 	// Get person
-	retrieved, err := store.GetPerson(ctx, person.ID)
+	retrieved, err := store.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		t.Fatalf("GetPerson() failed: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestReadModelStore_GetPersonNonExistent(t *testing.T) {
 
 	nonExistentID := uuid.New()
 
-	retrieved, err := store.GetPerson(ctx, nonExistentID)
+	retrieved, err := store.GetPerson(ctx, domain.MainBranchID, nonExistentID)
 	if err != nil {
 		t.Fatalf("GetPerson() failed: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestReadModelStore_UpdatePerson(t *testing.T) {
 	}
 
 	// Save initial version
-	err := store.SavePerson(ctx, person)
+	err := store.SavePerson(ctx, domain.MainBranchID, person)
 	if err != nil {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
@@ -110,13 +110,13 @@ func TestReadModelStore_UpdatePerson(t *testing.T) {
 	person.Version = 2
 	person.UpdatedAt = time.Now()
 
-	err = store.SavePerson(ctx, person)
+	err = store.SavePerson(ctx, domain.MainBranchID, person)
 	if err != nil {
 		t.Fatalf("SavePerson() update failed: %v", err)
 	}
 
 	// Retrieve and verify update
-	retrieved, err := store.GetPerson(ctx, personID)
+	retrieved, err := store.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetPerson() failed: %v", err)
 	}
@@ -143,19 +143,19 @@ func TestReadModelStore_DeletePerson(t *testing.T) {
 	}
 
 	// Save person
-	err := store.SavePerson(ctx, person)
+	err := store.SavePerson(ctx, domain.MainBranchID, person)
 	if err != nil {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
 	// Delete person
-	err = store.DeletePerson(ctx, person.ID)
+	err = store.DeletePerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		t.Fatalf("DeletePerson() failed: %v", err)
 	}
 
 	// Verify person is deleted
-	retrieved, err := store.GetPerson(ctx, person.ID)
+	retrieved, err := store.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		t.Fatalf("GetPerson() after delete failed: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestReadModelStore_ListPersons(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		err := store.SavePerson(ctx, p)
+		err := store.SavePerson(ctx, domain.MainBranchID, p)
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
@@ -350,7 +350,7 @@ func TestReadModelStore_ListPersonsWithBirthDates(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		err := store.SavePerson(ctx, p)
+		err := store.SavePerson(ctx, domain.MainBranchID, p)
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
@@ -417,7 +417,7 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		err := store.SavePerson(ctx, p)
+		err := store.SavePerson(ctx, domain.MainBranchID, p)
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
@@ -522,13 +522,13 @@ func TestReadModelStore_SaveAndGetFamily(t *testing.T) {
 	}
 
 	// Save family
-	err := store.SaveFamily(ctx, family)
+	err := store.SaveFamily(ctx, domain.MainBranchID, family)
 	if err != nil {
 		t.Fatalf("SaveFamily() failed: %v", err)
 	}
 
 	// Get family
-	retrieved, err := store.GetFamily(ctx, family.ID)
+	retrieved, err := store.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if err != nil {
 		t.Fatalf("GetFamily() failed: %v", err)
 	}
@@ -561,7 +561,7 @@ func TestReadModelStore_GetFamilyNonExistent(t *testing.T) {
 
 	nonExistentID := uuid.New()
 
-	retrieved, err := store.GetFamily(ctx, nonExistentID)
+	retrieved, err := store.GetFamily(ctx, domain.MainBranchID, nonExistentID)
 	if err != nil {
 		t.Fatalf("GetFamily() failed: %v", err)
 	}
@@ -583,7 +583,7 @@ func TestReadModelStore_DeleteFamily(t *testing.T) {
 	}
 
 	// Save family with children
-	err := store.SaveFamily(ctx, family)
+	err := store.SaveFamily(ctx, domain.MainBranchID, family)
 	if err != nil {
 		t.Fatalf("SaveFamily() failed: %v", err)
 	}
@@ -596,19 +596,19 @@ func TestReadModelStore_DeleteFamily(t *testing.T) {
 		PersonSurname:    "",
 		RelationshipType: domain.ChildBiological,
 	}
-	err = store.SaveFamilyChild(ctx, child)
+	err = store.SaveFamilyChild(ctx, domain.MainBranchID, child)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() failed: %v", err)
 	}
 
 	// Delete family
-	err = store.DeleteFamily(ctx, familyID)
+	err = store.DeleteFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("DeleteFamily() failed: %v", err)
 	}
 
 	// Verify family is deleted
-	retrieved, err := store.GetFamily(ctx, familyID)
+	retrieved, err := store.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamily() after delete failed: %v", err)
 	}
@@ -617,7 +617,7 @@ func TestReadModelStore_DeleteFamily(t *testing.T) {
 	}
 
 	// Verify children are also deleted
-	children, err := store.GetFamilyChildren(ctx, familyID)
+	children, err := store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamilyChildren() after delete failed: %v", err)
 	}
@@ -637,7 +637,7 @@ func TestReadModelStore_ListFamilies(t *testing.T) {
 			Version:   1,
 			UpdatedAt: time.Now(),
 		}
-		err := store.SaveFamily(ctx, family)
+		err := store.SaveFamily(ctx, domain.MainBranchID, family)
 		if err != nil {
 			t.Fatalf("SaveFamily() failed: %v", err)
 		}
@@ -710,7 +710,7 @@ func TestReadModelStore_GetFamiliesForPerson(t *testing.T) {
 		Version:    1,
 		UpdatedAt:  time.Now(),
 	}
-	err := store.SaveFamily(ctx, family1)
+	err := store.SaveFamily(ctx, domain.MainBranchID, family1)
 	if err != nil {
 		t.Fatalf("SaveFamily() 1 failed: %v", err)
 	}
@@ -721,7 +721,7 @@ func TestReadModelStore_GetFamiliesForPerson(t *testing.T) {
 		Version:    1,
 		UpdatedAt:  time.Now(),
 	}
-	err = store.SaveFamily(ctx, family2)
+	err = store.SaveFamily(ctx, domain.MainBranchID, family2)
 	if err != nil {
 		t.Fatalf("SaveFamily() 2 failed: %v", err)
 	}
@@ -733,13 +733,13 @@ func TestReadModelStore_GetFamiliesForPerson(t *testing.T) {
 		Version:    1,
 		UpdatedAt:  time.Now(),
 	}
-	err = store.SaveFamily(ctx, family3)
+	err = store.SaveFamily(ctx, domain.MainBranchID, family3)
 	if err != nil {
 		t.Fatalf("SaveFamily() 3 failed: %v", err)
 	}
 
 	// Get families for person
-	families, err := store.GetFamiliesForPerson(ctx, personID)
+	families, err := store.GetFamiliesForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetFamiliesForPerson() failed: %v", err)
 	}
@@ -783,13 +783,13 @@ func TestReadModelStore_SaveAndGetFamilyChildren(t *testing.T) {
 	}
 
 	// Save family child
-	err := store.SaveFamilyChild(ctx, child)
+	err := store.SaveFamilyChild(ctx, domain.MainBranchID, child)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() failed: %v", err)
 	}
 
 	// Get family children
-	children, err := store.GetFamilyChildren(ctx, familyID)
+	children, err := store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamilyChildren() failed: %v", err)
 	}
@@ -826,20 +826,20 @@ func TestReadModelStore_SaveFamilyChildUpdate(t *testing.T) {
 	}
 
 	// Save initial
-	err := store.SaveFamilyChild(ctx, child)
+	err := store.SaveFamilyChild(ctx, domain.MainBranchID, child)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() failed: %v", err)
 	}
 
 	// Update relationship type
 	child.RelationshipType = domain.ChildAdopted
-	err = store.SaveFamilyChild(ctx, child)
+	err = store.SaveFamilyChild(ctx, domain.MainBranchID, child)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() update failed: %v", err)
 	}
 
 	// Verify update
-	children, err := store.GetFamilyChildren(ctx, familyID)
+	children, err := store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamilyChildren() failed: %v", err)
 	}
@@ -869,7 +869,7 @@ func TestReadModelStore_DeleteFamilyChild(t *testing.T) {
 		PersonSurname:    "",
 		RelationshipType: domain.ChildBiological,
 	}
-	err := store.SaveFamilyChild(ctx, child1)
+	err := store.SaveFamilyChild(ctx, domain.MainBranchID, child1)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() 1 failed: %v", err)
 	}
@@ -881,19 +881,19 @@ func TestReadModelStore_DeleteFamilyChild(t *testing.T) {
 		PersonSurname:    "",
 		RelationshipType: domain.ChildBiological,
 	}
-	err = store.SaveFamilyChild(ctx, child2)
+	err = store.SaveFamilyChild(ctx, domain.MainBranchID, child2)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() 2 failed: %v", err)
 	}
 
 	// Delete one child
-	err = store.DeleteFamilyChild(ctx, familyID, child1ID)
+	err = store.DeleteFamilyChild(ctx, domain.MainBranchID, familyID, child1ID)
 	if err != nil {
 		t.Fatalf("DeleteFamilyChild() failed: %v", err)
 	}
 
 	// Verify only one child remains
-	children, err := store.GetFamilyChildren(ctx, familyID)
+	children, err := store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamilyChildren() failed: %v", err)
 	}
@@ -923,7 +923,7 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 		FullName:  "Alice Doe",
 		UpdatedAt: time.Now(),
 	}
-	err := store.SavePerson(ctx, person1)
+	err := store.SavePerson(ctx, domain.MainBranchID, person1)
 	if err != nil {
 		t.Fatalf("SavePerson() 1 failed: %v", err)
 	}
@@ -935,7 +935,7 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 		FullName:  "Bob Doe",
 		UpdatedAt: time.Now(),
 	}
-	err = store.SavePerson(ctx, person2)
+	err = store.SavePerson(ctx, domain.MainBranchID, person2)
 	if err != nil {
 		t.Fatalf("SavePerson() 2 failed: %v", err)
 	}
@@ -948,7 +948,7 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
-	err = store.SaveFamilyChild(ctx, child1)
+	err = store.SaveFamilyChild(ctx, domain.MainBranchID, child1)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() 1 failed: %v", err)
 	}
@@ -960,13 +960,13 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
-	err = store.SaveFamilyChild(ctx, child2)
+	err = store.SaveFamilyChild(ctx, domain.MainBranchID, child2)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() 2 failed: %v", err)
 	}
 
 	// Get children of family
-	children, err := store.GetChildrenOfFamily(ctx, familyID)
+	children, err := store.GetChildrenOfFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetChildrenOfFamily() failed: %v", err)
 	}
@@ -1003,7 +1003,7 @@ func TestReadModelStore_GetChildFamily(t *testing.T) {
 		Version:   1,
 		UpdatedAt: time.Now(),
 	}
-	err := store.SaveFamily(ctx, family)
+	err := store.SaveFamily(ctx, domain.MainBranchID, family)
 	if err != nil {
 		t.Fatalf("SaveFamily() failed: %v", err)
 	}
@@ -1016,13 +1016,13 @@ func TestReadModelStore_GetChildFamily(t *testing.T) {
 		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
-	err = store.SaveFamilyChild(ctx, child)
+	err = store.SaveFamilyChild(ctx, domain.MainBranchID, child)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() failed: %v", err)
 	}
 
 	// Get child family
-	retrievedFamily, err := store.GetChildFamily(ctx, childID)
+	retrievedFamily, err := store.GetChildFamily(ctx, domain.MainBranchID, childID)
 	if err != nil {
 		t.Fatalf("GetChildFamily() failed: %v", err)
 	}
@@ -1036,7 +1036,7 @@ func TestReadModelStore_GetChildFamily(t *testing.T) {
 	}
 
 	// Get child family for person not in any family
-	retrievedFamily, err = store.GetChildFamily(ctx, otherChildID)
+	retrievedFamily, err = store.GetChildFamily(ctx, domain.MainBranchID, otherChildID)
 	if err != nil {
 		t.Fatalf("GetChildFamily() for non-child failed: %v", err)
 	}
@@ -1065,13 +1065,13 @@ func TestReadModelStore_SaveAndGetPedigreeEdge(t *testing.T) {
 	}
 
 	// Save pedigree edge
-	err := store.SavePedigreeEdge(ctx, edge)
+	err := store.SavePedigreeEdge(ctx, domain.MainBranchID, edge)
 	if err != nil {
 		t.Fatalf("SavePedigreeEdge() failed: %v", err)
 	}
 
 	// Get pedigree edge
-	retrieved, err := store.GetPedigreeEdge(ctx, personID)
+	retrieved, err := store.GetPedigreeEdge(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetPedigreeEdge() failed: %v", err)
 	}
@@ -1104,7 +1104,7 @@ func TestReadModelStore_GetPedigreeEdgeNonExistent(t *testing.T) {
 
 	nonExistentID := uuid.New()
 
-	retrieved, err := store.GetPedigreeEdge(ctx, nonExistentID)
+	retrieved, err := store.GetPedigreeEdge(ctx, domain.MainBranchID, nonExistentID)
 	if err != nil {
 		t.Fatalf("GetPedigreeEdge() failed: %v", err)
 	}
@@ -1127,19 +1127,19 @@ func TestReadModelStore_DeletePedigreeEdge(t *testing.T) {
 	}
 
 	// Save pedigree edge
-	err := store.SavePedigreeEdge(ctx, edge)
+	err := store.SavePedigreeEdge(ctx, domain.MainBranchID, edge)
 	if err != nil {
 		t.Fatalf("SavePedigreeEdge() failed: %v", err)
 	}
 
 	// Delete pedigree edge
-	err = store.DeletePedigreeEdge(ctx, personID)
+	err = store.DeletePedigreeEdge(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("DeletePedigreeEdge() failed: %v", err)
 	}
 
 	// Verify edge is deleted
-	retrieved, err := store.GetPedigreeEdge(ctx, personID)
+	retrieved, err := store.GetPedigreeEdge(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetPedigreeEdge() after delete failed: %v", err)
 	}
@@ -1164,7 +1164,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 		FullName:  "John Doe",
 		UpdatedAt: time.Now(),
 	}
-	err := store.SavePerson(ctx, person)
+	err := store.SavePerson(ctx, domain.MainBranchID, person)
 	if err != nil {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
@@ -1175,7 +1175,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 		Version:   1,
 		UpdatedAt: time.Now(),
 	}
-	err = store.SaveFamily(ctx, family)
+	err = store.SaveFamily(ctx, domain.MainBranchID, family)
 	if err != nil {
 		t.Fatalf("SaveFamily() failed: %v", err)
 	}
@@ -1187,7 +1187,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
-	err = store.SaveFamilyChild(ctx, child)
+	err = store.SaveFamilyChild(ctx, domain.MainBranchID, child)
 	if err != nil {
 		t.Fatalf("SaveFamilyChild() failed: %v", err)
 	}
@@ -1195,7 +1195,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 	edge := &repository.PedigreeEdge{
 		PersonID: personID,
 	}
-	err = store.SavePedigreeEdge(ctx, edge)
+	err = store.SavePedigreeEdge(ctx, domain.MainBranchID, edge)
 	if err != nil {
 		t.Fatalf("SavePedigreeEdge() failed: %v", err)
 	}
@@ -1204,7 +1204,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 	store.Reset()
 
 	// Verify everything is cleared
-	retrievedPerson, err := store.GetPerson(ctx, personID)
+	retrievedPerson, err := store.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetPerson() after reset failed: %v", err)
 	}
@@ -1212,7 +1212,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 		t.Errorf("GetPerson() after reset = %v, want nil", retrievedPerson)
 	}
 
-	retrievedFamily, err := store.GetFamily(ctx, familyID)
+	retrievedFamily, err := store.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamily() after reset failed: %v", err)
 	}
@@ -1220,7 +1220,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 		t.Errorf("GetFamily() after reset = %v, want nil", retrievedFamily)
 	}
 
-	children, err := store.GetFamilyChildren(ctx, familyID)
+	children, err := store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamilyChildren() after reset failed: %v", err)
 	}
@@ -1228,7 +1228,7 @@ func TestReadModelStore_Reset(t *testing.T) {
 		t.Errorf("len(children) after reset = %d, want 0", len(children))
 	}
 
-	retrievedEdge, err := store.GetPedigreeEdge(ctx, personID)
+	retrievedEdge, err := store.GetPedigreeEdge(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetPedigreeEdge() after reset failed: %v", err)
 	}
@@ -2726,7 +2726,7 @@ func TestReadModelStore_GetSurnameIndex(t *testing.T) {
 				Version:   1,
 				UpdatedAt: time.Now(),
 			}
-			err := store.SavePerson(ctx, person)
+			err := store.SavePerson(ctx, domain.MainBranchID, person)
 			if err != nil {
 				t.Fatalf("SavePerson() failed: %v", err)
 			}
@@ -2763,7 +2763,7 @@ func TestReadModelStore_GetSurnamesByLetter(t *testing.T) {
 			Version:   1,
 			UpdatedAt: time.Now(),
 		}
-		err := store.SavePerson(ctx, person)
+		err := store.SavePerson(ctx, domain.MainBranchID, person)
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
@@ -2778,7 +2778,7 @@ func TestReadModelStore_GetSurnamesByLetter(t *testing.T) {
 		Version:   1,
 		UpdatedAt: time.Now(),
 	}
-	_ = store.SavePerson(ctx, person)
+	_ = store.SavePerson(ctx, domain.MainBranchID, person)
 
 	// Get surnames starting with S
 	entries, err := store.GetSurnamesByLetter(ctx, "S")
@@ -2805,7 +2805,7 @@ func TestReadModelStore_GetPersonsBySurname(t *testing.T) {
 			Version:   1,
 			UpdatedAt: time.Now(),
 		}
-		err := store.SavePerson(ctx, person)
+		err := store.SavePerson(ctx, domain.MainBranchID, person)
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
@@ -2820,7 +2820,7 @@ func TestReadModelStore_GetPersonsBySurname(t *testing.T) {
 		Version:   1,
 		UpdatedAt: time.Now(),
 	}
-	_ = store.SavePerson(ctx, jones)
+	_ = store.SavePerson(ctx, domain.MainBranchID, jones)
 
 	// Get Smiths
 	opts := repository.ListOptions{Limit: 10}
@@ -2857,7 +2857,7 @@ func TestReadModelStore_GetPlaceHierarchy(t *testing.T) {
 			Version:    1,
 			UpdatedAt:  time.Now(),
 		}
-		err := store.SavePerson(ctx, person)
+		err := store.SavePerson(ctx, domain.MainBranchID, person)
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
@@ -2889,7 +2889,7 @@ func TestReadModelStore_GetPersonsByPlace(t *testing.T) {
 			Version:    1,
 			UpdatedAt:  time.Now(),
 		}
-		err := store.SavePerson(ctx, person)
+		err := store.SavePerson(ctx, domain.MainBranchID, person)
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
@@ -2905,7 +2905,7 @@ func TestReadModelStore_GetPersonsByPlace(t *testing.T) {
 		Version:    1,
 		UpdatedAt:  time.Now(),
 	}
-	_ = store.SavePerson(ctx, ukPerson)
+	_ = store.SavePerson(ctx, domain.MainBranchID, ukPerson)
 
 	// Get persons from USA
 	opts := repository.ListOptions{Limit: 10}
@@ -2945,7 +2945,7 @@ func TestReadModelStore_GetCemeteryIndex(t *testing.T) {
 
 	// Save persons so they can be looked up
 	for _, id := range []uuid.UUID{person1, person2, person3} {
-		err := store.SavePerson(ctx, &repository.PersonReadModel{
+		err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 			ID:        id,
 			GivenName: "Person",
 			Surname:   "Test",
@@ -3044,7 +3044,7 @@ func TestReadModelStore_GetCemeteryIndex_DistinctPersons(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	err := store.SavePerson(ctx, &repository.PersonReadModel{
+	err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "John",
 		Surname:   "Doe",
@@ -3105,7 +3105,7 @@ func TestReadModelStore_GetPersonsByCemetery(t *testing.T) {
 		{person3, "Charlie", "Brown"},
 	}
 	for _, p := range persons {
-		err := store.SavePerson(ctx, &repository.PersonReadModel{
+		err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 			ID:        p.id,
 			GivenName: p.given,
 			Surname:   p.surname,
@@ -3178,7 +3178,7 @@ func TestReadModelStore_GetPersonsByCemetery_CaseInsensitive(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	err := store.SavePerson(ctx, &repository.PersonReadModel{
+	err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "John",
 		Surname:   "Doe",
@@ -3225,7 +3225,7 @@ func TestReadModelStore_GetPersonsByCemetery_Pagination(t *testing.T) {
 	// Create 5 persons all buried at the same cemetery
 	for i := 0; i < 5; i++ {
 		pid := uuid.New()
-		err := store.SavePerson(ctx, &repository.PersonReadModel{
+		err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 			ID:        pid,
 			GivenName: "Person",
 			Surname:   "Test",
@@ -3335,7 +3335,7 @@ func TestReadModelStore_GetMapLocations_BirthOnly(t *testing.T) {
 		Version:        1,
 		UpdatedAt:      time.Now(),
 	}
-	if err := store.SavePerson(ctx, person); err != nil {
+	if err := store.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
@@ -3386,7 +3386,7 @@ func TestReadModelStore_GetMapLocations_BirthAndDeath(t *testing.T) {
 		Version:        1,
 		UpdatedAt:      time.Now(),
 	}
-	if err := store.SavePerson(ctx, person); err != nil {
+	if err := store.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
@@ -3439,7 +3439,7 @@ func TestReadModelStore_GetMapLocations_Aggregation(t *testing.T) {
 			Version:        1,
 			UpdatedAt:      time.Now(),
 		}
-		if err := store.SavePerson(ctx, p); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, p); err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
 	}
@@ -3473,7 +3473,7 @@ func TestReadModelStore_GetMapLocations_NoCoordinates(t *testing.T) {
 		Version:    1,
 		UpdatedAt:  time.Now(),
 	}
-	if err := store.SavePerson(ctx, person); err != nil {
+	if err := store.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 

@@ -44,7 +44,8 @@ type PedigreeResult struct {
 // GetPedigreeInput contains options for retrieving a pedigree.
 type GetPedigreeInput struct {
 	PersonID       uuid.UUID
-	MaxGenerations int // Maximum generations to traverse (default 5)
+	MaxGenerations int             // Maximum generations to traverse (default 5)
+	BranchID       domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 
 // GetPedigree returns the ancestor tree for a person.
@@ -59,7 +60,7 @@ func (s *PedigreeService) GetPedigree(ctx context.Context, input GetPedigreeInpu
 	}
 
 	// Get the root person
-	person, err := s.readStore.GetPerson(ctx, input.PersonID)
+	person, err := s.readStore.GetPerson(ctx, input.BranchID, input.PersonID)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +70,7 @@ func (s *PedigreeService) GetPedigree(ctx context.Context, input GetPedigreeInpu
 
 	// Build pedigree tree recursively
 	visited := make(map[uuid.UUID]bool)
-	root := s.buildNode(ctx, input.PersonID, 0, maxGen, visited)
+	root := s.buildNode(ctx, input.BranchID, input.PersonID, 0, maxGen, visited)
 
 	// Count total ancestors and max generation
 	totalAncestors := 0
@@ -83,8 +84,8 @@ func (s *PedigreeService) GetPedigree(ctx context.Context, input GetPedigreeInpu
 	}, nil
 }
 
-// buildNode recursively builds a pedigree node and its ancestors.
-func (s *PedigreeService) buildNode(ctx context.Context, personID uuid.UUID, generation, maxGen int, visited map[uuid.UUID]bool) *PedigreeNode {
+// buildNode recursively builds a pedigree node and its ancestors within the given branch.
+func (s *PedigreeService) buildNode(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, generation, maxGen int, visited map[uuid.UUID]bool) *PedigreeNode {
 	// Check if we've already visited this person (cycle detection)
 	if visited[personID] {
 		return nil
@@ -92,7 +93,7 @@ func (s *PedigreeService) buildNode(ctx context.Context, personID uuid.UUID, gen
 	visited[personID] = true
 
 	// Get person data
-	person, err := s.readStore.GetPerson(ctx, personID)
+	person, err := s.readStore.GetPerson(ctx, branchID, personID)
 	if err != nil || person == nil {
 		return nil
 	}
@@ -129,19 +130,19 @@ func (s *PedigreeService) buildNode(ctx context.Context, personID uuid.UUID, gen
 	}
 
 	// Get pedigree edge to find parents
-	edge, err := s.readStore.GetPedigreeEdge(ctx, personID)
+	edge, err := s.readStore.GetPedigreeEdge(ctx, branchID, personID)
 	if err != nil || edge == nil {
 		return node
 	}
 
 	// Recursively build father's ancestors
 	if edge.FatherID != nil {
-		node.Father = s.buildNode(ctx, *edge.FatherID, generation+1, maxGen, visited)
+		node.Father = s.buildNode(ctx, branchID, *edge.FatherID, generation+1, maxGen, visited)
 	}
 
 	// Recursively build mother's ancestors
 	if edge.MotherID != nil {
-		node.Mother = s.buildNode(ctx, *edge.MotherID, generation+1, maxGen, visited)
+		node.Mother = s.buildNode(ctx, branchID, *edge.MotherID, generation+1, maxGen, visited)
 	}
 
 	return node
@@ -167,9 +168,9 @@ func countAncestors(node *PedigreeNode, total *int, maxGen *int) {
 	}
 }
 
-// GetAncestors returns a flat list of ancestors up to a certain generation.
+// GetAncestors returns a flat list of ancestors up to a certain generation within the given branch.
 // This is useful for simpler queries that don't need the tree structure.
-func (s *PedigreeService) GetAncestors(ctx context.Context, personID uuid.UUID, maxGen int) ([]Person, error) {
+func (s *PedigreeService) GetAncestors(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, maxGen int) ([]Person, error) {
 	if maxGen <= 0 {
 		maxGen = 5
 	}
@@ -180,13 +181,13 @@ func (s *PedigreeService) GetAncestors(ctx context.Context, personID uuid.UUID, 
 	var ancestors []Person
 	visited := make(map[uuid.UUID]bool)
 
-	s.collectAncestors(ctx, personID, 0, maxGen, visited, &ancestors)
+	s.collectAncestors(ctx, branchID, personID, 0, maxGen, visited, &ancestors)
 
 	return ancestors, nil
 }
 
-// collectAncestors recursively collects ancestors into a flat list.
-func (s *PedigreeService) collectAncestors(ctx context.Context, personID uuid.UUID, generation, maxGen int, visited map[uuid.UUID]bool, ancestors *[]Person) {
+// collectAncestors recursively collects ancestors into a flat list within the given branch.
+func (s *PedigreeService) collectAncestors(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, generation, maxGen int, visited map[uuid.UUID]bool, ancestors *[]Person) {
 	if generation >= maxGen {
 		return
 	}
@@ -195,26 +196,26 @@ func (s *PedigreeService) collectAncestors(ctx context.Context, personID uuid.UU
 	}
 	visited[personID] = true
 
-	edge, err := s.readStore.GetPedigreeEdge(ctx, personID)
+	edge, err := s.readStore.GetPedigreeEdge(ctx, branchID, personID)
 	if err != nil || edge == nil {
 		return
 	}
 
 	// Add father if exists
 	if edge.FatherID != nil {
-		father, err := s.readStore.GetPerson(ctx, *edge.FatherID)
+		father, err := s.readStore.GetPerson(ctx, branchID, *edge.FatherID)
 		if err == nil && father != nil {
 			*ancestors = append(*ancestors, convertReadModelToPerson(*father))
-			s.collectAncestors(ctx, *edge.FatherID, generation+1, maxGen, visited, ancestors)
+			s.collectAncestors(ctx, branchID, *edge.FatherID, generation+1, maxGen, visited, ancestors)
 		}
 	}
 
 	// Add mother if exists
 	if edge.MotherID != nil {
-		mother, err := s.readStore.GetPerson(ctx, *edge.MotherID)
+		mother, err := s.readStore.GetPerson(ctx, branchID, *edge.MotherID)
 		if err == nil && mother != nil {
 			*ancestors = append(*ancestors, convertReadModelToPerson(*mother))
-			s.collectAncestors(ctx, *edge.MotherID, generation+1, maxGen, visited, ancestors)
+			s.collectAncestors(ctx, branchID, *edge.MotherID, generation+1, maxGen, visited, ancestors)
 		}
 	}
 }

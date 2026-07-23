@@ -46,7 +46,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 	}
 
 	// Verify person exists
-	person, err := h.readStore.GetPerson(ctx, input.PersonID)
+	person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.PersonID)
 	if err != nil {
 		return nil, fmt.Errorf("getting person: %w", err)
 	}
@@ -55,7 +55,7 @@ func (h *Handler) AddName(ctx context.Context, input AddNameInput) (*AddNameResu
 	}
 
 	// Get existing names to check primary status
-	existingNames, err := h.readStore.GetPersonNames(ctx, input.PersonID)
+	existingNames, err := h.readStore.GetPersonNames(ctx, domain.MainBranchID, input.PersonID)
 	if err != nil {
 		return nil, fmt.Errorf("getting person names: %w", err)
 	}
@@ -203,7 +203,7 @@ func (h *Handler) UpdateName(ctx context.Context, input UpdateNameInput) (*Updat
 
 // validateNameUpdate verifies person exists and name belongs to them.
 func (h *Handler) validateNameUpdate(ctx context.Context, input UpdateNameInput) (*repository.PersonReadModel, *repository.PersonNameReadModel, error) {
-	person, err := h.readStore.GetPerson(ctx, input.PersonID)
+	person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.PersonID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -211,7 +211,7 @@ func (h *Handler) validateNameUpdate(ctx context.Context, input UpdateNameInput)
 		return nil, nil, ErrPersonNotFound
 	}
 
-	existingName, err := h.readStore.GetPersonName(ctx, input.NameID)
+	existingName, err := h.readStore.GetPersonName(ctx, domain.MainBranchID, input.NameID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -244,7 +244,7 @@ func (h *Handler) buildNameUpdateEvents(ctx context.Context, pn *domain.PersonNa
 
 	// If setting as primary and it wasn't before, demote existing primary
 	if pn.IsPrimary && !existingName.IsPrimary {
-		existingNames, err := h.readStore.GetPersonNames(ctx, input.PersonID)
+		existingNames, err := h.readStore.GetPersonNames(ctx, domain.MainBranchID, input.PersonID)
 		if err != nil {
 			return nil, fmt.Errorf("getting person names: %w", err)
 		}
@@ -271,7 +271,7 @@ type DeleteNameInput struct {
 // DeleteName removes a name from a person.
 func (h *Handler) DeleteName(ctx context.Context, input DeleteNameInput) error {
 	// Verify person exists
-	person, err := h.readStore.GetPerson(ctx, input.PersonID)
+	person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.PersonID)
 	if err != nil {
 		return fmt.Errorf("getting person: %w", err)
 	}
@@ -280,7 +280,7 @@ func (h *Handler) DeleteName(ctx context.Context, input DeleteNameInput) error {
 	}
 
 	// Get all names for the person
-	existingNames, err := h.readStore.GetPersonNames(ctx, input.PersonID)
+	existingNames, err := h.readStore.GetPersonNames(ctx, domain.MainBranchID, input.PersonID)
 	if err != nil {
 		return fmt.Errorf("getting person names: %w", err)
 	}

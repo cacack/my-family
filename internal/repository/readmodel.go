@@ -345,46 +345,79 @@ type ProofSummaryReadModel struct {
 }
 
 // ReadModelStore provides access to denormalized read models.
+//
+// Branch scoping (ADR-005) is applied to a fixed slice of seven entity families:
+// Person, PersonName, PersonExternalID, Family, FamilyExternalID, FamilyChild, and
+// PedigreeEdge. Their methods take an explicit domain.BranchID (single-row) or carry
+// it on ListOptions/SearchOptions (list/search); a copy-on-write overlay resolves the
+// branch's row for an entity else falls back to the reserved main row, and branch
+// deletes write tombstones. Every OTHER entity below (Source, Citation, Media, Event,
+// Attribute, Note, Submitter, Repository, Association, LDSOrdinance, EvidenceAnalysis,
+// ...) is intentionally MAIN-ONLY: its methods have no branchID and ignore branch
+// context entirely. This is a deliberate vertical-slice boundary (#669), not an
+// oversight — extending branch-scoping to further entities is tracked as follow-up
+// work and must replicate the same branch_id column + overlay + tombstone + cascade
+// pattern. The branch SCOPE is the distinct domain.BranchID type (not a bare uuid) so
+// transposing it with an entity id is a compile error; the zero value equals
+// domain.MainBranchID (main).
+//
+// Tombstone representation is an internal, backend-specific detail and NOT part of
+// this contract: only the fact that a branch row is a tombstone is meaningful (memory
+// stores a nil entry; SQLite/Postgres set a `deleted` flag on a shadow row whose other
+// columns are unspecified). Every read path filters tombstones out identically, but do
+// not rely on a tombstone row's field values being consistent across backends.
 type ReadModelStore interface {
 	// Person operations
-	GetPerson(ctx context.Context, id uuid.UUID) (*PersonReadModel, error)
+	//
+	// Person is a branch-scoped slice entity (ADR-005): single-row methods take
+	// an explicit branchID; list/search carry it on the options struct. A zero
+	// branchID (domain.MainBranchID) reproduces pre-branch, main-only behavior.
+	GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*PersonReadModel, error)
 	ListPersons(ctx context.Context, opts ListOptions) ([]PersonReadModel, int, error)
 	SearchPersons(ctx context.Context, opts SearchOptions) ([]PersonReadModel, error)
-	SavePerson(ctx context.Context, person *PersonReadModel) error
-	DeletePerson(ctx context.Context, id uuid.UUID) error
+	SavePerson(ctx context.Context, branchID domain.BranchID, person *PersonReadModel) error
+	DeletePerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Person name operations
-	SavePersonName(ctx context.Context, name *PersonNameReadModel) error
-	GetPersonName(ctx context.Context, nameID uuid.UUID) (*PersonNameReadModel, error)
-	GetPersonNames(ctx context.Context, personID uuid.UUID) ([]PersonNameReadModel, error)
-	DeletePersonName(ctx context.Context, nameID uuid.UUID) error
+	// Person name operations (branch-scoped slice entity)
+	SavePersonName(ctx context.Context, branchID domain.BranchID, name *PersonNameReadModel) error
+	GetPersonName(ctx context.Context, branchID domain.BranchID, nameID uuid.UUID) (*PersonNameReadModel, error)
+	GetPersonNames(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]PersonNameReadModel, error)
+	DeletePersonName(ctx context.Context, branchID domain.BranchID, nameID uuid.UUID) error
 
-	// Person external identifier operations (GEDCOM 7.0 EXID)
-	ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []PersonExternalIDReadModel) error
-	GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]PersonExternalIDReadModel, error)
+	// Person external identifier operations (GEDCOM 7.0 EXID; branch-scoped slice entity)
+	ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []PersonExternalIDReadModel) error
+	GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]PersonExternalIDReadModel, error)
 
-	// Family operations
-	GetFamily(ctx context.Context, id uuid.UUID) (*FamilyReadModel, error)
+	// Family operations (branch-scoped slice entity)
+	GetFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*FamilyReadModel, error)
 	ListFamilies(ctx context.Context, opts ListOptions) ([]FamilyReadModel, int, error)
-	GetFamiliesForPerson(ctx context.Context, personID uuid.UUID) ([]FamilyReadModel, error)
-	SaveFamily(ctx context.Context, family *FamilyReadModel) error
-	DeleteFamily(ctx context.Context, id uuid.UUID) error
+	GetFamiliesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]FamilyReadModel, error)
+	SaveFamily(ctx context.Context, branchID domain.BranchID, family *FamilyReadModel) error
+	DeleteFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Family external identifier operations (GEDCOM 7.0 EXID)
-	ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []FamilyExternalIDReadModel) error
-	GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]FamilyExternalIDReadModel, error)
+	// Family external identifier operations (GEDCOM 7.0 EXID; branch-scoped slice entity)
+	ReplaceFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID, ids []FamilyExternalIDReadModel) error
+	GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]FamilyExternalIDReadModel, error)
 
-	// Family children operations
-	GetFamilyChildren(ctx context.Context, familyID uuid.UUID) ([]FamilyChildReadModel, error)
-	GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]PersonReadModel, error)
-	GetChildFamily(ctx context.Context, personID uuid.UUID) (*FamilyReadModel, error)
-	SaveFamilyChild(ctx context.Context, child *FamilyChildReadModel) error
-	DeleteFamilyChild(ctx context.Context, familyID, personID uuid.UUID) error
+	// Family children operations (branch-scoped slice entity)
+	GetFamilyChildren(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]FamilyChildReadModel, error)
+	GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]PersonReadModel, error)
+	GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*FamilyReadModel, error)
+	SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *FamilyChildReadModel) error
+	DeleteFamilyChild(ctx context.Context, branchID domain.BranchID, familyID, personID uuid.UUID) error
 
-	// Pedigree operations
-	GetPedigreeEdge(ctx context.Context, personID uuid.UUID) (*PedigreeEdge, error)
-	SavePedigreeEdge(ctx context.Context, edge *PedigreeEdge) error
-	DeletePedigreeEdge(ctx context.Context, personID uuid.UUID) error
+	// Pedigree operations (branch-scoped slice entity)
+	GetPedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*PedigreeEdge, error)
+	SavePedigreeEdge(ctx context.Context, branchID domain.BranchID, edge *PedigreeEdge) error
+	DeletePedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error
+
+	// PurgeBranch hard-deletes every overlay row for branchID across the seven
+	// branch-scoped slice tables (persons, person_names, person_external_ids,
+	// families, family_external_ids, family_children, pedigree_edges). It backs the
+	// branch-delete lifecycle (ADR-005): once a branch is archived its copy-on-write
+	// rows and tombstones are dropped. It is a no-op for domain.MainBranchID — the
+	// mainline is never purged.
+	PurgeBranch(ctx context.Context, branchID domain.BranchID) error
 
 	// Source operations
 	GetSource(ctx context.Context, id uuid.UUID) (*SourceReadModel, error)
@@ -628,11 +661,19 @@ type RepositoryExternalIDReadModel struct {
 
 // ListOptions contains options for list queries.
 type ListOptions struct {
-	Limit          int
-	Offset         int
-	Sort           string
-	Order          string  // "asc" or "desc"
-	ResearchStatus *string // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
+	Limit  int
+	Offset int
+	Sort   string
+	Order  string // "asc" or "desc"
+	// ResearchStatus filters by research_status: certain, probable, possible,
+	// unknown, or "unset" for NULL.
+	ResearchStatus *string
+	// BranchID scopes list queries over branch-aware slice entities (ADR-005).
+	// The zero value (domain.MainBranchID) lists the mainline only, reproducing
+	// pre-branch behavior. On a non-main branch the store returns the copy-on-write
+	// overlay: the branch's row per entity when present, otherwise the main row,
+	// with tombstoned entities resolving as absent.
+	BranchID domain.BranchID
 }
 
 // SearchOptions contains options for advanced person search.
@@ -649,6 +690,9 @@ type SearchOptions struct {
 	Sort          string // "relevance", "name", "birth_date", "death_date"
 	Order         string // "asc", "desc"
 	Limit         int
+	// BranchID scopes the search over the branch-aware person overlay (ADR-005).
+	// The zero value (domain.MainBranchID) searches the mainline only.
+	BranchID domain.BranchID
 }
 
 // Soundex returns the American Soundex code for a string.

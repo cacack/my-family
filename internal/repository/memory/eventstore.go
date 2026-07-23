@@ -29,7 +29,7 @@ func NewEventStore() *EventStore {
 }
 
 // Append adds events to a stream with optimistic concurrency control.
-func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64) error {
+func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -55,6 +55,7 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 			ID:         uuid.New(),
 			StreamID:   streamID,
 			StreamType: streamType,
+			BranchID:   branchID,
 			EventType:  event.EventType(),
 			Data:       data,
 			Version:    currentVersion,

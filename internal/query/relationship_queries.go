@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -62,7 +63,7 @@ const maxRelationshipGenerations = 15
 // GetRelationship calculates the relationship between two people.
 func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, personID2 uuid.UUID) (*RelationshipResult, error) {
 	// Get person A
-	personARM, err := s.readStore.GetPerson(ctx, personID1)
+	personARM, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID1)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,7 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 	personA := convertReadModelToPerson(*personARM)
 
 	// Get person B
-	personBRM, err := s.readStore.GetPerson(ctx, personID2)
+	personBRM, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID2)
 	if err != nil {
 		return nil, err
 	}
@@ -201,14 +202,14 @@ func (s *RelationshipService) collectAncestorsWithPath(
 	}
 	visited[personID] = true
 
-	edge, err := s.readStore.GetPedigreeEdge(ctx, personID)
+	edge, err := s.readStore.GetPedigreeEdge(ctx, domain.MainBranchID, personID)
 	if err != nil || edge == nil {
 		return
 	}
 
 	// Process father
 	if edge.FatherID != nil {
-		father, err := s.readStore.GetPerson(ctx, *edge.FatherID)
+		father, err := s.readStore.GetPerson(ctx, domain.MainBranchID, *edge.FatherID)
 		if err == nil && father != nil {
 			fatherPerson := convertReadModelToPerson(*father)
 			fatherNode := RelationshipPathNode{ID: *edge.FatherID, Name: personDisplayName(fatherPerson)}
@@ -230,7 +231,7 @@ func (s *RelationshipService) collectAncestorsWithPath(
 
 	// Process mother
 	if edge.MotherID != nil {
-		mother, err := s.readStore.GetPerson(ctx, *edge.MotherID)
+		mother, err := s.readStore.GetPerson(ctx, domain.MainBranchID, *edge.MotherID)
 		if err == nil && mother != nil {
 			motherPerson := convertReadModelToPerson(*mother)
 			motherNode := RelationshipPathNode{ID: *edge.MotherID, Name: personDisplayName(motherPerson)}

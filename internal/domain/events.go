@@ -852,6 +852,76 @@ func NewSnapshotCreated(s *Snapshot) SnapshotCreated {
 	}
 }
 
+// BranchCreated event is emitted when a new research branch is established
+// off main at BasePosition. Note: the BranchID field here (and on BranchDeleted /
+// BranchMerged) is the branch ENTITY's identity (uuid.UUID), NOT the branch-scope
+// type domain.BranchID — wrap it as domain.BranchID(e.BranchID) to use it as a
+// read/write scope. See the doc comment on domain.BranchID.
+type BranchCreated struct {
+	BaseEvent
+	BranchID     uuid.UUID `json:"branch_id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description,omitempty"`
+	BasePosition int64     `json:"base_position"`
+}
+
+func (e BranchCreated) EventType() string      { return "BranchCreated" }
+func (e BranchCreated) AggregateID() uuid.UUID { return e.BranchID }
+
+// NewBranchCreated creates a BranchCreated event from a Branch.
+func NewBranchCreated(b *Branch) BranchCreated {
+	return BranchCreated{
+		BaseEvent:    NewBaseEvent(),
+		BranchID:     b.ID,
+		Name:         b.Name,
+		Description:  b.Description,
+		BasePosition: b.BasePosition,
+	}
+}
+
+// BranchDeleted event is emitted when a branch is archived/discarded. Despite the
+// name, it transitions the branch to BranchStatusArchived (there is no "deleted"
+// status) — "delete" is the user action, "archived" the retained terminal state.
+// Append-only: it records the deletion as a new event and does not remove
+// the branch's prior events from the log (ES-002).
+type BranchDeleted struct {
+	BaseEvent
+	BranchID uuid.UUID `json:"branch_id"`
+}
+
+func (e BranchDeleted) EventType() string      { return "BranchDeleted" }
+func (e BranchDeleted) AggregateID() uuid.UUID { return e.BranchID }
+
+// NewBranchDeleted creates a BranchDeleted event.
+func NewBranchDeleted(branchID uuid.UUID) BranchDeleted {
+	return BranchDeleted{
+		BaseEvent: NewBaseEvent(),
+		BranchID:  branchID,
+	}
+}
+
+// BranchMerged event is emitted when a branch's changes are promoted to main.
+// MergedAtPosition is the main Position at which the promotion occurred.
+type BranchMerged struct {
+	BaseEvent
+	BranchID         uuid.UUID `json:"branch_id"`
+	BasePosition     int64     `json:"base_position"`
+	MergedAtPosition int64     `json:"merged_at_position"`
+}
+
+func (e BranchMerged) EventType() string      { return "BranchMerged" }
+func (e BranchMerged) AggregateID() uuid.UUID { return e.BranchID }
+
+// NewBranchMerged creates a BranchMerged event.
+func NewBranchMerged(branchID uuid.UUID, basePosition, mergedAtPosition int64) BranchMerged {
+	return BranchMerged{
+		BaseEvent:        NewBaseEvent(),
+		BranchID:         branchID,
+		BasePosition:     basePosition,
+		MergedAtPosition: mergedAtPosition,
+	}
+}
+
 // PersonMerged event is emitted when two persons are merged into one.
 // The survivor person continues to exist with merged data; the merged person is deleted.
 type PersonMerged struct {
