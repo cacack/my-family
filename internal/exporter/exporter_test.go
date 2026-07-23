@@ -43,7 +43,7 @@ func createTestPerson(t *testing.T, store *memory.ReadModelStore, givenName, sur
 		Version:      1,
 		UpdatedAt:    now,
 	}
-	err := store.SavePerson(context.Background(), &person)
+	err := store.SavePerson(context.Background(), domain.MainBranchID, &person)
 	require.NoError(t, err)
 	return person
 }
@@ -70,7 +70,7 @@ func createTestFamily(t *testing.T, store *memory.ReadModelStore, partner1, part
 		family.Partner2GivenName = partner2.GivenName
 		family.Partner2Surname = partner2.Surname
 	}
-	err := store.SaveFamily(context.Background(), &family)
+	err := store.SaveFamily(context.Background(), domain.MainBranchID, &family)
 	require.NoError(t, err)
 	return family
 }
@@ -568,7 +568,7 @@ func TestCSVExporter_AllPersonFieldValues(t *testing.T) {
 		Version:      5,
 		UpdatedAt:    now,
 	}
-	err := store.SavePerson(context.Background(), &person)
+	err := store.SavePerson(context.Background(), domain.MainBranchID, &person)
 	require.NoError(t, err)
 
 	exp := exporter.NewDataExporter(store)
@@ -633,9 +633,9 @@ func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
 		Version:   1,
 		UpdatedAt: now,
 	}
-	err := store.SavePerson(context.Background(), &person1)
+	err := store.SavePerson(context.Background(), domain.MainBranchID, &person1)
 	require.NoError(t, err)
-	err = store.SavePerson(context.Background(), &person2)
+	err = store.SavePerson(context.Background(), domain.MainBranchID, &person2)
 	require.NoError(t, err)
 
 	// Create family with all fields populated
@@ -654,7 +654,7 @@ func TestCSVExporter_AllFamilyFieldValues(t *testing.T) {
 		Version:           2,
 		UpdatedAt:         now,
 	}
-	err = store.SaveFamily(context.Background(), &family)
+	err = store.SaveFamily(context.Background(), domain.MainBranchID, &family)
 	require.NoError(t, err)
 
 	exp := exporter.NewDataExporter(store)
@@ -711,7 +711,7 @@ func TestCSVExporter_FamilyWithNilPartners(t *testing.T) {
 		Version:          1,
 		UpdatedAt:        now,
 	}
-	err := store.SaveFamily(context.Background(), &family)
+	err := store.SaveFamily(context.Background(), domain.MainBranchID, &family)
 	require.NoError(t, err)
 
 	exp := exporter.NewDataExporter(store)

@@ -86,9 +86,10 @@ type PersonListResult struct {
 type ListPersonsInput struct {
 	Limit          int
 	Offset         int
-	Sort           string  // surname, given_name, birth_date, updated_at
-	Order          string  // asc, desc
-	ResearchStatus *string // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
+	Sort           string          // surname, given_name, birth_date, updated_at
+	Order          string          // asc, desc
+	ResearchStatus *string         // Filter by research_status: certain, probable, possible, unknown, or "unset" for NULL
+	BranchID       domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 
 // ListPersons returns a paginated list of persons.
@@ -99,6 +100,7 @@ func (s *PersonService) ListPersons(ctx context.Context, input ListPersonsInput)
 		Sort:           input.Sort,
 		Order:          input.Order,
 		ResearchStatus: input.ResearchStatus,
+		BranchID:       input.BranchID,
 	}
 
 	if opts.Limit <= 0 {
@@ -133,8 +135,12 @@ func (s *PersonService) ListPersons(ctx context.Context, input ListPersonsInput)
 }
 
 // GetPerson returns a person by ID with family relationships and names.
-func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDetail, error) {
-	rm, err := s.readStore.GetPerson(ctx, id)
+//
+// branchID scopes every sub-lookup to the same branch so a branch detail view
+// never mixes branch and main rows; the zero value (MainBranchID) reproduces
+// the pre-branch main-line behavior.
+func (s *PersonService) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*PersonDetail, error) {
+	rm, err := s.readStore.GetPerson(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +154,7 @@ func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDet
 	}
 
 	// Get all names for the person
-	nameReadModels, err := s.readStore.GetPersonNames(ctx, id)
+	nameReadModels, err := s.readStore.GetPersonNames(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +163,7 @@ func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDet
 	}
 
 	// Get families where person is a partner
-	families, err := s.readStore.GetFamiliesForPerson(ctx, id)
+	families, err := s.readStore.GetFamiliesForPerson(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +172,7 @@ func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDet
 	}
 
 	// Get family where person is a child
-	childFamily, err := s.readStore.GetChildFamily(ctx, id)
+	childFamily, err := s.readStore.GetChildFamily(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +183,7 @@ func (s *PersonService) GetPerson(ctx context.Context, id uuid.UUID) (*PersonDet
 
 	// Get GEDCOM 7.0 external identifiers (EXID) so the UI can render
 	// "View on <system>" links.
-	externalIDs, err := s.readStore.GetPersonExternalIDs(ctx, id)
+	externalIDs, err := s.readStore.GetPersonExternalIDs(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -205,6 +211,7 @@ type SearchPersonsInput struct {
 	Sort          string
 	Order         string
 	Limit         int
+	BranchID      domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 
 // SearchResult represents a search result with relevance score.
@@ -242,6 +249,7 @@ func (s *PersonService) SearchPersons(ctx context.Context, input SearchPersonsIn
 		Sort:          input.Sort,
 		Order:         input.Order,
 		Limit:         input.Limit,
+		BranchID:      input.BranchID,
 	}
 
 	readModels, err := s.readStore.SearchPersons(ctx, opts)
@@ -328,10 +336,10 @@ func convertToFamilySummary(rm repository.FamilyReadModel) FamilySummary {
 	return s
 }
 
-// GetPersonNames returns all names for a person.
-func (s *PersonService) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]PersonName, error) {
+// GetPersonNames returns all names for a person within the given branch.
+func (s *PersonService) GetPersonNames(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]PersonName, error) {
 	// Verify the person exists
-	rm, err := s.readStore.GetPerson(ctx, personID)
+	rm, err := s.readStore.GetPerson(ctx, branchID, personID)
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +347,7 @@ func (s *PersonService) GetPersonNames(ctx context.Context, personID uuid.UUID) 
 		return nil, ErrNotFound
 	}
 
-	nameReadModels, err := s.readStore.GetPersonNames(ctx, personID)
+	nameReadModels, err := s.readStore.GetPersonNames(ctx, branchID, personID)
 	if err != nil {
 		return nil, err
 	}

@@ -33,8 +33,13 @@ func NewEventStore(db *sql.DB) (*EventStore, error) {
 }
 
 // createTables creates the event store schema if it doesn't exist.
+// The events table carries a branch_id envelope column (ADR-005); existing
+// databases are migrated via an idempotent ADD COLUMN, backfilling rows to
+// MainBranchID through the column default.
 func (s *EventStore) createTables() error {
-	_, err := s.db.Exec(`
+	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
+	mainBranch := domain.MainBranchID.String()
+	_, err := s.db.Exec(fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS streams (
 			id UUID PRIMARY KEY,
 			type VARCHAR(50) NOT NULL,
@@ -46,6 +51,7 @@ func (s *EventStore) createTables() error {
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			stream_id UUID NOT NULL REFERENCES streams(id),
 			stream_type VARCHAR(50) NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '%[1]s',
 			version BIGINT NOT NULL,
 			event_type VARCHAR(100) NOT NULL,
 			data JSONB NOT NULL,
@@ -55,16 +61,20 @@ func (s *EventStore) createTables() error {
 			UNIQUE(stream_id, version)
 		);
 
+		ALTER TABLE events ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL DEFAULT '%[1]s';
+
 		CREATE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
 		CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
 		CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
 		CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
-	`)
+		CREATE INDEX IF NOT EXISTS idx_events_branch ON events(branch_id);
+		CREATE INDEX IF NOT EXISTS idx_events_stream_branch ON events(stream_id, branch_id);
+	`, mainBranch))
 	return err
 }
 
 // Append adds events to a stream with optimistic concurrency control.
-func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64) error {
+func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -102,8 +112,8 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 
 	// Append events
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO events (stream_id, stream_type, version, event_type, data, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO events (stream_id, stream_type, branch_id, version, event_type, data, timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`)
 	if err != nil {
 		return fmt.Errorf("prepare statement: %w", err)
@@ -121,6 +131,7 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 		_, err = stmt.ExecContext(ctx,
 			streamID,
 			streamType,
+			branchID.UUID(),
 			currentVersion,
 			event.EventType(),
 			data,
@@ -137,7 +148,7 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 // ReadStream reads all events for a specific aggregate.
 func (s *EventStore) ReadStream(ctx context.Context, streamID uuid.UUID) ([]repository.StoredEvent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position
+		SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position
 		FROM events
 		WHERE stream_id = $1
 		ORDER BY version ASC
@@ -153,7 +164,7 @@ func (s *EventStore) ReadStream(ctx context.Context, streamID uuid.UUID) ([]repo
 // ReadAll reads all events from a position for projection rebuilds.
 func (s *EventStore) ReadAll(ctx context.Context, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position
+		SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position
 		FROM events
 		WHERE position > $1
 		ORDER BY position ASC
@@ -185,14 +196,14 @@ func scanEvents(rows *sql.Rows) ([]repository.StoredEvent, error) {
 	var events []repository.StoredEvent
 	for rows.Next() {
 		var (
-			id, streamID          uuid.UUID
-			streamType, eventType string
-			version, position     int64
-			data                  []byte
-			metadata              sql.NullString
-			timestamp             time.Time
+			id, streamID, branchID uuid.UUID
+			streamType, eventType  string
+			version, position      int64
+			data                   []byte
+			metadata               sql.NullString
+			timestamp              time.Time
 		)
-		err := rows.Scan(&id, &streamID, &streamType, &version, &eventType, &data, &metadata, &timestamp, &position)
+		err := rows.Scan(&id, &streamID, &streamType, &branchID, &version, &eventType, &data, &metadata, &timestamp, &position)
 		if err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
@@ -201,6 +212,7 @@ func scanEvents(rows *sql.Rows) ([]repository.StoredEvent, error) {
 			ID:         id,
 			StreamID:   streamID,
 			StreamType: streamType,
+			BranchID:   domain.BranchID(branchID),
 			EventType:  eventType,
 			Data:       json.RawMessage(data),
 			Version:    version,
@@ -226,7 +238,7 @@ func scanEvents(rows *sql.Rows) ([]repository.StoredEvent, error) {
 func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
 	query := `
 		SELECT
-			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position,
 			COUNT(*) OVER() as total_count
 		FROM events
 		WHERE stream_id = $1
@@ -267,7 +279,7 @@ func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time
 
 	query := `
 		SELECT
-			id, stream_id, stream_type, version, event_type, data, metadata, timestamp, position,
+			id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position,
 			COUNT(*) OVER() as total_count
 		FROM events`
 	if len(whereClauses) > 0 {
@@ -292,14 +304,14 @@ func scanHistoryPage(rows *sql.Rows, limit, offset int) (*repository.HistoryPage
 
 	for rows.Next() {
 		var (
-			id, streamID          uuid.UUID
-			streamType, eventType string
-			version, position     int64
-			data                  []byte
-			metadata              sql.NullString
-			timestamp             time.Time
+			id, streamID, branchID uuid.UUID
+			streamType, eventType  string
+			version, position      int64
+			data                   []byte
+			metadata               sql.NullString
+			timestamp              time.Time
 		)
-		err := rows.Scan(&id, &streamID, &streamType, &version, &eventType, &data, &metadata, &timestamp, &position, &totalCount)
+		err := rows.Scan(&id, &streamID, &streamType, &branchID, &version, &eventType, &data, &metadata, &timestamp, &position, &totalCount)
 		if err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
@@ -308,6 +320,7 @@ func scanHistoryPage(rows *sql.Rows, limit, offset int) (*repository.HistoryPage
 			ID:         id,
 			StreamID:   streamID,
 			StreamType: streamType,
+			BranchID:   domain.BranchID(branchID),
 			EventType:  eventType,
 			Data:       json.RawMessage(data),
 			Version:    version,

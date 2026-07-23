@@ -21,7 +21,7 @@ func TestEventStore_Append(t *testing.T) {
 	event := domain.NewPersonCreated(person)
 
 	// Append first event with expectedVersion -1 (new stream)
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestEventStore_ReadStream(t *testing.T) {
 	event := domain.NewPersonCreated(person)
 
 	// Append event
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -73,20 +73,20 @@ func TestEventStore_ConcurrencyConflict(t *testing.T) {
 	event := domain.NewPersonCreated(person)
 
 	// Append first event
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 
 	// Try to append with wrong expected version (should fail)
 	event2 := domain.NewPersonUpdated(person.ID, map[string]any{"given_name": "Jane"})
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 0)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 0, domain.MainBranchID)
 	if err != repository.ErrConcurrencyConflict {
 		t.Errorf("Expected ErrConcurrencyConflict, got %v", err)
 	}
 
 	// Append with correct expected version (should succeed)
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 1)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append with correct version failed: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestEventStore_GetStreamVersion(t *testing.T) {
 
 	// Append events
 	person := domain.NewPerson("John", "Doe")
-	err = store.Append(ctx, streamID, "Person", []domain.Event{domain.NewPersonCreated(person)}, -1)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{domain.NewPersonCreated(person)}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestEventStore_ReadAll(t *testing.T) {
 		streamID := uuid.New()
 		person := domain.NewPerson("John", "Doe")
 		event := domain.NewPersonCreated(person)
-		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 		if err != nil {
 			t.Fatalf("Append failed: %v", err)
 		}
@@ -175,7 +175,7 @@ func TestStoredEvent_DecodeEvent(t *testing.T) {
 	person.Gender = domain.GenderMale
 	event := domain.NewPersonCreated(person)
 
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
@@ -532,6 +532,51 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 			},
 		},
 		{
+			name: "BranchCreated",
+			event: func() domain.Event {
+				b, _ := domain.NewBranch("Hypothesis A", "Exploring an unproven line", 42)
+				return domain.NewBranchCreated(b)
+			}(),
+			eventType: "BranchCreated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BranchCreated)
+				if !ok {
+					t.Fatalf("Expected BranchCreated, got %T", decoded)
+				}
+				if e.Name != "Hypothesis A" {
+					t.Errorf("Name = %s, want Hypothesis A", e.Name)
+				}
+				if e.BasePosition != 42 {
+					t.Errorf("BasePosition = %d, want 42", e.BasePosition)
+				}
+			},
+		},
+		{
+			name:      "BranchDeleted",
+			event:     domain.NewBranchDeleted(uuid.New()),
+			eventType: "BranchDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				_, ok := decoded.(domain.BranchDeleted)
+				if !ok {
+					t.Fatalf("Expected BranchDeleted, got %T", decoded)
+				}
+			},
+		},
+		{
+			name:      "BranchMerged",
+			event:     domain.NewBranchMerged(uuid.New(), 42, 99),
+			eventType: "BranchMerged",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BranchMerged)
+				if !ok {
+					t.Fatalf("Expected BranchMerged, got %T", decoded)
+				}
+				if e.MergedAtPosition != 99 {
+					t.Errorf("MergedAtPosition = %d, want 99", e.MergedAtPosition)
+				}
+			},
+		},
+		{
 			name:      "RepositoryCreated",
 			event:     domain.NewRepositoryCreated(domain.NewRepository("National Archives")),
 			eventType: "RepositoryCreated",
@@ -851,7 +896,7 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			streamID := uuid.New()
-			err := store.Append(ctx, streamID, "Test", []domain.Event{tt.event}, -1)
+			err := store.Append(ctx, streamID, "Test", []domain.Event{tt.event}, -1, domain.MainBranchID)
 			if err != nil {
 				t.Fatalf("Append failed: %v", err)
 			}
@@ -930,6 +975,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"MediaCreated", "MediaUpdated", "MediaDeleted",
 		"NameAdded", "NameUpdated", "NameRemoved",
 		"SnapshotCreated", "PersonMerged",
+		"BranchCreated", "BranchDeleted", "BranchMerged",
 		"NoteCreated", "NoteUpdated", "NoteDeleted",
 		"SubmitterCreated", "SubmitterUpdated", "SubmitterDeleted",
 		"AssociationCreated", "AssociationUpdated", "AssociationDeleted",

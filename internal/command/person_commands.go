@@ -113,7 +113,7 @@ type UpdatePersonResult struct {
 // UpdatePerson updates an existing person record.
 func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*UpdatePersonResult, error) {
 	// Get current person from read model
-	current, err := h.readStore.GetPerson(ctx, input.ID)
+	current, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting person: %w", err)
 	}
@@ -219,7 +219,7 @@ type DeletePersonInput struct {
 // DeletePerson deletes a person record.
 func (h *Handler) DeletePerson(ctx context.Context, input DeletePersonInput) error {
 	// Get current person from read model
-	current, err := h.readStore.GetPerson(ctx, input.ID)
+	current, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.ID)
 	if err != nil {
 		return fmt.Errorf("getting person: %w", err)
 	}
@@ -233,7 +233,7 @@ func (h *Handler) DeletePerson(ctx context.Context, input DeletePersonInput) err
 	}
 
 	// Check if person is linked to any families as partner
-	families, err := h.readStore.GetFamiliesForPerson(ctx, input.ID)
+	families, err := h.readStore.GetFamiliesForPerson(ctx, domain.MainBranchID, input.ID)
 	if err != nil {
 		return fmt.Errorf("checking families for person: %w", err)
 	}
@@ -242,7 +242,7 @@ func (h *Handler) DeletePerson(ctx context.Context, input DeletePersonInput) err
 	}
 
 	// Check if person is a child in any family
-	childFamily, err := h.readStore.GetChildFamily(ctx, input.ID)
+	childFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, input.ID)
 	if err != nil {
 		return fmt.Errorf("getting child family: %w", err)
 	}

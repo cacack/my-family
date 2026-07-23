@@ -85,7 +85,7 @@ func TestIntegration_ImportExportRoundTrip(t *testing.T) {
 					DeathPlace:   p.DeathPlace,
 					Notes:        p.Notes,
 				}
-				if err := readStore.SavePerson(ctx, pm); err != nil {
+				if err := readStore.SavePerson(ctx, domain.MainBranchID, pm); err != nil {
 					t.Fatalf("Failed to save person: %v", err)
 				}
 			}
@@ -103,7 +103,7 @@ func TestIntegration_ImportExportRoundTrip(t *testing.T) {
 				if f.Partner2ID != nil {
 					fm.Partner2ID = f.Partner2ID
 				}
-				if err := readStore.SaveFamily(ctx, fm); err != nil {
+				if err := readStore.SaveFamily(ctx, domain.MainBranchID, fm); err != nil {
 					t.Fatalf("Failed to save family: %v", err)
 				}
 			}
@@ -156,7 +156,7 @@ func TestIntegration_InterpretedDateRoundTrip(t *testing.T) {
 		Gender:       domain.GenderFemale,
 		BirthDateRaw: intDate,
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatalf("Failed to save person: %v", err)
 	}
 

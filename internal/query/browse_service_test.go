@@ -534,7 +534,7 @@ func saveCemeteryTestData(t *testing.T, ctx context.Context, readStore *memory.R
 	for _, d := range data {
 		pid := uuid.New()
 		ids = append(ids, pid)
-		err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+		err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 			ID:        pid,
 			GivenName: d.givenName,
 			Surname:   d.surname,
@@ -742,7 +742,7 @@ func TestGetPersonsByCemetery_Pagination(t *testing.T) {
 	// Create 5 persons at the same cemetery
 	for i := 0; i < 5; i++ {
 		pid := uuid.New()
-		_ = readStore.SavePerson(ctx, &repository.PersonReadModel{
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 			ID:        pid,
 			GivenName: "Person",
 			Surname:   "Test",
@@ -801,7 +801,7 @@ func TestGetPersonsByCemetery_LimitCapping(t *testing.T) {
 	ctx := context.Background()
 
 	pid := uuid.New()
-	_ = readStore.SavePerson(ctx, &repository.PersonReadModel{
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        pid,
 		GivenName: "John",
 		Surname:   "Doe",

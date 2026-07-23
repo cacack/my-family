@@ -227,7 +227,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	)
 
 	// Store import event (using a special "import" stream)
-	_ = h.eventStore.Append(ctx, importEvent.ImportID, "import", []domain.Event{importEvent}, -1)
+	_ = h.eventStore.Append(ctx, importEvent.ImportID, "import", []domain.Event{importEvent}, -1, domain.MainBranchID)
 
 	return result, nil
 }
@@ -265,19 +265,19 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	event := domain.NewPersonCreated(person)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending person created event: %w", err)
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1); err != nil {
+	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting person created event: %w", err)
 	}
 
 	// Update read model with GEDCOM coordinates (not in event schema)
 	if p.BirthPlaceLat != nil || p.BirthPlaceLong != nil || p.DeathPlaceLat != nil || p.DeathPlaceLong != nil {
-		readModel, err := h.readStore.GetPerson(ctx, person.ID)
+		readModel, err := h.readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get person read model for coordinate update: %w", err)
 		}
@@ -286,7 +286,7 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 			readModel.BirthPlaceLong = p.BirthPlaceLong
 			readModel.DeathPlaceLat = p.DeathPlaceLat
 			readModel.DeathPlaceLong = p.DeathPlaceLong
-			if err := h.readStore.SavePerson(ctx, readModel); err != nil {
+			if err := h.readStore.SavePerson(ctx, domain.MainBranchID, readModel); err != nil {
 				return fmt.Errorf("failed to save person coordinates: %w", err)
 			}
 		}
@@ -304,7 +304,7 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 				Type:     ext.Type,
 			}
 		}
-		if err := h.readStore.ReplacePersonExternalIDs(ctx, person.ID, ids); err != nil {
+		if err := h.readStore.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, ids); err != nil {
 			return fmt.Errorf("failed to save person external identifiers: %w", err)
 		}
 	}
@@ -324,14 +324,14 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		nameEvent := domain.NewNameAdded(personName)
 
 		// Append name event to person stream with version tracking
-		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, currentVersion)
+		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, currentVersion, domain.MainBranchID)
 		if err != nil {
 			return fmt.Errorf("appending name added event: %w", err)
 		}
 		currentVersion++
 
 		// Project to read model with correct version
-		if err := h.projector.Project(ctx, nameEvent, currentVersion); err != nil {
+		if err := h.projector.Project(ctx, nameEvent, currentVersion, domain.MainBranchID); err != nil {
 			return fmt.Errorf("projecting name added event: %w", err)
 		}
 	}
@@ -367,13 +367,13 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 	event := domain.NewFamilyCreated(family)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending family created event: %w", err)
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1); err != nil {
+	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return err
 	}
 
@@ -389,7 +389,7 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 				Type:     ext.Type,
 			}
 		}
-		if err := h.readStore.ReplaceFamilyExternalIDs(ctx, family.ID, ids); err != nil {
+		if err := h.readStore.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, family.ID, ids); err != nil {
 			return fmt.Errorf("failed to save family external identifiers: %w", err)
 		}
 	}
@@ -429,13 +429,13 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 	event := domain.NewSourceCreated(source)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending source created event: %w", err)
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1); err != nil {
+	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return err
 	}
 
@@ -481,13 +481,13 @@ func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData)
 	event := domain.NewRepositoryCreated(repo)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, repo.ID, "repository", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, repo.ID, "repository", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending repository created event: %w", err)
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1); err != nil {
+	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return err
 	}
 
@@ -553,19 +553,19 @@ func (h *Handler) importCitation(ctx context.Context, c gedcom.CitationData, sou
 	event := domain.NewCitationCreated(citation)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, citation.ID, "citation", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, citation.ID, "citation", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending citation created event: %w", err)
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
 }
 
 // linkChildToFamily links a child to a family.
 func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.UUID, relType domain.ChildRelationType) error {
 	// Check if child is already linked
-	existingFamily, err := h.readStore.GetChildFamily(ctx, childID)
+	existingFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, childID)
 	if err != nil {
 		return fmt.Errorf("getting child family: %w", err)
 	}
@@ -579,7 +579,7 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 	event := domain.NewChildLinkedToFamily(fc)
 
 	// Get current family version
-	family, err := h.readStore.GetFamily(ctx, familyID)
+	family, err := h.readStore.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		return fmt.Errorf("getting family: %w", err)
 	}
@@ -588,7 +588,7 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 	}
 
 	// Append to event store
-	err = h.eventStore.Append(ctx, familyID, "family", []domain.Event{event}, family.Version)
+	err = h.eventStore.Append(ctx, familyID, "family", []domain.Event{event}, family.Version, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending child linked event: %w", err)
 	}
@@ -625,13 +625,13 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
 
 	// Append to event store using owner's stream
-	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending life event created event: %w", err)
 	}
 
 	// Project to read model
-	if err := h.projector.Project(ctx, event, 1); err != nil {
+	if err := h.projector.Project(ctx, event, 1, domain.MainBranchID); err != nil {
 		return fmt.Errorf("projecting life event created event: %w", err)
 	}
 
@@ -671,13 +671,13 @@ func (h *Handler) importAttribute(ctx context.Context, a gedcom.AttributeData) e
 	event := domain.NewAttributeCreatedFromModel(attr)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending attribute created event: %w", err)
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importNote creates a shared note from GEDCOM data.
@@ -692,13 +692,13 @@ func (h *Handler) importNote(ctx context.Context, n gedcom.NoteData) error {
 	event := domain.NewNoteCreated(note)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, note.ID, "note", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, note.ID, "note", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending note created event: %w", err)
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importSubmitter creates a submitter from GEDCOM data.
@@ -724,13 +724,13 @@ func (h *Handler) importSubmitter(ctx context.Context, s gedcom.SubmitterData) e
 	event := domain.NewSubmitterCreated(submitter)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, submitter.ID, "submitter", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, submitter.ID, "submitter", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending submitter created event: %w", err)
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importAssociation creates an association from GEDCOM data.
@@ -749,13 +749,13 @@ func (h *Handler) importAssociation(ctx context.Context, a gedcom.AssociationDat
 	event := domain.NewAssociationCreated(association)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, association.ID, "association", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, association.ID, "association", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending association created event: %w", err)
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
 }
 
 // importLDSOrdinance creates an LDS ordinance from GEDCOM data.
@@ -786,11 +786,11 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 	event := domain.NewLDSOrdinanceCreated(ordinance)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, ordinance.ID, "LDSOrdinance", []domain.Event{event}, -1)
+	err := h.eventStore.Append(ctx, ordinance.ID, "LDSOrdinance", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		return fmt.Errorf("appending LDS ordinance created event: %w", err)
 	}
 
 	// Project to read model
-	return h.projector.Project(ctx, event, 1)
+	return h.projector.Project(ctx, event, 1, domain.MainBranchID)
 }

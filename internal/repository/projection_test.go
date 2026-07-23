@@ -14,7 +14,7 @@ import (
 
 func TestProjector_PersonCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	person := domain.NewPerson("John", "Doe")
@@ -24,13 +24,13 @@ func TestProjector_PersonCreated(t *testing.T) {
 
 	event := domain.NewPersonCreated(person)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project failed: %v", err)
 	}
 
 	// Verify person in read model
-	rm, err := readStore.GetPerson(ctx, person.ID)
+	rm, err := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}
@@ -59,13 +59,13 @@ func TestProjector_PersonCreated(t *testing.T) {
 
 func TestProjector_PersonUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create person first
 	person := domain.NewPerson("John", "Doe")
 	createEvent := domain.NewPersonCreated(person)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -76,13 +76,13 @@ func TestProjector_PersonUpdated(t *testing.T) {
 	}
 	updateEvent := domain.NewPersonUpdated(person.ID, changes)
 
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
 	// Verify updates
-	rm, _ := readStore.GetPerson(ctx, person.ID)
+	rm, _ := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if rm.GivenName != "Jane" {
 		t.Errorf("GivenName = %s, want Jane", rm.GivenName)
 	}
@@ -99,25 +99,25 @@ func TestProjector_PersonUpdated(t *testing.T) {
 
 func TestProjector_PersonDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create person first
 	person := domain.NewPerson("John", "Doe")
 	createEvent := domain.NewPersonCreated(person)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	// Delete person
 	deleteEvent := domain.NewPersonDeleted(person.ID, "test")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
 	// Verify deletion
-	rm, _ := readStore.GetPerson(ctx, person.ID)
+	rm, _ := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if rm != nil {
 		t.Error("Person should be deleted")
 	}
@@ -125,7 +125,7 @@ func TestProjector_PersonDeleted(t *testing.T) {
 
 func TestProjector_FamilyCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create partners first
@@ -134,10 +134,10 @@ func TestProjector_FamilyCreated(t *testing.T) {
 	p2 := domain.NewPerson("Jane", "Doe")
 	p2.Gender = domain.GenderFemale
 
-	if err := projector.Project(ctx, domain.NewPersonCreated(p1), 1); err != nil {
+	if err := projector.Project(ctx, domain.NewPersonCreated(p1), 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project p1 failed: %v", err)
 	}
-	if err := projector.Project(ctx, domain.NewPersonCreated(p2), 1); err != nil {
+	if err := projector.Project(ctx, domain.NewPersonCreated(p2), 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project p2 failed: %v", err)
 	}
 
@@ -147,13 +147,13 @@ func TestProjector_FamilyCreated(t *testing.T) {
 	family.SetMarriageDate("1 JAN 1870")
 
 	event := domain.NewFamilyCreated(family)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project family failed: %v", err)
 	}
 
 	// Verify family in read model
-	rm, _ := readStore.GetFamily(ctx, family.ID)
+	rm, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm == nil {
 		t.Fatal("Family not found in read model")
 	}
@@ -170,7 +170,7 @@ func TestProjector_FamilyCreated(t *testing.T) {
 
 func TestProjector_ChildLinked(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create family with parents
@@ -180,24 +180,24 @@ func TestProjector_ChildLinked(t *testing.T) {
 	mother.Gender = domain.GenderFemale
 	child := domain.NewPerson("Jimmy", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(father), 1)
-	projector.Project(ctx, domain.NewPersonCreated(mother), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+	projector.Project(ctx, domain.NewPersonCreated(father), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(mother), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(&father.ID, &mother.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Link child
 	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
 	event := domain.NewChildLinkedToFamily(fc)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project child link failed: %v", err)
 	}
 
 	// Verify child in family
-	children, _ := readStore.GetFamilyChildren(ctx, family.ID)
+	children, _ := readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 1 {
 		t.Errorf("Expected 1 child, got %d", len(children))
 	}
@@ -206,7 +206,7 @@ func TestProjector_ChildLinked(t *testing.T) {
 	}
 
 	// Verify pedigree edge
-	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge == nil {
 		t.Fatal("Pedigree edge not created")
 	}
@@ -220,7 +220,7 @@ func TestProjector_ChildLinked(t *testing.T) {
 
 func TestProjector_ChildUnlinked(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Setup: Create family with child
@@ -228,30 +228,30 @@ func TestProjector_ChildUnlinked(t *testing.T) {
 	father.Gender = domain.GenderMale
 	child := domain.NewPerson("Jimmy", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(father), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+	projector.Project(ctx, domain.NewPersonCreated(father), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(&father.ID, nil)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
-	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2, domain.MainBranchID)
 
 	// Unlink child
 	event := domain.NewChildUnlinkedFromFamily(family.ID, child.ID)
-	err := projector.Project(ctx, event, 3)
+	err := projector.Project(ctx, event, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project child unlink failed: %v", err)
 	}
 
 	// Verify child removed
-	children, _ := readStore.GetFamilyChildren(ctx, family.ID)
+	children, _ := readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 0 {
 		t.Errorf("Expected 0 children, got %d", len(children))
 	}
 
 	// Verify pedigree edge removed
-	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge != nil {
 		t.Error("Pedigree edge should be removed")
 	}
@@ -259,7 +259,7 @@ func TestProjector_ChildUnlinked(t *testing.T) {
 
 func TestProjector_Apply(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person
@@ -273,7 +273,7 @@ func TestProjector_Apply(t *testing.T) {
 	}
 
 	// Verify person was created
-	rm, err := readStore.GetPerson(ctx, person.ID)
+	rm, err := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}
@@ -287,13 +287,13 @@ func TestProjector_Apply(t *testing.T) {
 
 func TestProjector_UnknownEventIgnored(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Test with a GedcomImported event which is handled gracefully
 	// (no projection action needed for this event type)
 	event := domain.NewGedcomImported("test.ged", 100, 10, 5, nil, nil)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project should not error on GedcomImported: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestProjector_UnknownEventIgnored(t *testing.T) {
 
 func TestProjector_FamilyUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a family first
@@ -311,7 +311,7 @@ func TestProjector_FamilyUpdated(t *testing.T) {
 	family.MarriagePlace = "New York"
 
 	createEvent := domain.NewFamilyCreated(family)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -362,12 +362,12 @@ func TestProjector_FamilyUpdated(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			updateEvent := domain.NewFamilyUpdated(family.ID, tt.changes)
-			err := projector.Project(ctx, updateEvent, 2)
+			err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 			if err != nil {
 				t.Fatalf("Project update failed: %v", err)
 			}
 
-			rm, err := readStore.GetFamily(ctx, family.ID)
+			rm, err := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 			if err != nil {
 				t.Fatalf("GetFamily failed: %v", err)
 			}
@@ -389,7 +389,7 @@ func TestProjector_FamilyUpdated_PartnerSwap(t *testing.T) {
 	// refresh the denormalized split-name fields, otherwise the family row
 	// keeps showing the former partner's name next to the new partner's ID.
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Seed three persons: the initial partners and a replacement.
@@ -397,7 +397,7 @@ func TestProjector_FamilyUpdated_PartnerSwap(t *testing.T) {
 	p2 := &domain.Person{ID: uuid.New(), GivenName: "Jane", Surname: "Doe"}
 	p3 := &domain.Person{ID: uuid.New(), GivenName: "Mary", Surname: "Smith"}
 	for i, p := range []*domain.Person{p1, p2, p3} {
-		if err := projector.Project(ctx, domain.NewPersonCreated(p), int64(i+1)); err != nil {
+		if err := projector.Project(ctx, domain.NewPersonCreated(p), int64(i+1), domain.MainBranchID); err != nil {
 			t.Fatalf("seed person %d: %v", i, err)
 		}
 	}
@@ -407,7 +407,7 @@ func TestProjector_FamilyUpdated_PartnerSwap(t *testing.T) {
 	family.Partner1ID = &p1.ID
 	family.Partner2ID = &p2.ID
 	family.RelationshipType = domain.RelationMarriage
-	if err := projector.Project(ctx, domain.NewFamilyCreated(family), 4); err != nil {
+	if err := projector.Project(ctx, domain.NewFamilyCreated(family), 4, domain.MainBranchID); err != nil {
 		t.Fatalf("create family: %v", err)
 	}
 
@@ -415,11 +415,11 @@ func TestProjector_FamilyUpdated_PartnerSwap(t *testing.T) {
 	update := domain.NewFamilyUpdated(family.ID, map[string]any{
 		"partner1_id": p3.ID.String(),
 	})
-	if err := projector.Project(ctx, update, 5); err != nil {
+	if err := projector.Project(ctx, update, 5, domain.MainBranchID); err != nil {
 		t.Fatalf("project update: %v", err)
 	}
 
-	rm, err := readStore.GetFamily(ctx, family.ID)
+	rm, err := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if err != nil || rm == nil {
 		t.Fatalf("get family: %v (rm=%v)", err, rm)
 	}
@@ -437,12 +437,12 @@ func TestProjector_FamilyUpdated_PartnerSwap(t *testing.T) {
 
 func TestProjector_FamilyUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to update a non-existent family (should not error, just skip)
 	updateEvent := domain.NewFamilyUpdated(uuid.New(), map[string]any{"marriage_place": "Test"})
-	err := projector.Project(ctx, updateEvent, 1)
+	err := projector.Project(ctx, updateEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update should not fail for non-existent family: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestProjector_FamilyUpdated_NonExistent(t *testing.T) {
 
 func TestProjector_FamilyDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create family with children
@@ -462,56 +462,56 @@ func TestProjector_FamilyDeleted(t *testing.T) {
 	child2 := domain.NewPerson("Jenny", "Doe")
 
 	// Create persons
-	projector.Project(ctx, domain.NewPersonCreated(father), 1)
-	projector.Project(ctx, domain.NewPersonCreated(mother), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child1), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child2), 1)
+	projector.Project(ctx, domain.NewPersonCreated(father), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(mother), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child1), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child2), 1, domain.MainBranchID)
 
 	// Create family
 	family := domain.NewFamilyWithPartners(&father.ID, &mother.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Link children
 	fc1 := domain.NewFamilyChild(family.ID, child1.ID, domain.ChildBiological)
 	fc2 := domain.NewFamilyChild(family.ID, child2.ID, domain.ChildBiological)
-	projector.Project(ctx, domain.NewChildLinkedToFamily(fc1), 2)
-	projector.Project(ctx, domain.NewChildLinkedToFamily(fc2), 3)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc1), 2, domain.MainBranchID)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc2), 3, domain.MainBranchID)
 
 	// Verify children are linked
-	children, _ := readStore.GetFamilyChildren(ctx, family.ID)
+	children, _ := readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 2 {
 		t.Errorf("Expected 2 children before deletion, got %d", len(children))
 	}
 
 	// Verify pedigree edges exist
-	edge1, _ := readStore.GetPedigreeEdge(ctx, child1.ID)
-	edge2, _ := readStore.GetPedigreeEdge(ctx, child2.ID)
+	edge1, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child1.ID)
+	edge2, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child2.ID)
 	if edge1 == nil || edge2 == nil {
 		t.Error("Pedigree edges should exist before deletion")
 	}
 
 	// Delete family
 	deleteEvent := domain.NewFamilyDeleted(family.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 4)
+	err := projector.Project(ctx, deleteEvent, 4, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
 	// Verify family is deleted
-	rm, _ := readStore.GetFamily(ctx, family.ID)
+	rm, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm != nil {
 		t.Error("Family should be deleted")
 	}
 
 	// Verify children are unlinked
-	children, _ = readStore.GetFamilyChildren(ctx, family.ID)
+	children, _ = readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 0 {
 		t.Errorf("Expected 0 children after deletion, got %d", len(children))
 	}
 
 	// Verify pedigree edges are removed
-	edge1, _ = readStore.GetPedigreeEdge(ctx, child1.ID)
-	edge2, _ = readStore.GetPedigreeEdge(ctx, child2.ID)
+	edge1, _ = readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child1.ID)
+	edge2, _ = readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child2.ID)
 	if edge1 != nil || edge2 != nil {
 		t.Error("Pedigree edges should be removed after family deletion")
 	}
@@ -519,14 +519,14 @@ func TestProjector_FamilyDeleted(t *testing.T) {
 
 func TestProjector_PersonUpdated_AllFields(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create person
 	person := domain.NewPerson("John", "Doe")
 	person.Gender = domain.GenderMale
 	createEvent := domain.NewPersonCreated(person)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -627,12 +627,12 @@ func TestProjector_PersonUpdated_AllFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			version++
 			updateEvent := domain.NewPersonUpdated(person.ID, tt.changes)
-			err := projector.Project(ctx, updateEvent, version)
+			err := projector.Project(ctx, updateEvent, version, domain.MainBranchID)
 			if err != nil {
 				t.Fatalf("Project update failed: %v", err)
 			}
 
-			rm, err := readStore.GetPerson(ctx, person.ID)
+			rm, err := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 			if err != nil {
 				t.Fatalf("GetPerson failed: %v", err)
 			}
@@ -651,7 +651,7 @@ func TestProjector_PersonUpdated_AllFields(t *testing.T) {
 
 func TestProjector_PersonCreated_WithDates(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Test with birth date but no death date
@@ -660,12 +660,12 @@ func TestProjector_PersonCreated_WithDates(t *testing.T) {
 	person.BirthPlace = "New York"
 
 	event := domain.NewPersonCreated(person)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project failed: %v", err)
 	}
 
-	rm, _ := readStore.GetPerson(ctx, person.ID)
+	rm, _ := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if rm.BirthDateRaw != "1 JAN 1850" {
 		t.Errorf("BirthDateRaw = %s, want '1 JAN 1850'", rm.BirthDateRaw)
 	}
@@ -685,12 +685,12 @@ func TestProjector_PersonCreated_WithDates(t *testing.T) {
 	person2.DeathPlace = "Boston"
 
 	event2 := domain.NewPersonCreated(person2)
-	err = projector.Project(ctx, event2, 1)
+	err = projector.Project(ctx, event2, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project failed: %v", err)
 	}
 
-	rm2, _ := readStore.GetPerson(ctx, person2.ID)
+	rm2, _ := readStore.GetPerson(ctx, domain.MainBranchID, person2.ID)
 	if rm2.DeathDateRaw != "15 DEC 1900" {
 		t.Errorf("DeathDateRaw = %s, want '15 DEC 1900'", rm2.DeathDateRaw)
 	}
@@ -701,7 +701,7 @@ func TestProjector_PersonCreated_WithDates(t *testing.T) {
 
 func TestProjector_Integration(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Build a small family tree
@@ -722,26 +722,26 @@ func TestProjector_Integration(t *testing.T) {
 
 	// Create all persons
 	for _, p := range []*domain.Person{gf, gm, f, m, c} {
-		if err := projector.Project(ctx, domain.NewPersonCreated(p), 1); err != nil {
+		if err := projector.Project(ctx, domain.NewPersonCreated(p), 1, domain.MainBranchID); err != nil {
 			t.Fatalf("Failed to create person: %v", err)
 		}
 	}
 
 	// Create grandparent family
 	gFamily := domain.NewFamilyWithPartners(&gf.ID, &gm.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(gFamily), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(gFamily), 1, domain.MainBranchID)
 
 	// Link father to grandparent family
 	gfc := domain.NewFamilyChild(gFamily.ID, f.ID, domain.ChildBiological)
-	projector.Project(ctx, domain.NewChildLinkedToFamily(gfc), 2)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(gfc), 2, domain.MainBranchID)
 
 	// Create parent family
 	pFamily := domain.NewFamilyWithPartners(&f.ID, &m.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(pFamily), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(pFamily), 1, domain.MainBranchID)
 
 	// Link child to parent family
 	pfc := domain.NewFamilyChild(pFamily.ID, c.ID, domain.ChildBiological)
-	projector.Project(ctx, domain.NewChildLinkedToFamily(pfc), 2)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(pfc), 2, domain.MainBranchID)
 
 	// Verify: List all persons
 	persons, total, _ := readStore.ListPersons(ctx, repository.DefaultListOptions())
@@ -753,7 +753,7 @@ func TestProjector_Integration(t *testing.T) {
 	}
 
 	// Verify: Child's pedigree
-	edge, _ := readStore.GetPedigreeEdge(ctx, c.ID)
+	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, c.ID)
 	if edge == nil {
 		t.Fatal("Child should have pedigree edge")
 	}
@@ -765,7 +765,7 @@ func TestProjector_Integration(t *testing.T) {
 	}
 
 	// Verify: Father's pedigree (should have grandparents)
-	fatherEdge, _ := readStore.GetPedigreeEdge(ctx, f.ID)
+	fatherEdge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, f.ID)
 	if fatherEdge == nil {
 		t.Fatal("Father should have pedigree edge")
 	}
@@ -778,7 +778,7 @@ func TestProjector_Integration(t *testing.T) {
 
 func TestProjector_SourceCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	source := domain.NewSource("Test Book", domain.SourceBook)
@@ -789,7 +789,7 @@ func TestProjector_SourceCreated(t *testing.T) {
 
 	event := domain.NewSourceCreated(source)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project failed: %v", err)
 	}
@@ -821,14 +821,14 @@ func TestProjector_SourceCreated(t *testing.T) {
 // dropped (issue #525).
 func TestProjector_SourceRepositoryID(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	repoID := uuid.New()
 	source := domain.NewSource("Linked Source", domain.SourceBook)
 	source.RepositoryID = &repoID
 
-	if err := projector.Project(ctx, domain.NewSourceCreated(source), 1); err != nil {
+	if err := projector.Project(ctx, domain.NewSourceCreated(source), 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -847,7 +847,7 @@ func TestProjector_SourceRepositoryID(t *testing.T) {
 	// it arrives after event replay).
 	newRepoID := uuid.New()
 	changes := map[string]any{"repository_id": newRepoID.String()}
-	if err := projector.Project(ctx, domain.NewSourceUpdated(source.ID, changes), 2); err != nil {
+	if err := projector.Project(ctx, domain.NewSourceUpdated(source.ID, changes), 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 	rm, err = readStore.GetSource(ctx, source.ID)
@@ -861,13 +861,13 @@ func TestProjector_SourceRepositoryID(t *testing.T) {
 
 func TestProjector_SourceUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source first
 	source := domain.NewSource("Original Title", domain.SourceBook)
 	createEvent := domain.NewSourceCreated(source)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -879,7 +879,7 @@ func TestProjector_SourceUpdated(t *testing.T) {
 	}
 	updateEvent := domain.NewSourceUpdated(source.ID, changes)
 
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
@@ -902,13 +902,13 @@ func TestProjector_SourceUpdated(t *testing.T) {
 
 func TestProjector_SourceUpdated_AllFields(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source
 	source := domain.NewSource("Test Source", domain.SourceBook)
 	createEvent := domain.NewSourceCreated(source)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -991,7 +991,7 @@ func TestProjector_SourceUpdated_AllFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			version++
 			updateEvent := domain.NewSourceUpdated(source.ID, tt.changes)
-			err := projector.Project(ctx, updateEvent, version)
+			err := projector.Project(ctx, updateEvent, version, domain.MainBranchID)
 			if err != nil {
 				t.Fatalf("Project update failed: %v", err)
 			}
@@ -1015,19 +1015,19 @@ func TestProjector_SourceUpdated_AllFields(t *testing.T) {
 
 func TestProjector_SourceDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source first
 	source := domain.NewSource("Test Source", domain.SourceBook)
 	createEvent := domain.NewSourceCreated(source)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	// Delete source
 	deleteEvent := domain.NewSourceDeleted(source.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
@@ -1041,12 +1041,12 @@ func TestProjector_SourceDeleted(t *testing.T) {
 
 func TestProjector_CitationCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source first
 	source := domain.NewSource("Test Source", domain.SourceBook)
-	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1, domain.MainBranchID)
 
 	// Create citation
 	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, uuid.New())
@@ -1057,7 +1057,7 @@ func TestProjector_CitationCreated(t *testing.T) {
 
 	event := domain.NewCitationCreated(citation)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project failed: %v", err)
 	}
@@ -1092,17 +1092,17 @@ func TestProjector_CitationCreated(t *testing.T) {
 
 func TestProjector_CitationUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source and citation first
 	source := domain.NewSource("Test Source", domain.SourceBook)
-	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1, domain.MainBranchID)
 
 	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, uuid.New())
 	citation.Page = "100"
 	createEvent := domain.NewCitationCreated(citation)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -1179,7 +1179,7 @@ func TestProjector_CitationUpdated(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			version++
 			updateEvent := domain.NewCitationUpdated(citation.ID, tt.changes)
-			err := projector.Project(ctx, updateEvent, version)
+			err := projector.Project(ctx, updateEvent, version, domain.MainBranchID)
 			if err != nil {
 				t.Fatalf("Project update failed: %v", err)
 			}
@@ -1196,16 +1196,16 @@ func TestProjector_CitationUpdated(t *testing.T) {
 
 func TestProjector_CitationDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source and citation first
 	source := domain.NewSource("Test Source", domain.SourceBook)
-	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1, domain.MainBranchID)
 
 	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, uuid.New())
 	createEvent := domain.NewCitationCreated(citation)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -1217,7 +1217,7 @@ func TestProjector_CitationDeleted(t *testing.T) {
 
 	// Delete citation
 	deleteEvent := domain.NewCitationDeleted(citation.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
@@ -1237,12 +1237,12 @@ func TestProjector_CitationDeleted(t *testing.T) {
 
 func TestProjector_SourceUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to update a non-existent source (should not error, just skip)
 	updateEvent := domain.NewSourceUpdated(uuid.New(), map[string]any{"title": "Test"})
-	err := projector.Project(ctx, updateEvent, 1)
+	err := projector.Project(ctx, updateEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update should not fail for non-existent source: %v", err)
 	}
@@ -1250,12 +1250,12 @@ func TestProjector_SourceUpdated_NonExistent(t *testing.T) {
 
 func TestProjector_CitationUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to update a non-existent citation (should not error, just skip)
 	updateEvent := domain.NewCitationUpdated(uuid.New(), map[string]any{"page": "100"})
-	err := projector.Project(ctx, updateEvent, 1)
+	err := projector.Project(ctx, updateEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update should not fail for non-existent citation: %v", err)
 	}
@@ -1265,7 +1265,7 @@ func TestProjector_CitationUpdated_NonExistent(t *testing.T) {
 
 func TestProjector_MediaCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	entityID := uuid.New()
@@ -1280,7 +1280,7 @@ func TestProjector_MediaCreated(t *testing.T) {
 	media.GedcomXref = "@M1@"
 
 	event := domain.NewMediaCreated(media)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project MediaCreated failed: %v", err)
 	}
@@ -1312,7 +1312,7 @@ func TestProjector_MediaCreated(t *testing.T) {
 
 func TestProjector_MediaUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// First create the media
@@ -1323,7 +1323,7 @@ func TestProjector_MediaUpdated(t *testing.T) {
 	media.FileData = []byte("fake data")
 
 	createEvent := domain.NewMediaCreated(media)
-	_ = projector.Project(ctx, createEvent, 1)
+	_ = projector.Project(ctx, createEvent, 1, domain.MainBranchID)
 
 	// Update media
 	changes := map[string]any{
@@ -1336,7 +1336,7 @@ func TestProjector_MediaUpdated(t *testing.T) {
 		"crop_height": 150,
 	}
 	updateEvent := domain.NewMediaUpdated(media.ID, changes)
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project MediaUpdated failed: %v", err)
 	}
@@ -1365,18 +1365,18 @@ func TestProjector_MediaUpdated(t *testing.T) {
 
 func TestProjector_MediaDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// First create the media
 	entityID := uuid.New()
 	media := domain.NewMedia("To Delete", "person", entityID)
 	createEvent := domain.NewMediaCreated(media)
-	_ = projector.Project(ctx, createEvent, 1)
+	_ = projector.Project(ctx, createEvent, 1, domain.MainBranchID)
 
 	// Delete media
 	deleteEvent := domain.NewMediaDeleted(media.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project MediaDeleted failed: %v", err)
 	}
@@ -1390,12 +1390,12 @@ func TestProjector_MediaDeleted(t *testing.T) {
 
 func TestProjector_MediaUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to update a non-existent media (should not error, just skip)
 	updateEvent := domain.NewMediaUpdated(uuid.New(), map[string]any{"title": "Test"})
-	err := projector.Project(ctx, updateEvent, 1)
+	err := projector.Project(ctx, updateEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update should not fail for non-existent media: %v", err)
 	}
@@ -1405,12 +1405,12 @@ func TestProjector_MediaUpdated_NonExistent(t *testing.T) {
 
 func TestProjector_LifeEventCreated_ForPerson(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person first
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create a life event for this person
 	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
@@ -1421,7 +1421,7 @@ func TestProjector_LifeEventCreated_ForPerson(t *testing.T) {
 	lifeEvent.Age = "0"
 
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project LifeEventCreated failed: %v", err)
 	}
@@ -1465,12 +1465,12 @@ func TestProjector_LifeEventCreated_ForPerson(t *testing.T) {
 
 func TestProjector_LifeEventCreated_ForFamily(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a family
 	family := domain.NewFamily()
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Create a life event for this family (e.g., marriage)
 	lifeEvent := domain.NewFamilyLifeEvent(family.ID, domain.FactFamilyMarriage)
@@ -1479,7 +1479,7 @@ func TestProjector_LifeEventCreated_ForFamily(t *testing.T) {
 	lifeEvent.Place = "New York, NY"
 
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project LifeEventCreated for family failed: %v", err)
 	}
@@ -1511,12 +1511,12 @@ func TestProjector_LifeEventCreated_ForFamily(t *testing.T) {
 
 func TestProjector_LifeEventCreated_WithCause(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create a death event with cause
 	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonDeath)
@@ -1527,7 +1527,7 @@ func TestProjector_LifeEventCreated_WithCause(t *testing.T) {
 	lifeEvent.Age = "70"
 
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project LifeEventCreated failed: %v", err)
 	}
@@ -1547,19 +1547,19 @@ func TestProjector_LifeEventCreated_WithCause(t *testing.T) {
 
 func TestProjector_LifeEventCreated_WithoutDate(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create a life event without a date
 	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
 	lifeEvent.Place = "Unknown location"
 
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project LifeEventCreated failed: %v", err)
 	}
@@ -1579,16 +1579,16 @@ func TestProjector_LifeEventCreated_WithoutDate(t *testing.T) {
 
 func TestProjector_LifeEventDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person and life event
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	lifeEvent := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
 	createEvent := domain.NewLifeEventCreatedFromModel(lifeEvent)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -1600,7 +1600,7 @@ func TestProjector_LifeEventDeleted(t *testing.T) {
 
 	// Delete life event
 	deleteEvent := domain.NewLifeEventDeleted(lifeEvent.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
@@ -1614,12 +1614,12 @@ func TestProjector_LifeEventDeleted(t *testing.T) {
 
 func TestProjector_LifeEventsList(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create multiple life events for this person
 	lifeEvent1 := domain.NewLifeEvent(person.ID, domain.FactPersonBirth)
@@ -1630,8 +1630,8 @@ func TestProjector_LifeEventsList(t *testing.T) {
 	gd2 := domain.ParseGenDate("15 DEC 1920")
 	lifeEvent2.Date = &gd2
 
-	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent1), 1)
-	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent2), 2)
+	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent1), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent2), 2, domain.MainBranchID)
 
 	// List events for person
 	events, err := readStore.ListEventsForPerson(ctx, person.ID)
@@ -1647,12 +1647,12 @@ func TestProjector_LifeEventsList(t *testing.T) {
 
 func TestProjector_AttributeCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person first
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create an attribute for this person
 	attribute := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Blacksmith")
@@ -1661,7 +1661,7 @@ func TestProjector_AttributeCreated(t *testing.T) {
 	attribute.Place = "Springfield, IL"
 
 	event := domain.NewAttributeCreatedFromModel(attribute)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project AttributeCreated failed: %v", err)
 	}
@@ -1699,18 +1699,18 @@ func TestProjector_AttributeCreated(t *testing.T) {
 
 func TestProjector_AttributeCreated_WithoutDate(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create an attribute without a date
 	attribute := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Farmer")
 
 	event := domain.NewAttributeCreatedFromModel(attribute)
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project AttributeCreated failed: %v", err)
 	}
@@ -1733,16 +1733,16 @@ func TestProjector_AttributeCreated_WithoutDate(t *testing.T) {
 
 func TestProjector_AttributeDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person and attribute
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	attribute := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Blacksmith")
 	createEvent := domain.NewAttributeCreatedFromModel(attribute)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -1754,7 +1754,7 @@ func TestProjector_AttributeDeleted(t *testing.T) {
 
 	// Delete attribute
 	deleteEvent := domain.NewAttributeDeleted(attribute.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
@@ -1768,19 +1768,19 @@ func TestProjector_AttributeDeleted(t *testing.T) {
 
 func TestProjector_AttributesList(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create multiple attributes for this person
 	attr1 := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Blacksmith")
 	attr2 := domain.NewAttribute(person.ID, domain.FactPersonOccupation, "Farmer")
 
-	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr1), 1)
-	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr2), 2)
+	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr1), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr2), 2, domain.MainBranchID)
 
 	// List attributes for person
 	attrs, err := readStore.ListAttributesForPerson(ctx, person.ID)
@@ -1796,12 +1796,12 @@ func TestProjector_AttributesList(t *testing.T) {
 
 func TestProjector_PersonUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to update a non-existent person (should not error, just skip)
 	updateEvent := domain.NewPersonUpdated(uuid.New(), map[string]any{"given_name": "Test"})
-	err := projector.Project(ctx, updateEvent, 1)
+	err := projector.Project(ctx, updateEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update should not fail for non-existent person: %v", err)
 	}
@@ -1809,7 +1809,7 @@ func TestProjector_PersonUpdated_NonExistent(t *testing.T) {
 
 func TestProjector_PersonUpdated_DateClearing(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create person with dates
@@ -1817,12 +1817,12 @@ func TestProjector_PersonUpdated_DateClearing(t *testing.T) {
 	person.SetBirthDate("1 JAN 1850")
 	person.SetDeathDate("15 DEC 1920")
 	createEvent := domain.NewPersonCreated(person)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	// Verify dates are set
-	rm, _ := readStore.GetPerson(ctx, person.ID)
+	rm, _ := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if rm.BirthDateSort == nil {
 		t.Fatal("BirthDateSort should be set initially")
 	}
@@ -1836,13 +1836,13 @@ func TestProjector_PersonUpdated_DateClearing(t *testing.T) {
 		"death_date": "ABOUT 1920",
 	}
 	updateEvent := domain.NewPersonUpdated(person.ID, changes)
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
 	// Verify raw dates updated but sort may be nil for unparseable dates
-	rm, _ = readStore.GetPerson(ctx, person.ID)
+	rm, _ = readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if rm.BirthDateRaw != "UNKNOWN" {
 		t.Errorf("BirthDateRaw = %s, want UNKNOWN", rm.BirthDateRaw)
 	}
@@ -1857,19 +1857,19 @@ func TestProjector_PersonUpdated_DateClearing(t *testing.T) {
 
 func TestProjector_FamilyUpdated_DateClearing(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create family with marriage date
 	family := domain.NewFamily()
 	family.SetMarriageDate("1 JAN 1870")
 	createEvent := domain.NewFamilyCreated(family)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	// Verify date is set
-	rm, _ := readStore.GetFamily(ctx, family.ID)
+	rm, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm.MarriageDateSort == nil {
 		t.Fatal("MarriageDateSort should be set initially")
 	}
@@ -1879,13 +1879,13 @@ func TestProjector_FamilyUpdated_DateClearing(t *testing.T) {
 		"marriage_date": "UNKNOWN",
 	}
 	updateEvent := domain.NewFamilyUpdated(family.ID, changes)
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
 	// Verify raw date updated but sort is nil for unparseable dates
-	rm, _ = readStore.GetFamily(ctx, family.ID)
+	rm, _ = readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm.MarriageDateRaw != "UNKNOWN" {
 		t.Errorf("MarriageDateRaw = %s, want UNKNOWN", rm.MarriageDateRaw)
 	}
@@ -1896,7 +1896,7 @@ func TestProjector_FamilyUpdated_DateClearing(t *testing.T) {
 
 func TestProjector_SourceUpdated_DateClearing(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source with publish date
@@ -1904,7 +1904,7 @@ func TestProjector_SourceUpdated_DateClearing(t *testing.T) {
 	gd := domain.ParseGenDate("1995")
 	source.PublishDate = &gd
 	createEvent := domain.NewSourceCreated(source)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -1919,7 +1919,7 @@ func TestProjector_SourceUpdated_DateClearing(t *testing.T) {
 		"publish_date": "UNKNOWN",
 	}
 	updateEvent := domain.NewSourceUpdated(source.ID, changes)
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
@@ -1936,19 +1936,19 @@ func TestProjector_SourceUpdated_DateClearing(t *testing.T) {
 
 func TestProjector_CitationUpdated_SourceChange(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create two sources
 	source1 := domain.NewSource("Source 1", domain.SourceBook)
 	source2 := domain.NewSource("Source 2", domain.SourceBook)
-	projector.Project(ctx, domain.NewSourceCreated(source1), 1)
-	projector.Project(ctx, domain.NewSourceCreated(source2), 1)
+	projector.Project(ctx, domain.NewSourceCreated(source1), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewSourceCreated(source2), 1, domain.MainBranchID)
 
 	// Create citation on source1
 	citation := domain.NewCitation(source1.ID, domain.FactPersonBirth, uuid.New())
 	createEvent := domain.NewCitationCreated(citation)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -1963,7 +1963,7 @@ func TestProjector_CitationUpdated_SourceChange(t *testing.T) {
 		"source_id": source2.ID.String(),
 	}
 	updateEvent := domain.NewCitationUpdated(citation.ID, changes)
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
@@ -1990,19 +1990,19 @@ func TestProjector_CitationUpdated_SourceChange(t *testing.T) {
 
 func TestProjector_CitationUpdated_FactOwnerChange(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create source and citation
 	source := domain.NewSource("Test Source", domain.SourceBook)
-	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1, domain.MainBranchID)
 
 	originalOwner := uuid.New()
 	newOwner := uuid.New()
 
 	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, originalOwner)
 	createEvent := domain.NewCitationCreated(citation)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -2012,7 +2012,7 @@ func TestProjector_CitationUpdated_FactOwnerChange(t *testing.T) {
 		"fact_owner_id": newOwner.String(),
 	}
 	updateEvent := domain.NewCitationUpdated(citation.ID, changes)
-	err := projector.Project(ctx, updateEvent, 2)
+	err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
@@ -2029,7 +2029,7 @@ func TestProjector_CitationUpdated_FactOwnerChange(t *testing.T) {
 
 func TestProjector_ChildLinked_WithSingleParent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create family with only one parent
@@ -2037,23 +2037,23 @@ func TestProjector_ChildLinked_WithSingleParent(t *testing.T) {
 	mother.Gender = domain.GenderFemale
 	child := domain.NewPerson("Jimmy", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(mother), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+	projector.Project(ctx, domain.NewPersonCreated(mother), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(nil, &mother.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Link child
 	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
 	event := domain.NewChildLinkedToFamily(fc)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project child link failed: %v", err)
 	}
 
 	// Verify pedigree edge has only mother set
-	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge == nil {
 		t.Fatal("Pedigree edge not created")
 	}
@@ -2070,12 +2070,12 @@ func TestProjector_ChildLinked_WithSingleParent(t *testing.T) {
 
 func TestProjector_ChildUnlinked_NonExistentFamily(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to unlink a child from a non-existent family
 	event := domain.NewChildUnlinkedFromFamily(uuid.New(), uuid.New())
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	// Should not error, just skip (family doesn't exist in read model)
 	if err != nil {
 		t.Fatalf("Project child unlink should not fail for non-existent family: %v", err)
@@ -2084,32 +2084,32 @@ func TestProjector_ChildUnlinked_NonExistentFamily(t *testing.T) {
 
 func TestProjector_FamilyDeleted_NoChildren(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a family without children
 	father := domain.NewPerson("John", "Doe")
 	father.Gender = domain.GenderMale
-	projector.Project(ctx, domain.NewPersonCreated(father), 1)
+	projector.Project(ctx, domain.NewPersonCreated(father), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(&father.ID, nil)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Verify no children
-	children, _ := readStore.GetFamilyChildren(ctx, family.ID)
+	children, _ := readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 0 {
 		t.Errorf("Expected 0 children, got %d", len(children))
 	}
 
 	// Delete family without children
 	deleteEvent := domain.NewFamilyDeleted(family.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
 	// Verify family is deleted
-	rm, _ := readStore.GetFamily(ctx, family.ID)
+	rm, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm != nil {
 		t.Error("Family should be deleted")
 	}
@@ -2117,25 +2117,25 @@ func TestProjector_FamilyDeleted_NoChildren(t *testing.T) {
 
 func TestProjector_ChildLinked_NoFamily(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a child but no family
 	child := domain.NewPerson("Jimmy", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1, domain.MainBranchID)
 
 	// Link child to non-existent family
 	// (This tests the path where family is nil)
 	fc := domain.NewFamilyChild(uuid.New(), child.ID, domain.ChildBiological)
 	event := domain.NewChildLinkedToFamily(fc)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project child link failed: %v", err)
 	}
 
 	// Should succeed but not create pedigree edge (no family)
-	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge != nil {
 		t.Error("Pedigree edge should not be created when family doesn't exist")
 	}
@@ -2143,7 +2143,7 @@ func TestProjector_ChildLinked_NoFamily(t *testing.T) {
 
 func TestProjector_ChildLinked_WithTwoMaleParents(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create two male parents (covers the edge case)
@@ -2153,24 +2153,24 @@ func TestProjector_ChildLinked_WithTwoMaleParents(t *testing.T) {
 	father2.Gender = domain.GenderMale
 	child := domain.NewPerson("Jimmy", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(father1), 1)
-	projector.Project(ctx, domain.NewPersonCreated(father2), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+	projector.Project(ctx, domain.NewPersonCreated(father1), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(father2), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(&father1.ID, &father2.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Link child
 	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
 	event := domain.NewChildLinkedToFamily(fc)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project child link failed: %v", err)
 	}
 
 	// Verify pedigree edge - second male should overwrite first as father
-	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge == nil {
 		t.Fatal("Pedigree edge not created")
 	}
@@ -2185,7 +2185,7 @@ func TestProjector_ChildLinked_WithTwoMaleParents(t *testing.T) {
 
 func TestProjector_ChildLinked_WithTwoFemaleParents(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create two female parents
@@ -2195,24 +2195,24 @@ func TestProjector_ChildLinked_WithTwoFemaleParents(t *testing.T) {
 	mother2.Gender = domain.GenderFemale
 	child := domain.NewPerson("Jimmy", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(mother1), 1)
-	projector.Project(ctx, domain.NewPersonCreated(mother2), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+	projector.Project(ctx, domain.NewPersonCreated(mother1), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(mother2), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(&mother1.ID, &mother2.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Link child
 	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
 	event := domain.NewChildLinkedToFamily(fc)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project child link failed: %v", err)
 	}
 
 	// Verify pedigree edge - second female should overwrite first as mother
-	edge, _ := readStore.GetPedigreeEdge(ctx, child.ID)
+	edge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, child.ID)
 	if edge == nil {
 		t.Fatal("Pedigree edge not created")
 	}
@@ -2227,14 +2227,14 @@ func TestProjector_ChildLinked_WithTwoFemaleParents(t *testing.T) {
 
 func TestProjector_CitationCreated_NoSource(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create citation without creating source first
 	citation := domain.NewCitation(uuid.New(), domain.FactPersonBirth, uuid.New())
 	event := domain.NewCitationCreated(citation)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project CitationCreated should succeed even without source: %v", err)
 	}
@@ -2251,18 +2251,18 @@ func TestProjector_CitationCreated_NoSource(t *testing.T) {
 
 func TestProjector_CitationDeleted_NoSource(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create citation without source
 	sourceID := uuid.New()
 	citation := domain.NewCitation(sourceID, domain.FactPersonBirth, uuid.New())
 	createEvent := domain.NewCitationCreated(citation)
-	projector.Project(ctx, createEvent, 1)
+	projector.Project(ctx, createEvent, 1, domain.MainBranchID)
 
 	// Delete citation (source doesn't exist, so citation count update should be skipped)
 	deleteEvent := domain.NewCitationDeleted(citation.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete should succeed even without source: %v", err)
 	}
@@ -2276,12 +2276,12 @@ func TestProjector_CitationDeleted_NoSource(t *testing.T) {
 
 func TestProjector_CitationDeleted_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to delete non-existent citation
 	deleteEvent := domain.NewCitationDeleted(uuid.New(), "test deletion")
-	err := projector.Project(ctx, deleteEvent, 1)
+	err := projector.Project(ctx, deleteEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete should succeed for non-existent citation: %v", err)
 	}
@@ -2289,20 +2289,20 @@ func TestProjector_CitationDeleted_NonExistent(t *testing.T) {
 
 func TestProjector_FamilyCreated_NoPartners(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a family without partners
 	family := domain.NewFamily()
 	event := domain.NewFamilyCreated(family)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project FamilyCreated failed: %v", err)
 	}
 
 	// Verify family was created
-	rm, _ := readStore.GetFamily(ctx, family.ID)
+	rm, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm == nil {
 		t.Fatal("Family not found")
 	}
@@ -2316,7 +2316,7 @@ func TestProjector_FamilyCreated_NoPartners(t *testing.T) {
 
 func TestProjector_ChildUnlinked_WithChildCount(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create family with a child
@@ -2324,31 +2324,31 @@ func TestProjector_ChildUnlinked_WithChildCount(t *testing.T) {
 	father.Gender = domain.GenderMale
 	child := domain.NewPerson("Jimmy", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(father), 1)
-	projector.Project(ctx, domain.NewPersonCreated(child), 1)
+	projector.Project(ctx, domain.NewPersonCreated(father), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(child), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(&father.ID, nil)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Link child
 	fc := domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)
-	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2, domain.MainBranchID)
 
 	// Verify child count is 1
-	rm, _ := readStore.GetFamily(ctx, family.ID)
+	rm, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm.ChildCount != 1 {
 		t.Errorf("ChildCount = %d, want 1", rm.ChildCount)
 	}
 
 	// Unlink child
 	unlinkEvent := domain.NewChildUnlinkedFromFamily(family.ID, child.ID)
-	err := projector.Project(ctx, unlinkEvent, 3)
+	err := projector.Project(ctx, unlinkEvent, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project unlink failed: %v", err)
 	}
 
 	// Verify child count is 0
-	rm, _ = readStore.GetFamily(ctx, family.ID)
+	rm, _ = readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if rm.ChildCount != 0 {
 		t.Errorf("ChildCount after unlink = %d, want 0", rm.ChildCount)
 	}
@@ -2358,7 +2358,7 @@ func TestProjector_ChildUnlinked_WithChildCount(t *testing.T) {
 
 func TestProjector_PersonMerged_Basic(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create survivor and merged person
@@ -2371,8 +2371,8 @@ func TestProjector_PersonMerged_Basic(t *testing.T) {
 	merged.SetBirthDate("ABT 1850")
 	merged.BirthPlace = "Springfield, IL"
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create PersonMerged event with resolved fields from merged
 	event := domain.NewPersonMerged(
@@ -2387,13 +2387,13 @@ func TestProjector_PersonMerged_Basic(t *testing.T) {
 		[]uuid.UUID{}, // transferred media
 	)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
 	// Verify survivor was updated
-	survivorRM, _ := readStore.GetPerson(ctx, survivor.ID)
+	survivorRM, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
 	if survivorRM == nil {
 		t.Fatal("Survivor should exist after merge")
 	}
@@ -2405,7 +2405,7 @@ func TestProjector_PersonMerged_Basic(t *testing.T) {
 	}
 
 	// Verify merged person was deleted
-	mergedRM, _ := readStore.GetPerson(ctx, merged.ID)
+	mergedRM, _ := readStore.GetPerson(ctx, domain.MainBranchID, merged.ID)
 	if mergedRM != nil {
 		t.Error("Merged person should be deleted")
 	}
@@ -2413,7 +2413,7 @@ func TestProjector_PersonMerged_Basic(t *testing.T) {
 
 func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create survivor with some fields
@@ -2429,8 +2429,8 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 	merged.DeathPlace = "New York, NY"
 	merged.Notes = "Important notes"
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Resolve multiple fields from merged
 	resolvedFields := map[string]any{
@@ -2456,13 +2456,13 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
 	// Verify all fields were updated
-	survivorRM, _ := readStore.GetPerson(ctx, survivor.ID)
+	survivorRM, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
 	if survivorRM.GivenName != "Johnny" {
 		t.Errorf("GivenName = %s, want Johnny", survivorRM.GivenName)
 	}
@@ -2500,7 +2500,7 @@ func TestProjector_PersonMerged_WithResolvedFields(t *testing.T) {
 
 func TestProjector_PersonMerged_FamilyPartnerUpdate(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create survivor, merged, and spouse
@@ -2511,17 +2511,17 @@ func TestProjector_PersonMerged_FamilyPartnerUpdate(t *testing.T) {
 	spouse := domain.NewPerson("Jane", "Doe")
 	spouse.Gender = domain.GenderFemale
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
-	projector.Project(ctx, domain.NewPersonCreated(spouse), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(spouse), 1, domain.MainBranchID)
 
 	// Create family where merged person is partner1
 	family := domain.NewFamilyWithPartners(&merged.ID, &spouse.ID)
 	family.RelationshipType = domain.RelationMarriage
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Verify initial family state
-	familyRM, _ := readStore.GetFamily(ctx, family.ID)
+	familyRM, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if familyRM.Partner1GivenName != "Johnny" || familyRM.Partner1Surname != "Doe" {
 		t.Errorf("Initial Partner1 split = %q/%q, want Johnny/Doe", familyRM.Partner1GivenName, familyRM.Partner1Surname)
 	}
@@ -2539,13 +2539,13 @@ func TestProjector_PersonMerged_FamilyPartnerUpdate(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
 	// Verify family was updated with survivor as partner
-	familyRM, _ = readStore.GetFamily(ctx, family.ID)
+	familyRM, _ = readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if familyRM.Partner1ID == nil || *familyRM.Partner1ID != survivor.ID {
 		t.Error("Partner1ID should be updated to survivor ID")
 	}
@@ -2556,7 +2556,7 @@ func TestProjector_PersonMerged_FamilyPartnerUpdate(t *testing.T) {
 
 func TestProjector_PersonMerged_FamilyPartner2Update(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create survivor, merged, and spouse
@@ -2567,14 +2567,14 @@ func TestProjector_PersonMerged_FamilyPartner2Update(t *testing.T) {
 	spouse := domain.NewPerson("John", "Doe")
 	spouse.Gender = domain.GenderMale
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
-	projector.Project(ctx, domain.NewPersonCreated(spouse), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(spouse), 1, domain.MainBranchID)
 
 	// Create family where merged person is partner2
 	family := domain.NewFamilyWithPartners(&spouse.ID, &merged.ID)
 	family.RelationshipType = domain.RelationMarriage
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Merge merged into survivor
 	event := domain.NewPersonMerged(
@@ -2589,13 +2589,13 @@ func TestProjector_PersonMerged_FamilyPartner2Update(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
 	// Verify family was updated with survivor as partner2
-	familyRM, _ := readStore.GetFamily(ctx, family.ID)
+	familyRM, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
 	if familyRM.Partner2ID == nil || *familyRM.Partner2ID != survivor.ID {
 		t.Error("Partner2ID should be updated to survivor ID")
 	}
@@ -2606,23 +2606,23 @@ func TestProjector_PersonMerged_FamilyPartner2Update(t *testing.T) {
 
 func TestProjector_PersonMerged_CitationTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create source and citation for merged person
 	source := domain.NewSource("Test Source", domain.SourceBook)
-	projector.Project(ctx, domain.NewSourceCreated(source), 1)
+	projector.Project(ctx, domain.NewSourceCreated(source), 1, domain.MainBranchID)
 
 	citation := domain.NewCitation(source.ID, domain.FactPersonBirth, merged.ID)
 	citation.Page = "123"
-	projector.Project(ctx, domain.NewCitationCreated(citation), 1)
+	projector.Project(ctx, domain.NewCitationCreated(citation), 1, domain.MainBranchID)
 
 	// Verify citation is for merged person
 	citationRM, _ := readStore.GetCitation(ctx, citation.ID)
@@ -2643,7 +2643,7 @@ func TestProjector_PersonMerged_CitationTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
@@ -2657,24 +2657,24 @@ func TestProjector_PersonMerged_CitationTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_NameTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Add alternate name to merged person
 	personName := domain.NewPersonName(merged.ID, "Jonathan", "Doe")
 	personName.IsPrimary = true
 	nameEvent := domain.NewNameAdded(personName)
-	projector.Project(ctx, nameEvent, 2)
+	projector.Project(ctx, nameEvent, 2, domain.MainBranchID)
 
 	// Verify name is for merged person
-	names, _ := readStore.GetPersonNames(ctx, merged.ID)
+	names, _ := readStore.GetPersonNames(ctx, domain.MainBranchID, merged.ID)
 	if len(names) != 1 {
 		t.Fatalf("Expected 1 name for merged person, got %d", len(names))
 	}
@@ -2695,13 +2695,13 @@ func TestProjector_PersonMerged_NameTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 3)
+	err := projector.Project(ctx, event, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
 	// Verify name was transferred to survivor (and is no longer primary)
-	survivorNames, _ := readStore.GetPersonNames(ctx, survivor.ID)
+	survivorNames, _ := readStore.GetPersonNames(ctx, domain.MainBranchID, survivor.ID)
 	if len(survivorNames) != 1 {
 		t.Fatalf("Expected 1 name for survivor, got %d", len(survivorNames))
 	}
@@ -2715,22 +2715,22 @@ func TestProjector_PersonMerged_NameTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_EventTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create life event for merged person
 	lifeEvent := domain.NewLifeEvent(merged.ID, domain.FactPersonBirth)
 	gd := domain.ParseGenDate("1 JAN 1850")
 	lifeEvent.Date = &gd
 	lifeEvent.Place = "Springfield, IL"
-	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent), 2)
+	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent), 2, domain.MainBranchID)
 
 	// Verify event is for merged person
 	events, _ := readStore.ListEventsForPerson(ctx, merged.ID)
@@ -2751,7 +2751,7 @@ func TestProjector_PersonMerged_EventTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 3)
+	err := projector.Project(ctx, event, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
@@ -2768,21 +2768,21 @@ func TestProjector_PersonMerged_EventTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_MediaTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create media for merged person
 	media := domain.NewMedia("Photo", "person", merged.ID)
 	media.MimeType = "image/jpeg"
 	media.FileData = []byte("fake data")
-	projector.Project(ctx, domain.NewMediaCreated(media), 2)
+	projector.Project(ctx, domain.NewMediaCreated(media), 2, domain.MainBranchID)
 
 	// Verify media is for merged person
 	mediaList, _, _ := readStore.ListMediaForEntity(ctx, "person", merged.ID, repository.ListOptions{Limit: 100})
@@ -2803,7 +2803,7 @@ func TestProjector_PersonMerged_MediaTransfer(t *testing.T) {
 		[]uuid.UUID{media.ID},
 	)
 
-	err := projector.Project(ctx, event, 3)
+	err := projector.Project(ctx, event, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
@@ -2820,19 +2820,19 @@ func TestProjector_PersonMerged_MediaTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_AttributeTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create attribute for merged person
 	attr := domain.NewAttribute(merged.ID, domain.FactPersonOccupation, "Blacksmith")
-	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr), 2)
+	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr), 2, domain.MainBranchID)
 
 	// Verify attribute is for merged person
 	attrs, _ := readStore.ListAttributesForPerson(ctx, merged.ID)
@@ -2853,7 +2853,7 @@ func TestProjector_PersonMerged_AttributeTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 3)
+	err := projector.Project(ctx, event, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
@@ -2873,15 +2873,15 @@ func TestProjector_PersonMerged_AttributeTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create evidence analysis for merged person
 	ea := &domain.EvidenceAnalysis{
@@ -2893,7 +2893,7 @@ func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 		ResearchStatus: domain.ResearchStatusCertain,
 		Notes:          "Based on birth certificate",
 	}
-	if err := projector.Project(ctx, domain.NewEvidenceAnalysisCreated(ea), 2); err != nil {
+	if err := projector.Project(ctx, domain.NewEvidenceAnalysisCreated(ea), 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project EvidenceAnalysisCreated failed: %v", err)
 	}
 
@@ -2916,7 +2916,7 @@ func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	if err := projector.Project(ctx, event, 3); err != nil {
+	if err := projector.Project(ctx, event, 3, domain.MainBranchID); err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
@@ -2956,15 +2956,15 @@ func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create evidence conflict for merged person
 	ec := &domain.EvidenceConflict{
@@ -2975,7 +2975,7 @@ func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 		Description: "Conflicting birth dates",
 		Status:      domain.ConflictStatusOpen,
 	}
-	if err := projector.Project(ctx, domain.NewEvidenceConflictDetected(ec), 2); err != nil {
+	if err := projector.Project(ctx, domain.NewEvidenceConflictDetected(ec), 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project EvidenceConflictDetected failed: %v", err)
 	}
 
@@ -2998,7 +2998,7 @@ func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	if err := projector.Project(ctx, event, 3); err != nil {
+	if err := projector.Project(ctx, event, 3, domain.MainBranchID); err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
@@ -3038,15 +3038,15 @@ func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create research log for merged person
 	rl := &domain.ResearchLog{
@@ -3059,7 +3059,7 @@ func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 		Notes:             "Found in 1850 census",
 		SearchDate:        time.Now().UTC(),
 	}
-	if err := projector.Project(ctx, domain.NewResearchLogCreated(rl), 2); err != nil {
+	if err := projector.Project(ctx, domain.NewResearchLogCreated(rl), 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project ResearchLogCreated failed: %v", err)
 	}
 
@@ -3082,7 +3082,7 @@ func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	if err := projector.Project(ctx, event, 3); err != nil {
+	if err := projector.Project(ctx, event, 3, domain.MainBranchID); err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
@@ -3122,15 +3122,15 @@ func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons
 	survivor := domain.NewPerson("John", "Doe")
 	merged := domain.NewPerson("Johnny", "Doe")
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Create proof summary for merged person
 	ps := &domain.ProofSummary{
@@ -3142,7 +3142,7 @@ func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 		AnalysisIDs:    []uuid.UUID{uuid.New()},
 		ResearchStatus: domain.ResearchStatusProbable,
 	}
-	if err := projector.Project(ctx, domain.NewProofSummaryCreated(ps), 2); err != nil {
+	if err := projector.Project(ctx, domain.NewProofSummaryCreated(ps), 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project ProofSummaryCreated failed: %v", err)
 	}
 
@@ -3165,7 +3165,7 @@ func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	if err := projector.Project(ctx, event, 3); err != nil {
+	if err := projector.Project(ctx, event, 3, domain.MainBranchID); err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
@@ -3205,7 +3205,7 @@ func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_PedigreeEdgeTransfer(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create grandparents
@@ -3214,35 +3214,35 @@ func TestProjector_PersonMerged_PedigreeEdgeTransfer(t *testing.T) {
 	grandmother := domain.NewPerson("Martha", "Doe")
 	grandmother.Gender = domain.GenderFemale
 
-	projector.Project(ctx, domain.NewPersonCreated(grandfather), 1)
-	projector.Project(ctx, domain.NewPersonCreated(grandmother), 1)
+	projector.Project(ctx, domain.NewPersonCreated(grandfather), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(grandmother), 1, domain.MainBranchID)
 
 	// Create family for grandparents
 	grandparentFamily := domain.NewFamilyWithPartners(&grandfather.ID, &grandmother.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(grandparentFamily), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(grandparentFamily), 1, domain.MainBranchID)
 
 	// Create survivor (has no parents)
 	survivor := domain.NewPerson("John", "Doe")
 	survivor.Gender = domain.GenderMale
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
 
 	// Create merged person as child of grandparents
 	merged := domain.NewPerson("Johnny", "Doe")
 	merged.Gender = domain.GenderMale
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Link merged person to grandparent family
 	fc := domain.NewFamilyChild(grandparentFamily.ID, merged.ID, domain.ChildBiological)
-	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2)
+	projector.Project(ctx, domain.NewChildLinkedToFamily(fc), 2, domain.MainBranchID)
 
 	// Verify merged person has pedigree edge
-	mergedEdge, _ := readStore.GetPedigreeEdge(ctx, merged.ID)
+	mergedEdge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, merged.ID)
 	if mergedEdge == nil {
 		t.Fatal("Merged person should have pedigree edge before merge")
 	}
 
 	// Verify survivor has no pedigree edge
-	survivorEdge, _ := readStore.GetPedigreeEdge(ctx, survivor.ID)
+	survivorEdge, _ := readStore.GetPedigreeEdge(ctx, domain.MainBranchID, survivor.ID)
 	if survivorEdge != nil {
 		t.Fatal("Survivor should not have pedigree edge before merge")
 	}
@@ -3260,13 +3260,13 @@ func TestProjector_PersonMerged_PedigreeEdgeTransfer(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 3)
+	err := projector.Project(ctx, event, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
 	// Verify survivor now has pedigree edge with grandparents
-	survivorEdge, _ = readStore.GetPedigreeEdge(ctx, survivor.ID)
+	survivorEdge, _ = readStore.GetPedigreeEdge(ctx, domain.MainBranchID, survivor.ID)
 	if survivorEdge == nil {
 		t.Fatal("Survivor should have pedigree edge after merge")
 	}
@@ -3278,7 +3278,7 @@ func TestProjector_PersonMerged_PedigreeEdgeTransfer(t *testing.T) {
 	}
 
 	// Verify merged person's pedigree edge is removed
-	mergedEdge, _ = readStore.GetPedigreeEdge(ctx, merged.ID)
+	mergedEdge, _ = readStore.GetPedigreeEdge(ctx, domain.MainBranchID, merged.ID)
 	if mergedEdge != nil {
 		t.Error("Merged person's pedigree edge should be removed")
 	}
@@ -3286,12 +3286,12 @@ func TestProjector_PersonMerged_PedigreeEdgeTransfer(t *testing.T) {
 
 func TestProjector_PersonMerged_SurvivorNotFound(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create only merged person (survivor doesn't exist)
 	merged := domain.NewPerson("Johnny", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Try to merge (survivor doesn't exist)
 	event := domain.NewPersonMerged(
@@ -3306,14 +3306,14 @@ func TestProjector_PersonMerged_SurvivorNotFound(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	// Should not error, just skip
 	if err != nil {
 		t.Fatalf("Project should not fail for non-existent survivor: %v", err)
 	}
 
 	// Merged person should still exist (merge didn't proceed)
-	mergedRM, _ := readStore.GetPerson(ctx, merged.ID)
+	mergedRM, _ := readStore.GetPerson(ctx, domain.MainBranchID, merged.ID)
 	if mergedRM == nil {
 		t.Error("Merged person should still exist when survivor is not found")
 	}
@@ -3321,7 +3321,7 @@ func TestProjector_PersonMerged_SurvivorNotFound(t *testing.T) {
 
 func TestProjector_PersonMerged_GenderUpdate(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create survivor without gender
@@ -3329,8 +3329,8 @@ func TestProjector_PersonMerged_GenderUpdate(t *testing.T) {
 	merged := domain.NewPerson("Johnny", "Doe")
 	merged.Gender = domain.GenderMale
 
-	projector.Project(ctx, domain.NewPersonCreated(survivor), 1)
-	projector.Project(ctx, domain.NewPersonCreated(merged), 1)
+	projector.Project(ctx, domain.NewPersonCreated(survivor), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(merged), 1, domain.MainBranchID)
 
 	// Merge with gender from merged
 	event := domain.NewPersonMerged(
@@ -3345,13 +3345,13 @@ func TestProjector_PersonMerged_GenderUpdate(t *testing.T) {
 		[]uuid.UUID{},
 	)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project PersonMerged failed: %v", err)
 	}
 
 	// Verify gender was updated
-	survivorRM, _ := readStore.GetPerson(ctx, survivor.ID)
+	survivorRM, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
 	if survivorRM.Gender != domain.GenderMale {
 		t.Errorf("Gender = %s, want male", survivorRM.Gender)
 	}
@@ -3361,12 +3361,12 @@ func TestProjector_PersonMerged_GenderUpdate(t *testing.T) {
 
 func TestProjector_LDSOrdinanceCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person first (for individual ordinances)
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Create LDS ordinance
 	ordinance := domain.NewLDSOrdinance(domain.LDSBaptism)
@@ -3378,7 +3378,7 @@ func TestProjector_LDSOrdinanceCreated(t *testing.T) {
 
 	event := domain.NewLDSOrdinanceCreated(ordinance)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project LDSOrdinanceCreated failed: %v", err)
 	}
@@ -3422,17 +3422,17 @@ func TestProjector_LDSOrdinanceCreated(t *testing.T) {
 
 func TestProjector_LDSOrdinanceCreated_SpouseSealing(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a family (for spouse sealing)
 	partner1 := domain.NewPerson("John", "Doe")
 	partner2 := domain.NewPerson("Jane", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(partner1), 1)
-	projector.Project(ctx, domain.NewPersonCreated(partner2), 1)
+	projector.Project(ctx, domain.NewPersonCreated(partner1), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(partner2), 1, domain.MainBranchID)
 
 	family := domain.NewFamilyWithPartners(&partner1.ID, &partner2.ID)
-	projector.Project(ctx, domain.NewFamilyCreated(family), 1)
+	projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID)
 
 	// Create spouse sealing ordinance
 	ordinance := domain.NewLDSOrdinance(domain.LDSSealingSpouse)
@@ -3442,7 +3442,7 @@ func TestProjector_LDSOrdinanceCreated_SpouseSealing(t *testing.T) {
 
 	event := domain.NewLDSOrdinanceCreated(ordinance)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project LDSOrdinanceCreated for spouse sealing failed: %v", err)
 	}
@@ -3471,18 +3471,18 @@ func TestProjector_LDSOrdinanceCreated_SpouseSealing(t *testing.T) {
 
 func TestProjector_LDSOrdinanceUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person and ordinance first
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	ordinance := domain.NewLDSOrdinance(domain.LDSEndowment)
 	ordinance.SetPersonID(person.ID)
 	ordinance.SetDate("1 JAN 1885")
 	createEvent := domain.NewLDSOrdinanceCreated(ordinance)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -3534,7 +3534,7 @@ func TestProjector_LDSOrdinanceUpdated(t *testing.T) {
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			updateEvent := domain.NewLDSOrdinanceUpdated(ordinance.ID, tt.changes)
-			err := projector.Project(ctx, updateEvent, int64(i+2))
+			err := projector.Project(ctx, updateEvent, int64(i+2), domain.MainBranchID)
 			if err != nil {
 				t.Fatalf("Project update failed: %v", err)
 			}
@@ -3550,12 +3550,12 @@ func TestProjector_LDSOrdinanceUpdated(t *testing.T) {
 
 func TestProjector_LDSOrdinanceUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to update a non-existent ordinance (should not error, just skip)
 	updateEvent := domain.NewLDSOrdinanceUpdated(uuid.New(), map[string]any{"temple": "SL"})
-	err := projector.Project(ctx, updateEvent, 1)
+	err := projector.Project(ctx, updateEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update should not fail for non-existent ordinance: %v", err)
 	}
@@ -3563,23 +3563,23 @@ func TestProjector_LDSOrdinanceUpdated_NonExistent(t *testing.T) {
 
 func TestProjector_LDSOrdinanceDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person and ordinance first
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	ordinance := domain.NewLDSOrdinance(domain.LDSConfirmation)
 	ordinance.SetPersonID(person.ID)
 	createEvent := domain.NewLDSOrdinanceCreated(ordinance)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	// Delete ordinance
 	deleteEvent := domain.NewLDSOrdinanceDeleted(ordinance.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
@@ -3595,14 +3595,14 @@ func TestProjector_LDSOrdinanceDeleted(t *testing.T) {
 
 func TestProjector_AssociationCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create two persons first
 	person := domain.NewPerson("John", "Doe")
 	associate := domain.NewPerson("Jane", "Smith")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
-	projector.Project(ctx, domain.NewPersonCreated(associate), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(associate), 1, domain.MainBranchID)
 
 	// Create association
 	association := domain.NewAssociation(person.ID, associate.ID, "godparent")
@@ -3611,7 +3611,7 @@ func TestProjector_AssociationCreated(t *testing.T) {
 
 	event := domain.NewAssociationCreated(association)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project AssociationCreated failed: %v", err)
 	}
@@ -3652,18 +3652,18 @@ func TestProjector_AssociationCreated(t *testing.T) {
 
 func TestProjector_AssociationUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons and association first
 	person := domain.NewPerson("John", "Doe")
 	associate := domain.NewPerson("Jane", "Smith")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
-	projector.Project(ctx, domain.NewPersonCreated(associate), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(associate), 1, domain.MainBranchID)
 
 	association := domain.NewAssociation(person.ID, associate.ID, "witness")
 	createEvent := domain.NewAssociationCreated(association)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -3704,7 +3704,7 @@ func TestProjector_AssociationUpdated(t *testing.T) {
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			updateEvent := domain.NewAssociationUpdated(association.ID, tt.changes)
-			err := projector.Project(ctx, updateEvent, int64(i+2))
+			err := projector.Project(ctx, updateEvent, int64(i+2), domain.MainBranchID)
 			if err != nil {
 				t.Fatalf("Project update failed: %v", err)
 			}
@@ -3720,12 +3720,12 @@ func TestProjector_AssociationUpdated(t *testing.T) {
 
 func TestProjector_AssociationUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Try to update a non-existent association (should not error, just skip)
 	updateEvent := domain.NewAssociationUpdated(uuid.New(), map[string]any{"role": "witness"})
-	err := projector.Project(ctx, updateEvent, 1)
+	err := projector.Project(ctx, updateEvent, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project update should not fail for non-existent association: %v", err)
 	}
@@ -3733,24 +3733,24 @@ func TestProjector_AssociationUpdated_NonExistent(t *testing.T) {
 
 func TestProjector_AssociationDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create persons and association first
 	person := domain.NewPerson("John", "Doe")
 	associate := domain.NewPerson("Jane", "Smith")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
-	projector.Project(ctx, domain.NewPersonCreated(associate), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
+	projector.Project(ctx, domain.NewPersonCreated(associate), 1, domain.MainBranchID)
 
 	association := domain.NewAssociation(person.ID, associate.ID, "witness")
 	createEvent := domain.NewAssociationCreated(association)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	// Delete association
 	deleteEvent := domain.NewAssociationDeleted(association.ID, "test deletion")
-	err := projector.Project(ctx, deleteEvent, 2)
+	err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
@@ -3766,12 +3766,12 @@ func TestProjector_AssociationDeleted(t *testing.T) {
 
 func TestProjector_NameAdded(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person first
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Add an alternate name
 	name := domain.NewPersonName(person.ID, "Johnny", "Doe")
@@ -3781,13 +3781,13 @@ func TestProjector_NameAdded(t *testing.T) {
 
 	event := domain.NewNameAdded(name)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project NameAdded failed: %v", err)
 	}
 
 	// Verify name in read model
-	rm, err := readStore.GetPersonName(ctx, name.ID)
+	rm, err := readStore.GetPersonName(ctx, domain.MainBranchID, name.ID)
 	if err != nil {
 		t.Fatalf("GetPersonName failed: %v", err)
 	}
@@ -3816,12 +3816,12 @@ func TestProjector_NameAdded(t *testing.T) {
 
 func TestProjector_NameAdded_WithPrefixes(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person first
 	person := domain.NewPerson("Ludwig", "Beethoven")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	// Add a formal name with prefixes
 	name := domain.NewPersonName(person.ID, "Ludwig", "Beethoven")
@@ -3833,13 +3833,13 @@ func TestProjector_NameAdded_WithPrefixes(t *testing.T) {
 
 	event := domain.NewNameAdded(name)
 
-	err := projector.Project(ctx, event, 2)
+	err := projector.Project(ctx, event, 2, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project NameAdded failed: %v", err)
 	}
 
 	// Verify name in read model
-	rm, err := readStore.GetPersonName(ctx, name.ID)
+	rm, err := readStore.GetPersonName(ctx, domain.MainBranchID, name.ID)
 	if err != nil {
 		t.Fatalf("GetPersonName failed: %v", err)
 	}
@@ -3863,17 +3863,17 @@ func TestProjector_NameAdded_WithPrefixes(t *testing.T) {
 
 func TestProjector_NameUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person and add a name first
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	name := domain.NewPersonName(person.ID, "John", "Doe")
 	name.IsPrimary = true
 	addEvent := domain.NewNameAdded(name)
-	if err := projector.Project(ctx, addEvent, 2); err != nil {
+	if err := projector.Project(ctx, addEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project add failed: %v", err)
 	}
 
@@ -3883,13 +3883,13 @@ func TestProjector_NameUpdated(t *testing.T) {
 	name.NameType = domain.NameTypeMarried
 
 	updateEvent := domain.NewNameUpdated(name)
-	err := projector.Project(ctx, updateEvent, 3)
+	err := projector.Project(ctx, updateEvent, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project NameUpdated failed: %v", err)
 	}
 
 	// Verify updated name
-	rm, err := readStore.GetPersonName(ctx, name.ID)
+	rm, err := readStore.GetPersonName(ctx, domain.MainBranchID, name.ID)
 	if err != nil {
 		t.Fatalf("GetPersonName failed: %v", err)
 	}
@@ -3909,35 +3909,35 @@ func TestProjector_NameUpdated(t *testing.T) {
 
 func TestProjector_NameRemoved(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Create a person and add a name first
 	person := domain.NewPerson("John", "Doe")
-	projector.Project(ctx, domain.NewPersonCreated(person), 1)
+	projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID)
 
 	name := domain.NewPersonName(person.ID, "Johnny", "Doe")
 	name.NameType = domain.NameTypeAKA
 	addEvent := domain.NewNameAdded(name)
-	if err := projector.Project(ctx, addEvent, 2); err != nil {
+	if err := projector.Project(ctx, addEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project add failed: %v", err)
 	}
 
 	// Verify name exists
-	rm, _ := readStore.GetPersonName(ctx, name.ID)
+	rm, _ := readStore.GetPersonName(ctx, domain.MainBranchID, name.ID)
 	if rm == nil {
 		t.Fatal("Name should exist before removal")
 	}
 
 	// Remove the name
 	removeEvent := domain.NewNameRemoved(person.ID, name.ID)
-	err := projector.Project(ctx, removeEvent, 3)
+	err := projector.Project(ctx, removeEvent, 3, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project NameRemoved failed: %v", err)
 	}
 
 	// Verify deletion
-	rm, _ = readStore.GetPersonName(ctx, name.ID)
+	rm, _ = readStore.GetPersonName(ctx, domain.MainBranchID, name.ID)
 	if rm != nil {
 		t.Error("Name should be deleted")
 	}
@@ -3945,7 +3945,7 @@ func TestProjector_NameRemoved(t *testing.T) {
 
 func TestProjector_EvidenceAnalysisCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ea := &domain.EvidenceAnalysis{
@@ -3959,7 +3959,7 @@ func TestProjector_EvidenceAnalysisCreated(t *testing.T) {
 	}
 	event := domain.NewEvidenceAnalysisCreated(ea)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project EvidenceAnalysisCreated failed: %v", err)
 	}
@@ -3987,7 +3987,7 @@ func TestProjector_EvidenceAnalysisCreated(t *testing.T) {
 
 func TestProjector_EvidenceAnalysisUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ea := &domain.EvidenceAnalysis{
@@ -3997,7 +3997,7 @@ func TestProjector_EvidenceAnalysisUpdated(t *testing.T) {
 		Conclusion: "Initial conclusion",
 	}
 	createEvent := domain.NewEvidenceAnalysisCreated(ea)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -4005,7 +4005,7 @@ func TestProjector_EvidenceAnalysisUpdated(t *testing.T) {
 		"conclusion": "Updated conclusion",
 		"notes":      "New notes",
 	})
-	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+	if err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
@@ -4026,7 +4026,7 @@ func TestProjector_EvidenceAnalysisUpdated(t *testing.T) {
 
 func TestProjector_EvidenceAnalysisDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ea := &domain.EvidenceAnalysis{
@@ -4036,12 +4036,12 @@ func TestProjector_EvidenceAnalysisDeleted(t *testing.T) {
 		Conclusion: "Will be deleted",
 	}
 	createEvent := domain.NewEvidenceAnalysisCreated(ea)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	deleteEvent := domain.NewEvidenceAnalysisDeleted(ea.ID, "superseded")
-	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+	if err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
@@ -4056,7 +4056,7 @@ func TestProjector_EvidenceAnalysisDeleted(t *testing.T) {
 
 func TestProjector_EvidenceConflictDetected(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ec := &domain.EvidenceConflict{
@@ -4069,7 +4069,7 @@ func TestProjector_EvidenceConflictDetected(t *testing.T) {
 	}
 	event := domain.NewEvidenceConflictDetected(ec)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project EvidenceConflictDetected failed: %v", err)
 	}
@@ -4091,7 +4091,7 @@ func TestProjector_EvidenceConflictDetected(t *testing.T) {
 
 func TestProjector_EvidenceConflictResolved(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ec := &domain.EvidenceConflict{
@@ -4103,12 +4103,12 @@ func TestProjector_EvidenceConflictResolved(t *testing.T) {
 		Status:      domain.ConflictStatusOpen,
 	}
 	createEvent := domain.NewEvidenceConflictDetected(ec)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	resolveEvent := domain.NewEvidenceConflictResolved(ec.ID, "Certificate is authoritative", domain.ConflictStatusResolved)
-	if err := projector.Project(ctx, resolveEvent, 2); err != nil {
+	if err := projector.Project(ctx, resolveEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project resolve failed: %v", err)
 	}
 
@@ -4126,7 +4126,7 @@ func TestProjector_EvidenceConflictResolved(t *testing.T) {
 
 func TestProjector_ResearchLogCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	rl := &domain.ResearchLog{
@@ -4141,7 +4141,7 @@ func TestProjector_ResearchLogCreated(t *testing.T) {
 	}
 	event := domain.NewResearchLogCreated(rl)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project ResearchLogCreated failed: %v", err)
 	}
@@ -4163,7 +4163,7 @@ func TestProjector_ResearchLogCreated(t *testing.T) {
 
 func TestProjector_ResearchLogUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	rl := &domain.ResearchLog{
@@ -4176,7 +4176,7 @@ func TestProjector_ResearchLogUpdated(t *testing.T) {
 		SearchDate:        time.Now().UTC(),
 	}
 	createEvent := domain.NewResearchLogCreated(rl)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -4184,7 +4184,7 @@ func TestProjector_ResearchLogUpdated(t *testing.T) {
 		"notes":   "Updated notes",
 		"outcome": "not_found",
 	})
-	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+	if err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
@@ -4202,7 +4202,7 @@ func TestProjector_ResearchLogUpdated(t *testing.T) {
 
 func TestProjector_ResearchLogDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	rl := &domain.ResearchLog{
@@ -4215,12 +4215,12 @@ func TestProjector_ResearchLogDeleted(t *testing.T) {
 		SearchDate:        time.Now().UTC(),
 	}
 	createEvent := domain.NewResearchLogCreated(rl)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	deleteEvent := domain.NewResearchLogDeleted(rl.ID, "duplicate")
-	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+	if err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
@@ -4235,7 +4235,7 @@ func TestProjector_ResearchLogDeleted(t *testing.T) {
 
 func TestProjector_ProofSummaryCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ps := &domain.ProofSummary{
@@ -4249,7 +4249,7 @@ func TestProjector_ProofSummaryCreated(t *testing.T) {
 	}
 	event := domain.NewProofSummaryCreated(ps)
 
-	err := projector.Project(ctx, event, 1)
+	err := projector.Project(ctx, event, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Project ProofSummaryCreated failed: %v", err)
 	}
@@ -4274,7 +4274,7 @@ func TestProjector_ProofSummaryCreated(t *testing.T) {
 
 func TestProjector_ProofSummaryUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ps := &domain.ProofSummary{
@@ -4285,7 +4285,7 @@ func TestProjector_ProofSummaryUpdated(t *testing.T) {
 		Argument:   "Initial argument",
 	}
 	createEvent := domain.NewProofSummaryCreated(ps)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -4293,7 +4293,7 @@ func TestProjector_ProofSummaryUpdated(t *testing.T) {
 		"conclusion": "Revised conclusion",
 		"argument":   "Stronger argument",
 	})
-	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+	if err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
@@ -4314,7 +4314,7 @@ func TestProjector_ProofSummaryUpdated(t *testing.T) {
 
 func TestProjector_ProofSummaryDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	ps := &domain.ProofSummary{
@@ -4325,12 +4325,12 @@ func TestProjector_ProofSummaryDeleted(t *testing.T) {
 		Argument:   "Obsolete argument",
 	}
 	createEvent := domain.NewProofSummaryCreated(ps)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	deleteEvent := domain.NewProofSummaryDeleted(ps.ID, "obsolete")
-	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+	if err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
@@ -4345,7 +4345,7 @@ func TestProjector_ProofSummaryDeleted(t *testing.T) {
 
 func TestProjector_RepositoryCreated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	repo := domain.NewRepository("National Archives")
@@ -4361,7 +4361,7 @@ func TestProjector_RepositoryCreated(t *testing.T) {
 	repo.GedcomXref = "@R1@"
 
 	createEvent := domain.NewRepositoryCreated(repo)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -4397,12 +4397,12 @@ func TestProjector_RepositoryCreated(t *testing.T) {
 
 func TestProjector_RepositoryUpdated(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	repo := domain.NewRepository("Old Name")
 	createEvent := domain.NewRepositoryCreated(repo)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -4413,7 +4413,7 @@ func TestProjector_RepositoryUpdated(t *testing.T) {
 		"notes":       "Updated notes",
 		"gedcom_xref": "@R9@",
 	})
-	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+	if err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
@@ -4446,11 +4446,11 @@ func TestProjector_RepositoryUpdated(t *testing.T) {
 // map[string]any rather than *domain.Address. The projection must still apply it.
 func TestProjector_RepositoryUpdated_ReplayAddress(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	repo := domain.NewRepository("Old Name")
-	if err := projector.Project(ctx, domain.NewRepositoryCreated(repo), 1); err != nil {
+	if err := projector.Project(ctx, domain.NewRepositoryCreated(repo), 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -4458,7 +4458,7 @@ func TestProjector_RepositoryUpdated_ReplayAddress(t *testing.T) {
 	updateEvent := domain.NewRepositoryUpdated(repo.ID, map[string]any{
 		"address": map[string]any{"city": "Boston", "state": "MA"},
 	})
-	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+	if err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
@@ -4476,29 +4476,29 @@ func TestProjector_RepositoryUpdated_ReplayAddress(t *testing.T) {
 
 func TestProjector_RepositoryUpdated_NonExistent(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	// Updating a repository absent from the read model is a no-op (no error).
 	updateEvent := domain.NewRepositoryUpdated(uuid.New(), map[string]any{"name": "Ghost"})
-	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+	if err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update of missing repository should be a no-op, got: %v", err)
 	}
 }
 
 func TestProjector_RepositoryDeleted(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	repo := domain.NewRepository("To Delete")
 	createEvent := domain.NewRepositoryCreated(repo)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
 	deleteEvent := domain.NewRepositoryDeleted(repo.ID, "test")
-	if err := projector.Project(ctx, deleteEvent, 2); err != nil {
+	if err := projector.Project(ctx, deleteEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
@@ -4513,12 +4513,12 @@ func TestProjector_RepositoryDeleted(t *testing.T) {
 
 func TestProjector_PersonUpdated_UnknownKeyIgnored(t *testing.T) {
 	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore)
+	projector := repository.NewProjector(readStore, nil)
 	ctx := context.Background()
 
 	person := domain.NewPerson("John", "Doe")
 	createEvent := domain.NewPersonCreated(person)
-	if err := projector.Project(ctx, createEvent, 1); err != nil {
+	if err := projector.Project(ctx, createEvent, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
@@ -4528,12 +4528,145 @@ func TestProjector_PersonUpdated_UnknownKeyIgnored(t *testing.T) {
 		"no_such_key": "value",
 	}
 	updateEvent := domain.NewPersonUpdated(person.ID, changes)
-	if err := projector.Project(ctx, updateEvent, 2); err != nil {
+	if err := projector.Project(ctx, updateEvent, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
-	rm, _ := readStore.GetPerson(ctx, person.ID)
+	rm, _ := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
 	if rm.GivenName != "Jane" {
 		t.Errorf("GivenName = %s, want Jane", rm.GivenName)
+	}
+}
+
+// --- Branch-aware projection routing (ADR-005) ---
+
+// TestProjector_BranchScopedSliceRows verifies that projecting slice events under
+// a non-main branch id writes branch-scoped rows that are visible on that branch
+// but invisible on main.
+func TestProjector_BranchScopedSliceRows(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+	branchID := domain.BranchID(uuid.New())
+
+	// Project a Person on the branch only.
+	person := domain.NewPerson("Branch", "Only")
+	if err := projector.Project(ctx, domain.NewPersonCreated(person), 1, branchID); err != nil {
+		t.Fatalf("Project person on branch failed: %v", err)
+	}
+
+	// Project a Family on the branch only.
+	family := domain.NewFamily()
+	if err := projector.Project(ctx, domain.NewFamilyCreated(family), 1, branchID); err != nil {
+		t.Fatalf("Project family on branch failed: %v", err)
+	}
+
+	// Visible on the branch.
+	if got, _ := readStore.GetPerson(ctx, branchID, person.ID); got == nil {
+		t.Error("person not found on its branch")
+	}
+	if got, _ := readStore.GetFamily(ctx, branchID, family.ID); got == nil {
+		t.Error("family not found on its branch")
+	}
+
+	// Invisible on main (branch-only rows do not leak to the mainline).
+	if got, _ := readStore.GetPerson(ctx, domain.MainBranchID, person.ID); got != nil {
+		t.Error("branch-only person leaked onto main")
+	}
+	if got, _ := readStore.GetFamily(ctx, domain.MainBranchID, family.ID); got != nil {
+		t.Error("branch-only family leaked onto main")
+	}
+}
+
+// TestProjector_BranchDeleteWritesTombstone verifies that a Deleted event on a
+// non-main branch hides the main row on that branch (tombstone) without removing
+// it from main.
+func TestProjector_BranchDeleteWritesTombstone(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+	branchID := domain.BranchID(uuid.New())
+
+	// Create a person on main.
+	person := domain.NewPerson("Main", "Person")
+	if err := projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project person on main failed: %v", err)
+	}
+
+	// Delete it on the branch -> tombstone.
+	if err := projector.Project(ctx, domain.NewPersonDeleted(person.ID, "merge test"), 2, branchID); err != nil {
+		t.Fatalf("Project delete on branch failed: %v", err)
+	}
+
+	// Hidden on the branch.
+	if got, _ := readStore.GetPerson(ctx, branchID, person.ID); got != nil {
+		t.Error("tombstoned person still visible on branch")
+	}
+	// Still present on main.
+	if got, _ := readStore.GetPerson(ctx, domain.MainBranchID, person.ID); got == nil {
+		t.Error("branch delete removed the person from main")
+	}
+}
+
+// TestProjector_BranchLifecycleRegistry verifies the three branch-lifecycle
+// handlers drive the event-sourced branch registry (PR-004).
+func TestProjector_BranchLifecycleRegistry(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	branchStore := memory.NewBranchStore()
+	projector := repository.NewProjector(readStore, branchStore)
+	ctx := context.Background()
+
+	branch, err := domain.NewBranch("experiment", "a side line", 42)
+	if err != nil {
+		t.Fatalf("NewBranch failed: %v", err)
+	}
+
+	// BranchCreated -> Upsert into the registry as active.
+	if err := projector.Project(ctx, domain.NewBranchCreated(branch), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project BranchCreated failed: %v", err)
+	}
+	got, err := branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("registry Get after create failed: %v", err)
+	}
+	if got.Name != "experiment" || got.BasePosition != 42 {
+		t.Errorf("registry row = %+v, want name=experiment base=42", got)
+	}
+	if got.Status != domain.BranchStatusActive {
+		t.Errorf("status = %s, want active", got.Status)
+	}
+
+	// BranchMerged -> status merged.
+	if err := projector.Project(ctx, domain.NewBranchMerged(branch.ID, 42, 100), 2, domain.MainBranchID); err != nil {
+		t.Fatalf("Project BranchMerged failed: %v", err)
+	}
+	if got, _ = branchStore.Get(ctx, branch.ID); got.Status != domain.BranchStatusMerged {
+		t.Errorf("status = %s, want merged", got.Status)
+	}
+
+	// BranchDeleted -> status archived.
+	if err := projector.Project(ctx, domain.NewBranchDeleted(branch.ID), 3, domain.MainBranchID); err != nil {
+		t.Fatalf("Project BranchDeleted failed: %v", err)
+	}
+	if got, _ = branchStore.Get(ctx, branch.ID); got.Status != domain.BranchStatusArchived {
+		t.Errorf("status = %s, want archived", got.Status)
+	}
+}
+
+// TestProjector_BranchLifecycleNilStore verifies branch-lifecycle events no-op
+// (rather than panic) when no branch registry store is wired.
+func TestProjector_BranchLifecycleNilStore(t *testing.T) {
+	projector := repository.NewProjector(memory.NewReadModelStore(), nil)
+	ctx := context.Background()
+
+	branch, _ := domain.NewBranch("x", "", 0)
+	if err := projector.Project(ctx, domain.NewBranchCreated(branch), 1, domain.MainBranchID); err != nil {
+		t.Errorf("BranchCreated with nil store should no-op, got %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewBranchMerged(branch.ID, 0, 1), 2, domain.MainBranchID); err != nil {
+		t.Errorf("BranchMerged with nil store should no-op, got %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewBranchDeleted(branch.ID), 3, domain.MainBranchID); err != nil {
+		t.Errorf("BranchDeleted with nil store should no-op, got %v", err)
 	}
 }

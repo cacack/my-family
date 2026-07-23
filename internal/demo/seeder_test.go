@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -69,7 +70,7 @@ func TestSeedDemoData(t *testing.T) {
 	// Verify family children links
 	totalChildren := 0
 	for _, f := range families {
-		children, err := readStore.GetFamilyChildren(ctx, f.ID)
+		children, err := readStore.GetFamilyChildren(ctx, domain.MainBranchID, f.ID)
 		if err != nil {
 			t.Fatalf("GetFamilyChildren(%s): %v", f.ID, err)
 		}

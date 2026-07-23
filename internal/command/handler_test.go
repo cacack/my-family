@@ -26,11 +26,11 @@ func newMockEventStore() *mockEventStore {
 	}
 }
 
-func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64) error {
+func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
 	if m.appendError != nil {
 		return m.appendError
 	}
-	return m.EventStore.Append(ctx, streamID, streamType, events, expectedVersion)
+	return m.EventStore.Append(ctx, streamID, streamType, events, expectedVersion, branchID)
 }
 
 func TestNewHandler(t *testing.T) {
@@ -73,7 +73,7 @@ func TestHandler_Execute_ValidEvents(t *testing.T) {
 	}
 
 	// Verify event was stored
-	person, err := readStore.GetPerson(ctx, result.ID)
+	person, err := readStore.GetPerson(ctx, domain.MainBranchID, result.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestHandler_Execute_InvalidUUID(t *testing.T) {
 	}
 
 	// Verify the version was incremented correctly
-	person, _ := readStore.GetPerson(ctx, result.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, result.ID)
 	if person.Version != 2 {
 		t.Errorf("Version = %d, want 2", person.Version)
 	}
@@ -217,7 +217,7 @@ func TestHandler_Execute_MultipleEvents(t *testing.T) {
 	}
 
 	// Verify final version
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person.Version != 4 {
 		t.Errorf("Final version = %d, want 4", person.Version)
 	}
@@ -299,7 +299,7 @@ func TestRollbackPerson_Success(t *testing.T) {
 	}
 
 	// Verify the person was restored
-	person, err := readStore.GetPerson(ctx, createResult.ID)
+	person, err := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}

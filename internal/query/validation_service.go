@@ -317,7 +317,7 @@ func (s *ValidationService) buildGedcomDocument(ctx context.Context) (*gedcom.Do
 		xrefMap[xref] = family.ID
 
 		// Load children for this family
-		children, err := s.readStore.GetFamilyChildren(ctx, family.ID)
+		children, err := s.readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
 		if err != nil {
 			return nil, nil, err
 		}

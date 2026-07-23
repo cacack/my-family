@@ -17,7 +17,7 @@ func TestMemoryPersonExternalIDs(t *testing.T) {
 	personID := uuid.New()
 
 	// Empty when none stored.
-	got, err := store.GetPersonExternalIDs(ctx, personID)
+	got, err := store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetPersonExternalIDs: %v", err)
 	}
@@ -30,11 +30,11 @@ func TestMemoryPersonExternalIDs(t *testing.T) {
 		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
 		{Value: "12345", Type: "https://www.findagrave.com/"},
 	}
-	if err := store.ReplacePersonExternalIDs(ctx, personID, ids); err != nil {
+	if err := store.ReplacePersonExternalIDs(ctx, domain.MainBranchID, personID, ids); err != nil {
 		t.Fatalf("ReplacePersonExternalIDs: %v", err)
 	}
 
-	got, err = store.GetPersonExternalIDs(ctx, personID)
+	got, err = store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetPersonExternalIDs: %v", err)
 	}
@@ -49,19 +49,19 @@ func TestMemoryPersonExternalIDs(t *testing.T) {
 	}
 
 	// Replacing with a single identifier drops the removed one.
-	if err := store.ReplacePersonExternalIDs(ctx, personID, ids[:1]); err != nil {
+	if err := store.ReplacePersonExternalIDs(ctx, domain.MainBranchID, personID, ids[:1]); err != nil {
 		t.Fatalf("ReplacePersonExternalIDs (shrink): %v", err)
 	}
-	got, _ = store.GetPersonExternalIDs(ctx, personID)
+	got, _ = store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
 	if len(got) != 1 {
 		t.Fatalf("expected 1 external id after shrink, got %d", len(got))
 	}
 
 	// Empty slice clears all.
-	if err := store.ReplacePersonExternalIDs(ctx, personID, nil); err != nil {
+	if err := store.ReplacePersonExternalIDs(ctx, domain.MainBranchID, personID, nil); err != nil {
 		t.Fatalf("ReplacePersonExternalIDs (clear): %v", err)
 	}
-	got, _ = store.GetPersonExternalIDs(ctx, personID)
+	got, _ = store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
 	if len(got) != 0 {
 		t.Fatalf("expected 0 external ids after clear, got %d", len(got))
 	}
@@ -72,16 +72,16 @@ func TestMemoryPersonExternalIDsCascadeDelete(t *testing.T) {
 	ctx := context.Background()
 	personID := uuid.New()
 
-	if err := store.SavePerson(ctx, &repository.PersonReadModel{ID: personID, GivenName: "Ada", Surname: "Lovelace", Version: 1}); err != nil {
+	if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: personID, GivenName: "Ada", Surname: "Lovelace", Version: 1}); err != nil {
 		t.Fatalf("SavePerson: %v", err)
 	}
-	if err := store.ReplacePersonExternalIDs(ctx, personID, []repository.PersonExternalIDReadModel{{Value: "X1"}}); err != nil {
+	if err := store.ReplacePersonExternalIDs(ctx, domain.MainBranchID, personID, []repository.PersonExternalIDReadModel{{Value: "X1"}}); err != nil {
 		t.Fatalf("ReplacePersonExternalIDs: %v", err)
 	}
-	if err := store.DeletePerson(ctx, personID); err != nil {
+	if err := store.DeletePerson(ctx, domain.MainBranchID, personID); err != nil {
 		t.Fatalf("DeletePerson: %v", err)
 	}
-	got, _ := store.GetPersonExternalIDs(ctx, personID)
+	got, _ := store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
 	if len(got) != 0 {
 		t.Fatalf("expected external ids cascade-deleted, got %d", len(got))
 	}
@@ -91,11 +91,11 @@ func TestMemoryFamilyExternalIDs(t *testing.T) {
 	store := memory.NewReadModelStore()
 	ctx := context.Background()
 	familyID := uuid.New()
-	if err := store.SaveFamily(ctx, &repository.FamilyReadModel{ID: familyID, RelationshipType: domain.RelationMarriage, Version: 1}); err != nil {
+	if err := store.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: familyID, RelationshipType: domain.RelationMarriage, Version: 1}); err != nil {
 		t.Fatalf("SaveFamily: %v", err)
 	}
 
-	got, err := store.GetFamilyExternalIDs(ctx, familyID)
+	got, err := store.GetFamilyExternalIDs(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamilyExternalIDs: %v", err)
 	}
@@ -107,19 +107,19 @@ func TestMemoryFamilyExternalIDs(t *testing.T) {
 		{Value: "F-1", Type: "http://example.com/fam"},
 		{Value: "F-2"},
 	}
-	if err := store.ReplaceFamilyExternalIDs(ctx, familyID, ids); err != nil {
+	if err := store.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, familyID, ids); err != nil {
 		t.Fatalf("ReplaceFamilyExternalIDs: %v", err)
 	}
-	got, _ = store.GetFamilyExternalIDs(ctx, familyID)
+	got, _ = store.GetFamilyExternalIDs(ctx, domain.MainBranchID, familyID)
 	if len(got) != 2 || got[0].Value != "F-1" || got[0].Sequence != 0 || got[0].FamilyID != familyID || got[1].Value != "F-2" || got[1].Sequence != 1 {
 		t.Fatalf("unexpected external ids: %+v", got)
 	}
 
 	// Deleting the family cascades to its external ids.
-	if err := store.DeleteFamily(ctx, familyID); err != nil {
+	if err := store.DeleteFamily(ctx, domain.MainBranchID, familyID); err != nil {
 		t.Fatalf("DeleteFamily: %v", err)
 	}
-	got, _ = store.GetFamilyExternalIDs(ctx, familyID)
+	got, _ = store.GetFamilyExternalIDs(ctx, domain.MainBranchID, familyID)
 	if len(got) != 0 {
 		t.Fatalf("expected external ids cascade-deleted, got %d", len(got))
 	}

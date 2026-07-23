@@ -10,6 +10,7 @@ import (
 
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 	"github.com/google/uuid"
@@ -41,7 +42,7 @@ func TestGetPerson_ExternalLinks(t *testing.T) {
 	}
 
 	// Seed external IDs directly in the read model (they are import-only; no create API).
-	if err := readStore.ReplacePersonExternalIDs(context.Background(), personID, []repository.PersonExternalIDReadModel{
+	if err := readStore.ReplacePersonExternalIDs(context.Background(), domain.MainBranchID, personID, []repository.PersonExternalIDReadModel{
 		{PersonID: personID, Sequence: 0, Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
 		{PersonID: personID, Sequence: 1, Value: "X99", Type: "http://example.com/unknown-system"},
 	}); err != nil {
@@ -114,10 +115,10 @@ func TestGetEntity_ExternalLinks(t *testing.T) {
 
 	familyID, sourceID, repoID := uuid.New(), uuid.New(), uuid.New()
 
-	if err := readStore.SaveFamily(ctx, &repository.FamilyReadModel{ID: familyID}); err != nil {
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: familyID}); err != nil {
 		t.Fatalf("seed family: %v", err)
 	}
-	if err := readStore.ReplaceFamilyExternalIDs(ctx, familyID, []repository.FamilyExternalIDReadModel{
+	if err := readStore.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, familyID, []repository.FamilyExternalIDReadModel{
 		{FamilyID: familyID, Sequence: 0, Value: "F100", Type: "http://www.familysearch.org/ark"},
 	}); err != nil {
 		t.Fatalf("seed family external ids: %v", err)

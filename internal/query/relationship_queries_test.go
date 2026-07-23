@@ -16,7 +16,7 @@ import (
 func createPerson(t *testing.T, ctx context.Context, store *memory.ReadModelStore, givenName, surname string, gender domain.Gender) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
-	err := store.SavePerson(ctx, &repository.PersonReadModel{
+	err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        id,
 		GivenName: givenName,
 		Surname:   surname,
@@ -39,7 +39,7 @@ func createParentChild(t *testing.T, ctx context.Context, store *memory.ReadMode
 		FatherName: fatherName,
 		MotherName: motherName,
 	}
-	if err := store.SavePedigreeEdge(ctx, edge); err != nil {
+	if err := store.SavePedigreeEdge(ctx, domain.MainBranchID, edge); err != nil {
 		t.Fatal(err)
 	}
 }

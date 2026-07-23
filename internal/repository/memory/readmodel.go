@@ -14,16 +14,140 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// branchKey identifies a read-model row inside a specific branch's overlay
+// (ADR-005). For single-row slice entities the id is the entity id; for
+// collection slice entities (names, children, external ids) the id is the
+// parent id and the value is that parent's whole bucket. The mainline uses
+// branch == domain.MainBranchID; non-main branches hold copy-on-write shadow
+// rows and tombstones layered over main.
+type branchKey struct {
+	branch domain.BranchID
+	id     uuid.UUID
+}
+
+// resolveRow returns the overlay-resolved pointer for a single-row slice entity
+// at (branch, id): the branch's own row when the branch has written one (a nil
+// pointer is a tombstone), otherwise the main row. ok reports whether any row
+// exists for the key (a tombstone counts as existing). When branch is
+// MainBranchID only the main row is consulted, reproducing pre-branch behavior.
+func resolveRow[T any](m map[branchKey]*T, branch domain.BranchID, id uuid.UUID) (row *T, ok bool) {
+	if v, present := m[branchKey{branch, id}]; present {
+		return v, true
+	}
+	if branch != domain.MainBranchID {
+		if v, present := m[branchKey{domain.MainBranchID, id}]; present {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+// resolveAllRows returns the overlay-resolved rows for a single-row slice entity
+// visible on branch: every main row, then the branch's shadow rows layered over
+// them (a nil branch value is a tombstone that removes the id). When branch is
+// MainBranchID this is exactly the set of main rows.
+func resolveAllRows[T any](m map[branchKey]*T, branch domain.BranchID) []*T {
+	resolved := make(map[uuid.UUID]*T)
+	for k, v := range m {
+		if k.branch == domain.MainBranchID && v != nil {
+			resolved[k.id] = v
+		}
+	}
+	if branch != domain.MainBranchID {
+		for k, v := range m {
+			if k.branch != branch {
+				continue
+			}
+			if v == nil {
+				delete(resolved, k.id) // tombstone hides the main row
+			} else {
+				resolved[k.id] = v
+			}
+		}
+	}
+	out := make([]*T, 0, len(resolved))
+	for _, v := range resolved {
+		out = append(out, v)
+	}
+	return out
+}
+
+// resolveBucket returns the overlay-resolved slice for a collection slice entity
+// at (branch, parent): the branch's own bucket when present (an empty bucket is
+// a tombstone that hides main), otherwise main's bucket. ok reports whether any
+// bucket exists for the key.
+func resolveBucket[T any](m map[branchKey][]T, branch domain.BranchID, parent uuid.UUID) (rows []T, ok bool) {
+	if v, present := m[branchKey{branch, parent}]; present {
+		return v, true
+	}
+	if branch != domain.MainBranchID {
+		if v, present := m[branchKey{domain.MainBranchID, parent}]; present {
+			return v, true
+		}
+	}
+	return nil, false
+}
+
+// resolveAllBuckets returns the overlay-resolved bucket for every parent visible
+// on branch: main's buckets, then the branch's buckets layered over them (a
+// branch bucket wins wholesale; an empty branch bucket is a tombstone).
+func resolveAllBuckets[T any](m map[branchKey][]T, branch domain.BranchID) map[uuid.UUID][]T {
+	resolved := make(map[uuid.UUID][]T)
+	for k, v := range m {
+		if k.branch == domain.MainBranchID {
+			resolved[k.id] = v
+		}
+	}
+	if branch != domain.MainBranchID {
+		for k, v := range m {
+			if k.branch == branch {
+				resolved[k.id] = v
+			}
+		}
+	}
+	return resolved
+}
+
+// bucketForWrite returns a fresh, mutable copy of the effective bucket for
+// (branch, parent) to support copy-on-write: a branch mutation seeds from the
+// branch's own bucket if it has one, else from main, so the first branch edit
+// forks main's bucket rather than aliasing it.
+func bucketForWrite[T any](m map[branchKey][]T, branch domain.BranchID, parent uuid.UUID) []T {
+	v, _ := resolveBucket(m, branch, parent)
+	if len(v) == 0 {
+		return nil
+	}
+	cp := make([]T, len(v))
+	copy(cp, v)
+	return cp
+}
+
+// storeBucket writes a collection slice entity's bucket for (branch, parent). On
+// main an empty bucket is a real removal (the key is deleted); on a non-main
+// branch an empty bucket is stored as a present tombstone so the main fallback
+// does not resurrect the parent's rows.
+func storeBucket[T any](m map[branchKey][]T, branch domain.BranchID, parent uuid.UUID, rows []T) {
+	key := branchKey{branch, parent}
+	if branch == domain.MainBranchID && len(rows) == 0 {
+		delete(m, key)
+		return
+	}
+	m[key] = rows
+}
+
 // ReadModelStore is an in-memory implementation of repository.ReadModelStore for testing.
 type ReadModelStore struct {
-	mu                    sync.RWMutex
-	persons               map[uuid.UUID]*repository.PersonReadModel
-	personNames           map[uuid.UUID][]repository.PersonNameReadModel       // keyed by person ID
-	personExternalIDs     map[uuid.UUID][]repository.PersonExternalIDReadModel // keyed by person ID
-	families              map[uuid.UUID]*repository.FamilyReadModel
-	familyChildren        map[uuid.UUID][]repository.FamilyChildReadModel      // keyed by family ID
-	familyExternalIDs     map[uuid.UUID][]repository.FamilyExternalIDReadModel // keyed by family ID
-	pedigreeEdges         map[uuid.UUID]*repository.PedigreeEdge               // keyed by person ID
+	mu sync.RWMutex
+	// Branch-aware slice entities (ADR-005): keyed by (branch, id). Single-row
+	// maps use a nil value as a tombstone; collection maps use a present-but-empty
+	// bucket as a tombstone. See branchKey and the resolve* helpers above.
+	persons               map[branchKey]*repository.PersonReadModel
+	personNames           map[branchKey][]repository.PersonNameReadModel       // keyed by (branch, person ID)
+	personExternalIDs     map[branchKey][]repository.PersonExternalIDReadModel // keyed by (branch, person ID)
+	families              map[branchKey]*repository.FamilyReadModel
+	familyChildren        map[branchKey][]repository.FamilyChildReadModel      // keyed by (branch, family ID)
+	familyExternalIDs     map[branchKey][]repository.FamilyExternalIDReadModel // keyed by (branch, family ID)
+	pedigreeEdges         map[branchKey]*repository.PedigreeEdge               // keyed by (branch, person ID)
 	sources               map[uuid.UUID]*repository.SourceReadModel
 	sourceExternalIDs     map[uuid.UUID][]repository.SourceExternalIDReadModel // keyed by source ID
 	citations             map[uuid.UUID]*repository.CitationReadModel
@@ -45,13 +169,13 @@ type ReadModelStore struct {
 // NewReadModelStore creates a new in-memory read model store.
 func NewReadModelStore() *ReadModelStore {
 	return &ReadModelStore{
-		persons:               make(map[uuid.UUID]*repository.PersonReadModel),
-		personNames:           make(map[uuid.UUID][]repository.PersonNameReadModel),
-		personExternalIDs:     make(map[uuid.UUID][]repository.PersonExternalIDReadModel),
-		families:              make(map[uuid.UUID]*repository.FamilyReadModel),
-		familyChildren:        make(map[uuid.UUID][]repository.FamilyChildReadModel),
-		familyExternalIDs:     make(map[uuid.UUID][]repository.FamilyExternalIDReadModel),
-		pedigreeEdges:         make(map[uuid.UUID]*repository.PedigreeEdge),
+		persons:               make(map[branchKey]*repository.PersonReadModel),
+		personNames:           make(map[branchKey][]repository.PersonNameReadModel),
+		personExternalIDs:     make(map[branchKey][]repository.PersonExternalIDReadModel),
+		families:              make(map[branchKey]*repository.FamilyReadModel),
+		familyChildren:        make(map[branchKey][]repository.FamilyChildReadModel),
+		familyExternalIDs:     make(map[branchKey][]repository.FamilyExternalIDReadModel),
+		pedigreeEdges:         make(map[branchKey]*repository.PedigreeEdge),
 		sources:               make(map[uuid.UUID]*repository.SourceReadModel),
 		sourceExternalIDs:     make(map[uuid.UUID][]repository.SourceExternalIDReadModel),
 		citations:             make(map[uuid.UUID]*repository.CitationReadModel),
@@ -71,13 +195,13 @@ func NewReadModelStore() *ReadModelStore {
 	}
 }
 
-// GetPerson retrieves a person by ID.
-func (s *ReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
+// GetPerson retrieves a person by ID, resolving the branch overlay.
+func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PersonReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	p, exists := s.persons[id]
-	if !exists {
+	p, ok := resolveRow(s.persons, branchID, id)
+	if !ok || p == nil {
 		return nil, nil
 	}
 	// Return a copy
@@ -144,9 +268,10 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Convert map to slice, applying research_status filter if present
-	persons := make([]repository.PersonReadModel, 0, len(s.persons))
-	for _, p := range s.persons {
+	// Convert overlay-resolved rows to slice, applying research_status filter.
+	resolved := resolveAllRows(s.persons, opts.BranchID)
+	persons := make([]repository.PersonReadModel, 0, len(resolved))
+	for _, p := range resolved {
 		if matchesResearchStatusFilter(p, opts.ResearchStatus) {
 			persons = append(persons, *p)
 		}
@@ -193,8 +318,8 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	foundIDs := make(map[uuid.UUID]bool)
 	var results []repository.PersonReadModel
 
-	// Search in main persons table
-	for _, p := range s.persons {
+	// Search the overlay-resolved persons for the requested branch.
+	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
 		if !s.matchesSearchFilters(p, opts) {
 			continue
 		}
@@ -206,7 +331,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 
 	// Search in person_names table for alternate names (only if text query provided)
 	if opts.Query != "" {
-		s.searchAlternateNames(queryLower, opts, foundIDs, &results)
+		s.searchAlternateNames(opts.BranchID, queryLower, opts, foundIDs, &results)
 	}
 
 	// Sort results to match postgres/sqlite behavior
@@ -241,8 +366,8 @@ func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, query
 }
 
 // searchAlternateNames searches person_names for alternate name matches.
-func (s *ReadModelStore) searchAlternateNames(queryLower string, opts repository.SearchOptions, foundIDs map[uuid.UUID]bool, results *[]repository.PersonReadModel) {
-	for personID, names := range s.personNames {
+func (s *ReadModelStore) searchAlternateNames(branchID domain.BranchID, queryLower string, opts repository.SearchOptions, foundIDs map[uuid.UUID]bool, results *[]repository.PersonReadModel) {
+	for personID, names := range resolveAllBuckets(s.personNames, branchID) {
 		if len(*results) >= opts.Limit {
 			break
 		}
@@ -251,7 +376,7 @@ func (s *ReadModelStore) searchAlternateNames(queryLower string, opts repository
 		}
 		for _, name := range names {
 			if altNameMatches(name, queryLower, opts.Soundex) {
-				if p, exists := s.persons[personID]; exists && !foundIDs[personID] && s.matchesSearchFilters(p, opts) {
+				if p, ok := resolveRow(s.persons, branchID, personID); ok && p != nil && !foundIDs[personID] && s.matchesSearchFilters(p, opts) {
 					*results = append(*results, *p)
 					foundIDs[personID] = true
 				}
@@ -351,30 +476,61 @@ func (s *ReadModelStore) matchesSearchFilters(p *repository.PersonReadModel, opt
 	return true
 }
 
-// SavePerson saves or updates a person.
-func (s *ReadModelStore) SavePerson(ctx context.Context, person *repository.PersonReadModel) error {
+// SavePerson saves or updates a person on the given branch.
+func (s *ReadModelStore) SavePerson(ctx context.Context, branchID domain.BranchID, person *repository.PersonReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := *person
-	s.persons[person.ID] = &result
+	s.persons[branchKey{branchID, person.ID}] = &result
 	return nil
 }
 
-// DeletePerson removes a person.
-func (s *ReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
+// DeletePerson removes a person. On main this is a real removal; on a non-main
+// branch it writes tombstones (for the person and its cascaded names/external
+// IDs) so the main fallback does not resurrect the entity.
+func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.persons, id)
-	// Also delete associated person names and external IDs (cascade behavior)
-	delete(s.personNames, id)
-	delete(s.personExternalIDs, id)
+	if branchID == domain.MainBranchID {
+		// Reproduce the pre-#669 ON DELETE CASCADE explicitly (read-model FKs were
+		// dropped for branch scoping). person_names, person_external_ids,
+		// pedigree_edges and associations (both person_id and associate_id) were
+		// ON DELETE CASCADE. attributes referenced persons(id) with NO ON DELETE
+		// (RESTRICT), which would have blocked the delete; blocking is not
+		// reproducible against an append-only event log, so we cascade-delete
+		// orphan attributes too. associations/attributes are main-only.
+		delete(s.persons, branchKey{domain.MainBranchID, id})
+		delete(s.personNames, branchKey{domain.MainBranchID, id})
+		delete(s.personExternalIDs, branchKey{domain.MainBranchID, id})
+		delete(s.pedigreeEdges, branchKey{domain.MainBranchID, id})
+		for aid, assoc := range s.associations {
+			if assoc != nil && (assoc.PersonID == id || assoc.AssociateID == id) {
+				delete(s.associations, aid)
+			}
+		}
+		for atid, attr := range s.attributes {
+			if attr != nil && attr.PersonID == id {
+				delete(s.attributes, atid)
+			}
+		}
+		return nil
+	}
+	// Branch delete: tombstone the person and its branch-scoped dependents.
+	// associations/attributes are main-only (not branch-scoped), so a branch
+	// delete does not touch them.
+	s.persons[branchKey{branchID, id}] = nil           // tombstone
+	s.personNames[branchKey{branchID, id}] = nil       // cascade tombstone
+	s.personExternalIDs[branchKey{branchID, id}] = nil // cascade tombstone
+	s.pedigreeEdges[branchKey{branchID, id}] = nil     // cascade tombstone
 	return nil
 }
 
-// SavePersonName saves or updates a person name variant.
-func (s *ReadModelStore) SavePersonName(ctx context.Context, name *repository.PersonNameReadModel) error {
+// SavePersonName saves or updates a person name variant on the given branch.
+// On a non-main branch the person's name bucket is copied-on-write from main
+// before the mutation is applied.
+func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.BranchID, name *repository.PersonNameReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -384,31 +540,31 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, name *repository.Pe
 		fullName = name.GivenName + " " + name.Surname
 	}
 
-	names := s.personNames[name.PersonID]
-	// Check if already exists and update
-	for i, n := range names {
-		if n.ID != name.ID {
-			continue
-		}
-		nameCopy := *name
-		nameCopy.FullName = fullName
-		names[i] = nameCopy
-		s.personNames[name.PersonID] = names
-		return nil
-	}
-	// Add new
 	nameCopy := *name
 	nameCopy.FullName = fullName
-	s.personNames[name.PersonID] = append(names, nameCopy)
+
+	names := bucketForWrite(s.personNames, branchID, name.PersonID)
+	updated := false
+	for i := range names {
+		if names[i].ID == name.ID {
+			names[i] = nameCopy
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		names = append(names, nameCopy)
+	}
+	storeBucket(s.personNames, branchID, name.PersonID, names)
 	return nil
 }
 
-// GetPersonName retrieves a person name by ID.
-func (s *ReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
+// GetPersonName retrieves a person name by ID within the branch overlay.
+func (s *ReadModelStore) GetPersonName(ctx context.Context, branchID domain.BranchID, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for _, names := range s.personNames {
+	for _, names := range resolveAllBuckets(s.personNames, branchID) {
 		for _, n := range names {
 			if n.ID == nameID {
 				result := n
@@ -419,13 +575,13 @@ func (s *ReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*
 	return nil, nil
 }
 
-// GetPersonNames retrieves all name variants for a person.
-func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
+// GetPersonNames retrieves all name variants for a person within the branch overlay.
+func (s *ReadModelStore) GetPersonNames(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	names := s.personNames[personID]
-	if names == nil {
+	names, ok := resolveBucket(s.personNames, branchID, personID)
+	if !ok || len(names) == 0 {
 		return nil, nil
 	}
 	result := make([]repository.PersonNameReadModel, len(names))
@@ -442,29 +598,41 @@ func (s *ReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID)
 	return result, nil
 }
 
-// DeletePersonName removes a person name.
-func (s *ReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
+// DeletePersonName removes a person name within the branch overlay. On a
+// non-main branch the owning person's name bucket is copied-on-write before the
+// name is removed, so the branch shadows main without mutating it.
+func (s *ReadModelStore) DeletePersonName(ctx context.Context, branchID domain.BranchID, nameID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for personID, names := range s.personNames {
-		for i, n := range names {
-			if n.ID == nameID {
-				s.personNames[personID] = append(names[:i], names[i+1:]...)
-				return nil
+	for personID, names := range resolveAllBuckets(s.personNames, branchID) {
+		for _, n := range names {
+			if n.ID != nameID {
+				continue
 			}
+			seeded := bucketForWrite(s.personNames, branchID, personID)
+			out := seeded[:0]
+			for _, sn := range seeded {
+				if sn.ID != nameID {
+					out = append(out, sn)
+				}
+			}
+			storeBucket(s.personNames, branchID, personID, out)
+			return nil
 		}
 	}
 	return nil
 }
 
-// ReplacePersonExternalIDs replaces all external identifiers for a person.
-func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
+// ReplacePersonExternalIDs replaces all external identifiers for a person on the
+// given branch. On a non-main branch an empty set writes a tombstone bucket so
+// the main fallback does not resurrect the identifiers.
+func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if len(ids) == 0 {
-		delete(s.personExternalIDs, personID)
+		storeBucket(s.personExternalIDs, branchID, personID, nil)
 		return nil
 	}
 	stored := make([]repository.PersonExternalIDReadModel, len(ids))
@@ -473,18 +641,18 @@ func (s *ReadModelStore) ReplacePersonExternalIDs(ctx context.Context, personID 
 		id.Sequence = i
 		stored[i] = id
 	}
-	s.personExternalIDs[personID] = stored
+	storeBucket(s.personExternalIDs, branchID, personID, stored)
 	return nil
 }
 
-// GetPersonExternalIDs retrieves all external identifiers for a person, ordered
-// by their original sequence.
-func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
+// GetPersonExternalIDs retrieves all external identifiers for a person within the
+// branch overlay, ordered by their original sequence.
+func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	ids := s.personExternalIDs[personID]
-	if len(ids) == 0 {
+	ids, ok := resolveBucket(s.personExternalIDs, branchID, personID)
+	if !ok || len(ids) == 0 {
 		return nil, nil
 	}
 	result := make([]repository.PersonExternalIDReadModel, len(ids))
@@ -495,13 +663,15 @@ func (s *ReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid
 	return result, nil
 }
 
-// ReplaceFamilyExternalIDs replaces all external identifiers for a family.
-func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
+// ReplaceFamilyExternalIDs replaces all external identifiers for a family on the
+// given branch. On a non-main branch an empty set writes a tombstone bucket so
+// the main fallback does not resurrect the identifiers.
+func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if len(ids) == 0 {
-		delete(s.familyExternalIDs, familyID)
+		storeBucket(s.familyExternalIDs, branchID, familyID, nil)
 		return nil
 	}
 	stored := make([]repository.FamilyExternalIDReadModel, len(ids))
@@ -510,18 +680,18 @@ func (s *ReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, familyID 
 		id.Sequence = i
 		stored[i] = id
 	}
-	s.familyExternalIDs[familyID] = stored
+	storeBucket(s.familyExternalIDs, branchID, familyID, stored)
 	return nil
 }
 
-// GetFamilyExternalIDs retrieves all external identifiers for a family, ordered
-// by their original sequence.
-func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
+// GetFamilyExternalIDs retrieves all external identifiers for a family within the
+// branch overlay, ordered by their original sequence.
+func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	ids := s.familyExternalIDs[familyID]
-	if len(ids) == 0 {
+	ids, ok := resolveBucket(s.familyExternalIDs, branchID, familyID)
+	if !ok || len(ids) == 0 {
 		return nil, nil
 	}
 	result := make([]repository.FamilyExternalIDReadModel, len(ids))
@@ -606,26 +776,27 @@ func (s *ReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repositor
 	return result, nil
 }
 
-// GetFamily retrieves a family by ID.
-func (s *ReadModelStore) GetFamily(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
+// GetFamily retrieves a family by ID, resolving the branch overlay.
+func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.FamilyReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	f, exists := s.families[id]
-	if !exists {
+	f, ok := resolveRow(s.families, branchID, id)
+	if !ok || f == nil {
 		return nil, nil
 	}
 	result := *f
 	return &result, nil
 }
 
-// ListFamilies returns a paginated list of families.
+// ListFamilies returns a paginated list of families for the requested branch.
 func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	families := make([]repository.FamilyReadModel, 0, len(s.families))
-	for _, f := range s.families {
+	resolved := resolveAllRows(s.families, opts.BranchID)
+	families := make([]repository.FamilyReadModel, 0, len(resolved))
+	for _, f := range resolved {
 		families = append(families, *f)
 	}
 
@@ -644,13 +815,14 @@ func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListO
 	return families[start:end], total, nil
 }
 
-// GetFamiliesForPerson returns all families where the person is a partner.
-func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.FamilyReadModel, error) {
+// GetFamiliesForPerson returns all families where the person is a partner,
+// resolving the branch overlay.
+func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.FamilyReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.FamilyReadModel
-	for _, f := range s.families {
+	for _, f := range resolveAllRows(s.families, branchID) {
 		if (f.Partner1ID != nil && *f.Partner1ID == personID) ||
 			(f.Partner2ID != nil && *f.Partner2ID == personID) {
 			results = append(results, *f)
@@ -659,34 +831,42 @@ func (s *ReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid
 	return results, nil
 }
 
-// SaveFamily saves or updates a family.
-func (s *ReadModelStore) SaveFamily(ctx context.Context, family *repository.FamilyReadModel) error {
+// SaveFamily saves or updates a family on the given branch.
+func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchID, family *repository.FamilyReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := *family
-	s.families[family.ID] = &result
+	s.families[branchKey{branchID, family.ID}] = &result
 	return nil
 }
 
-// DeleteFamily removes a family.
-func (s *ReadModelStore) DeleteFamily(ctx context.Context, id uuid.UUID) error {
+// DeleteFamily removes a family. On main this is a real removal; on a non-main
+// branch it writes tombstones (for the family and its cascaded children/external
+// IDs) so the main fallback does not resurrect the entity.
+func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.families, id)
-	delete(s.familyChildren, id)
-	delete(s.familyExternalIDs, id)
+	if branchID == domain.MainBranchID {
+		delete(s.families, branchKey{domain.MainBranchID, id})
+		delete(s.familyChildren, branchKey{domain.MainBranchID, id})
+		delete(s.familyExternalIDs, branchKey{domain.MainBranchID, id})
+		return nil
+	}
+	s.families[branchKey{branchID, id}] = nil          // tombstone
+	s.familyChildren[branchKey{branchID, id}] = nil    // cascade tombstone
+	s.familyExternalIDs[branchKey{branchID, id}] = nil // cascade tombstone
 	return nil
 }
 
-// GetFamilyChildren returns all children for a family.
-func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
+// GetFamilyChildren returns all children for a family within the branch overlay.
+func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	children := s.familyChildren[familyID]
-	if children == nil {
+	children, ok := resolveBucket(s.familyChildren, branchID, familyID)
+	if !ok || len(children) == 0 {
 		return nil, nil
 	}
 	result := make([]repository.FamilyChildReadModel, len(children))
@@ -694,30 +874,32 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UU
 	return result, nil
 }
 
-// GetChildrenOfFamily returns person read models for all children in a family.
-func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
+// GetChildrenOfFamily returns person read models for all children in a family,
+// resolving both the children bucket and each person through the branch overlay.
+func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	children := s.familyChildren[familyID]
+	children, _ := resolveBucket(s.familyChildren, branchID, familyID)
 	var result []repository.PersonReadModel
 	for _, child := range children {
-		if p, exists := s.persons[child.PersonID]; exists {
+		if p, ok := resolveRow(s.persons, branchID, child.PersonID); ok && p != nil {
 			result = append(result, *p)
 		}
 	}
 	return result, nil
 }
 
-// GetChildFamily returns the family where the person is a child.
-func (s *ReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID) (*repository.FamilyReadModel, error) {
+// GetChildFamily returns the family where the person is a child, resolving the
+// branch overlay.
+func (s *ReadModelStore) GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*repository.FamilyReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for familyID, children := range s.familyChildren {
+	for familyID, children := range resolveAllBuckets(s.familyChildren, branchID) {
 		for _, child := range children {
 			if child.PersonID == personID {
-				if f, exists := s.families[familyID]; exists {
+				if f, ok := resolveRow(s.families, branchID, familyID); ok && f != nil {
 					result := *f
 					return &result, nil
 				}
@@ -727,70 +909,125 @@ func (s *ReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID)
 	return nil, nil
 }
 
-// SaveFamilyChild saves a family child relationship.
-func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, child *repository.FamilyChildReadModel) error {
+// SaveFamilyChild saves a family child relationship on the given branch. On a
+// non-main branch the family's children bucket is copied-on-write from main
+// before the mutation is applied.
+func (s *ReadModelStore) SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *repository.FamilyChildReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	children := s.familyChildren[child.FamilyID]
-	// Check if already exists and update
-	for i, c := range children {
-		if c.PersonID == child.PersonID {
+	children := bucketForWrite(s.familyChildren, branchID, child.FamilyID)
+	updated := false
+	for i := range children {
+		if children[i].PersonID == child.PersonID {
 			children[i] = *child
-			s.familyChildren[child.FamilyID] = children
-			return nil
+			updated = true
+			break
 		}
 	}
-	// Add new
-	s.familyChildren[child.FamilyID] = append(children, *child)
+	if !updated {
+		children = append(children, *child)
+	}
+	storeBucket(s.familyChildren, branchID, child.FamilyID, children)
 	return nil
 }
 
-// DeleteFamilyChild removes a family child relationship.
-func (s *ReadModelStore) DeleteFamilyChild(ctx context.Context, familyID, personID uuid.UUID) error {
+// DeleteFamilyChild removes a family child relationship within the branch
+// overlay. It is a no-op when the child is absent; otherwise, on a non-main
+// branch the family's children bucket is copied-on-write before removal.
+func (s *ReadModelStore) DeleteFamilyChild(ctx context.Context, branchID domain.BranchID, familyID, personID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	children := s.familyChildren[familyID]
-	for i, c := range children {
+	children := bucketForWrite(s.familyChildren, branchID, familyID)
+	out := children[:0]
+	removed := false
+	for _, c := range children {
 		if c.PersonID == personID {
-			s.familyChildren[familyID] = append(children[:i], children[i+1:]...)
-			return nil
+			removed = true
+			continue
 		}
+		out = append(out, c)
 	}
+	if !removed {
+		return nil
+	}
+	storeBucket(s.familyChildren, branchID, familyID, out)
 	return nil
 }
 
-// GetPedigreeEdge returns the pedigree edge for a person.
-func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, personID uuid.UUID) (*repository.PedigreeEdge, error) {
+// GetPedigreeEdge returns the pedigree edge for a person, resolving the branch overlay.
+func (s *ReadModelStore) GetPedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*repository.PedigreeEdge, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	edge, exists := s.pedigreeEdges[personID]
-	if !exists {
+	edge, ok := resolveRow(s.pedigreeEdges, branchID, personID)
+	if !ok || edge == nil {
 		return nil, nil
 	}
 	result := *edge
 	return &result, nil
 }
 
-// SavePedigreeEdge saves a pedigree edge.
-func (s *ReadModelStore) SavePedigreeEdge(ctx context.Context, edge *repository.PedigreeEdge) error {
+// SavePedigreeEdge saves a pedigree edge on the given branch.
+func (s *ReadModelStore) SavePedigreeEdge(ctx context.Context, branchID domain.BranchID, edge *repository.PedigreeEdge) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := *edge
-	s.pedigreeEdges[edge.PersonID] = &result
+	s.pedigreeEdges[branchKey{branchID, edge.PersonID}] = &result
 	return nil
 }
 
-// DeletePedigreeEdge removes a pedigree edge.
-func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, personID uuid.UUID) error {
+// DeletePedigreeEdge removes a pedigree edge. On main this is a real removal; on
+// a non-main branch it writes a tombstone so the main fallback does not
+// resurrect the edge.
+func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.pedigreeEdges, personID)
+	if branchID == domain.MainBranchID {
+		delete(s.pedigreeEdges, branchKey{domain.MainBranchID, personID})
+		return nil
+	}
+	s.pedigreeEdges[branchKey{branchID, personID}] = nil // tombstone
 	return nil
+}
+
+// PurgeBranch hard-deletes every slice-map entry keyed to branchID across the
+// seven branch-scoped slice entities. It is a no-op for the mainline
+// (domain.MainBranchID), which is never purged. See ADR-005 and the
+// branch-delete projection handler.
+func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
+	if branchID == domain.MainBranchID {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// associations/attributes are intentionally excluded: they are main-scoped
+	// (not branch-keyed), so a branch-only entity cannot own them and purging
+	// them here would delete mainline data.
+	deleteBranchRows(s.persons, branchID)
+	deleteBranchRows(s.personNames, branchID)
+	deleteBranchRows(s.personExternalIDs, branchID)
+	deleteBranchRows(s.families, branchID)
+	deleteBranchRows(s.familyExternalIDs, branchID)
+	deleteBranchRows(s.familyChildren, branchID)
+	deleteBranchRows(s.pedigreeEdges, branchID)
+	return nil
+}
+
+// deleteBranchRows removes every entry of a branch-keyed slice map whose key
+// belongs to branch. It works for both single-row (*T) and bucket ([]T) slice
+// maps because it only inspects the key.
+func deleteBranchRows[V any](m map[branchKey]V, branch domain.BranchID) {
+	for k := range m {
+		if k.branch == branch {
+			delete(m, k)
+		}
+	}
 }
 
 // Reset clears all data.
@@ -798,11 +1035,11 @@ func (s *ReadModelStore) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.persons = make(map[uuid.UUID]*repository.PersonReadModel)
-	s.personNames = make(map[uuid.UUID][]repository.PersonNameReadModel)
-	s.families = make(map[uuid.UUID]*repository.FamilyReadModel)
-	s.familyChildren = make(map[uuid.UUID][]repository.FamilyChildReadModel)
-	s.pedigreeEdges = make(map[uuid.UUID]*repository.PedigreeEdge)
+	s.persons = make(map[branchKey]*repository.PersonReadModel)
+	s.personNames = make(map[branchKey][]repository.PersonNameReadModel)
+	s.families = make(map[branchKey]*repository.FamilyReadModel)
+	s.familyChildren = make(map[branchKey][]repository.FamilyChildReadModel)
+	s.pedigreeEdges = make(map[branchKey]*repository.PedigreeEdge)
 	s.sources = make(map[uuid.UUID]*repository.SourceReadModel)
 	s.citations = make(map[uuid.UUID]*repository.CitationReadModel)
 	s.media = make(map[uuid.UUID]*repository.MediaReadModel)
@@ -1323,7 +1560,7 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.Surn
 	surnameCount := make(map[string]int)
 	surnamesByLetter := make(map[string]map[string]bool) // letter -> set of surnames
 
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		surname := p.Surname
 		surnameCount[surname]++
 		if surname != "" {
@@ -1360,7 +1597,7 @@ func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string)
 	defer s.mu.RUnlock()
 
 	surnameCount := make(map[string]int)
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		surname := p.Surname
 		if surname != "" && strings.EqualFold(string(surname[0]), letter) {
 			surnameCount[surname]++
@@ -1384,7 +1621,7 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	defer s.mu.RUnlock()
 
 	var results []repository.PersonReadModel
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		if strings.EqualFold(p.Surname, surname) {
 			results = append(results, *p)
 		}
@@ -1418,7 +1655,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 	// Simple implementation: extract unique places
 	placeCount := make(map[string]int)
 
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		for _, place := range []string{p.BirthPlace, p.DeathPlace} {
 			if place != "" {
 				placeCount[place]++
@@ -1447,7 +1684,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	defer s.mu.RUnlock()
 
 	var results []repository.PersonReadModel
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		if strings.Contains(p.BirthPlace, place) || strings.Contains(p.DeathPlace, place) {
 			results = append(results, *p)
 		}
@@ -1527,7 +1764,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	}
 
 	var results []repository.PersonReadModel
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		if _, ok := matchedIDs[p.ID]; ok {
 			results = append(results, *p)
 		}
@@ -1574,7 +1811,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 
 	agg := make(map[locKey]*locData)
 
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
 			lat, errLat := gedcom.ParseCoordinate(*p.BirthPlaceLat)
@@ -1630,7 +1867,7 @@ func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, n
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	p, exists := s.persons[personID]
+	p, exists := s.persons[branchKey{domain.MainBranchID, personID}]
 	if !exists {
 		return nil
 	}
@@ -1646,7 +1883,7 @@ func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUI
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	p, exists := s.persons[personID]
+	p, exists := s.persons[branchKey{domain.MainBranchID, personID}]
 	if !exists {
 		return nil
 	}
@@ -1661,7 +1898,7 @@ func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool
 	defer s.mu.RUnlock()
 
 	var entries []repository.BrickWallEntry
-	for _, p := range s.persons {
+	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
 		if p.BrickWallSince == nil {
 			continue
 		}

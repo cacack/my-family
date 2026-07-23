@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -37,7 +38,7 @@ func TestCreatePerson(t *testing.T) {
 	}
 
 	// Verify person in read model
-	person, _ := readStore.GetPerson(ctx, result.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, result.ID)
 	if person == nil {
 		t.Fatal("Person not found in read model")
 	}
@@ -80,7 +81,7 @@ func TestCreatePerson_EmptySurname(t *testing.T) {
 	if result.ID == uuid.Nil {
 		t.Error("Expected non-nil ID")
 	}
-	person, _ := readStore.GetPerson(ctx, result.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, result.ID)
 	if person == nil {
 		t.Fatal("Person not found in read model")
 	}
@@ -120,7 +121,7 @@ func TestUpdatePerson(t *testing.T) {
 	}
 
 	// Verify update in read model
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person.GivenName != "Jane" {
 		t.Errorf("GivenName = %s, want Jane", person.GivenName)
 	}
@@ -189,7 +190,7 @@ func TestDeletePerson(t *testing.T) {
 	}
 
 	// Verify deletion
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person != nil {
 		t.Error("Person should be deleted")
 	}
@@ -347,7 +348,7 @@ func TestUpdatePerson_AllFields(t *testing.T) {
 	}
 
 	// Verify all updates in read model
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person.GivenName != "Jane" {
 		t.Errorf("GivenName = %s, want Jane", person.GivenName)
 	}
@@ -382,7 +383,7 @@ func TestCreatePerson_WithOptionalFields(t *testing.T) {
 	}
 
 	// Verify all fields in read model
-	person, _ := readStore.GetPerson(ctx, result.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, result.ID)
 	if person.Notes != "Test person with all fields" {
 		t.Errorf("Notes = %s, want 'Test person with all fields'", person.Notes)
 	}
@@ -443,7 +444,7 @@ func TestPersonUpdateStaleVersion(t *testing.T) {
 	}
 
 	// Verify the person still has the name from the successful update
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person.GivenName != "Jane" {
 		t.Errorf("Person name = %s, want Jane (stale update should not have applied)", person.GivenName)
 	}
@@ -492,7 +493,7 @@ func TestPersonConcurrentModificationScenario(t *testing.T) {
 	}
 
 	// Verify only the first update was applied
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person.GivenName != "Alice" {
 		t.Errorf("Person name = %s, want Alice", person.GivenName)
 	}
@@ -542,7 +543,7 @@ func TestPersonSequentialUpdatesSucceed(t *testing.T) {
 	}
 
 	// Verify final state
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person.GivenName != "Bob" {
 		t.Errorf("Final name = %s, want Bob", person.GivenName)
 	}
@@ -588,7 +589,7 @@ func TestPersonDeleteVersionConflict(t *testing.T) {
 	}
 
 	// Verify person still exists
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person == nil {
 		t.Error("Person should still exist after failed delete")
 	}
@@ -631,7 +632,7 @@ func TestPersonDeleteWithCorrectVersion(t *testing.T) {
 	}
 
 	// Verify person is deleted
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person != nil {
 		t.Error("Person should be deleted")
 	}
@@ -681,7 +682,7 @@ func TestPersonVersionConflictNoPartialState(t *testing.T) {
 	}
 
 	// Verify no partial changes were applied
-	person, _ := readStore.GetPerson(ctx, createResult.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if person.GivenName != "John" {
 		t.Errorf("GivenName = %s, want John (no partial change)", person.GivenName)
 	}
