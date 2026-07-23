@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -48,7 +49,7 @@ func TestCreateFamily(t *testing.T) {
 	}
 
 	// Verify family in read model
-	family, _ := readStore.GetFamily(ctx, result.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, result.ID)
 	if family == nil {
 		t.Fatal("Family not found in read model")
 	}
@@ -126,7 +127,7 @@ func TestUpdateFamily(t *testing.T) {
 	}
 
 	// Verify update
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family.MarriagePlace != "New York, NY" {
 		t.Errorf("MarriagePlace = %s, want New York, NY", family.MarriagePlace)
 	}
@@ -158,7 +159,7 @@ func TestDeleteFamily(t *testing.T) {
 	}
 
 	// Verify deletion
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family != nil {
 		t.Error("Family should be deleted")
 	}
@@ -233,7 +234,7 @@ func TestLinkChild(t *testing.T) {
 	}
 
 	// Verify child in family
-	childFamily, _ := readStore.GetChildFamily(ctx, child.ID)
+	childFamily, _ := readStore.GetChildFamily(ctx, domain.MainBranchID, child.ID)
 	if childFamily == nil {
 		t.Fatal("Child not linked to family")
 	}
@@ -317,7 +318,7 @@ func TestUnlinkChild(t *testing.T) {
 	}
 
 	// Verify child unlinked
-	childFamily, _ := readStore.GetChildFamily(ctx, child.ID)
+	childFamily, _ := readStore.GetChildFamily(ctx, domain.MainBranchID, child.ID)
 	if childFamily != nil {
 		t.Error("Child should be unlinked")
 	}
@@ -928,7 +929,7 @@ func TestLinkChild_DefaultRelationType(t *testing.T) {
 	}
 
 	// Verify child is linked
-	childFamily, _ := readStore.GetChildFamily(ctx, child.ID)
+	childFamily, _ := readStore.GetChildFamily(ctx, domain.MainBranchID, child.ID)
 	if childFamily == nil {
 		t.Fatal("Child should be linked to family")
 	}
@@ -979,7 +980,7 @@ func TestLinkChild_ConcurrencyConflict(t *testing.T) {
 	}
 
 	// Verify both children are linked
-	children, _ := readStore.GetChildrenOfFamily(ctx, family.ID)
+	children, _ := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 2 {
 		t.Errorf("Expected 2 children, got %d", len(children))
 	}
@@ -1028,7 +1029,7 @@ func TestUnlinkChild_ConcurrencyConflict(t *testing.T) {
 	}
 
 	// Verify only one child remains
-	children, _ := readStore.GetChildrenOfFamily(ctx, family.ID)
+	children, _ := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 1 {
 		t.Errorf("Expected 1 child after unlink, got %d", len(children))
 	}
@@ -1067,7 +1068,7 @@ func TestCreateFamily_WithRelationshipType(t *testing.T) {
 	}
 
 	// Verify family in read model
-	family, _ := readStore.GetFamily(ctx, result.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, result.ID)
 	if family == nil {
 		t.Fatal("Family not found")
 	}
@@ -1467,7 +1468,7 @@ func TestFamilyUpdateStaleVersion(t *testing.T) {
 	}
 
 	// Verify the family still has the value from the successful update
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family.MarriagePlace != "Boston" {
 		t.Errorf("Family MarriagePlace = %s, want Boston", family.MarriagePlace)
 	}
@@ -1515,7 +1516,7 @@ func TestFamilyConcurrentModificationScenario(t *testing.T) {
 	}
 
 	// Verify only the first update was applied
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family.MarriagePlace != "Boston" {
 		t.Errorf("Family MarriagePlace = %s, want Boston", family.MarriagePlace)
 	}
@@ -1565,7 +1566,7 @@ func TestFamilySequentialUpdatesSucceed(t *testing.T) {
 	}
 
 	// Verify final state - data should be updated
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family.MarriagePlace != "New York" {
 		t.Errorf("Final MarriagePlace = %s, want New York", family.MarriagePlace)
 	}
@@ -1614,7 +1615,7 @@ func TestFamilyDeleteStaleVersion(t *testing.T) {
 	}
 
 	// Verify family still exists
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family == nil {
 		t.Error("Family should still exist after failed delete")
 	}
@@ -1657,7 +1658,7 @@ func TestFamilyDeleteWithCorrectVersion(t *testing.T) {
 	}
 
 	// Verify family is deleted
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family != nil {
 		t.Error("Family should be deleted")
 	}
@@ -1714,7 +1715,7 @@ func TestFamilyLinkChildVersionTracking(t *testing.T) {
 	}
 
 	// Verify both children are linked
-	children, _ := readStore.GetChildrenOfFamily(ctx, createResult.ID)
+	children, _ := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, createResult.ID)
 	if len(children) != 2 {
 		t.Errorf("Expected 2 children, got %d", len(children))
 	}
@@ -1774,7 +1775,7 @@ func TestFamilyUnlinkChildVersionConflict(t *testing.T) {
 	}
 
 	// Verify both children are unlinked
-	children, _ := readStore.GetChildrenOfFamily(ctx, family.ID)
+	children, _ := readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, family.ID)
 	if len(children) != 0 {
 		t.Errorf("Expected 0 children, got %d", len(children))
 	}
@@ -1829,7 +1830,7 @@ func TestFamilyVersionConflictNoPartialState(t *testing.T) {
 	}
 
 	// Verify no partial changes were applied
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family.MarriagePlace != "New York" {
 		t.Errorf("MarriagePlace = %s, want New York (from successful update)", family.MarriagePlace)
 	}
@@ -1886,7 +1887,7 @@ func TestFamilyMultipleUpdatesVersionTracking(t *testing.T) {
 	}
 
 	// Verify final state
-	family, _ := readStore.GetFamily(ctx, createResult.ID)
+	family, _ := readStore.GetFamily(ctx, domain.MainBranchID, createResult.ID)
 	if family.MarriagePlace != "New York" {
 		t.Errorf("Final MarriagePlace = %s, want New York", family.MarriagePlace)
 	}

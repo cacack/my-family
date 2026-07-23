@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -63,7 +64,7 @@ func TestMergePersons_Success(t *testing.T) {
 	}
 
 	// Verify survivor has merged data (death info from merged person)
-	person, err := readStore.GetPerson(ctx, survivor.ID)
+	person, err := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestMergePersons_Success(t *testing.T) {
 	}
 
 	// Verify merged person is deleted
-	mergedPerson, _ := readStore.GetPerson(ctx, merged.ID)
+	mergedPerson, _ := readStore.GetPerson(ctx, domain.MainBranchID, merged.ID)
 	if mergedPerson != nil {
 		t.Error("Merged person should be deleted")
 	}
@@ -391,7 +392,7 @@ func TestMergePersons_WithFieldResolution(t *testing.T) {
 	}
 
 	// Verify survivor has merged person's birth data
-	person, _ := readStore.GetPerson(ctx, survivor.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
 	if person.BirthDateRaw != "5 JAN 1850" {
 		t.Errorf("BirthDateRaw = %s, want 5 JAN 1850", person.BirthDateRaw)
 	}
@@ -450,7 +451,7 @@ func TestMergePersons_WithFamilies(t *testing.T) {
 	}
 
 	// Verify family now has survivor as partner
-	families, _ := readStore.GetFamiliesForPerson(ctx, survivor.ID)
+	families, _ := readStore.GetFamiliesForPerson(ctx, domain.MainBranchID, survivor.ID)
 	if len(families) != 1 {
 		t.Fatalf("Expected 1 family for survivor, got %d", len(families))
 	}
@@ -499,7 +500,7 @@ func TestMergePersons_NoChangesWhenSurvivorComplete(t *testing.T) {
 	}
 
 	// Verify survivor data unchanged
-	person, _ := readStore.GetPerson(ctx, survivor.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
 	if person.GivenName != "John" {
 		t.Errorf("GivenName = %s, want John", person.GivenName)
 	}
@@ -549,7 +550,7 @@ func TestMergePersons_TransfersEmptyFieldsFromMerged(t *testing.T) {
 	}
 
 	// Verify survivor now has merged person's data
-	person, _ := readStore.GetPerson(ctx, survivor.ID)
+	person, _ := readStore.GetPerson(ctx, domain.MainBranchID, survivor.ID)
 	if person.Gender != "male" {
 		t.Errorf("Gender = %s, want male", person.Gender)
 	}

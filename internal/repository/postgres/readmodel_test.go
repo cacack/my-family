@@ -52,13 +52,13 @@ func TestReadModelStore_PersonCRUD(t *testing.T) {
 		UpdatedAt:    now,
 	}
 
-	err := store.SavePerson(ctx, person)
+	err := store.SavePerson(ctx, domain.MainBranchID, person)
 	if err != nil {
 		t.Fatalf("save person: %v", err)
 	}
 
 	// Read person
-	retrieved, err := store.GetPerson(ctx, personID)
+	retrieved, err := store.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("get person: %v", err)
 	}
@@ -79,13 +79,13 @@ func TestReadModelStore_PersonCRUD(t *testing.T) {
 	// Update person
 	person.GivenName = "Jane"
 	person.Version = 2
-	err = store.SavePerson(ctx, person)
+	err = store.SavePerson(ctx, domain.MainBranchID, person)
 	if err != nil {
 		t.Fatalf("update person: %v", err)
 	}
 
 	// Read updated person
-	retrieved, err = store.GetPerson(ctx, personID)
+	retrieved, err = store.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("get updated person: %v", err)
 	}
@@ -94,13 +94,13 @@ func TestReadModelStore_PersonCRUD(t *testing.T) {
 	}
 
 	// Delete person
-	err = store.DeletePerson(ctx, personID)
+	err = store.DeletePerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("delete person: %v", err)
 	}
 
 	// Verify deletion
-	retrieved, err = store.GetPerson(ctx, personID)
+	retrieved, err = store.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("get deleted person: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestReadModelStore_ListPersons(t *testing.T) {
 			Version:   1,
 			UpdatedAt: now,
 		}
-		err := store.SavePerson(ctx, person)
+		err := store.SavePerson(ctx, domain.MainBranchID, person)
 		if err != nil {
 			t.Fatalf("save person %d: %v", i, err)
 		}
@@ -172,7 +172,7 @@ func TestReadModelStore_SearchPersons_FullText(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		if err := store.SavePerson(ctx, &p); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &p); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -218,7 +218,7 @@ func TestReadModelStore_SearchPersons_Fuzzy(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		if err := store.SavePerson(ctx, &p); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &p); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -267,10 +267,10 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	if err := store.SavePerson(ctx, partner1); err != nil {
+	if err := store.SavePerson(ctx, domain.MainBranchID, partner1); err != nil {
 		t.Fatalf("save partner1: %v", err)
 	}
-	if err := store.SavePerson(ctx, partner2); err != nil {
+	if err := store.SavePerson(ctx, domain.MainBranchID, partner2); err != nil {
 		t.Fatalf("save partner2: %v", err)
 	}
 
@@ -292,13 +292,13 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 		UpdatedAt:         now,
 	}
 
-	err := store.SaveFamily(ctx, family)
+	err := store.SaveFamily(ctx, domain.MainBranchID, family)
 	if err != nil {
 		t.Fatalf("save family: %v", err)
 	}
 
 	// Read family
-	retrieved, err := store.GetFamily(ctx, familyID)
+	retrieved, err := store.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("get family: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 	}
 
 	// Get families for person
-	families, err := store.GetFamiliesForPerson(ctx, partner1ID)
+	families, err := store.GetFamiliesForPerson(ctx, domain.MainBranchID, partner1ID)
 	if err != nil {
 		t.Fatalf("get families for person: %v", err)
 	}
@@ -323,13 +323,13 @@ func TestReadModelStore_FamilyCRUD(t *testing.T) {
 	}
 
 	// Delete family
-	err = store.DeleteFamily(ctx, familyID)
+	err = store.DeleteFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("delete family: %v", err)
 	}
 
 	// Verify deletion
-	retrieved, err = store.GetFamily(ctx, familyID)
+	retrieved, err = store.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("get deleted family: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		if err := store.SavePerson(ctx, p); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, p); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -381,7 +381,7 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 		UpdatedAt:         now,
 	}
 
-	if err := store.SaveFamily(ctx, family); err != nil {
+	if err := store.SaveFamily(ctx, domain.MainBranchID, family); err != nil {
 		t.Fatalf("save family: %v", err)
 	}
 
@@ -396,12 +396,12 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 		Sequence:         &seq,
 	}
 
-	if err := store.SaveFamilyChild(ctx, child); err != nil {
+	if err := store.SaveFamilyChild(ctx, domain.MainBranchID, child); err != nil {
 		t.Fatalf("save family child: %v", err)
 	}
 
 	// Get family children
-	children, err := store.GetFamilyChildren(ctx, familyID)
+	children, err := store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("get family children: %v", err)
 	}
@@ -413,7 +413,7 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	}
 
 	// Get child family
-	childFamily, err := store.GetChildFamily(ctx, childID)
+	childFamily, err := store.GetChildFamily(ctx, domain.MainBranchID, childID)
 	if err != nil {
 		t.Fatalf("get child family: %v", err)
 	}
@@ -425,12 +425,12 @@ func TestReadModelStore_FamilyChildren(t *testing.T) {
 	}
 
 	// Remove child
-	if err := store.DeleteFamilyChild(ctx, familyID, childID); err != nil {
+	if err := store.DeleteFamilyChild(ctx, domain.MainBranchID, familyID, childID); err != nil {
 		t.Fatalf("delete family child: %v", err)
 	}
 
 	// Verify removal
-	children, err = store.GetFamilyChildren(ctx, familyID)
+	children, err = store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("get family children after delete: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestReadModelStore_PedigreeEdges(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		if err := store.SavePerson(ctx, p); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, p); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -476,12 +476,12 @@ func TestReadModelStore_PedigreeEdges(t *testing.T) {
 		MotherName: "Jane Doe",
 	}
 
-	if err := store.SavePedigreeEdge(ctx, edge); err != nil {
+	if err := store.SavePedigreeEdge(ctx, domain.MainBranchID, edge); err != nil {
 		t.Fatalf("save pedigree edge: %v", err)
 	}
 
 	// Get pedigree edge
-	retrieved, err := store.GetPedigreeEdge(ctx, childID)
+	retrieved, err := store.GetPedigreeEdge(ctx, domain.MainBranchID, childID)
 	if err != nil {
 		t.Fatalf("get pedigree edge: %v", err)
 	}
@@ -500,12 +500,12 @@ func TestReadModelStore_PedigreeEdges(t *testing.T) {
 	}
 
 	// Delete pedigree edge
-	if err := store.DeletePedigreeEdge(ctx, childID); err != nil {
+	if err := store.DeletePedigreeEdge(ctx, domain.MainBranchID, childID); err != nil {
 		t.Fatalf("delete pedigree edge: %v", err)
 	}
 
 	// Verify deletion
-	retrieved, err = store.GetPedigreeEdge(ctx, childID)
+	retrieved, err = store.GetPedigreeEdge(ctx, domain.MainBranchID, childID)
 	if err != nil {
 		t.Fatalf("get deleted pedigree edge: %v", err)
 	}
@@ -544,7 +544,7 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 	}
 
 	for _, p := range persons {
-		if err := store.SavePerson(ctx, p); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, p); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -564,7 +564,7 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 		UpdatedAt:         now,
 	}
 
-	if err := store.SaveFamily(ctx, family); err != nil {
+	if err := store.SaveFamily(ctx, domain.MainBranchID, family); err != nil {
 		t.Fatalf("save family: %v", err)
 	}
 
@@ -576,13 +576,13 @@ func TestReadModelStore_GetChildrenOfFamily(t *testing.T) {
 	}
 
 	for _, c := range children {
-		if err := store.SaveFamilyChild(ctx, c); err != nil {
+		if err := store.SaveFamilyChild(ctx, domain.MainBranchID, c); err != nil {
 			t.Fatalf("save family child: %v", err)
 		}
 	}
 
 	// Get children of family
-	childPersons, err := store.GetChildrenOfFamily(ctx, familyID)
+	childPersons, err := store.GetChildrenOfFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("get children of family: %v", err)
 	}
@@ -622,7 +622,7 @@ func TestSearchPersons_DateRange(t *testing.T) {
 	}
 
 	for i := range persons {
-		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &persons[i]); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -700,7 +700,7 @@ func TestSearchPersons_PlaceFilter(t *testing.T) {
 	}
 
 	for i := range persons {
-		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &persons[i]); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -769,7 +769,7 @@ func TestSearchPersons_Soundex(t *testing.T) {
 	}
 
 	for i := range persons {
-		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &persons[i]); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -831,7 +831,7 @@ func TestSearchPersons_Combined(t *testing.T) {
 	}
 
 	for i := range persons {
-		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &persons[i]); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -896,7 +896,7 @@ func TestSearchPersons_NoQueryWithFilters(t *testing.T) {
 	}
 
 	for i := range persons {
-		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &persons[i]); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -968,7 +968,7 @@ func TestSearchPersons_SortOptions(t *testing.T) {
 	}
 
 	for i := range persons {
-		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &persons[i]); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -1035,7 +1035,7 @@ func TestSearchPersons_BackwardCompatible(t *testing.T) {
 	}
 
 	for i := range persons {
-		if err := store.SavePerson(ctx, &persons[i]); err != nil {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &persons[i]); err != nil {
 			t.Fatalf("save person: %v", err)
 		}
 	}
@@ -1176,5 +1176,495 @@ func TestReadModelStore_ListRepositories(t *testing.T) {
 	}
 	if results[0].Name != "Alpha Archive" {
 		t.Errorf("first result = %s, want Alpha Archive (asc by name)", results[0].Name)
+	}
+}
+
+// --- Branch overlay (ADR-005) -----------------------------------------------
+// These tests mirror the in-memory reference (memory/branch_readmodel_test.go),
+// verifying the PostgreSQL overlay/tombstone semantics match it exactly. They
+// share the Docker/short skips of the other integration tests (via
+// setupReadModelStore -> setupPostgres).
+
+func pgPersonRM(id uuid.UUID, given, surname string) *repository.PersonReadModel {
+	return &repository.PersonReadModel{
+		ID: id, GivenName: given, Surname: surname, FullName: given + " " + surname,
+		Version: 1, UpdatedAt: time.Now().Truncate(time.Microsecond),
+	}
+}
+
+func TestBranchOverlayPersonPrecedence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	id := uuid.New()
+
+	if err := store.SavePerson(ctx, domain.MainBranchID, pgPersonRM(id, "Ada", "Main")); err != nil {
+		t.Fatalf("SavePerson main: %v", err)
+	}
+	if err := store.SavePerson(ctx, branch, pgPersonRM(id, "Ada", "Branch")); err != nil {
+		t.Fatalf("SavePerson branch: %v", err)
+	}
+
+	got, _ := store.GetPerson(ctx, branch, id)
+	if got == nil || got.Surname != "Branch" {
+		t.Fatalf("branch Get: want surname Branch, got %+v", got)
+	}
+	main, _ := store.GetPerson(ctx, domain.MainBranchID, id)
+	if main == nil || main.Surname != "Main" {
+		t.Fatalf("main Get: want surname Main, got %+v", main)
+	}
+
+	branchList, total, _ := store.ListPersons(ctx, repository.ListOptions{Limit: 10, BranchID: branch})
+	if total != 1 || len(branchList) != 1 || branchList[0].Surname != "Branch" {
+		t.Fatalf("branch List: want 1 Branch, got total=%d list=%+v", total, branchList)
+	}
+	mainList, _, _ := store.ListPersons(ctx, repository.ListOptions{Limit: 10, BranchID: domain.MainBranchID})
+	if len(mainList) != 1 || mainList[0].Surname != "Main" {
+		t.Fatalf("main List: want 1 Main, got %+v", mainList)
+	}
+}
+
+func TestBranchFallbackToMain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	id := uuid.New()
+
+	if err := store.SavePerson(ctx, domain.MainBranchID, pgPersonRM(id, "Grace", "Hopper")); err != nil {
+		t.Fatalf("SavePerson main: %v", err)
+	}
+
+	got, _ := store.GetPerson(ctx, branch, id)
+	if got == nil || got.Surname != "Hopper" {
+		t.Fatalf("branch Get fallback: want Hopper, got %+v", got)
+	}
+	branchList, total, _ := store.ListPersons(ctx, repository.ListOptions{Limit: 10, BranchID: branch})
+	if total != 1 || len(branchList) != 1 || branchList[0].Surname != "Hopper" {
+		t.Fatalf("branch List fallback: want 1 Hopper, got total=%d list=%+v", total, branchList)
+	}
+}
+
+func TestBranchTombstoneSuppression(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	id := uuid.New()
+
+	if err := store.SavePerson(ctx, domain.MainBranchID, pgPersonRM(id, "Alan", "Turing")); err != nil {
+		t.Fatalf("SavePerson main: %v", err)
+	}
+	if err := store.DeletePerson(ctx, branch, id); err != nil {
+		t.Fatalf("DeletePerson branch: %v", err)
+	}
+
+	if got, _ := store.GetPerson(ctx, branch, id); got != nil {
+		t.Fatalf("branch Get after tombstone: want nil, got %+v", got)
+	}
+	if main, _ := store.GetPerson(ctx, domain.MainBranchID, id); main == nil || main.Surname != "Turing" {
+		t.Fatalf("main Get after branch tombstone: want Turing, got %+v", main)
+	}
+	branchList, total, _ := store.ListPersons(ctx, repository.ListOptions{Limit: 10, BranchID: branch})
+	if total != 0 || len(branchList) != 0 {
+		t.Fatalf("branch List after tombstone: want empty, got total=%d list=%+v", total, branchList)
+	}
+	mainList, _, _ := store.ListPersons(ctx, repository.ListOptions{Limit: 10, BranchID: domain.MainBranchID})
+	if len(mainList) != 1 {
+		t.Fatalf("main List after branch tombstone: want 1, got %+v", mainList)
+	}
+}
+
+func TestBranchMainDeleteIsRealRemoval(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	id := uuid.New()
+
+	if err := store.SavePerson(ctx, domain.MainBranchID, pgPersonRM(id, "Ada", "Lovelace")); err != nil {
+		t.Fatalf("SavePerson: %v", err)
+	}
+	if err := store.DeletePerson(ctx, domain.MainBranchID, id); err != nil {
+		t.Fatalf("DeletePerson main: %v", err)
+	}
+	if got, _ := store.GetPerson(ctx, domain.MainBranchID, id); got != nil {
+		t.Fatalf("main Get after main delete: want nil, got %+v", got)
+	}
+}
+
+func TestBranchOnlyEntityInvisibleOnMain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	id := uuid.New()
+
+	if err := store.SavePerson(ctx, branch, pgPersonRM(id, "Only", "Branch")); err != nil {
+		t.Fatalf("SavePerson branch: %v", err)
+	}
+	if got, _ := store.GetPerson(ctx, domain.MainBranchID, id); got != nil {
+		t.Fatalf("main Get of branch-only entity: want nil, got %+v", got)
+	}
+	if got, _ := store.GetPerson(ctx, branch, id); got == nil {
+		t.Fatal("branch Get of branch-only entity: want present, got nil")
+	}
+	mainList, _, _ := store.ListPersons(ctx, repository.ListOptions{Limit: 10, BranchID: domain.MainBranchID})
+	if len(mainList) != 0 {
+		t.Fatalf("main List of branch-only entity: want empty, got %+v", mainList)
+	}
+}
+
+func TestBranchSearchPersonsScope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	id := uuid.New()
+
+	_ = store.SavePerson(ctx, domain.MainBranchID, pgPersonRM(id, "Katherine", "Johnson"))
+	_ = store.SavePerson(ctx, branch, pgPersonRM(id, "Katherine", "Coleman"))
+
+	branchHits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: branch})
+	if len(branchHits) != 1 || branchHits[0].Surname != "Coleman" {
+		t.Fatalf("branch Search: want Coleman, got %+v", branchHits)
+	}
+	if hits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: branch}); len(hits) != 0 {
+		t.Fatalf("branch Search for main-only surname: want empty, got %+v", hits)
+	}
+	mainHits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Johnson", Limit: 10, BranchID: domain.MainBranchID})
+	if len(mainHits) != 1 || mainHits[0].Surname != "Johnson" {
+		t.Fatalf("main Search: want Johnson, got %+v", mainHits)
+	}
+	// And the branch override must not surface under the branch surname on main.
+	if hits, _ := store.SearchPersons(ctx, repository.SearchOptions{Query: "Coleman", Limit: 10, BranchID: domain.MainBranchID}); len(hits) != 0 {
+		t.Fatalf("main Search for branch-only surname: want empty, got %+v", hits)
+	}
+}
+
+func TestBranchPersonNamesOverlay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	personID := uuid.New()
+
+	mainName := &repository.PersonNameReadModel{ID: uuid.New(), PersonID: personID, GivenName: "Main", Surname: "Name"}
+	if err := store.SavePersonName(ctx, domain.MainBranchID, mainName); err != nil {
+		t.Fatalf("SavePersonName main: %v", err)
+	}
+	branchName := &repository.PersonNameReadModel{ID: uuid.New(), PersonID: personID, GivenName: "Branch", Surname: "Name"}
+	if err := store.SavePersonName(ctx, branch, branchName); err != nil {
+		t.Fatalf("SavePersonName branch: %v", err)
+	}
+
+	branchNames, _ := store.GetPersonNames(ctx, branch, personID)
+	if len(branchNames) != 2 {
+		t.Fatalf("branch names: want 2 (main fallback + branch add), got %d: %+v", len(branchNames), branchNames)
+	}
+	mainNames, _ := store.GetPersonNames(ctx, domain.MainBranchID, personID)
+	if len(mainNames) != 1 {
+		t.Fatalf("main names after branch edit: want 1 (untouched), got %d", len(mainNames))
+	}
+	if got, _ := store.GetPersonName(ctx, branch, branchName.ID); got == nil {
+		t.Fatal("GetPersonName branch: want the branch name, got nil")
+	}
+	if got, _ := store.GetPersonName(ctx, domain.MainBranchID, branchName.ID); got != nil {
+		t.Fatalf("GetPersonName main: branch-only name must be invisible, got %+v", got)
+	}
+
+	// Branch delete of the main-fallback name tombstones it on the branch only.
+	if err := store.DeletePersonName(ctx, branch, mainName.ID); err != nil {
+		t.Fatalf("DeletePersonName branch: %v", err)
+	}
+	branchNames, _ = store.GetPersonNames(ctx, branch, personID)
+	if len(branchNames) != 1 || branchNames[0].ID != branchName.ID {
+		t.Fatalf("branch names after tombstone: want [branchName], got %+v", branchNames)
+	}
+	mainNames, _ = store.GetPersonNames(ctx, domain.MainBranchID, personID)
+	if len(mainNames) != 1 || mainNames[0].ID != mainName.ID {
+		t.Fatalf("main names after branch tombstone: want [mainName], got %+v", mainNames)
+	}
+}
+
+func TestBranchFamilyChildrenOverlay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	familyID := uuid.New()
+	child1 := uuid.New()
+	child2 := uuid.New()
+
+	_ = store.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{FamilyID: familyID, PersonID: child1})
+	_ = store.SaveFamilyChild(ctx, branch, &repository.FamilyChildReadModel{FamilyID: familyID, PersonID: child2})
+
+	branchKids, _ := store.GetFamilyChildren(ctx, branch, familyID)
+	if len(branchKids) != 2 {
+		t.Fatalf("branch children: want 2, got %d: %+v", len(branchKids), branchKids)
+	}
+	mainKids, _ := store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
+	if len(mainKids) != 1 {
+		t.Fatalf("main children after branch add: want 1, got %d", len(mainKids))
+	}
+
+	_ = store.DeleteFamilyChild(ctx, branch, familyID, child1)
+	branchKids, _ = store.GetFamilyChildren(ctx, branch, familyID)
+	if len(branchKids) != 1 || branchKids[0].PersonID != child2 {
+		t.Fatalf("branch children after delete: want [child2], got %+v", branchKids)
+	}
+	mainKids, _ = store.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
+	if len(mainKids) != 1 || mainKids[0].PersonID != child1 {
+		t.Fatalf("main children after branch delete: want [child1], got %+v", mainKids)
+	}
+}
+
+func TestBranchPersonExternalIDsOverlayTombstone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	personID := uuid.New()
+
+	_ = store.ReplacePersonExternalIDs(ctx, domain.MainBranchID, personID, []repository.PersonExternalIDReadModel{{Value: "MAIN-1"}})
+	_ = store.ReplacePersonExternalIDs(ctx, branch, personID, []repository.PersonExternalIDReadModel{{Value: "BR-1"}, {Value: "BR-2"}})
+
+	branchIDs, _ := store.GetPersonExternalIDs(ctx, branch, personID)
+	if len(branchIDs) != 2 || branchIDs[0].Value != "BR-1" {
+		t.Fatalf("branch ext ids: want [BR-1, BR-2], got %+v", branchIDs)
+	}
+	mainIDs, _ := store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
+	if len(mainIDs) != 1 || mainIDs[0].Value != "MAIN-1" {
+		t.Fatalf("main ext ids after branch override: want [MAIN-1], got %+v", mainIDs)
+	}
+
+	_ = store.ReplacePersonExternalIDs(ctx, branch, personID, nil)
+	branchIDs, _ = store.GetPersonExternalIDs(ctx, branch, personID)
+	if len(branchIDs) != 0 {
+		t.Fatalf("branch ext ids after tombstone: want empty, got %+v", branchIDs)
+	}
+	mainIDs, _ = store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
+	if len(mainIDs) != 1 {
+		t.Fatalf("main ext ids after branch tombstone: want [MAIN-1], got %+v", mainIDs)
+	}
+}
+
+func TestBranchPedigreeEdgeOverlayTombstone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	personID := uuid.New()
+	mainFather := uuid.New()
+	branchFather := uuid.New()
+
+	_ = store.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{PersonID: personID, FatherID: &mainFather})
+
+	if e, _ := store.GetPedigreeEdge(ctx, branch, personID); e == nil || e.FatherID == nil || *e.FatherID != mainFather {
+		t.Fatalf("branch edge fallback: want mainFather, got %+v", e)
+	}
+
+	_ = store.SavePedigreeEdge(ctx, branch, &repository.PedigreeEdge{PersonID: personID, FatherID: &branchFather})
+	if e, _ := store.GetPedigreeEdge(ctx, branch, personID); e == nil || e.FatherID == nil || *e.FatherID != branchFather {
+		t.Fatalf("branch edge override: want branchFather, got %+v", e)
+	}
+	if e, _ := store.GetPedigreeEdge(ctx, domain.MainBranchID, personID); e == nil || e.FatherID == nil || *e.FatherID != mainFather {
+		t.Fatalf("main edge after branch override: want mainFather, got %+v", e)
+	}
+
+	_ = store.DeletePedigreeEdge(ctx, branch, personID)
+	if e, _ := store.GetPedigreeEdge(ctx, branch, personID); e != nil {
+		t.Fatalf("branch edge after tombstone: want nil, got %+v", e)
+	}
+	if e, _ := store.GetPedigreeEdge(ctx, domain.MainBranchID, personID); e == nil {
+		t.Fatal("main edge after branch tombstone: want present, got nil")
+	}
+}
+
+func TestBranchDeletePersonCascadesTombstones(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	personID := uuid.New()
+
+	if err := store.SavePerson(ctx, domain.MainBranchID, pgPersonRM(personID, "Cascade", "Main")); err != nil {
+		t.Fatalf("SavePerson: %v", err)
+	}
+	if err := store.SavePersonName(ctx, domain.MainBranchID, &repository.PersonNameReadModel{ID: uuid.New(), PersonID: personID, GivenName: "Cascade", Surname: "Main"}); err != nil {
+		t.Fatalf("SavePersonName: %v", err)
+	}
+	if err := store.ReplacePersonExternalIDs(ctx, domain.MainBranchID, personID, []repository.PersonExternalIDReadModel{{Value: "X"}}); err != nil {
+		t.Fatalf("ReplacePersonExternalIDs: %v", err)
+	}
+
+	if err := store.DeletePerson(ctx, branch, personID); err != nil {
+		t.Fatalf("DeletePerson (branch): %v", err)
+	}
+
+	// Every read is error-checked: a failing query must not pass vacuously by
+	// returning an empty slice.
+	branchNames, err := store.GetPersonNames(ctx, branch, personID)
+	if err != nil {
+		t.Fatalf("GetPersonNames (branch): %v", err)
+	}
+	if len(branchNames) != 0 {
+		t.Fatalf("branch names after cascade tombstone: want empty, got %+v", branchNames)
+	}
+	branchIDs, err := store.GetPersonExternalIDs(ctx, branch, personID)
+	if err != nil {
+		t.Fatalf("GetPersonExternalIDs (branch): %v", err)
+	}
+	if len(branchIDs) != 0 {
+		t.Fatalf("branch ext ids after cascade tombstone: want empty, got %+v", branchIDs)
+	}
+	mainNames, err := store.GetPersonNames(ctx, domain.MainBranchID, personID)
+	if err != nil {
+		t.Fatalf("GetPersonNames (main): %v", err)
+	}
+	if len(mainNames) != 1 {
+		t.Fatalf("main names after branch cascade: want 1, got %+v", mainNames)
+	}
+	mainIDs, err := store.GetPersonExternalIDs(ctx, domain.MainBranchID, personID)
+	if err != nil {
+		t.Fatalf("GetPersonExternalIDs (main): %v", err)
+	}
+	if len(mainIDs) != 1 {
+		t.Fatalf("main ext ids after branch cascade: want 1, got %+v", mainIDs)
+	}
+}
+
+// TestBranchFamilyOverlayTombstone mirrors the SQLite test of the same name so
+// both backends assert identical family overlay behaviour (DB-001): branch row
+// shadows main, ListFamilies is branch-scoped, and a branch delete tombstones the
+// family for the branch while main keeps it.
+func TestBranchFamilyOverlayTombstone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	id := uuid.New()
+
+	if err := store.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: id, Partner1GivenName: "Main", Version: 1}); err != nil {
+		t.Fatalf("SaveFamily main: %v", err)
+	}
+	if err := store.SaveFamily(ctx, branch, &repository.FamilyReadModel{ID: id, Partner1GivenName: "Branch", Version: 1}); err != nil {
+		t.Fatalf("SaveFamily branch: %v", err)
+	}
+
+	got, err := store.GetFamily(ctx, branch, id)
+	if err != nil {
+		t.Fatalf("GetFamily branch: %v", err)
+	}
+	if got == nil || got.Partner1GivenName != "Branch" {
+		t.Fatalf("branch GetFamily: want Branch, got %+v", got)
+	}
+	got, err = store.GetFamily(ctx, domain.MainBranchID, id)
+	if err != nil {
+		t.Fatalf("GetFamily main: %v", err)
+	}
+	if got == nil || got.Partner1GivenName != "Main" {
+		t.Fatalf("main GetFamily: want Main, got %+v", got)
+	}
+
+	branchList, total, err := store.ListFamilies(ctx, repository.ListOptions{Limit: 10, BranchID: branch})
+	if err != nil {
+		t.Fatalf("ListFamilies branch: %v", err)
+	}
+	if total != 1 || len(branchList) != 1 || branchList[0].Partner1GivenName != "Branch" {
+		t.Fatalf("branch ListFamilies: want 1 Branch, got total=%d %+v", total, branchList)
+	}
+
+	// Branch tombstone hides the family for the branch; main keeps it.
+	if err := store.DeleteFamily(ctx, branch, id); err != nil {
+		t.Fatalf("DeleteFamily branch: %v", err)
+	}
+	got, err = store.GetFamily(ctx, branch, id)
+	if err != nil {
+		t.Fatalf("GetFamily branch after tombstone: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("branch GetFamily after tombstone: want nil, got %+v", got)
+	}
+	got, err = store.GetFamily(ctx, domain.MainBranchID, id)
+	if err != nil {
+		t.Fatalf("GetFamily main after branch tombstone: %v", err)
+	}
+	if got == nil {
+		t.Fatal("main GetFamily after branch tombstone: want present, got nil")
+	}
+}
+
+// TestBranchFamilyExternalIDsOverlay mirrors the SQLite test of the same name:
+// a branch's replace-all bucket overrides main, and a branch that never touched
+// the family falls back to main's identifiers.
+func TestBranchFamilyExternalIDsOverlay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	store, cleanup := setupReadModelStore(t)
+	defer cleanup()
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	familyID := uuid.New()
+
+	if err := store.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, familyID, []repository.FamilyExternalIDReadModel{{Value: "FMAIN"}}); err != nil {
+		t.Fatalf("ReplaceFamilyExternalIDs main: %v", err)
+	}
+	if err := store.ReplaceFamilyExternalIDs(ctx, branch, familyID, []repository.FamilyExternalIDReadModel{{Value: "FBR-1"}, {Value: "FBR-2"}}); err != nil {
+		t.Fatalf("ReplaceFamilyExternalIDs branch: %v", err)
+	}
+
+	branchIDs, err := store.GetFamilyExternalIDs(ctx, branch, familyID)
+	if err != nil {
+		t.Fatalf("GetFamilyExternalIDs branch: %v", err)
+	}
+	if len(branchIDs) != 2 || branchIDs[0].Value != "FBR-1" {
+		t.Fatalf("branch family ext ids: want [FBR-1, FBR-2], got %+v", branchIDs)
+	}
+	// Fallback: a branch that never touched the family sees main's ids.
+	other := domain.BranchID(uuid.New())
+	fallbackIDs, err := store.GetFamilyExternalIDs(ctx, other, familyID)
+	if err != nil {
+		t.Fatalf("GetFamilyExternalIDs fallback: %v", err)
+	}
+	if len(fallbackIDs) != 1 || fallbackIDs[0].Value != "FMAIN" {
+		t.Fatalf("fallback family ext ids: want [FMAIN], got %+v", fallbackIDs)
 	}
 }

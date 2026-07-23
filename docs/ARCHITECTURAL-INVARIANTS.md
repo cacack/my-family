@@ -63,6 +63,13 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows | Branch query/overlay tests |
 | **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | Merge replay test |
 
+> **Implementation status (#669):** BR-003 and the branch-lifecycle side of PR-004 are
+> realized for the first read-model slice — Person, PersonName, PersonExternalID, Family,
+> FamilyExternalID, FamilyChild, PedigreeEdge — with copy-on-write overlay, tombstones, and
+> `PurgeBranch` on `BranchDeleted` across the memory, sqlite, and postgres backends. Identical
+> end-to-end scenario tests (`internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go`)
+> verify DB-001 parity. Extending branch-scoping to the remaining entity types is a follow-up.
+
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
 | ID | Rule | Verification |

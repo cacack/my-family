@@ -57,7 +57,7 @@ func setupExportTestData(t *testing.T, readStore *memory.ReadModelStore) (uuid.U
 
 	for _, p := range persons {
 		pm := p
-		if err := readStore.SavePerson(ctx, &pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -76,7 +76,7 @@ func setupExportTestData(t *testing.T, readStore *memory.ReadModelStore) (uuid.U
 		MarriageDateRaw:   "10 JUN 1875",
 		MarriagePlace:     "Springfield, IL",
 	}
-	if err := readStore.SaveFamily(ctx, family); err != nil {
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, family); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,7 +88,7 @@ func setupExportTestData(t *testing.T, readStore *memory.ReadModelStore) (uuid.U
 		PersonSurname:    "Doe",
 		RelationshipType: domain.ChildBiological,
 	}
-	if err := readStore.SaveFamilyChild(ctx, child); err != nil {
+	if err := readStore.SaveFamilyChild(ctx, domain.MainBranchID, child); err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,7 +234,7 @@ func TestExport_ApproximateDates(t *testing.T) {
 		FullName:     "Test Person",
 		BirthDateRaw: "ABT 1850",
 	}
-	readStore.SavePerson(ctx, person)
+	readStore.SavePerson(ctx, domain.MainBranchID, person)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -260,7 +260,7 @@ func TestExport_DateRanges(t *testing.T) {
 		FullName:     "Test Person",
 		BirthDateRaw: "BET 1850 AND 1860",
 	}
-	readStore.SavePerson(ctx, person)
+	readStore.SavePerson(ctx, domain.MainBranchID, person)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -286,7 +286,7 @@ func TestExport_Notes(t *testing.T) {
 		FullName:  "Test Person",
 		Notes:     "First line of notes.\nSecond line of notes.",
 	}
-	readStore.SavePerson(ctx, person)
+	readStore.SavePerson(ctx, domain.MainBranchID, person)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -311,14 +311,14 @@ func TestExport_SingleParentFamily(t *testing.T) {
 	mother := uuid.New()
 	child := uuid.New()
 
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        mother,
 		GivenName: "Jane",
 		Surname:   "Doe",
 		FullName:  "Jane Doe",
 		Gender:    domain.GenderFemale,
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        child,
 		GivenName: "Child",
 		Surname:   "Doe",
@@ -326,13 +326,13 @@ func TestExport_SingleParentFamily(t *testing.T) {
 	})
 
 	familyID := uuid.New()
-	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:                familyID,
 		Partner2ID:        &mother,
 		Partner2GivenName: "Jane",
 		Partner2Surname:   "Doe",
 	})
-	readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:        familyID,
 		PersonID:        child,
 		PersonGivenName: "Child",
@@ -472,7 +472,7 @@ func TestExport_WithCitations(t *testing.T) {
 		BirthDateRaw: "1 JAN 1850",
 		BirthPlace:   "Springfield",
 	}
-	readStore.SavePerson(ctx, person)
+	readStore.SavePerson(ctx, domain.MainBranchID, person)
 
 	// Create a citation for birth event
 	citationID := uuid.New()
@@ -540,13 +540,13 @@ func TestExport_FamilyCitations(t *testing.T) {
 	// Create persons
 	husbandID := uuid.New()
 	wifeID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        husbandID,
 		GivenName: "John",
 		Surname:   "Doe",
 		FullName:  "John Doe",
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        wifeID,
 		GivenName: "Jane",
 		Surname:   "Smith",
@@ -563,7 +563,7 @@ func TestExport_FamilyCitations(t *testing.T) {
 		MarriageDateRaw:  "10 JUN 1875",
 		MarriagePlace:    "Chicago",
 	}
-	readStore.SaveFamily(ctx, family)
+	readStore.SaveFamily(ctx, domain.MainBranchID, family)
 
 	// Create citation for marriage
 	citation := &repository.CitationReadModel{
@@ -632,7 +632,7 @@ func TestExport_MultipleCitations(t *testing.T) {
 		FullName:     "John Doe",
 		BirthDateRaw: "1850",
 	}
-	readStore.SavePerson(ctx, person)
+	readStore.SavePerson(ctx, domain.MainBranchID, person)
 
 	// Create two citations for birth
 	readStore.SaveCitation(ctx, &repository.CitationReadModel{
@@ -685,7 +685,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 	})
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           personID,
 		GivenName:    "Test",
 		Surname:      "Person",
@@ -738,7 +738,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 				SourceType: "book",
 				Title:      "Test Source",
 			})
-			readStore.SavePerson(ctx, &repository.PersonReadModel{
+			readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 				ID:           personID,
 				GivenName:    "Test",
 				Surname:      "Person",
@@ -822,7 +822,7 @@ func TestExport_CitationWithMultilineText(t *testing.T) {
 	})
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           personID,
 		GivenName:    "Test",
 		Surname:      "Person",
@@ -864,7 +864,7 @@ func TestExport_PersonBurialEvent(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           personID,
 		GivenName:    "John",
 		Surname:      "Doe",
@@ -915,7 +915,7 @@ func TestExport_PersonBaptismEvent(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           personID,
 		GivenName:    "Mary",
 		Surname:      "Smith",
@@ -960,7 +960,7 @@ func TestExport_PersonCensusEvent(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "Robert",
 		Surname:   "Jones",
@@ -1000,7 +1000,7 @@ func TestExport_PersonImmigrationEvent(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "Hans",
 		Surname:   "Mueller",
@@ -1042,7 +1042,7 @@ func TestExport_PersonOccupationAttribute(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "William",
 		Surname:   "Taylor",
@@ -1089,7 +1089,7 @@ func TestExport_PersonResidenceAttribute(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "Sarah",
 		Surname:   "Brown",
@@ -1130,13 +1130,13 @@ func TestExport_FamilyMarriageBann(t *testing.T) {
 	husbandID := uuid.New()
 	wifeID := uuid.New()
 
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        husbandID,
 		GivenName: "John",
 		Surname:   "Doe",
 		FullName:  "John Doe",
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        wifeID,
 		GivenName: "Jane",
 		Surname:   "Smith",
@@ -1144,7 +1144,7 @@ func TestExport_FamilyMarriageBann(t *testing.T) {
 	})
 
 	familyID := uuid.New()
-	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:               familyID,
 		Partner1ID:       &husbandID,
 		Partner2ID:       &wifeID,
@@ -1191,13 +1191,13 @@ func TestExport_FamilyAnnulment(t *testing.T) {
 	husbandID := uuid.New()
 	wifeID := uuid.New()
 
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        husbandID,
 		GivenName: "John",
 		Surname:   "Doe",
 		FullName:  "John Doe",
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        wifeID,
 		GivenName: "Jane",
 		Surname:   "Smith",
@@ -1205,7 +1205,7 @@ func TestExport_FamilyAnnulment(t *testing.T) {
 	})
 
 	familyID := uuid.New()
-	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:               familyID,
 		Partner1ID:       &husbandID,
 		Partner2ID:       &wifeID,
@@ -1246,7 +1246,7 @@ func TestExport_MultipleEventsAndAttributes(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           personID,
 		GivenName:    "John",
 		Surname:      "Doe",
@@ -1336,7 +1336,7 @@ func TestExport_EventWithCause(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           personID,
 		GivenName:    "John",
 		Surname:      "Doe",
@@ -1375,7 +1375,7 @@ func TestExport_AllEventTypes(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "Test",
 		Surname:   "Person",
@@ -1432,7 +1432,7 @@ func TestExport_AllAttributeTypes(t *testing.T) {
 	ctx := context.Background()
 
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "Test",
 		Surname:   "Person",
@@ -1496,13 +1496,13 @@ func TestExport_AllFamilyEventTypes(t *testing.T) {
 	husbandID := uuid.New()
 	wifeID := uuid.New()
 
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        husbandID,
 		GivenName: "John",
 		Surname:   "Doe",
 		FullName:  "John Doe",
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        wifeID,
 		GivenName: "Jane",
 		Surname:   "Smith",
@@ -1510,7 +1510,7 @@ func TestExport_AllFamilyEventTypes(t *testing.T) {
 	})
 
 	familyID := uuid.New()
-	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:               familyID,
 		Partner1ID:       &husbandID,
 		Partner2ID:       &wifeID,
@@ -1575,7 +1575,7 @@ func TestExport_MultipleNames(t *testing.T) {
 		Gender:       domain.GenderFemale,
 		BirthDateRaw: "1850",
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1615,7 +1615,7 @@ func TestExport_MultipleNames(t *testing.T) {
 	}
 	for _, n := range names {
 		nm := n
-		if err := readStore.SavePersonName(ctx, &nm); err != nil {
+		if err := readStore.SavePersonName(ctx, domain.MainBranchID, &nm); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1680,7 +1680,7 @@ func TestExport_PrimaryNameFirst(t *testing.T) {
 		Gender:       domain.GenderMale,
 		BirthDateRaw: "1850",
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1707,7 +1707,7 @@ func TestExport_PrimaryNameFirst(t *testing.T) {
 	}
 	for _, n := range names {
 		nm := n
-		if err := readStore.SavePersonName(ctx, &nm); err != nil {
+		if err := readStore.SavePersonName(ctx, domain.MainBranchID, &nm); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1764,7 +1764,7 @@ func TestExport_PlaceCoordinates(t *testing.T) {
 		DeathPlaceLat:  &deathLat,
 		DeathPlaceLong: &deathLong,
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1812,14 +1812,14 @@ func TestExport_MarriagePlaceCoordinates(t *testing.T) {
 	janeID := uuid.New()
 	familyID := uuid.New()
 
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        johnID,
 		GivenName: "John",
 		Surname:   "Doe",
 		FullName:  "John Doe",
 		Gender:    domain.GenderMale,
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        janeID,
 		GivenName: "Jane",
 		Surname:   "Smith",
@@ -1840,7 +1840,7 @@ func TestExport_MarriagePlaceCoordinates(t *testing.T) {
 		MarriagePlaceLat:  &marriageLat,
 		MarriagePlaceLong: &marriageLong,
 	}
-	if err := readStore.SaveFamily(ctx, family); err != nil {
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, family); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1881,7 +1881,7 @@ func TestExport_PlaceWithoutCoordinates(t *testing.T) {
 		FullName:   "John Doe",
 		BirthPlace: "Unknown City",
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2027,7 +2027,7 @@ func TestExportWithProgress_ProgressPercentage(t *testing.T) {
 			GivenName: "Person",
 			Surname:   "Test",
 		}
-		readStore.SavePerson(ctx, person)
+		readStore.SavePerson(ctx, domain.MainBranchID, person)
 	}
 
 	exporter := gedcom.NewExporter(readStore)
@@ -2066,7 +2066,7 @@ func TestExport_LDSOrdinances(t *testing.T) {
 		FullName:  "John Doe",
 		Gender:    domain.GenderMale,
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2134,7 +2134,7 @@ func TestExport_LDSOrdinances(t *testing.T) {
 		FullName:  "Jane Smith",
 		Gender:    domain.GenderFemale,
 	}
-	if err := readStore.SavePerson(ctx, partner2); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, partner2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2148,7 +2148,7 @@ func TestExport_LDSOrdinances(t *testing.T) {
 		Partner2Surname:   "Smith",
 		RelationshipType:  domain.RelationMarriage,
 	}
-	if err := readStore.SaveFamily(ctx, family); err != nil {
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, family); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2277,7 +2277,7 @@ func TestExport_LDSOrdinances_RoundTrip(t *testing.T) {
 			FullName:  p.GivenName + " " + p.Surname,
 			Gender:    p.Gender,
 		}
-		readStore.SavePerson(ctx, person)
+		readStore.SavePerson(ctx, domain.MainBranchID, person)
 	}
 
 	for _, f := range families {
@@ -2286,7 +2286,7 @@ func TestExport_LDSOrdinances_RoundTrip(t *testing.T) {
 			Partner1ID: f.Partner1ID,
 			Partner2ID: f.Partner2ID,
 		}
-		readStore.SaveFamily(ctx, fam)
+		readStore.SaveFamily(ctx, domain.MainBranchID, fam)
 	}
 
 	for _, ord := range ldsOrdinances {
@@ -2341,7 +2341,7 @@ func TestExport_NegatedEvents(t *testing.T) {
 
 	// Create a person
 	personID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           personID,
 		GivenName:    "Alice",
 		Surname:      "Living",
@@ -2364,14 +2364,14 @@ func TestExport_NegatedEvents(t *testing.T) {
 	// Create persons for family
 	husbandID := uuid.New()
 	wifeID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        husbandID,
 		GivenName: "John",
 		Surname:   "Doe",
 		FullName:  "John Doe",
 		Gender:    domain.GenderMale,
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        wifeID,
 		GivenName: "Jane",
 		Surname:   "Smith",
@@ -2381,7 +2381,7 @@ func TestExport_NegatedEvents(t *testing.T) {
 
 	// Create a family
 	familyID := uuid.New()
-	readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:               familyID,
 		Partner1ID:       &husbandID,
 		Partner2ID:       &wifeID,
@@ -2435,14 +2435,14 @@ func TestExport_NonNegated7xTriggerBumpsVersion(t *testing.T) {
 
 	personID := uuid.New()
 	associateID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        personID,
 		GivenName: "Alice",
 		Surname:   "Smith",
 		FullName:  "Alice Smith",
 		Gender:    domain.GenderFemale,
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        associateID,
 		GivenName: "Bob",
 		Surname:   "Jones",
@@ -2529,7 +2529,7 @@ func TestExport_NegatedEventRoundTrip(t *testing.T) {
 			DeathDateRaw: p.DeathDate,
 			DeathPlace:   p.DeathPlace,
 		}
-		readStore.SavePerson(ctx, pm)
+		readStore.SavePerson(ctx, domain.MainBranchID, pm)
 	}
 
 	for _, f := range families {
@@ -2541,7 +2541,7 @@ func TestExport_NegatedEventRoundTrip(t *testing.T) {
 			MarriageDateRaw:  f.MarriageDate,
 			MarriagePlace:    f.MarriagePlace,
 		}
-		readStore.SaveFamily(ctx, fm)
+		readStore.SaveFamily(ctx, domain.MainBranchID, fm)
 	}
 
 	for _, e := range events {
@@ -2829,7 +2829,7 @@ func TestExport_RepositoryRoundTrip(t *testing.T) {
 			Surname:   p.Surname,
 			FullName:  p.GivenName + " " + p.Surname,
 		}
-		if err := readStore.SavePerson(ctx, pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, pm); err != nil {
 			t.Fatalf("Failed to save person: %v", err)
 		}
 	}
@@ -2921,10 +2921,10 @@ func TestExport_TargetVersionOverridesAutoUpgrade(t *testing.T) {
 
 	personID := uuid.New()
 	associateID := uuid.New()
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID: personID, GivenName: "Alice", Surname: "Smith", FullName: "Alice Smith", Gender: domain.GenderFemale,
 	})
-	readStore.SavePerson(ctx, &repository.PersonReadModel{
+	readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID: associateID, GivenName: "Bob", Surname: "Jones", FullName: "Bob Jones", Gender: domain.GenderMale,
 	})
 	// A PHRASE is a 7.0-only structure that would normally auto-upgrade to 7.0.
@@ -2961,10 +2961,10 @@ func TestExport_ExternalIDs(t *testing.T) {
 		Surname:   "Person",
 		FullName:  "Test Person",
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
-	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+	if err := readStore.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{
 		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
 		{Value: "12345", Type: "https://www.findagrave.com/"},
 	}); err != nil {
@@ -3006,14 +3006,14 @@ func TestExternalIDs_RoundTrip(t *testing.T) {
 		Surname:   "Person",
 		FullName:  "Test Person",
 	}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 	want := []repository.PersonExternalIDReadModel{
 		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
 		{Value: "12345", Type: "https://www.findagrave.com/"},
 	}
-	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, want); err != nil {
+	if err := readStore.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, want); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3051,15 +3051,15 @@ func TestExternalIDs_RoundTrip_FamilySourceRepository(t *testing.T) {
 
 	// Two partners so the family exports as a FAM record.
 	husbandID, wifeID := uuid.New(), uuid.New()
-	if err := readStore.SavePerson(ctx, &repository.PersonReadModel{ID: husbandID, GivenName: "John", Surname: "Doe", FullName: "John Doe"}); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: husbandID, GivenName: "John", Surname: "Doe", FullName: "John Doe"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := readStore.SavePerson(ctx, &repository.PersonReadModel{ID: wifeID, GivenName: "Jane", Surname: "Doe", FullName: "Jane Doe"}); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: wifeID, GivenName: "Jane", Surname: "Doe", FullName: "Jane Doe"}); err != nil {
 		t.Fatal(err)
 	}
 
 	familyID := uuid.New()
-	if err := readStore.SaveFamily(ctx, &repository.FamilyReadModel{ID: familyID, Partner1ID: &husbandID, Partner2ID: &wifeID, RelationshipType: domain.RelationMarriage}); err != nil {
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: familyID, Partner1ID: &husbandID, Partner2ID: &wifeID, RelationshipType: domain.RelationMarriage}); err != nil {
 		t.Fatal(err)
 	}
 	sourceID := uuid.New()
@@ -3077,7 +3077,7 @@ func TestExternalIDs_RoundTrip_FamilySourceRepository(t *testing.T) {
 		{Value: "FAM-EXID-1", Type: "http://example.com/fam"},
 		{Value: "FAM-EXID-2", Type: "http://example.com/fam2"},
 	}
-	if err := readStore.ReplaceFamilyExternalIDs(ctx, familyID, famIDs); err != nil {
+	if err := readStore.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, familyID, famIDs); err != nil {
 		t.Fatal(err)
 	}
 	srcIDs := []repository.SourceExternalIDReadModel{{Value: "SRC-EXID-1", Type: "http://example.com/src"}}
@@ -3293,10 +3293,10 @@ func TestExport_DowngradeReportsDataLoss(t *testing.T) {
 	ctx := context.Background()
 
 	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Test", Surname: "Person", FullName: "Test Person"}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
-	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+	if err := readStore.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{
 		{Value: "12345678", Type: "https://www.findagrave.com"},
 	}); err != nil {
 		t.Fatal(err)
@@ -3342,10 +3342,10 @@ func TestExport_DowngradeEXIDToVendorTag(t *testing.T) {
 	ctx := context.Background()
 
 	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Test", Surname: "Person", FullName: "Test Person"}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
-	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+	if err := readStore.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{
 		{Value: "KWCJ-QN7", Type: "http://www.familysearch.org/ark"},
 	}); err != nil {
 		t.Fatal(err)
@@ -3379,7 +3379,7 @@ func TestExport_NoDowngradeNoDataLoss(t *testing.T) {
 	ctx := context.Background()
 
 	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Plain", Surname: "Person", FullName: "Plain Person"}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 
@@ -3402,12 +3402,12 @@ func TestPreviewConversion(t *testing.T) {
 	ctx := context.Background()
 
 	person := &repository.PersonReadModel{ID: uuid.New(), GivenName: "Test", Surname: "Person", FullName: "Test Person"}
-	if err := readStore.SavePerson(ctx, person); err != nil {
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 		t.Fatal(err)
 	}
 	// Use a non-FamilySearch EXID so the downgrade is genuinely lossy: a
 	// FamilySearch ARK would be mapped to _FSFTID and report no loss.
-	if err := readStore.ReplacePersonExternalIDs(ctx, person.ID, []repository.PersonExternalIDReadModel{
+	if err := readStore.ReplacePersonExternalIDs(ctx, domain.MainBranchID, person.ID, []repository.PersonExternalIDReadModel{
 		{Value: "12345678", Type: "https://www.findagrave.com"},
 	}); err != nil {
 		t.Fatal(err)

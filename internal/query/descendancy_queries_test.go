@@ -36,7 +36,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 
 	for _, p := range persons {
 		pm := p
-		if err := readStore.SavePerson(ctx, &pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -44,7 +44,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 	// Create families
 	// Family 1: grandparent is partner (no spouse in this family - single parent for simplicity)
 	family1 := uuid.New()
-	err := readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:         family1,
 		Partner1ID: &grandparent,
 	})
@@ -53,7 +53,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 	}
 
 	// Add parent1 as child of grandparent
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family1,
 		PersonID:         parent1,
 		PersonGivenName:  "John",
@@ -66,7 +66,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 
 	// Family 2: parent1 + parent2 (spouse)
 	family2 := uuid.New()
-	err = readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	err = readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:                family2,
 		Partner1ID:        &parent1,
 		Partner1GivenName: "John",
@@ -81,7 +81,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 	}
 
 	// Add child1 and child2 as children of parent1 and parent2
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family2,
 		PersonID:         child1,
 		PersonGivenName:  "Junior",
@@ -92,7 +92,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 		t.Fatal(err)
 	}
 
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family2,
 		PersonID:         child2,
 		PersonGivenName:  "Jenny",
@@ -105,7 +105,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 
 	// Family 3: child1 has a family with grandchild
 	family3 := uuid.New()
-	err = readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	err = readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:         family3,
 		Partner1ID: &child1,
 	})
@@ -113,7 +113,7 @@ func setupDescendancyTestData(t *testing.T, readStore *memory.ReadModelStore) (g
 		t.Fatal(err)
 	}
 
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family3,
 		PersonID:         grandchild,
 		PersonGivenName:  "Baby",
@@ -285,7 +285,7 @@ func TestGetDescendancy_NoDescendants(t *testing.T) {
 
 	// Create a person with no descendants
 	leafPerson := uuid.New()
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        leafPerson,
 		GivenName: "Leaf",
 		Surname:   "Person",
@@ -376,7 +376,7 @@ func TestGetDescendancy_CycleDetection(t *testing.T) {
 	person2 := uuid.New()
 
 	// Save persons
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person1,
 		GivenName: "Person1",
 		Surname:   "Test",
@@ -387,7 +387,7 @@ func TestGetDescendancy_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err = readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person2,
 		GivenName: "Person2",
 		Surname:   "Test",
@@ -400,7 +400,7 @@ func TestGetDescendancy_CycleDetection(t *testing.T) {
 
 	// Create family where person1 is parent of person2
 	family1 := uuid.New()
-	err = readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	err = readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:         family1,
 		Partner1ID: &person1,
 	})
@@ -408,7 +408,7 @@ func TestGetDescendancy_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family1,
 		PersonID:         person2,
 		PersonGivenName:  "Person2",
@@ -421,7 +421,7 @@ func TestGetDescendancy_CycleDetection(t *testing.T) {
 
 	// Create family where person2 is parent of person1 (cycle!)
 	family2 := uuid.New()
-	err = readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	err = readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:         family2,
 		Partner1ID: &person2,
 	})
@@ -429,7 +429,7 @@ func TestGetDescendancy_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family2,
 		PersonID:         person1,
 		PersonGivenName:  "Person1",
@@ -470,7 +470,7 @@ func TestGetDescendancy_AllOptionalFields(t *testing.T) {
 
 	// Create person with all optional fields populated
 	person := uuid.New()
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           person,
 		GivenName:    "John",
 		Surname:      "Doe",
@@ -516,7 +516,7 @@ func TestCountDescendants_NilNode(t *testing.T) {
 
 	// Create person with no descendants
 	person := uuid.New()
-	err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person,
 		GivenName: "Alone",
 		Surname:   "Person",
@@ -588,14 +588,14 @@ func TestGetDescendancy_MultipleSpouses(t *testing.T) {
 
 	for _, p := range persons {
 		pm := p
-		if err := readStore.SavePerson(ctx, &pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Create family 1: parent + spouse1
 	family1 := uuid.New()
-	err := readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:                family1,
 		Partner1ID:        &parent,
 		Partner1GivenName: "Parent",
@@ -609,7 +609,7 @@ func TestGetDescendancy_MultipleSpouses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family1,
 		PersonID:         child1,
 		PersonGivenName:  "Child1",
@@ -622,7 +622,7 @@ func TestGetDescendancy_MultipleSpouses(t *testing.T) {
 
 	// Create family 2: parent + spouse2
 	family2 := uuid.New()
-	err = readStore.SaveFamily(ctx, &repository.FamilyReadModel{
+	err = readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:                family2,
 		Partner1ID:        &parent,
 		Partner1GivenName: "Parent",
@@ -636,7 +636,7 @@ func TestGetDescendancy_MultipleSpouses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = readStore.SaveFamilyChild(ctx, &repository.FamilyChildReadModel{
+	err = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
 		FamilyID:         family2,
 		PersonID:         child2,
 		PersonGivenName:  "Child2",

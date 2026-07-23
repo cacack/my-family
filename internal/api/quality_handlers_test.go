@@ -370,7 +370,7 @@ func TestGetStatistics_WithData(t *testing.T) {
 			BirthDateRaw: strconv.Itoa(p.birthYear),
 			UpdatedAt:    time.Now(),
 		}
-		_ = readStore.SavePerson(ctx, &person)
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 	}
 
 	// Create a family
@@ -378,7 +378,7 @@ func TestGetStatistics_WithData(t *testing.T) {
 		ID:        uuid.New(),
 		UpdatedAt: time.Now(),
 	}
-	_ = readStore.SaveFamily(ctx, &family)
+	_ = readStore.SaveFamily(ctx, domain.MainBranchID, &family)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/statistics", http.NoBody)
 	rec := httptest.NewRecorder()
@@ -488,7 +488,7 @@ func TestGetStatistics_TopSurnamesSorted(t *testing.T) {
 				FullName:  "Person " + surname,
 				UpdatedAt: time.Now(),
 			}
-			_ = readStore.SavePerson(ctx, &person)
+			_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 		}
 	}
 
