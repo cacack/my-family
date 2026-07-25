@@ -48,5 +48,10 @@
 		"d3": "^7.9.0",
 		"topojson-client": "^3.1.0",
 		"world-atlas": "^2.0.2"
+	},
+	"overrides": {
+		"brace-expansion": "5.0.8",
+		"js-yaml": "^4.3.0",
+		"postcss": "^8.5.18"
 	}
 }
