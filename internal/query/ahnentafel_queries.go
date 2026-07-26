@@ -54,7 +54,10 @@ type GetAhnentafelInput struct {
 // Missing ancestors result in gaps in the numbering, which is standard and expected.
 func (s *AhnentafelService) GetAhnentafel(ctx context.Context, input GetAhnentafelInput) (*AhnentafelResult, error) {
 	// Get the pedigree tree from the pedigree service
-	pedigreeResult, err := s.pedigreeService.GetPedigree(ctx, GetPedigreeInput(input))
+	pedigreeResult, err := s.pedigreeService.GetPedigree(ctx, GetPedigreeInput{
+		PersonID:       input.PersonID,
+		MaxGenerations: input.MaxGenerations,
+	})
 	if err != nil {
 		return nil, err
 	}

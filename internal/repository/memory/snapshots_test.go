@@ -194,7 +194,7 @@ func TestSnapshotStore_GetMaxPosition(t *testing.T) {
 		time: time.Now(),
 	}
 	streamID := uuid.New()
-	err = eventStore.Append(ctx, streamID, "test", []domain.Event{testEvent}, -1)
+	err = eventStore.Append(ctx, streamID, "test", []domain.Event{testEvent}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}
@@ -209,7 +209,7 @@ func TestSnapshotStore_GetMaxPosition(t *testing.T) {
 	}
 
 	// Append another event
-	err = eventStore.Append(ctx, streamID, "test", []domain.Event{testEvent}, 1)
+	err = eventStore.Append(ctx, streamID, "test", []domain.Event{testEvent}, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("Append() error = %v", err)
 	}

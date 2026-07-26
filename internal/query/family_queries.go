@@ -60,15 +60,17 @@ type FamilyListResult struct {
 
 // ListFamiliesInput contains options for listing families.
 type ListFamiliesInput struct {
-	Limit  int
-	Offset int
+	Limit    int
+	Offset   int
+	BranchID domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 
 // ListFamilies returns a paginated list of families.
 func (s *FamilyService) ListFamilies(ctx context.Context, input ListFamiliesInput) (*FamilyListResult, error) {
 	opts := repository.ListOptions{
-		Limit:  input.Limit,
-		Offset: input.Offset,
+		Limit:    input.Limit,
+		Offset:   input.Offset,
+		BranchID: input.BranchID,
 	}
 
 	if opts.Limit <= 0 {
@@ -97,8 +99,11 @@ func (s *FamilyService) ListFamilies(ctx context.Context, input ListFamiliesInpu
 }
 
 // GetFamily returns a family by ID with children.
-func (s *FamilyService) GetFamily(ctx context.Context, id uuid.UUID) (*FamilyDetail, error) {
-	rm, err := s.readStore.GetFamily(ctx, id)
+//
+// branchID scopes the family, its children, and its external IDs to the same
+// branch; the zero value (MainBranchID) reproduces the pre-branch behavior.
+func (s *FamilyService) GetFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*FamilyDetail, error) {
+	rm, err := s.readStore.GetFamily(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +117,7 @@ func (s *FamilyService) GetFamily(ctx context.Context, id uuid.UUID) (*FamilyDet
 	}
 
 	// Get children
-	children, err := s.readStore.GetFamilyChildren(ctx, id)
+	children, err := s.readStore.GetFamilyChildren(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +133,7 @@ func (s *FamilyService) GetFamily(ctx context.Context, id uuid.UUID) (*FamilyDet
 
 	// Get GEDCOM 7.0 external identifiers (EXID) so the UI can render
 	// "View on <system>" links.
-	externalIDs, err := s.readStore.GetFamilyExternalIDs(ctx, id)
+	externalIDs, err := s.readStore.GetFamilyExternalIDs(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -142,9 +147,9 @@ func (s *FamilyService) GetFamily(ctx context.Context, id uuid.UUID) (*FamilyDet
 	return detail, nil
 }
 
-// GetFamiliesForPerson returns all families where a person is a partner.
-func (s *FamilyService) GetFamiliesForPerson(ctx context.Context, personID uuid.UUID) ([]Family, error) {
-	readModels, err := s.readStore.GetFamiliesForPerson(ctx, personID)
+// GetFamiliesForPerson returns all families where a person is a partner within the given branch.
+func (s *FamilyService) GetFamiliesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]Family, error) {
+	readModels, err := s.readStore.GetFamiliesForPerson(ctx, branchID, personID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,9 +260,13 @@ type GroupSheet struct {
 }
 
 // GetGroupSheet returns a family group sheet with full details.
-func (s *FamilyService) GetGroupSheet(ctx context.Context, familyID uuid.UUID) (*GroupSheet, error) {
+//
+// branchID scopes the family and every person/child/pedigree lookup it fans out
+// to; the zero value (MainBranchID) reproduces the pre-branch behavior. Event and
+// citation lookups remain main-only until those read models become branch-aware.
+func (s *FamilyService) GetGroupSheet(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) (*GroupSheet, error) {
 	// Get family details
-	family, err := s.readStore.GetFamily(ctx, familyID)
+	family, err := s.readStore.GetFamily(ctx, branchID, familyID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +296,7 @@ func (s *FamilyService) GetGroupSheet(ctx context.Context, familyID uuid.UUID) (
 
 	// Get husband/partner1 details
 	if family.Partner1ID != nil {
-		husband, err := s.getGroupSheetPerson(ctx, *family.Partner1ID)
+		husband, err := s.getGroupSheetPerson(ctx, branchID, *family.Partner1ID)
 		if err == nil {
 			gs.Husband = husband
 		}
@@ -295,17 +304,17 @@ func (s *FamilyService) GetGroupSheet(ctx context.Context, familyID uuid.UUID) (
 
 	// Get wife/partner2 details
 	if family.Partner2ID != nil {
-		wife, err := s.getGroupSheetPerson(ctx, *family.Partner2ID)
+		wife, err := s.getGroupSheetPerson(ctx, branchID, *family.Partner2ID)
 		if err == nil {
 			gs.Wife = wife
 		}
 	}
 
 	// Get children
-	children, err := s.readStore.GetFamilyChildren(ctx, familyID)
+	children, err := s.readStore.GetFamilyChildren(ctx, branchID, familyID)
 	if err == nil {
 		for _, child := range children {
-			gsChild, err := s.getGroupSheetChild(ctx, child)
+			gsChild, err := s.getGroupSheetChild(ctx, branchID, child)
 			if err == nil {
 				gs.Children = append(gs.Children, *gsChild)
 			}
@@ -315,9 +324,9 @@ func (s *FamilyService) GetGroupSheet(ctx context.Context, familyID uuid.UUID) (
 	return gs, nil
 }
 
-// getGroupSheetPerson builds a GroupSheetPerson from a person ID.
-func (s *FamilyService) getGroupSheetPerson(ctx context.Context, personID uuid.UUID) (*GroupSheetPerson, error) {
-	person, err := s.readStore.GetPerson(ctx, personID)
+// getGroupSheetPerson builds a GroupSheetPerson from a person ID within the given branch.
+func (s *FamilyService) getGroupSheetPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*GroupSheetPerson, error) {
+	person, err := s.readStore.GetPerson(ctx, branchID, personID)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +371,7 @@ func (s *FamilyService) getGroupSheetPerson(ctx context.Context, personID uuid.U
 	s.applyNegatedPersonEvents(ctx, personID, &gsp.Birth, &gsp.Death)
 
 	// Get parents
-	edge, err := s.readStore.GetPedigreeEdge(ctx, personID)
+	edge, err := s.readStore.GetPedigreeEdge(ctx, branchID, personID)
 	if err == nil && edge != nil {
 		if edge.FatherID != nil {
 			gsp.FatherID = edge.FatherID
@@ -377,9 +386,9 @@ func (s *FamilyService) getGroupSheetPerson(ctx context.Context, personID uuid.U
 	return gsp, nil
 }
 
-// getGroupSheetChild builds a GroupSheetChild from a FamilyChildReadModel.
-func (s *FamilyService) getGroupSheetChild(ctx context.Context, child repository.FamilyChildReadModel) (*GroupSheetChild, error) {
-	person, err := s.readStore.GetPerson(ctx, child.PersonID)
+// getGroupSheetChild builds a GroupSheetChild from a FamilyChildReadModel within the given branch.
+func (s *FamilyService) getGroupSheetChild(ctx context.Context, branchID domain.BranchID, child repository.FamilyChildReadModel) (*GroupSheetChild, error) {
+	person, err := s.readStore.GetPerson(ctx, branchID, child.PersonID)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +435,7 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, child repository
 	s.applyNegatedPersonEvents(ctx, person.ID, &gsc.Birth, &gsc.Death)
 
 	// Get spouse (first partner family where this person is a partner)
-	families, err := s.readStore.GetFamiliesForPerson(ctx, person.ID)
+	families, err := s.readStore.GetFamiliesForPerson(ctx, branchID, person.ID)
 	if err == nil && len(families) > 0 {
 		for _, fam := range families {
 			// Find the other partner

@@ -79,7 +79,7 @@ func TestComputePersonScore_AllFields(t *testing.T) {
 		withBirthPlace("New York, NY"),
 	)
 	// Living person doesn't need death info
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -107,7 +107,7 @@ func TestComputePersonScore_OnlyBirthDate(t *testing.T) {
 	person := createPersonReadModel(personID, "John", "Doe",
 		withBirthDate("1990", birthYear),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -149,7 +149,7 @@ func TestComputePersonScore_BirthDateAndPlace(t *testing.T) {
 		withBirthDate("15 MAR "+strconv.Itoa(birthYear), birthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -178,7 +178,7 @@ func TestComputePersonScore_LikelyDeceased(t *testing.T) {
 		withBirthDate("1875", birthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -222,7 +222,7 @@ func TestComputePersonScore_DeceasedWithDeathDateNoPlace(t *testing.T) {
 		withBirthPlace("Boston, MA"),
 		withDeathDate("1945", deathYear),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -267,7 +267,7 @@ func TestComputePersonScore_FullyDocumentedDeceased(t *testing.T) {
 		withDeathDate("20 DEC 1945", deathYear),
 		withDeathPlace("New York, NY"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -361,7 +361,7 @@ func TestComputePersonScore_TableDriven(t *testing.T) {
 			service := query.NewQualityService(readStore)
 			ctx := context.Background()
 
-			_ = readStore.SavePerson(ctx, &tt.person)
+			_ = readStore.SavePerson(ctx, domain.MainBranchID, &tt.person)
 
 			result, err := service.GetPersonQuality(ctx, tt.person.ID)
 			if err != nil {
@@ -430,12 +430,12 @@ func TestGetQualityOverview_MultiplePersons(t *testing.T) {
 	p1 := createPersonReadModel(uuid.New(), "John", "Doe",
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"))
-	_ = readStore.SavePerson(ctx, &p1)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &p1)
 
 	// Person 2: Missing birth place (~78.57%)
 	p2 := createPersonReadModel(uuid.New(), "Jane", "Doe",
 		withBirthDate("1985", livingBirthYear))
-	_ = readStore.SavePerson(ctx, &p2)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &p2)
 
 	// Person 3: Deceased, fully documented (100%)
 	p3 := createPersonReadModel(uuid.New(), "Bob", "Smith",
@@ -443,7 +443,7 @@ func TestGetQualityOverview_MultiplePersons(t *testing.T) {
 		withBirthPlace("New York, NY"),
 		withDeathDate("1945", deceasedDeathYear),
 		withDeathPlace("Chicago, IL"))
-	_ = readStore.SavePerson(ctx, &p3)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &p3)
 
 	result, err := service.GetQualityOverview(ctx)
 	if err != nil {
@@ -491,7 +491,7 @@ func TestGetQualityOverview_IssueAggregation(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		p := createPersonReadModel(uuid.New(), "Person", strconv.Itoa(i))
 		// All have missing birth date and place
-		_ = readStore.SavePerson(ctx, &p)
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &p)
 	}
 
 	result, err := service.GetQualityOverview(ctx)
@@ -539,7 +539,7 @@ func TestGetPersonQuality_WithSuggestions(t *testing.T) {
 	personID := uuid.New()
 	person := createPersonReadModel(personID, "John", "Doe")
 	// Missing all info
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -578,7 +578,7 @@ func TestGetPersonQuality_OrphanDetection(t *testing.T) {
 	orphan := createPersonReadModel(orphanID, "Orphan", "Person",
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"))
-	_ = readStore.SavePerson(ctx, &orphan)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &orphan)
 
 	result, err := service.GetPersonQuality(ctx, orphanID)
 	if err != nil {
@@ -612,7 +612,7 @@ func TestGetPersonQuality_NotOrphanAsPartner(t *testing.T) {
 	person := createPersonReadModel(personID, "John", "Doe",
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"))
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Create a family with this person as partner
 	familyID := uuid.New()
@@ -621,7 +621,7 @@ func TestGetPersonQuality_NotOrphanAsPartner(t *testing.T) {
 		Partner1ID: &personID,
 		UpdatedAt:  time.Now(),
 	}
-	_ = readStore.SaveFamily(ctx, &family)
+	_ = readStore.SaveFamily(ctx, domain.MainBranchID, &family)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -650,14 +650,14 @@ func TestGetPersonQuality_NotOrphanAsChild(t *testing.T) {
 	parent1 := createPersonReadModel(parent1ID, "John", "Doe",
 		withBirthDate("1960", livingBirthYear-30),
 		withBirthPlace("Boston, MA"))
-	_ = readStore.SavePerson(ctx, &parent1)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &parent1)
 
 	// Create child person
 	childID := uuid.New()
 	child := createPersonReadModel(childID, "Junior", "Doe",
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"))
-	_ = readStore.SavePerson(ctx, &child)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &child)
 
 	// Create family
 	familyID := uuid.New()
@@ -666,14 +666,14 @@ func TestGetPersonQuality_NotOrphanAsChild(t *testing.T) {
 		Partner1ID: &parent1ID,
 		UpdatedAt:  time.Now(),
 	}
-	_ = readStore.SaveFamily(ctx, &family)
+	_ = readStore.SaveFamily(ctx, domain.MainBranchID, &family)
 
 	// Link child to family
 	familyChild := repository.FamilyChildReadModel{
 		FamilyID: familyID,
 		PersonID: childID,
 	}
-	_ = readStore.SaveFamilyChild(ctx, &familyChild)
+	_ = readStore.SaveFamilyChild(ctx, domain.MainBranchID, &familyChild)
 
 	result, err := service.GetPersonQuality(ctx, childID)
 	if err != nil {
@@ -740,7 +740,7 @@ func TestGetStatistics_MultiplePeople(t *testing.T) {
 		person := createPersonReadModel(uuid.New(), p.givenName, p.surname,
 			withBirthDate(strconv.Itoa(p.birthYear), p.birthYear),
 			withGender(p.gender))
-		_ = readStore.SavePerson(ctx, &person)
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 	}
 
 	// Create a family
@@ -749,7 +749,7 @@ func TestGetStatistics_MultiplePeople(t *testing.T) {
 		ID:        familyID,
 		UpdatedAt: time.Now(),
 	}
-	_ = readStore.SaveFamily(ctx, &family)
+	_ = readStore.SaveFamily(ctx, domain.MainBranchID, &family)
 
 	result, err := service.GetStatistics(ctx)
 	if err != nil {
@@ -812,7 +812,7 @@ func TestGetStatistics_TopSurnamesSorted(t *testing.T) {
 	for surname, count := range surnamesCounts {
 		for i := 0; i < count; i++ {
 			person := createPersonReadModel(uuid.New(), "Person", surname)
-			_ = readStore.SavePerson(ctx, &person)
+			_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 		}
 	}
 
@@ -846,7 +846,7 @@ func TestGetStatistics_TopSurnamesLimit(t *testing.T) {
 		surname := "Surname" + strconv.Itoa(i)
 		for j := 0; j <= i; j++ { // Varying counts
 			person := createPersonReadModel(uuid.New(), "Person", surname)
-			_ = readStore.SavePerson(ctx, &person)
+			_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 		}
 	}
 
@@ -900,7 +900,7 @@ func TestGetDiscoveryFeed_MissingBirthDate(t *testing.T) {
 	person := createPersonReadModel(personID, "John", "Doe",
 		withResearchStatus(domain.ResearchStatusProbable),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetDiscoveryFeed(ctx, 20)
 	if err != nil {
@@ -938,7 +938,7 @@ func TestGetDiscoveryFeed_OrphanedPerson(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetDiscoveryFeed(ctx, 20)
 	if err != nil {
@@ -976,7 +976,7 @@ func TestGetDiscoveryFeed_UnassessedPerson(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetDiscoveryFeed(ctx, 20)
 	if err != nil {
@@ -1014,7 +1014,7 @@ func TestGetDiscoveryFeed_QualityGap(t *testing.T) {
 	person := createPersonReadModel(personID, "Incomplete", "Record",
 		withBirthDate("1875", deceasedBirthYear),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetDiscoveryFeed(ctx, 20)
 	if err != nil {
@@ -1052,7 +1052,7 @@ func TestGetDiscoveryFeed_PriorityOrdering(t *testing.T) {
 		withResearchStatus(domain.ResearchStatusCertain),
 		// Missing birth date -> priority 1 missing_data
 	)
-	_ = readStore.SavePerson(ctx, &p1)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &p1)
 
 	// Create a person that generates priority 3 (unassessed) suggestion
 	p2ID := uuid.New()
@@ -1061,7 +1061,7 @@ func TestGetDiscoveryFeed_PriorityOrdering(t *testing.T) {
 		withBirthPlace("Boston, MA"),
 		// research_status defaults to unknown -> priority 3 unassessed
 	)
-	_ = readStore.SavePerson(ctx, &p2)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &p2)
 
 	// Create a person that generates priority 2 (quality_gap) suggestion
 	p3ID := uuid.New()
@@ -1070,7 +1070,7 @@ func TestGetDiscoveryFeed_PriorityOrdering(t *testing.T) {
 		withResearchStatus(domain.ResearchStatusPossible),
 		// Low score, has some data -> priority 2 quality_gap
 	)
-	_ = readStore.SavePerson(ctx, &p3)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &p3)
 
 	result, err := service.GetDiscoveryFeed(ctx, 100)
 	if err != nil {
@@ -1100,7 +1100,7 @@ func TestGetDiscoveryFeed_LimitParameter(t *testing.T) {
 	// Create several persons to generate many suggestions
 	for i := 0; i < 10; i++ {
 		p := createPersonReadModel(uuid.New(), "Person", strconv.Itoa(i))
-		_ = readStore.SavePerson(ctx, &p)
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &p)
 	}
 
 	// Request with limit of 3
@@ -1127,7 +1127,7 @@ func TestGetDiscoveryFeed_DefaultLimit(t *testing.T) {
 	// Create 25 persons to exceed default limit
 	for i := 0; i < 25; i++ {
 		p := createPersonReadModel(uuid.New(), "Person", strconv.Itoa(i))
-		_ = readStore.SavePerson(ctx, &p)
+		_ = readStore.SavePerson(ctx, domain.MainBranchID, &p)
 	}
 
 	// Request with limit of 0 (should default to 20)
@@ -1150,7 +1150,7 @@ func TestGetDiscoveryFeed_NoQualityGapForEmptyPerson(t *testing.T) {
 	// Create person with no data at all (hasSomeData = false)
 	personID := uuid.New()
 	person := createPersonReadModel(personID, "Empty", "Person")
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetDiscoveryFeed(ctx, 20)
 	if err != nil {
@@ -1180,7 +1180,7 @@ func TestGetDiscoveryFeed_NotOrphanedInFamily(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Create a family with this person
 	familyID := uuid.New()
@@ -1189,7 +1189,7 @@ func TestGetDiscoveryFeed_NotOrphanedInFamily(t *testing.T) {
 		Partner1ID: &personID,
 		UpdatedAt:  time.Now(),
 	}
-	_ = readStore.SaveFamily(ctx, &family)
+	_ = readStore.SaveFamily(ctx, domain.MainBranchID, &family)
 
 	result, err := service.GetDiscoveryFeed(ctx, 20)
 	if err != nil {
@@ -1219,7 +1219,7 @@ func TestGetDiscoveryFeed_MissingDeathDateForDeceased(t *testing.T) {
 		withBirthDate("1875", deceasedBirthYear),
 		withResearchStatus(domain.ResearchStatusProbable),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetDiscoveryFeed(ctx, 20)
 	if err != nil {
@@ -1260,7 +1260,7 @@ func TestPersonQuality_UnresolvedConflicts(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Verify baseline score is 100
 	baseline, err := service.GetPersonQuality(ctx, personID)
@@ -1345,7 +1345,7 @@ func TestPersonQuality_ResolvedConflicts(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Add a resolved conflict
 	conflict := repository.EvidenceConflictReadModel{
@@ -1388,7 +1388,7 @@ func TestPersonQuality_ConflictScoreFloor(t *testing.T) {
 	// Create person with low base score (no data = ~50% for living)
 	personID := uuid.New()
 	person := createPersonReadModel(personID, "Low", "Score")
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Add many unresolved conflicts to try to push below 0
 	for i := 0; i < 30; i++ {
@@ -1428,7 +1428,7 @@ func TestDiscoveryFeed_AnalysisWithoutProofSummary(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Add an evidence analysis for person_birth with no corresponding proof summary
 	analysis := repository.EvidenceAnalysisReadModel{
@@ -1478,7 +1478,7 @@ func TestDiscoveryFeed_AnalysisWithProofSummary(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Add an evidence analysis AND a corresponding proof summary
 	analysis := repository.EvidenceAnalysisReadModel{
@@ -1533,7 +1533,7 @@ func TestDiscoveryFeed_MissingResearchLogs(t *testing.T) {
 		withBirthPlace("Boston, MA"),
 		withResearchStatus(domain.ResearchStatusProbable),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetDiscoveryFeed(ctx, 50)
 	if err != nil {
@@ -1572,7 +1572,7 @@ func TestDiscoveryFeed_WithResearchLogs(t *testing.T) {
 		withBirthPlace("Boston, MA"),
 		withResearchStatus(domain.ResearchStatusProbable),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Add a research log entry
 	log := repository.ResearchLogReadModel{
@@ -1617,7 +1617,7 @@ func TestPersonQuality_NegativeResearchOutcome(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Add research log with "not_found" outcome — this is valid GPS evidence
 	log := repository.ResearchLogReadModel{
@@ -1660,7 +1660,7 @@ func TestPersonQuality_NoEvidenceData(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -1695,7 +1695,7 @@ func TestGetQualityOverview_WithConflicts(t *testing.T) {
 		withBirthDate("1990", livingBirthYear),
 		withBirthPlace("Boston, MA"),
 	)
-	_ = readStore.SavePerson(ctx, &person)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, &person)
 
 	// Add an unresolved conflict
 	conflict := repository.EvidenceConflictReadModel{

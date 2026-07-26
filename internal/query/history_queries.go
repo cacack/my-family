@@ -283,7 +283,7 @@ func (s *HistoryService) getEntityName(ctx context.Context, entityType string, e
 // getPersonName retrieves or constructs a person's name.
 func (s *HistoryService) getPersonName(ctx context.Context, personID uuid.UUID, evt *repository.StoredEvent) string {
 	// Try to get from read model first
-	person, err := s.readStore.GetPerson(ctx, personID)
+	person, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID)
 	if err == nil && person != nil {
 		return person.FullName
 	}
@@ -305,7 +305,7 @@ func (s *HistoryService) getPersonName(ctx context.Context, personID uuid.UUID, 
 // getFamilyName retrieves or constructs a family's name.
 func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, evt *repository.StoredEvent) string {
 	// Try to get from read model first
-	family, err := s.readStore.GetFamily(ctx, familyID)
+	family, err := s.readStore.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err == nil && family != nil {
 		p1Name := fullName(family.Partner1GivenName, family.Partner1Surname)
 		p2Name := fullName(family.Partner2GivenName, family.Partner2Surname)

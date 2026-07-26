@@ -45,7 +45,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 
 	// Validate partners exist if specified
 	if input.Partner1ID != nil {
-		p, err := h.readStore.GetPerson(ctx, *input.Partner1ID)
+		p, err := h.readStore.GetPerson(ctx, domain.MainBranchID, *input.Partner1ID)
 		if err != nil {
 			return nil, fmt.Errorf("getting partner1: %w", err)
 		}
@@ -54,7 +54,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 		}
 	}
 	if input.Partner2ID != nil {
-		p, err := h.readStore.GetPerson(ctx, *input.Partner2ID)
+		p, err := h.readStore.GetPerson(ctx, domain.MainBranchID, *input.Partner2ID)
 		if err != nil {
 			return nil, fmt.Errorf("getting partner2: %w", err)
 		}
@@ -92,7 +92,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 	event := domain.NewFamilyCreated(family)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, 0)
+	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, 0, domain.MainBranchID)
 	if err != nil {
 		return nil, fmt.Errorf("appending family created event: %w", err)
 	}
@@ -127,7 +127,7 @@ type UpdateFamilyResult struct {
 // UpdateFamily updates an existing family.
 func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*UpdateFamilyResult, error) {
 	// Check family exists
-	family, err := h.readStore.GetFamily(ctx, input.ID)
+	family, err := h.readStore.GetFamily(ctx, domain.MainBranchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting family: %w", err)
 	}
@@ -166,7 +166,7 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	event := domain.NewFamilyUpdated(input.ID, changes)
 
 	// Append to event store with optimistic locking
-	err = h.eventStore.Append(ctx, input.ID, "family", []domain.Event{event}, input.Version)
+	err = h.eventStore.Append(ctx, input.ID, "family", []domain.Event{event}, input.Version, domain.MainBranchID)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return nil, repository.ErrConcurrencyConflict
@@ -193,7 +193,7 @@ type DeleteFamilyInput struct {
 // DeleteFamily deletes a family if it has no children.
 func (h *Handler) DeleteFamily(ctx context.Context, input DeleteFamilyInput) error {
 	// Check family exists
-	family, err := h.readStore.GetFamily(ctx, input.ID)
+	family, err := h.readStore.GetFamily(ctx, domain.MainBranchID, input.ID)
 	if err != nil {
 		return fmt.Errorf("getting family: %w", err)
 	}
@@ -202,7 +202,7 @@ func (h *Handler) DeleteFamily(ctx context.Context, input DeleteFamilyInput) err
 	}
 
 	// Check for children
-	children, err := h.readStore.GetChildrenOfFamily(ctx, input.ID)
+	children, err := h.readStore.GetChildrenOfFamily(ctx, domain.MainBranchID, input.ID)
 	if err != nil {
 		return fmt.Errorf("getting children of family: %w", err)
 	}
@@ -214,7 +214,7 @@ func (h *Handler) DeleteFamily(ctx context.Context, input DeleteFamilyInput) err
 	event := domain.NewFamilyDeleted(input.ID, "")
 
 	// Append to event store with optimistic locking
-	err = h.eventStore.Append(ctx, input.ID, "family", []domain.Event{event}, input.Version)
+	err = h.eventStore.Append(ctx, input.ID, "family", []domain.Event{event}, input.Version, domain.MainBranchID)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return repository.ErrConcurrencyConflict
@@ -241,7 +241,7 @@ type LinkChildResult struct {
 // LinkChild adds a child to a family with circular ancestry detection.
 func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChildResult, error) {
 	// Verify family exists
-	family, err := h.readStore.GetFamily(ctx, input.FamilyID)
+	family, err := h.readStore.GetFamily(ctx, domain.MainBranchID, input.FamilyID)
 	if err != nil {
 		return nil, fmt.Errorf("getting family: %w", err)
 	}
@@ -250,7 +250,7 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 	}
 
 	// Verify child exists
-	child, err := h.readStore.GetPerson(ctx, input.ChildID)
+	child, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.ChildID)
 	if err != nil {
 		return nil, fmt.Errorf("getting child: %w", err)
 	}
@@ -259,7 +259,7 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 	}
 
 	// Check if child is already linked to a family
-	existingFamily, err := h.readStore.GetChildFamily(ctx, input.ChildID)
+	existingFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, input.ChildID)
 	if err != nil {
 		return nil, fmt.Errorf("getting child family: %w", err)
 	}
@@ -294,7 +294,7 @@ func (h *Handler) LinkChild(ctx context.Context, input LinkChildInput) (*LinkChi
 	event := domain.NewChildLinkedToFamily(fc)
 
 	// Append to event store
-	err = h.eventStore.Append(ctx, input.FamilyID, "family", []domain.Event{event}, family.Version)
+	err = h.eventStore.Append(ctx, input.FamilyID, "family", []domain.Event{event}, family.Version, domain.MainBranchID)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return nil, repository.ErrConcurrencyConflict
@@ -321,7 +321,7 @@ type UnlinkChildInput struct {
 // UnlinkChild removes a child from a family.
 func (h *Handler) UnlinkChild(ctx context.Context, input UnlinkChildInput) error {
 	// Verify family exists
-	family, err := h.readStore.GetFamily(ctx, input.FamilyID)
+	family, err := h.readStore.GetFamily(ctx, domain.MainBranchID, input.FamilyID)
 	if err != nil {
 		return fmt.Errorf("getting family: %w", err)
 	}
@@ -330,7 +330,7 @@ func (h *Handler) UnlinkChild(ctx context.Context, input UnlinkChildInput) error
 	}
 
 	// Verify child is in this family
-	childFamily, err := h.readStore.GetChildFamily(ctx, input.ChildID)
+	childFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, input.ChildID)
 	if err != nil {
 		return fmt.Errorf("getting child family: %w", err)
 	}
@@ -342,7 +342,7 @@ func (h *Handler) UnlinkChild(ctx context.Context, input UnlinkChildInput) error
 	event := domain.NewChildUnlinkedFromFamily(input.FamilyID, input.ChildID)
 
 	// Append to event store
-	err = h.eventStore.Append(ctx, input.FamilyID, "family", []domain.Event{event}, family.Version)
+	err = h.eventStore.Append(ctx, input.FamilyID, "family", []domain.Event{event}, family.Version, domain.MainBranchID)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return repository.ErrConcurrencyConflict
@@ -362,7 +362,7 @@ func (h *Handler) isAncestor(ctx context.Context, potentialAncestor, personID uu
 	}
 
 	// Get the person's parent family
-	parentFamily, err := h.readStore.GetChildFamily(ctx, personID)
+	parentFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		return false, err
 	}

@@ -59,7 +59,7 @@ func TestEventStore_AppendAndRead(t *testing.T) {
 		Surname:   "Doe",
 	}
 
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append first event: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestEventStore_AppendAndRead(t *testing.T) {
 		Changes:  map[string]any{"given_name": "Jane"},
 	}
 
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 1)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append second event: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestEventStore_ConcurrencyConflict(t *testing.T) {
 		Surname:   "Doe",
 	}
 
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append first event: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestEventStore_ConcurrencyConflict(t *testing.T) {
 		Changes:  map[string]any{"given_name": "Jane"},
 	}
 
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 0)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 0, domain.MainBranchID)
 	if err != repository.ErrConcurrencyConflict {
 		t.Errorf("expected ErrConcurrencyConflict, got %v", err)
 	}
@@ -171,7 +171,7 @@ func TestEventStore_ReadAll(t *testing.T) {
 			GivenName: "Person",
 			Surname:   "Test",
 		}
-		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 		if err != nil {
 			t.Fatalf("append event %d: %v", i, err)
 		}
@@ -222,7 +222,7 @@ func TestEventStore_GetStreamVersion(t *testing.T) {
 		GivenName: "John",
 		Surname:   "Doe",
 	}
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestEventStore_DecodeEvents(t *testing.T) {
 		BirthPlace: "Springfield, IL, USA",
 	}
 
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestEventStore_MultipleEventsInBatch(t *testing.T) {
 		},
 	}
 
-	err := store.Append(ctx, streamID, "Person", events, -1)
+	err := store.Append(ctx, streamID, "Person", events, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append batch: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestEventStore_ReadAll_Pagination(t *testing.T) {
 			GivenName: "Person",
 			Surname:   "Test",
 		}
-		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1)
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
 		if err != nil {
 			t.Fatalf("append event %d: %v", i, err)
 		}
@@ -446,7 +446,7 @@ func TestEventStore_ReadByStream(t *testing.T) {
 		},
 	}
 
-	err := store.Append(ctx, streamID, "Person", events, -1)
+	err := store.Append(ctx, streamID, "Person", events, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append events: %v", err)
 	}
@@ -538,7 +538,7 @@ func TestEventStore_ReadGlobalByTime(t *testing.T) {
 			Surname:   "Doe",
 		},
 	}
-	err := store.Append(ctx, streamID1, "Person", events1, -1)
+	err := store.Append(ctx, streamID1, "Person", events1, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append person 1: %v", err)
 	}
@@ -551,7 +551,7 @@ func TestEventStore_ReadGlobalByTime(t *testing.T) {
 			FamilyID:  streamID2,
 		},
 	}
-	err = store.Append(ctx, streamID2, "Family", events2, -1)
+	err = store.Append(ctx, streamID2, "Family", events2, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append family: %v", err)
 	}
@@ -566,7 +566,7 @@ func TestEventStore_ReadGlobalByTime(t *testing.T) {
 			Surname:   "Smith",
 		},
 	}
-	err = store.Append(ctx, streamID3, "Person", events3, -1)
+	err = store.Append(ctx, streamID3, "Person", events3, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append person 2: %v", err)
 	}
@@ -683,7 +683,7 @@ func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
 			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime},
 			PersonID:  streamID1,
 		},
-	}, -1)
+	}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append PersonCreated: %v", err)
 	}
@@ -694,7 +694,7 @@ func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
 			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(time.Minute)},
 			FamilyID:  streamID2,
 		},
-	}, -1)
+	}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append FamilyCreated: %v", err)
 	}
@@ -705,7 +705,7 @@ func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
 			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(2 * time.Minute)},
 			SourceID:  streamID3,
 		},
-	}, -1)
+	}, -1, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("append SourceCreated: %v", err)
 	}
@@ -728,5 +728,77 @@ func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
 		if e.EventType != "PersonCreated" && e.EventType != "FamilyCreated" {
 			t.Errorf("unexpected event type: %s", e.EventType)
 		}
+	}
+}
+
+func TestEventStore_BranchIDRoundTrip(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	branchID := domain.BranchID(uuid.New())
+	streamID := uuid.New()
+
+	event := domain.PersonCreated{
+		BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: time.Now()},
+		PersonID:  streamID,
+		GivenName: "Jane",
+		Surname:   "Roe",
+	}
+
+	if err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, branchID); err != nil {
+		t.Fatalf("Append() failed: %v", err)
+	}
+
+	stream, err := store.ReadStream(ctx, streamID)
+	if err != nil {
+		t.Fatalf("ReadStream() failed: %v", err)
+	}
+	if len(stream) != 1 {
+		t.Fatalf("ReadStream() returned %d events, want 1", len(stream))
+	}
+	if stream[0].BranchID != branchID {
+		t.Errorf("ReadStream BranchID = %v, want %v", stream[0].BranchID, branchID)
+	}
+
+	all, err := store.ReadAll(ctx, 0, 10)
+	if err != nil {
+		t.Fatalf("ReadAll() failed: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("ReadAll() returned %d events, want 1", len(all))
+	}
+	if all[0].BranchID != branchID {
+		t.Errorf("ReadAll BranchID = %v, want %v", all[0].BranchID, branchID)
+	}
+}
+
+func TestEventStore_MainBranchDefault(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	streamID := uuid.New()
+
+	event := domain.PersonCreated{
+		BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: time.Now()},
+		PersonID:  streamID,
+		GivenName: "John",
+		Surname:   "Doe",
+	}
+
+	if err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID); err != nil {
+		t.Fatalf("Append() failed: %v", err)
+	}
+
+	stream, err := store.ReadStream(ctx, streamID)
+	if err != nil {
+		t.Fatalf("ReadStream() failed: %v", err)
+	}
+	if len(stream) != 1 {
+		t.Fatalf("ReadStream() returned %d events, want 1", len(stream))
+	}
+	if stream[0].BranchID != domain.MainBranchID {
+		t.Errorf("BranchID = %v, want MainBranchID %v", stream[0].BranchID, domain.MainBranchID)
 	}
 }

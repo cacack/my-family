@@ -106,7 +106,7 @@ func (s *LDSOrdinanceService) GetLDSOrdinance(ctx context.Context, id uuid.UUID)
 // ListLDSOrdinancesForPerson returns all LDS ordinances for a given person.
 func (s *LDSOrdinanceService) ListLDSOrdinancesForPerson(ctx context.Context, personID uuid.UUID) ([]LDSOrdinance, error) {
 	// Verify person exists
-	person, err := s.readStore.GetPerson(ctx, personID)
+	person, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (s *LDSOrdinanceService) ListLDSOrdinancesForPerson(ctx context.Context, pe
 // ListLDSOrdinancesForFamily returns all LDS ordinances for a given family.
 func (s *LDSOrdinanceService) ListLDSOrdinancesForFamily(ctx context.Context, familyID uuid.UUID) ([]LDSOrdinance, error) {
 	// Verify family exists
-	family, err := s.readStore.GetFamily(ctx, familyID)
+	family, err := s.readStore.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		return nil, err
 	}

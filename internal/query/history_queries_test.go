@@ -20,7 +20,7 @@ type mockEventStore struct {
 	readGlobalByTimeFunc func(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error)
 }
 
-func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64) error {
+func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
 	return nil
 }
 
@@ -58,14 +58,14 @@ type mockReadModelStore struct {
 	getCitationFunc func(ctx context.Context, id uuid.UUID) (*repository.CitationReadModel, error)
 }
 
-func (m *mockReadModelStore) GetPerson(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
+func (m *mockReadModelStore) GetPerson(ctx context.Context, _ domain.BranchID, id uuid.UUID) (*repository.PersonReadModel, error) {
 	if m.getPersonFunc != nil {
 		return m.getPersonFunc(ctx, id)
 	}
 	return nil, repository.ErrStreamNotFound
 }
 
-func (m *mockReadModelStore) GetFamily(ctx context.Context, id uuid.UUID) (*repository.FamilyReadModel, error) {
+func (m *mockReadModelStore) GetFamily(ctx context.Context, _ domain.BranchID, id uuid.UUID) (*repository.FamilyReadModel, error) {
 	if m.getFamilyFunc != nil {
 		return m.getFamilyFunc(ctx, id)
 	}
@@ -93,36 +93,36 @@ func (m *mockReadModelStore) ListPersons(ctx context.Context, opts repository.Li
 func (m *mockReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SavePerson(ctx context.Context, person *repository.PersonReadModel) error {
+func (m *mockReadModelStore) SavePerson(ctx context.Context, _ domain.BranchID, person *repository.PersonReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeletePerson(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeletePerson(ctx context.Context, _ domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 
 // Person name stub methods
-func (m *mockReadModelStore) SavePersonName(ctx context.Context, name *repository.PersonNameReadModel) error {
+func (m *mockReadModelStore) SavePersonName(ctx context.Context, _ domain.BranchID, name *repository.PersonNameReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) GetPersonName(ctx context.Context, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
+func (m *mockReadModelStore) GetPersonName(ctx context.Context, _ domain.BranchID, nameID uuid.UUID) (*repository.PersonNameReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) GetPersonNames(ctx context.Context, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
+func (m *mockReadModelStore) GetPersonNames(ctx context.Context, _ domain.BranchID, personID uuid.UUID) ([]repository.PersonNameReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) DeletePersonName(ctx context.Context, nameID uuid.UUID) error {
+func (m *mockReadModelStore) DeletePersonName(ctx context.Context, _ domain.BranchID, nameID uuid.UUID) error {
 	return nil
 }
-func (m *mockReadModelStore) ReplacePersonExternalIDs(ctx context.Context, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
+func (m *mockReadModelStore) ReplacePersonExternalIDs(ctx context.Context, _ domain.BranchID, personID uuid.UUID, ids []repository.PersonExternalIDReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) GetPersonExternalIDs(ctx context.Context, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
+func (m *mockReadModelStore) GetPersonExternalIDs(ctx context.Context, _ domain.BranchID, personID uuid.UUID) ([]repository.PersonExternalIDReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
+func (m *mockReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, _ domain.BranchID, familyID uuid.UUID, ids []repository.FamilyExternalIDReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) GetFamilyExternalIDs(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
+func (m *mockReadModelStore) GetFamilyExternalIDs(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
@@ -141,37 +141,40 @@ func (m *mockReadModelStore) GetRepositoryExternalIDs(ctx context.Context, repos
 func (m *mockReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetFamiliesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.FamilyReadModel, error) {
+func (m *mockReadModelStore) GetFamiliesForPerson(ctx context.Context, _ domain.BranchID, personID uuid.UUID) ([]repository.FamilyReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SaveFamily(ctx context.Context, family *repository.FamilyReadModel) error {
+func (m *mockReadModelStore) SaveFamily(ctx context.Context, _ domain.BranchID, family *repository.FamilyReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteFamily(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteFamily(ctx context.Context, _ domain.BranchID, id uuid.UUID) error {
 	return nil
 }
-func (m *mockReadModelStore) GetFamilyChildren(ctx context.Context, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
+func (m *mockReadModelStore) GetFamilyChildren(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) GetChildrenOfFamily(ctx context.Context, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
+func (m *mockReadModelStore) GetChildrenOfFamily(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) GetChildFamily(ctx context.Context, personID uuid.UUID) (*repository.FamilyReadModel, error) {
+func (m *mockReadModelStore) GetChildFamily(ctx context.Context, _ domain.BranchID, personID uuid.UUID) (*repository.FamilyReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SaveFamilyChild(ctx context.Context, child *repository.FamilyChildReadModel) error {
+func (m *mockReadModelStore) SaveFamilyChild(ctx context.Context, _ domain.BranchID, child *repository.FamilyChildReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteFamilyChild(ctx context.Context, familyID, personID uuid.UUID) error {
+func (m *mockReadModelStore) DeleteFamilyChild(ctx context.Context, _ domain.BranchID, familyID, personID uuid.UUID) error {
 	return nil
 }
-func (m *mockReadModelStore) GetPedigreeEdge(ctx context.Context, personID uuid.UUID) (*repository.PedigreeEdge, error) {
+func (m *mockReadModelStore) GetPedigreeEdge(ctx context.Context, _ domain.BranchID, personID uuid.UUID) (*repository.PedigreeEdge, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SavePedigreeEdge(ctx context.Context, edge *repository.PedigreeEdge) error {
+func (m *mockReadModelStore) SavePedigreeEdge(ctx context.Context, _ domain.BranchID, edge *repository.PedigreeEdge) error {
 	return nil
 }
-func (m *mockReadModelStore) DeletePedigreeEdge(ctx context.Context, personID uuid.UUID) error {
+func (m *mockReadModelStore) DeletePedigreeEdge(ctx context.Context, _ domain.BranchID, personID uuid.UUID) error {
+	return nil
+}
+func (m *mockReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
 	return nil
 }
 func (m *mockReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {

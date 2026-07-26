@@ -4,9 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
+	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
 
@@ -116,7 +119,7 @@ func TestGetPerson(t *testing.T) {
 	}
 
 	// Get the person
-	person, err := service.GetPerson(ctx, createResult.ID)
+	person, err := service.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}
@@ -143,7 +146,7 @@ func TestGetPerson_NotFound(t *testing.T) {
 	service := query.NewPersonService(readStore)
 	ctx := context.Background()
 
-	_, err := service.GetPerson(ctx, [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+	_, err := service.GetPerson(ctx, domain.MainBranchID, [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -461,7 +464,7 @@ func TestGetPerson_WithFamilyRelationships(t *testing.T) {
 	})
 
 	// Get person with families
-	detail, err := service.GetPerson(ctx, person1.ID)
+	detail, err := service.GetPerson(ctx, domain.MainBranchID, person1.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}
@@ -471,7 +474,7 @@ func TestGetPerson_WithFamilyRelationships(t *testing.T) {
 	}
 
 	// Get child to test family as child
-	childDetail, err := service.GetPerson(ctx, child.ID)
+	childDetail, err := service.GetPerson(ctx, domain.MainBranchID, child.ID)
 	if err != nil {
 		t.Fatalf("GetPerson for child failed: %v", err)
 	}
@@ -503,7 +506,7 @@ func TestConvertReadModelToPerson_AllFields(t *testing.T) {
 		t.Fatalf("CreatePerson failed: %v", err)
 	}
 
-	person, err := service.GetPerson(ctx, createResult.ID)
+	person, err := service.GetPerson(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetPerson failed: %v", err)
 	}
@@ -614,7 +617,7 @@ func TestGetPersonNames(t *testing.T) {
 	}
 
 	// Get names for the person
-	names, err := service.GetPersonNames(ctx, createResult.ID)
+	names, err := service.GetPersonNames(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetPersonNames failed: %v", err)
 	}
@@ -674,7 +677,7 @@ func TestGetPersonNames_MultipleNames(t *testing.T) {
 	}
 
 	// Get names for the person
-	names, err := service.GetPersonNames(ctx, createResult.ID)
+	names, err := service.GetPersonNames(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetPersonNames failed: %v", err)
 	}
@@ -702,7 +705,7 @@ func TestGetPersonNames_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to get names for non-existent person
-	_, err := service.GetPersonNames(ctx, [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
+	_, err := service.GetPersonNames(ctx, domain.MainBranchID, [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16})
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -751,7 +754,7 @@ func TestGetPersonNames_WithAllFields(t *testing.T) {
 	}
 
 	// Get names for the person
-	names, err := service.GetPersonNames(ctx, createResult.ID)
+	names, err := service.GetPersonNames(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetPersonNames failed: %v", err)
 	}
@@ -786,5 +789,103 @@ func TestGetPersonNames_WithAllFields(t *testing.T) {
 	}
 	if immigrantName.Nickname != "Johnny" {
 		t.Errorf("Nickname = %s, want Johnny", immigrantName.Nickname)
+	}
+}
+
+// TestPersonService_BranchScope verifies that the branch-aware PersonService
+// resolves branch-over-main with tombstone suppression, that the composite
+// GetPerson forwards the same branchID to every sub-lookup (person + names),
+// and that the MainBranchID path reproduces pre-branch behavior.
+func TestPersonService_BranchScope(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewPersonService(readStore)
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	id := uuid.New()
+	nameID := uuid.New() // shared so the branch write overrides (upsert-by-id) rather than appends
+
+	// Seed the main row and its name bucket.
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID: id, GivenName: "Ada", Surname: "Main", FullName: "Ada Main", Version: 1,
+	}); err != nil {
+		t.Fatalf("seed main person: %v", err)
+	}
+	if err := readStore.SavePersonName(ctx, domain.MainBranchID, &repository.PersonNameReadModel{
+		ID: nameID, PersonID: id, GivenName: "Ada", Surname: "Main",
+		FullName: "Ada Main", NameType: domain.NameTypeBirth, IsPrimary: true,
+	}); err != nil {
+		t.Fatalf("seed main name: %v", err)
+	}
+
+	// The branch overrides both the person row and its name bucket.
+	if err := readStore.SavePerson(ctx, branch, &repository.PersonReadModel{
+		ID: id, GivenName: "Ada", Surname: "Branch", FullName: "Ada Branch", Version: 1,
+	}); err != nil {
+		t.Fatalf("seed branch person: %v", err)
+	}
+	if err := readStore.SavePersonName(ctx, branch, &repository.PersonNameReadModel{
+		ID: nameID, PersonID: id, GivenName: "Ada", Surname: "Branch",
+		FullName: "Ada Branch", NameType: domain.NameTypeBirth, IsPrimary: true,
+	}); err != nil {
+		t.Fatalf("seed branch name: %v", err)
+	}
+
+	// Composite GetPerson on the branch must return the branch person AND the
+	// branch-scoped names (proving the sub-call was scoped to the same branch).
+	branchDetail, err := service.GetPerson(ctx, branch, id)
+	if err != nil {
+		t.Fatalf("GetPerson branch: %v", err)
+	}
+	if branchDetail.Surname != "Branch" {
+		t.Errorf("branch person surname = %q, want Branch", branchDetail.Surname)
+	}
+	if len(branchDetail.Names) != 1 || branchDetail.Names[0].Surname != "Branch" {
+		t.Errorf("branch names = %+v, want single Branch name", branchDetail.Names)
+	}
+
+	// The main detail is untouched by the branch override.
+	mainDetail, err := service.GetPerson(ctx, domain.MainBranchID, id)
+	if err != nil {
+		t.Fatalf("GetPerson main: %v", err)
+	}
+	if mainDetail.Surname != "Main" || len(mainDetail.Names) != 1 || mainDetail.Names[0].Surname != "Main" {
+		t.Errorf("main detail surname=%q names=%+v, want Main", mainDetail.Surname, mainDetail.Names)
+	}
+
+	// List honors the branch scope.
+	branchList, err := service.ListPersons(ctx, query.ListPersonsInput{BranchID: branch})
+	if err != nil {
+		t.Fatalf("ListPersons branch: %v", err)
+	}
+	if branchList.Total != 1 || branchList.Items[0].Surname != "Branch" {
+		t.Errorf("branch list = %+v, want single Branch person", branchList.Items)
+	}
+	mainList, err := service.ListPersons(ctx, query.ListPersonsInput{})
+	if err != nil {
+		t.Fatalf("ListPersons main: %v", err)
+	}
+	if mainList.Total != 1 || mainList.Items[0].Surname != "Main" {
+		t.Errorf("main list = %+v, want single Main person", mainList.Items)
+	}
+
+	// Search honors the branch scope (branch overlay wins).
+	branchSearch, err := service.SearchPersons(ctx, query.SearchPersonsInput{Query: "Ada", BranchID: branch})
+	if err != nil {
+		t.Fatalf("SearchPersons branch: %v", err)
+	}
+	if len(branchSearch.Items) != 1 || branchSearch.Items[0].Surname != "Branch" {
+		t.Errorf("branch search = %+v, want single Branch person", branchSearch.Items)
+	}
+
+	// A branch delete writes a tombstone: the branch view hides the person while
+	// main still resolves it.
+	if err := readStore.DeletePerson(ctx, branch, id); err != nil {
+		t.Fatalf("DeletePerson branch: %v", err)
+	}
+	if _, err := service.GetPerson(ctx, branch, id); err != query.ErrNotFound {
+		t.Errorf("GetPerson branch after tombstone: err = %v, want ErrNotFound", err)
+	}
+	if _, err := service.GetPerson(ctx, domain.MainBranchID, id); err != nil {
+		t.Errorf("GetPerson main after branch tombstone: %v, want nil", err)
 	}
 }

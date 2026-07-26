@@ -73,6 +73,7 @@ func runServer() {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	snapshotStore := memory.NewSnapshotStore(eventStore)
+	branchStore := memory.NewBranchStore()
 
 	// Get frontend filesystem (embedded in production, local in dev)
 	frontendFS, err := web.GetFileSystem()
@@ -98,15 +99,15 @@ func runServer() {
 
 	// Seed demo data if demo mode is enabled
 	if cfg.DemoMode {
-		cmdHandler := command.NewHandler(eventStore, readStore)
+		cmdHandler := command.NewHandlerWithBranchStore(eventStore, readStore, branchStore)
 		if err := demo.SeedDemoData(context.Background(), cmdHandler); err != nil {
 			log.Fatalf("Failed to seed demo data: %v", err)
 		}
 		log.Printf("Demo data loaded: sample family tree ready")
 	}
 
-	// Build server options for demo mode
-	var serverOpts []api.ServerOption
+	// Build server options
+	serverOpts := []api.ServerOption{api.WithBranchStore(branchStore)}
 	if cfg.DemoMode {
 		serverOpts = append(serverOpts, api.WithDemoReset(eventStore, readStore, snapshotStore))
 	}

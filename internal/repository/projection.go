@@ -14,38 +14,47 @@ import (
 
 // Projector handles event-to-read-model projections.
 type Projector struct {
-	readStore ReadModelStore
+	readStore   ReadModelStore
+	branchStore BranchStore
 }
 
-// NewProjector creates a new projector with the given read model store.
-func NewProjector(readStore ReadModelStore) *Projector {
-	return &Projector{readStore: readStore}
+// NewProjector creates a new projector with the given read model store and
+// branch registry store. branchStore may be nil: in that case the three
+// branch-lifecycle handlers no-op (slice routing never needs branchStore). The
+// production construction sites (api/server.go, cmd/myfamily/main.go) supply a
+// real BranchStore; test/command callers that never emit branch events pass nil.
+func NewProjector(readStore ReadModelStore, branchStore BranchStore) *Projector {
+	return &Projector{readStore: readStore, branchStore: branchStore}
 }
 
 // Apply is a convenience method for applying a single event (version is auto-incremented).
 func (p *Projector) Apply(ctx context.Context, event domain.Event) error {
-	return p.Project(ctx, event, 1) // Version will be updated properly by the caller
+	return p.Project(ctx, event, 1, domain.MainBranchID) // Version will be updated properly by the caller
 }
 
-// Project applies a domain event to the read model.
-func (p *Projector) Project(ctx context.Context, event domain.Event, version int64) error {
+// Project applies a domain event to the read model on the given branch. A zero
+// branchID (domain.MainBranchID) reproduces pre-branch, main-only behavior.
+// Only the slice entities (Person, PersonName, Person EXID, Family, Family EXID,
+// FamilyChild, PedigreeEdge) are branch-scoped; all other handlers ignore
+// branchID and write main-only.
+func (p *Projector) Project(ctx context.Context, event domain.Event, version int64, branchID domain.BranchID) error {
 	switch e := event.(type) {
 	case domain.PersonCreated:
-		return p.projectPersonCreated(ctx, e, version)
+		return p.projectPersonCreated(ctx, e, version, branchID)
 	case domain.PersonUpdated:
-		return p.projectPersonUpdated(ctx, e, version)
+		return p.projectPersonUpdated(ctx, e, version, branchID)
 	case domain.PersonDeleted:
-		return p.projectPersonDeleted(ctx, e)
+		return p.projectPersonDeleted(ctx, e, branchID)
 	case domain.FamilyCreated:
-		return p.projectFamilyCreated(ctx, e, version)
+		return p.projectFamilyCreated(ctx, e, version, branchID)
 	case domain.FamilyUpdated:
-		return p.projectFamilyUpdated(ctx, e, version)
+		return p.projectFamilyUpdated(ctx, e, version, branchID)
 	case domain.ChildLinkedToFamily:
-		return p.projectChildLinked(ctx, e)
+		return p.projectChildLinked(ctx, e, branchID)
 	case domain.ChildUnlinkedFromFamily:
-		return p.projectChildUnlinked(ctx, e)
+		return p.projectChildUnlinked(ctx, e, branchID)
 	case domain.FamilyDeleted:
-		return p.projectFamilyDeleted(ctx, e)
+		return p.projectFamilyDeleted(ctx, e, branchID)
 	case domain.SourceCreated:
 		return p.projectSourceCreated(ctx, e, version)
 	case domain.SourceUpdated:
@@ -83,13 +92,13 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.RepositoryDeleted:
 		return p.projectRepositoryDeleted(ctx, e)
 	case domain.NameAdded:
-		return p.projectNameAdded(ctx, e, version)
+		return p.projectNameAdded(ctx, e, version, branchID)
 	case domain.NameUpdated:
-		return p.projectNameUpdated(ctx, e, version)
+		return p.projectNameUpdated(ctx, e, version, branchID)
 	case domain.NameRemoved:
-		return p.projectNameRemoved(ctx, e, version)
+		return p.projectNameRemoved(ctx, e, version, branchID)
 	case domain.PersonMerged:
-		return p.projectPersonMerged(ctx, e, version)
+		return p.projectPersonMerged(ctx, e, version, branchID)
 	case domain.NoteCreated:
 		return p.projectNoteCreated(ctx, e, version)
 	case domain.NoteUpdated:
@@ -103,13 +112,13 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.SubmitterDeleted:
 		return p.projectSubmitterDeleted(ctx, e)
 	case domain.AssociationCreated:
-		return p.projectAssociationCreated(ctx, e, version)
+		return p.projectAssociationCreated(ctx, e, version, branchID)
 	case domain.AssociationUpdated:
 		return p.projectAssociationUpdated(ctx, e, version)
 	case domain.AssociationDeleted:
 		return p.projectAssociationDeleted(ctx, e)
 	case domain.LDSOrdinanceCreated:
-		return p.projectLDSOrdinanceCreated(ctx, e, version)
+		return p.projectLDSOrdinanceCreated(ctx, e, version, branchID)
 	case domain.LDSOrdinanceUpdated:
 		return p.projectLDSOrdinanceUpdated(ctx, e, version)
 	case domain.LDSOrdinanceDeleted:
@@ -136,13 +145,67 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectProofSummaryUpdated(ctx, e, version)
 	case domain.ProofSummaryDeleted:
 		return p.projectProofSummaryDeleted(ctx, e)
+	case domain.BranchCreated:
+		return p.projectBranchCreated(ctx, e)
+	case domain.BranchDeleted:
+		return p.projectBranchDeleted(ctx, e)
+	case domain.BranchMerged:
+		return p.projectBranchMerged(ctx, e)
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil
 	}
 }
 
-func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCreated, version int64) error {
+// projectBranchCreated upserts the branch registry row from the event. The
+// registry is event-sourced (ADR-005): the projector derives the Branch from the
+// BranchCreated event and writes it via BranchStore.Upsert rather than mirroring
+// a direct store write, so a projection rebuild reconstructs the registry.
+func (p *Projector) projectBranchCreated(ctx context.Context, e domain.BranchCreated) error {
+	if p.branchStore == nil {
+		slog.Warn("projection: dropping branch lifecycle event, no BranchStore wired",
+			"event", "BranchCreated", "branch_id", e.BranchID)
+		return nil
+	}
+	branch := &domain.Branch{
+		ID:           e.BranchID,
+		Name:         e.Name,
+		Description:  e.Description,
+		BasePosition: e.BasePosition,
+		Status:       domain.BranchStatusActive,
+		CreatedAt:    e.OccurredAt(),
+	}
+	return p.branchStore.Upsert(ctx, branch)
+}
+
+// projectBranchDeleted archives the branch in the registry and drops the
+// branch's copy-on-write overlay rows from the read model (ADR-005): first the
+// replay-safe registry status change, then PurgeBranch to hard-delete the
+// branch's rows across the seven slice tables. PurgeBranch is a no-op for the
+// mainline, so an archived main (which cannot occur) would never be purged.
+func (p *Projector) projectBranchDeleted(ctx context.Context, e domain.BranchDeleted) error {
+	if p.branchStore == nil {
+		slog.Warn("projection: dropping branch lifecycle event, no BranchStore wired",
+			"event", "BranchDeleted", "branch_id", e.BranchID)
+		return nil
+	}
+	if err := p.branchStore.UpdateStatus(ctx, e.BranchID, domain.BranchStatusArchived); err != nil {
+		return err
+	}
+	return p.readStore.PurgeBranch(ctx, domain.BranchID(e.BranchID))
+}
+
+// projectBranchMerged marks the branch merged in the registry (terminal state).
+func (p *Projector) projectBranchMerged(ctx context.Context, e domain.BranchMerged) error {
+	if p.branchStore == nil {
+		slog.Warn("projection: dropping branch lifecycle event, no BranchStore wired",
+			"event", "BranchMerged", "branch_id", e.BranchID)
+		return nil
+	}
+	return p.branchStore.UpdateStatus(ctx, e.BranchID, domain.BranchStatusMerged)
+}
+
+func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCreated, version int64, branchID domain.BranchID) error {
 	var birthDateSort, deathDateSort *time.Time
 	var birthDateRaw, deathDateRaw string
 
@@ -179,11 +242,11 @@ func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCre
 		UpdatedAt:      e.OccurredAt(),
 	}
 
-	return p.readStore.SavePerson(ctx, person)
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
-func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpdated, version int64) error {
-	person, err := p.readStore.GetPerson(ctx, e.PersonID)
+func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpdated, version int64, branchID domain.BranchID) error {
+	person, err := p.readStore.GetPerson(ctx, branchID, e.PersonID)
 	if err != nil {
 		return err
 	}
@@ -254,14 +317,14 @@ func (p *Projector) projectPersonUpdated(ctx context.Context, e domain.PersonUpd
 	person.Version = version
 	person.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SavePerson(ctx, person)
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
-func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted) error {
-	return p.readStore.DeletePerson(ctx, e.PersonID)
+func (p *Projector) projectPersonDeleted(ctx context.Context, e domain.PersonDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeletePerson(ctx, branchID, e.PersonID)
 }
 
-func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCreated, version int64) error {
+func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCreated, version int64, branchID domain.BranchID) error {
 	var marriageDateSort *time.Time
 	var marriageDateRaw string
 
@@ -276,13 +339,13 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 	// Get partner names if available (split into given/surname for API contract)
 	var partner1GivenName, partner1Surname, partner2GivenName, partner2Surname string
 	if e.Partner1ID != nil {
-		if p1, _ := p.readStore.GetPerson(ctx, *e.Partner1ID); p1 != nil {
+		if p1, _ := p.readStore.GetPerson(ctx, branchID, *e.Partner1ID); p1 != nil {
 			partner1GivenName = p1.GivenName
 			partner1Surname = p1.Surname
 		}
 	}
 	if e.Partner2ID != nil {
-		if p2, _ := p.readStore.GetPerson(ctx, *e.Partner2ID); p2 != nil {
+		if p2, _ := p.readStore.GetPerson(ctx, branchID, *e.Partner2ID); p2 != nil {
 			partner2GivenName = p2.GivenName
 			partner2Surname = p2.Surname
 		}
@@ -305,11 +368,11 @@ func (p *Projector) projectFamilyCreated(ctx context.Context, e domain.FamilyCre
 		UpdatedAt:         e.OccurredAt(),
 	}
 
-	return p.readStore.SaveFamily(ctx, family)
+	return p.readStore.SaveFamily(ctx, branchID, family)
 }
 
-func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpdated, version int64) error {
-	family, err := p.readStore.GetFamily(ctx, e.FamilyID)
+func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpdated, version int64, branchID domain.BranchID) error {
+	family, err := p.readStore.GetFamily(ctx, branchID, e.FamilyID)
 	if err != nil {
 		return err
 	}
@@ -321,12 +384,12 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 	for key, value := range e.Changes {
 		switch key {
 		case "partner1_id":
-			newID, given, surname := p.resolvePartnerChange(ctx, value)
+			newID, given, surname := p.resolvePartnerChange(ctx, branchID, value)
 			family.Partner1ID = newID
 			family.Partner1GivenName = given
 			family.Partner1Surname = surname
 		case "partner2_id":
-			newID, given, surname := p.resolvePartnerChange(ctx, value)
+			newID, given, surname := p.resolvePartnerChange(ctx, branchID, value)
 			family.Partner2ID = newID
 			family.Partner2GivenName = given
 			family.Partner2Surname = surname
@@ -357,7 +420,7 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 	family.Version = version
 	family.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveFamily(ctx, family)
+	return p.readStore.SaveFamily(ctx, branchID, family)
 }
 
 // resolvePartnerChange resolves a partner_id value from a FamilyUpdated.Changes
@@ -392,7 +455,7 @@ func parseOptionalUUID(value any) *uuid.UUID {
 	}
 }
 
-func (p *Projector) resolvePartnerChange(ctx context.Context, value any) (*uuid.UUID, string, string) {
+func (p *Projector) resolvePartnerChange(ctx context.Context, branchID domain.BranchID, value any) (*uuid.UUID, string, string) {
 	s, ok := value.(string)
 	if !ok || s == "" {
 		return nil, "", ""
@@ -401,17 +464,17 @@ func (p *Projector) resolvePartnerChange(ctx context.Context, value any) (*uuid.
 	if err != nil {
 		return nil, "", ""
 	}
-	person, _ := p.readStore.GetPerson(ctx, parsed)
+	person, _ := p.readStore.GetPerson(ctx, branchID, parsed)
 	if person == nil {
 		return &parsed, "", ""
 	}
 	return &parsed, person.GivenName, person.Surname
 }
 
-func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily) error {
+func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily, branchID domain.BranchID) error {
 	// Get child name (split into given/surname)
 	var childGivenName, childSurname string
-	if child, _ := p.readStore.GetPerson(ctx, e.PersonID); child != nil {
+	if child, _ := p.readStore.GetPerson(ctx, branchID, e.PersonID); child != nil {
 		childGivenName = child.GivenName
 		childSurname = child.Surname
 	}
@@ -425,12 +488,12 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 		Sequence:         e.Sequence,
 	}
 
-	if err := p.readStore.SaveFamilyChild(ctx, fc); err != nil {
+	if err := p.readStore.SaveFamilyChild(ctx, branchID, fc); err != nil {
 		return err
 	}
 
 	// Update pedigree edge for child
-	family, err := p.readStore.GetFamily(ctx, e.FamilyID)
+	family, err := p.readStore.GetFamily(ctx, branchID, e.FamilyID)
 	if err != nil {
 		return err
 	}
@@ -440,7 +503,7 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 		}
 		if family.Partner1ID != nil {
 			// Determine father/mother based on gender (simplified)
-			p1, _ := p.readStore.GetPerson(ctx, *family.Partner1ID)
+			p1, _ := p.readStore.GetPerson(ctx, branchID, *family.Partner1ID)
 			if p1 != nil {
 				if p1.Gender == domain.GenderMale {
 					edge.FatherID = family.Partner1ID
@@ -452,7 +515,7 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 			}
 		}
 		if family.Partner2ID != nil {
-			p2, _ := p.readStore.GetPerson(ctx, *family.Partner2ID)
+			p2, _ := p.readStore.GetPerson(ctx, branchID, *family.Partner2ID)
 			if p2 != nil {
 				if p2.Gender == domain.GenderMale {
 					edge.FatherID = family.Partner2ID
@@ -463,7 +526,7 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 				}
 			}
 		}
-		if err := p.readStore.SavePedigreeEdge(ctx, edge); err != nil {
+		if err := p.readStore.SavePedigreeEdge(ctx, branchID, edge); err != nil {
 			return err
 		}
 	}
@@ -473,24 +536,24 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 		family.ChildCount++
 		family.Version++
 		family.UpdatedAt = e.OccurredAt()
-		return p.readStore.SaveFamily(ctx, family)
+		return p.readStore.SaveFamily(ctx, branchID, family)
 	}
 
 	return nil
 }
 
-func (p *Projector) projectChildUnlinked(ctx context.Context, e domain.ChildUnlinkedFromFamily) error {
-	if err := p.readStore.DeleteFamilyChild(ctx, e.FamilyID, e.PersonID); err != nil {
+func (p *Projector) projectChildUnlinked(ctx context.Context, e domain.ChildUnlinkedFromFamily, branchID domain.BranchID) error {
+	if err := p.readStore.DeleteFamilyChild(ctx, branchID, e.FamilyID, e.PersonID); err != nil {
 		return err
 	}
 
 	// Remove pedigree edge
-	if err := p.readStore.DeletePedigreeEdge(ctx, e.PersonID); err != nil {
+	if err := p.readStore.DeletePedigreeEdge(ctx, branchID, e.PersonID); err != nil {
 		return err
 	}
 
 	// Decrement family child count and increment version
-	family, err := p.readStore.GetFamily(ctx, e.FamilyID)
+	family, err := p.readStore.GetFamily(ctx, branchID, e.FamilyID)
 	if err != nil {
 		return err
 	}
@@ -500,28 +563,28 @@ func (p *Projector) projectChildUnlinked(ctx context.Context, e domain.ChildUnli
 		}
 		family.Version++
 		family.UpdatedAt = e.OccurredAt()
-		return p.readStore.SaveFamily(ctx, family)
+		return p.readStore.SaveFamily(ctx, branchID, family)
 	}
 
 	return nil
 }
 
-func (p *Projector) projectFamilyDeleted(ctx context.Context, e domain.FamilyDeleted) error {
+func (p *Projector) projectFamilyDeleted(ctx context.Context, e domain.FamilyDeleted, branchID domain.BranchID) error {
 	// Delete all children first
-	children, err := p.readStore.GetFamilyChildren(ctx, e.FamilyID)
+	children, err := p.readStore.GetFamilyChildren(ctx, branchID, e.FamilyID)
 	if err != nil {
 		return err
 	}
 	for _, child := range children {
-		if err := p.readStore.DeleteFamilyChild(ctx, e.FamilyID, child.PersonID); err != nil {
+		if err := p.readStore.DeleteFamilyChild(ctx, branchID, e.FamilyID, child.PersonID); err != nil {
 			return err
 		}
-		if err := p.readStore.DeletePedigreeEdge(ctx, child.PersonID); err != nil {
+		if err := p.readStore.DeletePedigreeEdge(ctx, branchID, child.PersonID); err != nil {
 			return err
 		}
 	}
 
-	return p.readStore.DeleteFamily(ctx, e.FamilyID)
+	return p.readStore.DeleteFamily(ctx, branchID, e.FamilyID)
 }
 
 func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCreated, version int64) error {
@@ -1176,7 +1239,7 @@ func (p *Projector) projectRepositoryDeleted(ctx context.Context, e domain.Repos
 	return p.readStore.DeleteRepository(ctx, e.RepositoryID)
 }
 
-func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64) error {
+func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, version int64, branchID domain.BranchID) error {
 	// Build full name from components
 	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
 
@@ -1195,15 +1258,15 @@ func (p *Projector) projectNameAdded(ctx context.Context, e domain.NameAdded, ve
 		UpdatedAt:     e.OccurredAt(),
 	}
 
-	if err := p.readStore.SavePersonName(ctx, name); err != nil {
+	if err := p.readStore.SavePersonName(ctx, branchID, name); err != nil {
 		return err
 	}
 
 	// Update person version to stay in sync with event stream
-	return p.updatePersonVersion(ctx, e.PersonID, version)
+	return p.updatePersonVersion(ctx, branchID, e.PersonID, version)
 }
 
-func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated, version int64) error {
+func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated, version int64, branchID domain.BranchID) error {
 	// Build full name from components
 	fullName := buildFullName(e.GivenName, e.Surname, e.NamePrefix, e.NameSuffix, e.SurnamePrefix)
 
@@ -1222,26 +1285,26 @@ func (p *Projector) projectNameUpdated(ctx context.Context, e domain.NameUpdated
 		UpdatedAt:     e.OccurredAt(),
 	}
 
-	if err := p.readStore.SavePersonName(ctx, name); err != nil {
+	if err := p.readStore.SavePersonName(ctx, branchID, name); err != nil {
 		return err
 	}
 
 	// Update person version to stay in sync with event stream
-	return p.updatePersonVersion(ctx, e.PersonID, version)
+	return p.updatePersonVersion(ctx, branchID, e.PersonID, version)
 }
 
-func (p *Projector) projectNameRemoved(ctx context.Context, e domain.NameRemoved, version int64) error {
-	if err := p.readStore.DeletePersonName(ctx, e.NameID); err != nil {
+func (p *Projector) projectNameRemoved(ctx context.Context, e domain.NameRemoved, version int64, branchID domain.BranchID) error {
+	if err := p.readStore.DeletePersonName(ctx, branchID, e.NameID); err != nil {
 		return err
 	}
 
 	// Update person version to stay in sync with event stream
-	return p.updatePersonVersion(ctx, e.PersonID, version)
+	return p.updatePersonVersion(ctx, branchID, e.PersonID, version)
 }
 
 // updatePersonVersion updates a person's version in the read model.
-func (p *Projector) updatePersonVersion(ctx context.Context, personID uuid.UUID, version int64) error {
-	person, err := p.readStore.GetPerson(ctx, personID)
+func (p *Projector) updatePersonVersion(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, version int64) error {
+	person, err := p.readStore.GetPerson(ctx, branchID, personID)
 	if err != nil {
 		return fmt.Errorf("get person for version update: %w", err)
 	}
@@ -1250,7 +1313,7 @@ func (p *Projector) updatePersonVersion(ctx context.Context, personID uuid.UUID,
 		return nil
 	}
 	person.Version = version
-	return p.readStore.SavePerson(ctx, person)
+	return p.readStore.SavePerson(ctx, branchID, person)
 }
 
 // buildFullName constructs a full name from its components.
@@ -1287,9 +1350,9 @@ func buildFullName(givenName, surname, namePrefix, nameSuffix, surnamePrefix str
 
 // projectPersonMerged handles the PersonMerged event by updating the survivor,
 // transferring relationships/data, and deleting the merged person.
-func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerged, version int64) error {
+func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerged, version int64, branchID domain.BranchID) error {
 	// 1. Update survivor person with resolved fields
-	survivor, err := p.readStore.GetPerson(ctx, e.SurvivorID)
+	survivor, err := p.readStore.GetPerson(ctx, branchID, e.SurvivorID)
 	if err != nil {
 		return err
 	}
@@ -1360,12 +1423,12 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	survivor.Version = version
 	survivor.UpdatedAt = e.OccurredAt()
 
-	if err := p.readStore.SavePerson(ctx, survivor); err != nil {
+	if err := p.readStore.SavePerson(ctx, branchID, survivor); err != nil {
 		return err
 	}
 
 	// 2. Update families where merged person is a partner
-	families, err := p.readStore.GetFamiliesForPerson(ctx, e.MergedID)
+	families, err := p.readStore.GetFamiliesForPerson(ctx, branchID, e.MergedID)
 	if err != nil {
 		return err
 	}
@@ -1381,7 +1444,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 			family.Partner2Surname = survivor.Surname
 		}
 		family.UpdatedAt = e.OccurredAt()
-		if err := p.readStore.SaveFamily(ctx, &family); err != nil {
+		if err := p.readStore.SaveFamily(ctx, branchID, &family); err != nil {
 			return err
 		}
 	}
@@ -1390,29 +1453,29 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	// (We need to find all children who have the merged person as father/mother)
 	// This requires iterating through all pedigree edges - a bit expensive but necessary
 	// For now, handle the merged person's own pedigree edge (if they are a child somewhere)
-	mergedEdge, err := p.readStore.GetPedigreeEdge(ctx, e.MergedID)
+	mergedEdge, err := p.readStore.GetPedigreeEdge(ctx, branchID, e.MergedID)
 	if err != nil {
 		return err
 	}
 	if mergedEdge != nil {
 		// Transfer the child-family relationship to survivor
 		// First, get the family where merged person is a child
-		mergedChildFamily, err := p.readStore.GetChildFamily(ctx, e.MergedID)
+		mergedChildFamily, err := p.readStore.GetChildFamily(ctx, branchID, e.MergedID)
 		if err != nil {
 			return err
 		}
 		if mergedChildFamily != nil {
 			// Delete old family-child record
-			if err := p.readStore.DeleteFamilyChild(ctx, mergedChildFamily.ID, e.MergedID); err != nil {
+			if err := p.readStore.DeleteFamilyChild(ctx, branchID, mergedChildFamily.ID, e.MergedID); err != nil {
 				return err
 			}
 			// Delete old pedigree edge
-			if err := p.readStore.DeletePedigreeEdge(ctx, e.MergedID); err != nil {
+			if err := p.readStore.DeletePedigreeEdge(ctx, branchID, e.MergedID); err != nil {
 				return err
 			}
 
 			// Check if survivor already has a child-family relationship
-			survivorChildFamily, err := p.readStore.GetChildFamily(ctx, e.SurvivorID)
+			survivorChildFamily, err := p.readStore.GetChildFamily(ctx, branchID, e.SurvivorID)
 			if err != nil {
 				return err
 			}
@@ -1425,7 +1488,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 					PersonSurname:    survivor.Surname,
 					RelationshipType: domain.ChildBiological, // Default, could be improved
 				}
-				if err := p.readStore.SaveFamilyChild(ctx, fc); err != nil {
+				if err := p.readStore.SaveFamilyChild(ctx, branchID, fc); err != nil {
 					return err
 				}
 
@@ -1437,7 +1500,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 					FatherName: mergedEdge.FatherName,
 					MotherName: mergedEdge.MotherName,
 				}
-				if err := p.readStore.SavePedigreeEdge(ctx, edge); err != nil {
+				if err := p.readStore.SavePedigreeEdge(ctx, branchID, edge); err != nil {
 					return err
 				}
 
@@ -1445,7 +1508,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 				mergedChildFamily.ChildCount-- // We removed merged
 				mergedChildFamily.ChildCount++ // We added survivor (net 0 change if same family)
 				mergedChildFamily.UpdatedAt = e.OccurredAt()
-				if err := p.readStore.SaveFamily(ctx, mergedChildFamily); err != nil {
+				if err := p.readStore.SaveFamily(ctx, branchID, mergedChildFamily); err != nil {
 					return err
 				}
 			}
@@ -1466,7 +1529,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 5. Transfer PersonName records from merged to survivor
-	names, err := p.readStore.GetPersonNames(ctx, e.MergedID)
+	names, err := p.readStore.GetPersonNames(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch person names for merged person %s: %w", e.MergedID, err)
 	}
@@ -1475,7 +1538,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		name.PersonID = e.SurvivorID
 		name.IsPrimary = false // Transferred names become alternate names
 		name.UpdatedAt = e.OccurredAt()
-		if err := p.readStore.SavePersonName(ctx, &name); err != nil {
+		if err := p.readStore.SavePersonName(ctx, branchID, &name); err != nil {
 			return fmt.Errorf("migrate person name %s for merged person %s: %w", name.ID, e.MergedID, err)
 		}
 	}
@@ -1566,7 +1629,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 13. Delete merged person from read model
-	return p.readStore.DeletePerson(ctx, e.MergedID)
+	return p.readStore.DeletePerson(ctx, branchID, e.MergedID)
 }
 
 // Note projections
@@ -1686,15 +1749,16 @@ func (p *Projector) projectSubmitterDeleted(ctx context.Context, e domain.Submit
 
 // Association projections
 
-func (p *Projector) projectAssociationCreated(ctx context.Context, e domain.AssociationCreated, version int64) error {
-	// Look up person names for denormalization
+func (p *Projector) projectAssociationCreated(ctx context.Context, e domain.AssociationCreated, version int64, branchID domain.BranchID) error {
+	// Look up person names for denormalization on the event's branch scope so a
+	// branch-local person resolves correctly (falls back to main via the overlay).
 	personName := ""
 	associateName := ""
 
-	if person, err := p.readStore.GetPerson(ctx, e.PersonID); err == nil && person != nil {
+	if person, err := p.readStore.GetPerson(ctx, branchID, e.PersonID); err == nil && person != nil {
 		personName = person.FullName
 	}
-	if associate, err := p.readStore.GetPerson(ctx, e.AssociateID); err == nil && associate != nil {
+	if associate, err := p.readStore.GetPerson(ctx, branchID, e.AssociateID); err == nil && associate != nil {
 		associateName = associate.FullName
 	}
 
@@ -1761,7 +1825,7 @@ func (p *Projector) projectAssociationDeleted(ctx context.Context, e domain.Asso
 
 // LDS Ordinance projections
 
-func (p *Projector) projectLDSOrdinanceCreated(ctx context.Context, e domain.LDSOrdinanceCreated, version int64) error {
+func (p *Projector) projectLDSOrdinanceCreated(ctx context.Context, e domain.LDSOrdinanceCreated, version int64, branchID domain.BranchID) error {
 	var dateSort *time.Time
 	var dateRaw string
 
@@ -1773,10 +1837,11 @@ func (p *Projector) projectLDSOrdinanceCreated(ctx context.Context, e domain.LDS
 		}
 	}
 
-	// Look up person name for denormalization
+	// Look up person name for denormalization on the event's branch scope so a
+	// branch-local person resolves correctly (falls back to main via the overlay).
 	personName := ""
 	if e.PersonID != nil {
-		if person, err := p.readStore.GetPerson(ctx, *e.PersonID); err == nil && person != nil {
+		if person, err := p.readStore.GetPerson(ctx, branchID, *e.PersonID); err == nil && person != nil {
 			personName = person.FullName
 		}
 	}

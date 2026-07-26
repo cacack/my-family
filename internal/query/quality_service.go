@@ -365,7 +365,7 @@ func (s *QualityService) GetQualityOverview(ctx context.Context) (*QualityOvervi
 
 // GetPersonQuality returns quality metrics for a specific person.
 func (s *QualityService) GetPersonQuality(ctx context.Context, id uuid.UUID) (*PersonQuality, error) {
-	person, err := s.readStore.GetPerson(ctx, id)
+	person, err := s.readStore.GetPerson(ctx, domain.MainBranchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -608,7 +608,7 @@ func (s *QualityService) buildConnectedPersonIDs(ctx context.Context) (map[uuid.
 		if f.Partner2ID != nil {
 			connected[*f.Partner2ID] = true
 		}
-		children, childErr := s.readStore.GetFamilyChildren(ctx, f.ID)
+		children, childErr := s.readStore.GetFamilyChildren(ctx, domain.MainBranchID, f.ID)
 		if childErr != nil {
 			return nil, childErr
 		}
@@ -622,7 +622,7 @@ func (s *QualityService) buildConnectedPersonIDs(ctx context.Context) (map[uuid.
 // isOrphaned checks if a person has no family connections.
 func (s *QualityService) isOrphaned(ctx context.Context, personID uuid.UUID) (bool, error) {
 	// Check if person is a partner in any family
-	families, err := s.readStore.GetFamiliesForPerson(ctx, personID)
+	families, err := s.readStore.GetFamiliesForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		return false, err
 	}
@@ -631,7 +631,7 @@ func (s *QualityService) isOrphaned(ctx context.Context, personID uuid.UUID) (bo
 	}
 
 	// Check if person is a child in any family
-	childFamily, err := s.readStore.GetChildFamily(ctx, personID)
+	childFamily, err := s.readStore.GetChildFamily(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		return false, err
 	}

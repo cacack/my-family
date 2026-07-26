@@ -19,7 +19,7 @@ type rollbackMockEventStore struct {
 	readStreamFunc func(ctx context.Context, streamID uuid.UUID) ([]repository.StoredEvent, error)
 }
 
-func (m *rollbackMockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64) error {
+func (m *rollbackMockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
 	return nil
 }
 

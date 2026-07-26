@@ -41,14 +41,14 @@ func setupAhnentafelTestData(t *testing.T, readStore *memory.ReadModelStore) (su
 
 	for _, p := range persons {
 		pm := p
-		if err := readStore.SavePerson(ctx, &pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Create pedigree edges
 	// Subject's parents
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   subject,
 		FatherID:   &father,
 		FatherName: "John Smith",
@@ -59,7 +59,7 @@ func setupAhnentafelTestData(t *testing.T, readStore *memory.ReadModelStore) (su
 	}
 
 	// Father's parents (paternal grandparents)
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   father,
 		FatherID:   &paternalGF,
 		FatherName: "George Smith",
@@ -70,7 +70,7 @@ func setupAhnentafelTestData(t *testing.T, readStore *memory.ReadModelStore) (su
 	}
 
 	// Mother's parents (maternal grandparents)
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   mother,
 		FatherID:   &maternalGF,
 		FatherName: "Robert Johnson",
@@ -232,13 +232,13 @@ func TestGetAhnentafel_MissingAncestors(t *testing.T) {
 
 	for _, p := range persons {
 		pm := p
-		if err := readStore.SavePerson(ctx, &pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Subject has only father (no mother)
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   subject,
 		FatherID:   &father,
 		FatherName: "Father Test",
@@ -248,7 +248,7 @@ func TestGetAhnentafel_MissingAncestors(t *testing.T) {
 	}
 
 	// Father has only mother (no father)
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   father,
 		MotherID:   &paternalGM,
 		MotherName: "Grandma Test",
@@ -354,7 +354,7 @@ func TestGetAhnentafel_NoParents(t *testing.T) {
 
 	// Create a person with no parents
 	orphan := uuid.New()
-	if err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        orphan,
 		GivenName: "Orphan",
 		Surname:   "Test",
@@ -508,7 +508,7 @@ func TestGetAhnentafel_CycleDetection(t *testing.T) {
 	person1 := uuid.New()
 	person2 := uuid.New()
 
-	if err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person1,
 		GivenName: "Person1",
 		Surname:   "Test",
@@ -518,7 +518,7 @@ func TestGetAhnentafel_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := readStore.SavePerson(ctx, &repository.PersonReadModel{
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:        person2,
 		GivenName: "Person2",
 		Surname:   "Test",
@@ -529,7 +529,7 @@ func TestGetAhnentafel_CycleDetection(t *testing.T) {
 	}
 
 	// Create circular edge
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   person1,
 		FatherID:   &person2,
 		FatherName: "Person2 Test",
@@ -537,7 +537,7 @@ func TestGetAhnentafel_CycleDetection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   person2,
 		FatherID:   &person1,
 		FatherName: "Person1 Test",
@@ -589,13 +589,13 @@ func TestGetAhnentafel_PartialGrandparents(t *testing.T) {
 
 	for _, p := range persons {
 		pm := p
-		if err := readStore.SavePerson(ctx, &pm); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, &pm); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Subject's parents
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   subject,
 		FatherID:   &father,
 		FatherName: "Father Test",
@@ -606,7 +606,7 @@ func TestGetAhnentafel_PartialGrandparents(t *testing.T) {
 	}
 
 	// Only father has parents (mother has none)
-	if err := readStore.SavePedigreeEdge(ctx, &repository.PedigreeEdge{
+	if err := readStore.SavePedigreeEdge(ctx, domain.MainBranchID, &repository.PedigreeEdge{
 		PersonID:   father,
 		FatherID:   &paternalGF,
 		FatherName: "PaternalGF Test",

@@ -96,7 +96,7 @@ func (h *Handler) MergePersons(ctx context.Context, input MergePersonsInput) (*M
 
 // validateMergePersons fetches and validates both persons exist with correct versions.
 func (h *Handler) validateMergePersons(ctx context.Context, input MergePersonsInput) (*repository.PersonReadModel, *repository.PersonReadModel, error) {
-	survivor, err := h.readStore.GetPerson(ctx, input.SurvivorID)
+	survivor, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.SurvivorID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -104,7 +104,7 @@ func (h *Handler) validateMergePersons(ctx context.Context, input MergePersonsIn
 		return nil, nil, fmt.Errorf("%w: survivor not found", ErrPersonNotFound)
 	}
 
-	merged, err := h.readStore.GetPerson(ctx, input.MergedID)
+	merged, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.MergedID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -138,11 +138,11 @@ func (h *Handler) validateMergeRelationships(ctx context.Context, survivorID, me
 	}
 
 	// Child-family conflict check: if both are children in different families, block
-	survivorChildFamily, err := h.readStore.GetChildFamily(ctx, survivorID)
+	survivorChildFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, survivorID)
 	if err != nil {
 		return fmt.Errorf("getting survivor child family: %w", err)
 	}
-	mergedChildFamily, err := h.readStore.GetChildFamily(ctx, mergedID)
+	mergedChildFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, mergedID)
 	if err != nil {
 		return fmt.Errorf("getting merged child family: %w", err)
 	}
@@ -285,7 +285,7 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 
 // collectAffectedFamilies returns IDs of families where merged person is a partner.
 func (h *Handler) collectAffectedFamilies(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	families, err := h.readStore.GetFamiliesForPerson(ctx, mergedID)
+	families, err := h.readStore.GetFamiliesForPerson(ctx, domain.MainBranchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("getting families for person: %w", err)
 	}
@@ -313,7 +313,7 @@ func (h *Handler) collectAffectedCitations(ctx context.Context, mergedID uuid.UU
 
 // collectTransferredNames returns IDs of alternate names from merged person.
 func (h *Handler) collectTransferredNames(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	names, err := h.readStore.GetPersonNames(ctx, mergedID)
+	names, err := h.readStore.GetPersonNames(ctx, domain.MainBranchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("getting person names: %w", err)
 	}

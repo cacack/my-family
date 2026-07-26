@@ -23,7 +23,7 @@ func setupValidationService() (*query.ValidationService, *memory.ReadModelStore)
 func addPerson(store *memory.ReadModelStore, given, surname, birthDate string) uuid.UUID {
 	id := uuid.New()
 	ctx := context.Background()
-	_ = store.SavePerson(ctx, &repository.PersonReadModel{
+	_ = store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           id,
 		GivenName:    given,
 		Surname:      surname,
@@ -38,7 +38,7 @@ func addPerson(store *memory.ReadModelStore, given, surname, birthDate string) u
 func addPersonWithDeath(store *memory.ReadModelStore, given, surname, birthDate, deathDate string) uuid.UUID {
 	id := uuid.New()
 	ctx := context.Background()
-	_ = store.SavePerson(ctx, &repository.PersonReadModel{
+	_ = store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           id,
 		GivenName:    given,
 		Surname:      surname,
@@ -54,7 +54,7 @@ func addPersonWithDeath(store *memory.ReadModelStore, given, surname, birthDate,
 func addPersonWithGender(store *memory.ReadModelStore, given, surname string, gender domain.Gender, birthDate string) uuid.UUID {
 	id := uuid.New()
 	ctx := context.Background()
-	_ = store.SavePerson(ctx, &repository.PersonReadModel{
+	_ = store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
 		ID:           id,
 		GivenName:    given,
 		Surname:      surname,
@@ -70,7 +70,7 @@ func addPersonWithGender(store *memory.ReadModelStore, given, surname string, ge
 func addFamily(store *memory.ReadModelStore, partner1ID, partner2ID *uuid.UUID, marriageDate string) uuid.UUID {
 	id := uuid.New()
 	ctx := context.Background()
-	_ = store.SaveFamily(ctx, &repository.FamilyReadModel{
+	_ = store.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
 		ID:              id,
 		Partner1ID:      partner1ID,
 		Partner2ID:      partner2ID,

@@ -82,7 +82,7 @@ func TestGetFamily(t *testing.T) {
 	})
 
 	// Get family
-	family, err := service.GetFamily(ctx, familyResult.ID)
+	family, err := service.GetFamily(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetFamily failed: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestGetFamily_WithChildren(t *testing.T) {
 	})
 
 	// Get family with children
-	family, err := service.GetFamily(ctx, familyResult.ID)
+	family, err := service.GetFamily(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetFamily failed: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestGetFamily_NotFound(t *testing.T) {
 	service := query.NewFamilyService(readStore)
 	ctx := context.Background()
 
-	_, err := service.GetFamily(ctx, uuid.New())
+	_, err := service.GetFamily(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -192,7 +192,7 @@ func TestGetFamiliesForPerson(t *testing.T) {
 	})
 
 	// Get families for person
-	families, err := service.GetFamiliesForPerson(ctx, p1.ID)
+	families, err := service.GetFamiliesForPerson(ctx, domain.MainBranchID, p1.ID)
 	if err != nil {
 		t.Fatalf("GetFamiliesForPerson failed: %v", err)
 	}
@@ -354,7 +354,7 @@ func TestGetFamily_AllOptionalFields(t *testing.T) {
 	})
 
 	// Get family to verify conversion of all fields
-	family, err := service.GetFamily(ctx, familyResult.ID)
+	family, err := service.GetFamily(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetFamily failed: %v", err)
 	}
@@ -395,7 +395,7 @@ func TestGetFamiliesForPerson_EmptyResult(t *testing.T) {
 		Surname:   "Person",
 	})
 
-	families, err := service.GetFamiliesForPerson(ctx, p.ID)
+	families, err := service.GetFamiliesForPerson(ctx, domain.MainBranchID, p.ID)
 	if err != nil {
 		t.Fatalf("GetFamiliesForPerson failed: %v", err)
 	}
@@ -444,7 +444,7 @@ func TestGetGroupSheet_Basic(t *testing.T) {
 	})
 
 	// Get group sheet
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -547,7 +547,7 @@ func TestGetGroupSheet_WithChildren(t *testing.T) {
 	})
 
 	// Get group sheet
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -579,7 +579,7 @@ func TestGetGroupSheet_NotFound(t *testing.T) {
 	service := query.NewFamilyService(readStore)
 	ctx := context.Background()
 
-	_, err := service.GetGroupSheet(ctx, uuid.New())
+	_, err := service.GetGroupSheet(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -602,7 +602,7 @@ func TestGetGroupSheet_NoMarriageInfo(t *testing.T) {
 		Partner1ID: &person.ID,
 	})
 
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -654,7 +654,7 @@ func TestGetGroupSheet_ChildWithSpouse(t *testing.T) {
 	})
 
 	// Get group sheet for parent's family
-	gs, err := service.GetGroupSheet(ctx, parentFamily.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, parentFamily.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -721,7 +721,7 @@ func TestGetGroupSheet_PersonWithParents(t *testing.T) {
 	})
 
 	// Get group sheet
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -790,7 +790,7 @@ func TestGetGroupSheet_NegatedBirthWithCitations(t *testing.T) {
 	})
 
 	// Get group sheet
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -862,7 +862,7 @@ func TestGetGroupSheet_NegatedDeathWithCitations(t *testing.T) {
 	})
 
 	// Get group sheet
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -937,7 +937,7 @@ func TestGetGroupSheet_NegatedMarriageWithCitations(t *testing.T) {
 	})
 
 	// Get group sheet
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -1006,7 +1006,7 @@ func TestGetGroupSheet_ExistingEventMarkedNegatedWithCitations(t *testing.T) {
 		Version:     1,
 	})
 
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -1089,7 +1089,7 @@ func TestGetGroupSheet_NonNegatedEventsStillHaveCitations(t *testing.T) {
 		Version:     1,
 	})
 
-	gs, err := service.GetGroupSheet(ctx, familyResult.ID)
+	gs, err := service.GetGroupSheet(ctx, domain.MainBranchID, familyResult.ID)
 	if err != nil {
 		t.Fatalf("GetGroupSheet failed: %v", err)
 	}
@@ -1125,17 +1125,17 @@ func TestGetFamily_ExternalIDs(t *testing.T) {
 	ctx := context.Background()
 
 	familyID := uuid.New()
-	if err := readStore.SaveFamily(ctx, &repository.FamilyReadModel{ID: familyID}); err != nil {
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{ID: familyID}); err != nil {
 		t.Fatalf("SaveFamily failed: %v", err)
 	}
-	if err := readStore.ReplaceFamilyExternalIDs(ctx, familyID, []repository.FamilyExternalIDReadModel{
+	if err := readStore.ReplaceFamilyExternalIDs(ctx, domain.MainBranchID, familyID, []repository.FamilyExternalIDReadModel{
 		{FamilyID: familyID, Sequence: 0, Value: "F123", Type: "http://www.familysearch.org/ark"},
 		{FamilyID: familyID, Sequence: 1, Value: "F456", Type: "http://example.com/other"},
 	}); err != nil {
 		t.Fatalf("ReplaceFamilyExternalIDs failed: %v", err)
 	}
 
-	detail, err := service.GetFamily(ctx, familyID)
+	detail, err := service.GetFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("GetFamily failed: %v", err)
 	}
@@ -1147,5 +1147,101 @@ func TestGetFamily_ExternalIDs(t *testing.T) {
 	}
 	if detail.ExternalIDs[1].Value != "F456" || detail.ExternalIDs[1].Type != "http://example.com/other" {
 		t.Errorf("ExternalIDs[1] = %+v, want F456/example.com", detail.ExternalIDs[1])
+	}
+}
+
+// TestFamilyService_BranchScope verifies the branch-aware FamilyService resolves
+// branch-over-main for the family row and its children, that ListFamilies and
+// GetFamiliesForPerson honor the branch scope, and that the MainBranchID path is
+// unchanged.
+func TestFamilyService_BranchScope(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	service := query.NewFamilyService(readStore)
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	famID := uuid.New()
+	p1 := uuid.New()
+	childID := uuid.New()
+
+	// Seed the main family + one child.
+	if err := readStore.SaveFamily(ctx, domain.MainBranchID, &repository.FamilyReadModel{
+		ID: famID, Partner1ID: &p1, Partner1GivenName: "Main", Partner1Surname: "Partner",
+		RelationshipType: domain.RelationMarriage, ChildCount: 1, Version: 1,
+	}); err != nil {
+		t.Fatalf("seed main family: %v", err)
+	}
+	if err := readStore.SaveFamilyChild(ctx, domain.MainBranchID, &repository.FamilyChildReadModel{
+		FamilyID: famID, PersonID: childID, PersonGivenName: "Main", PersonSurname: "Child",
+		RelationshipType: domain.ChildBiological,
+	}); err != nil {
+		t.Fatalf("seed main child: %v", err)
+	}
+
+	// The branch overrides the family (partner name) and its children bucket.
+	if err := readStore.SaveFamily(ctx, branch, &repository.FamilyReadModel{
+		ID: famID, Partner1ID: &p1, Partner1GivenName: "Branch", Partner1Surname: "Partner",
+		RelationshipType: domain.RelationMarriage, ChildCount: 1, Version: 1,
+	}); err != nil {
+		t.Fatalf("seed branch family: %v", err)
+	}
+	if err := readStore.SaveFamilyChild(ctx, branch, &repository.FamilyChildReadModel{
+		FamilyID: famID, PersonID: childID, PersonGivenName: "Branch", PersonSurname: "Child",
+		RelationshipType: domain.ChildBiological,
+	}); err != nil {
+		t.Fatalf("seed branch child: %v", err)
+	}
+
+	// GetFamily on the branch returns the branch family AND branch children
+	// (proving the children sub-call was scoped to the same branch).
+	branchFam, err := service.GetFamily(ctx, branch, famID)
+	if err != nil {
+		t.Fatalf("GetFamily branch: %v", err)
+	}
+	if branchFam.Partner1GivenName == nil || *branchFam.Partner1GivenName != "Branch" {
+		t.Errorf("branch family partner1 = %v, want Branch", branchFam.Partner1GivenName)
+	}
+	if len(branchFam.Children) != 1 || branchFam.Children[0].GivenName != "Branch" {
+		t.Errorf("branch children = %+v, want single Branch child", branchFam.Children)
+	}
+
+	// The main family detail is unchanged.
+	mainFam, err := service.GetFamily(ctx, domain.MainBranchID, famID)
+	if err != nil {
+		t.Fatalf("GetFamily main: %v", err)
+	}
+	if mainFam.Partner1GivenName == nil || *mainFam.Partner1GivenName != "Main" {
+		t.Errorf("main family partner1 = %v, want Main", mainFam.Partner1GivenName)
+	}
+	if len(mainFam.Children) != 1 || mainFam.Children[0].GivenName != "Main" {
+		t.Errorf("main children = %+v, want single Main child", mainFam.Children)
+	}
+
+	// ListFamilies + GetFamiliesForPerson honor the branch scope.
+	branchList, err := service.ListFamilies(ctx, query.ListFamiliesInput{BranchID: branch})
+	if err != nil {
+		t.Fatalf("ListFamilies branch: %v", err)
+	}
+	if branchList.Total != 1 || branchList.Items[0].Partner1GivenName == nil ||
+		*branchList.Items[0].Partner1GivenName != "Branch" {
+		t.Errorf("branch list = %+v, want single Branch family", branchList.Items)
+	}
+	branchFams, err := service.GetFamiliesForPerson(ctx, branch, p1)
+	if err != nil {
+		t.Fatalf("GetFamiliesForPerson branch: %v", err)
+	}
+	if len(branchFams) != 1 || branchFams[0].Partner1GivenName == nil ||
+		*branchFams[0].Partner1GivenName != "Branch" {
+		t.Errorf("branch families-for-person = %+v, want single Branch family", branchFams)
+	}
+
+	// A branch delete tombstones the family on the branch while main survives.
+	if err := readStore.DeleteFamily(ctx, branch, famID); err != nil {
+		t.Fatalf("DeleteFamily branch: %v", err)
+	}
+	if _, err := service.GetFamily(ctx, branch, famID); err != query.ErrNotFound {
+		t.Errorf("GetFamily branch after tombstone: err = %v, want ErrNotFound", err)
+	}
+	if _, err := service.GetFamily(ctx, domain.MainBranchID, famID); err != nil {
+		t.Errorf("GetFamily main after branch tombstone: %v, want nil", err)
 	}
 }

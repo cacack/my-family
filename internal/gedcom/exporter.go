@@ -299,7 +299,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	// Add family records
 	for i, f := range families {
 		xref := familyXrefs[f.ID]
-		children, _ := exp.readStore.GetFamilyChildren(ctx, f.ID)
+		children, _ := exp.readStore.GetFamilyChildren(ctx, domain.MainBranchID, f.ID)
 		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, f.ID)
 		result.CitationsExported += len(marriageCitations)
 
@@ -626,7 +626,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 	indi := &gedcom.Individual{}
 
 	// Fetch all names for this person
-	names, err := readStore.GetPersonNames(ctx, p.ID)
+	names, err := readStore.GetPersonNames(ctx, domain.MainBranchID, p.ID)
 	if err != nil || len(names) == 0 {
 		// Fallback to person's primary name fields if no names in person_names table
 		indi.Names = []*gedcom.PersonalName{{
@@ -736,7 +736,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 	// External identifiers (GEDCOM 7.0 EXID). The encoder emits each as an
 	// `EXID <value>` / `TYPE <uri>` structure on the individual (gedcom-go
 	// v2.2.1+), which also upgrades the export to GEDCOM 7.0 via RequiresGEDCOM7.
-	if externalIDs, err := readStore.GetPersonExternalIDs(ctx, p.ID); err == nil {
+	if externalIDs, err := readStore.GetPersonExternalIDs(ctx, domain.MainBranchID, p.ID); err == nil {
 		for _, ext := range externalIDs {
 			indi.ExternalIDs = append(indi.ExternalIDs, &gedcom.ExternalID{
 				Value: ext.Value,
@@ -1013,7 +1013,7 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 	}
 
 	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
-	if externalIDs, err := readStore.GetFamilyExternalIDs(ctx, f.ID); err == nil {
+	if externalIDs, err := readStore.GetFamilyExternalIDs(ctx, domain.MainBranchID, f.ID); err == nil {
 		for _, ext := range externalIDs {
 			fam.ExternalIDs = append(fam.ExternalIDs, &gedcom.ExternalID{
 				Value: ext.Value,

@@ -64,7 +64,7 @@ func (s *DescendancyService) GetDescendancy(ctx context.Context, input GetDescen
 	}
 
 	// Get the root person
-	person, err := s.readStore.GetPerson(ctx, input.PersonID)
+	person, err := s.readStore.GetPerson(ctx, domain.MainBranchID, input.PersonID)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (s *DescendancyService) buildDescendancyNode(ctx context.Context, personID 
 	visited[personID] = true
 
 	// Get person data
-	person, err := s.readStore.GetPerson(ctx, personID)
+	person, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID)
 	if err != nil || person == nil {
 		return nil
 	}
@@ -123,7 +123,7 @@ func (s *DescendancyService) buildDescendancyNode(ctx context.Context, personID 
 	}
 
 	// Get families where this person is a partner
-	families, err := s.readStore.GetFamiliesForPerson(ctx, personID)
+	families, err := s.readStore.GetFamiliesForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		return node
 	}
@@ -142,7 +142,7 @@ func (s *DescendancyService) buildDescendancyNode(ctx context.Context, personID 
 		}
 
 		// Get children and recursively process them
-		children, err := s.readStore.GetFamilyChildren(ctx, family.ID)
+		children, err := s.readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
 		if err != nil {
 			continue
 		}

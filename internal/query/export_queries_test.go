@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
@@ -58,7 +59,7 @@ func TestExportService_GetEstimate_WithData(t *testing.T) {
 			GivenName: "Test",
 			Surname:   "Person",
 		}
-		if err := readStore.SavePerson(ctx, person); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 			t.Fatalf("SavePerson failed: %v", err)
 		}
 	}
@@ -67,7 +68,7 @@ func TestExportService_GetEstimate_WithData(t *testing.T) {
 		family := &repository.FamilyReadModel{
 			ID: uuid.New(),
 		}
-		if err := readStore.SaveFamily(ctx, family); err != nil {
+		if err := readStore.SaveFamily(ctx, domain.MainBranchID, family); err != nil {
 			t.Fatalf("SaveFamily failed: %v", err)
 		}
 	}
@@ -149,7 +150,7 @@ func TestExportService_GetEstimate_LargeExport_ByRecordCount(t *testing.T) {
 			GivenName: "Test",
 			Surname:   "Person",
 		}
-		if err := readStore.SavePerson(ctx, person); err != nil {
+		if err := readStore.SavePerson(ctx, domain.MainBranchID, person); err != nil {
 			t.Fatalf("SavePerson failed: %v", err)
 		}
 	}
@@ -175,8 +176,8 @@ func TestExportService_GetEstimate_ByteCalculation(t *testing.T) {
 	source := &repository.SourceReadModel{ID: uuid.New(), Title: "Source"}
 	note := &repository.NoteReadModel{ID: uuid.New(), Text: "Note"}
 
-	_ = readStore.SavePerson(ctx, person)
-	_ = readStore.SaveFamily(ctx, family)
+	_ = readStore.SavePerson(ctx, domain.MainBranchID, person)
+	_ = readStore.SaveFamily(ctx, domain.MainBranchID, family)
 	_ = readStore.SaveSource(ctx, source)
 	_ = readStore.SaveNote(ctx, note)
 

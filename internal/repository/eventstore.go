@@ -24,9 +24,17 @@ type EventStore interface {
 	// Append adds events to a stream with optimistic concurrency control.
 	// Returns ErrConcurrencyConflict if expectedVersion doesn't match current version.
 	// Use expectedVersion=-1 for new streams.
-	Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64) error
+	// branchID (last param) tags every appended event with the branch scope it
+	// belongs to; pass domain.MainBranchID for the mainline. It is placed last to
+	// match Projector.Project's convention. Versioning remains stream-scoped.
+	Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error
 
-	// ReadStream reads all events for a specific aggregate.
+	// ReadStream reads all events for a specific aggregate, across ALL branches.
+	// Branch-scoped writes reuse the same streamID as main (branch is carried on
+	// StoredEvent.BranchID, not the stream id), so the returned slice interleaves
+	// main and every branch's events for that aggregate, and the version counter is
+	// stream-global (shared across main and all branches — see Append). A caller
+	// wanting a single branch's view must filter the result on StoredEvent.BranchID.
 	ReadStream(ctx context.Context, streamID uuid.UUID) ([]StoredEvent, error)
 
 	// ReadAll reads all events from a position for projection rebuilds.
@@ -61,6 +69,7 @@ type StoredEvent struct {
 	ID         uuid.UUID       `json:"id"`
 	StreamID   uuid.UUID       `json:"stream_id"`
 	StreamType string          `json:"stream_type"`
+	BranchID   domain.BranchID `json:"branch_id"`
 	EventType  string          `json:"event_type"`
 	Data       json.RawMessage `json:"data"`
 	Metadata   json.RawMessage `json:"metadata,omitempty"`
@@ -207,6 +216,24 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 		return event, nil
 	case "SnapshotCreated":
 		var event domain.SnapshotCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "BranchCreated":
+		var event domain.BranchCreated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "BranchDeleted":
+		var event domain.BranchDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
+	case "BranchMerged":
+		var event domain.BranchMerged
 		if err := json.Unmarshal(e.Data, &event); err != nil {
 			return nil, err
 		}
