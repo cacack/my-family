@@ -344,10 +344,11 @@ implements this decision.
 
 ## New Invariants
 
-This ADR introduces the **Branch (BR)** invariant category — **BR-001 through BR-004**, covering
+This ADR introduces the **Branch (BR)** invariant category — **BR-001 through BR-006**, covering
 `branch_id` tagging with a reserved `main`, append-only branch events on the shared log,
-`branch_id` read-model rows with copy-on-write overlay + tombstones, and non-rewriting merges.
-Their canonical text and verification methods live in
+`branch_id` read-model rows with copy-on-write overlay + tombstones, non-rewriting merges,
+per-`(stream_id, branch_id)` optimistic versioning, and the branch-aware event-type restriction on
+branch-scoped writes. Their canonical text and verification methods live in
 [ARCHITECTURAL-INVARIANTS.md](../ARCHITECTURAL-INVARIANTS.md) (the single source of truth for
 invariants, cited by ADRs rather than restated in them).
 
@@ -382,10 +383,33 @@ invariants, cited by ADRs rather than restated in them).
   after `base_position`. This needs an index on `(stream_id, position)`; a naive `ReadAll`-style
   full-tail scan grows with *all* `main` activity and is re-paid on every compare/merge call.
 
+## Implementation Note — SQLite event-store migration (#670, delivered)
+
+Making optimistic versioning per-`(stream_id, branch_id)` (§The model) required replacing the
+`events` table's `UNIQUE(stream_id, version)` with `UNIQUE(stream_id, branch_id, version)`. SQLite
+cannot alter a constraint in place, so this shipped as the **12-step table rebuild** SQLite
+documents for exactly this case: detect the legacy constraint in `sqlite_master`, then in one
+transaction create the new table from the shared DDL, copy every row with explicit column lists,
+verify the row count, drop, rename, and recreate the indexes. It runs once, automatically, on the
+first open of a pre-#670 database and logs a single line. PostgreSQL needs no rebuild — it swaps
+the constraint and index in place.
+
+This is a **deliberate divergence from how #669 handled the analogous read-model change**, which
+detects the stale schema and refuses to start. The read model is derived data and can be dropped
+and re-projected, so refusing is recoverable; the event log is the source of truth and cannot be
+regenerated, so a detect-and-refuse guard there would permanently lock every existing SQLite
+install out of branches with no path forward. The rebuild is the only option that preserves
+ES-002 while letting existing installs adopt branches.
+
+Both halves of that contrast are inputs to **#680**, which owns the general migration-strategy gap
+(read-model schema versioning + `rebuild-read-model`, and event schema evolution). This ADR does
+not decide that strategy; it records one concrete case where the event store needed real migration
+discipline and got a hand-written one.
+
 ## References
 
 - [ADR-001: Event Sourcing with CQRS-lite](./001-event-sourcing-cqrs.md)
 - [ADR-003: Synchronous Projections for MVP](./003-synchronous-projections.md)
 - [ARCHITECTURAL-INVARIANTS.md](../ARCHITECTURAL-INVARIANTS.md)
 - [ETHOS.md - Git-Inspired Workflow](../ETHOS.md)
-- Epic #54 (git-inspired research workflow); depends: #669, #670, #55; coordinates: #624
+- Epic #54 (git-inspired research workflow); depends: #669, #670, #55; coordinates: #624, #680

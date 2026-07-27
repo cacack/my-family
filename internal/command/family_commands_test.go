@@ -1572,7 +1572,7 @@ func TestFamilySequentialUpdatesSucceed(t *testing.T) {
 	}
 
 	// Verify event store version tracking (source of truth for optimistic locking)
-	eventStoreVersion, _ := eventStore.GetStreamVersion(ctx, createResult.ID)
+	eventStoreVersion, _ := eventStore.GetStreamVersion(ctx, createResult.ID, domain.MainBranchID)
 	if eventStoreVersion != 4 {
 		t.Errorf("Event store version = %d, want 4", eventStoreVersion)
 	}
@@ -1893,8 +1893,70 @@ func TestFamilyMultipleUpdatesVersionTracking(t *testing.T) {
 	}
 
 	// Verify event store version tracking
-	eventStoreVersion, _ := eventStore.GetStreamVersion(ctx, createResult.ID)
+	eventStoreVersion, _ := eventStore.GetStreamVersion(ctx, createResult.ID, domain.MainBranchID)
 	if eventStoreVersion != 4 {
 		t.Errorf("Event store version = %d, want 4", eventStoreVersion)
+	}
+}
+
+// TestFamilyReadModelVersionTracksEventStream is the regression guard for the
+// latent bug fixed when the family commands moved onto Handler.execute: the old
+// path projected through Projector.Apply, which hardcodes version = 1, so the
+// family read-model row reported version 1 no matter how many updates it had
+// seen. Existing tests only ever asserted the *returned* version, which was
+// computed separately and was correct, so the stale row went unnoticed.
+func TestFamilyReadModelVersionTracksEventStream(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	parent, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Parent", Surname: "Doe"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	created, err := handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &parent.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+
+	family, err := readStore.GetFamily(ctx, domain.MainBranchID, created.ID)
+	if err != nil {
+		t.Fatalf("GetFamily failed: %v", err)
+	}
+	if family.Version != 1 {
+		t.Errorf("read-model version after create = %d, want 1", family.Version)
+	}
+
+	version := created.Version
+	for _, place := range []string{"Boston", "Chicago", "New York"} {
+		p := place
+		res, err := handler.UpdateFamily(ctx, command.UpdateFamilyInput{
+			ID:            created.ID,
+			MarriagePlace: &p,
+			Version:       version,
+		})
+		if err != nil {
+			t.Fatalf("UpdateFamily to %s failed: %v", place, err)
+		}
+		version = res.Version
+
+		family, err := readStore.GetFamily(ctx, domain.MainBranchID, created.ID)
+		if err != nil {
+			t.Fatalf("GetFamily failed: %v", err)
+		}
+		// The read-model row must agree with the version the command reports and
+		// with the event stream, not sit at a hardcoded 1.
+		if family.Version != version {
+			t.Errorf("read-model version after update to %s = %d, want %d", place, family.Version, version)
+		}
+	}
+
+	streamVersion, err := eventStore.GetStreamVersion(ctx, created.ID, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if streamVersion != version {
+		t.Errorf("event stream version = %d, want %d", streamVersion, version)
 	}
 }

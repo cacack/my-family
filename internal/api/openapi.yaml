@@ -47,6 +47,8 @@ tags:
     description: Genealogical reports (Ahnentafel, etc.)
   - name: snapshots
     description: Research milestone snapshots
+  - name: branches
+    description: Isolated lines of research (ADR-005)
   - name: relationships
     description: Relationship calculation between people
   - name: notes
@@ -75,6 +77,7 @@ paths:
       summary: List all persons
       tags: [persons]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: sort
@@ -104,11 +107,15 @@ paths:
                 $ref: '#/components/schemas/PersonList'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
     post:
       operationId: createPerson
       summary: Create a new person
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -124,6 +131,10 @@ paths:
                 $ref: '#/components/schemas/Person'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /persons/{id}:
     parameters:
@@ -133,6 +144,8 @@ paths:
       operationId: getPerson
       summary: Get a person by ID
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Person details
@@ -147,6 +160,8 @@ paths:
       operationId: updatePerson
       summary: Update a person
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -171,13 +186,15 @@ paths:
       operationId: deletePerson
       summary: Delete a person
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '204':
           description: Person deleted
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Person is linked to families
+          description: Person is linked to families, or the target branch is not active
           content:
             application/json:
               schema:
@@ -202,7 +219,13 @@ paths:
     post:
       operationId: createFamily
       summary: Create a new family
+      description: |
+        When `branch` is supplied the family is created on that branch only, and
+        partner ids are resolved through the branch overlay — a person that
+        exists only on the branch may be a partner.
       tags: [families]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -218,6 +241,10 @@ paths:
                 $ref: '#/components/schemas/Family'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /families/{id}:
     parameters:
@@ -227,6 +254,8 @@ paths:
       operationId: getFamily
       summary: Get a family by ID
       tags: [families]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Family details
@@ -241,6 +270,8 @@ paths:
       operationId: updateFamily
       summary: Update a family
       tags: [families]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -258,16 +289,31 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
     delete:
       operationId: deleteFamily
       summary: Delete a family
+      description: |
+        When `branch` is supplied the family is deleted on that branch only (the
+        mainline row survives) and the child count is read through the branch
+        overlay, so a family whose children were unlinked on the branch deletes
+        cleanly there.
       tags: [families]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '204':
           description: Family deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Family has children and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /families/{id}/children:
     parameters:
@@ -276,7 +322,13 @@ paths:
     post:
       operationId: addChildToFamily
       summary: Add a child to a family
+      description: |
+        When `branch` is supplied the link is made on that branch only. The
+        family and child are resolved through the branch overlay, so repeated
+        links on the same family within one branch work.
       tags: [families]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -314,12 +366,24 @@ paths:
     delete:
       operationId: removeChildFromFamily
       summary: Remove a child from a family
+      description: |
+        When `branch` is supplied the link is removed on that branch only (the
+        mainline link survives). The child's family is resolved through the
+        branch overlay, so a link made on the branch can be undone there.
       tags: [families]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '204':
           description: Child removed
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Version conflict while unlinking the child
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /families/{id}/group-sheet:
     parameters:
@@ -353,6 +417,7 @@ paths:
       summary: Get ancestor pedigree for a person
       tags: [pedigree]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: generations
           in: query
           description: Number of ancestor generations to include
@@ -1773,6 +1838,8 @@ paths:
       summary: Get all names for a person
       description: Returns all name variants for a person (birth name, married name, aliases, etc.)
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of person names
@@ -1790,6 +1857,8 @@ paths:
         Add a new name variant to a person. If is_primary is true, the existing
         primary name will be demoted to non-primary.
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1807,6 +1876,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /persons/{id}/names/{nameId}:
     parameters:
@@ -1825,6 +1896,8 @@ paths:
         Update an existing name variant. If is_primary is set to true, the existing
         primary name will be demoted to non-primary.
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1842,6 +1915,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
     delete:
       operationId: deletePersonName
@@ -1850,6 +1925,8 @@ paths:
         Remove a name variant from a person. Cannot delete the last remaining name
         or the primary name (must transfer primary status first).
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '204':
           description: Name removed
@@ -1861,6 +1938,8 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   # Export endpoints
   /export/tree:
@@ -2390,6 +2469,134 @@ paths:
                 $ref: '#/components/schemas/SnapshotComparisonResult'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  # Branch endpoints (ADR-005)
+
+  /branches:
+    get:
+      operationId: listBranches
+      summary: List all branches
+      description: Returns every branch in the registry, newest first, including terminal (merged/archived) ones
+      tags: [branches]
+      responses:
+        '200':
+          description: List of branches
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchList'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+    post:
+      operationId: createBranch
+      summary: Create a new branch
+      description: |
+        Forks a new line of research off the current head of the mainline. The
+        fork point is captured as `base_position`, the same base-pointer concept
+        a snapshot uses.
+      tags: [branches]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchCreate'
+            example:
+              name: "Maternal Smith line"
+              description: "Testing the theory that Mary Smith is the daughter of John"
+      responses:
+        '201':
+          description: Branch created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+  /branches/{id}:
+    parameters:
+      - $ref: '#/components/parameters/branchId'
+
+    get:
+      operationId: getBranch
+      summary: Get a branch by ID
+      tags: [branches]
+      responses:
+        '200':
+          description: Branch details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+    delete:
+      operationId: deleteBranch
+      summary: Delete (archive) a branch
+      description: |
+        Discards a branch. The branch record and every event it produced are
+        **retained** — the event log is append-only (invariant ES-002). What is
+        removed is the branch's read-model overlay: after this call the branch's
+        `status` is `archived` and its isolated view no longer exists, so
+        `?branch=` reads against it return 404.
+
+        The vocabulary split is deliberate: the lifecycle *event* is
+        `BranchDeleted` (the user action is "delete branch") while the resulting
+        *status* is `archived` (the history is kept). See `internal/domain/branch.go`.
+
+        Only an `active` branch can be deleted; a `merged` or already `archived`
+        branch returns 409.
+      tags: [branches]
+      responses:
+        '204':
+          description: Branch archived
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Branch is not active (already merged or archived)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+  /branches/{id}/compare:
+    parameters:
+      - $ref: '#/components/parameters/branchId'
+
+    get:
+      operationId: compareBranch
+      summary: Compare a branch against the mainline
+      description: |
+        Returns the changes made on the branch since it forked, alongside the
+        changes made on `main` after the fork point to the same streams the
+        branch touched.
+
+        `overlapping_stream_ids` is a divergence **hint** — the entities both
+        sides changed. It is not conflict detection (that is issue #55).
+
+        Terminal (merged or archived) branches compare normally: their events
+        remain in the append-only log, so the historical diff is still returned.
+      tags: [branches]
+      responses:
+        '200':
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchComparisonResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
 
   /relationship/{personId1}/{personId2}:
     get:
@@ -3587,6 +3794,30 @@ components:
         type: string
         format: uuid
 
+    branchId:
+      name: id
+      in: path
+      required: true
+      description: Branch UUID
+      schema:
+        type: string
+        format: uuid
+
+    branchScope:
+      name: branch
+      in: query
+      required: false
+      description: |
+        Branch scope; omit for the mainline. Reads return the branch's isolated
+        view and writes land on the branch only (ADR-005). A malformed branch id
+        returns 400 at parameter binding, before the operation runs. An unknown
+        branch id returns 404. Writes to a non-active (merged or archived) branch
+        return 409; reads of one return 404, because its overlay rows are purged
+        on archive and it therefore has no view to return.
+      schema:
+        type: string
+        format: uuid
+
     noteId:
       name: id
       in: path
@@ -3685,6 +3916,13 @@ components:
 
     Conflict:
       description: Version conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    BranchesUnavailable:
+      description: Branch registry is not configured on this server
       content:
         application/json:
           schema:
@@ -6047,6 +6285,114 @@ components:
         older_first:
           type: boolean
           description: True if snapshot1 is the older (lower position) snapshot
+
+    Branch:
+      type: object
+      required: [id, name, base_position, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 100
+          description: Name of the line of research
+          example: "Maternal Smith line"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of what the branch explores
+        base_position:
+          type: integer
+          format: int64
+          description: Mainline event store position the branch forked from
+          example: 42
+        status:
+          type: string
+          enum: [active, merged, archived]
+          description: |
+            Lifecycle state. `merged` and `archived` are terminal — a branch in
+            either state accepts no further writes. `archived` is the state a
+            deleted branch enters; its events are retained but its overlay rows
+            are purged.
+        created_at:
+          type: string
+          format: date-time
+          description: When the branch was created
+
+    BranchCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Name of the line of research
+        description:
+          type: string
+          maxLength: 500
+          description: Optional description of what the branch explores
+
+    BranchList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Branch'
+        total:
+          type: integer
+          description: Total number of branches
+
+    BranchComparisonResult:
+      type: object
+      required:
+        - branch
+        - base_position
+        - branch_changes
+        - main_changes
+        - branch_change_count
+        - main_change_count
+        - has_more
+        - overlapping_stream_ids
+      properties:
+        branch:
+          $ref: '#/components/schemas/Branch'
+        base_position:
+          type: integer
+          format: int64
+          description: Mainline position the branch forked from - the anchor of this diff
+        branch_changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeEntry'
+          description: Changes made on the branch since the fork, oldest first
+        main_changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeEntry'
+          description: |
+            Changes made on the mainline after the fork point, restricted to the
+            entities the branch also touched. Oldest first.
+        branch_change_count:
+          type: integer
+          description: Number of branch-side changes returned
+        main_change_count:
+          type: integer
+          description: Number of main-side changes returned
+        has_more:
+          type: boolean
+          description: True when either side hit the read cap, so this diff is partial
+        overlapping_stream_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Entities changed on both the branch and main - a divergence hint for
+            human review, not conflict detection.
 
     RelationshipPathNode:
       type: object

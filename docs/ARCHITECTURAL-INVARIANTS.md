@@ -32,7 +32,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ID | Rule | Verification |
 |----|------|--------------|
 | **DB-001** | Both PostgreSQL and SQLite pass identical interface tests | Shared test suite runs against both |
-| **DB-002** | `EventStore.Append` fails on version mismatch (optimistic locking) | Concurrency test |
+| **DB-002** | `EventStore.Append` fails on version mismatch (optimistic locking), scoped per `(stream_id, branch_id)` — see BR-005 | Concurrency test |
 | **DB-003** | `ReadModelStore` returns `nil` (not error) for missing entities | Interface contract test |
 | **DB-004** | No PostgreSQL-specific features without SQLite fallback or graceful degradation | Feature parity checklist |
 | **DB-005** | Full-text search works on both databases (tsvector vs FTS5) | Search integration test |
@@ -58,10 +58,12 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 
 | ID | Rule | Verification |
 |----|------|--------------|
-| **BR-001** | Every branch event carries a `branch_id`; `main` is the reserved branch id (`uuid.Nil` / `domain.MainBranchID`) | Event schema inspection; factory tests |
-| **BR-002** | Branch events append to the shared global log, never a separate store (upholds ES-002) | Code review: no per-branch event store |
-| **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows | Branch query/overlay tests |
-| **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | Merge replay test |
+| **BR-001** | Every branch event carries a `branch_id`; `main` is the reserved branch id (`uuid.Nil` / `domain.MainBranchID`) | `TestHandler_Unscoped_WritesMain` (`internal/command`): an unscoped handler tags every stored event `MainBranchID`; `branch_scenario_test.go` in all three backends asserts branch events carry the branch id |
+| **BR-002** | Branch events append to the shared global log, never a separate store (upholds ES-002) | Code review: one `EventStore.Append` path taking a `repository.AppendScope`; `ReadBranch` filters the shared log by `branch_id` — no per-branch store type exists |
+| **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows | `internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go` (overlay, tombstone, `PurgeBranch`); `TestBranchIsolation*` in `internal/command` and `internal/api` |
+| **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | Merge replay test — **not yet verifiable; merge is unimplemented (#55)**. `BranchMerged` decodes (ES-007) and projects to the terminal `merged` status only |
+| **BR-005** | Optimistic versioning is per-`(stream_id, branch_id)`. A branch's first write to an aggregate that exists on `main` seeds its version from that aggregate's `main` version at the branch's `base_position`, then increments within the branch; concurrent branches never contend at write time | `runBranchVersioningScenario` — identical copies in `internal/repository/eventstore_test.go` (memory), `sqlite/eventstore_test.go`, `postgres/eventstore_test.go` (DB-001 parity) |
+| **BR-006** | A branch-scoped write is legal only for event types whose projection handler writes exclusively branch-keyed rows; any other event type is rejected before the append (`command.ErrEventTypeNotBranchAware`) | `TestExecute_RejectsNonBranchAwareEvent` (`internal/command`); the allowed set in `internal/command/handler.go` is derived from `internal/repository/projection.go` |
 
 > **Implementation status (#669):** BR-003 and the branch-lifecycle side of PR-004 are
 > realized for the first read-model slice — Person, PersonName, PersonExternalID, Family,
@@ -69,6 +71,16 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > `PurgeBranch` on `BranchDeleted` across the memory, sqlite, and postgres backends. Identical
 > end-to-end scenario tests (`internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go`)
 > verify DB-001 parity. Extending branch-scoping to the remaining entity types is a follow-up.
+>
+> **Implementation status (#670):** BR-005 and BR-006 arrived with the branch lifecycle
+> (create / isolate / compare / archive) and the `?branch=` HTTP scope. Branch **writes** cover a
+> narrower set of entity types than branch **reads** (BR-006 rejects the rest), but for the types
+> they do cover the command layer resolves its reads through the branch overlay too, so a branch is
+> fully editable rather than write-once — see the branch column of
+> [INTEGRATION-MATRIX.md](./INTEGRATION-MATRIX.md#entity-status-matrix). GEDCOM import/export,
+> rollback, and per-entity history stay main-only by design — `ReadByStream` is branch-filtered so
+> branch edits never leak into an entity's mainline audit trail, and the history endpoints expose no
+> `?branch=` parameter yet. BR-004 remains unimplemented pending #55.
 
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 
@@ -126,11 +138,11 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-002 (Dual Database) | DB-001 through DB-005 | 5 |
 | ADR-003 (Sync Projections) | PR-001 through PR-004 | 4 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
-| ADR-005 (Research Branches) | BR-001 through BR-004 | 4 |
+| ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-004, QA-001 through QA-003 | 13 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **44** |
+| **Total** | | **46** |
 
 ---
 

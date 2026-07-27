@@ -100,8 +100,7 @@ func (s *SnapshotService) CompareSnapshots(ctx context.Context, id1, id2 uuid.UU
 
 	// Read events between the two positions
 	// We read from fromSnapshot.Position (exclusive) to toSnapshot.Position (inclusive)
-	const maxEvents = 1000
-	events, err := s.eventStore.ReadAll(ctx, fromSnapshot.Position, maxEvents)
+	events, err := s.eventStore.ReadAll(ctx, fromSnapshot.Position, maxComparisonEvents)
 	if err != nil {
 		return nil, fmt.Errorf("read events: %w", err)
 	}
@@ -120,7 +119,7 @@ func (s *SnapshotService) CompareSnapshots(ctx context.Context, id1, id2 uuid.UU
 		return nil, fmt.Errorf("transform events: %w", err)
 	}
 
-	hasMore := len(events) >= maxEvents
+	hasMore := len(events) >= maxComparisonEvents
 
 	return &SnapshotComparisonResult{
 		Snapshot1:  snapshot1,

@@ -42,9 +42,10 @@ func WithDemoReset(eventStore, readStore, snapshotStore Resetter) ServerOption {
 	}
 }
 
-// WithBranchStore supplies the branch registry store that the command handler's
-// projector routes branch-lifecycle events into (ADR-005). Without it the
-// registry projections no-op; real branch selection is #670.
+// WithBranchStore supplies the branch registry store backing the /branches
+// endpoints and the ?branch= scope parameter (ADR-005). It is optional: without
+// it the registry projections no-op, the /branches endpoints return 503, and a
+// ?branch= scope resolves to 404 because no branch can exist.
 func WithBranchStore(branchStore repository.BranchStore) ServerOption {
 	return func(s *Server) {
 		s.branchStore = branchStore
@@ -68,6 +69,7 @@ type Server struct {
 	browseService       *query.BrowseService
 	qualityService      *query.QualityService
 	snapshotService     *query.SnapshotService
+	branchService       *query.BranchService // nil unless WithBranchStore supplied
 	validationService   *query.ValidationService
 	relationshipService *query.RelationshipService
 	noteService         *query.NoteService
@@ -129,8 +131,10 @@ func NewServer(
 		opt(server)
 	}
 
-	// Create services
-	cmdHandler := command.NewHandlerWithBranchStore(eventStore, readStore, server.branchStore)
+	// Create services. The snapshot store doubles as the MaxPositionReader the
+	// branch commands need to pin a new branch's base position to the head of
+	// the event log.
+	cmdHandler := command.NewHandlerWithBranches(eventStore, readStore, server.branchStore, snapshotStore)
 	personSvc := query.NewPersonService(readStore)
 	familySvc := query.NewFamilyService(readStore)
 	pedigreeSvc := query.NewPedigreeService(readStore)
@@ -164,6 +168,11 @@ func NewServer(
 	server.browseService = browseSvc
 	server.qualityService = qualitySvc
 	server.snapshotService = snapshotSvc
+	// Branch queries are only meaningful with a registry to read; the handlers
+	// return 503 while this is nil.
+	if server.branchStore != nil {
+		server.branchService = query.NewBranchService(server.branchStore, eventStore, historySvc)
+	}
 	server.validationService = validationSvc
 	server.relationshipService = relationshipSvc
 	server.noteService = noteSvc

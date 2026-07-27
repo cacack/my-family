@@ -33,9 +33,13 @@ func NewEventStore(db *sql.DB) (*EventStore, error) {
 }
 
 // createTables creates the event store schema if it doesn't exist.
-// The events table carries a branch_id envelope column (ADR-005); existing
-// databases are migrated via an idempotent ADD COLUMN, backfilling rows to
-// MainBranchID through the column default.
+// The events table carries a branch_id envelope column and versions events per
+// (stream_id, branch_id) (ADR-005); existing databases are migrated in place —
+// an idempotent ADD COLUMN backfills rows to MainBranchID through the column
+// default, and the per-stream UNIQUE constraint/index is swapped for the
+// composite one. Uniqueness lives in idx_events_stream_branch_version rather
+// than a table constraint so the fresh and upgraded paths converge on exactly
+// one mechanism.
 func (s *EventStore) createTables() error {
 	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
 	mainBranch := domain.MainBranchID.String()
@@ -57,13 +61,21 @@ func (s *EventStore) createTables() error {
 			data JSONB NOT NULL,
 			metadata JSONB,
 			timestamp TIMESTAMPTZ NOT NULL,
-			position BIGSERIAL UNIQUE,
-			UNIQUE(stream_id, version)
+			position BIGSERIAL UNIQUE
 		);
 
 		ALTER TABLE events ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL DEFAULT '%[1]s';
 
-		CREATE INDEX IF NOT EXISTS idx_events_stream_version ON events(stream_id, version);
+		-- Per-branch versioning (ADR-005): drop the pre-branch per-stream uniqueness.
+		-- events_stream_id_version_key is the name Postgres auto-generated for the
+		-- table-level UNIQUE(stream_id, version); idx_events_stream_version was its
+		-- companion lookup index. Both are superseded by the composite unique index
+		-- below. CREATE INDEX IF NOT EXISTS cannot redefine an existing index, hence
+		-- the explicit DROP of the old one plus a new name; both are no-ops once done.
+		ALTER TABLE events DROP CONSTRAINT IF EXISTS events_stream_id_version_key;
+		DROP INDEX IF EXISTS idx_events_stream_version;
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_events_stream_branch_version ON events(stream_id, branch_id, version);
+
 		CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
 		CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
 		CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
@@ -74,7 +86,7 @@ func (s *EventStore) createTables() error {
 }
 
 // Append adds events to a stream with optimistic concurrency control.
-func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
+func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -84,14 +96,26 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Get current version
+	// Get current version for this stream ON THIS BRANCH
 	var currentVersion int64
 	err = tx.QueryRowContext(ctx,
-		"SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1",
-		streamID,
+		"SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1 AND branch_id = $2",
+		streamID, scope.BranchID.UUID(),
 	).Scan(&currentVersion)
 	if err != nil {
 		return fmt.Errorf("get current version: %w", err)
+	}
+
+	// A branch's first write to an existing aggregate continues main's version line
+	// as of the branch's base position rather than restarting at 1 (ADR-005).
+	if currentVersion == 0 && !scope.BranchID.IsMain() {
+		err = tx.QueryRowContext(ctx,
+			"SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1 AND branch_id = $2 AND position <= $3",
+			streamID, domain.MainBranchID.UUID(), scope.BasePosition,
+		).Scan(&currentVersion)
+		if err != nil {
+			return fmt.Errorf("seed branch version: %w", err)
+		}
 	}
 
 	// Check optimistic concurrency
@@ -131,7 +155,7 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 		_, err = stmt.ExecContext(ctx,
 			streamID,
 			streamType,
-			branchID.UUID(),
+			scope.BranchID.UUID(),
 			currentVersion,
 			event.EventType(),
 			data,
@@ -178,12 +202,59 @@ func (s *EventStore) ReadAll(ctx context.Context, fromPosition int64, limit int)
 	return scanEvents(rows)
 }
 
-// GetStreamVersion returns the current version of a stream.
-func (s *EventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID) (int64, error) {
+// ReadBranch reads a single branch's own events from a position.
+func (s *EventStore) ReadBranch(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position
+		FROM events
+		WHERE branch_id = $1 AND position > $2
+		ORDER BY position ASC
+		LIMIT $3
+	`, branchID.UUID(), fromPosition, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query branch events: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEvents(rows)
+}
+
+// ReadStreamsForBranch reads one branch's events for a set of streams.
+//
+// The whole set goes in one statement via = ANY(...), and ORDER BY / LIMIT are
+// pushed into SQL so the cap bounds the database's work, not just the returned
+// slice. Served by idx_events_stream_branch.
+func (s *EventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	if len(streamIDs) == 0 || limit <= 0 {
+		return nil, nil
+	}
+
+	ids := make([]string, len(streamIDs))
+	for i, id := range streamIDs {
+		ids[i] = id.String()
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position
+		FROM events
+		WHERE stream_id = ANY($1::uuid[]) AND branch_id = $2 AND position > $3
+		ORDER BY position ASC
+		LIMIT $4
+	`, pq.Array(ids), branchID.UUID(), fromPosition, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query streams for branch: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEvents(rows)
+}
+
+// GetStreamVersion returns the current version of a stream on a branch.
+func (s *EventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
 	var version int64
 	err := s.db.QueryRowContext(ctx,
-		"SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1",
-		streamID,
+		"SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = $1 AND branch_id = $2",
+		streamID, branchID.UUID(),
 	).Scan(&version)
 	if err != nil {
 		return 0, fmt.Errorf("get stream version: %w", err)
@@ -234,19 +305,21 @@ func scanEvents(rows *sql.Rows) ([]repository.StoredEvent, error) {
 	return events, nil
 }
 
-// ReadByStream returns paginated events for a specific stream (entity).
-func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+// ReadByStream returns paginated events for a specific stream (entity) on one branch.
+func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
+	// The branch predicate sits inside the same statement as COUNT(*) OVER() so
+	// the total counts only this branch's events (ADR-005).
 	query := `
 		SELECT
 			id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position,
 			COUNT(*) OVER() as total_count
 		FROM events
-		WHERE stream_id = $1
+		WHERE stream_id = $1 AND branch_id = $2
 		ORDER BY version ASC
-		LIMIT $2 OFFSET $3
+		LIMIT $3 OFFSET $4
 	`
 
-	rows, err := s.db.QueryContext(ctx, query, streamID, limit, offset)
+	rows, err := s.db.QueryContext(ctx, query, streamID, branchID.UUID(), limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("query events by stream: %w", err)
 	}

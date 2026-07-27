@@ -399,7 +399,7 @@ func TestImportFamily_ErrorPaths(t *testing.T) {
 			Version:    1,
 		}
 		event := domain.NewPersonCreated(domainPerson)
-		mockStore.Append(ctx, domainPerson.ID, "person", []domain.Event{event}, -1, domain.MainBranchID)
+		mockStore.Append(ctx, domainPerson.ID, "person", []domain.Event{event}, -1, repository.MainScope)
 		readStore.SavePerson(ctx, domain.MainBranchID, person)
 	}
 
@@ -2029,7 +2029,7 @@ func TestImportGedcom_PersonVersionMatchesStreamVersion(t *testing.T) {
 	person := persons[0]
 
 	// Get the event stream version
-	streamVersion, err := eventStore.GetStreamVersion(ctx, person.ID)
+	streamVersion, err := eventStore.GetStreamVersion(ctx, person.ID, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)
 	}

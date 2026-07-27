@@ -237,12 +237,12 @@ func TestSnapshotService_DeleteSnapshot(t *testing.T) {
 
 // mockEventStoreExt extends mockEventStore with ReadAll support for snapshot comparison tests.
 type mockEventStoreExt struct {
-	readByStreamFunc     func(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error)
+	readByStreamFunc     func(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error)
 	readGlobalByTimeFunc func(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error)
 	readAllFunc          func(ctx context.Context, fromPosition int64, limit int) ([]repository.StoredEvent, error)
 }
 
-func (m *mockEventStoreExt) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
+func (m *mockEventStoreExt) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
 	return nil
 }
 
@@ -257,13 +257,21 @@ func (m *mockEventStoreExt) ReadAll(ctx context.Context, fromPosition int64, lim
 	return nil, nil
 }
 
-func (m *mockEventStoreExt) GetStreamVersion(ctx context.Context, streamID uuid.UUID) (int64, error) {
+func (m *mockEventStoreExt) ReadBranch(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	return nil, nil
+}
+
+func (m *mockEventStoreExt) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockEventStoreExt) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+func (m *mockEventStoreExt) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	return nil, nil
+}
+
+func (m *mockEventStoreExt) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
 	if m.readByStreamFunc != nil {
-		return m.readByStreamFunc(ctx, streamID, limit, offset)
+		return m.readByStreamFunc(ctx, streamID, branchID, limit, offset)
 	}
 	return &repository.HistoryPage{}, nil
 }

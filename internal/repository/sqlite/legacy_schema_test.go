@@ -1,9 +1,13 @@
 package sqlite_test
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"errors"
+	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -128,5 +132,215 @@ func TestFreshSchemaAllowsBranchWrites(t *testing.T) {
 	}
 	if err := store.SavePerson(ctx, branch, branchPersonRM(personID, "Branch", "Row")); err != nil {
 		t.Fatalf("branch SavePerson on fresh schema: want success, got %v", err)
+	}
+}
+
+// legacyEventFixture is one row of the pre-ADR-005 events table. Ids and
+// positions are asserted to survive the rebuild byte-for-byte.
+type legacyEventFixture struct {
+	id       string
+	position int64
+	version  int64
+}
+
+// setupLegacyEventStoreDB builds a database carrying the pre-ADR-005 events DDL:
+// UNIQUE(stream_id, version) and no branch_id column. SQLite cannot alter a table
+// constraint, so NewEventStore must rebuild the table in place.
+func setupLegacyEventStoreDB(t *testing.T, streamID uuid.UUID) (*sql.DB, []legacyEventFixture, func()) {
+	t.Helper()
+
+	tmpFile, err := os.CreateTemp("", "myfamily-legacy-eventstore-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		os.Remove(tmpFile.Name())
+		t.Fatalf("open database: %v", err)
+	}
+	cleanup := func() {
+		db.Close()
+		os.Remove(tmpFile.Name())
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE streams (
+			id TEXT PRIMARY KEY,
+			type TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			metadata TEXT
+		);
+
+		CREATE TABLE events (
+			id TEXT PRIMARY KEY,
+			stream_id TEXT NOT NULL,
+			stream_type TEXT NOT NULL,
+			version INTEGER NOT NULL,
+			event_type TEXT NOT NULL,
+			data TEXT NOT NULL,
+			metadata TEXT,
+			timestamp TEXT NOT NULL,
+			position INTEGER NOT NULL,
+			FOREIGN KEY (stream_id) REFERENCES streams(id),
+			UNIQUE(stream_id, version)
+		);
+
+		CREATE INDEX idx_events_stream_version ON events(stream_id, version);
+		CREATE INDEX idx_events_position ON events(position);
+	`); err != nil {
+		cleanup()
+		t.Fatalf("create legacy event schema: %v", err)
+	}
+
+	if _, err := db.Exec("INSERT INTO streams (id, type) VALUES (?, ?)", streamID.String(), "Person"); err != nil {
+		cleanup()
+		t.Fatalf("seed legacy stream: %v", err)
+	}
+
+	fixtures := []legacyEventFixture{
+		{id: uuid.New().String(), position: 1, version: 1},
+		{id: uuid.New().String(), position: 2, version: 2},
+		{id: uuid.New().String(), position: 3, version: 3},
+	}
+	for _, f := range fixtures {
+		if _, err := db.Exec(`
+			INSERT INTO events (id, stream_id, stream_type, version, event_type, data, timestamp, position)
+			VALUES (?, ?, 'Person', ?, 'PersonUpdated', '{}', '2026-01-01T00:00:00Z', ?)`,
+			f.id, streamID.String(), f.version, f.position); err != nil {
+			cleanup()
+			t.Fatalf("seed legacy event: %v", err)
+		}
+	}
+
+	return db, fixtures, cleanup
+}
+
+// TestLegacyEventStoreRebuild verifies the one-time in-place migration of the
+// event log's source of truth: a database carrying UNIQUE(stream_id, version)
+// must come out of NewEventStore with the composite UNIQUE(stream_id, branch_id,
+// version), with every row, id and position preserved, and branch writes working.
+func TestLegacyEventStoreRebuild(t *testing.T) {
+	streamID := uuid.New()
+	db, fixtures, cleanup := setupLegacyEventStoreDB(t, streamID)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Capture the migration log line: exactly one is expected for the rebuild.
+	var logs bytes.Buffer
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(restore)
+
+	store, err := sqlite.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("NewEventStore on legacy database: %v", err)
+	}
+
+	if n := strings.Count(logs.String(), "rebuilding sqlite events table"); n != 1 {
+		t.Fatalf("rebuild log lines = %d, want exactly 1; log was:\n%s", n, logs.String())
+	}
+
+	// The constraint is composite afterwards.
+	var ddl string
+	if err := db.QueryRow(
+		"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'events'").Scan(&ddl); err != nil {
+		t.Fatalf("read migrated events DDL: %v", err)
+	}
+	normalized := strings.ToLower(strings.Join(strings.Fields(ddl), ""))
+	if !strings.Contains(normalized, "unique(stream_id,branch_id,version)") {
+		t.Fatalf("migrated events DDL lacks the composite constraint:\n%s", ddl)
+	}
+
+	// Row count is unchanged and every position and id survived, in order.
+	rows, err := db.Query("SELECT id, position, version, branch_id FROM events ORDER BY position ASC")
+	if err != nil {
+		t.Fatalf("read migrated events: %v", err)
+	}
+	defer rows.Close()
+
+	var got []legacyEventFixture
+	for rows.Next() {
+		var f legacyEventFixture
+		var branchID string
+		if err := rows.Scan(&f.id, &f.position, &f.version, &branchID); err != nil {
+			t.Fatalf("scan migrated event: %v", err)
+		}
+		if branchID != domain.MainBranchID.String() {
+			t.Errorf("migrated event %s has branch_id %s, want MainBranchID", f.id, branchID)
+		}
+		got = append(got, f)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate migrated events: %v", err)
+	}
+	if len(got) != len(fixtures) {
+		t.Fatalf("migrated row count = %d, want %d", len(got), len(fixtures))
+	}
+	for i, want := range fixtures {
+		if got[i] != want {
+			t.Errorf("migrated event %d = %+v, want %+v", i, got[i], want)
+		}
+	}
+
+	// Mainline versioning still reads the legacy history...
+	if v, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID); err != nil || v != 3 {
+		t.Fatalf("main version after rebuild = %d (err %v), want 3", v, err)
+	}
+
+	// ...and a branch write now succeeds, seeded from main's version at the base.
+	branch := repository.AppendScope{BranchID: domain.BranchID(uuid.New()), BasePosition: 3}
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"surname": "Revised"})}, 3, branch); err != nil {
+		t.Fatalf("branch append after rebuild: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branch.BranchID); err != nil || v != 4 {
+		t.Fatalf("branch version after rebuild = %d (err %v), want 4", v, err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID); err != nil || v != 3 {
+		t.Fatalf("main version after branch write = %d (err %v), want 3 (unchanged)", v, err)
+	}
+
+	// A second branch takes version 4 of the SAME stream — impossible under the
+	// legacy UNIQUE(stream_id, version), so this is the constraint swap proving
+	// itself rather than just the DDL text.
+	other := repository.AppendScope{BranchID: domain.BranchID(uuid.New()), BasePosition: 3}
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"surname": "Alternate"})}, 3, other); err != nil {
+		t.Fatalf("second branch append at the same version after rebuild: %v", err)
+	}
+}
+
+// TestFreshEventStoreSkipsRebuild is the control: a database created by the
+// current code already carries the composite constraint, so opening it (twice)
+// must never trigger the rebuild.
+func TestFreshEventStoreSkipsRebuild(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-fresh-eventstore-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	var logs bytes.Buffer
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(restore)
+
+	for i := 0; i < 2; i++ {
+		if _, err := sqlite.NewEventStore(db); err != nil {
+			t.Fatalf("NewEventStore pass %d: %v", i, err)
+		}
+	}
+
+	if n := strings.Count(logs.String(), "rebuilding sqlite events table"); n != 0 {
+		t.Fatalf("rebuild log lines on a fresh database = %d, want 0; log was:\n%s", n, logs.String())
 	}
 }
