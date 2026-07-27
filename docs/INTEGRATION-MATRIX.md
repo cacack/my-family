@@ -153,29 +153,72 @@ Cross-cutting concern touching all entity types.
 
 Current implementation status for tracking completeness.
 
-| Entity | Domain | Events | Commands | Projections | ReadModel | API | GEDCOM | Status |
-|--------|--------|--------|----------|-------------|-----------|-----|--------|--------|
-| Person | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| PersonName | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Family | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Source | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
-| Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | Partial |
-| Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Snapshot | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | N/A | Partial |
+| Entity | Domain | Events | Commands | Projections | ReadModel | API | GEDCOM | Branch | Status |
+|--------|--------|--------|----------|-------------|-----------|-----|--------|--------|--------|
+| Person | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | Complete |
+| PersonName | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | Complete |
+| Family | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | Complete |
+| Source | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
+| Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
+| Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Snapshot | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | N/A | ❌ | Partial |
+| Branch | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | N/A | N/A | Partial |
 
-Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing
+Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing | N/A Not applicable
+
+The **Branch** column means "this entity can be written on a research branch"
+([ADR-005](./adr/005-research-branch-data-model.md); `?branch=` on the API). ❌ means main-only —
+the API does not expose `?branch=` on those operations, and an event-sourced write attempted on a
+branch scope is rejected with `ErrEventTypeNotBranchAware` (BR-006). Widening this is
+[#676](https://github.com/cacack/my-family/issues/676).
 
 Notes on partial rows:
 
 - **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`).
 - **Snapshot**: bypasses the event-sourced pipeline — `SnapshotService` writes directly to `SnapshotStore` (implemented in all three backends, hence ReadModel ✅). A `SnapshotCreated` event type exists in `domain/events.go` but is never emitted, so Events/Commands/Projections remain partial.
+- **Branch**: create and delete/archive are implemented (#670) with list/get/compare queries and a `/branches` API. `BranchMerged` decodes and projects but is never emitted — merge is [#55](https://github.com/cacack/my-family/issues/55) — so Commands remain partial. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
+
+### Branch coverage detail (#669 read / #670 write)
+
+Seven read-model types are branch-aware (copy-on-write overlay, #669). Branch **writes** cover a
+narrower set, because a write also needs a branch-scoped command path:
+
+| Read-model type | Branch reads (#669) | Branch writes (#670) | How it is written on a branch |
+|---|---|---|---|
+| Person | ✅ | ✅ | `createPerson` / `updatePerson` / `deletePerson` |
+| PersonName | ✅ | ✅ | `addPersonName` / `updatePersonName` / `deletePersonName` |
+| Family | ✅ | ✅ | `createFamily` / `updateFamily` / `deleteFamily` |
+| FamilyChild | ✅ | ✅ | `addChildToFamily` / `removeChildFromFamily` |
+| PedigreeEdge | ✅ | ✅ | derived — reprojected from branch-scoped child link/unlink |
+| PersonExternalID | ✅ | ❌ | written only by GEDCOM import, which is main-only by design (#670 non-goal) |
+| FamilyExternalID | ✅ | ❌ | same as PersonExternalID |
+
+Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
+`getPedigree`) are the 16 API operations carrying `?branch=`.
+
+**Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
+`internal/api/branch_handlers_test.go`), and the command layer resolves its *reads* — existence
+checks, validation, and the expected version — through the same branch overlay, so a branch
+behaves like a normal working copy:
+
+- A person, name, or family may be created on a branch and then edited, renamed, or deleted on that
+  same branch; the mainline never sees any of it.
+- Repeated edits to the same record on one branch work: the expected version comes from the
+  branch's own row, which matches the per-`(stream_id, branch_id)` event version (BR-005).
+- Records the branch has not touched still resolve to `main`, so corrections made on `main` after
+  the branch was created show through (the deliberate "live overlay" of ADR-005).
+
+Remaining gaps, both deliberate: GEDCOM import/export is main-only (a stated non-goal of #670), and
+rollback is main-only (`Handler.rollbackEntity`). Widening branch writes to the entity types outside
+the seven-type slice is [#676](https://github.com/cacack/my-family/issues/676); merging a branch back
+into `main` is [#55](https://github.com/cacack/my-family/issues/55).
 
 ---
 

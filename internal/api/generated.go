@@ -61,6 +61,27 @@ func (e AhnentafelEntryGender) Valid() bool {
 	}
 }
 
+// Defines values for BranchStatus.
+const (
+	BranchStatusActive   BranchStatus = "active"
+	BranchStatusArchived BranchStatus = "archived"
+	BranchStatusMerged   BranchStatus = "merged"
+)
+
+// Valid indicates whether the value is a known member of the BranchStatus enum.
+func (e BranchStatus) Valid() bool {
+	switch e {
+	case BranchStatusActive:
+		return true
+	case BranchStatusArchived:
+		return true
+	case BranchStatusMerged:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChangeEntryAction.
 const (
 	ChangeEntryActionCreated ChangeEntryAction = "created"
@@ -546,16 +567,16 @@ func (e MediaUpdateMediaType) Valid() bool {
 
 // Defines values for MergePersonsRequestFieldResolution.
 const (
-	Merged   MergePersonsRequestFieldResolution = "merged"
-	Survivor MergePersonsRequestFieldResolution = "survivor"
+	MergePersonsRequestFieldResolutionMerged   MergePersonsRequestFieldResolution = "merged"
+	MergePersonsRequestFieldResolutionSurvivor MergePersonsRequestFieldResolution = "survivor"
 )
 
 // Valid indicates whether the value is a known member of the MergePersonsRequestFieldResolution enum.
 func (e MergePersonsRequestFieldResolution) Valid() bool {
 	switch e {
-	case Merged:
+	case MergePersonsRequestFieldResolutionMerged:
 		return true
-	case Survivor:
+	case MergePersonsRequestFieldResolutionSurvivor:
 		return true
 	default:
 		return false
@@ -1838,6 +1859,78 @@ type BatchMergeResult struct {
 
 	// SurvivorId ID of the survivor person
 	SurvivorId openapi_types.UUID `json:"survivor_id"`
+}
+
+// Branch defines model for Branch.
+type Branch struct {
+	// BasePosition Mainline event store position the branch forked from
+	BasePosition int64 `json:"base_position"`
+
+	// CreatedAt When the branch was created
+	CreatedAt time.Time `json:"created_at"`
+
+	// Description Optional description of what the branch explores
+	Description *string            `json:"description,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+
+	// Name Name of the line of research
+	Name string `json:"name"`
+
+	// Status Lifecycle state. `merged` and `archived` are terminal — a branch in
+	// either state accepts no further writes. `archived` is the state a
+	// deleted branch enters; its events are retained but its overlay rows
+	// are purged.
+	Status BranchStatus `json:"status"`
+}
+
+// BranchStatus Lifecycle state. `merged` and `archived` are terminal — a branch in
+// either state accepts no further writes. `archived` is the state a
+// deleted branch enters; its events are retained but its overlay rows
+// are purged.
+type BranchStatus string
+
+// BranchComparisonResult defines model for BranchComparisonResult.
+type BranchComparisonResult struct {
+	// BasePosition Mainline position the branch forked from - the anchor of this diff
+	BasePosition int64  `json:"base_position"`
+	Branch       Branch `json:"branch"`
+
+	// BranchChangeCount Number of branch-side changes returned
+	BranchChangeCount int `json:"branch_change_count"`
+
+	// BranchChanges Changes made on the branch since the fork, oldest first
+	BranchChanges []ChangeEntry `json:"branch_changes"`
+
+	// HasMore True when either side hit the read cap, so this diff is partial
+	HasMore bool `json:"has_more"`
+
+	// MainChangeCount Number of main-side changes returned
+	MainChangeCount int `json:"main_change_count"`
+
+	// MainChanges Changes made on the mainline after the fork point, restricted to the
+	// entities the branch also touched. Oldest first.
+	MainChanges []ChangeEntry `json:"main_changes"`
+
+	// OverlappingStreamIds Entities changed on both the branch and main - a divergence hint for
+	// human review, not conflict detection.
+	OverlappingStreamIds []openapi_types.UUID `json:"overlapping_stream_ids"`
+}
+
+// BranchCreate defines model for BranchCreate.
+type BranchCreate struct {
+	// Description Optional description of what the branch explores
+	Description *string `json:"description,omitempty"`
+
+	// Name Name of the line of research
+	Name string `json:"name"`
+}
+
+// BranchList defines model for BranchList.
+type BranchList struct {
+	Items []Branch `json:"items"`
+
+	// Total Total number of branches
+	Total int `json:"total"`
 }
 
 // BrickWallEntry defines model for BrickWallEntry.
@@ -3981,6 +4074,12 @@ type ValidationIssuesResponse struct {
 // AssociationId defines model for associationId.
 type AssociationId = openapi_types.UUID
 
+// BranchId defines model for branchId.
+type BranchId = openapi_types.UUID
+
+// BranchScope defines model for branchScope.
+type BranchScope = openapi_types.UUID
+
 // EvidenceAnalysisId defines model for evidenceAnalysisId.
 type EvidenceAnalysisId = openapi_types.UUID
 
@@ -4025,6 +4124,9 @@ type VersionParam = int64
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
+
+// BranchesUnavailable defines model for BranchesUnavailable.
+type BranchesUnavailable = Error
 
 // Conflict defines model for Conflict.
 type Conflict = Error
@@ -4178,6 +4280,72 @@ type ListFamiliesParams struct {
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// CreateFamilyParams defines parameters for CreateFamily.
+type CreateFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// DeleteFamilyParams defines parameters for DeleteFamily.
+type DeleteFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetFamilyParams defines parameters for GetFamily.
+type GetFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateFamilyParams defines parameters for UpdateFamily.
+type UpdateFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// AddChildToFamilyParams defines parameters for AddChildToFamily.
+type AddChildToFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// RemoveChildFromFamilyParams defines parameters for RemoveChildFromFamily.
+type RemoveChildFromFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetFamilyHistoryParams defines parameters for GetFamilyHistory.
 type GetFamilyHistoryParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -4275,12 +4443,27 @@ type DeleteNoteParams struct {
 
 // GetPedigreeParams defines parameters for GetPedigree.
 type GetPedigreeParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Generations Number of ancestor generations to include
 	Generations *int `form:"generations,omitempty" json:"generations,omitempty"`
 }
 
 // ListPersonsParams defines parameters for ListPersons.
 type ListPersonsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope            `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam             `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam            `form:"offset,omitempty" json:"offset,omitempty"`
 	Sort   *ListPersonsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
@@ -4299,6 +4482,17 @@ type ListPersonsParamsOrder string
 // ListPersonsParamsResearchStatus defines parameters for ListPersons.
 type ListPersonsParamsResearchStatus string
 
+// CreatePersonParams defines parameters for CreatePerson.
+type CreatePersonParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetPersonsDuplicatesParams defines parameters for GetPersonsDuplicates.
 type GetPersonsDuplicatesParams struct {
 	// Limit Maximum number of duplicate pairs to return
@@ -4306,6 +4500,39 @@ type GetPersonsDuplicatesParams struct {
 
 	// Offset Number of duplicate pairs to skip
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// DeletePersonParams defines parameters for DeletePerson.
+type DeletePersonParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetPersonParams defines parameters for GetPerson.
+type GetPersonParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdatePersonParams defines parameters for UpdatePerson.
+type UpdatePersonParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // SetPersonBrickWallJSONBody defines parameters for SetPersonBrickWall.
@@ -4343,6 +4570,50 @@ type UploadPersonMediaMultipartBody struct {
 
 // UploadPersonMediaMultipartBodyMediaType defines parameters for UploadPersonMedia.
 type UploadPersonMediaMultipartBodyMediaType string
+
+// GetPersonNamesParams defines parameters for GetPersonNames.
+type GetPersonNamesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// AddPersonNameParams defines parameters for AddPersonName.
+type AddPersonNameParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// DeletePersonNameParams defines parameters for DeletePersonName.
+type DeletePersonNameParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdatePersonNameParams defines parameters for UpdatePersonName.
+type UpdatePersonNameParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
 
 // GetPersonRestorePointsParams defines parameters for GetPersonRestorePoints.
 type GetPersonRestorePointsParams struct {
@@ -4542,6 +4813,9 @@ type CreateAssociationJSONRequestBody = AssociationCreate
 // UpdateAssociationJSONRequestBody defines body for UpdateAssociation for application/json ContentType.
 type UpdateAssociationJSONRequestBody = AssociationUpdate
 
+// CreateBranchJSONRequestBody defines body for CreateBranch for application/json ContentType.
+type CreateBranchJSONRequestBody = BranchCreate
+
 // PreviewCitationTemplateJSONRequestBody defines body for PreviewCitationTemplate for application/json ContentType.
 type PreviewCitationTemplateJSONRequestBody PreviewCitationTemplateJSONBody
 
@@ -4685,6 +4959,21 @@ type ServerInterface interface {
 	// Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx echo.Context, id AssociationId) error
+	// List all branches
+	// (GET /branches)
+	ListBranches(ctx echo.Context) error
+	// Create a new branch
+	// (POST /branches)
+	CreateBranch(ctx echo.Context) error
+	// Delete (archive) a branch
+	// (DELETE /branches/{id})
+	DeleteBranch(ctx echo.Context, id BranchId) error
+	// Get a branch by ID
+	// (GET /branches/{id})
+	GetBranch(ctx echo.Context, id BranchId) error
+	// Compare a branch against the mainline
+	// (GET /branches/{id}/compare)
+	CompareBranch(ctx echo.Context, id BranchId) error
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx echo.Context, params GetBrickWallsParams) error
@@ -4798,22 +5087,22 @@ type ServerInterface interface {
 	ListFamilies(ctx echo.Context, params ListFamiliesParams) error
 	// Create a new family
 	// (POST /families)
-	CreateFamily(ctx echo.Context) error
+	CreateFamily(ctx echo.Context, params CreateFamilyParams) error
 	// Delete a family
 	// (DELETE /families/{id})
-	DeleteFamily(ctx echo.Context, id FamilyId) error
+	DeleteFamily(ctx echo.Context, id FamilyId, params DeleteFamilyParams) error
 	// Get a family by ID
 	// (GET /families/{id})
-	GetFamily(ctx echo.Context, id FamilyId) error
+	GetFamily(ctx echo.Context, id FamilyId, params GetFamilyParams) error
 	// Update a family
 	// (PUT /families/{id})
-	UpdateFamily(ctx echo.Context, id FamilyId) error
+	UpdateFamily(ctx echo.Context, id FamilyId, params UpdateFamilyParams) error
 	// Add a child to a family
 	// (POST /families/{id}/children)
-	AddChildToFamily(ctx echo.Context, id FamilyId) error
+	AddChildToFamily(ctx echo.Context, id FamilyId, params AddChildToFamilyParams) error
 	// Remove a child from a family
 	// (DELETE /families/{id}/children/{personId})
-	RemoveChildFromFamily(ctx echo.Context, id FamilyId, personId openapi_types.UUID) error
+	RemoveChildFromFamily(ctx echo.Context, id FamilyId, personId openapi_types.UUID, params RemoveChildFromFamilyParams) error
 	// Get family group sheet data
 	// (GET /families/{id}/group-sheet)
 	GetFamilyGroupSheet(ctx echo.Context, id FamilyId) error
@@ -4897,7 +5186,7 @@ type ServerInterface interface {
 	ListPersons(ctx echo.Context, params ListPersonsParams) error
 	// Create a new person
 	// (POST /persons)
-	CreatePerson(ctx echo.Context) error
+	CreatePerson(ctx echo.Context, params CreatePersonParams) error
 	// Find potential duplicate persons
 	// (GET /persons/duplicates)
 	GetPersonsDuplicates(ctx echo.Context, params GetPersonsDuplicatesParams) error
@@ -4915,13 +5204,13 @@ type ServerInterface interface {
 	BatchMergePersons(ctx echo.Context) error
 	// Delete a person
 	// (DELETE /persons/{id})
-	DeletePerson(ctx echo.Context, id PersonId) error
+	DeletePerson(ctx echo.Context, id PersonId, params DeletePersonParams) error
 	// Get a person by ID
 	// (GET /persons/{id})
-	GetPerson(ctx echo.Context, id PersonId) error
+	GetPerson(ctx echo.Context, id PersonId, params GetPersonParams) error
 	// Update a person
 	// (PUT /persons/{id})
-	UpdatePerson(ctx echo.Context, id PersonId) error
+	UpdatePerson(ctx echo.Context, id PersonId, params UpdatePersonParams) error
 	// List associations for a person
 	// (GET /persons/{id}/associations)
 	ListAssociationsForPerson(ctx echo.Context, id PersonId) error
@@ -4948,16 +5237,16 @@ type ServerInterface interface {
 	UploadPersonMedia(ctx echo.Context, id PersonId) error
 	// Get all names for a person
 	// (GET /persons/{id}/names)
-	GetPersonNames(ctx echo.Context, id PersonId) error
+	GetPersonNames(ctx echo.Context, id PersonId, params GetPersonNamesParams) error
 	// Add a name to a person
 	// (POST /persons/{id}/names)
-	AddPersonName(ctx echo.Context, id PersonId) error
+	AddPersonName(ctx echo.Context, id PersonId, params AddPersonNameParams) error
 	// Remove a name from a person
 	// (DELETE /persons/{id}/names/{nameId})
-	DeletePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID) error
+	DeletePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID, params DeletePersonNameParams) error
 	// Update a person's name
 	// (PUT /persons/{id}/names/{nameId})
-	UpdatePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID) error
+	UpdatePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID, params UpdatePersonNameParams) error
 	// Get restore points for a person
 	// (GET /persons/{id}/restore-points)
 	GetPersonRestorePoints(ctx echo.Context, id PersonId, params GetPersonRestorePointsParams) error
@@ -5255,6 +5544,72 @@ func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.UpdateAssociation(ctx, id)
+	return err
+}
+
+// ListBranches converts echo context to params.
+func (w *ServerInterfaceWrapper) ListBranches(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListBranches(ctx)
+	return err
+}
+
+// CreateBranch converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateBranch(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateBranch(ctx)
+	return err
+}
+
+// DeleteBranch converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteBranch(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteBranch(ctx, id)
+	return err
+}
+
+// GetBranch converts echo context to params.
+func (w *ServerInterfaceWrapper) GetBranch(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetBranch(ctx, id)
+	return err
+}
+
+// CompareBranch converts echo context to params.
+func (w *ServerInterfaceWrapper) CompareBranch(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CompareBranch(ctx, id)
 	return err
 }
 
@@ -5933,8 +6288,17 @@ func (w *ServerInterfaceWrapper) ListFamilies(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateFamily(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateFamilyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateFamily(ctx)
+	err = w.Handler.CreateFamily(ctx, params)
 	return err
 }
 
@@ -5949,8 +6313,17 @@ func (w *ServerInterfaceWrapper) DeleteFamily(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteFamilyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.DeleteFamily(ctx, id)
+	err = w.Handler.DeleteFamily(ctx, id, params)
 	return err
 }
 
@@ -5965,8 +6338,17 @@ func (w *ServerInterfaceWrapper) GetFamily(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFamilyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetFamily(ctx, id)
+	err = w.Handler.GetFamily(ctx, id, params)
 	return err
 }
 
@@ -5981,8 +6363,17 @@ func (w *ServerInterfaceWrapper) UpdateFamily(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateFamilyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateFamily(ctx, id)
+	err = w.Handler.UpdateFamily(ctx, id, params)
 	return err
 }
 
@@ -5997,8 +6388,17 @@ func (w *ServerInterfaceWrapper) AddChildToFamily(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AddChildToFamilyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.AddChildToFamily(ctx, id)
+	err = w.Handler.AddChildToFamily(ctx, id, params)
 	return err
 }
 
@@ -6021,8 +6421,17 @@ func (w *ServerInterfaceWrapper) RemoveChildFromFamily(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter personId: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RemoveChildFromFamilyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.RemoveChildFromFamily(ctx, id, personId)
+	err = w.Handler.RemoveChildFromFamily(ctx, id, personId, params)
 	return err
 }
 
@@ -6543,6 +6952,13 @@ func (w *ServerInterfaceWrapper) GetPedigree(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetPedigreeParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "generations" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "generations", ctx.QueryParams(), &params.Generations, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -6561,6 +6977,13 @@ func (w *ServerInterfaceWrapper) ListPersons(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListPersonsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -6605,8 +7028,17 @@ func (w *ServerInterfaceWrapper) ListPersons(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreatePerson(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreatePersonParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreatePerson(ctx)
+	err = w.Handler.CreatePerson(ctx, params)
 	return err
 }
 
@@ -6697,8 +7129,17 @@ func (w *ServerInterfaceWrapper) DeletePerson(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeletePersonParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.DeletePerson(ctx, id)
+	err = w.Handler.DeletePerson(ctx, id, params)
 	return err
 }
 
@@ -6713,8 +7154,17 @@ func (w *ServerInterfaceWrapper) GetPerson(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPersonParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetPerson(ctx, id)
+	err = w.Handler.GetPerson(ctx, id, params)
 	return err
 }
 
@@ -6729,8 +7179,17 @@ func (w *ServerInterfaceWrapper) UpdatePerson(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdatePersonParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdatePerson(ctx, id)
+	err = w.Handler.UpdatePerson(ctx, id, params)
 	return err
 }
 
@@ -6905,8 +7364,17 @@ func (w *ServerInterfaceWrapper) GetPersonNames(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPersonNamesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetPersonNames(ctx, id)
+	err = w.Handler.GetPersonNames(ctx, id, params)
 	return err
 }
 
@@ -6921,8 +7389,17 @@ func (w *ServerInterfaceWrapper) AddPersonName(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AddPersonNameParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.AddPersonName(ctx, id)
+	err = w.Handler.AddPersonName(ctx, id, params)
 	return err
 }
 
@@ -6945,8 +7422,17 @@ func (w *ServerInterfaceWrapper) DeletePersonName(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter nameId: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeletePersonNameParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.DeletePersonName(ctx, id, nameId)
+	err = w.Handler.DeletePersonName(ctx, id, nameId, params)
 	return err
 }
 
@@ -6969,8 +7455,17 @@ func (w *ServerInterfaceWrapper) UpdatePersonName(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter nameId: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdatePersonNameParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdatePersonName(ctx, id, nameId)
+	err = w.Handler.UpdatePersonName(ctx, id, nameId, params)
 	return err
 }
 
@@ -8038,6 +8533,11 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/associations/:id", wrapper.DeleteAssociation, options.OperationMiddlewares["deleteAssociation"]...)
 	router.GET(options.BaseURL+"/associations/:id", wrapper.GetAssociation, options.OperationMiddlewares["getAssociation"]...)
 	router.PUT(options.BaseURL+"/associations/:id", wrapper.UpdateAssociation, options.OperationMiddlewares["updateAssociation"]...)
+	router.GET(options.BaseURL+"/branches", wrapper.ListBranches, options.OperationMiddlewares["listBranches"]...)
+	router.POST(options.BaseURL+"/branches", wrapper.CreateBranch, options.OperationMiddlewares["createBranch"]...)
+	router.DELETE(options.BaseURL+"/branches/:id", wrapper.DeleteBranch, options.OperationMiddlewares["deleteBranch"]...)
+	router.GET(options.BaseURL+"/branches/:id", wrapper.GetBranch, options.OperationMiddlewares["getBranch"]...)
+	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
@@ -8179,6 +8679,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 }
 
 type BadRequestJSONResponse Error
+
+type BranchesUnavailableJSONResponse Error
 
 type ConflictJSONResponse Error
 
@@ -8496,6 +8998,259 @@ func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBranchesRequestObject struct {
+}
+
+type ListBranchesResponseObject interface {
+	VisitListBranchesResponse(w http.ResponseWriter) error
+}
+
+type ListBranches200JSONResponse BranchList
+
+func (response ListBranches200JSONResponse) VisitListBranchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBranches503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response ListBranches503JSONResponse) VisitListBranchesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBranchRequestObject struct {
+	Body *CreateBranchJSONRequestBody
+}
+
+type CreateBranchResponseObject interface {
+	VisitCreateBranchResponse(w http.ResponseWriter) error
+}
+
+type CreateBranch201JSONResponse Branch
+
+func (response CreateBranch201JSONResponse) VisitCreateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBranch400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateBranch400JSONResponse) VisitCreateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBranch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response CreateBranch503JSONResponse) VisitCreateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBranchRequestObject struct {
+	Id BranchId `json:"id"`
+}
+
+type DeleteBranchResponseObject interface {
+	VisitDeleteBranchResponse(w http.ResponseWriter) error
+}
+
+type DeleteBranch204Response struct {
+}
+
+func (response DeleteBranch204Response) VisitDeleteBranchResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteBranch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteBranch404JSONResponse) VisitDeleteBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBranch409JSONResponse Error
+
+func (response DeleteBranch409JSONResponse) VisitDeleteBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteBranch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response DeleteBranch503JSONResponse) VisitDeleteBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchRequestObject struct {
+	Id BranchId `json:"id"`
+}
+
+type GetBranchResponseObject interface {
+	VisitGetBranchResponse(w http.ResponseWriter) error
+}
+
+type GetBranch200JSONResponse Branch
+
+func (response GetBranch200JSONResponse) VisitGetBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetBranch404JSONResponse) VisitGetBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response GetBranch503JSONResponse) VisitGetBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareBranchRequestObject struct {
+	Id BranchId `json:"id"`
+}
+
+type CompareBranchResponseObject interface {
+	VisitCompareBranchResponse(w http.ResponseWriter) error
+}
+
+type CompareBranch200JSONResponse BranchComparisonResult
+
+func (response CompareBranch200JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareBranch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CompareBranch404JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareBranch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response CompareBranch503JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -9783,7 +10538,8 @@ func (response ListFamilies200JSONResponse) VisitListFamiliesResponse(w http.Res
 }
 
 type CreateFamilyRequestObject struct {
-	Body *CreateFamilyJSONRequestBody
+	Params CreateFamilyParams
+	Body   *CreateFamilyJSONRequestBody
 }
 
 type CreateFamilyResponseObject interface {
@@ -9818,8 +10574,37 @@ func (response CreateFamily400JSONResponse) VisitCreateFamilyResponse(w http.Res
 	return err
 }
 
+type CreateFamily404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateFamily404JSONResponse) VisitCreateFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFamily409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateFamily409JSONResponse) VisitCreateFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteFamilyRequestObject struct {
-	Id FamilyId `json:"id"`
+	Id     FamilyId `json:"id"`
+	Params DeleteFamilyParams
 }
 
 type DeleteFamilyResponseObject interface {
@@ -9848,8 +10633,23 @@ func (response DeleteFamily404JSONResponse) VisitDeleteFamilyResponse(w http.Res
 	return err
 }
 
+type DeleteFamily409JSONResponse Error
+
+func (response DeleteFamily409JSONResponse) VisitDeleteFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetFamilyRequestObject struct {
-	Id FamilyId `json:"id"`
+	Id     FamilyId `json:"id"`
+	Params GetFamilyParams
 }
 
 type GetFamilyResponseObject interface {
@@ -9885,8 +10685,9 @@ func (response GetFamily404JSONResponse) VisitGetFamilyResponse(w http.ResponseW
 }
 
 type UpdateFamilyRequestObject struct {
-	Id   FamilyId `json:"id"`
-	Body *UpdateFamilyJSONRequestBody
+	Id     FamilyId `json:"id"`
+	Params UpdateFamilyParams
+	Body   *UpdateFamilyJSONRequestBody
 }
 
 type UpdateFamilyResponseObject interface {
@@ -9935,9 +10736,24 @@ func (response UpdateFamily404JSONResponse) VisitUpdateFamilyResponse(w http.Res
 	return err
 }
 
+type UpdateFamily409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateFamily409JSONResponse) VisitUpdateFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AddChildToFamilyRequestObject struct {
-	Id   FamilyId `json:"id"`
-	Body *AddChildToFamilyJSONRequestBody
+	Id     FamilyId `json:"id"`
+	Params AddChildToFamilyParams
+	Body   *AddChildToFamilyJSONRequestBody
 }
 
 type AddChildToFamilyResponseObject interface {
@@ -10003,6 +10819,7 @@ func (response AddChildToFamily409JSONResponse) VisitAddChildToFamilyResponse(w 
 type RemoveChildFromFamilyRequestObject struct {
 	Id       FamilyId           `json:"id"`
 	PersonId openapi_types.UUID `json:"personId"`
+	Params   RemoveChildFromFamilyParams
 }
 
 type RemoveChildFromFamilyResponseObject interface {
@@ -10027,6 +10844,20 @@ func (response RemoveChildFromFamily404JSONResponse) VisitRemoveChildFromFamilyR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveChildFromFamily409JSONResponse Error
+
+func (response RemoveChildFromFamily409JSONResponse) VisitRemoveChildFromFamilyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -11282,8 +12113,23 @@ func (response ListPersons400JSONResponse) VisitListPersonsResponse(w http.Respo
 	return err
 }
 
+type ListPersons404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListPersons404JSONResponse) VisitListPersonsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreatePersonRequestObject struct {
-	Body *CreatePersonJSONRequestBody
+	Params CreatePersonParams
+	Body   *CreatePersonJSONRequestBody
 }
 
 type CreatePersonResponseObject interface {
@@ -11314,6 +12160,34 @@ func (response CreatePerson400JSONResponse) VisitCreatePersonResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePerson404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreatePerson404JSONResponse) VisitCreatePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePerson409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreatePerson409JSONResponse) VisitCreatePersonResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -11523,7 +12397,8 @@ func (response BatchMergePersons400JSONResponse) VisitBatchMergePersonsResponse(
 }
 
 type DeletePersonRequestObject struct {
-	Id PersonId `json:"id"`
+	Id     PersonId `json:"id"`
+	Params DeletePersonParams
 }
 
 type DeletePersonResponseObject interface {
@@ -11567,7 +12442,8 @@ func (response DeletePerson409JSONResponse) VisitDeletePersonResponse(w http.Res
 }
 
 type GetPersonRequestObject struct {
-	Id PersonId `json:"id"`
+	Id     PersonId `json:"id"`
+	Params GetPersonParams
 }
 
 type GetPersonResponseObject interface {
@@ -11603,8 +12479,9 @@ func (response GetPerson404JSONResponse) VisitGetPersonResponse(w http.ResponseW
 }
 
 type UpdatePersonRequestObject struct {
-	Id   PersonId `json:"id"`
-	Body *UpdatePersonJSONRequestBody
+	Id     PersonId `json:"id"`
+	Params UpdatePersonParams
+	Body   *UpdatePersonJSONRequestBody
 }
 
 type UpdatePersonResponseObject interface {
@@ -11976,7 +12853,8 @@ func (response UploadPersonMedia413JSONResponse) VisitUploadPersonMediaResponse(
 }
 
 type GetPersonNamesRequestObject struct {
-	Id PersonId `json:"id"`
+	Id     PersonId `json:"id"`
+	Params GetPersonNamesParams
 }
 
 type GetPersonNamesResponseObject interface {
@@ -12012,8 +12890,9 @@ func (response GetPersonNames404JSONResponse) VisitGetPersonNamesResponse(w http
 }
 
 type AddPersonNameRequestObject struct {
-	Id   PersonId `json:"id"`
-	Body *AddPersonNameJSONRequestBody
+	Id     PersonId `json:"id"`
+	Params AddPersonNameParams
+	Body   *AddPersonNameJSONRequestBody
 }
 
 type AddPersonNameResponseObject interface {
@@ -12062,9 +12941,24 @@ func (response AddPersonName404JSONResponse) VisitAddPersonNameResponse(w http.R
 	return err
 }
 
+type AddPersonName409JSONResponse struct{ ConflictJSONResponse }
+
+func (response AddPersonName409JSONResponse) VisitAddPersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeletePersonNameRequestObject struct {
 	Id     PersonId           `json:"id"`
 	NameId openapi_types.UUID `json:"nameId"`
+	Params DeletePersonNameParams
 }
 
 type DeletePersonNameResponseObject interface {
@@ -12107,9 +13001,24 @@ func (response DeletePersonName404JSONResponse) VisitDeletePersonNameResponse(w 
 	return err
 }
 
+type DeletePersonName409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeletePersonName409JSONResponse) VisitDeletePersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UpdatePersonNameRequestObject struct {
 	Id     PersonId           `json:"id"`
 	NameId openapi_types.UUID `json:"nameId"`
+	Params UpdatePersonNameParams
 	Body   *UpdatePersonNameJSONRequestBody
 }
 
@@ -12155,6 +13064,20 @@ func (response UpdatePersonName404JSONResponse) VisitUpdatePersonNameResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePersonName409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdatePersonName409JSONResponse) VisitUpdatePersonNameResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -14067,6 +14990,21 @@ type StrictServerInterface interface {
 	// Update an association
 	// (PUT /associations/{id})
 	UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error)
+	// List all branches
+	// (GET /branches)
+	ListBranches(ctx context.Context, request ListBranchesRequestObject) (ListBranchesResponseObject, error)
+	// Create a new branch
+	// (POST /branches)
+	CreateBranch(ctx context.Context, request CreateBranchRequestObject) (CreateBranchResponseObject, error)
+	// Delete (archive) a branch
+	// (DELETE /branches/{id})
+	DeleteBranch(ctx context.Context, request DeleteBranchRequestObject) (DeleteBranchResponseObject, error)
+	// Get a branch by ID
+	// (GET /branches/{id})
+	GetBranch(ctx context.Context, request GetBranchRequestObject) (GetBranchResponseObject, error)
+	// Compare a branch against the mainline
+	// (GET /branches/{id}/compare)
+	CompareBranch(ctx context.Context, request CompareBranchRequestObject) (CompareBranchResponseObject, error)
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx context.Context, request GetBrickWallsRequestObject) (GetBrickWallsResponseObject, error)
@@ -14673,6 +15611,133 @@ func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId) e
 		return err
 	} else if validResponse, ok := response.(UpdateAssociationResponseObject); ok {
 		return validResponse.VisitUpdateAssociationResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ListBranches operation middleware
+func (sh *strictHandler) ListBranches(ctx echo.Context) error {
+	var request ListBranchesRequestObject
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBranches(ctx.Request().Context(), request.(ListBranchesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBranches")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ListBranchesResponseObject); ok {
+		return validResponse.VisitListBranchesResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CreateBranch operation middleware
+func (sh *strictHandler) CreateBranch(ctx echo.Context) error {
+	var request CreateBranchRequestObject
+
+	var body CreateBranchJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBranch(ctx.Request().Context(), request.(CreateBranchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBranch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CreateBranchResponseObject); ok {
+		return validResponse.VisitCreateBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// DeleteBranch operation middleware
+func (sh *strictHandler) DeleteBranch(ctx echo.Context, id BranchId) error {
+	var request DeleteBranchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteBranch(ctx.Request().Context(), request.(DeleteBranchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteBranch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(DeleteBranchResponseObject); ok {
+		return validResponse.VisitDeleteBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetBranch operation middleware
+func (sh *strictHandler) GetBranch(ctx echo.Context, id BranchId) error {
+	var request GetBranchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBranch(ctx.Request().Context(), request.(GetBranchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBranch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetBranchResponseObject); ok {
+		return validResponse.VisitGetBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CompareBranch operation middleware
+func (sh *strictHandler) CompareBranch(ctx echo.Context, id BranchId) error {
+	var request CompareBranchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CompareBranch(ctx.Request().Context(), request.(CompareBranchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompareBranch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CompareBranchResponseObject); ok {
+		return validResponse.VisitCompareBranchResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
@@ -15632,8 +16697,10 @@ func (sh *strictHandler) ListFamilies(ctx echo.Context, params ListFamiliesParam
 }
 
 // CreateFamily operation middleware
-func (sh *strictHandler) CreateFamily(ctx echo.Context) error {
+func (sh *strictHandler) CreateFamily(ctx echo.Context, params CreateFamilyParams) error {
 	var request CreateFamilyRequestObject
+
+	request.Params = params
 
 	var body CreateFamilyJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -15661,10 +16728,11 @@ func (sh *strictHandler) CreateFamily(ctx echo.Context) error {
 }
 
 // DeleteFamily operation middleware
-func (sh *strictHandler) DeleteFamily(ctx echo.Context, id FamilyId) error {
+func (sh *strictHandler) DeleteFamily(ctx echo.Context, id FamilyId, params DeleteFamilyParams) error {
 	var request DeleteFamilyRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteFamily(ctx.Request().Context(), request.(DeleteFamilyRequestObject))
@@ -15686,10 +16754,11 @@ func (sh *strictHandler) DeleteFamily(ctx echo.Context, id FamilyId) error {
 }
 
 // GetFamily operation middleware
-func (sh *strictHandler) GetFamily(ctx echo.Context, id FamilyId) error {
+func (sh *strictHandler) GetFamily(ctx echo.Context, id FamilyId, params GetFamilyParams) error {
 	var request GetFamilyRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetFamily(ctx.Request().Context(), request.(GetFamilyRequestObject))
@@ -15711,10 +16780,11 @@ func (sh *strictHandler) GetFamily(ctx echo.Context, id FamilyId) error {
 }
 
 // UpdateFamily operation middleware
-func (sh *strictHandler) UpdateFamily(ctx echo.Context, id FamilyId) error {
+func (sh *strictHandler) UpdateFamily(ctx echo.Context, id FamilyId, params UpdateFamilyParams) error {
 	var request UpdateFamilyRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateFamilyJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -15742,10 +16812,11 @@ func (sh *strictHandler) UpdateFamily(ctx echo.Context, id FamilyId) error {
 }
 
 // AddChildToFamily operation middleware
-func (sh *strictHandler) AddChildToFamily(ctx echo.Context, id FamilyId) error {
+func (sh *strictHandler) AddChildToFamily(ctx echo.Context, id FamilyId, params AddChildToFamilyParams) error {
 	var request AddChildToFamilyRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body AddChildToFamilyJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -15773,11 +16844,12 @@ func (sh *strictHandler) AddChildToFamily(ctx echo.Context, id FamilyId) error {
 }
 
 // RemoveChildFromFamily operation middleware
-func (sh *strictHandler) RemoveChildFromFamily(ctx echo.Context, id FamilyId, personId openapi_types.UUID) error {
+func (sh *strictHandler) RemoveChildFromFamily(ctx echo.Context, id FamilyId, personId openapi_types.UUID, params RemoveChildFromFamilyParams) error {
 	var request RemoveChildFromFamilyRequestObject
 
 	request.Id = id
 	request.PersonId = personId
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.RemoveChildFromFamily(ctx.Request().Context(), request.(RemoveChildFromFamilyRequestObject))
@@ -16514,8 +17586,10 @@ func (sh *strictHandler) ListPersons(ctx echo.Context, params ListPersonsParams)
 }
 
 // CreatePerson operation middleware
-func (sh *strictHandler) CreatePerson(ctx echo.Context) error {
+func (sh *strictHandler) CreatePerson(ctx echo.Context, params CreatePersonParams) error {
 	var request CreatePersonRequestObject
+
+	request.Params = params
 
 	var body CreatePersonJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -16690,10 +17764,11 @@ func (sh *strictHandler) BatchMergePersons(ctx echo.Context) error {
 }
 
 // DeletePerson operation middleware
-func (sh *strictHandler) DeletePerson(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) DeletePerson(ctx echo.Context, id PersonId, params DeletePersonParams) error {
 	var request DeletePersonRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.DeletePerson(ctx.Request().Context(), request.(DeletePersonRequestObject))
@@ -16715,10 +17790,11 @@ func (sh *strictHandler) DeletePerson(ctx echo.Context, id PersonId) error {
 }
 
 // GetPerson operation middleware
-func (sh *strictHandler) GetPerson(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) GetPerson(ctx echo.Context, id PersonId, params GetPersonParams) error {
 	var request GetPersonRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetPerson(ctx.Request().Context(), request.(GetPersonRequestObject))
@@ -16740,10 +17816,11 @@ func (sh *strictHandler) GetPerson(ctx echo.Context, id PersonId) error {
 }
 
 // UpdatePerson operation middleware
-func (sh *strictHandler) UpdatePerson(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) UpdatePerson(ctx echo.Context, id PersonId, params UpdatePersonParams) error {
 	var request UpdatePersonRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdatePersonJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -16985,10 +18062,11 @@ func (sh *strictHandler) UploadPersonMedia(ctx echo.Context, id PersonId) error 
 }
 
 // GetPersonNames operation middleware
-func (sh *strictHandler) GetPersonNames(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) GetPersonNames(ctx echo.Context, id PersonId, params GetPersonNamesParams) error {
 	var request GetPersonNamesRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetPersonNames(ctx.Request().Context(), request.(GetPersonNamesRequestObject))
@@ -17010,10 +18088,11 @@ func (sh *strictHandler) GetPersonNames(ctx echo.Context, id PersonId) error {
 }
 
 // AddPersonName operation middleware
-func (sh *strictHandler) AddPersonName(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) AddPersonName(ctx echo.Context, id PersonId, params AddPersonNameParams) error {
 	var request AddPersonNameRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body AddPersonNameJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -17041,11 +18120,12 @@ func (sh *strictHandler) AddPersonName(ctx echo.Context, id PersonId) error {
 }
 
 // DeletePersonName operation middleware
-func (sh *strictHandler) DeletePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID) error {
+func (sh *strictHandler) DeletePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID, params DeletePersonNameParams) error {
 	var request DeletePersonNameRequestObject
 
 	request.Id = id
 	request.NameId = nameId
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.DeletePersonName(ctx.Request().Context(), request.(DeletePersonNameRequestObject))
@@ -17067,11 +18147,12 @@ func (sh *strictHandler) DeletePersonName(ctx echo.Context, id PersonId, nameId 
 }
 
 // UpdatePersonName operation middleware
-func (sh *strictHandler) UpdatePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID) error {
+func (sh *strictHandler) UpdatePersonName(ctx echo.Context, id PersonId, nameId openapi_types.UUID, params UpdatePersonNameParams) error {
 	var request UpdatePersonNameRequestObject
 
 	request.Id = id
 	request.NameId = nameId
+	request.Params = params
 
 	var body UpdatePersonNameJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {

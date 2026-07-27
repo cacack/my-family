@@ -13,6 +13,12 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// maxComparisonEvents caps how many raw events any one side of a diff reads —
+// snapshot-vs-snapshot (CompareSnapshots) and branch-vs-main (CompareBranch)
+// alike. It lives here, next to the transform both diffs feed, so the two
+// cannot be tuned independently and silently disagree.
+const maxComparisonEvents = 1000
+
 // HistoryService provides query operations for change history and audit trails.
 type HistoryService struct {
 	eventStore repository.EventStore
@@ -76,8 +82,11 @@ func (s *HistoryService) GetEntityHistory(ctx context.Context, entityType string
 		offset = 0
 	}
 
-	// Read events for this entity's stream
-	page, err := s.eventStore.ReadByStream(ctx, entityID, limit, offset)
+	// Read events for this entity's stream. Scoped to main: the history endpoints
+	// take no ?branch= parameter, so an entity's audit trail is the mainline's and
+	// must not interleave any branch's in-progress edits (ADR-005). Branch-scoped
+	// history is future work — it needs an API parameter first.
+	page, err := s.eventStore.ReadByStream(ctx, entityID, domain.MainBranchID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("reading stream: %w", err)
 	}

@@ -1132,6 +1132,11 @@ func (ss *StrictServer) ListFamilies(ctx context.Context, request ListFamiliesRe
 
 // CreateFamily implements StrictServerInterface.
 func (ss *StrictServer) CreateFamily(ctx context.Context, request CreateFamilyRequestObject) (CreateFamilyResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateFamilyInput{}
 
 	if request.Body.Partner1Id != nil {
@@ -1152,12 +1157,12 @@ func (ss *StrictServer) CreateFamily(ctx context.Context, request CreateFamilyRe
 		input.MarriagePlace = *request.Body.MarriagePlace
 	}
 
-	result, err := ss.server.commandHandler.CreateFamily(ctx, input)
+	result, err := ss.branchWriter(branch).CreateFamily(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 
-	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, result.ID)
+	family, err := ss.server.familyService.GetFamily(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -1167,7 +1172,12 @@ func (ss *StrictServer) CreateFamily(ctx context.Context, request CreateFamilyRe
 
 // GetFamily implements StrictServerInterface.
 func (ss *StrictServer) GetFamily(ctx context.Context, request GetFamilyRequestObject) (GetFamilyResponseObject, error) {
-	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	family, err := ss.server.familyService.GetFamily(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamily404JSONResponse{NotFoundJSONResponse{
@@ -1183,6 +1193,11 @@ func (ss *StrictServer) GetFamily(ctx context.Context, request GetFamilyRequestO
 
 // UpdateFamily implements StrictServerInterface.
 func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRequestObject) (UpdateFamilyResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateFamilyInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -1199,7 +1214,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		input.RelationshipType = &relType
 	}
 
-	_, err := ss.server.commandHandler.UpdateFamily(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateFamily(ctx, input)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateFamily400JSONResponse{BadRequestJSONResponse{
@@ -1216,7 +1231,7 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		return nil, err
 	}
 
-	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+	family, err := ss.server.familyService.GetFamily(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1226,8 +1241,13 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 
 // DeleteFamily implements StrictServerInterface.
 func (ss *StrictServer) DeleteFamily(ctx context.Context, request DeleteFamilyRequestObject) (DeleteFamilyResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get current version since DELETE doesn't accept version parameter per OpenAPI spec
-	family, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+	family, err := ss.server.familyService.GetFamily(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteFamily404JSONResponse{NotFoundJSONResponse{
@@ -1238,7 +1258,7 @@ func (ss *StrictServer) DeleteFamily(ctx context.Context, request DeleteFamilyRe
 		return nil, err
 	}
 
-	err = ss.server.commandHandler.DeleteFamily(ctx, command.DeleteFamilyInput{
+	err = ss.branchWriter(branch).DeleteFamily(ctx, command.DeleteFamilyInput{
 		ID:      request.Id,
 		Version: family.Version,
 	})
@@ -1257,6 +1277,11 @@ func (ss *StrictServer) DeleteFamily(ctx context.Context, request DeleteFamilyRe
 
 // AddChildToFamily implements StrictServerInterface.
 func (ss *StrictServer) AddChildToFamily(ctx context.Context, request AddChildToFamilyRequestObject) (AddChildToFamilyResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.LinkChildInput{
 		FamilyID: request.Id,
 		ChildID:  request.Body.PersonId,
@@ -1265,7 +1290,11 @@ func (ss *StrictServer) AddChildToFamily(ctx context.Context, request AddChildTo
 		input.RelationType = string(*request.Body.RelationshipType)
 	}
 
-	_, err := ss.server.commandHandler.LinkChild(ctx, input)
+	// Note: on a branch the expected family version comes from main's row, so a
+	// second link to the same family within one branch surfaces as a 409
+	// (repository.ErrConcurrencyConflict via customErrorHandler). Documented on
+	// the operation; the fix is branch-scoping the command layer's reads.
+	_, err = ss.branchWriter(branch).LinkChild(ctx, input)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return AddChildToFamily404JSONResponse{NotFoundJSONResponse{
@@ -1290,7 +1319,15 @@ func (ss *StrictServer) AddChildToFamily(ctx context.Context, request AddChildTo
 
 // RemoveChildFromFamily implements StrictServerInterface.
 func (ss *StrictServer) RemoveChildFromFamily(ctx context.Context, request RemoveChildFromFamilyRequestObject) (RemoveChildFromFamilyResponseObject, error) {
-	err := ss.server.commandHandler.UnlinkChild(ctx, command.UnlinkChildInput{
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	// Same main-scoped-read caveat as AddChildToFamily above, plus: a child
+	// linked only on the branch is invisible to this command's mainline lookup
+	// and surfaces as 400 "Child is not in this family".
+	err = ss.branchWriter(branch).UnlinkChild(ctx, command.UnlinkChildInput{
 		FamilyID: request.Id,
 		ChildID:  request.PersonId,
 	})
@@ -1750,10 +1787,15 @@ func (ss *StrictServer) GetPedigree(ctx context.Context, request GetPedigreeRequ
 		maxGen = *request.Params.Generations
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := ss.server.pedigreeService.GetPedigree(ctx, query.GetPedigreeInput{
 		PersonID:       request.Id,
 		MaxGenerations: maxGen,
-		BranchID:       domain.MainBranchID,
+		BranchID:       branchScopeID(branch),
 	})
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
@@ -1842,12 +1884,17 @@ func (ss *StrictServer) ListPersons(ctx context.Context, request ListPersonsRequ
 		order = string(*request.Params.Order)
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	input := query.ListPersonsInput{
 		Limit:    limit,
 		Offset:   offset,
 		Sort:     sort,
 		Order:    order,
-		BranchID: domain.MainBranchID,
+		BranchID: branchScopeID(branch),
 	}
 	if request.Params.ResearchStatus != nil {
 		rs := string(*request.Params.ResearchStatus)
@@ -1876,6 +1923,13 @@ func (ss *StrictServer) ListPersons(ctx context.Context, request ListPersonsRequ
 
 // CreatePerson implements StrictServerInterface.
 func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRequestObject) (CreatePersonResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+	writer := ss.branchWriter(branch)
+	scope := branchScopeID(branch)
+
 	var surname string
 	if request.Body.Surname != nil {
 		surname = *request.Body.Surname
@@ -1906,20 +1960,20 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 		input.ResearchStatus = string(*request.Body.ResearchStatus)
 	}
 
-	result, err := ss.server.commandHandler.CreatePerson(ctx, input)
+	result, err := writer.CreatePerson(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create the primary name
-	_, _ = ss.server.commandHandler.AddName(ctx, command.AddNameInput{
+	_, _ = writer.AddName(ctx, command.AddNameInput{
 		PersonID:  result.ID,
 		GivenName: request.Body.GivenName,
 		Surname:   surname,
 		IsPrimary: true,
 	})
 
-	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, result.ID)
+	person, err := ss.server.personService.GetPerson(ctx, scope, result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -1929,7 +1983,12 @@ func (ss *StrictServer) CreatePerson(ctx context.Context, request CreatePersonRe
 
 // GetPerson implements StrictServerInterface.
 func (ss *StrictServer) GetPerson(ctx context.Context, request GetPersonRequestObject) (GetPersonResponseObject, error) {
-	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetPerson404JSONResponse{NotFoundJSONResponse{
@@ -1945,6 +2004,11 @@ func (ss *StrictServer) GetPerson(ctx context.Context, request GetPersonRequestO
 
 // UpdatePerson implements StrictServerInterface.
 func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRequestObject) (UpdatePersonResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdatePersonInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -1980,7 +2044,7 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 		input.ResearchStatus = &rs
 	}
 
-	_, err := ss.server.commandHandler.UpdatePerson(ctx, input)
+	_, err = ss.branchWriter(branch).UpdatePerson(ctx, input)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdatePerson409JSONResponse{ConflictJSONResponse{
@@ -1997,7 +2061,7 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 		return nil, err
 	}
 
-	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2007,8 +2071,13 @@ func (ss *StrictServer) UpdatePerson(ctx context.Context, request UpdatePersonRe
 
 // DeletePerson implements StrictServerInterface.
 func (ss *StrictServer) DeletePerson(ctx context.Context, request DeletePersonRequestObject) (DeletePersonResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	// Get current version since DELETE doesn't accept version parameter per OpenAPI spec
-	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeletePerson404JSONResponse{NotFoundJSONResponse{
@@ -2019,7 +2088,7 @@ func (ss *StrictServer) DeletePerson(ctx context.Context, request DeletePersonRe
 		return nil, err
 	}
 
-	err = ss.server.commandHandler.DeletePerson(ctx, command.DeletePersonInput{
+	err = ss.branchWriter(branch).DeletePerson(ctx, command.DeletePersonInput{
 		ID:      request.Id,
 		Version: person.Version,
 	})
@@ -2205,7 +2274,12 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 
 // GetPersonNames implements StrictServerInterface.
 func (ss *StrictServer) GetPersonNames(ctx context.Context, request GetPersonNamesRequestObject) (GetPersonNamesResponseObject, error) {
-	names, err := ss.server.readStore.GetPersonNames(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	names, err := ss.server.readStore.GetPersonNames(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2223,6 +2297,11 @@ func (ss *StrictServer) GetPersonNames(ctx context.Context, request GetPersonNam
 
 // AddPersonName implements StrictServerInterface.
 func (ss *StrictServer) AddPersonName(ctx context.Context, request AddPersonNameRequestObject) (AddPersonNameResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.AddNameInput{
 		PersonID:  request.Id,
 		GivenName: request.Body.GivenName,
@@ -2246,7 +2325,7 @@ func (ss *StrictServer) AddPersonName(ctx context.Context, request AddPersonName
 		input.IsPrimary = *request.Body.IsPrimary
 	}
 
-	result, err := ss.server.commandHandler.AddName(ctx, input)
+	result, err := ss.branchWriter(branch).AddName(ctx, input)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return AddPersonName404JSONResponse{NotFoundJSONResponse{
@@ -2257,7 +2336,7 @@ func (ss *StrictServer) AddPersonName(ctx context.Context, request AddPersonName
 		return nil, err
 	}
 
-	name, err := ss.server.readStore.GetPersonName(ctx, domain.MainBranchID, result.ID)
+	name, err := ss.server.readStore.GetPersonName(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -2267,6 +2346,11 @@ func (ss *StrictServer) AddPersonName(ctx context.Context, request AddPersonName
 
 // UpdatePersonName implements StrictServerInterface.
 func (ss *StrictServer) UpdatePersonName(ctx context.Context, request UpdatePersonNameRequestObject) (UpdatePersonNameResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	var nameType *string
 	if request.Body.NameType != nil {
 		nt := string(*request.Body.NameType)
@@ -2286,7 +2370,7 @@ func (ss *StrictServer) UpdatePersonName(ctx context.Context, request UpdatePers
 		IsPrimary:     request.Body.IsPrimary,
 	}
 
-	_, err := ss.server.commandHandler.UpdateName(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateName(ctx, input)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return UpdatePersonName404JSONResponse{NotFoundJSONResponse{
@@ -2297,7 +2381,7 @@ func (ss *StrictServer) UpdatePersonName(ctx context.Context, request UpdatePers
 		return nil, err
 	}
 
-	name, err := ss.server.readStore.GetPersonName(ctx, domain.MainBranchID, request.NameId)
+	name, err := ss.server.readStore.GetPersonName(ctx, branchScopeID(branch), request.NameId)
 	if err != nil {
 		return nil, err
 	}
@@ -2307,7 +2391,12 @@ func (ss *StrictServer) UpdatePersonName(ctx context.Context, request UpdatePers
 
 // DeletePersonName implements StrictServerInterface.
 func (ss *StrictServer) DeletePersonName(ctx context.Context, request DeletePersonNameRequestObject) (DeletePersonNameResponseObject, error) {
-	err := ss.server.commandHandler.DeleteName(ctx, command.DeleteNameInput{
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteName(ctx, command.DeleteNameInput{
 		PersonID: request.Id,
 		NameID:   request.NameId,
 	})

@@ -12,15 +12,17 @@ import (
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
+	"github.com/cacack/my-family/internal/repository/memory"
 )
 
 // mockEventStore implements repository.EventStore for testing.
 type mockEventStore struct {
-	readByStreamFunc     func(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error)
-	readGlobalByTimeFunc func(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error)
+	readByStreamFunc      func(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error)
+	lastReadByStreamScope domain.BranchID
+	readGlobalByTimeFunc  func(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error)
 }
 
-func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
+func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
 	return nil
 }
 
@@ -32,13 +34,22 @@ func (m *mockEventStore) ReadAll(ctx context.Context, fromPosition int64, limit 
 	return nil, nil
 }
 
-func (m *mockEventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID) (int64, error) {
+func (m *mockEventStore) ReadBranch(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	return nil, nil
+}
+
+func (m *mockEventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockEventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+func (m *mockEventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	return nil, nil
+}
+
+func (m *mockEventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
+	m.lastReadByStreamScope = branchID
 	if m.readByStreamFunc != nil {
-		return m.readByStreamFunc(ctx, streamID, limit, offset)
+		return m.readByStreamFunc(ctx, streamID, branchID, limit, offset)
 	}
 	return &repository.HistoryPage{}, nil
 }
@@ -569,7 +580,7 @@ func TestGetEntityHistory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			eventStore := &mockEventStore{
-				readByStreamFunc: func(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+				readByStreamFunc: func(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
 					assert.Equal(t, tt.entityID, streamID)
 					return &repository.HistoryPage{
 						Events:     tt.mockEvents,
@@ -1391,4 +1402,52 @@ func mustMarshal(v any) json.RawMessage {
 		panic(err)
 	}
 	return data
+}
+
+// TestHistoryService_GetEntityHistory_BranchIsolation is the query-layer half of
+// the ADR-005 isolation rule: an entity's history endpoint takes no branch
+// parameter, so it must report the mainline and never interleave a branch's
+// in-progress edits. The counts must come from the filtered set too — a
+// post-filter would leave TotalCount/HasMore describing the shared log.
+func TestHistoryService_GetEntityHistory_BranchIsolation(t *testing.T) {
+	ctx := context.Background()
+	eventStore := memory.NewEventStore()
+	service := NewHistoryService(eventStore, memory.NewReadModelStore())
+
+	person := domain.NewPerson("Main", "Person")
+	streamID := person.ID
+	branchID := domain.BranchID(uuid.New())
+
+	require.NoError(t, eventStore.Append(ctx, streamID, "Person", []domain.Event{
+		domain.NewPersonCreated(person),
+		domain.NewPersonUpdated(streamID, map[string]any{"surname": "Revised"}),
+	}, -1, repository.MainScope))
+
+	require.NoError(t, eventStore.Append(ctx, streamID, "Person", []domain.Event{
+		domain.NewPersonUpdated(streamID, map[string]any{"surname": "Hypothesis"}),
+	}, -1, repository.AppendScope{BranchID: branchID, BasePosition: 2}))
+
+	result, err := service.GetEntityHistory(ctx, "person", streamID, 20, 0)
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, result.TotalCount, "branch event must not be counted in main history")
+	assert.Len(t, result.Entries, 2)
+	assert.False(t, result.HasMore)
+
+	// Pagination is computed over main's events alone.
+	paged, err := service.GetEntityHistory(ctx, "person", streamID, 1, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 2, paged.TotalCount)
+	assert.True(t, paged.HasMore)
+}
+
+// The history endpoints carry no ?branch= parameter, so the service must pin the
+// read to main rather than leaving the scope to the store's default.
+func TestHistoryService_GetEntityHistory_ScopesToMain(t *testing.T) {
+	eventStore := &mockEventStore{}
+	service := NewHistoryService(eventStore, &mockReadModelStore{})
+
+	_, err := service.GetEntityHistory(context.Background(), "person", uuid.New(), 20, 0)
+	require.NoError(t, err)
+	assert.Equal(t, domain.MainBranchID, eventStore.lastReadByStreamScope)
 }

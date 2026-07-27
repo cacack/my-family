@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -59,7 +60,7 @@ func TestEventStore_AppendAndRead(t *testing.T) {
 		Surname:   "Doe",
 	}
 
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1, domain.MainBranchID)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append first event: %v", err)
 	}
@@ -91,7 +92,7 @@ func TestEventStore_AppendAndRead(t *testing.T) {
 		Changes:  map[string]any{"given_name": "Jane"},
 	}
 
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 1, domain.MainBranchID)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append second event: %v", err)
 	}
@@ -132,7 +133,7 @@ func TestEventStore_ConcurrencyConflict(t *testing.T) {
 		Surname:   "Doe",
 	}
 
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1, domain.MainBranchID)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event1}, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append first event: %v", err)
 	}
@@ -147,7 +148,7 @@ func TestEventStore_ConcurrencyConflict(t *testing.T) {
 		Changes:  map[string]any{"given_name": "Jane"},
 	}
 
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 0, domain.MainBranchID)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event2}, 0, repository.MainScope)
 	if err != repository.ErrConcurrencyConflict {
 		t.Errorf("expected ErrConcurrencyConflict, got %v", err)
 	}
@@ -171,7 +172,7 @@ func TestEventStore_ReadAll(t *testing.T) {
 			GivenName: "Person",
 			Surname:   "Test",
 		}
-		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, repository.MainScope)
 		if err != nil {
 			t.Fatalf("append event %d: %v", i, err)
 		}
@@ -204,7 +205,7 @@ func TestEventStore_GetStreamVersion(t *testing.T) {
 	streamID := uuid.New()
 
 	// Non-existent stream should return 0
-	version, err := store.GetStreamVersion(ctx, streamID)
+	version, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("get version: %v", err)
 	}
@@ -222,13 +223,13 @@ func TestEventStore_GetStreamVersion(t *testing.T) {
 		GivenName: "John",
 		Surname:   "Doe",
 	}
-	err = store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
+	err = store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append: %v", err)
 	}
 
 	// Version should now be 1
-	version, err = store.GetStreamVersion(ctx, streamID)
+	version, err = store.GetStreamVersion(ctx, streamID, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("get version: %v", err)
 	}
@@ -259,7 +260,7 @@ func TestEventStore_DecodeEvents(t *testing.T) {
 		BirthPlace: "Springfield, IL, USA",
 	}
 
-	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
+	err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append: %v", err)
 	}
@@ -321,7 +322,7 @@ func TestEventStore_MultipleEventsInBatch(t *testing.T) {
 		},
 	}
 
-	err := store.Append(ctx, streamID, "Person", events, -1, domain.MainBranchID)
+	err := store.Append(ctx, streamID, "Person", events, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append batch: %v", err)
 	}
@@ -381,7 +382,7 @@ func TestEventStore_ReadAll_Pagination(t *testing.T) {
 			GivenName: "Person",
 			Surname:   "Test",
 		}
-		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID)
+		err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, repository.MainScope)
 		if err != nil {
 			t.Fatalf("append event %d: %v", i, err)
 		}
@@ -446,13 +447,13 @@ func TestEventStore_ReadByStream(t *testing.T) {
 		},
 	}
 
-	err := store.Append(ctx, streamID, "Person", events, -1, domain.MainBranchID)
+	err := store.Append(ctx, streamID, "Person", events, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append events: %v", err)
 	}
 
 	// Read first page
-	page, err := store.ReadByStream(ctx, streamID, 2, 0)
+	page, err := store.ReadByStream(ctx, streamID, domain.MainBranchID, 2, 0)
 	if err != nil {
 		t.Fatalf("read by stream (first page): %v", err)
 	}
@@ -476,7 +477,7 @@ func TestEventStore_ReadByStream(t *testing.T) {
 	}
 
 	// Read second page
-	page, err = store.ReadByStream(ctx, streamID, 2, 2)
+	page, err = store.ReadByStream(ctx, streamID, domain.MainBranchID, 2, 2)
 	if err != nil {
 		t.Fatalf("read by stream (second page): %v", err)
 	}
@@ -503,7 +504,7 @@ func TestEventStore_ReadByStream_Empty(t *testing.T) {
 	nonExistentStreamID := uuid.New()
 
 	// Read non-existent stream
-	page, err := store.ReadByStream(ctx, nonExistentStreamID, 10, 0)
+	page, err := store.ReadByStream(ctx, nonExistentStreamID, domain.MainBranchID, 10, 0)
 	if err != nil {
 		t.Fatalf("read by stream (empty): %v", err)
 	}
@@ -538,7 +539,7 @@ func TestEventStore_ReadGlobalByTime(t *testing.T) {
 			Surname:   "Doe",
 		},
 	}
-	err := store.Append(ctx, streamID1, "Person", events1, -1, domain.MainBranchID)
+	err := store.Append(ctx, streamID1, "Person", events1, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append person 1: %v", err)
 	}
@@ -551,7 +552,7 @@ func TestEventStore_ReadGlobalByTime(t *testing.T) {
 			FamilyID:  streamID2,
 		},
 	}
-	err = store.Append(ctx, streamID2, "Family", events2, -1, domain.MainBranchID)
+	err = store.Append(ctx, streamID2, "Family", events2, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append family: %v", err)
 	}
@@ -566,7 +567,7 @@ func TestEventStore_ReadGlobalByTime(t *testing.T) {
 			Surname:   "Smith",
 		},
 	}
-	err = store.Append(ctx, streamID3, "Person", events3, -1, domain.MainBranchID)
+	err = store.Append(ctx, streamID3, "Person", events3, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append person 2: %v", err)
 	}
@@ -683,7 +684,7 @@ func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
 			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime},
 			PersonID:  streamID1,
 		},
-	}, -1, domain.MainBranchID)
+	}, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append PersonCreated: %v", err)
 	}
@@ -694,7 +695,7 @@ func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
 			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(time.Minute)},
 			FamilyID:  streamID2,
 		},
-	}, -1, domain.MainBranchID)
+	}, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append FamilyCreated: %v", err)
 	}
@@ -705,7 +706,7 @@ func TestEventStore_ReadGlobalByTime_MultipleEventTypes(t *testing.T) {
 			BaseEvent: domain.BaseEvent{ID: uuid.New(), Timestamp: baseTime.Add(2 * time.Minute)},
 			SourceID:  streamID3,
 		},
-	}, -1, domain.MainBranchID)
+	}, -1, repository.MainScope)
 	if err != nil {
 		t.Fatalf("append SourceCreated: %v", err)
 	}
@@ -746,7 +747,7 @@ func TestEventStore_BranchIDRoundTrip(t *testing.T) {
 		Surname:   "Roe",
 	}
 
-	if err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, branchID); err != nil {
+	if err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, repository.AppendScope{BranchID: branchID}); err != nil {
 		t.Fatalf("Append() failed: %v", err)
 	}
 
@@ -787,7 +788,7 @@ func TestEventStore_MainBranchDefault(t *testing.T) {
 		Surname:   "Doe",
 	}
 
-	if err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, domain.MainBranchID); err != nil {
+	if err := store.Append(ctx, streamID, "Person", []domain.Event{event}, -1, repository.MainScope); err != nil {
 		t.Fatalf("Append() failed: %v", err)
 	}
 
@@ -800,5 +801,419 @@ func TestEventStore_MainBranchDefault(t *testing.T) {
 	}
 	if stream[0].BranchID != domain.MainBranchID {
 		t.Errorf("BranchID = %v, want MainBranchID %v", stream[0].BranchID, domain.MainBranchID)
+	}
+}
+
+// TestEventStore_BranchVersioning drives the ADR-005 per-branch versioning
+// scenario against sqlite.
+func TestEventStore_BranchVersioning(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+	runBranchVersioningScenario(t, store)
+}
+
+// runBranchVersioningScenario exercises per-(stream, branch) optimistic versioning
+// and ReadBranch (ADR-005). Each backend package carries an identical copy of this
+// body (there is no shared test harness in this repo, see branch_scenario_test.go);
+// keeping the assertions byte-identical is the DB-001 parity guarantee. Fixtures
+// use neutral placeholder names only (public repo -- no real PII).
+func runBranchVersioningScenario(t *testing.T, store repository.EventStore) {
+	t.Helper()
+	ctx := context.Background()
+
+	person := domain.NewPerson("Alex", "Placeholder")
+	streamID := person.ID
+	branchA := repository.AppendScope{BranchID: domain.BranchID(uuid.New())}
+	branchB := repository.AppendScope{BranchID: domain.BranchID(uuid.New())}
+
+	// --- Main reaches version 3. ---
+	mainEvents := []domain.Event{
+		domain.NewPersonCreated(person),
+		domain.NewPersonUpdated(streamID, map[string]any{"birth_place": "Placeville"}),
+		domain.NewPersonUpdated(streamID, map[string]any{"notes": "seeded on main"}),
+	}
+	for i, ev := range mainEvents {
+		expected := int64(i) // -1 for the create, then the version it follows
+		if i == 0 {
+			expected = -1
+		}
+		if err := store.Append(ctx, streamID, "Person", []domain.Event{ev}, expected, repository.MainScope); err != nil {
+			t.Fatalf("main append %d: %v", i, err)
+		}
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID); err != nil || v != 3 {
+		t.Fatalf("main version after seeding = %d (err %v), want 3", v, err)
+	}
+
+	// The branches fork from main's tip.
+	all, err := store.ReadAll(ctx, 0, 100)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("ReadAll after seeding returned %d events, want 3", len(all))
+	}
+	basePosition := all[len(all)-1].Position
+	branchA.BasePosition = basePosition
+	branchB.BasePosition = basePosition
+
+	// --- Seeding: a branch's first write continues main's version line at 4. ---
+	branchEdit := domain.NewPersonUpdated(streamID, map[string]any{"surname": "Revised-A"})
+	if err := store.Append(ctx, streamID, "Person", []domain.Event{branchEdit}, 3, branchA); err != nil {
+		t.Fatalf("branch A append (seeded from main v3): %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchA.BranchID); err != nil || v != 4 {
+		t.Fatalf("branch A version = %d (err %v), want 4", v, err)
+	}
+	// The branch write did not advance main.
+	if v, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID); err != nil || v != 3 {
+		t.Fatalf("main version after branch A write = %d (err %v), want 3 (unchanged)", v, err)
+	}
+
+	// --- No cross-branch contention: a second branch writes the SAME stream from
+	// the same base without either side seeing ErrConcurrencyConflict. ---
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"surname": "Revised-B"})}, 3, branchB); err != nil {
+		t.Fatalf("branch B append to the same stream: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchB.BranchID); err != nil || v != 4 {
+		t.Fatalf("branch B version = %d (err %v), want 4", v, err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchA.BranchID); err != nil || v != 4 {
+		t.Fatalf("branch A version after branch B write = %d (err %v), want 4 (unchanged)", v, err)
+	}
+
+	// --- Main advances afterwards without contending with either branch. ---
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "main moved on"})}, 3, repository.MainScope); err != nil {
+		t.Fatalf("main append after branch writes: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID); err != nil || v != 4 {
+		t.Fatalf("main version after its own 4th write = %d (err %v), want 4", v, err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchA.BranchID); err != nil || v != 4 {
+		t.Fatalf("branch A version after main advanced = %d (err %v), want 4 (unchanged)", v, err)
+	}
+
+	// --- Optimistic concurrency still bites WITHIN a branch. ---
+	err = store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "stale"})}, 3, branchA)
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("stale branch A append: want ErrConcurrencyConflict, got %v", err)
+	}
+
+	// --- expectedVersion -1 means "no prior events for this stream ON THIS BRANCH":
+	// an aggregate created on a branch starts its own line at 1. ---
+	branchOnly := domain.NewPerson("Sam", "Hypothesis")
+	if err := store.Append(ctx, branchOnly.ID, "Person",
+		[]domain.Event{domain.NewPersonCreated(branchOnly)}, -1, branchA); err != nil {
+		t.Fatalf("branch A create of a new aggregate: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, branchOnly.ID, branchA.BranchID); err != nil || v != 1 {
+		t.Fatalf("branch A version of branch-only aggregate = %d (err %v), want 1", v, err)
+	}
+	if v, err := store.GetStreamVersion(ctx, branchOnly.ID, domain.MainBranchID); err != nil || v != 0 {
+		t.Fatalf("main version of branch-only aggregate = %d (err %v), want 0", v, err)
+	}
+
+	// --- ReadBranch returns a branch's OWN events, in position order. ---
+	aEvents, err := store.ReadBranch(ctx, branchA.BranchID, 0, 100)
+	if err != nil {
+		t.Fatalf("ReadBranch(A): %v", err)
+	}
+	if len(aEvents) != 2 {
+		t.Fatalf("ReadBranch(A) returned %d events, want 2 (its own deltas only)", len(aEvents))
+	}
+	for i, ev := range aEvents {
+		if ev.BranchID != branchA.BranchID {
+			t.Fatalf("ReadBranch(A) event %d has branch %v, want %v", i, ev.BranchID, branchA.BranchID)
+		}
+		if i > 0 && ev.Position <= aEvents[i-1].Position {
+			t.Fatalf("ReadBranch(A) not ordered by position: %d after %d", ev.Position, aEvents[i-1].Position)
+		}
+	}
+	// fromPosition is exclusive (same convention as ReadAll).
+	rest, err := store.ReadBranch(ctx, branchA.BranchID, aEvents[0].Position, 100)
+	if err != nil {
+		t.Fatalf("ReadBranch(A, from tip of first): %v", err)
+	}
+	if len(rest) != 1 || rest[0].Position != aEvents[1].Position {
+		t.Fatalf("ReadBranch(A) exclusive fromPosition: got %d events, want the 1 after position %d", len(rest), aEvents[0].Position)
+	}
+	// limit caps the result.
+	limited, err := store.ReadBranch(ctx, branchA.BranchID, 0, 1)
+	if err != nil {
+		t.Fatalf("ReadBranch(A, limit 1): %v", err)
+	}
+	if len(limited) != 1 {
+		t.Fatalf("ReadBranch(A, limit 1) returned %d events, want 1", len(limited))
+	}
+	// Main's own events are exactly the four main appends -- no branch deltas.
+	mainOwn, err := store.ReadBranch(ctx, domain.MainBranchID, 0, 100)
+	if err != nil {
+		t.Fatalf("ReadBranch(main): %v", err)
+	}
+	if len(mainOwn) != 4 {
+		t.Fatalf("ReadBranch(main) returned %d events, want 4", len(mainOwn))
+	}
+	for _, ev := range mainOwn {
+		if !ev.BranchID.IsMain() {
+			t.Fatalf("ReadBranch(main) returned a %v event", ev.BranchID)
+		}
+	}
+}
+
+// TestEventStore_ReadByStream_BranchScoped proves the ADR-005 isolation rule for
+// entity history: branch and main share a stream id, so an unfiltered read would
+// present a branch's in-progress edits as part of main's audit trail. The filter
+// is in the SQL, alongside the COUNT(*) OVER(), so TotalCount and HasMore
+// describe the requested branch only.
+func TestEventStore_ReadByStream_BranchScoped(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	streamID := uuid.New()
+	branchID := domain.BranchID(uuid.New())
+
+	mainEvents := []domain.Event{
+		domain.NewPersonCreated(domain.NewPerson("Main", "Person")),
+		domain.NewPersonUpdated(streamID, map[string]any{"notes": "main edit"}),
+	}
+	if err := store.Append(ctx, streamID, "Person", mainEvents, -1, repository.MainScope); err != nil {
+		t.Fatalf("Append() main failed: %v", err)
+	}
+
+	branchScope := repository.AppendScope{BranchID: branchID, BasePosition: 2}
+	branchEvents := []domain.Event{
+		domain.NewPersonUpdated(streamID, map[string]any{"notes": "branch edit 1"}),
+		domain.NewPersonUpdated(streamID, map[string]any{"notes": "branch edit 2"}),
+		domain.NewPersonUpdated(streamID, map[string]any{"notes": "branch edit 3"}),
+	}
+	if err := store.Append(ctx, streamID, "Person", branchEvents, -1, branchScope); err != nil {
+		t.Fatalf("Append() branch failed: %v", err)
+	}
+
+	mainPage, err := store.ReadByStream(ctx, streamID, domain.MainBranchID, 10, 0)
+	if err != nil {
+		t.Fatalf("ReadByStream() main failed: %v", err)
+	}
+	if mainPage.TotalCount != 2 {
+		t.Errorf("main TotalCount = %d, want 2 (branch events must not be counted)", mainPage.TotalCount)
+	}
+	if len(mainPage.Events) != 2 {
+		t.Fatalf("main len(Events) = %d, want 2", len(mainPage.Events))
+	}
+	if mainPage.HasMore {
+		t.Errorf("main HasMore = true, want false")
+	}
+	for _, evt := range mainPage.Events {
+		if !evt.BranchID.IsMain() {
+			t.Errorf("branch event %s leaked into main history", evt.ID)
+		}
+	}
+
+	branchPage, err := store.ReadByStream(ctx, streamID, branchID, 10, 0)
+	if err != nil {
+		t.Fatalf("ReadByStream() branch failed: %v", err)
+	}
+	if branchPage.TotalCount != 3 {
+		t.Errorf("branch TotalCount = %d, want 3", branchPage.TotalCount)
+	}
+	for _, evt := range branchPage.Events {
+		if evt.BranchID != branchID {
+			t.Errorf("event %s on branch page has branch %v, want %v", evt.ID, evt.BranchID, branchID)
+		}
+	}
+
+	// Pagination is computed over the filtered set: one main event of two left.
+	paged, err := store.ReadByStream(ctx, streamID, domain.MainBranchID, 1, 0)
+	if err != nil {
+		t.Fatalf("ReadByStream() paged failed: %v", err)
+	}
+	if paged.TotalCount != 2 || !paged.HasMore {
+		t.Errorf("paged TotalCount/HasMore = %d/%v, want 2/true", paged.TotalCount, paged.HasMore)
+	}
+}
+
+// TestEventStore_ReadStreamsForBranch covers the set-based accessor branch
+// compare relies on: one call for many streams, filtered to a branch and to
+// positions after a fork point, ordered by position, capped by SQL.
+func TestEventStore_ReadStreamsForBranch(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	first := uuid.New()
+	second := uuid.New()
+	unrelated := uuid.New()
+	branchID := domain.BranchID(uuid.New())
+
+	seed := func(streamID uuid.UUID, scope repository.AppendScope, note string) {
+		t.Helper()
+		evt := domain.NewPersonUpdated(streamID, map[string]any{"notes": note})
+		if err := store.Append(ctx, streamID, "Person", []domain.Event{evt}, -1, scope); err != nil {
+			t.Fatalf("Append(%s) failed: %v", note, err)
+		}
+	}
+
+	seed(first, repository.MainScope, "pre-fork")   // position 1
+	seed(second, repository.MainScope, "pre-fork")  // position 2
+	basePosition := int64(2)                        // the fork point
+	seed(second, repository.MainScope, "post-1")    // position 3
+	seed(first, repository.MainScope, "post-2")     // position 4
+	seed(unrelated, repository.MainScope, "post-3") // position 5
+	seed(first, repository.AppendScope{BranchID: branchID, BasePosition: basePosition}, "branch")
+
+	t.Run("empty stream set reads nothing", func(t *testing.T) {
+		events, err := store.ReadStreamsForBranch(ctx, nil, domain.MainBranchID, 0, 100)
+		if err != nil {
+			t.Fatalf("ReadStreamsForBranch() failed: %v", err)
+		}
+		if len(events) != 0 {
+			t.Errorf("len(events) = %d, want 0", len(events))
+		}
+	})
+
+	t.Run("scoped to branch, position and stream set", func(t *testing.T) {
+		events, err := store.ReadStreamsForBranch(ctx, []uuid.UUID{first, second}, domain.MainBranchID, basePosition, 100)
+		if err != nil {
+			t.Fatalf("ReadStreamsForBranch() failed: %v", err)
+		}
+		if len(events) != 2 {
+			t.Fatalf("len(events) = %d, want 2", len(events))
+		}
+		if events[0].Position != 3 || events[1].Position != 4 {
+			t.Errorf("positions = %d,%d, want 3,4", events[0].Position, events[1].Position)
+		}
+		for _, evt := range events {
+			if !evt.BranchID.IsMain() {
+				t.Errorf("event %s is not on main", evt.ID)
+			}
+			if evt.StreamID == unrelated {
+				t.Errorf("event from a stream outside the set leaked in")
+			}
+		}
+	})
+
+	t.Run("branch side sees only its own events", func(t *testing.T) {
+		events, err := store.ReadStreamsForBranch(ctx, []uuid.UUID{first, second}, branchID, basePosition, 100)
+		if err != nil {
+			t.Fatalf("ReadStreamsForBranch() failed: %v", err)
+		}
+		if len(events) != 1 {
+			t.Fatalf("len(events) = %d, want 1", len(events))
+		}
+		if events[0].BranchID != branchID {
+			t.Errorf("BranchID = %v, want %v", events[0].BranchID, branchID)
+		}
+	})
+
+	t.Run("limit is applied by the store", func(t *testing.T) {
+		events, err := store.ReadStreamsForBranch(ctx, []uuid.UUID{first, second}, domain.MainBranchID, basePosition, 1)
+		if err != nil {
+			t.Fatalf("ReadStreamsForBranch() failed: %v", err)
+		}
+		if len(events) != 1 {
+			t.Fatalf("len(events) = %d, want 1", len(events))
+		}
+		if events[0].Position != 3 {
+			t.Errorf("Position = %d, want 3 (oldest first)", events[0].Position)
+		}
+	})
+}
+
+// TestEventStore_ReadStreamsForBranch_Chunked drives more streams than SQLite
+// will bind in one statement (the conservative 999-variable floor), so the read
+// must split into several IN clauses and still return one position-ordered,
+// capped result. A branch touching this many aggregates is unusual but must not
+// fail outright.
+func TestEventStore_ReadStreamsForBranch_Chunked(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	const streamCount = 1200 // > 999 - 3, so at least two chunks
+	streamIDs := make([]uuid.UUID, streamCount)
+	for i := range streamIDs {
+		streamIDs[i] = uuid.New()
+		evt := domain.NewPersonUpdated(streamIDs[i], map[string]any{"notes": "seed"})
+		if err := store.Append(ctx, streamIDs[i], "Person", []domain.Event{evt}, -1, repository.MainScope); err != nil {
+			t.Fatalf("Append(%d) failed: %v", i, err)
+		}
+	}
+
+	events, err := store.ReadStreamsForBranch(ctx, streamIDs, domain.MainBranchID, 0, streamCount)
+	if err != nil {
+		t.Fatalf("ReadStreamsForBranch() failed: %v", err)
+	}
+	if len(events) != streamCount {
+		t.Fatalf("len(events) = %d, want %d", len(events), streamCount)
+	}
+	for i := 1; i < len(events); i++ {
+		if events[i-1].Position >= events[i].Position {
+			t.Fatalf("events out of position order at %d: %d then %d", i, events[i-1].Position, events[i].Position)
+		}
+	}
+
+	// The cap holds across chunks, and keeps the globally oldest events.
+	capped, err := store.ReadStreamsForBranch(ctx, streamIDs, domain.MainBranchID, 0, 5)
+	if err != nil {
+		t.Fatalf("ReadStreamsForBranch() capped failed: %v", err)
+	}
+	if len(capped) != 5 {
+		t.Fatalf("len(capped) = %d, want 5", len(capped))
+	}
+	if capped[0].Position != 1 || capped[4].Position != 5 {
+		t.Errorf("capped positions = %d..%d, want 1..5", capped[0].Position, capped[4].Position)
+	}
+}
+
+// TestEventStore_FirstAppendCreatesStreamRow pins the parent-row invariant that a
+// caller-side expectedVersion must never be able to violate.
+//
+// The events table carries FOREIGN KEY (stream_id) REFERENCES streams(id), and
+// production opens SQLite with _foreign_keys=on (see OpenDB). Append previously
+// inserted the streams parent row only when expectedVersion was the -1 sentinel,
+// so a first append that passed 0 — an equivalent claim of "no events yet" —
+// wrote an event pointing at a missing parent and failed the foreign key on both
+// SQL backends. CreateFamily did exactly that.
+//
+// This test lives at the store level and against SQLite specifically because the
+// command-layer tests run on the memory backend, which enforces no foreign key
+// and therefore could not observe the bug.
+func TestEventStore_FirstAppendCreatesStreamRow(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name            string
+		expectedVersion int64
+	}{
+		{"new-stream sentinel", -1},
+		{"zero on an empty stream", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			streamID := uuid.New()
+			evt := domain.NewPersonCreated(&domain.Person{ID: streamID})
+
+			if err := store.Append(ctx, streamID, "person", []domain.Event{evt}, tc.expectedVersion, repository.MainScope); err != nil {
+				t.Fatalf("Append(expectedVersion=%d) on a new stream failed: %v", tc.expectedVersion, err)
+			}
+
+			got, err := store.ReadStream(ctx, streamID)
+			if err != nil {
+				t.Fatalf("ReadStream() failed: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(got))
+			}
+			if got[0].Version != 1 {
+				t.Errorf("version = %d, want 1", got[0].Version)
+			}
+		})
 	}
 }

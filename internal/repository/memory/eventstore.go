@@ -13,28 +13,43 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// streamBranch keys the version counter by the (stream, branch) pair: versioning
+// is per-branch so a branch write never contends with main (ADR-005).
+type streamBranch struct {
+	streamID uuid.UUID
+	branchID domain.BranchID
+}
+
 // EventStore is an in-memory implementation of repository.EventStore for testing.
 type EventStore struct {
 	mu       sync.RWMutex
 	events   []repository.StoredEvent
 	streams  map[uuid.UUID][]repository.StoredEvent
+	versions map[streamBranch]int64
 	position int64
 }
 
 // NewEventStore creates a new in-memory event store.
 func NewEventStore() *EventStore {
 	return &EventStore{
-		streams: make(map[uuid.UUID][]repository.StoredEvent),
+		streams:  make(map[uuid.UUID][]repository.StoredEvent),
+		versions: make(map[streamBranch]int64),
 	}
 }
 
 // Append adds events to a stream with optimistic concurrency control.
-func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
+func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	stream := s.streams[streamID]
-	currentVersion := int64(len(stream))
+	key := streamBranch{streamID: streamID, branchID: scope.BranchID}
+	currentVersion := s.versions[key]
+
+	// A branch's first write to an existing aggregate continues main's version
+	// line as of the branch's base position rather than restarting at 1.
+	if currentVersion == 0 && !scope.BranchID.IsMain() {
+		currentVersion = s.seedVersion(streamID, scope.BasePosition)
+	}
 
 	// Check optimistic concurrency
 	if expectedVersion >= 0 && currentVersion != expectedVersion {
@@ -55,7 +70,7 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 			ID:         uuid.New(),
 			StreamID:   streamID,
 			StreamType: streamType,
-			BranchID:   branchID,
+			BranchID:   scope.BranchID,
 			EventType:  event.EventType(),
 			Data:       data,
 			Version:    currentVersion,
@@ -67,7 +82,27 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 		s.streams[streamID] = append(s.streams[streamID], stored)
 	}
 
+	// Only record a version once the branch actually holds events for the stream —
+	// an empty append must not persist a seeded version the SQL backends (which
+	// derive it from MAX(version)) would report as 0.
+	if len(events) > 0 {
+		s.versions[key] = currentVersion
+	}
+
 	return nil
+}
+
+// seedVersion returns the aggregate's main version as of basePosition — the
+// version a branch's first write to that aggregate continues from. Callers hold
+// the lock.
+func (s *EventStore) seedVersion(streamID uuid.UUID, basePosition int64) int64 {
+	var seed int64
+	for _, event := range s.streams[streamID] {
+		if event.BranchID.IsMain() && event.Position <= basePosition && event.Version > seed {
+			seed = event.Version
+		}
+	}
+	return seed
 }
 
 // ReadStream reads all events for a specific aggregate.
@@ -103,16 +138,61 @@ func (s *EventStore) ReadAll(ctx context.Context, fromPosition int64, limit int)
 	return result, nil
 }
 
-// GetStreamVersion returns the current version of a stream.
-func (s *EventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID) (int64, error) {
+// ReadBranch reads a single branch's own events from a position.
+func (s *EventStore) ReadBranch(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	stream, exists := s.streams[streamID]
-	if !exists {
-		return 0, nil
+	var result []repository.StoredEvent
+	for _, event := range s.events {
+		if event.BranchID != branchID || event.Position <= fromPosition {
+			continue
+		}
+		result = append(result, event)
+		if len(result) >= limit {
+			break
+		}
 	}
-	return int64(len(stream)), nil
+	return result, nil
+}
+
+// ReadStreamsForBranch reads one branch's events for a set of streams.
+func (s *EventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	if len(streamIDs) == 0 || limit <= 0 {
+		return nil, nil
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	wanted := make(map[uuid.UUID]bool, len(streamIDs))
+	for _, id := range streamIDs {
+		wanted[id] = true
+	}
+
+	// s.events is append-ordered, which is position order, so the scan yields the
+	// oldest matching events first and the cap can stop it early — the same
+	// "ordered then limited by the store" contract the SQL backends get from
+	// ORDER BY ... LIMIT.
+	var result []repository.StoredEvent
+	for _, event := range s.events {
+		if event.BranchID != branchID || event.Position <= fromPosition || !wanted[event.StreamID] {
+			continue
+		}
+		result = append(result, event)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+// GetStreamVersion returns the current version of a stream on a branch.
+func (s *EventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.versions[streamBranch{streamID: streamID, branchID: branchID}], nil
 }
 
 // Reset clears all data (useful for tests).
@@ -122,6 +202,7 @@ func (s *EventStore) Reset() {
 
 	s.events = nil
 	s.streams = make(map[uuid.UUID][]repository.StoredEvent)
+	s.versions = make(map[streamBranch]int64)
 	s.position = 0
 }
 
@@ -132,13 +213,21 @@ func (s *EventStore) EventCount() int {
 	return len(s.events)
 }
 
-// ReadByStream returns paginated events for a specific stream (entity).
-func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+// ReadByStream returns paginated events for a specific stream (entity) on one branch.
+func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	stream, exists := s.streams[streamID]
-	if !exists {
+	// Filter to the branch BEFORE paginating: TotalCount and HasMore describe the
+	// branch's view of the stream, not the whole shared log (ADR-005).
+	var stream []repository.StoredEvent
+	for _, event := range s.streams[streamID] {
+		if event.BranchID == branchID {
+			stream = append(stream, event)
+		}
+	}
+
+	if len(stream) == 0 {
 		return &repository.HistoryPage{
 			Events:     []repository.StoredEvent{},
 			TotalCount: 0,

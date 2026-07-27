@@ -227,7 +227,7 @@ func (h *Handler) ImportGedcom(ctx context.Context, input ImportGedcomInput) (*I
 	)
 
 	// Store import event (using a special "import" stream)
-	_ = h.eventStore.Append(ctx, importEvent.ImportID, "import", []domain.Event{importEvent}, -1, domain.MainBranchID)
+	_ = h.eventStore.Append(ctx, importEvent.ImportID, "import", []domain.Event{importEvent}, -1, repository.MainScope)
 
 	return result, nil
 }
@@ -265,7 +265,7 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 	event := domain.NewPersonCreated(person)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending person created event: %w", err)
 	}
@@ -324,7 +324,7 @@ func (h *Handler) importPerson(ctx context.Context, p gedcom.PersonData) error {
 		nameEvent := domain.NewNameAdded(personName)
 
 		// Append name event to person stream with version tracking
-		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, currentVersion, domain.MainBranchID)
+		err := h.eventStore.Append(ctx, person.ID, "person", []domain.Event{nameEvent}, currentVersion, repository.MainScope)
 		if err != nil {
 			return fmt.Errorf("appending name added event: %w", err)
 		}
@@ -367,7 +367,7 @@ func (h *Handler) importFamily(ctx context.Context, f gedcom.FamilyData) error {
 	event := domain.NewFamilyCreated(family)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, family.ID, "family", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending family created event: %w", err)
 	}
@@ -429,7 +429,7 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 	event := domain.NewSourceCreated(source)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, source.ID, "source", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending source created event: %w", err)
 	}
@@ -481,7 +481,7 @@ func (h *Handler) importRepository(ctx context.Context, r gedcom.RepositoryData)
 	event := domain.NewRepositoryCreated(repo)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, repo.ID, "repository", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, repo.ID, "repository", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending repository created event: %w", err)
 	}
@@ -553,7 +553,7 @@ func (h *Handler) importCitation(ctx context.Context, c gedcom.CitationData, sou
 	event := domain.NewCitationCreated(citation)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, citation.ID, "citation", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, citation.ID, "citation", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending citation created event: %w", err)
 	}
@@ -588,7 +588,7 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 	}
 
 	// Append to event store
-	err = h.eventStore.Append(ctx, familyID, "family", []domain.Event{event}, family.Version, domain.MainBranchID)
+	err = h.eventStore.Append(ctx, familyID, "family", []domain.Event{event}, family.Version, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending child linked event: %w", err)
 	}
@@ -625,7 +625,7 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 	event := domain.NewLifeEventCreatedFromModel(lifeEvent)
 
 	// Append to event store using owner's stream
-	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, e.ID, "event", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending life event created event: %w", err)
 	}
@@ -671,7 +671,7 @@ func (h *Handler) importAttribute(ctx context.Context, a gedcom.AttributeData) e
 	event := domain.NewAttributeCreatedFromModel(attr)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, a.ID, "attribute", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending attribute created event: %w", err)
 	}
@@ -692,7 +692,7 @@ func (h *Handler) importNote(ctx context.Context, n gedcom.NoteData) error {
 	event := domain.NewNoteCreated(note)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, note.ID, "note", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, note.ID, "note", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending note created event: %w", err)
 	}
@@ -724,7 +724,7 @@ func (h *Handler) importSubmitter(ctx context.Context, s gedcom.SubmitterData) e
 	event := domain.NewSubmitterCreated(submitter)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, submitter.ID, "submitter", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, submitter.ID, "submitter", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending submitter created event: %w", err)
 	}
@@ -749,7 +749,7 @@ func (h *Handler) importAssociation(ctx context.Context, a gedcom.AssociationDat
 	event := domain.NewAssociationCreated(association)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, association.ID, "association", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, association.ID, "association", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending association created event: %w", err)
 	}
@@ -786,7 +786,7 @@ func (h *Handler) importLDSOrdinance(ctx context.Context, o gedcom.LDSOrdinanceD
 	event := domain.NewLDSOrdinanceCreated(ordinance)
 
 	// Append to event store
-	err := h.eventStore.Append(ctx, ordinance.ID, "LDSOrdinance", []domain.Event{event}, -1, domain.MainBranchID)
+	err := h.eventStore.Append(ctx, ordinance.ID, "LDSOrdinance", []domain.Event{event}, -1, repository.MainScope)
 	if err != nil {
 		return fmt.Errorf("appending LDS ordinance created event: %w", err)
 	}

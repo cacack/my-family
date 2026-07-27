@@ -26,11 +26,11 @@ func newMockEventStore() *mockEventStore {
 	}
 }
 
-func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
+func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
 	if m.appendError != nil {
 		return m.appendError
 	}
-	return m.EventStore.Append(ctx, streamID, streamType, events, expectedVersion, branchID)
+	return m.EventStore.Append(ctx, streamID, streamType, events, expectedVersion, scope)
 }
 
 func TestNewHandler(t *testing.T) {
@@ -1353,5 +1353,47 @@ func TestRollbackPerson_NoChangesRequiredFromState(t *testing.T) {
 	// Should return result indicating no changes needed (version stays at 2)
 	if result.NewVersion != 2 {
 		t.Errorf("Expected NewVersion=2 (no change), got %d", result.NewVersion)
+	}
+}
+
+// TestHandler_Unscoped_WritesMain is the regression guard for #670: a handler
+// built by any of the plain constructors carries the zero branch scope, so every
+// append and projection must still land on main exactly as it did before
+// branches existed — including event types that are not branch-aware.
+func TestHandler_Unscoped_WritesMain(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	handler := command.NewHandler(eventStore, readStore)
+	ctx := context.Background()
+
+	person, err := handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	// A Source is outside the branch-aware set; on main it must be unaffected by
+	// the guard.
+	source, err := handler.CreateSource(ctx, command.CreateSourceInput{Title: "1880 Census", SourceType: "census"})
+	if err != nil {
+		t.Fatalf("CreateSource failed: %v", err)
+	}
+
+	events, err := eventStore.ReadAll(ctx, 0, 100)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("stored %d events, want 2", len(events))
+	}
+	for _, e := range events {
+		if e.BranchID != domain.MainBranchID {
+			t.Errorf("event %s tagged with branch %s, want main", e.EventType, e.BranchID)
+		}
+	}
+
+	if p, err := readStore.GetPerson(ctx, domain.MainBranchID, person.ID); err != nil || p == nil {
+		t.Errorf("person missing from main read model: person=%v err=%v", p, err)
+	}
+	if s, err := readStore.GetSource(ctx, source.ID); err != nil || s == nil {
+		t.Errorf("source missing from read model: source=%v err=%v", s, err)
 	}
 }

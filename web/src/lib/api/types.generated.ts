@@ -53,7 +53,12 @@ export interface paths {
         /** List all families */
         get: operations["listFamilies"];
         put?: never;
-        /** Create a new family */
+        /**
+         * Create a new family
+         * @description When `branch` is supplied the family is created on that branch only, and
+         *     partner ids are resolved through the branch overlay — a person that
+         *     exists only on the branch may be a partner.
+         */
         post: operations["createFamily"];
         delete?: never;
         options?: never;
@@ -75,7 +80,13 @@ export interface paths {
         /** Update a family */
         put: operations["updateFamily"];
         post?: never;
-        /** Delete a family */
+        /**
+         * Delete a family
+         * @description When `branch` is supplied the family is deleted on that branch only (the
+         *     mainline row survives) and the child count is read through the branch
+         *     overlay, so a family whose children were unlinked on the branch deletes
+         *     cleanly there.
+         */
         delete: operations["deleteFamily"];
         options?: never;
         head?: never;
@@ -93,7 +104,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add a child to a family */
+        /**
+         * Add a child to a family
+         * @description When `branch` is supplied the link is made on that branch only. The
+         *     family and child are resolved through the branch overlay, so repeated
+         *     links on the same family within one branch work.
+         */
         post: operations["addChildToFamily"];
         delete?: never;
         options?: never;
@@ -114,7 +130,12 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a child from a family */
+        /**
+         * Remove a child from a family
+         * @description When `branch` is supplied the link is removed on that branch only (the
+         *     mainline link survives). The child's family is resolved through the
+         *     branch overlay, so a link made on the branch can be undone there.
+         */
         delete: operations["removeChildFromFamily"];
         options?: never;
         head?: never;
@@ -1529,6 +1550,98 @@ export interface paths {
          * @description Returns the list of changes (events) between two snapshot positions
          */
         get: operations["compareSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List all branches
+         * @description Returns every branch in the registry, newest first, including terminal (merged/archived) ones
+         */
+        get: operations["listBranches"];
+        put?: never;
+        /**
+         * Create a new branch
+         * @description Forks a new line of research off the current head of the mainline. The
+         *     fork point is captured as `base_position`, the same base-pointer concept
+         *     a snapshot uses.
+         */
+        post: operations["createBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /** Get a branch by ID */
+        get: operations["getBranch"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete (archive) a branch
+         * @description Discards a branch. The branch record and every event it produced are
+         *     **retained** — the event log is append-only (invariant ES-002). What is
+         *     removed is the branch's read-model overlay: after this call the branch's
+         *     `status` is `archived` and its isolated view no longer exists, so
+         *     `?branch=` reads against it return 404.
+         *
+         *     The vocabulary split is deliberate: the lifecycle *event* is
+         *     `BranchDeleted` (the user action is "delete branch") while the resulting
+         *     *status* is `archived` (the history is kept). See `internal/domain/branch.go`.
+         *
+         *     Only an `active` branch can be deleted; a `merged` or already `archived`
+         *     branch returns 409.
+         */
+        delete: operations["deleteBranch"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare a branch against the mainline
+         * @description Returns the changes made on the branch since it forked, alongside the
+         *     changes made on `main` after the fork point to the same streams the
+         *     branch touched.
+         *
+         *     `overlapping_stream_ids` is a divergence **hint** — the entities both
+         *     sides changed. It is not conflict detection (that is issue #55).
+         *
+         *     Terminal (merged or archived) branches compare normally: their events
+         *     remain in the append-only log, so the historical diff is still returned.
+         */
+        get: operations["compareBranch"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3530,6 +3643,73 @@ export interface components {
             /** @description True if snapshot1 is the older (lower position) snapshot */
             older_first: boolean;
         };
+        Branch: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Name of the line of research
+             * @example Maternal Smith line
+             */
+            name: string;
+            /** @description Optional description of what the branch explores */
+            description?: string;
+            /**
+             * Format: int64
+             * @description Mainline event store position the branch forked from
+             * @example 42
+             */
+            base_position: number;
+            /**
+             * @description Lifecycle state. `merged` and `archived` are terminal — a branch in
+             *     either state accepts no further writes. `archived` is the state a
+             *     deleted branch enters; its events are retained but its overlay rows
+             *     are purged.
+             * @enum {string}
+             */
+            status: "active" | "merged" | "archived";
+            /**
+             * Format: date-time
+             * @description When the branch was created
+             */
+            created_at: string;
+        };
+        BranchCreate: {
+            /** @description Name of the line of research */
+            name: string;
+            /** @description Optional description of what the branch explores */
+            description?: string;
+        };
+        BranchList: {
+            items: components["schemas"]["Branch"][];
+            /** @description Total number of branches */
+            total: number;
+        };
+        BranchComparisonResult: {
+            branch: components["schemas"]["Branch"];
+            /**
+             * Format: int64
+             * @description Mainline position the branch forked from - the anchor of this diff
+             */
+            base_position: number;
+            /** @description Changes made on the branch since the fork, oldest first */
+            branch_changes: components["schemas"]["ChangeEntry"][];
+            /**
+             * @description Changes made on the mainline after the fork point, restricted to the
+             *     entities the branch also touched. Oldest first.
+             */
+            main_changes: components["schemas"]["ChangeEntry"][];
+            /** @description Number of branch-side changes returned */
+            branch_change_count: number;
+            /** @description Number of main-side changes returned */
+            main_change_count: number;
+            /** @description True when either side hit the read cap, so this diff is partial */
+            has_more: boolean;
+            /**
+             * @description Entities changed on both the branch and main - a divergence hint for
+             *     human review, not conflict detection.
+             */
+            overlapping_stream_ids: string[];
+        };
         RelationshipPathNode: {
             /** Format: uuid */
             id: string;
@@ -4192,6 +4372,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Branch registry is not configured on this server */
+        BranchesUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         personId: string;
@@ -4202,6 +4391,17 @@ export interface components {
         versionParam: number;
         /** @description Snapshot UUID */
         snapshotId: string;
+        /** @description Branch UUID */
+        branchId: string;
+        /**
+         * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+         *     view and writes land on the branch only (ADR-005). A malformed branch id
+         *     returns 400 at parameter binding, before the operation runs. An unknown
+         *     branch id returns 404. Writes to a non-active (merged or archived) branch
+         *     return 409; reads of one return 404, because its overlay rows are purged
+         *     on archive and it therefore has no view to return.
+         */
+        branchScope: string;
         /** @description Note UUID */
         noteId: string;
         /** @description Submitter UUID */
@@ -4230,6 +4430,15 @@ export interface operations {
     listPersons: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "surname" | "given_name" | "birth_date" | "updated_at";
@@ -4253,11 +4462,22 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     createPerson: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4278,11 +4498,23 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getPerson: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -4305,7 +4537,17 @@ export interface operations {
     };
     updatePerson: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -4334,7 +4576,17 @@ export interface operations {
     };
     deletePerson: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -4351,7 +4603,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            /** @description Person is linked to families */
+            /** @description Person is linked to families, or the target branch is not active */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4387,7 +4639,17 @@ export interface operations {
     };
     createFamily: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4408,11 +4670,23 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getFamily: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["familyId"];
@@ -4435,7 +4709,17 @@ export interface operations {
     };
     updateFamily: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["familyId"];
@@ -4459,11 +4743,22 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     deleteFamily: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["familyId"];
@@ -4480,11 +4775,30 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            /** @description Family has children and cannot be deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     addChildToFamily: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["familyId"];
@@ -4521,7 +4835,17 @@ export interface operations {
     };
     removeChildFromFamily: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["familyId"];
@@ -4539,6 +4863,15 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            /** @description Version conflict while unlinking the child */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getFamilyGroupSheet: {
@@ -4567,6 +4900,15 @@ export interface operations {
     getPedigree: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Number of ancestor generations to include */
                 generations?: number;
             };
@@ -6048,7 +6390,17 @@ export interface operations {
     };
     getPersonNames: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -6071,7 +6423,17 @@ export interface operations {
     };
     addPersonName: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -6095,11 +6457,22 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     updatePersonName: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -6124,11 +6497,22 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     deletePersonName: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -6155,6 +6539,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     exportTree: {
@@ -6727,6 +7112,141 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    listBranches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of branches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchList"];
+                };
+            };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    createBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Maternal Smith line",
+                 *       "description": "Testing the theory that Mary Smith is the daughter of John"
+                 *     }
+                 */
+                "application/json": components["schemas"]["BranchCreate"];
+            };
+        };
+        responses: {
+            /** @description Branch created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    getBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Branch details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    deleteBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Branch archived */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Branch is not active (already merged or archived) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    compareBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comparison result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchComparisonResult"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["BranchesUnavailable"];
         };
     };
     getRelationship: {

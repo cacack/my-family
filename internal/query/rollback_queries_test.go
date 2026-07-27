@@ -19,7 +19,7 @@ type rollbackMockEventStore struct {
 	readStreamFunc func(ctx context.Context, streamID uuid.UUID) ([]repository.StoredEvent, error)
 }
 
-func (m *rollbackMockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, branchID domain.BranchID) error {
+func (m *rollbackMockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
 	return nil
 }
 
@@ -34,11 +34,19 @@ func (m *rollbackMockEventStore) ReadAll(ctx context.Context, fromPosition int64
 	return nil, nil
 }
 
-func (m *rollbackMockEventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID) (int64, error) {
+func (m *rollbackMockEventStore) ReadBranch(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	return nil, nil
+}
+
+func (m *rollbackMockEventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
 	return 0, nil
 }
 
-func (m *rollbackMockEventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, limit, offset int) (*repository.HistoryPage, error) {
+func (m *rollbackMockEventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	return nil, nil
+}
+
+func (m *rollbackMockEventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
 	return &repository.HistoryPage{}, nil
 }
 

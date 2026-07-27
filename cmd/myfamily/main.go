@@ -99,7 +99,7 @@ func runServer() {
 
 	// Seed demo data if demo mode is enabled
 	if cfg.DemoMode {
-		cmdHandler := command.NewHandlerWithBranchStore(eventStore, readStore, branchStore)
+		cmdHandler := command.NewHandlerWithBranches(eventStore, readStore, branchStore, snapshotStore)
 		if err := demo.SeedDemoData(context.Background(), cmdHandler); err != nil {
 			log.Fatalf("Failed to seed demo data: %v", err)
 		}
