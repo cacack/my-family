@@ -247,8 +247,12 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 		return repository.ErrConcurrencyConflict
 	}
 
-	// Ensure stream exists
-	if currentVersion == 0 && expectedVersion == -1 {
+	// Ensure stream exists. Keyed on currentVersion alone, NOT on
+	// expectedVersion == -1: a caller that passes 0 for a first append is making
+	// an equivalent claim ("no events yet"), and gating the parent-row insert on
+	// the sentinel let such a caller write an event referencing a missing stream
+	// and fail the foreign key. INSERT OR IGNORE keeps this idempotent.
+	if currentVersion == 0 {
 		_, err = tx.ExecContext(ctx,
 			"INSERT OR IGNORE INTO streams (id, type) VALUES (?, ?)",
 			streamID.String(), streamType,

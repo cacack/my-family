@@ -99,7 +99,12 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 
 	// Execute command (append + project) on the handler's branch scope.
 	// expectedVersion 0 matches a fresh stream, as it always has for creates here.
-	version, err := h.execute(ctx, family.ID.String(), familyStreamType, []domain.Event{event}, 0)
+	// -1, not 0: the stream does not exist yet. Both SQL backends only insert the
+	// `streams` parent row for a first append when expectedVersion is -1, so
+	// passing 0 here wrote an event referencing a missing parent and failed the
+	// foreign key on every real backend (memory has no FK, which is why the
+	// command tests never caught it).
+	version, err := h.execute(ctx, family.ID.String(), familyStreamType, []domain.Event{event}, -1)
 	if err != nil {
 		return nil, fmt.Errorf("appending family created event: %w", err)
 	}

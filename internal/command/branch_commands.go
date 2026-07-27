@@ -105,9 +105,15 @@ func (h *Handler) DeleteBranch(ctx context.Context, branchID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("getting branch stream version: %w", err)
 	}
+	// A registry row with no events reports version 0; that stream does not exist
+	// yet, so the append must claim "new stream" with -1 rather than 0.
+	expectedVersion := currentVersion
+	if currentVersion == 0 {
+		expectedVersion = -1
+	}
 
 	event := domain.NewBranchDeleted(branch.ID)
-	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, currentVersion, scope); err != nil {
+	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, expectedVersion, scope); err != nil {
 		return fmt.Errorf("appending branch deleted event: %w", err)
 	}
 

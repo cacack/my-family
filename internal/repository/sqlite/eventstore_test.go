@@ -1169,3 +1169,51 @@ func TestEventStore_ReadStreamsForBranch_Chunked(t *testing.T) {
 		t.Errorf("capped positions = %d..%d, want 1..5", capped[0].Position, capped[4].Position)
 	}
 }
+
+// TestEventStore_FirstAppendCreatesStreamRow pins the parent-row invariant that a
+// caller-side expectedVersion must never be able to violate.
+//
+// The events table carries FOREIGN KEY (stream_id) REFERENCES streams(id), and
+// production opens SQLite with _foreign_keys=on (see OpenDB). Append previously
+// inserted the streams parent row only when expectedVersion was the -1 sentinel,
+// so a first append that passed 0 — an equivalent claim of "no events yet" —
+// wrote an event pointing at a missing parent and failed the foreign key on both
+// SQL backends. CreateFamily did exactly that.
+//
+// This test lives at the store level and against SQLite specifically because the
+// command-layer tests run on the memory backend, which enforces no foreign key
+// and therefore could not observe the bug.
+func TestEventStore_FirstAppendCreatesStreamRow(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name            string
+		expectedVersion int64
+	}{
+		{"new-stream sentinel", -1},
+		{"zero on an empty stream", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			streamID := uuid.New()
+			evt := domain.NewPersonCreated(&domain.Person{ID: streamID})
+
+			if err := store.Append(ctx, streamID, "person", []domain.Event{evt}, tc.expectedVersion, repository.MainScope); err != nil {
+				t.Fatalf("Append(expectedVersion=%d) on a new stream failed: %v", tc.expectedVersion, err)
+			}
+
+			got, err := store.ReadStream(ctx, streamID)
+			if err != nil {
+				t.Fatalf("ReadStream() failed: %v", err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(got))
+			}
+			if got[0].Version != 1 {
+				t.Errorf("version = %d, want 1", got[0].Version)
+			}
+		})
+	}
+}

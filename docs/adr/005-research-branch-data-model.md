@@ -391,8 +391,11 @@ cannot alter a constraint in place, so this shipped as the **12-step table rebui
 documents for exactly this case: detect the legacy constraint in `sqlite_master`, then in one
 transaction create the new table from the shared DDL, copy every row with explicit column lists,
 verify the row count, drop, rename, and recreate the indexes. It runs once, automatically, on the
-first open of a pre-#670 database and logs a single line. PostgreSQL needs no rebuild — it swaps
-the constraint and index in place.
+first open of a pre-#670 database and logs a single line. PostgreSQL needs no table rebuild, but the
+swap is not atomic either: it **drops** the old `UNIQUE(stream_id, version)` constraint and the old
+`idx_events_stream_version` index, then **creates** the composite
+`idx_events_stream_branch_version`. Operators should expect a brief window with neither uniqueness
+rule in force, not an in-place replacement.
 
 This is a **deliberate divergence from how #669 handled the analogous read-model change**, which
 detects the stale schema and refuses to start. The read model is derived data and can be dropped
