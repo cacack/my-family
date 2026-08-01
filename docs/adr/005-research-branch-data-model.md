@@ -472,8 +472,9 @@ is on a different stream by definition, so the only place to find it is `main`'s
 the full-tail scan those notes call out as the anti-pattern. The compromise is a **gate**: the
 tail read is issued only when the branch created at least one entity carrying a GEDCOM xref, since
 an xref is the only identity two independent creates can share. In v0.12 that gate never opens —
-xrefs are assigned only by GEDCOM import, and branch-scoped import is a stated non-goal of epic
-#54 — so the cost is not paid today, and the class is already implemented for the day it can be.
+xrefs are assigned only by GEDCOM import, and branch-scoped import is a stated non-goal of
+epic #54 — so the cost is not paid today, and the class is already implemented for the day it
+can be.
 A truncated scan (either side hitting the comparison cap) is not merged at all: the command
 refuses with `ErrBranchTooLargeToMerge` (`409 branch_too_large`) rather than promote half a branch
 against an incomplete conflict list.

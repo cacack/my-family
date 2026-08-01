@@ -685,7 +685,10 @@ func TestCompareBranch_ContestedStreamShowsOnBothSides(t *testing.T) {
 	// And because the type is lower-case, name resolution actually fires: handed
 	// the capitalized stream type it fell through to a default and every conflict
 	// came back unnamed, which would have left the review UI showing only UUIDs.
-	if conflict["entity_name"] == "" {
+	// nil as well as "": conflict is a map[string]any, so an absent or null
+	// field decodes to nil and `nil == ""` is false — the assertion would pass
+	// on exactly the regression it exists to catch.
+	if conflict["entity_name"] == nil || conflict["entity_name"] == "" {
 		t.Errorf("conflicts[0].entity_name is empty; want the person's resolved name. Body: %s", rec.Body.String())
 	}
 	fields, _ := conflict["fields"].([]any)
