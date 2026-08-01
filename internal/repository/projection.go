@@ -195,14 +195,29 @@ func (p *Projector) projectBranchDeleted(ctx context.Context, e domain.BranchDel
 	return p.readStore.PurgeBranch(ctx, domain.BranchID(e.BranchID))
 }
 
-// projectBranchMerged marks the branch merged in the registry (terminal state).
+// projectBranchMerged records the merge in the registry (terminal state) and
+// drops the branch's copy-on-write overlay rows from the read model.
+//
+// MarkMerged writes status, merge timestamp and note together, so merge history
+// is preserved (issue #55). It is the only writer of that record, and replaying
+// the event rewrites the same values from the same event, so a projection
+// rebuild is a no-op.
+//
+// The purge is safe because a merged branch's changes now live on main, and
+// `?branch=` reads of a terminal branch already 404 with "its isolated view no
+// longer exists" (resolveBranchScope in internal/api/branch_handlers.go) —
+// purging makes that copy true and reclaims the rows. CompareBranch still works
+// on a merged branch because it reads the event log, not the overlay.
 func (p *Projector) projectBranchMerged(ctx context.Context, e domain.BranchMerged) error {
 	if p.branchStore == nil {
 		slog.Warn("projection: dropping branch lifecycle event, no BranchStore wired",
 			"event", "BranchMerged", "branch_id", e.BranchID)
 		return nil
 	}
-	return p.branchStore.UpdateStatus(ctx, e.BranchID, domain.BranchStatusMerged)
+	if err := p.branchStore.MarkMerged(ctx, e.BranchID, e.OccurredAt(), e.Note); err != nil {
+		return err
+	}
+	return p.readStore.PurgeBranch(ctx, domain.BranchID(e.BranchID))
 }
 
 func (p *Projector) projectPersonCreated(ctx context.Context, e domain.PersonCreated, version int64, branchID domain.BranchID) error {

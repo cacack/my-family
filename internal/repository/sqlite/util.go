@@ -55,6 +55,28 @@ func formatTimestamp(t time.Time) string {
 	return t.Format("2006-01-02T15:04:05.999999999Z07:00")
 }
 
+// parseNullableTimestamp parses a nullable ISO 8601 timestamp column. A NULL
+// column maps to a nil *time.Time, never to the zero time, so "not set" stays
+// distinguishable from "set to the zero instant".
+func parseNullableTimestamp(s sql.NullString) (*time.Time, error) {
+	if !s.Valid || s.String == "" {
+		return nil, nil
+	}
+	t, err := parseTimestamp(s.String)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// nullableTimestamp formats a *time.Time for storage, mapping nil to NULL.
+func nullableTimestamp(t *time.Time) sql.NullString {
+	if t == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: formatTimestamp(*t), Valid: true}
+}
+
 // nullableString converts an empty string to sql.NullString.
 func nullableString(s string) sql.NullString {
 	if s == "" {

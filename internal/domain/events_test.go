@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -1456,5 +1457,68 @@ func TestNoteDeleted_RoundTrip(t *testing.T) {
 	}
 	if decoded.Reason != "No longer needed" {
 		t.Errorf("Reason = %v, want No longer needed", decoded.Reason)
+	}
+}
+
+func TestBranchMerged_RoundTrip(t *testing.T) {
+	branchID := uuid.New()
+	event := NewBranchMerged(branchID, 42, 99, "Promoted after confirming the 1880 census match")
+
+	if event.EventType() != "BranchMerged" {
+		t.Errorf("EventType() = %v, want BranchMerged", event.EventType())
+	}
+
+	if event.AggregateID() != branchID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), branchID)
+	}
+
+	if event.Note != "Promoted after confirming the 1880 census match" {
+		t.Errorf("Note = %q, want the merge rationale", event.Note)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded BranchMerged
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if decoded.BranchID != branchID {
+		t.Errorf("BranchID = %v, want %v", decoded.BranchID, branchID)
+	}
+	if decoded.BasePosition != 42 {
+		t.Errorf("BasePosition = %d, want 42", decoded.BasePosition)
+	}
+	if decoded.MergedAtPosition != 99 {
+		t.Errorf("MergedAtPosition = %d, want 99", decoded.MergedAtPosition)
+	}
+	if decoded.Note != event.Note {
+		t.Errorf("Note = %q, want %q", decoded.Note, event.Note)
+	}
+}
+
+// TestBranchMerged_EmptyNoteOmitted pins the omitempty tag: a merge without a
+// rationale must not write an empty "note" key into the stored payload.
+func TestBranchMerged_EmptyNoteOmitted(t *testing.T) {
+	event := NewBranchMerged(uuid.New(), 1, 2, "")
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	if strings.Contains(string(data), "note") {
+		t.Errorf("empty note should be omitted from JSON, got %s", data)
+	}
+
+	var decoded BranchMerged
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if decoded.Note != "" {
+		t.Errorf("Note = %q, want empty", decoded.Note)
 	}
 }

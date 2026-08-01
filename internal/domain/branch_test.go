@@ -1,8 +1,10 @@
 package domain_test
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/google/uuid"
@@ -169,6 +171,24 @@ func TestBranch_Validate(t *testing.T) {
 			},
 			wantErr: domain.ErrBranchInvalidStatus,
 		},
+		{
+			name: "merge note at max length",
+			branch: &domain.Branch{
+				Name:      "Valid",
+				Status:    domain.BranchStatusMerged,
+				MergeNote: strings.Repeat("x", 1000),
+			},
+			wantErr: nil,
+		},
+		{
+			name: "merge note too long",
+			branch: &domain.Branch{
+				Name:      "Valid",
+				Status:    domain.BranchStatusMerged,
+				MergeNote: strings.Repeat("x", 1001),
+			},
+			wantErr: domain.ErrBranchMergeNoteTooLong,
+		},
 	}
 
 	for _, tt := range tests {
@@ -234,5 +254,55 @@ func TestBranchStatus_Transitions(t *testing.T) {
 				t.Errorf("transition %s->%s legal = %v, want %v", tt.from, tt.to, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestBranch_MergeFieldsJSON pins the omitempty tags on the merge metadata: an
+// unmerged branch must not advertise a merge it never had, and a merged one
+// must round-trip both fields.
+func TestBranch_MergeFieldsJSON(t *testing.T) {
+	active, err := domain.NewBranch("Hypothesis A", "", 42)
+	if err != nil {
+		t.Fatalf("NewBranch() unexpected error = %v", err)
+	}
+
+	if active.MergedAt != nil {
+		t.Errorf("MergedAt = %v, want nil on a new branch", active.MergedAt)
+	}
+	if active.MergeNote != "" {
+		t.Errorf("MergeNote = %q, want empty on a new branch", active.MergeNote)
+	}
+
+	data, err := json.Marshal(active)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	if strings.Contains(string(data), "merged_at") {
+		t.Errorf("merged_at should be omitted when unset, got %s", data)
+	}
+	if strings.Contains(string(data), "merge_note") {
+		t.Errorf("merge_note should be omitted when unset, got %s", data)
+	}
+
+	mergedAt := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+	merged := *active
+	merged.Status = domain.BranchStatusMerged
+	merged.MergedAt = &mergedAt
+	merged.MergeNote = "Confirmed by the 1880 census"
+
+	data, err = json.Marshal(merged)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var decoded domain.Branch
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if decoded.MergedAt == nil || !decoded.MergedAt.Equal(mergedAt) {
+		t.Errorf("MergedAt = %v, want %v", decoded.MergedAt, mergedAt)
+	}
+	if decoded.MergeNote != merged.MergeNote {
+		t.Errorf("MergeNote = %q, want %q", decoded.MergeNote, merged.MergeNote)
 	}
 }

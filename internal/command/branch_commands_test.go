@@ -11,6 +11,7 @@ import (
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -1293,6 +1294,52 @@ func TestBranchAwareEventTypes_LeaveMainUntouched(t *testing.T) {
 					t.Errorf("%s projected on a branch changed the main-only %s table: %d rows, want %d",
 						eventType, table, after, before)
 				}
+			}
+		})
+	}
+}
+
+// conflictBlindEventTypes are the branch-writable event types that summarizeStreams
+// deliberately extracts nothing from, with the reason each is safe.
+//
+// A *Created event opens a stream the branch alone owns, so there is no main-side
+// counterpart to disagree with; two independent creates of the same identity are
+// caught separately, by the GEDCOM-xref create-vs-create scan, not by field
+// comparison. Everything else must be comparable.
+var conflictBlindEventTypes = map[string]string{
+	"PersonCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"FamilyCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
+}
+
+// TestBranchAwareEventTypes_AreConflictComparable is the drift guard between the
+// two hand-maintained lists that together decide whether a branch edit gets
+// reviewed: command.BranchAwareEventTypes (what a branch may write) and
+// query.ConflictComparable (what the merge conflict scan can see).
+//
+// An event type on the first list but not the second is silent data loss, not a
+// missing feature: the branch may make the edit, the classifier reports no
+// conflict, and the merge promotes it over main's concurrent change with no
+// review. That is exactly how NameAdded/NameUpdated/NameRemoved slipped through
+// — NameUpdated ends in "Updated" but carries no Changes map, so the scan read
+// nothing from it.
+//
+// Adding a branch-writable event type therefore forces a conscious choice here:
+// teach the classifier to compare it, or record why it needs no comparison.
+func TestBranchAwareEventTypes_AreConflictComparable(t *testing.T) {
+	for _, eventType := range command.BranchAwareEventTypes() {
+		t.Run(eventType, func(t *testing.T) {
+			reason, blind := conflictBlindEventTypes[eventType]
+			seenByScan := query.ConflictComparable(eventType)
+
+			switch {
+			case seenByScan && blind:
+				t.Errorf("%s is comparable but is still listed as conflict-blind (%q); drop it from conflictBlindEventTypes",
+					eventType, reason)
+			case !seenByScan && !blind:
+				t.Errorf("%s is branch-writable but the merge conflict scan extracts nothing from it, "+
+					"so a branch edit would be promoted over a concurrent main change without review. "+
+					"Teach summarizeStreams to fold it, or add it to conflictBlindEventTypes with a reason.",
+					eventType)
 			}
 		})
 	}

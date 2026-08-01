@@ -32,10 +32,11 @@ var MainBranchID = BranchID(uuid.Nil)
 
 // Branch validation errors.
 var (
-	ErrBranchNameRequired  = errors.New("branch name is required")
-	ErrBranchNameTooLong   = errors.New("branch name must be 100 characters or less")
-	ErrBranchDescTooLong   = errors.New("branch description must be 500 characters or less")
-	ErrBranchInvalidStatus = errors.New("branch status is invalid")
+	ErrBranchNameRequired     = errors.New("branch name is required")
+	ErrBranchNameTooLong      = errors.New("branch name must be 100 characters or less")
+	ErrBranchDescTooLong      = errors.New("branch description must be 500 characters or less")
+	ErrBranchInvalidStatus    = errors.New("branch status is invalid")
+	ErrBranchMergeNoteTooLong = errors.New("branch merge note must be 1000 characters or less")
 )
 
 // BranchStatus represents the lifecycle state of a branch.
@@ -76,6 +77,14 @@ type Branch struct {
 	BasePosition int64        `json:"base_position"`
 	Status       BranchStatus `json:"status"`
 	CreatedAt    time.Time    `json:"created_at"`
+
+	// MergedAt and MergeNote are the registry's copy of the merge record, set
+	// only on the active→merged transition so a merged branch can be reviewed
+	// without replaying the log for its BranchMerged event (#55). They stay
+	// nil/empty for active and archived branches — a pointer for MergedAt so
+	// "never merged" is distinguishable from the zero time.
+	MergedAt  *time.Time `json:"merged_at,omitempty"`
+	MergeNote string     `json:"merge_note,omitempty"`
 }
 
 // NewBranch creates a new active Branch with validation.
@@ -109,6 +118,9 @@ func (b *Branch) Validate() error {
 	}
 	if !b.Status.IsValid() {
 		return ErrBranchInvalidStatus
+	}
+	if len(b.MergeNote) > 1000 {
+		return ErrBranchMergeNoteTooLong
 	}
 	return nil
 }

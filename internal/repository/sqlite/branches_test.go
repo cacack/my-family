@@ -321,3 +321,151 @@ func TestSQLiteBranchStore_UpdateStatus_NotFound(t *testing.T) {
 		t.Errorf("UpdateStatus() error = %v, want %v", err, repository.ErrBranchNotFound)
 	}
 }
+
+// TestSQLiteBranchStore_MarkMerged mirrors the memory-store assertions (DB-001).
+func TestSQLiteBranchStore_MarkMerged(t *testing.T) {
+	db := setupBranchTestDB(t)
+	defer db.Close()
+
+	store, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("NewBranchStore() error = %v", err)
+	}
+
+	ctx := context.Background()
+	branch := &domain.Branch{
+		ID:        uuid.New(),
+		Name:      "To Merge",
+		Status:    domain.BranchStatusActive,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := store.Create(ctx, branch); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	mergedAt := time.Now().UTC().Truncate(time.Millisecond)
+	if err := store.MarkMerged(ctx, branch.ID, mergedAt, "verified against the 1880 census"); err != nil {
+		t.Fatalf("MarkMerged() error = %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.Status != domain.BranchStatusMerged {
+		t.Errorf("Status = %v, want %v", retrieved.Status, domain.BranchStatusMerged)
+	}
+	if retrieved.MergedAt == nil {
+		t.Fatal("MergedAt = nil, want the merge timestamp")
+	}
+	if !retrieved.MergedAt.Equal(mergedAt) {
+		t.Errorf("MergedAt = %v, want %v", retrieved.MergedAt, mergedAt)
+	}
+	if retrieved.MergeNote != "verified against the 1880 census" {
+		t.Errorf("MergeNote = %q, want the note", retrieved.MergeNote)
+	}
+
+	// The record survives the List path too, not just Get.
+	list, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(list) != 1 || list[0].MergedAt == nil || !list[0].MergedAt.Equal(mergedAt) {
+		t.Errorf("List() merge record = %+v, want MergedAt %v", list[0], mergedAt)
+	}
+}
+
+func TestSQLiteBranchStore_MarkMerged_NotFound(t *testing.T) {
+	db := setupBranchTestDB(t)
+	defer db.Close()
+
+	store, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("NewBranchStore() error = %v", err)
+	}
+
+	ctx := context.Background()
+	err = store.MarkMerged(ctx, uuid.New(), time.Now().UTC(), "note")
+	if err != repository.ErrBranchNotFound {
+		t.Errorf("MarkMerged() error = %v, want %v", err, repository.ErrBranchNotFound)
+	}
+}
+
+// TestSQLiteBranchStore_UnmergedHasNoMergeRecord pins the nullable round-trip:
+// a NULL merged_at maps to a nil *time.Time, not the zero time.
+func TestSQLiteBranchStore_UnmergedHasNoMergeRecord(t *testing.T) {
+	db := setupBranchTestDB(t)
+	defer db.Close()
+
+	store, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("NewBranchStore() error = %v", err)
+	}
+
+	ctx := context.Background()
+	branch := &domain.Branch{
+		ID:        uuid.New(),
+		Name:      "Never Merged",
+		Status:    domain.BranchStatusActive,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := store.Create(ctx, branch); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.MergedAt != nil {
+		t.Errorf("MergedAt = %v, want nil", retrieved.MergedAt)
+	}
+	if retrieved.MergeNote != "" {
+		t.Errorf("MergeNote = %q, want empty", retrieved.MergeNote)
+	}
+
+	list, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(list) != 1 || list[0].MergedAt != nil || list[0].MergeNote != "" {
+		t.Errorf("List() merge fields = %+v, want nil/empty", list[0])
+	}
+}
+
+// TestSQLiteBranchStore_UpsertRoundTripsMergeRecord covers the replay path:
+// Upsert must carry the merge columns, not silently drop them.
+func TestSQLiteBranchStore_UpsertRoundTripsMergeRecord(t *testing.T) {
+	db := setupBranchTestDB(t)
+	defer db.Close()
+
+	store, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("NewBranchStore() error = %v", err)
+	}
+
+	ctx := context.Background()
+	mergedAt := time.Now().UTC().Truncate(time.Millisecond)
+	branch := &domain.Branch{
+		ID:        uuid.New(),
+		Name:      "Merged",
+		Status:    domain.BranchStatusMerged,
+		CreatedAt: time.Now().UTC(),
+		MergedAt:  &mergedAt,
+		MergeNote: "folded in",
+	}
+	if err := store.Upsert(ctx, branch); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.MergedAt == nil || !retrieved.MergedAt.Equal(mergedAt) {
+		t.Errorf("MergedAt = %v, want %v", retrieved.MergedAt, mergedAt)
+	}
+	if retrieved.MergeNote != "folded in" {
+		t.Errorf("MergeNote = %q, want %q", retrieved.MergeNote, "folded in")
+	}
+}
