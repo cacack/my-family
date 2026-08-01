@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -27,14 +28,25 @@ func NewBranchStore() *BranchStore {
 	}
 }
 
+// copyBranch returns a deep copy of branch. Branch holds a *time.Time
+// (MergedAt), so a plain struct copy would still share that pointer with the
+// caller; this keeps the store's "no external mutation" contract true.
+func copyBranch(branch *domain.Branch) *domain.Branch {
+	copied := *branch
+	if branch.MergedAt != nil {
+		mergedAt := *branch.MergedAt
+		copied.MergedAt = &mergedAt
+	}
+	return &copied
+}
+
 // Create stores a new branch.
 func (s *BranchStore) Create(_ context.Context, branch *domain.Branch) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Make a copy to prevent external mutation
-	copied := *branch
-	s.branches[branch.ID] = &copied
+	s.branches[branch.ID] = copyBranch(branch)
 	return nil
 }
 
@@ -44,8 +56,7 @@ func (s *BranchStore) Upsert(_ context.Context, branch *domain.Branch) error {
 	defer s.mu.Unlock()
 
 	// Make a copy to prevent external mutation
-	copied := *branch
-	s.branches[branch.ID] = &copied
+	s.branches[branch.ID] = copyBranch(branch)
 	return nil
 }
 
@@ -60,8 +71,7 @@ func (s *BranchStore) Get(_ context.Context, id uuid.UUID) (*domain.Branch, erro
 	}
 
 	// Return a copy to prevent mutation
-	copied := *branch
-	return &copied, nil
+	return copyBranch(branch), nil
 }
 
 // List retrieves all branches ordered by created_at DESC.
@@ -72,8 +82,7 @@ func (s *BranchStore) List(_ context.Context) ([]*domain.Branch, error) {
 	result := make([]*domain.Branch, 0, len(s.branches))
 	for _, branch := range s.branches {
 		// Make a copy
-		copied := *branch
-		result = append(result, &copied)
+		result = append(result, copyBranch(branch))
 	}
 
 	// Sort by created_at DESC
@@ -108,6 +117,22 @@ func (s *BranchStore) UpdateStatus(_ context.Context, id uuid.UUID, status domai
 	}
 
 	branch.Status = status
+	return nil
+}
+
+// MarkMerged records the merge: status, timestamp and note in one write.
+func (s *BranchStore) MarkMerged(_ context.Context, id uuid.UUID, mergedAt time.Time, note string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	branch, exists := s.branches[id]
+	if !exists {
+		return repository.ErrBranchNotFound
+	}
+
+	branch.Status = domain.BranchStatusMerged
+	branch.MergedAt = &mergedAt
+	branch.MergeNote = note
 	return nil
 }
 

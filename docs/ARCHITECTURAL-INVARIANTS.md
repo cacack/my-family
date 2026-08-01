@@ -60,8 +60,8 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 |----|------|--------------|
 | **BR-001** | Every branch event carries a `branch_id`; `main` is the reserved branch id (`uuid.Nil` / `domain.MainBranchID`) | `TestHandler_Unscoped_WritesMain` (`internal/command`): an unscoped handler tags every stored event `MainBranchID`; `branch_scenario_test.go` in all three backends asserts branch events carry the branch id |
 | **BR-002** | Branch events append to the shared global log, never a separate store (upholds ES-002) | Code review: one `EventStore.Append` path taking a `repository.AppendScope`; `ReadBranch` filters the shared log by `branch_id` — no per-branch store type exists |
-| **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows | `internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go` (overlay, tombstone, `PurgeBranch`); `TestBranchIsolation*` in `internal/command` and `internal/api` |
-| **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | Merge replay test — **not yet verifiable; merge is unimplemented (#55)**. `BranchMerged` decodes (ES-007) and projects to the terminal `merged` status only |
+| **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows. A branch's overlay is purged when the branch reaches a terminal status — `merged` or `archived` — so no terminal branch retains an isolated view | `internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go` (overlay, tombstone, `PurgeBranch` on `BranchDeleted`); `TestProjector_BranchMergedPurgesOverlay` (`internal/repository`) for the merge purge; `TestBranchIsolation*` in `internal/command` and `internal/api` |
+| **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | `TestMergeBranch_AppendOnly` (`internal/command`): the branch's own stored events are byte-identical after the merge and `main` gains only new events at new positions. `TestBranchService_PlanMerge_ReplaySetExcludesLifecycleEvents` (`internal/query`) pins the replay set to mutation events only; `TestMergeBranch_PreservesProvenance` (`internal/command`) pins the replayed payload and `OccurredAt` to the originals; `TestMergeBranch_SecondMergeIsRefused` and `TestMergeBranch_ConcurrentClaimLoses` pin the single `BranchMerged` |
 | **BR-005** | Optimistic versioning is per-`(stream_id, branch_id)`. A branch's first write to an aggregate that exists on `main` seeds its version from that aggregate's `main` version at the branch's `base_position`, then increments within the branch; concurrent branches never contend at write time | `runBranchVersioningScenario` — identical copies in `internal/repository/eventstore_test.go` (memory), `sqlite/eventstore_test.go`, `postgres/eventstore_test.go` (DB-001 parity) |
 | **BR-006** | A branch-scoped write is legal only for event types whose projection handler writes exclusively branch-keyed rows; any other event type is rejected before the append (`command.ErrEventTypeNotBranchAware`) | `TestExecute_RejectsNonBranchAwareEvent` (`internal/command`); the allowed set in `internal/command/handler.go` is derived from `internal/repository/projection.go` |
 
@@ -80,7 +80,18 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > [INTEGRATION-MATRIX.md](./INTEGRATION-MATRIX.md#entity-status-matrix). GEDCOM import/export,
 > rollback, and per-entity history stay main-only by design — `ReadByStream` is branch-filtered so
 > branch edits never leak into an entity's mainline audit trail, and the history endpoints expose no
-> `?branch=` parameter yet. BR-004 remains unimplemented pending #55.
+> `?branch=` parameter yet.
+>
+> **Implementation status (#55):** BR-004 is realized and verified. `Handler.MergeBranch`
+> (`internal/command/branch_merge_commands.go`) replays a branch's mutation events onto `main`
+> from the plan `BranchService.PlanMerge` (`internal/query/merge_conflicts.go`) builds, and
+> `POST /branches/{id}/merge` exposes it. The `active → merged` claim is atomic — `BranchMerged`
+> is appended to the branch's own stream under BR-005's per-`(stream_id, branch_id)` uniqueness
+> before anything is written to `main`, so exactly one of two concurrent merges wins. The claim
+> and the replay are **not** one transaction; see the "Implementation Note — merge" section of
+> [ADR-005](./adr/005-research-branch-data-model.md) for the failure mode and its bound.
+> BR-003's terminal-status purge now also fires on merge.
+> Partial merge / cherry-pick remains out of scope, per ADR-005 §Merge.
 
 ### Domain Model Invariants (DM) - Source: [ETHOS.md](./ETHOS.md) + Code Patterns
 

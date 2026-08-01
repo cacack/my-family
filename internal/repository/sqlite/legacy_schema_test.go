@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -342,5 +343,103 @@ func TestFreshEventStoreSkipsRebuild(t *testing.T) {
 
 	if n := strings.Count(logs.String(), "rebuilding sqlite events table"); n != 0 {
 		t.Fatalf("rebuild log lines on a fresh database = %d, want 0; log was:\n%s", n, logs.String())
+	}
+}
+
+// setupPreMergeRecordBranchesDB builds a database carrying the pre-#55 branches
+// DDL: no merged_at / merge_note columns. CREATE TABLE IF NOT EXISTS leaves the
+// existing definition alone, so NewBranchStore must ADD COLUMN to migrate it.
+func setupPreMergeRecordBranchesDB(t *testing.T) (*sql.DB, func()) {
+	t.Helper()
+
+	tmpFile, err := os.CreateTemp("", "myfamily-legacy-branches-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		os.Remove(tmpFile.Name())
+		t.Fatalf("open database: %v", err)
+	}
+	cleanup := func() {
+		db.Close()
+		os.Remove(tmpFile.Name())
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE branches (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			description TEXT,
+			base_position INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		)`); err != nil {
+		cleanup()
+		t.Fatalf("create pre-#55 branches table: %v", err)
+	}
+
+	return db, cleanup
+}
+
+// TestLegacyBranchesGainMergeColumns verifies the issue #55 migration: an
+// existing deployment's branches table gains merged_at / merge_note on open,
+// keeps the rows it already had, and can then record a merge. Opening twice
+// must not error — the duplicate-column failure is swallowed.
+func TestLegacyBranchesGainMergeColumns(t *testing.T) {
+	db, cleanup := setupPreMergeRecordBranchesDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// A branch that predates the migration.
+	existing := uuid.New()
+	if _, err := db.Exec(`
+		INSERT INTO branches (id, name, description, base_position, status, created_at)
+		VALUES (?, 'Pre-existing', NULL, 7, 'active', '2026-01-01T00:00:00Z')`,
+		existing.String()); err != nil {
+		t.Fatalf("seed pre-#55 branch: %v", err)
+	}
+
+	// Opening twice must both succeed: the second ADD COLUMN is a duplicate.
+	var store *sqlite.BranchStore
+	for i := 0; i < 2; i++ {
+		var err error
+		store, err = sqlite.NewBranchStore(db)
+		if err != nil {
+			t.Fatalf("NewBranchStore pass %d on pre-#55 database: %v", i, err)
+		}
+	}
+
+	// The pre-existing row survived and reads back with no merge record.
+	got, err := store.Get(ctx, existing)
+	if err != nil {
+		t.Fatalf("Get pre-existing branch after migration: %v", err)
+	}
+	if got.Name != "Pre-existing" || got.BasePosition != 7 {
+		t.Errorf("migrated branch = %+v, want name=Pre-existing base=7", got)
+	}
+	if got.MergedAt != nil || got.MergeNote != "" {
+		t.Errorf("migrated branch merge fields = %v/%q, want nil/empty", got.MergedAt, got.MergeNote)
+	}
+
+	// And the new columns are writable.
+	mergedAt := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+	if err := store.MarkMerged(ctx, existing, mergedAt, "migrated then merged"); err != nil {
+		t.Fatalf("MarkMerged after migration: %v", err)
+	}
+	got, err = store.Get(ctx, existing)
+	if err != nil {
+		t.Fatalf("Get after MarkMerged: %v", err)
+	}
+	if got.Status != domain.BranchStatusMerged {
+		t.Errorf("status = %s, want merged", got.Status)
+	}
+	if got.MergedAt == nil || !got.MergedAt.Equal(mergedAt) {
+		t.Errorf("MergedAt = %v, want %v", got.MergedAt, mergedAt)
+	}
+	if got.MergeNote != "migrated then merged" {
+		t.Errorf("MergeNote = %q, want the note", got.MergeNote)
 	}
 }

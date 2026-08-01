@@ -105,6 +105,11 @@ type Handler struct {
 	projector       *repository.Projector
 	rollbackService *query.RollbackService
 
+	// branchService is built internally, like rollbackService, so MergeBranch
+	// can reuse the query layer's merge plan (the same one CompareBranch shows
+	// a reviewer) without any constructor gaining an argument.
+	branchService *query.BranchService
+
 	// Branch scope applied to every append and projection made through execute.
 	branchID     domain.BranchID
 	basePosition int64
@@ -139,6 +144,7 @@ func NewHandlerWithBranches(eventStore repository.EventStore, readStore reposito
 		positions:       positions,
 		projector:       repository.NewProjector(readStore, branchStore),
 		rollbackService: query.NewRollbackService(eventStore, readStore),
+		branchService:   query.NewBranchService(branchStore, eventStore, query.NewHistoryService(eventStore, readStore)),
 	}
 }
 
@@ -150,6 +156,7 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 		readStore:       readStore,
 		projector:       repository.NewProjector(readStore, nil),
 		rollbackService: rollbackService,
+		branchService:   query.NewBranchService(nil, eventStore, query.NewHistoryService(eventStore, readStore)),
 	}
 }
 
@@ -183,8 +190,11 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 //     mainline on a branch-scoped handler instead of failing. Importing onto a
 //     branch is a stated non-goal of #670; the HTTP import route exposes no
 //     ?branch= parameter.
-//   - CreateBranch and DeleteBranch take their target branch as an argument and
-//     derive their own scope from it, so the handler's scope is irrelevant.
+//   - CreateBranch, DeleteBranch and MergeBranch take their target branch as an
+//     argument and derive their own scopes from it, so the handler's scope is
+//     irrelevant. MergeBranch derives two: the branch's own scope for the
+//     BranchMerged claim, and repository.MainScope for the replay it writes to
+//     main on the branch's behalf.
 //
 // # What is refused
 //

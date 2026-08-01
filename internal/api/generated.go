@@ -82,6 +82,36 @@ func (e BranchStatus) Valid() bool {
 	}
 }
 
+// Defines values for BranchMergeConflictErrorCode.
+const (
+	BranchNotActive        BranchMergeConflictErrorCode = "branch_not_active"
+	BranchTooLarge         BranchMergeConflictErrorCode = "branch_too_large"
+	MainTooFarAhead        BranchMergeConflictErrorCode = "main_too_far_ahead"
+	MergeAlreadyClaimed    BranchMergeConflictErrorCode = "merge_already_claimed"
+	MergeConflicts         BranchMergeConflictErrorCode = "merge_conflicts"
+	MergeDanglingReference BranchMergeConflictErrorCode = "merge_dangling_reference"
+)
+
+// Valid indicates whether the value is a known member of the BranchMergeConflictErrorCode enum.
+func (e BranchMergeConflictErrorCode) Valid() bool {
+	switch e {
+	case BranchNotActive:
+		return true
+	case BranchTooLarge:
+		return true
+	case MainTooFarAhead:
+		return true
+	case MergeAlreadyClaimed:
+		return true
+	case MergeConflicts:
+		return true
+	case MergeDanglingReference:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChangeEntryAction.
 const (
 	ChangeEntryActionCreated ChangeEntryAction = "created"
@@ -565,6 +595,45 @@ func (e MediaUpdateMediaType) Valid() bool {
 	}
 }
 
+// Defines values for MergeConflictKind.
+const (
+	CreateCreate MergeConflictKind = "create_create"
+	DeleteEdit   MergeConflictKind = "delete_edit"
+	EditEdit     MergeConflictKind = "edit_edit"
+)
+
+// Valid indicates whether the value is a known member of the MergeConflictKind enum.
+func (e MergeConflictKind) Valid() bool {
+	switch e {
+	case CreateCreate:
+		return true
+	case DeleteEdit:
+		return true
+	case EditEdit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeConflictSupportedResolutions.
+const (
+	MergeConflictSupportedResolutionsBranch MergeConflictSupportedResolutions = "branch"
+	MergeConflictSupportedResolutionsMain   MergeConflictSupportedResolutions = "main"
+)
+
+// Valid indicates whether the value is a known member of the MergeConflictSupportedResolutions enum.
+func (e MergeConflictSupportedResolutions) Valid() bool {
+	switch e {
+	case MergeConflictSupportedResolutionsBranch:
+		return true
+	case MergeConflictSupportedResolutionsMain:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MergePersonsRequestFieldResolution.
 const (
 	MergePersonsRequestFieldResolutionMerged   MergePersonsRequestFieldResolution = "merged"
@@ -577,6 +646,24 @@ func (e MergePersonsRequestFieldResolution) Valid() bool {
 	case MergePersonsRequestFieldResolutionMerged:
 		return true
 	case MergePersonsRequestFieldResolutionSurvivor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeResolutionEntryResolution.
+const (
+	MergeResolutionEntryResolutionBranch MergeResolutionEntryResolution = "branch"
+	MergeResolutionEntryResolutionMain   MergeResolutionEntryResolution = "main"
+)
+
+// Valid indicates whether the value is a known member of the MergeResolutionEntryResolution enum.
+func (e MergeResolutionEntryResolution) Valid() bool {
+	switch e {
+	case MergeResolutionEntryResolutionBranch:
+		return true
+	case MergeResolutionEntryResolutionMain:
 		return true
 	default:
 		return false
@@ -1873,6 +1960,15 @@ type Branch struct {
 	Description *string            `json:"description,omitempty"`
 	Id          openapi_types.UUID `json:"id"`
 
+	// MergeNote The note recorded with the merge, explaining why the research was
+	// promoted. Absent unless the branch was merged with a note.
+	MergeNote *string `json:"merge_note,omitempty"`
+
+	// MergedAt When the branch was merged into the mainline. Absent unless
+	// `status` is `merged` - it is set only on the `active -> merged`
+	// transition and never cleared.
+	MergedAt *time.Time `json:"merged_at,omitempty"`
+
 	// Name Name of the line of research
 	Name string `json:"name"`
 
@@ -1900,6 +1996,12 @@ type BranchComparisonResult struct {
 
 	// BranchChanges Changes made on the branch since the fork, oldest first
 	BranchChanges []ChangeEntry `json:"branch_changes"`
+
+	// Conflicts The entities whose changes are actually incompatible - a subset of
+	// `overlapping_stream_ids`. Empty (`[]`, never `null`) when the branch
+	// merges cleanly. Every entry must be given a resolution in
+	// `POST /branches/{id}/merge` or the merge is refused.
+	Conflicts []MergeConflict `json:"conflicts"`
 
 	// HasMore True when either side hit the read cap, so this diff is partial
 	HasMore bool `json:"has_more"`
@@ -1931,6 +2033,69 @@ type BranchList struct {
 
 	// Total Total number of branches
 	Total int `json:"total"`
+}
+
+// BranchMergeConflictError A refused merge. Shares `code`/`message` with the standard `Error`
+// shape and adds the conflict list the `merge_conflicts` code needs.
+type BranchMergeConflictError struct {
+	// Code Which refusal this is - see the operation's 409 description
+	Code BranchMergeConflictErrorCode `json:"code"`
+
+	// Conflicts The full conflict list. Present only for `merge_conflicts`, where it
+	// carries every conflict - not just the undecided ones - so the review
+	// UI can render the whole picture.
+	Conflicts *[]MergeConflict `json:"conflicts,omitempty"`
+
+	// Message Human-readable explanation
+	Message string `json:"message"`
+}
+
+// BranchMergeConflictErrorCode Which refusal this is - see the operation's 409 description
+type BranchMergeConflictErrorCode string
+
+// BranchMergeRequest What to do with the merge. Both properties are optional; an empty object
+// merges a conflict-free branch with no note.
+type BranchMergeRequest struct {
+	// Note Why this research was promoted. Recorded on the `BranchMerged` event
+	// and returned as the branch's `merge_note` thereafter.
+	Note *string `json:"note,omitempty"`
+
+	// Resolutions One entry per entity whose side is being decided. Every conflict
+	// reported by `GET /branches/{id}/compare` must appear here or the
+	// merge is refused with `409 merge_conflicts`. Entries for
+	// non-conflicting entities the branch touched are allowed, and are the
+	// only supported way to exclude an entity from the merge.
+	//
+	// An array rather than a map keyed by id, so the generated Go and
+	// TypeScript types stay usable. A `stream_id` may appear at most once.
+	//
+	// Capped at 1000 entries, matching the scan cap: a branch that touches
+	// more entities than that is refused before resolutions are read, so
+	// a longer array can never be useful.
+	Resolutions *[]MergeResolutionEntry `json:"resolutions,omitempty"`
+}
+
+// BranchMergeResult What the merge actually did.
+type BranchMergeResult struct {
+	Branch Branch `json:"branch"`
+
+	// MergedAtPosition The event log's head position at the moment of the merge, recorded
+	// on the `BranchMerged` marker event. Every mainline event after it,
+	// on the branch's entities, is this merge's replay.
+	//
+	// Note that positions are one global sequence shared by every branch,
+	// so this number counts other branches' events too. Do not treat
+	// `merged_at_position - base_position` as a count of what this merge
+	// promoted — it is inflated by unrelated branch activity.
+	MergedAtPosition int64 `json:"merged_at_position"`
+
+	// ReplayedEventCount How many branch events were re-appended to the mainline
+	ReplayedEventCount int `json:"replayed_event_count"`
+
+	// SkippedStreamIds The entities resolved to `main`, whose branch changes were
+	// deliberately not replayed. `[]`, never `null`, when nothing was
+	// skipped.
+	SkippedStreamIds []openapi_types.UUID `json:"skipped_stream_ids"`
 }
 
 // BrickWallEntry defines model for BrickWallEntry.
@@ -2974,6 +3139,77 @@ type MediaUpdate struct {
 // MediaUpdateMediaType defines model for MediaUpdate.MediaType.
 type MediaUpdateMediaType string
 
+// MergeConflict One entity the branch and the mainline changed incompatibly. At most one
+// conflict is reported per entity; when several kinds apply the most
+// severe wins, in the order `delete_edit`, `edit_edit`, `create_create`.
+type MergeConflict struct {
+	// Detail Human-readable explanation of the conflict, ready to display
+	Detail string `json:"detail"`
+
+	// EntityName Display name of the entity, for the review UI. Empty when the name
+	// cannot be resolved (for instance the entity exists only on the
+	// branch, or only as a deletion).
+	EntityName string `json:"entity_name"`
+
+	// EntityType Kind of entity the conflict is about, lower-cased to match
+	// `ChangeEntry.entity_type` - the same response carries both, so they
+	// use one vocabulary. Derived from the event store's stream type, so
+	// entities beyond the four `ChangeEntry` knows still report their real
+	// name rather than `unknown`.
+	EntityType string `json:"entity_type"`
+
+	// Fields The contested field names, sorted. Present for `edit_edit` only -
+	// the other kinds are whole-entity conflicts with no field to name.
+	Fields *[]string `json:"fields,omitempty"`
+
+	// Kind - `edit_edit` - both sides changed the same field to different
+	//   values. Structural changes count: linking a child on one side
+	//   while the other unlinks the same child is an `edit_edit` on the
+	//   field `children[<person-id>]`.
+	// - `delete_edit` - exactly one side deleted the entity while the
+	//   other went on changing it. (Both sides deleting is not a conflict;
+	//   they agree.)
+	// - `create_create` - both sides independently created an entity
+	//   carrying the same GEDCOM xref, so the two creations are the same
+	//   real-world record.
+	Kind MergeConflictKind `json:"kind"`
+
+	// StreamId The contested entity's id. This is the key a merge resolution uses.
+	StreamId openapi_types.UUID `json:"stream_id"`
+
+	// SupportedResolutions The resolutions that would actually produce the outcome they name for
+	// THIS conflict. Usually both, but two shapes accept only `main`, and
+	// sending anything outside this list is rejected with
+	// `400 invalid_resolution` rather than silently doing the opposite:
+	//
+	// - `delete_edit` where the **mainline** is the deleter. Replaying the
+	//   branch's edits cannot resurrect a deleted entity, so `branch` would
+	//   report success while the entity stayed deleted.
+	// - `create_create`. The two sides are different entities by
+	//   construction, so `branch` would promote the branch's copy and leave
+	//   the mainline's beside it - the duplicate this conflict class exists
+	//   to prevent.
+	//
+	// A review UI should offer only these values.
+	SupportedResolutions []MergeConflictSupportedResolutions `json:"supported_resolutions"`
+}
+
+// MergeConflictKind - `edit_edit` - both sides changed the same field to different
+//
+//		values. Structural changes count: linking a child on one side
+//		while the other unlinks the same child is an `edit_edit` on the
+//		field `children[<person-id>]`.
+//	  - `delete_edit` - exactly one side deleted the entity while the
+//	    other went on changing it. (Both sides deleting is not a conflict;
+//	    they agree.)
+//	  - `create_create` - both sides independently created an entity
+//	    carrying the same GEDCOM xref, so the two creations are the same
+//	    real-world record.
+type MergeConflictKind string
+
+// MergeConflictSupportedResolutions defines model for MergeConflict.SupportedResolutions.
+type MergeConflictSupportedResolutions string
+
 // MergePersonsRequest Request to merge two person records
 type MergePersonsRequest struct {
 	// FieldResolution Optional per-field source selection. Keys are field names
@@ -3004,6 +3240,23 @@ type MergePersonsResponse struct {
 	MergeSummary MergeSummary `json:"merge_summary"`
 	Person       Person       `json:"person"`
 }
+
+// MergeResolutionEntry The side that wins for one entity.
+type MergeResolutionEntry struct {
+	// Resolution - `branch` - replay the branch's events for this entity onto main.
+	// - `main` - keep main's version; the entity's branch changes are
+	//   dropped and its id is reported in `skipped_stream_ids`.
+	Resolution MergeResolutionEntryResolution `json:"resolution"`
+
+	// StreamId The entity being decided. Must be an entity the branch actually
+	// changed - an unknown id is a `400`, not a no-op.
+	StreamId openapi_types.UUID `json:"stream_id"`
+}
+
+// MergeResolutionEntryResolution - `branch` - replay the branch's events for this entity onto main.
+//   - `main` - keep main's version; the entity's branch changes are
+//     dropped and its id is reported in `skipped_stream_ids`.
+type MergeResolutionEntryResolution string
 
 // MergeSummary Summary of what was merged
 type MergeSummary struct {
@@ -4816,6 +5069,9 @@ type UpdateAssociationJSONRequestBody = AssociationUpdate
 // CreateBranchJSONRequestBody defines body for CreateBranch for application/json ContentType.
 type CreateBranchJSONRequestBody = BranchCreate
 
+// MergeBranchJSONRequestBody defines body for MergeBranch for application/json ContentType.
+type MergeBranchJSONRequestBody = BranchMergeRequest
+
 // PreviewCitationTemplateJSONRequestBody defines body for PreviewCitationTemplate for application/json ContentType.
 type PreviewCitationTemplateJSONRequestBody PreviewCitationTemplateJSONBody
 
@@ -4974,6 +5230,9 @@ type ServerInterface interface {
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx echo.Context, id BranchId) error
+	// Merge a branch into the mainline
+	// (POST /branches/{id}/merge)
+	MergeBranch(ctx echo.Context, id BranchId) error
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx echo.Context, params GetBrickWallsParams) error
@@ -5610,6 +5869,22 @@ func (w *ServerInterfaceWrapper) CompareBranch(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.CompareBranch(ctx, id)
+	return err
+}
+
+// MergeBranch converts echo context to params.
+func (w *ServerInterfaceWrapper) MergeBranch(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.MergeBranch(ctx, id)
 	return err
 }
 
@@ -8538,6 +8813,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/branches/:id", wrapper.DeleteBranch, options.OperationMiddlewares["deleteBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id", wrapper.GetBranch, options.OperationMiddlewares["getBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
+	router.POST(options.BaseURL+"/branches/:id/merge", wrapper.MergeBranch, options.OperationMiddlewares["mergeBranch"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
@@ -9244,6 +9520,101 @@ type CompareBranch503JSONResponse struct {
 }
 
 func (response CompareBranch503JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeBranchRequestObject struct {
+	Id   BranchId `json:"id"`
+	Body *MergeBranchJSONRequestBody
+}
+
+type MergeBranchResponseObject interface {
+	VisitMergeBranchResponse(w http.ResponseWriter) error
+}
+
+type MergeBranch200JSONResponse BranchMergeResult
+
+func (response MergeBranch200JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeBranch400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response MergeBranch400JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeBranch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response MergeBranch404JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeBranch409JSONResponse BranchMergeConflictError
+
+func (response MergeBranch409JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeBranch500JSONResponse Error
+
+func (response MergeBranch500JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type MergeBranch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response MergeBranch503JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -15005,6 +15376,9 @@ type StrictServerInterface interface {
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx context.Context, request CompareBranchRequestObject) (CompareBranchResponseObject, error)
+	// Merge a branch into the mainline
+	// (POST /branches/{id}/merge)
+	MergeBranch(ctx context.Context, request MergeBranchRequestObject) (MergeBranchResponseObject, error)
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx context.Context, request GetBrickWallsRequestObject) (GetBrickWallsResponseObject, error)
@@ -15738,6 +16112,40 @@ func (sh *strictHandler) CompareBranch(ctx echo.Context, id BranchId) error {
 		return err
 	} else if validResponse, ok := response.(CompareBranchResponseObject); ok {
 		return validResponse.VisitCompareBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// MergeBranch operation middleware
+func (sh *strictHandler) MergeBranch(ctx echo.Context, id BranchId) error {
+	var request MergeBranchRequestObject
+
+	request.Id = id
+
+	var body MergeBranchJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return err
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.MergeBranch(ctx.Request().Context(), request.(MergeBranchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "MergeBranch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(MergeBranchResponseObject); ok {
+		return validResponse.VisitMergeBranchResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

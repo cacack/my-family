@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -35,6 +36,18 @@ type BranchStore interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// UpdateStatus changes a branch's status, returning ErrBranchNotFound when
-	// missing. Used by the merged/deleted projections.
+	// missing. Used by the deleted projection's archive transition.
 	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.BranchStatus) error
+
+	// MarkMerged records the merge: it sets the status to merged and writes the
+	// merge timestamp and note in one atomic write, returning ErrBranchNotFound
+	// when missing.
+	//
+	// This is a distinct method rather than a wider UpdateStatus because the two
+	// terminal transitions differ in kind: archiving carries no metadata, while a
+	// merged branch must never be recorded without its timestamp (issue #55,
+	// "merge history preserved"). Folding the metadata into UpdateStatus would
+	// make it optional at every call site and let a merge land with a nil
+	// MergedAt; a separate method makes the record impossible to omit.
+	MarkMerged(ctx context.Context, id uuid.UUID, mergedAt time.Time, note string) error
 }

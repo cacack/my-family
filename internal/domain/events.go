@@ -901,24 +901,44 @@ func NewBranchDeleted(branchID uuid.UUID) BranchDeleted {
 }
 
 // BranchMerged event is emitted when a branch's changes are promoted to main.
-// MergedAtPosition is the main Position at which the promotion occurred.
+// It is the merge *marker* only — the promoted changes are separate, replayed
+// main events (ADR-005 §Merge), so this event is never itself replayed.
+//
+// MergedAtPosition is the EVENT LOG's head Position at the moment of the merge:
+// every main event after it, on the branch's streams, is the replay. Together
+// with BasePosition (the log head the branch forked from, read the same way) it
+// bounds the promotion in main's log.
+//
+// "Log head", not "mainline head", deliberately: Position is one global
+// sequence shared by every branch (ADR-005 §The model), and GetMaxPosition does
+// not filter by branch, so this number counts other branches' events too. That
+// is consistent — BasePosition is read from the same unfiltered sequence and
+// the tail scans compare against it — but it means the difference between the
+// two is not a count of this merge's events, and arithmetic on it will be
+// inflated by unrelated branch activity.
+//
+// Note carries the researcher's rationale for the merge — the "merge commit
+// message" that makes the promotion reviewable after the fact (#55).
 type BranchMerged struct {
 	BaseEvent
 	BranchID         uuid.UUID `json:"branch_id"`
 	BasePosition     int64     `json:"base_position"`
 	MergedAtPosition int64     `json:"merged_at_position"`
+	Note             string    `json:"note,omitempty"`
 }
 
 func (e BranchMerged) EventType() string      { return "BranchMerged" }
 func (e BranchMerged) AggregateID() uuid.UUID { return e.BranchID }
 
-// NewBranchMerged creates a BranchMerged event.
-func NewBranchMerged(branchID uuid.UUID, basePosition, mergedAtPosition int64) BranchMerged {
+// NewBranchMerged creates a BranchMerged event. note may be empty — a merge
+// rationale is encouraged but not required.
+func NewBranchMerged(branchID uuid.UUID, basePosition, mergedAtPosition int64, note string) BranchMerged {
 	return BranchMerged{
 		BaseEvent:        NewBaseEvent(),
 		BranchID:         branchID,
 		BasePosition:     basePosition,
 		MergedAtPosition: mergedAtPosition,
+		Note:             note,
 	}
 }
 

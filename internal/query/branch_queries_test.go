@@ -18,6 +18,7 @@ import (
 type branchTestFixture struct {
 	ctx         context.Context
 	eventStore  *memory.EventStore
+	readStore   *memory.ReadModelStore
 	branchStore *memory.BranchStore
 	service     *BranchService
 }
@@ -32,6 +33,7 @@ func newBranchTestFixture(t *testing.T) *branchTestFixture {
 	return &branchTestFixture{
 		ctx:         context.Background(),
 		eventStore:  eventStore,
+		readStore:   readStore,
 		branchStore: branchStore,
 		service:     NewBranchService(branchStore, eventStore, NewHistoryService(eventStore, readStore)),
 	}
@@ -192,13 +194,37 @@ func TestBranchService_CompareBranch(t *testing.T) {
 		assert.Equal(t, "updated", entry.Action)
 	}
 
-	// The both-sides hint names exactly the contested stream.
+	// The both-sides hint names exactly the contested stream — but the two sides
+	// changed different fields of it, so the hint is not a conflict verdict.
 	assert.Equal(t, []uuid.UUID{contested}, result.OverlappingStreamIDs)
+	assert.Empty(t, result.Conflicts)
 
 	// Neither side carries a branch-lifecycle change.
 	for _, entry := range append(append([]ChangeEntry{}, result.BranchChanges...), result.MainChanges...) {
 		assert.NotEqual(t, branch.ID, entry.EntityID, "branch lifecycle event leaked into the diff")
 	}
+}
+
+// The review diff carries the conflict verdict alongside the changes, so the UI
+// gets both from one call. The classification itself is covered in
+// merge_conflicts_test.go.
+func TestBranchService_CompareBranch_SurfacesConflicts(t *testing.T) {
+	f := newBranchTestFixture(t)
+
+	contested := uuid.New()
+	f.appendMain(t, contested, domain.NewPersonCreated(&domain.Person{ID: contested, GivenName: "Ada", Surname: "Byron"}))
+
+	branch := f.forkBranch(t, "Byron parentage")
+	f.appendBranch(t, branch, contested, "person", domain.NewPersonUpdated(contested, map[string]any{"surname": "Lovelace"}))
+	f.appendMain(t, contested, domain.NewPersonUpdated(contested, map[string]any{"surname": "King"}))
+
+	result, err := f.service.CompareBranch(f.ctx, branch.ID)
+	require.NoError(t, err)
+
+	require.Len(t, result.Conflicts, 1)
+	assert.Equal(t, contested, result.Conflicts[0].StreamID)
+	assert.Equal(t, ConflictEditEdit, result.Conflicts[0].Kind)
+	assert.Equal(t, []string{"surname"}, result.Conflicts[0].Fields)
 }
 
 func TestBranchService_CompareBranch_NoOverlap(t *testing.T) {

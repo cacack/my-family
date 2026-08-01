@@ -252,3 +252,90 @@ func TestBranchStore_Reset(t *testing.T) {
 		t.Errorf("List() after Reset() returned %d items, want 0", len(list))
 	}
 }
+
+// TestBranchStore_MarkMerged asserts the merge record — status, timestamp and
+// note written together (issue #55). The same assertions run against the SQLite
+// and PostgreSQL stores (DB-001 parity).
+func TestBranchStore_MarkMerged(t *testing.T) {
+	store := memory.NewBranchStore()
+	ctx := context.Background()
+
+	branch := &domain.Branch{
+		ID:        uuid.New(),
+		Name:      "To Merge",
+		Status:    domain.BranchStatusActive,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := store.Create(ctx, branch); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	mergedAt := time.Now().UTC().Truncate(time.Millisecond)
+	if err := store.MarkMerged(ctx, branch.ID, mergedAt, "verified against the 1880 census"); err != nil {
+		t.Fatalf("MarkMerged() error = %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.Status != domain.BranchStatusMerged {
+		t.Errorf("Status = %v, want %v", retrieved.Status, domain.BranchStatusMerged)
+	}
+	if retrieved.MergedAt == nil {
+		t.Fatal("MergedAt = nil, want the merge timestamp")
+	}
+	if !retrieved.MergedAt.Equal(mergedAt) {
+		t.Errorf("MergedAt = %v, want %v", retrieved.MergedAt, mergedAt)
+	}
+	if retrieved.MergeNote != "verified against the 1880 census" {
+		t.Errorf("MergeNote = %q, want the note", retrieved.MergeNote)
+	}
+}
+
+// TestBranchStore_MarkMerged_NotFound covers the missing-row contract.
+func TestBranchStore_MarkMerged_NotFound(t *testing.T) {
+	store := memory.NewBranchStore()
+	ctx := context.Background()
+
+	err := store.MarkMerged(ctx, uuid.New(), time.Now().UTC(), "note")
+	if err != repository.ErrBranchNotFound {
+		t.Errorf("MarkMerged() error = %v, want %v", err, repository.ErrBranchNotFound)
+	}
+}
+
+// TestBranchStore_UnmergedHasNoMergeRecord pins the nullable contract: a branch
+// that was never merged reads back a nil MergedAt, not the zero time.
+func TestBranchStore_UnmergedHasNoMergeRecord(t *testing.T) {
+	store := memory.NewBranchStore()
+	ctx := context.Background()
+
+	branch := &domain.Branch{
+		ID:        uuid.New(),
+		Name:      "Never Merged",
+		Status:    domain.BranchStatusActive,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := store.Create(ctx, branch); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.MergedAt != nil {
+		t.Errorf("MergedAt = %v, want nil", retrieved.MergedAt)
+	}
+	if retrieved.MergeNote != "" {
+		t.Errorf("MergeNote = %q, want empty", retrieved.MergeNote)
+	}
+
+	list, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(list) != 1 || list[0].MergedAt != nil || list[0].MergeNote != "" {
+		t.Errorf("List() merge fields = %+v, want nil/empty", list[0])
+	}
+}

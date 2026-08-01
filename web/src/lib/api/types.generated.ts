@@ -1636,7 +1636,14 @@ export interface paths {
          *     branch touched.
          *
          *     `overlapping_stream_ids` is a divergence **hint** — the entities both
-         *     sides changed. It is not conflict detection (that is issue #55).
+         *     sides changed. `conflicts` is the *verdict*: the subset of that overlap
+         *     where the two sides made incompatible changes and a human has to pick a
+         *     winner. An entity can overlap without conflicting (both sides changed
+         *     different fields, or made the same change).
+         *
+         *     This is the one call the merge review UI needs: it returns the diff and
+         *     the conflict verdict together, so there is no separate merge-preview
+         *     endpoint to keep in sync.
          *
          *     Terminal (merged or archived) branches compare normally: their events
          *     remain in the append-only log, so the historical diff is still returned.
@@ -1644,6 +1651,72 @@ export interface paths {
         get: operations["compareBranch"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge a branch into the mainline
+         * @description Promotes a branch's research onto `main` by replaying its events there
+         *     with their original payloads and timestamps, then marking the branch
+         *     `merged`. The branch's events are never rewritten or removed — the log
+         *     is append-only (invariants ES-002, BR-004), so a merge only ever *adds*
+         *     events to `main`.
+         *
+         *     **No partial merges are requestable.** Partial merge and cherry-pick are
+         *     deliberately out of scope (ADR-005 §Merge); the only supported way to
+         *     leave an entity behind is a `main` resolution for it, which drops that
+         *     entity's branch changes.
+         *
+         *     **This is not a transactional guarantee, and one failure mode is not
+         *     all-or-nothing.** Every refusal above (`400`, `404`, `409`) happens
+         *     before anything is written. But the branch is claimed *before* the
+         *     replay onto `main` begins, and the two are not one transaction — the
+         *     event store and the read model have no shared transaction. If the replay
+         *     then fails partway, the response is `500 merge_partially_applied`: the
+         *     branch is already `merged` and `main` carries only some of its entities.
+         *     **Do not retry that request** — a retry gets `409 branch_not_active`,
+         *     which is not evidence the merge completed. Call
+         *     `GET /branches/{id}/compare` (it still works on a merged branch, reading
+         *     the event log rather than the branch's view) to see what did and did not
+         *     land. Recovery is manual today; resumable merge is tracked as
+         *     [#685](https://github.com/cacack/my-family/issues/685).
+         *
+         *     **Every detected conflict must carry a resolution.** Call
+         *     `GET /branches/{id}/compare` first: its `conflicts` array is the
+         *     authoritative list. Send one entry in `resolutions` for each conflicting
+         *     `stream_id`, choosing `branch` (replay the branch's version onto main) or
+         *     `main` (keep main's version and discard the branch's changes to that
+         *     entity). If any conflict is left undecided the merge is refused with
+         *     `409 merge_conflicts` and **nothing is written** — the response carries
+         *     the full conflict list so the client can render the review.
+         *
+         *     A resolution may also name a non-conflicting stream the branch touched;
+         *     that is how a caller excludes an entity from an otherwise clean merge.
+         *     Naming a stream the branch never changed is a `400`, not a no-op: the
+         *     caller and the server disagree about what is being merged.
+         *
+         *     Exactly one merge can win. The `active → merged` transition is an atomic
+         *     compare-and-set, so a concurrent second request gets
+         *     `409 merge_already_claimed` having written nothing. A sequential repeat
+         *     against an already-merged (or archived) branch gets
+         *     `409 branch_not_active`.
+         */
+        post: operations["mergeBranch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3672,6 +3745,18 @@ export interface components {
              * @description When the branch was created
              */
             created_at: string;
+            /**
+             * Format: date-time
+             * @description When the branch was merged into the mainline. Absent unless
+             *     `status` is `merged` - it is set only on the `active -> merged`
+             *     transition and never cleared.
+             */
+            merged_at?: string;
+            /**
+             * @description The note recorded with the merge, explaining why the research was
+             *     promoted. Absent unless the branch was merged with a note.
+             */
+            merge_note?: string;
         };
         BranchCreate: {
             /** @description Name of the line of research */
@@ -3709,6 +3794,182 @@ export interface components {
              *     human review, not conflict detection.
              */
             overlapping_stream_ids: string[];
+            /**
+             * @description The entities whose changes are actually incompatible - a subset of
+             *     `overlapping_stream_ids`. Empty (`[]`, never `null`) when the branch
+             *     merges cleanly. Every entry must be given a resolution in
+             *     `POST /branches/{id}/merge` or the merge is refused.
+             */
+            conflicts: components["schemas"]["MergeConflict"][];
+        };
+        /**
+         * @description One entity the branch and the mainline changed incompatibly. At most one
+         *     conflict is reported per entity; when several kinds apply the most
+         *     severe wins, in the order `delete_edit`, `edit_edit`, `create_create`.
+         */
+        MergeConflict: {
+            /**
+             * Format: uuid
+             * @description The contested entity's id. This is the key a merge resolution uses.
+             */
+            stream_id: string;
+            /**
+             * @description The resolutions that would actually produce the outcome they name for
+             *     THIS conflict. Usually both, but two shapes accept only `main`, and
+             *     sending anything outside this list is rejected with
+             *     `400 invalid_resolution` rather than silently doing the opposite:
+             *
+             *     - `delete_edit` where the **mainline** is the deleter. Replaying the
+             *       branch's edits cannot resurrect a deleted entity, so `branch` would
+             *       report success while the entity stayed deleted.
+             *     - `create_create`. The two sides are different entities by
+             *       construction, so `branch` would promote the branch's copy and leave
+             *       the mainline's beside it - the duplicate this conflict class exists
+             *       to prevent.
+             *
+             *     A review UI should offer only these values.
+             * @example [
+             *       "branch",
+             *       "main"
+             *     ]
+             */
+            supported_resolutions: ("branch" | "main")[];
+            /**
+             * @description Kind of entity the conflict is about, lower-cased to match
+             *     `ChangeEntry.entity_type` - the same response carries both, so they
+             *     use one vocabulary. Derived from the event store's stream type, so
+             *     entities beyond the four `ChangeEntry` knows still report their real
+             *     name rather than `unknown`.
+             * @example person
+             */
+            entity_type: string;
+            /**
+             * @description Display name of the entity, for the review UI. Empty when the name
+             *     cannot be resolved (for instance the entity exists only on the
+             *     branch, or only as a deletion).
+             * @example Ada Lovelace
+             */
+            entity_name: string;
+            /**
+             * @description - `edit_edit` - both sides changed the same field to different
+             *       values. Structural changes count: linking a child on one side
+             *       while the other unlinks the same child is an `edit_edit` on the
+             *       field `children[<person-id>]`.
+             *     - `delete_edit` - exactly one side deleted the entity while the
+             *       other went on changing it. (Both sides deleting is not a conflict;
+             *       they agree.)
+             *     - `create_create` - both sides independently created an entity
+             *       carrying the same GEDCOM xref, so the two creations are the same
+             *       real-world record.
+             * @enum {string}
+             */
+            kind: "edit_edit" | "delete_edit" | "create_create";
+            /**
+             * @description The contested field names, sorted. Present for `edit_edit` only -
+             *     the other kinds are whole-entity conflicts with no field to name.
+             * @example [
+             *       "surname"
+             *     ]
+             */
+            fields?: string[];
+            /**
+             * @description Human-readable explanation of the conflict, ready to display
+             * @example Both sides changed surname to different values
+             */
+            detail: string;
+        };
+        /**
+         * @description What to do with the merge. Both properties are optional; an empty object
+         *     merges a conflict-free branch with no note.
+         */
+        BranchMergeRequest: {
+            /**
+             * @description Why this research was promoted. Recorded on the `BranchMerged` event
+             *     and returned as the branch's `merge_note` thereafter.
+             */
+            note?: string;
+            /**
+             * @description One entry per entity whose side is being decided. Every conflict
+             *     reported by `GET /branches/{id}/compare` must appear here or the
+             *     merge is refused with `409 merge_conflicts`. Entries for
+             *     non-conflicting entities the branch touched are allowed, and are the
+             *     only supported way to exclude an entity from the merge.
+             *
+             *     An array rather than a map keyed by id, so the generated Go and
+             *     TypeScript types stay usable. A `stream_id` may appear at most once.
+             *
+             *     Capped at 1000 entries, matching the scan cap: a branch that touches
+             *     more entities than that is refused before resolutions are read, so
+             *     a longer array can never be useful.
+             */
+            resolutions?: components["schemas"]["MergeResolutionEntry"][];
+        };
+        /** @description The side that wins for one entity. */
+        MergeResolutionEntry: {
+            /**
+             * Format: uuid
+             * @description The entity being decided. Must be an entity the branch actually
+             *     changed - an unknown id is a `400`, not a no-op.
+             */
+            stream_id: string;
+            /**
+             * @description - `branch` - replay the branch's events for this entity onto main.
+             *     - `main` - keep main's version; the entity's branch changes are
+             *       dropped and its id is reported in `skipped_stream_ids`.
+             * @enum {string}
+             */
+            resolution: "branch" | "main";
+        };
+        /** @description What the merge actually did. */
+        BranchMergeResult: {
+            branch: components["schemas"]["Branch"];
+            /**
+             * Format: int64
+             * @description The event log's head position at the moment of the merge, recorded
+             *     on the `BranchMerged` marker event. Every mainline event after it,
+             *     on the branch's entities, is this merge's replay.
+             *
+             *     Note that positions are one global sequence shared by every branch,
+             *     so this number counts other branches' events too. Do not treat
+             *     `merged_at_position - base_position` as a count of what this merge
+             *     promoted — it is inflated by unrelated branch activity.
+             * @example 128
+             */
+            merged_at_position: number;
+            /**
+             * @description How many branch events were re-appended to the mainline
+             * @example 7
+             */
+            replayed_event_count: number;
+            /**
+             * @description The entities resolved to `main`, whose branch changes were
+             *     deliberately not replayed. `[]`, never `null`, when nothing was
+             *     skipped.
+             */
+            skipped_stream_ids: string[];
+        };
+        /**
+         * @description A refused merge. Shares `code`/`message` with the standard `Error`
+         *     shape and adds the conflict list the `merge_conflicts` code needs.
+         */
+        BranchMergeConflictError: {
+            /**
+             * @description Which refusal this is - see the operation's 409 description
+             * @example merge_conflicts
+             * @enum {string}
+             */
+            code: "merge_conflicts" | "branch_not_active" | "merge_already_claimed" | "branch_too_large" | "main_too_far_ahead" | "merge_dangling_reference";
+            /**
+             * @description Human-readable explanation
+             * @example branch has unresolved merge conflicts: 1 of 1 conflicts have no resolution
+             */
+            message: string;
+            /**
+             * @description The full conflict list. Present only for `merge_conflicts`, where it
+             *     carries every conflict - not just the undecided ones - so the review
+             *     UI can render the whole picture.
+             */
+            conflicts?: components["schemas"]["MergeConflict"][];
         };
         RelationshipPathNode: {
             /** Format: uuid */
@@ -7246,6 +7507,108 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    mergeBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * @description Optional. A merge with no note and no resolutions can be requested
+         *     with an empty body.
+         */
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "note": "Confirmed by the 1881 census; Mary Smith is John's daughter",
+                 *       "resolutions": [
+                 *         {
+                 *           "stream_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                 *           "resolution": "branch"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["BranchMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Branch merged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchMergeResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The merge was refused and nothing was written. `code` says why:
+             *
+             *     - `merge_conflicts` — at least one detected conflict has no
+             *       resolution. The `conflicts` array is populated with the *whole*
+             *       conflict list (not just the undecided ones) so the review UI can
+             *       render everything at once.
+             *     - `branch_not_active` — the branch is already `merged` or
+             *       `archived`; terminal branches accept no further writes.
+             *     - `merge_already_claimed` — a concurrent request won the
+             *       `active → merged` compare-and-set. This request wrote nothing.
+             *     - `branch_too_large` — the **branch's own** scan hit the read cap,
+             *       so its replay set is incomplete and merging would silently promote
+             *       only part of it. **Not retryable:** the cap is fixed and the
+             *       branch does not shrink; promoting a subset needs partial merge
+             *       ([#684](https://github.com/cacack/my-family/issues/684)). The
+             *       message names the cap.
+             *     - `main_too_far_ahead` — a scan of **the mainline** hit the read
+             *       cap, so the conflict list is not known to be complete. The branch
+             *       itself may be tiny: this is driven by how much has landed on main
+             *       for the branch's entities since it forked, not by branch size.
+             *       Reported separately from `branch_too_large` because the cause and
+             *       the remedy differ — do not tell the user their branch is too big.
+             *     - `merge_dangling_reference` — the replay would leave the mainline
+             *       holding a relationship pointing at a person the mainline will not
+             *       have, because that person was deleted there or was excluded by a
+             *       `main` resolution while the family event linking them would still
+             *       be replayed. Resolutions are per entity, but the branch's events
+             *       reference each other across entities, so excluding a person does
+             *       not exclude the links to them. The message names both the person
+             *       and the family. Refused rather than silently dropping the link.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchMergeConflictError"];
+                };
+            };
+            /**
+             * @description `merge_partially_applied` — the branch was claimed and marked
+             *     `merged`, but the replay onto `main` failed partway, so `main`
+             *     carries only some of the branch's entities. This is the
+             *     non-transactional window described above. The message names the
+             *     stream that failed and how far the replay got. Do not retry; verify
+             *     with `GET /branches/{id}/compare`. Any other `500` is an unexpected
+             *     error and carries the generic `internal_error` code.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             503: components["responses"]["BranchesUnavailable"];
         };
     };

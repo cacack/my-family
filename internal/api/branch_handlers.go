@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -239,7 +241,191 @@ func (ss *StrictServer) CompareBranch(ctx context.Context, request CompareBranch
 		MainChangeCount:      result.MainChangeCount,
 		HasMore:              result.HasMore,
 		OverlappingStreamIds: overlapping,
+		Conflicts:            convertQueryMergeConflictsToGenerated(result.Conflicts),
 	}, nil
+}
+
+// MergeBranch implements StrictServerInterface. The merge is all-or-nothing and
+// every detected conflict must carry a resolution; see the operation
+// description in openapi.yaml and ADR-005 §Merge.
+func (ss *StrictServer) MergeBranch(ctx context.Context, request MergeBranchRequestObject) (MergeBranchResponseObject, error) {
+	if ss.server.branchStore == nil {
+		return MergeBranch503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+
+	// The body is optional: merging a clean branch with no note needs nothing.
+	input := command.MergeBranchInput{BranchID: request.Id}
+	if request.Body != nil {
+		if request.Body.Note != nil {
+			input.Note = *request.Body.Note
+		}
+		resolutions, err := convertGeneratedResolutionsToCommand(request.Body.Resolutions)
+		if err != nil {
+			return MergeBranch400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_resolution",
+				Message: err.Error(),
+			}}, nil
+		}
+		input.Resolutions = resolutions
+	}
+
+	// result is non-nil alongside ErrMergeConflicts and carries the conflicts;
+	// every other error path returns a nil result.
+	result, err := ss.server.commandHandler.MergeBranch(ctx, input)
+	if err != nil {
+		return mergeBranchErrorResponse(result, err)
+	}
+
+	// The schema requires the skipped array, so serialize [] rather than null.
+	skipped := result.SkippedStreamIDs
+	if skipped == nil {
+		skipped = []openapi_types.UUID{}
+	}
+
+	return MergeBranch200JSONResponse{
+		Branch:             convertDomainBranchToGenerated(result.Branch),
+		MergedAtPosition:   result.MergedAtPosition,
+		ReplayedEventCount: result.ReplayedEventCount,
+		SkippedStreamIds:   skipped,
+	}, nil
+}
+
+// mergeBranchErrorResponse maps the merge command's sentinel errors onto the
+// operation's responses. The four refusals share the 409 family and are told
+// apart by `code`, so a client can render an actionable message for each.
+// Unrecognized errors are returned to customErrorHandler as a 500.
+func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (MergeBranchResponseObject, error) {
+	refuse := func(code BranchMergeConflictErrorCode) (MergeBranchResponseObject, error) {
+		return MergeBranch409JSONResponse{Code: code, Message: err.Error()}, nil
+	}
+
+	switch {
+	case errors.Is(err, command.ErrMergeConflicts):
+		// The whole conflict list travels with the refusal so the review UI can
+		// render everything at once, not just the undecided entries.
+		var conflicts []query.MergeConflict
+		if result != nil {
+			conflicts = result.Conflicts
+		}
+		converted := convertQueryMergeConflictsToGenerated(conflicts)
+		return MergeBranch409JSONResponse{
+			Code:      MergeConflicts,
+			Message:   err.Error(),
+			Conflicts: &converted,
+		}, nil
+
+	case errors.Is(err, command.ErrBranchNotActive):
+		return refuse(BranchNotActive)
+
+	case errors.Is(err, command.ErrMergeAlreadyClaimed):
+		return refuse(MergeAlreadyClaimed)
+
+	case errors.Is(err, command.ErrBranchTooLargeToMerge):
+		// A 409 rather than a 422: it is a refusal to act on this branch's
+		// current state, and keeping the refusals in one status family keeps
+		// the client contract simple.
+		return refuse(BranchTooLarge)
+
+	case errors.Is(err, command.ErrMainTooFarAheadToMerge):
+		// Distinct from branch_too_large on purpose — same status, different
+		// cause and different remedy. Telling someone their three-event branch
+		// is "too large" points them at the wrong fix.
+		return refuse(MainTooFarAhead)
+
+	case errors.Is(err, command.ErrMergeDanglingReference):
+		return refuse(MergeDanglingReference)
+
+	case errors.Is(err, command.ErrUnknownResolution),
+		errors.Is(err, command.ErrUnsupportedResolution):
+		// Both are "the caller asked for something this merge cannot do", and
+		// both are refused before anything is written. The message names the
+		// resolutions the conflict does accept.
+		return MergeBranch400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_resolution",
+			Message: err.Error(),
+		}}, nil
+
+	case errors.Is(err, command.ErrMergePartiallyApplied):
+		// Deliberately NOT a 409: the other refusals mean nothing was written,
+		// and this one means the opposite — the branch is merged and main is
+		// half-updated. Folding it into the 409 family would tell a client it
+		// is safe to retry when it is not. See the operation's 500 description.
+		return MergeBranch500JSONResponse{
+			Code:    "merge_partially_applied",
+			Message: err.Error(),
+		}, nil
+
+	case errors.Is(err, domain.ErrBranchMergeNoteTooLong):
+		return MergeBranch400JSONResponse{BadRequestJSONResponse{
+			Code:    "validation_error",
+			Message: err.Error(),
+		}}, nil
+
+	case errors.Is(err, repository.ErrBranchNotFound):
+		return MergeBranch404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Branch not found",
+		}}, nil
+
+	case errors.Is(err, command.ErrBranchStoreRequired), errors.Is(err, command.ErrPositionSourceRequired):
+		return MergeBranch503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+
+	return nil, err
+}
+
+// convertGeneratedResolutionsToCommand turns the wire array into the command's
+// streamID→side map. The array carries no uniqueness guarantee, so a repeated
+// stream_id is rejected rather than silently resolved last-one-wins — two
+// entries for one entity mean the caller is unsure which side should win.
+//
+// Unrecognized resolution values are NOT rejected here: the command owns that
+// check (ErrUnknownResolution), which also catches a stream the branch never
+// touched, so both misuses report through one path.
+func convertGeneratedResolutionsToCommand(entries *[]MergeResolutionEntry) (map[uuid.UUID]command.MergeResolution, error) {
+	if entries == nil || len(*entries) == 0 {
+		return nil, nil
+	}
+
+	out := make(map[uuid.UUID]command.MergeResolution, len(*entries))
+	for _, entry := range *entries {
+		if _, duplicate := out[entry.StreamId]; duplicate {
+			return nil, fmt.Errorf("resolutions contains stream %s more than once", entry.StreamId)
+		}
+		out[entry.StreamId] = command.MergeResolution(entry.Resolution)
+	}
+	return out, nil
+}
+
+// convertQueryMergeConflictsToGenerated converts the query layer's conflicts,
+// always returning a non-nil slice so the JSON payload carries [] rather than
+// null. Fields stays absent for the kinds that have none (edit_edit is the only
+// kind that names fields).
+func convertQueryMergeConflictsToGenerated(conflicts []query.MergeConflict) []MergeConflict {
+	out := make([]MergeConflict, len(conflicts))
+	for i, c := range conflicts {
+		// The schema requires supported_resolutions, so build a non-nil slice
+		// even in the impossible case of a conflict that accepts neither side —
+		// the wire contract says array, never null.
+		supported := make([]MergeConflictSupportedResolutions, 0, len(c.SupportedResolutions))
+		for _, r := range c.SupportedResolutions {
+			supported = append(supported, MergeConflictSupportedResolutions(r))
+		}
+
+		out[i] = MergeConflict{
+			StreamId:             c.StreamID,
+			EntityType:           c.EntityType,
+			EntityName:           c.EntityName,
+			Kind:                 MergeConflictKind(c.Kind),
+			Detail:               c.Detail,
+			SupportedResolutions: supported,
+		}
+		if len(c.Fields) > 0 {
+			fields := c.Fields
+			out[i].Fields = &fields
+		}
+	}
+	return out
 }
 
 // convertDomainBranchToGenerated converts a domain.Branch to the generated Branch type.
@@ -253,6 +439,16 @@ func convertDomainBranchToGenerated(b *domain.Branch) Branch {
 	}
 	if b.Description != "" {
 		branch.Description = &b.Description
+	}
+	// Merge metadata exists only after the active→merged transition. Copied
+	// rather than aliased so the response cannot mutate the registry's branch.
+	if b.MergedAt != nil {
+		mergedAt := *b.MergedAt
+		branch.MergedAt = &mergedAt
+	}
+	if b.MergeNote != "" {
+		mergeNote := b.MergeNote
+		branch.MergeNote = &mergeNote
 	}
 	return branch
 }

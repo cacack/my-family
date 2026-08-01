@@ -409,6 +409,160 @@ Both halves of that contrast are inputs to **#680**, which owns the general migr
 not decide that strategy; it records one concrete case where the event store needed real migration
 discipline and got a hand-written one.
 
+## Implementation Note — merge (#55, delivered)
+
+Merge shipped as `Handler.MergeBranch` (`internal/command/branch_merge_commands.go`) over a plan
+built by `BranchService.PlanMerge` (`internal/query/merge_conflicts.go`), exposed as
+`POST /branches/{id}/merge`. The invariant it upholds is BR-004, whose canonical text and
+verification live in [ARCHITECTURAL-INVARIANTS.md](../ARCHITECTURAL-INVARIANTS.md). Four things
+departed from §Merge as written and are recorded here.
+
+**The atomic guard is the branch's own version constraint, not a status CAS.** §Merge asks for an
+atomic compare-and-set on `active → merged`. The implementation gets that for free from a
+mechanism this ADR already introduced: `BranchMerged` is appended to the **branch's own stream**,
+at the version the request observed, before anything is written to `main`. Per-`(stream_id,
+branch_id)` optimistic versioning (BR-005, `UNIQUE(stream_id, branch_id, version)`) makes that
+append the CAS — two concurrent merges observe the same branch version, both attempt the append,
+and exactly one succeeds; the loser gets `repository.ErrConcurrencyConflict`, surfaced as
+`command.ErrMergeAlreadyClaimed` (HTTP `409 merge_already_claimed`), having written nothing to
+`main`. The registry row is written by the projection (`MarkMerged`), never by a direct store
+call, so a projection rebuild reconstructs the merge record — the same rule branch create and
+delete follow. A sequential retry against an already-`merged` branch is refused earlier still, by
+the status guard, as `409 branch_not_active`.
+
+**The claim and the replay are NOT one transaction — this is a real gap.** §Merge asks for the
+CAS, the replay, the reprojection, and the `BranchMerged` emission to run *in a single
+transaction*. They do not, because the codebase has no cross-store transaction facility:
+ADR-003's synchronous projections commit per-append, and the event store and read-model store are
+separate interfaces with no shared transaction handle. The failure mode is therefore real and
+observable: if a replay append or projection fails partway, the branch is already `merged` while
+`main` carries only some of the branch's entities. The merge does not retry or roll back. Two
+things bound the damage, neither of which closes it:
+
+- Replay issues **one `Append` per stream**, not per event, and the SQL backends wrap an `Append`
+  in a transaction — so the failure granularity is a whole entity, never a half-applied one.
+- The returned error names the stream that failed, and how many events *and* how many streams had
+  already reached `main` — each against its own total — so the resulting state is diagnosable
+  rather than silent.
+- It is a distinct sentinel (`command.ErrMergePartiallyApplied`, surfaced as
+  `500 merge_partially_applied`) rather than a generic failure, because it is the one merge outcome
+  a client must not retry: the branch is terminal, so a retry returns `409 branch_not_active`,
+  which is not evidence the merge completed. `GET /branches/{id}/compare` still works on a merged
+  branch and is the way to see what actually landed.
+
+Recovering from that state is manual today. **Resumable merge is tracked as follow-up work
+(#685)**, not treated as done.
+
+**The conflict verdict is also not re-checked before the write.** `PlanMerge` runs once and the
+replay trusts it; `replayStream` re-reads main's stream version rather than asserting the one
+planning observed, so a mainline edit landing in between is neither compared nor rejected — it is
+silently overridden. This is a second consequence of the same missing transaction, distinct from
+the partial-replay gap above, and is tracked as **#698**. Practical exposure is low on a
+single-instance deployment (ADR-004) but the failure mode is exactly what §Conflict definition
+exists to prevent, so it is recorded rather than assumed away.
+
+**Conflict detection, and why the create-vs-create scan is gated.** All three classes from
+§Conflict definition are detected, as a pure function (`classifyConflicts`) over the two event
+slices, keyed on each side's *final* asserted value per field so a branch that edits and reverts
+does not conflict. Structural link/unlink is compared as a synthetic field
+(`children[<person-id>]`), which lands it in the edit-vs-edit class rather than a fourth one.
+Edit-vs-edit and delete-vs-edit are scoped to the streams the branch touched, as the
+Implementation Notes above require. Create-vs-create **cannot** be: a colliding create on `main`
+is on a different stream by definition, so the only place to find it is `main`'s tail — exactly
+the full-tail scan those notes call out as the anti-pattern. The compromise is a **gate**: the
+tail read is issued only when the branch created at least one entity carrying a GEDCOM xref, since
+an xref is the only identity two independent creates can share. In v0.12 that gate never opens —
+xrefs are assigned only by GEDCOM import, and branch-scoped import is a stated non-goal of
+epic #54 — so the cost is not paid today, and the class is already implemented for the day it
+can be.
+A truncated scan (either side hitting the comparison cap) is not merged at all: the command
+refuses with `ErrBranchTooLargeToMerge` (`409 branch_too_large`) rather than promote half a branch
+against an incomplete conflict list.
+
+**Merge purges the branch's read-model overlay — at claim time, before the replay.**
+`projectBranchMerged` calls `PurgeBranch` immediately after `MarkMerged`, and the claim runs
+*before* any event reaches `main` (§the atomic guard, above). So the ordering is: claim → purge →
+replay, not "purge once the promotion is done". Spelled out because it changes what the
+partial-failure state looks like: if the replay then fails, the branch's work is absent from the
+branch overlay *and* from `main`'s read model, present only in the event log.
+
+That is survivable, and deliberately so. The log is the source of truth (ES-002), it is what
+`PlanMerge` reads, and it is therefore what any resumed merge (#685) will replay from — recovery
+never needed the overlay. Nor does the purge widen what a client can observe: a merged branch's
+`?branch=` reads already 404 the instant `Status` flips, so the rows it deletes were unreachable
+from the moment the claim landed.
+
+The rationale for purging at all is that the branch's state now lives on `main`, making the
+overlay a stale duplicate; the purge makes the API's existing "its isolated view no longer exists"
+answer true rather than merely enforced at the edge. Keeping it inside the projection (rather than
+as a step the merge command runs after a successful replay) is what keeps a projection *rebuild*
+hygienic: a rebuild reconstructs every branch's overlay from the log, and it is `BranchMerged`'s
+own projection that tears the merged ones back down. `GET /branches/{id}/compare` still works on a
+merged branch because it reads the event log, not the overlay. This extends BR-003's existing
+purge-on-`BranchDeleted` behavior to the other terminal status.
+
+**Per-entity resolutions do not compose with cross-entity references.** Resolutions are keyed by
+aggregate, but the branch's events reference each other *across* aggregates: `ChildLinkedToFamily`
+lives on the family's stream and names a person on another. Excluding a person — which a
+`main`-deleted conflict *forces*, since `main` is then the only offered resolution — therefore does
+not exclude the family event that links them, and the projection writes that row unconditionally
+(the branch-scoping work dropped the FK cascade that would once have caught it). Left alone, this
+returns a successful merge while `main` gains a family child pointing at a person it does not have.
+The merge refuses instead (`ErrMergeDanglingReference`, `409 merge_dangling_reference`), checked
+before the claim: a replayed link must name a person `main` already has or that the replay itself
+will create. Dropping the link silently was rejected as the same class of defect per-conflict
+review exists to prevent. Unlink events are not checked — removing a person `main` lacks is a no-op.
+
+**The claim is idempotent against its own interrupted attempt.** The claim's append is durable
+before the projection that flips the registry status, so a projection failure leaves a branch that
+is claimed in the log but still reads `active`. Because the CAS keys on the *stream version*, a
+retry trusting only the registry would observe the already-incremented version, append a second
+`BranchMerged`, and replay the whole branch onto `main` again. `claimMerge` therefore consults the
+log — the only place a half-completed claim is visible — before appending: an existing
+`BranchMerged` means the branch is claimed, so the command re-projects it to repair the registry
+and then refuses. Refusing rather than resuming is deliberate; from that state the replay's
+progress is unknown, and `GET /branches/{id}/compare` is how to see what landed.
+
+**Scan truncation is reported per side.** `branch_too_large` and `main_too_far_ahead` are distinct
+refusals because they have distinct causes and remedies. A branch bigger than the cap is a
+permanent property of that branch. A *mainline* tail bigger than the cap grows with unrelated
+activity since the fork and says nothing about branch size — a three-event branch can trip it — so
+reporting that as "your branch is too large" sends the user after a fix that does not exist.
+
+**Not every conflict accepts both resolutions.** §Conflict definition says a conflict "requires
+review", which implies a genuine choice; for two of the three classes the "branch wins" side of
+that choice cannot be honored, so the implementation refuses it rather than appearing to accept it:
+
+- **`delete_edit` where `main` is the deleter.** Replaying the branch's `*Updated` events onto
+  `main` cannot resurrect the entity — the `*Updated` projections skip an absent read-model row,
+  and no undelete event exists in the domain. Accepting `branch` would return a success with a
+  non-zero replayed-event count while `main` stayed deleted, i.e. exactly the "silently discard"
+  outcome this section exists to prevent.
+- **`create_create`.** The two sides are different streams by construction, so promoting the
+  branch's entity leaves `main`'s beside it — the duplicate the class exists to detect.
+
+Each conflict therefore carries the resolutions it can actually honor
+(`MergeConflict.SupportedResolutions`), a resolution outside that set is a `400`, and a review UI
+can offer only the meaningful choices. Resurrecting a `main`-deleted entity would need an undelete
+event; that is not in scope here.
+
+**Conflict detection compares whatever a branch can write.** The classifier folds each event into
+the net effect its side asserted, and the fold is keyed by event *shape*, not entity type:
+aggregate deletes by the `*Deleted` suffix, child links by the relationship they assert, person
+names per-name (`names[<name-id>]`), and everything else by its `Changes` map. The suffix rule
+alone is not sufficient — `NameUpdated` ends in "Updated" but carries its fields flat with no
+`Changes` map, so folding it that way read nothing and made two divergent renames look like
+agreement. Because a gap here is silent (no conflict reported, branch edit promoted over main's
+without review), the coupling is enforced by a test rather than by convention: every event type in
+`command.BranchAwareEventTypes` must be comparable, or be listed with a reason why it needs no
+comparison.
+
+**Partial merge stays deferred**, consistent with §Merge. The delivered API takes per-aggregate
+*resolutions* (`branch` or `main`), which lets a caller settle a conflict or exclude a whole
+entity, but there is no way to promote a subset of one aggregate's changes and there is no status
+that expresses a partially-merged branch — `merged` is terminal. Cherry-pick is tracked as
+follow-up work (#684).
+
 ## References
 
 - [ADR-001: Event Sourcing with CQRS-lite](./001-event-sourcing-cqrs.md)

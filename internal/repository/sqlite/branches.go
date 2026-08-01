@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -28,7 +29,8 @@ func NewBranchStore(db *sql.DB) (*BranchStore, error) {
 	return store, nil
 }
 
-// createTables creates the branches table if it doesn't exist.
+// createTables creates the branches table if it doesn't exist and brings an
+// existing one up to the current shape.
 func (s *BranchStore) createTables() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS branches (
@@ -37,19 +39,36 @@ func (s *BranchStore) createTables() error {
 			description TEXT,
 			base_position INTEGER NOT NULL,
 			status TEXT NOT NULL,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			merged_at TEXT,
+			merge_note TEXT
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_branches_created_at ON branches(created_at DESC);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	s.migrateMergeColumns()
+	return nil
+}
+
+// migrateMergeColumns adds the merge-record columns (issue #55) to a branches
+// table created before they existed, so a pre-#55 database gains them on open.
+// SQLite lacks ADD COLUMN IF NOT EXISTS, so the duplicate-column error on an
+// already-migrated database is intentionally swallowed — the same approach as
+// EventStore.migrateBranchID. A plain ADD COLUMN is all that is needed here;
+// no table rebuild.
+func (s *BranchStore) migrateMergeColumns() {
+	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN merged_at TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN merge_note TEXT`)
 }
 
 // Create stores a new branch.
 func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO branches (id, name, description, base_position, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		branch.ID.String(),
 		branch.Name,
@@ -57,6 +76,8 @@ func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
 		branch.BasePosition,
 		string(branch.Status),
 		formatTimestamp(branch.CreatedAt),
+		nullableTimestamp(branch.MergedAt),
+		nullableString(branch.MergeNote),
 	)
 	if err != nil {
 		return fmt.Errorf("insert branch: %w", err)
@@ -67,14 +88,16 @@ func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
 // Upsert stores a branch, inserting or updating on ID conflict.
 func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO branches (id, name, description, base_position, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name = excluded.name,
 			description = excluded.description,
 			base_position = excluded.base_position,
 			status = excluded.status,
-			created_at = excluded.created_at
+			created_at = excluded.created_at,
+			merged_at = excluded.merged_at,
+			merge_note = excluded.merge_note
 	`,
 		branch.ID.String(),
 		branch.Name,
@@ -82,6 +105,8 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 		branch.BasePosition,
 		string(branch.Status),
 		formatTimestamp(branch.CreatedAt),
+		nullableTimestamp(branch.MergedAt),
+		nullableString(branch.MergeNote),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert branch: %w", err)
@@ -95,13 +120,15 @@ func (s *BranchStore) Get(ctx context.Context, id uuid.UUID) (*domain.Branch, er
 		idStr, name, status, createdAtStr string
 		description                       sql.NullString
 		basePosition                      int64
+		mergedAtStr, mergeNote            sql.NullString
 	)
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, description, base_position, status, created_at
+		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note
 		FROM branches
 		WHERE id = ?
-	`, id.String()).Scan(&idStr, &name, &description, &basePosition, &status, &createdAtStr)
+	`, id.String()).Scan(&idStr, &name, &description, &basePosition, &status, &createdAtStr,
+		&mergedAtStr, &mergeNote)
 
 	if err == sql.ErrNoRows {
 		return nil, repository.ErrBranchNotFound
@@ -120,12 +147,19 @@ func (s *BranchStore) Get(ctx context.Context, id uuid.UUID) (*domain.Branch, er
 		return nil, fmt.Errorf("parse branch created_at %q: %w", createdAtStr, err)
 	}
 
+	mergedAt, err := parseNullableTimestamp(mergedAtStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse branch merged_at %q: %w", mergedAtStr.String, err)
+	}
+
 	branch := &domain.Branch{
 		ID:           parsedID,
 		Name:         name,
 		BasePosition: basePosition,
 		Status:       domain.BranchStatus(status),
 		CreatedAt:    createdAt,
+		MergedAt:     mergedAt,
+		MergeNote:    mergeNote.String,
 	}
 
 	if description.Valid {
@@ -138,7 +172,7 @@ func (s *BranchStore) Get(ctx context.Context, id uuid.UUID) (*domain.Branch, er
 // List retrieves all branches ordered by created_at DESC.
 func (s *BranchStore) List(ctx context.Context) ([]*domain.Branch, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, description, base_position, status, created_at
+		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note
 		FROM branches
 		ORDER BY created_at DESC
 	`)
@@ -153,9 +187,11 @@ func (s *BranchStore) List(ctx context.Context) ([]*domain.Branch, error) {
 			idStr, name, status, createdAtStr string
 			description                       sql.NullString
 			basePosition                      int64
+			mergedAtStr, mergeNote            sql.NullString
 		)
 
-		if err := rows.Scan(&idStr, &name, &description, &basePosition, &status, &createdAtStr); err != nil {
+		if err := rows.Scan(&idStr, &name, &description, &basePosition, &status, &createdAtStr,
+			&mergedAtStr, &mergeNote); err != nil {
 			return nil, fmt.Errorf("scan branch: %w", err)
 		}
 
@@ -169,12 +205,19 @@ func (s *BranchStore) List(ctx context.Context) ([]*domain.Branch, error) {
 			return nil, fmt.Errorf("parse branch created_at %q: %w", createdAtStr, err)
 		}
 
+		mergedAt, err := parseNullableTimestamp(mergedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse branch merged_at %q: %w", mergedAtStr.String, err)
+		}
+
 		branch := &domain.Branch{
 			ID:           parsedID,
 			Name:         name,
 			BasePosition: basePosition,
 			Status:       domain.BranchStatus(status),
 			CreatedAt:    createdAt,
+			MergedAt:     mergedAt,
+			MergeNote:    mergeNote.String,
 		}
 
 		if description.Valid {
@@ -224,6 +267,27 @@ func (s *BranchStore) UpdateStatus(ctx context.Context, id uuid.UUID, status dom
 	`, string(status), id.String())
 	if err != nil {
 		return fmt.Errorf("update branch status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return repository.ErrBranchNotFound
+	}
+
+	return nil
+}
+
+// MarkMerged records the merge: status, timestamp and note in one statement.
+func (s *BranchStore) MarkMerged(ctx context.Context, id uuid.UUID, mergedAt time.Time, note string) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE branches SET status = ?, merged_at = ?, merge_note = ? WHERE id = ?
+	`, string(domain.BranchStatusMerged), formatTimestamp(mergedAt), nullableString(note), id.String())
+	if err != nil {
+		return fmt.Errorf("mark branch merged: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()

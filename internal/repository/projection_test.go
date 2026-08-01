@@ -4636,12 +4636,23 @@ func TestProjector_BranchLifecycleRegistry(t *testing.T) {
 		t.Errorf("status = %s, want active", got.Status)
 	}
 
-	// BranchMerged -> status merged.
-	if err := projector.Project(ctx, domain.NewBranchMerged(branch.ID, 42, 100), 2, domain.MainBranchID); err != nil {
+	// BranchMerged -> status merged, with the merge record.
+	merged := domain.NewBranchMerged(branch.ID, 42, 100, "sources reconciled")
+	if err := projector.Project(ctx, merged, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project BranchMerged failed: %v", err)
 	}
-	if got, _ = branchStore.Get(ctx, branch.ID); got.Status != domain.BranchStatusMerged {
+	got, err = branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("registry Get after merge failed: %v", err)
+	}
+	if got.Status != domain.BranchStatusMerged {
 		t.Errorf("status = %s, want merged", got.Status)
+	}
+	if got.MergedAt == nil || !got.MergedAt.Equal(merged.OccurredAt()) {
+		t.Errorf("MergedAt = %v, want the event timestamp %v", got.MergedAt, merged.OccurredAt())
+	}
+	if got.MergeNote != "sources reconciled" {
+		t.Errorf("MergeNote = %q, want %q", got.MergeNote, "sources reconciled")
 	}
 
 	// BranchDeleted -> status archived.
@@ -4651,6 +4662,74 @@ func TestProjector_BranchLifecycleRegistry(t *testing.T) {
 	if got, _ = branchStore.Get(ctx, branch.ID); got.Status != domain.BranchStatusArchived {
 		t.Errorf("status = %s, want archived", got.Status)
 	}
+}
+
+// TestProjector_BranchMergedPurgesOverlay verifies the merge projection writes
+// the merge record and drops the branch's copy-on-write overlay rows, leaving
+// main untouched — and that replaying the same event is a no-op (issue #55).
+func TestProjector_BranchMergedPurgesOverlay(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	branchStore := memory.NewBranchStore()
+	projector := repository.NewProjector(readStore, branchStore)
+	ctx := context.Background()
+
+	branch, err := domain.NewBranch("experiment", "", 0)
+	if err != nil {
+		t.Fatalf("NewBranch failed: %v", err)
+	}
+	branchID := domain.BranchID(branch.ID)
+	if err := projector.Project(ctx, domain.NewBranchCreated(branch), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project BranchCreated failed: %v", err)
+	}
+
+	// One person on main, one only on the branch.
+	mainPerson := domain.NewPerson("Main", "Person")
+	if err := projector.Project(ctx, domain.NewPersonCreated(mainPerson), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project main person failed: %v", err)
+	}
+	branchPerson := domain.NewPerson("Branch", "Person")
+	if err := projector.Project(ctx, domain.NewPersonCreated(branchPerson), 1, branchID); err != nil {
+		t.Fatalf("Project branch person failed: %v", err)
+	}
+	if got, _ := readStore.GetPerson(ctx, branchID, branchPerson.ID); got == nil {
+		t.Fatal("branch overlay row missing before the merge")
+	}
+
+	merged := domain.NewBranchMerged(branch.ID, 0, 2, "folded into main")
+	if err := projector.Project(ctx, merged, 2, domain.MainBranchID); err != nil {
+		t.Fatalf("Project BranchMerged failed: %v", err)
+	}
+
+	assertMergedAndPurged := func(stage string) {
+		t.Helper()
+		got, err := branchStore.Get(ctx, branch.ID)
+		if err != nil {
+			t.Fatalf("%s: registry Get failed: %v", stage, err)
+		}
+		if got.Status != domain.BranchStatusMerged {
+			t.Errorf("%s: status = %s, want merged", stage, got.Status)
+		}
+		if got.MergedAt == nil || !got.MergedAt.Equal(merged.OccurredAt()) {
+			t.Errorf("%s: MergedAt = %v, want %v", stage, got.MergedAt, merged.OccurredAt())
+		}
+		if got.MergeNote != "folded into main" {
+			t.Errorf("%s: MergeNote = %q, want %q", stage, got.MergeNote, "folded into main")
+		}
+		if row, _ := readStore.GetPerson(ctx, branchID, branchPerson.ID); row != nil {
+			t.Errorf("%s: branch overlay row survived the merge", stage)
+		}
+		if row, _ := readStore.GetPerson(ctx, domain.MainBranchID, mainPerson.ID); row == nil {
+			t.Errorf("%s: merge purged a mainline row", stage)
+		}
+	}
+
+	assertMergedAndPurged("after merge")
+
+	// Replay (projection rebuild) must reach the same state, not error.
+	if err := projector.Project(ctx, merged, 2, domain.MainBranchID); err != nil {
+		t.Fatalf("replaying BranchMerged failed: %v", err)
+	}
+	assertMergedAndPurged("after replay")
 }
 
 // TestProjector_BranchLifecycleNilStore verifies branch-lifecycle events no-op
@@ -4663,7 +4742,7 @@ func TestProjector_BranchLifecycleNilStore(t *testing.T) {
 	if err := projector.Project(ctx, domain.NewBranchCreated(branch), 1, domain.MainBranchID); err != nil {
 		t.Errorf("BranchCreated with nil store should no-op, got %v", err)
 	}
-	if err := projector.Project(ctx, domain.NewBranchMerged(branch.ID, 0, 1), 2, domain.MainBranchID); err != nil {
+	if err := projector.Project(ctx, domain.NewBranchMerged(branch.ID, 0, 1, ""), 2, domain.MainBranchID); err != nil {
 		t.Errorf("BranchMerged with nil store should no-op, got %v", err)
 	}
 	if err := projector.Project(ctx, domain.NewBranchDeleted(branch.ID), 3, domain.MainBranchID); err != nil {

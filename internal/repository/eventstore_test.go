@@ -565,7 +565,7 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 		},
 		{
 			name:      "BranchMerged",
-			event:     domain.NewBranchMerged(uuid.New(), 42, 99),
+			event:     domain.NewBranchMerged(uuid.New(), 42, 99, ""),
 			eventType: "BranchMerged",
 			validate: func(t *testing.T, decoded domain.Event) {
 				e, ok := decoded.(domain.BranchMerged)

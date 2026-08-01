@@ -37,6 +37,14 @@ Completed features in my-family genealogy software.
 - **Research Logs** - Document research activity including repository searched, search description, and outcome (found/not found/inconclusive) for negative evidence tracking
 - **Proof Summaries** - Attach written proof arguments for non-obvious conclusions, linking supporting evidence analyses
 
+## Research Branches
+
+- **Research Branches** - Explore an unproven hypothesis on an isolated branch off the main tree; edits on a branch stay invisible to the mainline until you promote them
+- **Branch Comparison** - See exactly what a branch changed, alongside what the mainline changed underneath it since the branch forked
+- **Conflict Detection** - Classifies genuine divergence (both sides editing the same field, one side deleting what the other edited, colliding creates) and distinguishes it from harmless overlap where the two sides agree
+- **Merge with Review** - Promote a branch back to the mainline with a per-entity decision on every conflict and a merge note explaining why. The original research keeps its own timestamps in the audit trail, and nothing is ever rewritten
+- **Merge History** - A merged branch records when it was merged and the reasoning behind it
+
 ## Data Validation & Cleanup
 
 - **Duplicate Detection** - Find potential duplicate persons with configurable confidence thresholds

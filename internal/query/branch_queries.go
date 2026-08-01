@@ -72,10 +72,15 @@ type BranchComparisonResult struct {
 
 	// OverlappingStreamIDs are the streams that both the branch and main changed.
 	// This is a HINT — entities worth a human's attention because both lines of
-	// research moved them — and explicitly NOT conflict detection. Classifying
-	// edit-vs-edit, delete-vs-edit, and create-vs-create divergence is the merge
-	// review's job (issue #55); nothing here should be read as a conflict verdict.
+	// research moved them — and explicitly NOT a conflict verdict: two sides can
+	// move the same entity and still agree. Conflicts is the verdict; a stream
+	// can appear here and be perfectly mergeable.
 	OverlappingStreamIDs []uuid.UUID `json:"overlapping_stream_ids"`
+
+	// Conflicts are the aggregates on which the two sides made incompatible
+	// changes, classified per ADR-005 §Conflict definition. Empty means the
+	// branch merges cleanly.
+	Conflicts []MergeConflict `json:"conflicts"`
 }
 
 // CompareBranch returns a structured diff of a branch against main.
@@ -91,6 +96,67 @@ type BranchComparisonResult struct {
 // will normally include main's replayed copies of the branch's own changes,
 // which is exactly what the merge did.
 func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (*BranchComparisonResult, error) {
+	diff, err := s.loadBranchDiff(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+
+	branchChanges, err := s.historyService.transformStoredEvents(ctx, diff.branchEvents)
+	if err != nil {
+		return nil, fmt.Errorf("transform branch events: %w", err)
+	}
+
+	mainChanges, err := s.historyService.transformStoredEvents(ctx, diff.mainEvents)
+	if err != nil {
+		return nil, fmt.Errorf("transform main events: %w", err)
+	}
+
+	conflicts, tailTruncated, err := s.detectConflicts(ctx, diff)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BranchComparisonResult{
+		Branch:               diff.branch,
+		BasePosition:         diff.branch.BasePosition,
+		BranchChanges:        branchChanges,
+		MainChanges:          mainChanges,
+		BranchChangeCount:    len(branchChanges),
+		MainChangeCount:      len(mainChanges),
+		HasMore:              diff.branchTruncated || diff.mainTruncated || tailTruncated,
+		OverlappingStreamIDs: overlappingStreamIDs(diff.branchEvents, diff.mainEvents),
+		Conflicts:            conflicts,
+	}, nil
+}
+
+// branchDiffSources is the raw material of both branch-vs-main answers: the
+// review diff (CompareBranch) and the merge plan (PlanMerge). Both need the
+// same two event sets read the same way, so they read them once, here, rather
+// than each issuing its own pair of store calls that could drift apart.
+type branchDiffSources struct {
+	branch *domain.Branch
+
+	// branchEvents are the branch's own mutation events after its base
+	// position, in ascending position order, with the branch-lifecycle events
+	// stripped. This is also exactly the merge's replay set (ADR-005 §Merge).
+	branchEvents []repository.StoredEvent
+
+	// mainEvents are main's events after that same position, restricted to the
+	// streams branchEvents touched.
+	mainEvents []repository.StoredEvent
+
+	// branchTruncated reports that the BRANCH's own scan hit
+	// maxComparisonEvents. mainTruncated reports the same for main's tail.
+	// They are kept apart because they mean different things to a caller: a
+	// branch too big to scan is a permanent property of that branch, while a
+	// main tail too long to scan grows with unrelated mainline activity and
+	// says nothing about the branch's size.
+	branchTruncated bool
+	mainTruncated   bool
+}
+
+// loadBranchDiff loads a branch and both sides of its divergence from main.
+func (s *BranchService) loadBranchDiff(ctx context.Context, branchID uuid.UUID) (*branchDiffSources, error) {
 	branch, err := s.branchStore.Get(ctx, branchID)
 	if err != nil {
 		return nil, fmt.Errorf("get branch: %w", err)
@@ -111,27 +177,13 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 	if err != nil {
 		return nil, err
 	}
-	mainEvents := withoutBranchLifecycleEvents(rawMainEvents)
 
-	branchChanges, err := s.historyService.transformStoredEvents(ctx, branchEvents)
-	if err != nil {
-		return nil, fmt.Errorf("transform branch events: %w", err)
-	}
-
-	mainChanges, err := s.historyService.transformStoredEvents(ctx, mainEvents)
-	if err != nil {
-		return nil, fmt.Errorf("transform main events: %w", err)
-	}
-
-	return &BranchComparisonResult{
-		Branch:               branch,
-		BasePosition:         branch.BasePosition,
-		BranchChanges:        branchChanges,
-		MainChanges:          mainChanges,
-		BranchChangeCount:    len(branchChanges),
-		MainChangeCount:      len(mainChanges),
-		HasMore:              branchHasMore || mainHasMore,
-		OverlappingStreamIDs: overlappingStreamIDs(branchEvents, mainEvents),
+	return &branchDiffSources{
+		branch:          branch,
+		branchEvents:    branchEvents,
+		mainEvents:      withoutBranchLifecycleEvents(rawMainEvents),
+		branchTruncated: branchHasMore,
+		mainTruncated:   mainHasMore,
 	}, nil
 }
 
