@@ -187,7 +187,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Check per-package coverage thresholds
-        uses: vladopajic/go-test-coverage@a93b868a4cbcbf18dc3781650fad241f0020e609 # v2
+        uses: vladopajic/go-test-coverage@5f3508324fc185e82048a2861f8bdd3d83db133b # v2
         with:
           config: .testcoverage.yml
 
