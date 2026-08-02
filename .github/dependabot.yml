@@ -37,13 +37,16 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    # Ship minor/patch action bumps as one PR. Individual PRs break CodeQL,
+    # which requires init/autobuild/analyze/upload-sarif on a matching version,
+    # and leave later PRs stale once the first one merges. Majors stay separate.
     groups:
-      # The github/codeql-action sub-actions (init/autobuild/analyze) share one
-      # release; bumping them in separate PRs skews their versions and breaks
-      # CodeQL ("config for X but running Y"). Group so they bump together.
-      codeql-action:
+      github-actions:
         patterns:
-          - "github/codeql-action*"
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # npm (Svelte frontend)
   - package-ecosystem: "npm"
