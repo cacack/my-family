@@ -25,6 +25,18 @@ else
   exit 1
 fi
 
+# --- Embedded Frontend Check ---
+# internal/web/embed.go carries `//go:embed all:dist`, resolved at package-load
+# time. With internal/web/dist empty, the `go vet ./...` and `go test ./...`
+# steps below fail with only a bare go:embed error. A fresh clone or git
+# worktree has nothing staged there yet.
+if [ -z "$(ls -A internal/web/dist 2>/dev/null)" ]; then
+  echo "Error: internal/web/dist is empty"
+  echo "  internal/web/embed.go embeds it, so go commands cannot load the package."
+  echo "  Run: make embed-assets"
+  exit 1
+fi
+
 # --- Format Check ---
 echo "→ Checking code formatting..."
 UNFORMATTED=$(gofmt -l . | grep -v '^vendor/' || true)
