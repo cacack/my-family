@@ -59,7 +59,9 @@ coverage.out
 # Generated code (regenerate with go generate)
 internal/api/openapi_gen.go
 
-# Claude Code prompts (ephemeral, not committed)
+# Claude Code (ephemeral or machine-local, not committed)
 /prompts/
 /.prompts/
+/.claude/worktrees/
+/.claude/settings.local.json
 coverage.html
