@@ -2,48 +2,18 @@ name: Dependabot Auto-Merge
 
 on: pull_request_target
 
+# The logic lives in cacack/workflows so a fix lands once for every repo that
+# calls it, instead of being copy-pasted and drifting. Pinned to a tag, so
+# changes there are opt-in here.
+#
+# `secrets: inherit` passes this repo's BOT_APP_ID / BOT_PRIVATE_KEY (the
+# my-family-steward App) through to the called workflow. The App holds the
+# `workflows` permission that GITHUB_TOKEN cannot be granted, which is what
+# lets auto-merge be enabled on PRs that edit .github/workflows/*.
 permissions:
   contents: read
 
 jobs:
   automerge:
-    runs-on: ubuntu-latest
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            codeload.github.com:443
-            objects.githubusercontent.com:443
-            release-assets.githubusercontent.com:443
-            raw.githubusercontent.com:443
-            *.actions.githubusercontent.com:443
-            *.blob.core.windows.net:443
-
-      - name: Fetch Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v2
-        with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-          skip-commit-verification: true
-
-      - name: Auto-merge minor and patch updates
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr merge --auto --merge "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Approve PR
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr review --approve "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: cacack/workflows/.github/workflows/dependabot-automerge.yml@v1
+    secrets: inherit
