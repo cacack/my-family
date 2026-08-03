@@ -7,10 +7,11 @@ on: pull_request_target
 # like every other action here, so changes there are opt-in and Dependabot
 # does the bumping.
 #
-# `secrets: inherit` passes this repo's BOT_APP_ID / BOT_PRIVATE_KEY (the
-# my-family-steward App) through to the called workflow. The App holds the
-# `workflows` permission that GITHUB_TOKEN cannot be granted, which is what
-# lets auto-merge be enabled on PRs that edit .github/workflows/*.
+# The secrets are mapped one by one rather than with `secrets: inherit`, which
+# would hand the called workflow every secret this repo holds. These two are
+# the my-family-steward App, whose `workflows` permission GITHUB_TOKEN cannot
+# be granted — that is what lets auto-merge be enabled on PRs that edit
+# .github/workflows/*.
 #
 # v2 blocks harden-runner egress by default, so this job matches the `block`
 # posture every other workflow here uses. v1 audited instead, which is why
@@ -21,4 +22,6 @@ permissions:
 jobs:
   automerge:
     uses: cacack/workflows/.github/workflows/dependabot-automerge.yml@42f4a8b03bbeb4cda758290b3c8cdbb88ed6d33e # v2.0.0
-    secrets: inherit
+    secrets:
+      BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
+      BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
