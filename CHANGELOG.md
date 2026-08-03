@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/cacack/my-family/compare/v0.11.0...v0.12.0) (2026-08-03)
+
+
+### Features
+
+* **branches:** merge research branches with review ([44626bd](https://github.com/cacack/my-family/commit/44626bd01ce58db9d5bf425eb9db9729aa531348))
+* **branches:** research branch lifecycle — create, isolate, compare, archive ([ada623e](https://github.com/cacack/my-family/commit/ada623e8665e886052025ac5162fc079e6ee9d17))
+* **repository:** branch-aware read model & projections ([#669](https://github.com/cacack/my-family/issues/669) slice) ([5cbc84d](https://github.com/cacack/my-family/commit/5cbc84d398d49a1023ca326e4ddc1c6eb122b47f))
+
+
+### Bug Fixes
+
+* **branches:** tighten a merge-review assertion and an ADR line ([0cfe715](https://github.com/cacack/my-family/commit/0cfe7152825591a69cd718ace44d063a36de68b6))
+* **command:** create family on a new stream, not a phantom version 0 ([4cb0ba5](https://github.com/cacack/my-family/commit/4cb0ba50beb3ee89fa45def037aa4a655f1988ad))
+
 ## [0.11.0](https://github.com/cacack/my-family/compare/v0.10.0...v0.11.0) (2026-07-19)
 
 
