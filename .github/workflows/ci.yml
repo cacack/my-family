@@ -390,9 +390,11 @@ jobs:
           sarif_file: govulncheck-results.sarif
           category: govulncheck
 
-      # Supply chain: Node.js dependency vulnerabilities
+      # Supply chain: Node.js dependency vulnerabilities. The moderate threshold
+      # and any documented, expiring exceptions live in web/audit-ci.jsonc, so
+      # this job and the nightly one cannot drift apart.
       - name: npm audit
-        run: cd web && npm audit --audit-level=moderate
+        run: cd web && npm run audit:ci
 
       # SAST: Go security issues
       - name: Go security scan (gosec)
