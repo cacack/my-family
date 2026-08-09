@@ -20,10 +20,17 @@ help: ## Display this help message
 build: ## Build all Go packages
 	go build ./...
 
-binary: frontend ## Build binary with embedded frontend
+# internal/web/embed.go carries `//go:embed all:dist`, which is resolved when the
+# package is loaded, not when a binary is built. An empty internal/web/dist
+# therefore fails `go list ./...`, `go vet`, and `go test` — not just this
+# target. A fresh clone or git worktree has nothing staged there, which is why
+# `setup` runs this too.
+embed-assets: frontend ## Stage the built frontend into internal/web/dist for go:embed
 	mkdir -p internal/web/dist
 	rm -rf internal/web/dist/*
 	cp -r web/build/* internal/web/dist/
+
+binary: embed-assets ## Build binary with embedded frontend
 	go build -o myfamily ./cmd/myfamily
 
 frontend: ## Build frontend only
@@ -126,7 +133,7 @@ check-coverage: ## Check coverage thresholds (same as CI)
 	fi; \
 	$$GO_TEST_COVERAGE --config=.testcoverage.yml --profile=coverage.out
 
-setup: deps ## Set up development environment
+setup: deps embed-assets ## Set up development environment
 	@echo "Installing development tools..."
 	go install github.com/vladopajic/go-test-coverage/v2@$(GO_TEST_COVERAGE_VERSION)
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
