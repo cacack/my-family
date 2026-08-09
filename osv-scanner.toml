@@ -22,6 +22,18 @@ id = "GO-2026-4887"
 # path, unreachable from this codebase.
 
 [[IgnoredVulns]]
+id = "GHSA-29g2-3rmr-qm68"
+ignoreUntil = 2026-11-09
+# SvelteKit ReDoS in content negotiation, triggered by an `Accept` header sent
+# to the SvelteKit server. Same reachability story as GHSA-pxg6-pf52-xh8x
+# below: this project ships the app as a statically built SPA embedded in the
+# Go binary, so the SvelteKit server and its request handling never execute.
+# Unpatched upstream — the advisory covers `<=2.70.2` and that is the latest
+# published release, so there is no version to move to. Mirrored in
+# web/audit-ci.jsonc for the npm audit gate. Drop both entries once a fixed
+# @sveltejs/kit ships, which Dependabot tracks.
+
+[[IgnoredVulns]]
 id = "GHSA-pxg6-pf52-xh8x"
 # `cookie` <0.7.0 accepts out-of-bounds characters. Pulled transitively
 # via `@sveltejs/kit` server runtime. This project ships the SvelteKit

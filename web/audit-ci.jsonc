@@ -1,0 +1,41 @@
+// npm dependency vulnerability gate for CI, run via `npm run audit:ci`.
+//
+// This replaces a bare `npm audit --audit-level=moderate`, which can only pass
+// or fail wholesale. When an advisory has no published fix, the choice there is
+// to lower the threshold for everything or leave the build permanently red.
+// This file keeps the moderate bar for every advisory and excepts named ones
+// with a written reason and an expiry date.
+//
+// Transitive advisories that *do* have fixes are handled with `overrides` in
+// package.json, not here. Reach for an allowlist entry only when no published
+// version resolves the finding.
+//
+// Companion to ../osv-scanner.toml, which does the same job for OSV-Scanner and
+// the OSSF Scorecard Vulnerabilities check. Keep an exception in both if it
+// applies to both.
+{
+  // Fail on moderate or higher, matching the threshold this gate replaced.
+  "moderate": true,
+
+  // Review quarterly, in step with osv-scanner.toml. Remove entries as soon as
+  // upstreams publish fixes on the versions we actually resolve to.
+  "allowlist": [
+    {
+      "GHSA-29g2-3rmr-qm68": {
+        "active": true,
+        // SvelteKit ReDoS (O(n^2)) in content negotiation, reachable only by
+        // sending an `Accept` header to the SvelteKit *server*. This project
+        // builds the app as a static SPA that is embedded in the Go binary and
+        // served by Go, so no SvelteKit server ever runs — the same
+        // reachability argument osv-scanner.toml records for GHSA-pxg6-pf52-xh8x.
+        //
+        // No fix exists to take: the advisory covers `<=2.70.2` and 2.70.2 is
+        // the latest published release. Every other package the audit flagged
+        // through @sveltejs/kit is resolved by overrides; this one cannot be.
+        // Drop this entry when a fixed SvelteKit ships, which Dependabot tracks.
+        "notes": "Unpatched upstream (<=2.70.2 is latest). SvelteKit server never runs: app ships as a static SPA embedded in the Go binary. Re-check when a fixed release lands.",
+        "expiry": "9 November 2026"
+      }
+    }
+  ]
+}
