@@ -23,6 +23,7 @@ id = "GO-2026-4887"
 
 [[IgnoredVulns]]
 id = "GHSA-29g2-3rmr-qm68"
+ignoreUntil = 2026-11-09
 # SvelteKit ReDoS in content negotiation, triggered by an `Accept` header sent
 # to the SvelteKit server. Same reachability story as GHSA-pxg6-pf52-xh8x
 # below: this project ships the app as a statically built SPA embedded in the
