@@ -12,6 +12,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import {
 		formatFactType,
 		subjectRoute,
@@ -228,6 +229,7 @@
 {/snippet}
 
 <div class="mx-auto max-w-screen-xl p-6">
+	<MainlineNotice surface="Evidence Analysis" />
 	<header class="mb-6">
 		<div>
 			<h1 class="m-0 text-2xl text-slate-800">Evidence Analysis</h1>

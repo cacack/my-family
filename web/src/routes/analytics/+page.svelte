@@ -3,6 +3,7 @@
 	import QualityScore from '$lib/components/QualityScore.svelte';
 	import QualityChart from '$lib/components/QualityChart.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
 	interface PersonWithScore extends Person {
 		qualityScore: number;
@@ -208,6 +209,7 @@
 </svelte:head>
 
 <div class="analytics-page">
+	<MainlineNotice surface="Data Quality" />
 	<header class="page-header">
 		<h1>Data Quality</h1>
 	</header>

@@ -15,6 +15,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -26,7 +27,15 @@
 	let historyCount: number | null = $state(null);
 	let mediaCount: number | null = $state(null);
 
-	// Brick wall state
+	// Brick wall state.
+	//
+	// Every other write on this page goes through a branch-scoped operation, but
+	// `PUT`/`DELETE /persons/{id}/brick-wall` declare no `branch` parameter, so
+	// they would land on the mainline while the banner promises the opposite.
+	// The controls are therefore withdrawn on a branch until #676 scopes them.
+	const brickWallOnMainlineOnly = $derived(activeBranch.id !== null);
+	const BRICK_WALL_MAINLINE_ONLY =
+		'Brick walls are recorded on the mainline only, so they cannot be changed while a research branch is active.';
 	let showBrickWallForm = $state(false);
 	let brickWallNote = $state('');
 	let brickWallSaving = $state(false);
@@ -106,6 +115,7 @@
 	}
 
 	async function markBrickWall() {
+		if (brickWallOnMainlineOnly) return;
 		if (!person || !brickWallNote.trim()) return;
 		brickWallSaving = true;
 		try {
@@ -121,6 +131,7 @@
 	}
 
 	async function resolveBrickWall() {
+		if (brickWallOnMainlineOnly) return;
 		if (!person) return;
 		brickWallSaving = true;
 		try {
@@ -421,13 +432,17 @@
 								{/if}
 							</div>
 							<p class="brick-wall-note">{person.brick_wall_note}</p>
-							<Button
-								variant="warning"
-								onclick={resolveBrickWall}
-								disabled={brickWallSaving}
-							>
-								{brickWallSaving ? 'Resolving...' : 'Resolve Brick Wall'}
-							</Button>
+							{#if brickWallOnMainlineOnly}
+								<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
+							{:else}
+								<Button
+									variant="warning"
+									onclick={resolveBrickWall}
+									disabled={brickWallSaving}
+								>
+									{brickWallSaving ? 'Resolving...' : 'Resolve Brick Wall'}
+								</Button>
+							{/if}
 						</div>
 					{:else if person.brick_wall_resolved_at}
 						<!-- Resolved brick wall -->
@@ -445,6 +460,8 @@
 								<p class="brick-wall-note">{person.brick_wall_note}</p>
 							{/if}
 						</div>
+					{:else if brickWallOnMainlineOnly}
+						<p class="brick-wall-mainline-only" role="note">{BRICK_WALL_MAINLINE_ONLY}</p>
 					{:else}
 						<!-- No brick wall — show Mark button -->
 						{#if showBrickWallForm}
@@ -959,6 +976,14 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
 		color: #475569;
+		line-height: 1.5;
+	}
+
+	.brick-wall-mainline-only {
+		margin: 0;
+		font-size: 0.8125rem;
+		font-style: italic;
+		color: #64748b;
 		line-height: 1.5;
 	}
 

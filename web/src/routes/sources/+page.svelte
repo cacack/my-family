@@ -2,6 +2,7 @@
 	import { api, type Source } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import SourceCard from '$lib/components/SourceCard.svelte';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
 	let sources: Source[] = $state([]);
 	let total = $state(0);
@@ -153,6 +154,7 @@
 </svelte:head>
 
 <div class="sources-page">
+	<MainlineNotice surface="Sources" />
 	<header class="page-header">
 		<h1>Sources</h1>
 		<div class="controls">

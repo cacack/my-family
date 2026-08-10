@@ -17,6 +17,7 @@ A genealogy platform designed for research rigor and data ownership.
 - **Flexible date handling** - Supports exact, approximate, ranges, and "before/after"
 - **Historical calendars** - Parses, displays, and round-trips Julian, Hebrew, and French Republican dates, with optional Gregorian conversion for comparison
 - **Family relationships** - Biological, adopted, step, and foster qualifiers
+- **Research branches** - Explore an unproven hypothesis in isolation, then compare it against the mainline before promoting it (covers people, families, and pedigrees)
 - **Geographic heat map** - Interactive world map showing family locations with zoom/pan
 - **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation
 - **Full-text search** - Fast fuzzy matching with keyboard-navigable results
@@ -87,6 +88,13 @@ Environment variables:
 - `POST /api/v1/families/{id}/children` - Add child to family
 - `DELETE /api/v1/families/{id}/children/{personId}` - Remove child
 - `GET /api/v1/pedigree/{id}` - Get pedigree chart data
+- `GET /api/v1/branches` - List research branches
+- `POST /api/v1/branches` - Create a research branch
+- `GET /api/v1/branches/{id}` - Get a branch
+- `DELETE /api/v1/branches/{id}` - Discard (archive) a branch; its events are retained
+- `GET /api/v1/branches/{id}/compare` - Compare a branch against the mainline, with the conflict verdict
+- `POST /api/v1/branches/{id}/merge` - Merge a branch into the mainline
+- Person, family, and pedigree reads and writes accept an optional `?branch={id}` scope; omit it for the mainline
 - `GET /api/v1/map/locations` - Get geographic locations for map
 - `GET /api/v1/search?q=...` - Search persons
 - `POST /api/v1/gedcom/import` - Import GEDCOM file

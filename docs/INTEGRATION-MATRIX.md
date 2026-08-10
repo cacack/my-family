@@ -183,7 +183,7 @@ Notes on partial rows:
 
 - **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`).
 - **Snapshot**: bypasses the event-sourced pipeline — `SnapshotService` writes directly to `SnapshotStore` (implemented in all three backends, hence ReadModel ✅). A `SnapshotCreated` event type exists in `domain/events.go` but is never emitted, so Events/Commands/Projections remain partial.
-- **Branch**: create and delete/archive are implemented (#670) with list/get/compare queries and a `/branches` API. `BranchMerged` decodes and projects but is never emitted — merge is [#55](https://github.com/cacack/my-family/issues/55) — so Commands remain partial. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
+- **Branch**: create and delete/archive are implemented (#670) with list/get/compare queries and a `/branches` API. `BranchMerged` decodes and projects but is never emitted — merge is [#55](https://github.com/cacack/my-family/issues/55) — so Commands remain partial. The frontend surface (switcher, banner, `/branches` list and read-only comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94). GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
 ### Branch coverage detail (#669 read / #670 write)
 
@@ -202,6 +202,11 @@ narrower set, because a write also needs a branch-scoped command path:
 
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
 `getPedigree`) are the 16 API operations carrying `?branch=`.
+
+The frontend mirrors exactly those 16 in `isBranchScopedRequest()`
+(`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
+`?branch=` while `listFamilies` does not. Every other surface renders `MainlineNotice.svelte` while
+a branch is active, so the UI never presents mainline data as branch data. Grow both with #676.
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
 `internal/api/branch_handlers_test.go`), and the command layer resolves its *reads* — existence
