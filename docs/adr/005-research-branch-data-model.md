@@ -453,13 +453,80 @@ things bound the damage, neither of which closes it:
 Recovering from that state is manual today. **Resumable merge is tracked as follow-up work
 (#685)**, not treated as done.
 
-**The conflict verdict is also not re-checked before the write.** `PlanMerge` runs once and the
-replay trusts it; `replayStream` re-reads main's stream version rather than asserting the one
-planning observed, so a mainline edit landing in between is neither compared nor rejected — it is
-silently overridden. This is a second consequence of the same missing transaction, distinct from
-the partial-replay gap above, and is tracked as **#698**. Practical exposure is low on a
-single-instance deployment (ADR-004) but the failure mode is exactly what §Conflict definition
-exists to prevent, so it is recorded rather than assumed away.
+**The conflict verdict is pinned to the versions it was computed against (#698, delivered).**
+`PlanMerge` runs once, and a mainline write landing before the replay was never compared with the
+branch's events — so replaying over it would silently override it, the exact outcome §Conflict
+definition exists to prevent. Three pieces close that:
+
+- **Plan-time capture, taken *before* `main` is read.** `PlanMerge` records `main`'s current
+  version for every stream in the replay set (`MergePlan.MainStreamVersions`), alongside the
+  conflict list. The versions and the verdict travel together because the verdict only means
+  anything relative to them.
+
+  **The order of `PlanMerge`'s reads is load-bearing**, which is why it composes the two halves of
+  the diff itself rather than calling `loadBranchDiff` the way `CompareBranch` does: branch side
+  first (it names the streams to pin), then the pin, then `main`'s side. Pinning *after* reading
+  `main`'s tail would make the pin strictly **newer** than the verdict — a write landing in that
+  window would be baked into the pin while never appearing in the tail the classifier compared, so
+  `current == planned` would pass and the branch would replay over an event nothing ever compared
+  it against. That is #698 itself, in the one direction the guard cannot observe. Pinning first
+  makes the same write read as `current > planned`, a refusal, and keeps the compared tail a
+  superset of the pinned state. `TestMergeBranch_StalePlanRefusesWriteInsideThePlanningWindow`
+  (`internal/command`) pins the ordering.
+
+  The merge path now takes three single-row version reads per stream the *branch* touched — this
+  capture, the pre-claim check, and the one `replayStream` already made. The three passes are
+  inherent, not waste: the pre-claim check exists precisely to observe a version *fresher* than the
+  capture, so it cannot reuse it. Batching each pass into one set-based read is #697's business,
+  not this guard's. The capture is deliberately not exposed on `CompareBranch`'s response, and
+  `CompareBranch` does not pay for it: it is merge-plan internals with no meaning in a read-only
+  diff.
+
+  Every replayed stream **must** carry a pin. A missing entry is refused
+  (`command.ErrMergePlanIncomplete`), never defaulted to `0` — a stream `main` has never seen is
+  legitimately pinned at `0`, so treating absence as zero would silently wave through exactly the
+  create-vs-create shape the guard exists for. `PlanMerge` satisfies this by construction; the
+  refusal is for the second plan constructor a stored, replayed plan (#685) would introduce. The
+  create-vs-create class itself is *not* pinned: a colliding create on `main` lives on a different
+  stream by definition, so it has no version in the replay set. That class is inert in v0.12 (its
+  gate never opens without branch-scoped GEDCOM import, an explicit non-goal of epic #54), so the
+  gap is recorded rather than built for.
+- **A pre-claim refusal.** `MergeBranch` re-reads those versions and refuses with
+  `command.ErrMergePlanStale` (`409 merge_plan_stale`) if any moved. It runs *before* the claim, so
+  a stale plan is an ordinary refusal — nothing written, branch still `active`, re-plan via
+  `GET /branches/{id}/compare` and retry. Checking after the claim would instead strand the branch
+  `merged` with nothing replayed, and the retry would get `409 branch_not_active`.
+- **A replay-time assertion.** `replayStream` compares the same planned version against the
+  `GetStreamVersion` read it already performs, so it costs nothing extra. It is what catches the
+  residual window.
+
+The guard is an **explicit version comparison, not delegated to `Append`'s optimistic
+concurrency**. All three backends — PostgreSQL (the primary, per ADR-002), SQLite and the
+in-memory test double — gate that check on `expectedVersion >= 0`, so the `-1` a
+branch-created stream is appended with turns it off entirely rather than asserting "no prior
+events" — leaning on `Append` would leave precisely the case where `main` *gains* a stream the
+branch also created completely unguarded. It is also deliberately **broader than a conflict**: any
+mainline write to a replayed stream trips it, including one the classifier would have cleared. Rerunning
+full conflict detection per stream was considered and rejected (it doubles the scan cost and still
+leaves a window), so the guard fails safe on movement. A false positive costs one re-plan, after
+which detection has run against the new `main` and the retry succeeds.
+
+**Residual window, and what it costs recoverability.** The pre-claim check is not a lock, so a
+write can still land between it and a given stream's append. The replay-time assertion catches it,
+but by then the branch is claimed, so it surfaces as the partially-applied state above
+(`500 merge_partially_applied`, message naming the stale plan) rather than as a clean refusal.
+Shrinking that last window needs the cross-store transaction the codebase does not have; a
+merge-wide lock is not an option, as it contradicts the per-`(stream, branch)` design this ADR
+rests on.
+
+This does **widen** what reaches the claimed-but-not-replayed state. Before the guard only a store
+or projection failure got there; now any mainline write to a replayed stream in that window does,
+including one the classifier would have cleared. For a single-stream branch the outcome is: branch
+`merged`, `main` untouched, and a `500` telling the caller not to retry. That is a real regression
+in recoverability, accepted because the alternative is the silent override, and bounded rather than
+fixed: the replay's error states **explicitly whether `main` was modified at all**, so an operator
+can tell "claimed, nothing replayed, `main` untouched" from a genuine half-application without
+inferring it from counts. Actually resuming either remains #685.
 
 **Conflict detection, and why the create-vs-create scan is gated.** All three classes from
 §Conflict definition are detected, as a pure function (`classifyConflicts`) over the two event

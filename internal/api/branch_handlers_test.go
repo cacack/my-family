@@ -1208,3 +1208,61 @@ func TestMergeBranch_PartiallyApplied(t *testing.T) {
 		t.Errorf("branch status = %v, want merged", status)
 	}
 }
+
+// stalePlanEventStore lands a real mainline write in the window between
+// PlanMerge capturing main's stream versions and MergeBranch re-checking them
+// (#698).
+//
+// It counts main-scoped GetStreamVersion calls, which is what makes the timing
+// precise: the plan's capture is the first, and the pre-claim staleness check is
+// the second. Appending on the way into that second call means the check reads a
+// version the plan never saw — a genuine race, not a simulated one.
+type stalePlanEventStore struct {
+	repository.EventStore
+	mainVersionReads int
+}
+
+func (s *stalePlanEventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
+	if branchID.IsMain() {
+		s.mainVersionReads++
+		if s.mainVersionReads == 2 {
+			// Straight through to the embedded store — this wrapper overrides
+			// only GetStreamVersion, so there is nothing of its own to skip.
+			rival := domain.NewPersonUpdated(streamID, map[string]any{"given_name": "Augusta"})
+			if err := s.Append(ctx, streamID, "person", []domain.Event{rival}, -1, repository.MainScope); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return s.EventStore.GetStreamVersion(ctx, streamID, branchID)
+}
+
+// TestMergeBranch_PlanStale pins the sentinel→status mapping for a stale plan.
+//
+// It is deliberately a 409 and not the 500 its neighbour above returns: the
+// refusal happens before the claim, so nothing was written and the branch is
+// still active — the client SHOULD re-compare and retry. Getting the two
+// backwards would tell a client with a half-merged mainline that a retry is
+// safe, which is why the handler's switch checks merge_partially_applied first.
+func TestMergeBranch_PlanStale(t *testing.T) {
+	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	base := memory.NewEventStore()
+	server := api.NewServer(cfg, &stalePlanEventStore{EventStore: base}, memory.NewReadModelStore(),
+		memory.NewSnapshotStore(base), nil, api.WithBranchStore(memory.NewBranchStore()))
+
+	_, branchID, _ := forkAndEditPerson(t, server, "Byron")
+
+	rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Merge: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+	if code := decodeJSON(t, rec)["code"]; code != "merge_plan_stale" {
+		t.Errorf("code = %v, want merge_plan_stale", code)
+	}
+
+	// Nothing was written, so the branch is still mergeable against a fresh plan.
+	rec = do(t, server, http.MethodGet, "/api/v1/branches/"+branchID, "")
+	if status := decodeJSON(t, rec)["status"]; status != "active" {
+		t.Errorf("branch status = %v, want active", status)
+	}
+}

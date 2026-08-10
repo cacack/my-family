@@ -90,6 +90,15 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > before anything is written to `main`, so exactly one of two concurrent merges wins. The claim
 > and the replay are **not** one transaction; see the "Implementation Note — merge" section of
 > [ADR-005](./adr/005-research-branch-data-model.md) for the failure mode and its bound.
+> The plan is pinned to the `main` stream versions it was computed against
+> (`MergePlan.MainStreamVersions`), captured **before** `PlanMerge` reads `main`'s side of the
+> diff, checked before the claim and re-asserted per stream during the replay, so a mainline write
+> landing after the conflict verdict is refused (`command.ErrMergePlanStale`,
+> `409 merge_plan_stale`) rather than silently overridden (#698). Capturing the pin after that read
+> instead would make it newer than the verdict and re-open the hole silently.
+> `TestMergeBranch_StalePlanRefusesWriteInsideThePlanningWindow` (the ordering),
+> `TestMergeBranch_StalePlanRefuses` and
+> `TestMergeBranch_StalePlanRefusesBranchCreatedStream` (`internal/command`) pin it.
 > BR-003's terminal-status purge now also fires on merge.
 > Partial merge / cherry-pick remains out of scope, per ADR-005 §Merge.
 

@@ -27,7 +27,14 @@ type mergeSeed struct {
 // the branch. Main is left untouched.
 func seedMerge(t *testing.T, branchSurname string) mergeSeed {
 	t.Helper()
-	f := newBranchFixture()
+	return seedMergeInto(t, newBranchFixture(), branchSurname)
+}
+
+// seedMergeInto is seedMerge over a caller-supplied fixture, so a race harness
+// can seed the standard scenario into a fixture whose collaborators are wrapped.
+// seedMerge is this with the plain fixture; the sequence itself lives here once.
+func seedMergeInto(t *testing.T, f *branchFixture, branchSurname string) mergeSeed {
+	t.Helper()
 	ctx := context.Background()
 
 	person, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
@@ -472,7 +479,7 @@ func TestMergeBranch_SecondMergeIsRefused(t *testing.T) {
 // the window between MergeBranch reading the stream version and appending its
 // BranchMerged claim — the concurrency ADR-005 says the CAS must serialize.
 type racingEventStore struct {
-	*memory.EventStore
+	repository.EventStore
 	rival func()
 	fired bool
 }
@@ -1035,5 +1042,469 @@ func TestMergeBranch_InterruptedClaimIsNotReplayedTwice(t *testing.T) {
 	}
 	if healed.Status != domain.BranchStatusMerged {
 		t.Errorf("branch status = %s, want merged (the refusal should repair the registry)", healed.Status)
+	}
+}
+
+// --- Merge-plan staleness (#698) -------------------------------------------
+//
+// The window these tests inject into is the one between PlanMerge computing the
+// conflict verdict and replayOntoMain writing against it. A mainline write
+// landing there was never compared with the branch's events, so replaying over
+// it would silently override it — exactly what ADR-005 §Conflict definition
+// exists to prevent.
+
+// stalePositions wraps the merge's MaxPositionReader so a test can land a rival
+// mainline write inside that window. GetMaxPosition is called between PlanMerge
+// returning and the staleness check, which makes it a precise hook for it.
+//
+// It is NOT the only collaborator call MergeBranch makes in that span, and a
+// test extending this harness must not assume so: validateNoDanglingReferences
+// runs first and reads readStore.GetPerson for every ChildLinkedToFamily event
+// naming a person outside the replay set. The seedMerge fixture has no family
+// events, so for THESE tests GetMaxPosition is the only such call; a
+// family-link scenario would need to account for that read as well.
+//
+// rival is armed by the test AFTER setup: CreateBranch reads the same position
+// source, and firing there would put the write before planning rather than
+// after it, testing nothing.
+type stalePositions struct {
+	inner command.MaxPositionReader
+	rival func()
+	fired bool
+}
+
+func (p *stalePositions) GetMaxPosition(ctx context.Context) (int64, error) {
+	if p.rival != nil && !p.fired {
+		p.fired = true
+		p.rival()
+	}
+	return p.inner.GetMaxPosition(ctx)
+}
+
+// newStaleMergeFixture is newBranchFixture with the position source wrapped, so
+// the returned hook can inject into the planning→replay window.
+func newStaleMergeFixture() (*branchFixture, *stalePositions) {
+	var positions *stalePositions
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapPositions: func(inner command.MaxPositionReader) command.MaxPositionReader {
+			positions = &stalePositions{inner: inner}
+			return positions
+		},
+	})
+	return f, positions
+}
+
+// seedStaleMerge is seedMerge over the injectable fixture: one person on main, a
+// branch forked after it, and the branch's surname edit applied.
+func seedStaleMerge(t *testing.T, branchSurname string) (mergeSeed, *stalePositions) {
+	t.Helper()
+	f, positions := newStaleMergeFixture()
+	return seedMergeInto(t, f, branchSurname), positions
+}
+
+// planRacingEventStore fires a rival write when the merge plan reads MAIN's side
+// of the diff — i.e. between PlanMerge's branch-side read and its main-side
+// read, which is the window the version pin has to bracket.
+//
+// ReadStreamsForBranch is that main-side read (query.readMainTail) and nothing
+// else on the merge path calls it, so the hook is unambiguous. It fires BEFORE
+// delegating, so the rival's event is visible to the main tail the conflict
+// classifier then compares against — which is what makes the pin's placement,
+// and not merely its existence, the thing under test.
+type planRacingEventStore struct {
+	repository.EventStore
+	rival func()
+	fired bool
+}
+
+func (s *planRacingEventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	if s.rival != nil && !s.fired {
+		s.fired = true
+		s.rival()
+	}
+	return s.EventStore.ReadStreamsForBranch(ctx, streamIDs, branchID, fromPosition, limit)
+}
+
+// TestMergeBranch_StalePlanRefuses is the core of #698: main gains an edit to a
+// stream the merge would replay, after the verdict was computed. The write is to
+// a DIFFERENT field than the branch touched, so conflict detection would have
+// cleared it — which is the point. The guard fails safe on movement rather than
+// re-deriving a verdict, so it fires here too, and the remedy (re-plan, retry)
+// costs one extra round trip instead of an overwritten mainline edit.
+func TestMergeBranch_StalePlanRefuses(t *testing.T) {
+	s, positions := seedStaleMerge(t, "Byron")
+	ctx := context.Background()
+
+	positions.rival = func() {
+		person, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+		if err != nil {
+			t.Errorf("rival GetPerson failed: %v", err)
+			return
+		}
+		given := "Augusta"
+		if _, err := s.f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
+			ID:        s.person,
+			GivenName: &given,
+			Version:   person.Version,
+		}); err != nil {
+			t.Errorf("rival UpdatePerson failed: %v", err)
+		}
+	}
+
+	_, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID})
+	if !errors.Is(err, command.ErrMergePlanStale) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePlanStale", err)
+	}
+	// A stale plan is a refusal, not the partially-applied state — a client told
+	// the wrong one either retries when it must not, or gives up when a retry
+	// would have worked.
+	if errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Errorf("a pre-claim staleness refusal also matched ErrMergePartiallyApplied: %v", err)
+	}
+
+	// Nothing written: main still carries only the rival's own edit, and the
+	// branch's surname never reached it.
+	onMain, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+	if err != nil {
+		t.Fatalf("GetPerson on main failed: %v", err)
+	}
+	if onMain.Surname != "Lovelace" {
+		t.Errorf("main surname = %q, want it untouched by the refused merge (%q)", onMain.Surname, "Lovelace")
+	}
+	if onMain.GivenName != "Augusta" {
+		t.Errorf("main given name = %q, want the mainline write %q to have survived", onMain.GivenName, "Augusta")
+	}
+
+	// And the branch is still mergeable, so re-planning and retrying is open.
+	branch, err := s.f.branchStore.Get(ctx, s.branch.ID)
+	if err != nil {
+		t.Fatalf("branchStore.Get failed: %v", err)
+	}
+	if branch.Status != domain.BranchStatusActive {
+		t.Errorf("branch status = %q, want it still active after a refusal", branch.Status)
+	}
+}
+
+// TestMergeBranch_StalePlanRefusesWriteInsideThePlanningWindow pins the ORDER of
+// PlanMerge's reads, which is what makes the pin mean anything at all.
+//
+// The rival write lands between the branch-side read and the main-side read —
+// inside planning, not after it. It touches a field the branch never touched, so
+// the classifier clears it either way; the version pin is the only thing that can
+// catch it, and only if the pin was taken BEFORE the main tail was read.
+//
+// Capture the versions after that read instead (the ordering this test was
+// written against, and which it fails on) and the write is baked into the pin
+// while never being compared against the branch's events: `current == planned`
+// passes, the merge returns 200, and main has been replayed over an event the
+// verdict never saw. That is #698 itself, in the one direction the guard cannot
+// observe — the pin ending up NEWER than the verdict.
+func TestMergeBranch_StalePlanRefusesWriteInsideThePlanningWindow(t *testing.T) {
+	var racing *planRacingEventStore
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapEvents: func(inner repository.EventStore) repository.EventStore {
+			racing = &planRacingEventStore{EventStore: inner}
+			return racing
+		},
+	})
+	s := seedMergeInto(t, f, "Byron")
+	ctx := context.Background()
+
+	racing.rival = func() {
+		person, err := f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+		if err != nil {
+			t.Errorf("rival GetPerson failed: %v", err)
+			return
+		}
+		given := "Augusta"
+		if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
+			ID:        s.person,
+			GivenName: &given,
+			Version:   person.Version,
+		}); err != nil {
+			t.Errorf("rival UpdatePerson failed: %v", err)
+		}
+	}
+
+	_, err := f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID})
+	if !errors.Is(err, command.ErrMergePlanStale) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePlanStale", err)
+	}
+	if !racing.fired {
+		t.Fatal("the rival write never fired, so nothing was raced")
+	}
+
+	onMain, err := f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+	if err != nil {
+		t.Fatalf("GetPerson on main failed: %v", err)
+	}
+	if onMain.Surname != "Lovelace" {
+		t.Errorf("main surname = %q, want it untouched by the refused merge (%q)", onMain.Surname, "Lovelace")
+	}
+	if onMain.GivenName != "Augusta" {
+		t.Errorf("main given name = %q, want the mainline write %q to have survived", onMain.GivenName, "Augusta")
+	}
+}
+
+// TestMergeBranch_StalePlanRefusesBranchCreatedStream closes the hole an
+// Append-only guard would leave. A stream the branch created is appended to main
+// with expectedVersion -1, and ALL THREE backends skip optimistic concurrency
+// entirely when expectedVersion is negative — the `expectedVersion >= 0` gate in
+// postgres/eventstore.go (the primary backend, ADR-002), sqlite/eventstore.go
+// and memory/eventstore.go. So if main gains that stream in the window, Append
+// would happily succeed on top of it. Only the explicit version comparison
+// catches this, and this test runs against the memory store, so the postgres and
+// sqlite gates are pinned by citation rather than by execution here.
+func TestMergeBranch_StalePlanRefusesBranchCreatedStream(t *testing.T) {
+	f, positions := newStaleMergeFixture()
+	ctx := context.Background()
+
+	branch, err := f.handler.CreateBranch(ctx, "new-person", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	fresh, err := f.handler.WithBranch(branch).CreatePerson(ctx, command.CreatePersonInput{
+		GivenName: "Grace",
+		Surname:   "Hopper",
+	})
+	if err != nil {
+		t.Fatalf("branch CreatePerson failed: %v", err)
+	}
+
+	// Main has never seen this stream, so the plan captured version 0. The rival
+	// creates the SAME stream on main, taking it to 1.
+	positions.rival = func() {
+		rivalPerson := &domain.Person{ID: fresh.ID, GivenName: "Grace", Surname: "Murray"}
+		created := domain.NewPersonCreated(rivalPerson)
+		if err := f.eventStore.Append(ctx, fresh.ID, "person", []domain.Event{created}, -1, repository.MainScope); err != nil {
+			t.Errorf("rival create on main failed: %v", err)
+		}
+	}
+
+	if _, err := f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID}); !errors.Is(err, command.ErrMergePlanStale) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePlanStale", err)
+	}
+
+	// Main's own create is the only event on the stream — the branch's was not
+	// replayed on top of it.
+	onMain := branchEventsFor(t, f, fresh.ID, domain.MainBranchID)
+	if len(onMain) != 1 {
+		t.Errorf("main has %d events for the contested stream, want only the rival's 1", len(onMain))
+	}
+	stored, err := f.branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("branchStore.Get failed: %v", err)
+	}
+	if stored.Status != domain.BranchStatusActive {
+		t.Errorf("branch status = %q, want it still active after a refusal", stored.Status)
+	}
+}
+
+// TestMergeBranch_StaleCheckIgnoresMainResolvedStream scopes the guard to what
+// is actually written. A stream resolved to "main" is not replayed, so main
+// moving under it cannot be overridden by this merge and must not block it.
+func TestMergeBranch_StaleCheckIgnoresMainResolvedStream(t *testing.T) {
+	s, positions := seedStaleMerge(t, "Byron")
+	ctx := context.Background()
+
+	positions.rival = func() {
+		person, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+		if err != nil {
+			t.Errorf("rival GetPerson failed: %v", err)
+			return
+		}
+		king := "King"
+		if _, err := s.f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
+			ID:      s.person,
+			Surname: &king,
+			Version: person.Version,
+		}); err != nil {
+			t.Errorf("rival UpdatePerson failed: %v", err)
+		}
+	}
+
+	res, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.person: command.ResolveMain},
+	})
+	if err != nil {
+		t.Fatalf("MergeBranch failed for a stream resolved to main: %v", err)
+	}
+	if len(res.SkippedStreamIDs) != 1 || res.SkippedStreamIDs[0] != s.person {
+		t.Errorf("SkippedStreamIDs = %v, want [%s]", res.SkippedStreamIDs, s.person)
+	}
+
+	onMain, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+	if err != nil {
+		t.Fatalf("GetPerson on main failed: %v", err)
+	}
+	if onMain.Surname != "King" {
+		t.Errorf("main surname = %q, want the mainline write %q kept", onMain.Surname, "King")
+	}
+}
+
+// TestMergeBranch_StaleCheckIgnoresUntouchedStream keeps the guard from making a
+// merge hostage to unrelated mainline activity — the same scoping rule ADR-005
+// applies to the whole branch comparison. It is also the happy path with noise:
+// a clean merge still merges while main is busy elsewhere.
+func TestMergeBranch_StaleCheckIgnoresUntouchedStream(t *testing.T) {
+	s, positions := seedStaleMerge(t, "Byron")
+	ctx := context.Background()
+
+	positions.rival = func() {
+		if _, err := s.f.handler.CreatePerson(ctx, command.CreatePersonInput{
+			GivenName: "Charles",
+			Surname:   "Babbage",
+		}); err != nil {
+			t.Errorf("rival CreatePerson failed: %v", err)
+		}
+	}
+
+	res, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID})
+	if err != nil {
+		t.Fatalf("MergeBranch failed on unrelated mainline activity: %v", err)
+	}
+	if res.ReplayedEventCount != 1 {
+		t.Errorf("ReplayedEventCount = %d, want 1", res.ReplayedEventCount)
+	}
+	if res.Branch.Status != domain.BranchStatusMerged {
+		t.Errorf("branch status = %q, want %q", res.Branch.Status, domain.BranchStatusMerged)
+	}
+
+	onMain, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+	if err != nil {
+		t.Fatalf("GetPerson on main failed: %v", err)
+	}
+	if onMain.Surname != "Byron" {
+		t.Errorf("main surname = %q, want the branch's %q", onMain.Surname, "Byron")
+	}
+}
+
+// TestMergeBranch_StalePlanDuringReplayIsPartiallyApplied covers the residual
+// window the pre-claim check cannot close: the check is not a lock, so a write
+// landing between it and the append is caught by replayStream's own assertion
+// instead. Past the claim the branch is already terminal, so this correctly
+// surfaces as the partially-applied state — a client must NOT retry it — while
+// still carrying ErrMergePlanStale so the message says what went wrong.
+//
+// Injected at claimMerge's append, which is inside that window by construction.
+//
+// It is also the recoverability case: this branch has ONE stream, so the replay
+// fails on the first thing it tries and main is never modified at all. The error
+// has to say so — "claimed but main untouched" and "claimed and half-applied"
+// need different responses from whoever reads the 500, and only the message can
+// tell them apart (#685 tracks actually resuming either).
+func TestMergeBranch_StalePlanDuringReplayIsPartiallyApplied(t *testing.T) {
+	var racing *racingEventStore
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapEvents: func(inner repository.EventStore) repository.EventStore {
+			racing = &racingEventStore{EventStore: inner}
+			return racing
+		},
+	})
+	s := seedMergeInto(t, f, "Byron")
+	ctx := context.Background()
+
+	// Fires as the claim is appended: past the pre-claim check, before the
+	// replay. Written through the UNWRAPPED store so it does not re-enter the hook.
+	racing.rival = func() {
+		changes := map[string]any{"given_name": "Augusta"}
+		if err := f.eventStore.Append(ctx, s.person, "person",
+			[]domain.Event{domain.NewPersonUpdated(s.person, changes)}, -1, repository.MainScope); err != nil {
+			t.Errorf("rival mainline write failed: %v", err)
+		}
+	}
+
+	_, err := f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID})
+	if !errors.Is(err, command.ErrMergePlanStale) {
+		t.Fatalf("MergeBranch error = %v, want it to carry ErrMergePlanStale", err)
+	}
+	// Past the claim, the honest report is the partially-applied state.
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Errorf("MergeBranch error = %v, want it wrapped in ErrMergePartiallyApplied past the claim", err)
+	}
+	// Nothing reached main, and the message must say so unambiguously rather
+	// than leaving an operator to infer it from "0 of 1 events".
+	if !strings.Contains(err.Error(), "MAIN WAS NOT MODIFIED") {
+		t.Errorf("MergeBranch error = %v, want it to state that main was not modified", err)
+	}
+	if strings.Contains(err.Error(), "MAIN IS PARTIALLY UPDATED") {
+		t.Errorf("MergeBranch error = %v, reported a partial application when main was untouched", err)
+	}
+
+	// The branch's edit did not land on top of the mainline write.
+	onMain, err := f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+	if err != nil {
+		t.Fatalf("GetPerson on main failed: %v", err)
+	}
+	if onMain.Surname != "Lovelace" {
+		t.Errorf("main surname = %q, want the branch's replay to have been refused", onMain.Surname)
+	}
+}
+
+// TestMergeBranch_ReplayFailureAfterProgressReportsPartialApplication is the
+// other half of the pair above: a branch with TWO streams, whose second stream
+// goes stale. The first stream is already on main by then, so this really is the
+// partially-applied state and the message must not claim main was untouched.
+func TestMergeBranch_ReplayFailureAfterProgressReportsPartialApplication(t *testing.T) {
+	var racing *racingEventStore
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapEvents: func(inner repository.EventStore) repository.EventStore {
+			racing = &racingEventStore{EventStore: inner}
+			return racing
+		},
+	})
+	ctx := context.Background()
+
+	first, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	second, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Grace", Surname: "Hopper"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "two-streams", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	for _, person := range []*command.CreatePersonResult{first, second} {
+		surname := "Byron"
+		if _, err := f.handler.WithBranch(branch).UpdatePerson(ctx, command.UpdatePersonInput{
+			ID:      person.ID,
+			Surname: &surname,
+			Version: person.Version,
+		}); err != nil {
+			t.Fatalf("branch UpdatePerson failed: %v", err)
+		}
+	}
+
+	// Stale only the SECOND stream, so the first replays successfully first.
+	racing.rival = func() {
+		changes := map[string]any{"given_name": "Augusta"}
+		if err := f.eventStore.Append(ctx, second.ID, "person",
+			[]domain.Event{domain.NewPersonUpdated(second.ID, changes)}, -1, repository.MainScope); err != nil {
+			t.Errorf("rival mainline write failed: %v", err)
+		}
+	}
+
+	_, err = f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePartiallyApplied", err)
+	}
+	if !strings.Contains(err.Error(), "MAIN IS PARTIALLY UPDATED") {
+		t.Errorf("MergeBranch error = %v, want it to state that main is partially updated", err)
+	}
+	if strings.Contains(err.Error(), "MAIN WAS NOT MODIFIED") {
+		t.Errorf("MergeBranch error = %v, claimed main was untouched after a stream had replayed", err)
+	}
+
+	// The first stream really did land, which is what makes this the partial case.
+	landed, err := f.readStore.GetPerson(ctx, domain.MainBranchID, first.ID)
+	if err != nil {
+		t.Fatalf("GetPerson on main failed: %v", err)
+	}
+	if landed.Surname != "Byron" {
+		t.Errorf("main surname for the first stream = %q, want the branch's %q", landed.Surname, "Byron")
 	}
 }

@@ -68,14 +68,51 @@ var (
 	// silently dropping the link (see validateNoDanglingReferences).
 	ErrMergeDanglingReference = errors.New("merge would leave a relationship pointing at a person main does not have")
 
+	// ErrMergePlanStale is returned when main moved on a stream this merge would
+	// replay, after the conflict verdict was computed against it. The verdict
+	// therefore describes a main that no longer exists: the mainline write was
+	// never compared with the branch's events, and replaying over it would be
+	// the silent override ADR-005 §Conflict definition exists to prevent.
+	//
+	// NOTHING HAS BEEN WRITTEN and the branch is still active. The remedy is to
+	// re-plan — GET /branches/{id}/compare, which re-runs conflict detection
+	// against main as it is now — and merge again against that fresh verdict.
+	//
+	// This is the exact opposite of ErrMergePartiallyApplied, and the two must
+	// never be confused: there, the branch is terminal and main is half-updated,
+	// so retrying is the wrong move. Here, retrying against a fresh plan IS the
+	// fix. Past the claim this sentinel is deliberately wrapped in
+	// ErrMergePartiallyApplied, because past the claim that is the true state.
+	ErrMergePlanStale = errors.New("merge plan is stale: main moved after the conflict verdict was computed")
+
+	// ErrMergePlanIncomplete is returned when the merge plan does not carry a
+	// pinned main version for a stream the merge would replay, so the staleness
+	// guard has nothing to compare against. It is an internal-invariant failure,
+	// not a caller mistake: PlanMerge pins every replayed stream. It exists
+	// because the alternative — defaulting the missing version to 0 — silently
+	// disables the guard for precisely the streams main has never seen, which is
+	// the one case Append's optimistic concurrency cannot catch either.
+	//
+	// Deliberately not mapped to a 4xx code: a caller cannot fix it, and the
+	// generic 500 is the honest answer. Anticipated trigger is a second plan
+	// constructor, e.g. the stored/replayed plan #685 needs.
+	ErrMergePlanIncomplete = errors.New("merge plan is incomplete: a replayed stream has no pinned main version")
+
 	// ErrMergePartiallyApplied is returned when the branch was claimed (it is
 	// now merged) but the replay onto main failed partway. This is the
 	// non-transactional window ADR-005's merge implementation note documents:
 	// the claim and the replay are not one transaction because there is no
 	// cross-store transaction facility. It is distinct from every other merge
 	// error because it is the only one where the caller must NOT retry blindly
-	// — the branch is terminal and main is partially updated. Resumable merge
-	// is tracked as #685.
+	// — the branch is terminal and main may be partially updated.
+	//
+	// "May be": the replay can also fail on its FIRST stream, leaving the branch
+	// merged and main completely untouched. That is the common shape for a
+	// single-stream branch losing the residual staleness race, and it needs a
+	// different response from a genuine half-application, so the message says
+	// explicitly whether anything reached main (see replayOntoMain). Either way
+	// the branch is terminal and there is no resume path; resumable merge is
+	// tracked as #685.
 	ErrMergePartiallyApplied = errors.New("branch was marked merged but the replay onto main did not finish")
 )
 
@@ -138,26 +175,41 @@ type MergeBranchResult struct {
 //
 //  1. Guards, then the merge plan. A truncated plan is refused outright.
 //  2. Conflicts must all be resolved before anything is written.
-//  3. The CLAIM: BranchMerged is appended to the branch's OWN stream at the
+//  3. The STALENESS CHECK: main must still sit at the versions the plan was
+//     computed against, or the verdict from step 1 no longer describes main and
+//     the merge is refused (ErrMergePlanStale) with nothing written.
+//  4. The CLAIM: BranchMerged is appended to the branch's OWN stream at the
 //     version this call observed. Per-(stream, branch) optimistic concurrency
 //     makes that append the atomic compare-and-set ADR-005 asks for — exactly
 //     one of two concurrent merges wins it, and the loser has not yet touched
 //     main.
-//  4. Only then the replay onto main.
+//  5. Only then the replay onto main, which re-asserts the same planned
+//     versions per stream as it goes.
 //
-// KNOWN LIMITATION: the conflict verdict is computed once, in step 1, and not
-// re-checked before step 4 writes. A mainline edit landing in that window is
-// therefore not compared against the branch's replayed events and can be
-// silently overridden — replayStream re-reads main's version rather than
-// asserting the one planning observed, so the append always succeeds. Tracked
-// as #698.
+// Step 3 MUST precede step 4. claimMerge marks the branch terminal, so a
+// staleness refusal after it would leave the branch merged with nothing
+// replayed and no way to retry — the retry would hit the status guard and get
+// 409 branch_not_active, which is not evidence of anything. Checking first
+// keeps "stale" in the same class as every other refusal: nothing written,
+// branch still active, re-plan and try again.
 //
-// KNOWN LIMITATION: steps 3 and 4 are not one transaction. The codebase has no
+// RESIDUAL WINDOW: steps 3 and 5 close the gap #698 described but cannot make it
+// zero. Between the check in step 3 and each stream's append in step 5 there is
+// still no lock, so a mainline write can still land — step 5's per-stream
+// assertion catches it, but by then the branch is claimed, so it surfaces as the
+// partially-applied state below rather than as a clean refusal. Shrinking that
+// last window needs the transaction the codebase does not have; a merge-wide
+// lock is not an option, as it contradicts ADR-005's per-(stream, branch)
+// design.
+//
+// KNOWN LIMITATION: steps 4 and 5 are not one transaction. The codebase has no
 // cross-store transaction facility and ADR-003's synchronous projections are
 // per-append, so a failure mid-replay leaves the branch merged with main
-// partially updated; the returned error names the stream that failed and how
-// many events had already been replayed so the state is diagnosable. Resumable
-// merge is deliberate follow-up work, not an oversight. Replaying one Append per
+// partially updated — or, when the FIRST stream fails, with main untouched. The
+// returned error names the stream that failed, how many events had already been
+// replayed, and which of those two states this is, so it is diagnosable without
+// counting. Resumable merge is deliberate follow-up work (#685), not an
+// oversight. Replaying one Append per
 // stream (rather than per event) keeps the failure granularity at whole-entity,
 // since the SQL backends wrap an Append in a transaction.
 func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*MergeBranchResult, error) {
@@ -233,6 +285,13 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, fmt.Errorf("getting max event position: %w", err)
 	}
 
+	// Deliberately the LAST thing before the claim: every read above can only
+	// widen the window between this check and the replay, so the check goes as
+	// late as it can while still being a refusal rather than a half-merge.
+	if err := h.validatePlanNotStale(ctx, plan, groups, input.Resolutions); err != nil {
+		return nil, err
+	}
+
 	if err := h.claimMerge(ctx, branch, mergedAtPosition, input.Note); err != nil {
 		return nil, err
 	}
@@ -240,7 +299,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	// Past this point the branch is already merged, so a replay failure is not
 	// "nothing happened" — it is the partially-applied state, and the caller
 	// has to be able to tell the two apart.
-	replayed, skipped, err := h.replayOntoMain(ctx, branch, groups, input.Resolutions)
+	replayed, skipped, err := h.replayOntoMain(ctx, branch, groups, plan.MainStreamVersions, input.Resolutions)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMergePartiallyApplied, err)
 	}
@@ -256,6 +315,71 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		ReplayedEventCount: replayed,
 		SkippedStreamIDs:   skipped,
 	}, nil
+}
+
+// validatePlanNotStale refuses a merge whose conflict verdict was computed
+// against a main that has since moved on one of the streams this merge would
+// replay.
+//
+// The check is an EXPLICIT version comparison rather than something delegated to
+// Append's optimistic concurrency, because Append cannot express it. All three
+// backends gate the check on `expectedVersion >= 0` — including PostgreSQL,
+// which ADR-002 makes the primary production backend
+// (internal/repository/postgres/eventstore.go:122,
+// internal/repository/sqlite/eventstore.go, internal/repository/memory/eventstore.go)
+// — so the -1 a branch-created stream is appended with turns the check OFF
+// entirely rather than asserting "no prior events". Leaning on Append would
+// therefore leave exactly the case where main GAINS a stream the branch also
+// created — the create-vs-create shape — completely unguarded.
+//
+// Scoped to the streams that will actually be replayed. A stream resolved to
+// main is not written, so main moving under it changes nothing this merge does,
+// and refusing on it would fail merges for no reason. Streams the branch never
+// touched are not in the plan at all, for the same reason ADR-005 scopes the
+// whole comparison that way: a merge must not be hostage to unrelated mainline
+// activity.
+//
+// A stream main has never seen is planned at 0 and still reads 0, so it does not
+// trip the guard — that is the whole point of keeping the 0 → -1 translation out
+// of the plan and down in replayStream.
+func (h *Handler) validatePlanNotStale(
+	ctx context.Context,
+	plan *query.MergePlan,
+	groups []streamGroup,
+	resolutions map[uuid.UUID]MergeResolution,
+) error {
+	for _, group := range groups {
+		if resolutions[group.streamID] == ResolveMain {
+			continue
+		}
+		// A MISSING entry is refused, never defaulted. The zero value is not a
+		// safe default here: a stream main has never seen is legitimately pinned
+		// at 0, so an absent key would compare 0 == 0 and wave through exactly
+		// the create-vs-create shape this guard exists for — the one case Append
+		// provably cannot catch. PlanMerge always populates every replayed
+		// stream; this refuses a plan from any future constructor that does not
+		// (#685's stored plans).
+		planned, pinned := plan.MainStreamVersions[group.streamID]
+		if !pinned {
+			return fmt.Errorf(
+				"%w: the merge plan for branch %s carries no pinned main version for stream %s, "+
+					"so the mainline cannot be proven unchanged for it",
+				ErrMergePlanIncomplete, plan.Branch.ID, group.streamID)
+		}
+
+		current, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
+		if err != nil {
+			return fmt.Errorf("getting main stream version for %s: %w", group.streamID, err)
+		}
+		if current != planned {
+			return fmt.Errorf(
+				"%w: main is at version %d for stream %s but the conflict verdict was computed against version %d. "+
+					"Nothing has been written and branch %s is still active — re-run GET /branches/{id}/compare "+
+					"to get a fresh verdict, then merge again",
+				ErrMergePlanStale, current, group.streamID, planned, plan.Branch.ID)
+		}
+	}
+	return nil
 }
 
 // claimMerge performs the active→merged compare-and-set by appending
@@ -370,6 +494,7 @@ func (h *Handler) replayOntoMain(
 	ctx context.Context,
 	branch *domain.Branch,
 	groups []streamGroup,
+	plannedVersions map[uuid.UUID]int64,
 	resolutions map[uuid.UUID]MergeResolution,
 ) (int, []uuid.UUID, error) {
 	var (
@@ -394,15 +519,35 @@ func (h *Handler) replayOntoMain(
 			continue
 		}
 
-		appended, err := h.replayStream(ctx, group)
+		// Same two-value read as validatePlanNotStale, for the same reason: an
+		// absent pin is not a zero pin. That guard runs over this same set of
+		// streams before the claim, so reaching this branch means the plan was
+		// mutated underneath us — refuse rather than replay unguarded.
+		plannedVersion, pinned := plannedVersions[group.streamID]
+		if !pinned {
+			return 0, nil, fmt.Errorf(
+				"merging branch %s: stream %s: %w", branch.ID, group.streamID, ErrMergePlanIncomplete)
+		}
+
+		appended, err := h.replayStream(ctx, group, plannedVersion)
 		replayed += appended
 		if err != nil {
-			// Both units, each against its own total: the previous form divided
-			// an event count by a stream count ("17 of 4 events"). This message
-			// is the only recovery aid for the partially-applied state, so it
-			// has to be readable under incident conditions.
+			// Both units, each against its own total: an earlier form divided an
+			// event count by a stream count ("17 of 4 events"). This message is
+			// the only recovery aid for the partially-applied state, so it has to
+			// be readable under incident conditions — and the first thing an
+			// operator needs from it is whether main was touched at all.
+			if replayed == 0 {
+				return 0, nil, fmt.Errorf(
+					"merging branch %s: stream %s failed before any event reached main — "+
+						"MAIN WAS NOT MODIFIED (0 of %d events across 0 of %d streams replayed), "+
+						"but the branch is already marked merged, so there is nothing to unwind on main "+
+						"and no resume path yet (#685): %w",
+					branch.ID, group.streamID, totalEvents, streamsToReplay, err)
+			}
 			return 0, nil, fmt.Errorf(
-				"merging branch %s: stream %s failed after %d of %d events across %d of %d streams reached main: %w",
+				"merging branch %s: stream %s failed after %d of %d events across %d of %d streams reached main — "+
+					"MAIN IS PARTIALLY UPDATED: %w",
 				branch.ID, group.streamID, replayed, totalEvents, streamsDone, streamsToReplay, err)
 		}
 		streamsDone++
@@ -419,7 +564,22 @@ func (h *Handler) replayOntoMain(
 // stamps the stored timestamp from event.OccurredAt(), so a decoded branch
 // event lands on main with the branch's original payload and timestamp. That is
 // ADR-005's provenance requirement, met with no special handling.
-func (h *Handler) replayStream(ctx context.Context, group streamGroup) (int, error) {
+//
+// plannedVersion is main's version for this stream when the plan was built, and
+// is asserted against the version read below. That read is one this function
+// ALREADY performs to compute the expected version, so the last-moment check
+// costs nothing extra — it just stops discarding the answer.
+//
+// ACCEPTED FALSE POSITIVE: this fires on ANY mainline write to a replayed
+// stream, including one the classifier would have judged non-conflicting (say,
+// main editing a field the branch never touched). That is deliberate. The guard
+// has no verdict of its own to consult — re-running conflict detection here is
+// the option the issue considered and rejected, since it doubles the scan cost
+// and still leaves a window — so it fails safe on movement rather than guessing.
+// The cost of a false positive is one re-plan, after which conflict detection
+// has run against the new main and the retry succeeds. The cost of proceeding
+// silently is the overwritten mainline edit that is the bug being fixed.
+func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVersion int64) (int, error) {
 	events := make([]domain.Event, 0, len(group.events))
 	for i := range group.events {
 		decoded, err := group.events[i].DecodeEvent()
@@ -432,6 +592,15 @@ func (h *Handler) replayStream(ctx context.Context, group streamGroup) (int, err
 	currentVersion, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
 	if err != nil {
 		return 0, fmt.Errorf("getting main stream version: %w", err)
+	}
+	// Asserted BEFORE the 0 → -1 translation below, on the true version, so a
+	// stream main gained since planning (0 → 1) is caught rather than erased by
+	// the sentinel.
+	if currentVersion != plannedVersion {
+		return 0, fmt.Errorf(
+			"%w: main reached version %d for stream %s between the pre-merge check and this append, "+
+				"but the merge plan was computed against version %d",
+			ErrMergePlanStale, currentVersion, group.streamID, plannedVersion)
 	}
 	// Same 0 → -1 convention as everywhere else: main has no events for a
 	// stream the branch created, so the append must claim a new stream.

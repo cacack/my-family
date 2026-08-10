@@ -1705,6 +1705,28 @@ export interface paths {
          *     `409 merge_conflicts` and **nothing is written** — the response carries
          *     the full conflict list so the client can render the review.
          *
+         *     **The verdict this call acts on is computed here, not carried over from
+         *     `compare`.** This endpoint re-runs conflict detection itself and ignores
+         *     whatever `compare` told the client earlier, so the client's compare-time
+         *     verdict is advisory only — a review aid, never an input. What is pinned
+         *     is the verdict computed inside *this* request: the `main` versions it was
+         *     derived from are recorded, then re-checked before anything is written and
+         *     again as each entity is replayed. If `main` moves on an entity this merge
+         *     would replay inside that window, the merge is refused with
+         *     `409 merge_plan_stale` and **nothing is written**; the branch stays
+         *     `active`, and retrying is the fix. The refusal is deliberately broader
+         *     than a conflict: *any* mainline write to a replayed entity trips it, even
+         *     one that would not have conflicted, because the alternative is
+         *     overwriting it silently.
+         *
+         *     **A `200` is therefore not evidence that nothing landed on your entities
+         *     since your `compare`.** Mainline writes between `compare` and this call
+         *     are re-planned against, not rejected — they are simply part of the
+         *     `main` this merge was judged against. A client that needs the user to see
+         *     such a write before it is merged over must re-`compare` and re-present the
+         *     verdict itself; this endpoint's guarantee is only that the verdict it
+         *     acted on describes the `main` it wrote to.
+         *
          *     A resolution may also name a non-conflicting stream the branch touched;
          *     that is how a caller excludes an entity from an otherwise clean merge.
          *     Naming a stream the branch never changed is a `400`, not a no-op: the
@@ -3958,7 +3980,7 @@ export interface components {
              * @example merge_conflicts
              * @enum {string}
              */
-            code: "merge_conflicts" | "branch_not_active" | "merge_already_claimed" | "branch_too_large" | "main_too_far_ahead" | "merge_dangling_reference";
+            code: "merge_conflicts" | "branch_not_active" | "merge_already_claimed" | "branch_too_large" | "main_too_far_ahead" | "merge_plan_stale" | "merge_dangling_reference";
             /**
              * @description Human-readable explanation
              * @example branch has unresolved merge conflicts: 1 of 1 conflicts have no resolution
@@ -7575,6 +7597,15 @@ export interface operations {
              *       for the branch's entities since it forked, not by branch size.
              *       Reported separately from `branch_too_large` because the cause and
              *       the remedy differ — do not tell the user their branch is too big.
+             *     - `merge_plan_stale` — the mainline moved on an entity this merge
+             *       would replay, after this call's own conflict verdict was computed
+             *       against it. That write was never compared with the branch's
+             *       changes, so replaying over it would silently override it.
+             *       **Retryable, and the retry is the fix:** merging again re-plans
+             *       against the mainline as it now stands. The message carries the
+             *       stream id of the entity that moved (not a resolved name), the
+             *       version the plan assumed and the version the mainline is actually
+             *       at, as free text — there is no structured field for them.
              *     - `merge_dangling_reference` — the replay would leave the mainline
              *       holding a relationship pointing at a person the mainline will not
              *       have, because that person was deleted there or was excluded by a
@@ -7594,11 +7625,20 @@ export interface operations {
             };
             /**
              * @description `merge_partially_applied` — the branch was claimed and marked
-             *     `merged`, but the replay onto `main` failed partway, so `main`
-             *     carries only some of the branch's entities. This is the
+             *     `merged`, but the replay onto `main` did not finish. This is the
              *     non-transactional window described above. The message names the
-             *     stream that failed and how far the replay got. Do not retry; verify
-             *     with `GET /branches/{id}/compare`. Any other `500` is an unexpected
+             *     stream that failed, how far the replay got, and — read this first —
+             *     whether `main` was modified **at all**: a replay that fails on its
+             *     first entity leaves `main` completely untouched, which needs a
+             *     different response from a genuine half-application and is stated
+             *     explicitly rather than left to be inferred from the counts. Do not
+             *     retry either way; the branch is terminal. Verify with
+             *     `GET /branches/{id}/compare`. This also covers the residual
+             *     staleness window: the pre-merge check is not a lock, so a mainline
+             *     write landing after it is caught by the replay's own per-stream
+             *     version assertion — the message then says the plan went stale, but
+             *     the branch is already claimed, which is why it is reported here and
+             *     not as `409 merge_plan_stale`. Any other `500` is an unexpected
              *     error and carries the generic `internal_error` code.
              */
             500: {

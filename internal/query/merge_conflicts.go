@@ -90,6 +90,34 @@ type MergePlan struct {
 
 	Conflicts []MergeConflict
 
+	// MainStreamVersions is main's version for every stream in ReplayEvents, as
+	// observed while this plan was being built. Streams main has never seen are
+	// present with 0.
+	//
+	// It belongs on the plan rather than being re-read at replay time because it
+	// is part of what the conflict verdict was computed against: Conflicts says
+	// "given main at THESE versions, here is the disagreement". The two travel
+	// together so the command can assert, before it writes anything, that main
+	// still sits where the verdict assumed — a mainline write landing after this
+	// snapshot was never compared against the branch's events, so the verdict no
+	// longer describes reality (#698).
+	//
+	// EVERY stream in ReplayEvents must be present. A missing entry is NOT
+	// fail-safe and must not be treated as one: a stream main has never seen is
+	// pinned at 0, so an absent entry reads as 0 too and the command's
+	// `current == planned` comparison passes silently. The command therefore
+	// requires the key rather than defaulting it (see validatePlanNotStale).
+	// PlanMerge always populates it from the same event slice ReplayEvents comes
+	// from; the requirement is for any future constructor — #685's stored,
+	// replayed plan being the anticipated one.
+	//
+	// DELIBERATELY NOT PINNED: the create-vs-create class. A colliding create on
+	// main lives on a DIFFERENT stream by definition (see readMainCreateTail), so
+	// it is not in ReplayEvents and has no version here to pin. That class is
+	// inert in v0.12 — its gate never opens without branch-scoped GEDCOM import,
+	// an explicit non-goal of epic #54 — so the gap is recorded, not built for.
+	MainStreamVersions map[uuid.UUID]int64
+
 	// BranchTruncated reports that the BRANCH's own scan hit EventCap, so its
 	// replay set is incomplete. This is a property of the branch itself and
 	// does not improve on its own.
@@ -110,11 +138,41 @@ type MergePlan struct {
 // PlanMerge builds the merge plan for a branch: its replayable events and the
 // conflicts that a merge of them would run into.
 //
-// It shares loadBranchDiff with CompareBranch, so the review UI and the merge
-// command see the same events and reach the same conflict verdict.
+// It reads the same two sides as CompareBranch, through the same helpers, so the
+// review UI and the merge command see the same events and reach the same
+// conflict verdict. It does NOT call loadBranchDiff, because the ORDER of the
+// three reads below is the whole guarantee of the #698 pin:
+//
+//  1. the branch side, which is what tells us WHICH streams to pin;
+//  2. the pin itself;
+//  3. main's side — the only main state classifyConflicts ever compares against.
+//
+// The pin must sit between 1 and 3, not after 3. Capturing it after the main
+// read would make the pinned versions strictly NEWER than the verdict: a write
+// landing in that window would be baked into the pin while never appearing in
+// the compared tail, so the merge command's `current == planned` guard would
+// pass and the branch would replay over an event nothing ever compared it
+// against — the exact silent override #698 is about, in the one direction the
+// guard cannot see. Pinning first makes that same write show up as
+// `current > planned`, which is a refusal, and leaves the compared main tail a
+// superset of the pinned state.
+//
+// detectConflicts is deliberately last and reads nothing new for the edit and
+// delete classes — it is a pure function over the diff — so its position carries
+// no ordering requirement of its own. Its one read (readMainCreateTail, for the
+// create-vs-create class) is unpinned; see MainStreamVersions.
 func (s *BranchService) PlanMerge(ctx context.Context, branchID uuid.UUID) (*MergePlan, error) {
-	diff, err := s.loadBranchDiff(ctx, branchID)
+	diff, err := s.loadBranchSide(ctx, branchID)
 	if err != nil {
+		return nil, err
+	}
+
+	mainVersions, err := s.captureMainStreamVersions(ctx, diff.branchEvents)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.loadMainSide(ctx, diff); err != nil {
 		return nil, err
 	}
 
@@ -124,13 +182,47 @@ func (s *BranchService) PlanMerge(ctx context.Context, branchID uuid.UUID) (*Mer
 	}
 
 	return &MergePlan{
-		Branch:          diff.branch,
-		ReplayEvents:    diff.branchEvents,
-		Conflicts:       conflicts,
-		BranchTruncated: diff.branchTruncated,
-		MainTruncated:   diff.mainTruncated || tailTruncated,
-		EventCap:        maxComparisonEvents,
+		Branch:             diff.branch,
+		ReplayEvents:       diff.branchEvents,
+		Conflicts:          conflicts,
+		MainStreamVersions: mainVersions,
+		BranchTruncated:    diff.branchTruncated,
+		MainTruncated:      diff.mainTruncated || tailTruncated,
+		EventCap:           maxComparisonEvents,
 	}, nil
+}
+
+// captureMainStreamVersions records main's current version for each stream the
+// branch touched — the versions MergePlan.MainStreamVersions carries.
+//
+// This is one single-row read per stream. The merge path now issues three such
+// reads per stream — this capture, the command's pre-claim check, and the one
+// replayStream already made to compute its expected version — so N becomes 3N,
+// bounded by the streams the BRANCH touched rather than by main's size. The
+// three passes are inherent: the pre-claim check exists precisely to observe a
+// version FRESHER than this one, so it cannot reuse this read. Collapsing each
+// pass into one set-based read belongs with the other merge-path N+1 batching
+// (#697), not here.
+//
+// Only PlanMerge calls this. CompareBranch shares the two diff reads but not
+// this capture — the versions are merge-plan internals with no meaning in a
+// read-only diff, and ADR-005 keeps them off the public comparison response, so
+// compare must not pay N extra reads for them.
+func (s *BranchService) captureMainStreamVersions(ctx context.Context, branchEvents []repository.StoredEvent) (map[uuid.UUID]int64, error) {
+	streamIDs := branchStreamIDs(branchEvents)
+	versions := make(map[uuid.UUID]int64, len(streamIDs))
+	for _, streamID := range streamIDs {
+		version, err := s.eventStore.GetStreamVersion(ctx, streamID, domain.MainBranchID)
+		if err != nil {
+			return nil, fmt.Errorf("read main version for stream %s: %w", streamID, err)
+		}
+		// 0 for a stream main has never seen is kept as 0, not translated to
+		// the -1 "new stream" sentinel. That translation is an Append concern
+		// and stays in replayStream, where the append happens; here 0 is simply
+		// the true version and compares as one.
+		versions[streamID] = version
+	}
+	return versions, nil
 }
 
 // detectConflicts runs the conflict scan over an already-loaded diff and
