@@ -25,16 +25,41 @@ type branchFixture struct {
 }
 
 func newBranchFixture() *branchFixture {
+	return newBranchFixtureWith(branchFixtureDeps{})
+}
+
+// branchFixtureDeps lets a test interpose on the collaborators the merge path
+// talks to, which is how the timing-window tests land a rival write at a precise
+// point inside a merge. A nil wrapper means "use the plain in-memory backend",
+// so newBranchFixture is just this with no wrappers — one authoritative wiring
+// rather than a near-copy per race harness.
+//
+// branchFixture.eventStore stays the UNDERLYING store either way, so a test can
+// seed and assert through it without going back through its own wrapper.
+type branchFixtureDeps struct {
+	wrapEvents    func(repository.EventStore) repository.EventStore
+	wrapPositions func(command.MaxPositionReader) command.MaxPositionReader
+}
+
+func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
 	eventStore := memory.NewEventStore()
 	readStore := memory.NewReadModelStore()
 	branchStore := memory.NewBranchStore()
-	snapshotStore := memory.NewSnapshotStore(eventStore)
+
+	var events repository.EventStore = eventStore
+	if deps.wrapEvents != nil {
+		events = deps.wrapEvents(eventStore)
+	}
+	var positions command.MaxPositionReader = memory.NewSnapshotStore(eventStore)
+	if deps.wrapPositions != nil {
+		positions = deps.wrapPositions(positions)
+	}
 
 	return &branchFixture{
 		eventStore:  eventStore,
 		readStore:   readStore,
 		branchStore: branchStore,
-		handler:     command.NewHandlerWithBranches(eventStore, readStore, branchStore, snapshotStore),
+		handler:     command.NewHandlerWithBranches(events, readStore, branchStore, positions),
 	}
 }
 

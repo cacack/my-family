@@ -355,6 +355,15 @@ func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (Mer
 			Message: err.Error(),
 		}, nil
 
+	// MUST stay below the partially-applied case. A stale plan caught during
+	// the replay is wrapped in ErrMergePartiallyApplied, so errors.Is matches
+	// BOTH sentinels there; ordered the other way, a half-applied merge would
+	// come back as a 409 telling the client nothing was written and a retry is
+	// safe — the single most dangerous thing this endpoint could say. Reaching
+	// here means the pre-claim check refused, which genuinely wrote nothing.
+	case errors.Is(err, command.ErrMergePlanStale):
+		return refuse(MergePlanStale)
+
 	case errors.Is(err, domain.ErrBranchMergeNoteTooLong):
 		return MergeBranch400JSONResponse{BadRequestJSONResponse{
 			Code:    "validation_error",

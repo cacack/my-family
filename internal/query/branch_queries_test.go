@@ -342,8 +342,9 @@ func TestBranchService_CompareBranch_HasMore(t *testing.T) {
 // interface is nil — only the overridden methods may be called.
 type failingEventStore struct {
 	repository.EventStore
-	readBranchErr error
-	readStreamErr error
+	readBranchErr    error
+	readStreamErr    error
+	streamVersionErr error
 }
 
 func (s *failingEventStore) ReadBranch(_ context.Context, _ domain.BranchID, _ int64, _ int) ([]repository.StoredEvent, error) {
@@ -355,6 +356,12 @@ func (s *failingEventStore) ReadBranch(_ context.Context, _ domain.BranchID, _ i
 
 func (s *failingEventStore) ReadStreamsForBranch(_ context.Context, _ []uuid.UUID, _ domain.BranchID, _ int64, _ int) ([]repository.StoredEvent, error) {
 	return nil, s.readStreamErr
+}
+
+// GetStreamVersion is only reached by PlanMerge's version pin — CompareBranch
+// never asks for it — so it is the one read whose failure is a merge-only path.
+func (s *failingEventStore) GetStreamVersion(_ context.Context, _ uuid.UUID, _ domain.BranchID) (int64, error) {
+	return 0, s.streamVersionErr
 }
 
 func TestBranchService_CompareBranch_ReadErrors(t *testing.T) {

@@ -515,6 +515,11 @@ func TestBranchService_PlanMerge_ReadErrors(t *testing.T) {
 	}{
 		{"branch side", &failingEventStore{readBranchErr: readErr}},
 		{"main side", &failingEventStore{readStreamErr: readErr}},
+		// The version pin is a merge-only read (CompareBranch never takes it), so
+		// nothing else covers its failure. A plan built with the pin silently
+		// missing is worse than no plan: the staleness guard would compare
+		// against a version that was never observed.
+		{"version pin", &failingEventStore{streamVersionErr: readErr}},
 	}
 
 	for _, tt := range tests {

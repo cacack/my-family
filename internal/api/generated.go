@@ -90,6 +90,7 @@ const (
 	MergeAlreadyClaimed    BranchMergeConflictErrorCode = "merge_already_claimed"
 	MergeConflicts         BranchMergeConflictErrorCode = "merge_conflicts"
 	MergeDanglingReference BranchMergeConflictErrorCode = "merge_dangling_reference"
+	MergePlanStale         BranchMergeConflictErrorCode = "merge_plan_stale"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeConflictErrorCode enum.
@@ -106,6 +107,8 @@ func (e BranchMergeConflictErrorCode) Valid() bool {
 	case MergeConflicts:
 		return true
 	case MergeDanglingReference:
+		return true
+	case MergePlanStale:
 		return true
 	default:
 		return false

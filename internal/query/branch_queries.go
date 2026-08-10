@@ -156,7 +156,25 @@ type branchDiffSources struct {
 }
 
 // loadBranchDiff loads a branch and both sides of its divergence from main.
+//
+// The two sides are loaded by separate calls rather than inline here because
+// PlanMerge has to pin main's stream versions BETWEEN them — see PlanMerge.
+// CompareBranch, which needs no pin, composes them through this function.
 func (s *BranchService) loadBranchDiff(ctx context.Context, branchID uuid.UUID) (*branchDiffSources, error) {
+	diff, err := s.loadBranchSide(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.loadMainSide(ctx, diff); err != nil {
+		return nil, err
+	}
+	return diff, nil
+}
+
+// loadBranchSide loads the branch and its own events — the half of the diff that
+// is read from the branch. The returned sources have no main side yet;
+// loadMainSide fills it in.
+func (s *BranchService) loadBranchSide(ctx context.Context, branchID uuid.UUID) (*branchDiffSources, error) {
 	branch, err := s.branchStore.Get(ctx, branchID)
 	if err != nil {
 		return nil, fmt.Errorf("get branch: %w", err)
@@ -169,22 +187,25 @@ func (s *BranchService) loadBranchDiff(ctx context.Context, branchID uuid.UUID) 
 	if err != nil {
 		return nil, fmt.Errorf("read branch events: %w", err)
 	}
-	branchHasMore := len(rawBranchEvents) >= maxComparisonEvents
-	branchEvents := withoutBranchLifecycleEvents(rawBranchEvents)
-
-	// Main side: only the streams the branch actually touched.
-	rawMainEvents, mainHasMore, err := s.readMainTail(ctx, branchStreamIDs(branchEvents), branch.BasePosition)
-	if err != nil {
-		return nil, err
-	}
 
 	return &branchDiffSources{
 		branch:          branch,
-		branchEvents:    branchEvents,
-		mainEvents:      withoutBranchLifecycleEvents(rawMainEvents),
-		branchTruncated: branchHasMore,
-		mainTruncated:   mainHasMore,
+		branchEvents:    withoutBranchLifecycleEvents(rawBranchEvents),
+		branchTruncated: len(rawBranchEvents) >= maxComparisonEvents,
 	}, nil
+}
+
+// loadMainSide fills in the main half of the diff: main's events after the base
+// position, restricted to the streams the branch actually touched.
+func (s *BranchService) loadMainSide(ctx context.Context, diff *branchDiffSources) error {
+	rawMainEvents, mainHasMore, err := s.readMainTail(ctx, branchStreamIDs(diff.branchEvents), diff.branch.BasePosition)
+	if err != nil {
+		return err
+	}
+
+	diff.mainEvents = withoutBranchLifecycleEvents(rawMainEvents)
+	diff.mainTruncated = mainHasMore
+	return nil
 }
 
 // readMainTail reads main's events after basePosition for the given streams only.
