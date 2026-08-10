@@ -131,4 +131,21 @@ describe('BranchSwitcher', () => {
 		});
 		expect(screen.getByRole('menuitem', { name: /Maternal Smith line/ })).toBeDefined();
 	});
+
+	// The menuitem role must land on the anchor ITSELF, not on a wrapper around
+	// it. bits-ui 2 dropped the `href` prop, so an anchor nested inside a
+	// default-rendered Item leaves the Item as the interactive element: it
+	// swallows the activation keypress and Enter never navigates. Asserting the
+	// tag name is what catches that - the link still renders and still clicks
+	// with a mouse either way, so a laxer assertion would pass on the broken form.
+	it('exposes the manage-branches entry as the anchor itself, so Enter navigates', async () => {
+		listBranches.mockResolvedValue({ items: [], total: 0 });
+
+		render(BranchSwitcher);
+		await fireEvent.pointerDown(screen.getByRole('button', { name: /switch research branch/i }));
+
+		const link = await screen.findByRole('menuitem', { name: /manage branches/i });
+		expect(link.tagName).toBe('A');
+		expect(link.getAttribute('href')).toBe('/branches');
+	});
 });

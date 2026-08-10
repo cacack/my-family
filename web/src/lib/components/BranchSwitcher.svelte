@@ -119,7 +119,18 @@
 		</DropdownMenu.Group>
 
 		<DropdownMenu.Separator />
-		<DropdownMenu.Item><a href="/branches">Manage branches</a></DropdownMenu.Item>
+		<!--
+			The anchor must come through the `child` snippet, not be nested inside a
+			default-rendered Item. bits-ui 2 removed the `href` prop; without `child`
+			the Item renders its own element around the link, so it swallows the
+			activation keypress and Enter never navigates - the entry works with a
+			mouse and is dead to the keyboard.
+		-->
+		<DropdownMenu.Item>
+			{#snippet child({ props })}
+				<a href="/branches" {...props}>Manage branches</a>
+			{/snippet}
+		</DropdownMenu.Item>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>
 
