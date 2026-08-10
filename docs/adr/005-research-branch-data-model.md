@@ -474,11 +474,13 @@ definition exists to prevent. Three pieces close that:
   superset of the pinned state. `TestMergeBranch_StalePlanRefusesWriteInsideThePlanningWindow`
   (`internal/command`) pins the ordering.
 
-  The merge path now takes three single-row version reads per stream the *branch* touched — this
-  capture, the pre-claim check, and the one `replayStream` already made. The three passes are
-  inherent, not waste: the pre-claim check exists precisely to observe a version *fresher* than the
-  capture, so it cannot reuse it. Batching each pass into one set-based read is #697's business,
-  not this guard's. The capture is deliberately not exposed on `CompareBranch`'s response, and
+  The capture reads one row per stream the *branch* touched. A stream that is then **replayed onto
+  `main`** costs two further reads — the pre-claim check, and the one `replayStream` already made —
+  for three in total. A stream resolved to `main` costs only the capture: both the pre-claim check
+  and `replayStream` skip it, since branch events that are never replayed cannot override a
+  mainline write. The passes that do happen are inherent, not waste: the pre-claim check exists
+  precisely to observe a version *fresher* than the capture, so it cannot reuse it. Batching each
+  pass into one set-based read is #697's business, not this guard's. The capture is deliberately not exposed on `CompareBranch`'s response, and
   `CompareBranch` does not pay for it: it is merge-plan internals with no meaning in a read-only
   diff.
 

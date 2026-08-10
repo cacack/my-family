@@ -195,14 +195,19 @@ func (s *BranchService) PlanMerge(ctx context.Context, branchID uuid.UUID) (*Mer
 // captureMainStreamVersions records main's current version for each stream the
 // branch touched — the versions MergePlan.MainStreamVersions carries.
 //
-// This is one single-row read per stream. The merge path now issues three such
-// reads per stream — this capture, the command's pre-claim check, and the one
-// replayStream already made to compute its expected version — so N becomes 3N,
-// bounded by the streams the BRANCH touched rather than by main's size. The
-// three passes are inherent: the pre-claim check exists precisely to observe a
-// version FRESHER than this one, so it cannot reuse this read. Collapsing each
-// pass into one set-based read belongs with the other merge-path N+1 batching
-// (#697), not here.
+// This is one single-row read per stream, for every stream the branch touched.
+// A stream that is then REPLAYED onto main costs two more — the command's
+// pre-claim check, and the one replayStream already made to compute its
+// expected version — so it is three reads, not one. A stream resolved to "main"
+// costs only this capture: both the pre-claim check and replayStream skip it,
+// because a stream whose branch events are never replayed cannot be overridden
+// by a mainline write. The whole set is bounded by the streams the BRANCH
+// touched rather than by main's size.
+//
+// The passes that do happen are inherent: the pre-claim check exists precisely
+// to observe a version FRESHER than this one, so it cannot reuse this read.
+// Collapsing each pass into one set-based read belongs with the other
+// merge-path N+1 batching (#697), not here.
 //
 // Only PlanMerge calls this. CompareBranch shares the two diff reads but not
 // this capture — the versions are merge-plan internals with no meaning in a
