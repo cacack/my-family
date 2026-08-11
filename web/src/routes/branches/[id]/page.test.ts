@@ -224,6 +224,45 @@ describe('Branch comparison page', () => {
 		).toBeDefined();
 	});
 
+	// A -> B -> A: two requests for the SAME id, so a routed-id check cannot
+	// separate them. Only request ordering can, which is why the loader carries
+	// a monotonic token rather than comparing ids.
+	it('ignores an older response for the branch it has navigated back to', async () => {
+		const SECOND_ID = '22222222-2222-2222-2222-222222222222';
+		const secondBranch: Branch = { ...branch, id: SECOND_ID, name: 'Paternal Jones line' };
+		const staleName = 'Maternal Smith line (stale)';
+
+		let resolveFirstA!: (value: BranchComparisonResult) => void;
+		compareBranch
+			// First visit to A: slow, resolves last.
+			.mockImplementationOnce(
+				() => new Promise<BranchComparisonResult>((resolve) => (resolveFirstA = resolve))
+			)
+			// Visit to B.
+			.mockImplementationOnce(async () =>
+				comparison({ branch: secondBranch, conflicts: [], overlapping_stream_ids: [] })
+			)
+			// Back to A: the response the page must keep.
+			.mockImplementationOnce(async () => comparison());
+
+		render(Page);
+		navigateTo(SECOND_ID);
+		await screen.findByRole('heading', { name: 'Paternal Jones line' });
+
+		navigateTo(BRANCH_ID);
+		await screen.findByRole('heading', { name: 'Maternal Smith line' });
+
+		// The first A request finally lands, carrying older data for the same id.
+		resolveFirstA(comparison({ branch: { ...branch, name: staleName } }));
+		await waitFor(() => {
+			expect(compareBranch).toHaveBeenCalledTimes(3);
+		});
+		await tick();
+
+		expect(screen.queryByRole('heading', { name: staleName })).toBeNull();
+		expect(screen.getByRole('heading', { name: 'Maternal Smith line' })).toBeDefined();
+	});
+
 	it('handles a missing branch', async () => {
 		compareBranch.mockRejectedValue({ status: 404, code: 'not_found', message: 'not found' });
 

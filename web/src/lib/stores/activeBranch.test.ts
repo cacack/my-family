@@ -132,6 +132,32 @@ describe('activeBranch store', () => {
 		expect(store.activeBranch.notice).toContain('no longer available');
 	});
 
+	// The mirror of the test above, on the switch path. If the new id cannot be
+	// stored, a reload re-hydrates the OLD id and silently reverts the switch —
+	// the user clicks a branch and lands back on the one they left.
+	it('does not reload when the chosen branch id could not be persisted', async () => {
+		const { store } = await loadStore(null);
+		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new Error('storage unavailable');
+		});
+
+		try {
+			store.switchBranch({
+				id: BRANCH_ID,
+				name: 'Maternal Smith line',
+				base_position: 2,
+				status: 'active',
+				created_at: '2026-08-09T00:00:00Z'
+			});
+		} finally {
+			setItem.mockRestore();
+		}
+
+		expect(reloadMock).not.toHaveBeenCalled();
+		// The in-memory scope still stands, so later requests hit the branch.
+		expect(store.activeBranch.id).toBe(BRANCH_ID);
+	});
+
 	it('shows a persisted drop notice on the next load, then clears it', async () => {
 		const { store } = await loadStore(null, 'Your branch went away.');
 

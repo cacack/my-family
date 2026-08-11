@@ -81,16 +81,24 @@
 	 * the requested id still being the routed one — otherwise the page would
 	 * show one branch's changes and conflicts under another's name.
 	 */
+	// Comparing the routed id is not enough on its own: A -> B -> A navigation
+	// issues two requests for the SAME id, and the first can land after the
+	// second and overwrite newer data with older. A monotonic token is what
+	// actually orders them, so every state write is gated on it — the same
+	// pattern BranchSwitcher uses for its list fetches.
+	let comparisonRequest = 0;
+
 	async function loadComparison(id: string) {
+		const request = ++comparisonRequest;
 		loading = true;
 		error = null;
 		notFound = false;
 		try {
 			const result = await api.compareBranch(id);
-			if (id !== branchId) return;
+			if (request !== comparisonRequest) return;
 			comparison = result;
 		} catch (e) {
-			if (id !== branchId) return;
+			if (request !== comparisonRequest) return;
 			const apiError = e as ApiError;
 			if (apiError.status === 404) {
 				notFound = true;
@@ -99,7 +107,7 @@
 			}
 			comparison = null;
 		} finally {
-			if (id === branchId) {
+			if (request === comparisonRequest) {
 				loading = false;
 			}
 		}

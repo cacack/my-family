@@ -229,8 +229,14 @@ export function switchBranch(branch: Branch | null): void {
 	// A branch chosen explicitly needs no startup revalidation.
 	revalidationStarted = true;
 	setClientBranch(id);
-	persistBranchId(id);
-	if (typeof window !== 'undefined') {
+	// Only reload if the new id actually reached storage. If localStorage is
+	// unwritable, the reload would re-hydrate the PREVIOUS id and silently undo
+	// the switch the user just asked for — the same trap dropStaleBranch guards
+	// against above. Skipping the reload leaves the in-memory scope in force, so
+	// later requests still go to the chosen branch; only already-rendered rows
+	// are stale, which is the lesser of the two wrongs.
+	const persisted = persistBranchId(id);
+	if (persisted && typeof window !== 'undefined') {
 		window.location.reload();
 	}
 }
