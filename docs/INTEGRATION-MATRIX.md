@@ -222,8 +222,11 @@ behaves like a normal working copy:
 
 Remaining gaps, both deliberate: GEDCOM import/export is main-only (a stated non-goal of #670), and
 rollback is main-only (`Handler.rollbackEntity`). Widening branch writes to the entity types outside
-the seven-type slice is [#676](https://github.com/cacack/my-family/issues/676); merging a branch back
-into `main` is [#55](https://github.com/cacack/my-family/issues/55).
+the seven-type slice is [#676](https://github.com/cacack/my-family/issues/676).
+
+Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
+delivered the command and `POST /branches/{id}/merge`. What is outstanding is the merge *review* UI
+([#95](https://github.com/cacack/my-family/issues/95)), so the endpoint is API-only for now.
 
 ---
 
