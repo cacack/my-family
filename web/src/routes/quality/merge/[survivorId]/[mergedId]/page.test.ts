@@ -36,6 +36,15 @@ vi.mock('$app/navigation', () => ({
 	goto: vi.fn()
 }));
 
+// The real store exposes a read-only view, so the active branch is injected here.
+const { branchState } = vi.hoisted(() => ({
+	branchState: { id: null as string | null }
+}));
+
+vi.mock('$lib/stores/activeBranch.svelte', () => ({
+	activeBranch: branchState
+}));
+
 const survivorPerson: apiModule.PersonDetail = {
 	id: 'p-survivor',
 	given_name: 'Jane',
@@ -68,6 +77,7 @@ const mergedPerson: apiModule.PersonDetail = {
 describe('Merge Picker Page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		branchState.id = null;
 		mockPageParams = { survivorId: 'p-survivor', mergedId: 'p-merged' };
 		vi.mocked(apiModule.api.getPerson).mockImplementation(async (id: string) => {
 			if (id === 'p-survivor') return survivorPerson;
@@ -175,6 +185,30 @@ describe('Merge Picker Page', () => {
 				screen.getByText('This record was modified by another operation. Please try again.')
 			).toBeDefined();
 		});
+	});
+
+	// `GET /persons/{id}` is branch-scoped but `POST /persons/merge` is not, so
+	// on a branch the panels show branch data while the merge would rewrite the
+	// mainline. The action is withdrawn rather than merely annotated.
+	it('blocks the merge while a research branch is active', async () => {
+		branchState.id = '44444444-4444-4444-4444-444444444444';
+
+		render(Page);
+
+		const button = await screen.findByRole('button', { name: 'Merge persons' });
+		expect((button as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.getByText('Merging is unavailable on a research branch')).toBeDefined();
+
+		await fireEvent.click(button);
+		expect(apiModule.api.mergePersons).not.toHaveBeenCalled();
+	});
+
+	it('allows the merge on the mainline', async () => {
+		render(Page);
+
+		const button = await screen.findByRole('button', { name: 'Merge persons' });
+		expect((button as HTMLButtonElement).disabled).toBe(false);
+		expect(screen.queryByText('Merging is unavailable on a research branch')).toBeNull();
 	});
 
 	it('shows error when a person fetch fails', async () => {

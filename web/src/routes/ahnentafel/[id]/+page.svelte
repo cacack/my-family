@@ -3,6 +3,7 @@
 	import { api, type AhnentafelResponse, type AhnentafelEntry, formatGenDate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
 	let report: AhnentafelResponse | null = $state(null);
 	let error: string | null = $state(null);
@@ -117,6 +118,12 @@
 </svelte:head>
 
 <div class="ahnentafel-page">
+	<div class="no-print">
+		<MainlineNotice
+			surface="The Ahnentafel report"
+			detail="The pedigree chart is branch-scoped, but this report is not, so the two can disagree while a branch is active."
+		/>
+	</div>
 	<header class="page-header no-print">
 		<div class="header-left">
 			{#if report?.subject}

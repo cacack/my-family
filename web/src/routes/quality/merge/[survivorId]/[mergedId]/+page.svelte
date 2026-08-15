@@ -10,6 +10,7 @@
 		type MergePersonsResponse,
 		type PersonDetail
 	} from '$lib/api/client';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import {
 		Card,
@@ -62,6 +63,16 @@
 	// body (which could be tampered with upstream).
 	let routeSurvivorId = $state<string | null>(null);
 	let routeMergedId = $state<string | null>(null);
+
+	/**
+	 * `GET /persons/{id}` declares the `branch` parameter, so the panels below
+	 * show the branch's overlay values. `POST /persons/merge` does not, so the
+	 * merge itself would land on the mainline — destroying a mainline record on
+	 * the strength of a branch preview. A notice alone would not fix that, since
+	 * the read is already scoped, so the action is blocked outright until #676
+	 * brings person merge into the branch-scoped slice.
+	 */
+	const mergeBlockedByBranch = $derived(activeBranch.id !== null);
 
 	$effect(() => {
 		const params = $page.params as Record<string, string | undefined>;
@@ -196,6 +207,7 @@
 	}
 
 	async function handleMerge() {
+		if (mergeBlockedByBranch) return;
 		if (!survivor || !merged || !routeSurvivorId || !routeMergedId) return;
 		const survivorTarget = routeSurvivorId;
 		const mergedTarget = routeMergedId;
@@ -244,6 +256,20 @@
 			Choose which value to keep for each field. The merged record will be deleted.
 		</p>
 	</header>
+
+	{#if mergeBlockedByBranch}
+		<div
+			role="note"
+			class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+		>
+			<p class="font-semibold">Merging is unavailable on a research branch</p>
+			<p class="mt-1">
+				Person merge operates on the mainline. It is not part of the branch-scoped slice, so the
+				records shown below come from your branch while the merge itself would rewrite the
+				mainline. Return to the mainline to merge these people.
+			</p>
+		</div>
+	{/if}
 
 	{#if !result}
 		<Card>
@@ -397,7 +423,7 @@
 			<Button variant="outline" onclick={handleCancel} disabled={submitting}>Cancel</Button>
 			<Button
 				onclick={handleMerge}
-				disabled={loading || submitting || !survivor || !merged}
+				disabled={loading || submitting || !survivor || !merged || mergeBlockedByBranch}
 			>
 				{submitting ? 'Merging…' : 'Merge persons'}
 			</Button>

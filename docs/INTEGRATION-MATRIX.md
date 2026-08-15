@@ -169,7 +169,7 @@ Current implementation status for tracking completeness.
 | Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
 | Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
 | Snapshot | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | N/A | ❌ | Partial |
-| Branch | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ | N/A | N/A | Partial |
+| Branch | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | Complete |
 
 Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing | N/A Not applicable
 
@@ -183,7 +183,7 @@ Notes on partial rows:
 
 - **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`).
 - **Snapshot**: bypasses the event-sourced pipeline — `SnapshotService` writes directly to `SnapshotStore` (implemented in all three backends, hence ReadModel ✅). A `SnapshotCreated` event type exists in `domain/events.go` but is never emitted, so Events/Commands/Projections remain partial.
-- **Branch**: create and delete/archive are implemented (#670) with list/get/compare queries and a `/branches` API. `BranchMerged` decodes and projects but is never emitted — merge is [#55](https://github.com/cacack/my-family/issues/55) — so Commands remain partial. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
+- **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. The frontend surface (switcher, banner, `/branches` list and read-only comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94); the merge *review* UI is [#95](https://github.com/cacack/my-family/issues/95), so `POST /branches/{id}/merge` is API-only for now — implemented and callable, just not yet driven from the UI. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
 ### Branch coverage detail (#669 read / #670 write)
 
@@ -203,6 +203,11 @@ narrower set, because a write also needs a branch-scoped command path:
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
 `getPedigree`) are the 16 API operations carrying `?branch=`.
 
+The frontend mirrors exactly those 16 in `isBranchScopedRequest()`
+(`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
+`?branch=` while `listFamilies` does not. Every other surface renders `MainlineNotice.svelte` while
+a branch is active, so the UI never presents mainline data as branch data. Grow both with #676.
+
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
 `internal/api/branch_handlers_test.go`), and the command layer resolves its *reads* — existence
 checks, validation, and the expected version — through the same branch overlay, so a branch
@@ -217,8 +222,11 @@ behaves like a normal working copy:
 
 Remaining gaps, both deliberate: GEDCOM import/export is main-only (a stated non-goal of #670), and
 rollback is main-only (`Handler.rollbackEntity`). Widening branch writes to the entity types outside
-the seven-type slice is [#676](https://github.com/cacack/my-family/issues/676); merging a branch back
-into `main` is [#55](https://github.com/cacack/my-family/issues/55).
+the seven-type slice is [#676](https://github.com/cacack/my-family/issues/676).
+
+Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
+delivered the command and `POST /branches/{id}/merge`. What is outstanding is the merge *review* UI
+([#95](https://github.com/cacack/my-family/issues/95)), so the endpoint is API-only for now.
 
 ---
 

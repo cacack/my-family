@@ -51,7 +51,113 @@ export type RepositoryUpdate = components['schemas']['RepositoryUpdate'];
 export type RepositoryList = components['schemas']['RepositoryList'];
 export type Address = components['schemas']['Address'];
 
+// Re-export Research Branch types from generated file (single source of truth)
+export type Branch = components['schemas']['Branch'];
+export type BranchCreate = components['schemas']['BranchCreate'];
+export type BranchList = components['schemas']['BranchList'];
+export type BranchComparisonResult = components['schemas']['BranchComparisonResult'];
+export type MergeConflict = components['schemas']['MergeConflict'];
+/**
+ * The generated `ChangeEntry`, as carried by `BranchComparisonResult`. It needs
+ * its own name because the hand-written `ChangeEntry` interface further down
+ * predates the generated schema and declares `entity_name` as required.
+ */
+export type BranchChangeEntry = components['schemas']['ChangeEntry'];
+
 const API_BASE = '/api/v1';
+
+// ---------------------------------------------------------------------------
+// Research branch scoping
+// ---------------------------------------------------------------------------
+
+/**
+ * The active research branch id, or null for the mainline.
+ *
+ * It lives here rather than in `activeBranch.svelte.ts` so that `request()`
+ * never has to import the store: the store imports this module, and the reverse
+ * edge would be a circular import.
+ */
+let activeBranchId: string | null = null;
+
+/** Point every branch-scoped request at `branchId`, or at the mainline when null. */
+export function setClientBranch(branchId: string | null): void {
+	activeBranchId = branchId;
+}
+
+/** The branch id currently scoping requests, or null for the mainline. */
+export function getClientBranch(): string | null {
+	return activeBranchId;
+}
+
+const UUID_SEGMENT = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+
+/**
+ * The operations that declare the `?branch=` (`branchScope`) parameter in
+ * `internal/api/openapi.yaml`.
+ *
+ * The parameter is declared **per operation, not per path**, so this table
+ * matches on method as well: `POST /families` takes it while `GET /families`
+ * (`listFamilies`) does not, which is why the families *list* page is a
+ * mainline-only surface while family *detail* pages are branch-scoped.
+ *
+ * `{id}` segments are matched as UUIDs rather than as `[^/]+` so that the real
+ * two-segment literal routes — `GET /persons/duplicates` and
+ * `POST /persons/merge` — cannot be mistaken for `/persons/{id}`.
+ *
+ * This is the #669 vertical slice and nothing more. Every other read model is
+ * mainline-only until #676 fans the branch overlay out; grow this table there,
+ * and never by blanket-appending the parameter to every request.
+ *
+ * `client.test.ts` parses `openapi.yaml` and fails if the two disagree in
+ * either direction, so adding `branchScope` to an operation without adding it
+ * here is a red test rather than a silent mainline read.
+ */
+const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
+	readonly methods: readonly string[];
+	readonly pattern: RegExp;
+}> = [
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/persons$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}$`) },
+	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/names$`) },
+	{
+		methods: ['PUT', 'DELETE'],
+		pattern: new RegExp(`^/persons/${UUID_SEGMENT}/names/${UUID_SEGMENT}$`)
+	},
+	{ methods: ['POST'], pattern: new RegExp('^/families$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/families/${UUID_SEGMENT}$`) },
+	{ methods: ['POST'], pattern: new RegExp(`^/families/${UUID_SEGMENT}/children$`) },
+	{
+		methods: ['DELETE'],
+		pattern: new RegExp(`^/families/${UUID_SEGMENT}/children/${UUID_SEGMENT}$`)
+	},
+	{ methods: ['GET'], pattern: new RegExp(`^/pedigree/${UUID_SEGMENT}$`) }
+];
+
+/**
+ * True when `method path` is one of the operations that accepts `?branch=`.
+ * Exported for unit testing — the allowlist is the safety property that keeps
+ * the client from sending a scope parameter an endpoint would reject or ignore.
+ */
+export function isBranchScopedRequest(method: string, path: string): boolean {
+	const pathname = path.split('?')[0];
+	const verb = method.toUpperCase();
+	return BRANCH_SCOPED_OPERATIONS.some(
+		(op) => op.methods.includes(verb) && op.pattern.test(pathname)
+	);
+}
+
+/**
+ * Append `?branch=<id>` when a branch is active and the operation accepts it.
+ * With no active branch the path is returned untouched — not one byte of a
+ * mainline request changes.
+ */
+function withBranchScope(method: string, path: string): string {
+	if (activeBranchId === null || !isBranchScopedRequest(method, path)) {
+		return path;
+	}
+	const separator = path.includes('?') ? '&' : '?';
+	return `${path}${separator}branch=${encodeURIComponent(activeBranchId)}`;
+}
 
 // Types based on OpenAPI schemas
 export type ResearchStatus = 'certain' | 'probable' | 'possible' | 'unknown';
@@ -857,6 +963,27 @@ export interface ChangeHistoryResponse {
 	has_more: boolean;
 }
 
+/**
+ * The genealogy API.
+ *
+ * ## Ambient branch scope
+ *
+ * Sixteen of the methods below are **branch-scoped**: they answer from, and
+ * write to, whichever research branch is currently active rather than the
+ * mainline. That branch is module-level state, set by
+ * `setClientBranch`/`getClientBranch` and driven in practice by `switchBranch`
+ * in `$lib/stores/activeBranch.svelte`. Nothing about a call site shows it —
+ * `api.getPerson(id)` returns branch or mainline data depending on state some
+ * other file set, so a scoped method's result is only as well-defined as the
+ * scope in force when it runs.
+ *
+ * `BRANCH_SCOPED_OPERATIONS` above is the authoritative list, mirrored from the
+ * `branchScope` parameter in `internal/api/openapi.yaml` and pinned to it by a
+ * test in `client.test.ts`. Every other method here is mainline-only whatever
+ * branch is active — including `mergePersons` and the brick-wall setters, whose
+ * pages therefore withdraw their controls while a branch is active. Individual
+ * scoped methods are marked below.
+ */
 class ApiClient {
 	private async request<T>(
 		method: string,
@@ -864,7 +991,7 @@ class ApiClient {
 		body?: unknown,
 		headers?: Record<string, string>
 	): Promise<T> {
-		const url = `${API_BASE}${path}`;
+		const url = `${API_BASE}${withBranchScope(method, path)}`;
 		const options: RequestInit = {
 			method,
 			headers: {
@@ -930,6 +1057,7 @@ class ApiClient {
 	}
 
 	// Person endpoints
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async listPersons(params?: {
 		limit?: number;
 		offset?: number;
@@ -948,18 +1076,22 @@ class ApiClient {
 		return this.request<PersonList>('GET', `/persons${query ? `?${query}` : ''}`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getPerson(id: string): Promise<PersonDetail> {
 		return this.request<PersonDetail>('GET', `/persons/${id}`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async createPerson(data: PersonCreate): Promise<Person> {
 		return this.request<Person>('POST', '/persons', data);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async updatePerson(id: string, data: PersonUpdate): Promise<Person> {
 		return this.request<Person>('PUT', `/persons/${id}`, data);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async deletePerson(id: string): Promise<void> {
 		return this.request<void>('DELETE', `/persons/${id}`);
 	}
@@ -974,26 +1106,32 @@ class ApiClient {
 		return this.request<FamilyList>('GET', `/families${query ? `?${query}` : ''}`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getFamily(id: string): Promise<FamilyDetail> {
 		return this.request<FamilyDetail>('GET', `/families/${id}`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async createFamily(data: FamilyCreate): Promise<Family> {
 		return this.request<Family>('POST', '/families', data);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async updateFamily(id: string, data: FamilyUpdate): Promise<Family> {
 		return this.request<Family>('PUT', `/families/${id}`, data);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async deleteFamily(id: string): Promise<void> {
 		return this.request<void>('DELETE', `/families/${id}`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async addChildToFamily(familyId: string, data: AddChild): Promise<FamilyChild> {
 		return this.request<FamilyChild>('POST', `/families/${familyId}/children`, data);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async removeChildFromFamily(familyId: string, personId: string): Promise<void> {
 		return this.request<void>('DELETE', `/families/${familyId}/children/${personId}`);
 	}
@@ -1003,6 +1141,7 @@ class ApiClient {
 	}
 
 	// Pedigree endpoint
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getPedigree(personId: string, generations?: number): Promise<Pedigree> {
 		const params = generations ? `?generations=${generations}` : '';
 		return this.request<Pedigree>('GET', `/pedigree/${personId}${params}`);
@@ -1454,18 +1593,22 @@ class ApiClient {
 	}
 
 	// PersonName endpoints
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getPersonNames(personId: string): Promise<PersonNameList> {
 		return this.request<PersonNameList>('GET', `/persons/${personId}/names`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async addPersonName(personId: string, data: PersonNameCreate): Promise<PersonName> {
 		return this.requestWithConflictRetry<PersonName>('POST', `/persons/${personId}/names`, data);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async updatePersonName(personId: string, nameId: string, data: PersonNameUpdate): Promise<PersonName> {
 		return this.requestWithConflictRetry<PersonName>('PUT', `/persons/${personId}/names/${nameId}`, data);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async deletePersonName(personId: string, nameId: string): Promise<void> {
 		return this.requestWithConflictRetry<void>('DELETE', `/persons/${personId}/names/${nameId}`);
 	}
@@ -2029,6 +2172,36 @@ class ApiClient {
 			'POST',
 			'/persons/duplicates/dismiss/batch',
 			req
+		);
+	}
+
+	// Research branch endpoints. These manage the branches themselves, so they
+	// are never branch-scoped — `/branches*` is absent from the allowlist above.
+	// All five answer 503 when the branch registry is not configured.
+	async listBranches(): Promise<BranchList> {
+		return this.request<BranchList>('GET', '/branches');
+	}
+
+	async createBranch(data: BranchCreate): Promise<Branch> {
+		return this.request<Branch>('POST', '/branches', data);
+	}
+
+	async getBranch(id: string): Promise<Branch> {
+		return this.request<Branch>('GET', `/branches/${encodeURIComponent(id)}`);
+	}
+
+	/**
+	 * Delete a branch: its events are retained, its overlay rows are purged and
+	 * its status becomes `archived`. Answers 409 if the branch is not active.
+	 */
+	async deleteBranch(id: string): Promise<void> {
+		return this.request<void>('DELETE', `/branches/${encodeURIComponent(id)}`);
+	}
+
+	async compareBranch(id: string): Promise<BranchComparisonResult> {
+		return this.request<BranchComparisonResult>(
+			'GET',
+			`/branches/${encodeURIComponent(id)}/compare`
 		);
 	}
 }

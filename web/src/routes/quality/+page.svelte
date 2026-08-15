@@ -11,6 +11,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import SeverityBadge from '$lib/components/SeverityBadge.svelte';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
 	const pageSize = 20;
 	const ERROR_MESSAGE_MAX_LEN = 200;
@@ -254,6 +255,7 @@
 </svelte:head>
 
 <div class="mx-auto max-w-screen-xl p-6">
+	<MainlineNotice surface="Quality" />
 	<header class="mb-6">
 		<div>
 			<h1 class="m-0 text-2xl text-slate-800">Quality</h1>

@@ -2,6 +2,7 @@
 	import { api, type FamilyDetail } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
 	let families: FamilyDetail[] = $state([]);
 	let total = $state(0);
@@ -51,6 +52,13 @@
 </svelte:head>
 
 <div class="families-page">
+	<!-- GET /families is the one operation in the families group that does not
+	     declare ?branch=, so this list is mainline-only while family detail
+	     pages below it are branch-scoped. -->
+	<MainlineNotice
+		surface="This list"
+		detail="Individual family pages are branch-scoped; this list is not."
+	/>
 	<header class="page-header">
 		<h1>Families</h1>
 	</header>

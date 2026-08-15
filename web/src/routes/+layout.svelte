@@ -8,11 +8,14 @@
 	import KeyboardHelp from '$lib/components/KeyboardHelp.svelte';
 	import AccessibilityPanel from '$lib/components/AccessibilityPanel.svelte';
 	import DemoBanner from '$lib/components/DemoBanner.svelte';
+	import BranchBanner from '$lib/components/BranchBanner.svelte';
+	import BranchSwitcher from '$lib/components/BranchSwitcher.svelte';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import { Button } from '$lib/components/ui/button';
 	import TooltipProvider from '$lib/components/ui/tooltip/tooltip-provider.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { loadAppConfig, getAppConfig } from '$lib/stores/appConfig.svelte';
+	import { revalidateActiveBranch } from '$lib/stores/activeBranch.svelte';
 	import type { SearchResult } from '$lib/api/client';
 
 	let { children } = $props();
@@ -21,6 +24,14 @@
 
 	$effect(() => {
 		loadAppConfig();
+	});
+
+	// Separate effect: revalidation reads the active branch id, so folding it in
+	// above would re-run the config fetch whenever the branch changes.
+	// A persisted branch that is gone or terminal must fall back to the mainline
+	// before the user makes a write believing otherwise.
+	$effect(() => {
+		revalidateActiveBranch();
 	});
 
 	// Component refs
@@ -74,6 +85,8 @@
 	<DemoBanner />
 {/if}
 
+<BranchBanner />
+
 <div class="app-layout">
 	<header class="app-header" role="banner">
 		<a href="/" class="logo">
@@ -104,6 +117,7 @@
 			<a href="/sources" class:active={$page.url.pathname.startsWith('/sources')}>Sources</a>
 			<a href="/evidence" class:active={$page.url.pathname.startsWith('/evidence')}>Evidence</a>
 			<a href="/history" class:active={$page.url.pathname.startsWith('/history')}>History</a>
+			<a href="/branches" class:active={$page.url.pathname.startsWith('/branches')}>Branches</a>
 			<a href="/map" class:active={$page.url.pathname.startsWith('/map')}>Map</a>
 			<a href="/analytics" class:active={$page.url.pathname.startsWith('/analytics')}>Analytics</a>
 			<a href="/quality" class:active={$page.url.pathname.startsWith('/quality')}>Quality</a>
@@ -112,6 +126,7 @@
 			<a href="/search" class:active={$page.url.pathname.startsWith('/search')}>Search</a>
 		</nav>
 		<div class="header-controls">
+			<BranchSwitcher />
 			<div class="search-wrapper">
 				<SearchBox bind:this={searchBoxRef} onSelect={handleSearchSelect} placeholder="Search people..." />
 			</div>
@@ -311,6 +326,9 @@
 		align-items: center;
 		gap: 0.75rem;
 		margin-left: auto;
+		/* Keeps the branch switcher reachable once the header runs out of room.
+		   Full responsive treatment of the header is #21. */
+		flex-wrap: wrap;
 	}
 
 	.search-wrapper {

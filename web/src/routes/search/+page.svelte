@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent } from '$lib/components/ui/card';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import {
 		api,
 		type SearchResult,
@@ -270,6 +271,7 @@
 </svelte:head>
 
 <div class="search-page">
+	<MainlineNotice surface="Advanced Search" />
 	<header class="page-header">
 		<h1>Advanced Search</h1>
 		<p class="description">Search people by name, dates, and places</p>
