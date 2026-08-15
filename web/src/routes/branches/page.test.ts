@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import type * as apiModule from '$lib/api/client';
@@ -71,6 +71,19 @@ describe('Branches page', () => {
 		listBranches.mockResolvedValue({ items: [active, merged, archived], total: 3 });
 		createBranch.mockResolvedValue(active);
 		deleteBranch.mockResolvedValue(undefined);
+	});
+
+	// This file opens bits-ui overlays (the create Dialog, the delete
+	// AlertDialog), and bits-ui releases its body-scroll lock on a 24ms timer
+	// (`actualDelay = delay === null ? 24 : delay` in body-scroll-lock.svelte.js).
+	// If the environment tears down inside that window the callback runs against
+	// a destroyed document and throws `ReferenceError: document is not defined`
+	// — an unhandled error that fails the run even though every test passed.
+	// It is a race, so it surfaces intermittently: it took a scheduling shift
+	// from an unrelated commit to expose it. Draining past the delay here makes
+	// the cleanup run while the DOM still exists.
+	afterEach(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 30));
 	});
 
 	it('groups branches by lifecycle status', async () => {
