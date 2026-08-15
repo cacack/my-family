@@ -3,12 +3,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // `node:fs` (the `web` package declares no Node type definitions) nor any
 // assumption about the working directory.
 import openapiSpec from '../../../../internal/api/openapi.yaml?raw';
+import { NOTE_MAX_LENGTH } from '$lib/components/MergeConfirmDialog.svelte';
 import {
 	api,
 	formatGenDate,
+	isBranchMergeRefusal,
 	isBranchScopedRequest,
 	setClientBranch,
 	getClientBranch,
+	type BranchMergeConflictError,
+	type BranchMergeResult,
 	type GenDate
 } from './client';
 
@@ -145,6 +149,142 @@ describe('branch scope threading', () => {
 	});
 });
 
+describe('mergeBranch', () => {
+	const STREAM_ID = '55555555-5555-5555-5555-555555555555';
+	// The id is deliberately not URL-safe, so the encodeURIComponent test bites.
+	const AWKWARD_ID = 'branch/with space';
+
+	const mergedBranch: BranchMergeResult = {
+		branch: {
+			id: BRANCH_ID,
+			name: 'census-1881',
+			base_position: 12,
+			status: 'merged',
+			created_at: '2026-01-01T00:00:00Z'
+		},
+		merged_at_position: 128,
+		replayed_event_count: 7,
+		skipped_stream_ids: []
+	};
+
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	function mockResponse(status: number, body: unknown) {
+		fetchMock.mockResolvedValue({
+			ok: status >= 200 && status < 300,
+			status,
+			statusText: '',
+			json: async () => body
+		});
+	}
+
+	beforeEach(() => {
+		fetchMock = vi.fn();
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('POSTs to /branches/{id}/merge with the id URL-encoded', async () => {
+		mockResponse(200, mergedBranch);
+		await api.mergeBranch(AWKWARD_ID);
+		expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/branches/branch%2Fwith%20space/merge');
+		expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+	});
+
+	it('sends an empty body when no request is given', async () => {
+		mockResponse(200, mergedBranch);
+		await api.mergeBranch(BRANCH_ID);
+		expect(fetchMock.mock.calls[0][1].body).toBe('{}');
+	});
+
+	it('serializes the note and resolutions it is given', async () => {
+		mockResponse(200, mergedBranch);
+		await api.mergeBranch(BRANCH_ID, {
+			note: 'Confirmed by the 1881 census',
+			resolutions: [{ stream_id: STREAM_ID, resolution: 'branch' }]
+		});
+		expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+			note: 'Confirmed by the 1881 census',
+			resolutions: [{ stream_id: STREAM_ID, resolution: 'branch' }]
+		});
+	});
+
+	it('returns the merge result untouched', async () => {
+		mockResponse(200, mergedBranch);
+		await expect(api.mergeBranch(BRANCH_ID)).resolves.toEqual(mergedBranch);
+	});
+
+	it('throws a 409 merge_conflicts refusal with its conflicts intact', async () => {
+		const refusal: BranchMergeConflictError = {
+			code: 'merge_conflicts',
+			message: '1 of 1 conflicts have no resolution',
+			conflicts: [
+				{
+					stream_id: STREAM_ID,
+					supported_resolutions: ['branch', 'main'],
+					entity_type: 'person',
+					entity_name: 'Ada Lovelace',
+					kind: 'edit_edit',
+					fields: ['surname'],
+					detail: 'Both sides changed surname to different values'
+				}
+			]
+		};
+		mockResponse(409, refusal);
+
+		// `request()` rethrows the parsed body as-is with `status` stamped on, so
+		// the extra `conflicts` field survives with no extra plumbing.
+		await expect(api.mergeBranch(BRANCH_ID)).rejects.toEqual({ ...refusal, status: 409 });
+	});
+});
+
+describe('isBranchMergeRefusal', () => {
+	it.each([
+		'merge_conflicts',
+		'branch_not_active',
+		'merge_already_claimed',
+		'branch_too_large',
+		'main_too_far_ahead',
+		'merge_plan_stale',
+		'merge_dangling_reference',
+		'merge_partially_applied',
+		// The two 400s. Reachable when the merge's own conflict re-detection no
+		// longer supports a resolution compare offered, or when the request body
+		// itself fails validation - both refuse before anything is written.
+		'invalid_resolution',
+		'validation_error'
+	])('recognises %s', (code) => {
+		expect(isBranchMergeRefusal({ code, message: 'refused', status: 409 })).toBe(true);
+	});
+
+	it('does not require the optional conflicts array', () => {
+		expect(isBranchMergeRefusal({ code: 'merge_plan_stale', message: 'main moved' })).toBe(true);
+	});
+
+	it('rejects an unrelated 409 from another endpoint', () => {
+		expect(isBranchMergeRefusal({ code: 'CONFLICT', message: 'stale version', status: 409 })).toBe(
+			false
+		);
+		expect(isBranchMergeRefusal({ code: 'CONFLICT_RETRY_FAILED', message: 'retry failed' })).toBe(
+			false
+		);
+	});
+
+	it('rejects a refusal-shaped value with no message', () => {
+		expect(isBranchMergeRefusal({ code: 'merge_conflicts' })).toBe(false);
+	});
+
+	it('rejects null and non-objects', () => {
+		expect(isBranchMergeRefusal(null)).toBe(false);
+		expect(isBranchMergeRefusal(undefined)).toBe(false);
+		expect(isBranchMergeRefusal('merge_conflicts')).toBe(false);
+		expect(isBranchMergeRefusal(409)).toBe(false);
+	});
+});
+
 /**
  * The allowlist in client.ts is hand-maintained; `internal/api/openapi.yaml` is
  * the source of truth. #676 will add `branchScope` to more operations, and
@@ -249,5 +389,45 @@ describe('BRANCH_SCOPED_OPERATIONS vs openapi.yaml', () => {
 				'Update the table (and the MainlineNotice coverage that depends on it):\n' +
 				drift.join('\n')
 		).toEqual([]);
+	});
+});
+
+/**
+ * `NOTE_MAX_LENGTH` is hand-copied from the spec, so it can drift silently: the
+ * dialog would keep letting a note through that the server then refuses with
+ * `400 validation_error`. Pinned here rather than in the component's own tests
+ * because this is where the raw-spec import already lives (see above).
+ *
+ * Parsed by line for the same reason the branch-scope test is - `web` declares
+ * no YAML parser - and just as brittle: a spec it cannot read throws rather than
+ * quietly passing.
+ */
+describe('NOTE_MAX_LENGTH vs openapi.yaml', () => {
+	function specNoteMaxLength(spec: string): number {
+		const lines = spec.split('\n');
+		const schema = lines.indexOf('    BranchMergeRequest:');
+		if (schema === -1) {
+			throw new Error('openapi.yaml has no `BranchMergeRequest` schema at the expected indent');
+		}
+
+		for (let i = schema + 1; i < lines.length; i++) {
+			// A sibling schema at the same indent ends this one.
+			if (/^ {4}\S/.test(lines[i])) break;
+			if (lines[i] !== '        note:') continue;
+
+			for (let j = i + 1; j < lines.length; j++) {
+				// A sibling property at the same indent ends the `note` block.
+				if (/^ {8}\S/.test(lines[j])) break;
+				const match = /^ {10}maxLength: (\d+)$/.exec(lines[j]);
+				if (match) return Number(match[1]);
+			}
+			throw new Error('openapi.yaml: `BranchMergeRequest.note` declares no maxLength');
+		}
+
+		throw new Error('openapi.yaml: `BranchMergeRequest` declares no `note` property');
+	}
+
+	it('matches the spec cap the server enforces', () => {
+		expect(NOTE_MAX_LENGTH).toBe(specNoteMaxLength(openapiSpec));
 	});
 });

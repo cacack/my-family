@@ -57,6 +57,16 @@ export type BranchCreate = components['schemas']['BranchCreate'];
 export type BranchList = components['schemas']['BranchList'];
 export type BranchComparisonResult = components['schemas']['BranchComparisonResult'];
 export type MergeConflict = components['schemas']['MergeConflict'];
+export type BranchMergeRequest = components['schemas']['BranchMergeRequest'];
+export type BranchMergeResult = components['schemas']['BranchMergeResult'];
+export type MergeResolutionEntry = components['schemas']['MergeResolutionEntry'];
+export type BranchMergeConflictError = components['schemas']['BranchMergeConflictError'];
+/**
+ * The side that wins for one entity - `'branch' | 'main'`. Derived from the
+ * generated entry rather than hand-written so it cannot drift from the spec's
+ * enum, and so a review UI can type its selection state without restating it.
+ */
+export type MergeResolution = MergeResolutionEntry['resolution'];
 /**
  * The generated `ChangeEntry`, as carried by `BranchComparisonResult`. It needs
  * its own name because the hand-written `ChangeEntry` interface further down
@@ -2177,7 +2187,7 @@ class ApiClient {
 
 	// Research branch endpoints. These manage the branches themselves, so they
 	// are never branch-scoped — `/branches*` is absent from the allowlist above.
-	// All five answer 503 when the branch registry is not configured.
+	// All six answer 503 when the branch registry is not configured.
 	async listBranches(): Promise<BranchList> {
 		return this.request<BranchList>('GET', '/branches');
 	}
@@ -2204,6 +2214,32 @@ class ApiClient {
 			`/branches/${encodeURIComponent(id)}/compare`
 		);
 	}
+
+	/**
+	 * Merge a branch into the mainline. The body is optional per the spec, so an
+	 * omitted one is sent as `{}` — a conflict-free branch, no note, no
+	 * resolutions. Every conflict `compareBranch()` reported must appear in
+	 * `resolutions` or the merge is refused.
+	 *
+	 * Deliberately plain `request()`, **never** `requestWithConflictRetry()`.
+	 * That helper exists for optimistic-locking clashes on the person aggregate,
+	 * where a blind retry usually succeeds. Every 409 here is a considered
+	 * refusal instead: `merge_conflicts` needs a human decision;
+	 * `branch_not_active` / `merge_already_claimed` mean someone else already
+	 * merged and can never succeed on retry; `branch_too_large` /
+	 * `main_too_far_ahead` are documented as not retryable; and
+	 * `merge_plan_stale` is retryable only after re-presenting the verdict to the
+	 * user — a silent retry would merge over a mainline write they never saw.
+	 *
+	 * Narrow what this throws with `isBranchMergeRefusal()`.
+	 */
+	async mergeBranch(id: string, req: BranchMergeRequest = {}): Promise<BranchMergeResult> {
+		return this.request<BranchMergeResult>(
+			'POST',
+			`/branches/${encodeURIComponent(id)}/merge`,
+			req
+		);
+	}
 }
 
 export const api = new ApiClient();
@@ -2212,6 +2248,80 @@ export const api = new ApiClient();
 export function isConflictError(error: unknown): boolean {
 	const apiError = error as ApiError;
 	return apiError?.status === 409 || apiError?.code === 'CONFLICT_RETRY_FAILED';
+}
+
+/**
+ * Every `code` `POST /branches/{id}/merge` refuses with. The first seven are the
+ * 409 enum of the generated `BranchMergeConflictError`. The last three are not:
+ * `merge_partially_applied` is the 500, and `invalid_resolution` /
+ * `validation_error` are the two 400s, all of which carry the generic
+ * `BadRequest`/`Error` schema. They share the refusal *shape* but live outside
+ * the generated enum, so they are hand-maintained here and must be kept in step
+ * with `MergeBranch400`/`500` in `internal/api/branch_handlers.go` by hand.
+ *
+ * The 400s are genuinely reachable, not defensive: compare can offer a
+ * resolution the merge's own re-detection no longer supports (an entity
+ * reclassified `edit_edit` -> `delete_edit` by a mainline delete), and
+ * `invalid_resolution` is decided before the staleness check, so it is the
+ * verdict the user sees. Both are recoverable by re-comparing.
+ *
+ * An allowlist rather than "any 4xx/5xx from this call": an optimistic-locking
+ * 409 bubbling up from an unrelated endpoint must not be mistaken for a merge
+ * verdict the UI claims it can explain.
+ */
+const BRANCH_MERGE_REFUSAL_CODES = [
+	'merge_conflicts',
+	'branch_not_active',
+	'merge_already_claimed',
+	'branch_too_large',
+	'main_too_far_ahead',
+	'merge_plan_stale',
+	'merge_dangling_reference',
+	'merge_partially_applied',
+	'invalid_resolution',
+	'validation_error'
+] as const satisfies readonly (
+	| BranchMergeConflictError['code']
+	| 'merge_partially_applied'
+	| 'invalid_resolution'
+	| 'validation_error'
+)[];
+
+export type BranchMergeRefusalCode = (typeof BRANCH_MERGE_REFUSAL_CODES)[number];
+
+/**
+ * Compile-time completeness. `satisfies` above only proves no *invented* code
+ * crept in; this proves the other direction — if the spec grows a 409 code the
+ * list is missing, `Exclude` is non-empty and this fails to type-check, instead
+ * of the guard silently answering false for it. Types only, no runtime cost.
+ */
+type AssertNever<T extends never> = T;
+type _BranchMergeRefusalCodesAreComplete = AssertNever<
+	Exclude<BranchMergeConflictError['code'], BranchMergeRefusalCode>
+>;
+
+/**
+ * A refusal thrown by `mergeBranch()`, plus the HTTP `status` that `request()`
+ * stamps onto every error body it rethrows.
+ */
+export type BranchMergeRefusal = Omit<BranchMergeConflictError, 'code'> & {
+	code: BranchMergeRefusalCode;
+	status?: number;
+};
+
+/**
+ * Narrow a thrown value to a merge refusal, so a caller can render distinct copy
+ * per code. `conflicts` is deliberately not required: the schema marks it
+ * optional and only `merge_conflicts` populates it.
+ */
+export function isBranchMergeRefusal(error: unknown): error is BranchMergeRefusal {
+	if (typeof error !== 'object' || error === null) return false;
+	const candidate = error as { code?: unknown; message?: unknown };
+	return (
+		typeof candidate.code === 'string' &&
+		(BRANCH_MERGE_REFUSAL_CODES as readonly string[]).includes(candidate.code) &&
+		typeof candidate.message === 'string'
+	);
 }
 
 // Utility functions for formatting
