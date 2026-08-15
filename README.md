@@ -45,7 +45,8 @@ open http://localhost:8080
 
 Prerequisites:
 - Go 1.26+
-- Node.js 22+
+- Node.js 24 (`nvm use` reads the repo's `.nvmrc`). The app itself also runs on 22.22.2+ and 26+
+  (see `web/package.json` `engines`), but the test suite is held at 24 — see below.
 - SQLite 3.x (for local development)
 
 ```bash
@@ -60,6 +61,14 @@ cd web && npm run build && cd ..
 go build -o myfamily ./cmd/myfamily
 ./myfamily serve
 ```
+
+**Why Node is pinned to 24.** `.nvmrc`, CI and the Dockerfile all read the same version so they
+cannot drift apart. It is held at 24 (Active LTS) rather than 26 because Node 25 enabled the Web
+Storage API by default, and its `localStorage`/`sessionStorage` globals shadow the ones jsdom
+installs — every storage-touching test fails. This is unresolved upstream
+([vitest-dev/vitest#8757](https://github.com/vitest-dev/vitest/issues/8757)) and is not fixed by
+newer vitest or jsdom. Running the suite on 25+ needs `NODE_OPTIONS=--no-webstorage`. Revisit the
+pin once that lands upstream.
 
 ## Configuration
 
