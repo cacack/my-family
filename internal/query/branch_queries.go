@@ -11,14 +11,24 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
-// branchLifecycleEventTypes are the events that describe a branch itself rather
-// than the genealogy data on it. ADR-005 §Merge excludes them from replay, and a
-// diff excludes them for the same reason: "this branch was created" is not a
-// change to anyone's family tree.
-var branchLifecycleEventTypes = map[string]bool{
-	"BranchCreated": true,
-	"BranchDeleted": true,
-	"BranchMerged":  true,
+// researchMetadataEventTypes are the events that describe a research artifact —
+// a branch, a snapshot — rather than the genealogy data it points at. ADR-005
+// §Merge excludes them from replay, and a diff excludes them for the same
+// reason: "this branch was created" is not a change to anyone's family tree.
+//
+// Membership matters beyond replay: two classifiers in merge_conflicts.go key
+// off the "Created"/"Deleted" suffix, so an omission here would see
+// SnapshotDeleted as a genealogy delete. Snapshot events cannot reach those
+// classifiers today (the snapshot commands refuse on a branch scope, so no
+// snapshot event lands on a branch stream), but they will the moment ADR-005's
+// branch-scoped snapshots land — so they are listed now rather than left as a
+// trap for that change.
+var researchMetadataEventTypes = map[string]bool{
+	"BranchCreated":   true,
+	"BranchDeleted":   true,
+	"BranchMerged":    true,
+	"SnapshotCreated": true,
+	"SnapshotDeleted": true,
 }
 
 // BranchService provides query operations for research branches.
@@ -232,7 +242,7 @@ func (s *BranchService) readMainTail(ctx context.Context, streamIDs []uuid.UUID,
 func withoutBranchLifecycleEvents(events []repository.StoredEvent) []repository.StoredEvent {
 	filtered := make([]repository.StoredEvent, 0, len(events))
 	for _, evt := range events {
-		if branchLifecycleEventTypes[evt.EventType] {
+		if researchMetadataEventTypes[evt.EventType] {
 			continue
 		}
 		filtered = append(filtered, evt)

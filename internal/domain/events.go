@@ -829,7 +829,12 @@ func NewNameRemoved(personID, nameID uuid.UUID) NameRemoved {
 	}
 }
 
-// SnapshotCreated event is emitted when a new snapshot is created.
+// SnapshotCreated event is emitted when a new snapshot is created (issue #624).
+//
+// Position is the log head captured BEFORE this event was appended, so a
+// snapshot never includes its own creation event in the range it marks. That
+// ordering is what makes the event safe: emitting it moves the head, but not
+// the position the snapshot points at.
 type SnapshotCreated struct {
 	BaseEvent
 	SnapshotID  uuid.UUID `json:"snapshot_id"`
@@ -849,6 +854,25 @@ func NewSnapshotCreated(s *Snapshot) SnapshotCreated {
 		Name:        s.Name,
 		Description: s.Description,
 		Position:    s.Position,
+	}
+}
+
+// SnapshotDeleted event is emitted when a snapshot marker is removed. The events
+// the snapshot pointed at are untouched — the log is append-only (ES-002) and a
+// snapshot is only a named pointer into it.
+type SnapshotDeleted struct {
+	BaseEvent
+	SnapshotID uuid.UUID `json:"snapshot_id"`
+}
+
+func (e SnapshotDeleted) EventType() string      { return "SnapshotDeleted" }
+func (e SnapshotDeleted) AggregateID() uuid.UUID { return e.SnapshotID }
+
+// NewSnapshotDeleted creates a SnapshotDeleted event.
+func NewSnapshotDeleted(snapshotID uuid.UUID) SnapshotDeleted {
+	return SnapshotDeleted{
+		BaseEvent:  NewBaseEvent(),
+		SnapshotID: snapshotID,
 	}
 }
 
