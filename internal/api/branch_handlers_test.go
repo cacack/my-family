@@ -124,7 +124,7 @@ func TestCreateBranch_BasePositionTracksHead(t *testing.T) {
 	}
 
 	// Creating a person writes PersonCreated + NameAdded, so the head is past 0.
-	// A base_position of 0 would mean the MaxPositionReader was never wired.
+	// A base_position of 0 would mean the position source was never wired.
 	basePosition, ok := decodeJSON(t, rec)["base_position"].(float64)
 	if !ok {
 		t.Fatal("base_position missing or not a number")

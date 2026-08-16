@@ -216,7 +216,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
 	}
-	if h.positions == nil {
+	if h.snapshots == nil {
 		return nil, ErrPositionSourceRequired
 	}
 
@@ -280,7 +280,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 
 	// main's head as the branch sees it — recorded on the marker, not used as an
 	// expected version (versions are per stream).
-	mergedAtPosition, err := h.positions.GetMaxPosition(ctx)
+	mergedAtPosition, err := h.snapshots.GetMaxPosition(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting max event position: %w", err)
 	}

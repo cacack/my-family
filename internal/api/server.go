@@ -131,9 +131,10 @@ func NewServer(
 		opt(server)
 	}
 
-	// Create services. The snapshot store doubles as the MaxPositionReader the
-	// branch commands need to pin a new branch's base position to the head of
-	// the event log.
+	// Create services. The snapshot store serves double duty on the command
+	// handler: it is the snapshot registry the snapshot commands write through
+	// their projection (issue #624), and it reports the head of the event log,
+	// which is what pins a new branch's base position.
 	cmdHandler := command.NewHandlerWithBranches(eventStore, readStore, server.branchStore, snapshotStore)
 	personSvc := query.NewPersonService(readStore)
 	familySvc := query.NewFamilyService(readStore)
