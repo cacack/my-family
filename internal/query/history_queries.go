@@ -235,7 +235,7 @@ func (s *HistoryService) mapEventTypeToEntityAndAction(eventType string) (entity
 		// The real fix is shared with the ~30 event types that have no case here
 		// and render as "unknown" in violation of the ChangeEntry enum; both want
 		// one authoritative event-type table used to filter AT the store. Tracked
-		// separately — do not fix piecemeal.
+		// in issue #739 — do not fix piecemeal.
 		return "skip", ""
 	default:
 		return "unknown", "unknown"
