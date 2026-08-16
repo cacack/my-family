@@ -64,9 +64,68 @@ export interface SeedData {
 	};
 }
 
+/**
+ * Ids and names in a seed come back from HTTP responses, and this file writes
+ * them to disk. Each one is checked against the shape it is supposed to have,
+ * and what gets written is the *matched* text rather than the response string.
+ *
+ * The point is a better failure: an API that starts returning a differently
+ * shaped id fails here, naming the field, instead of surfacing three files away
+ * as a locator that mysteriously matches nothing. It also keeps response text
+ * from flowing directly into `writeFileSync`, which is what CodeQL's
+ * `js/http-to-file-access` rule objects to.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Human-readable text the UI renders: names, places, branch labels. */
+const DISPLAY = /^[\p{L}\p{N} '&.,()-]{1,120}$/u;
+/** A snake_case API field name, e.g. `birth_place`. */
+const FIELD = /^[a-z][a-z0-9_]{0,39}$/;
+
+function matched(pattern: RegExp, value: string, field: string): string {
+	const found = pattern.exec(value);
+	if (found === null) {
+		throw new Error(
+			`E2E seed: ${field} is not the shape this suite expects: ${JSON.stringify(value)}`
+		);
+	}
+	return found[0];
+}
+
+const asId = (value: string, field: string) => matched(UUID, value, field);
+const asText = (value: string, field: string) => matched(DISPLAY, value, field);
+
+function checkPerson(person: SeededPerson, field: string): SeededPerson {
+	return {
+		id: asId(person.id, `${field}.id`),
+		name: asText(person.name, `${field}.name`),
+		mainBirthPlace: asText(person.mainBirthPlace, `${field}.mainBirthPlace`),
+		branchBirthPlace: asText(person.branchBirthPlace, `${field}.branchBirthPlace`)
+	};
+}
+
 export function writeSeed(seed: SeedData): void {
+	const checked: SeedData = {
+		switcher: {
+			branchId: asId(seed.switcher.branchId, 'switcher.branchId'),
+			branchName: asText(seed.switcher.branchName, 'switcher.branchName'),
+			person: checkPerson(seed.switcher.person, 'switcher.person')
+		},
+		merge: {
+			branchId: asId(seed.merge.branchId, 'merge.branchId'),
+			branchName: asText(seed.merge.branchName, 'merge.branchName'),
+			person: checkPerson(seed.merge.person, 'merge.person'),
+			conflictField: matched(FIELD, seed.merge.conflictField, 'merge.conflictField'),
+			familyId: asId(seed.merge.familyId, 'merge.familyId'),
+			familyName: asText(seed.merge.familyName, 'merge.familyName'),
+			familyBranchMarriagePlace: asText(
+				seed.merge.familyBranchMarriagePlace,
+				'merge.familyBranchMarriagePlace'
+			)
+		}
+	};
+
 	mkdirSync(OUTPUT_DIR, { recursive: true });
-	writeFileSync(SEED_FILE, JSON.stringify(seed, null, 2), 'utf-8');
+	writeFileSync(SEED_FILE, JSON.stringify(checked, null, 2), 'utf-8');
 }
 
 export function readSeed(): SeedData {
