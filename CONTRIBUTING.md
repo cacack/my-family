@@ -85,10 +85,27 @@ git checkout -b feat/NNN-feature-name
 
 ```bash
 make build              # Build
-make test               # Run all tests
+make test               # Run all tests (Go + frontend unit/component)
 make check-coverage     # Verify coverage thresholds
 make lint               # Lint
 ```
+
+Browser end-to-end tests are opt-in and not part of `make test`:
+
+```bash
+cd web && npx playwright install chromium   # one-time, downloads the browser
+make test-e2e                               # builds the binary, then drives it with Playwright
+```
+
+On Linux use `npx playwright install --with-deps chromium` — without the system libraries that
+flag installs, the browser downloads fine and then fails to launch with an opaque missing-`.so`
+error. CI uses `--with-deps` for this reason.
+
+If a local run shows stale data (a branch you already merged, say), check for a leftover server on
+port 8181: Playwright reuses an existing one locally rather than booting a clean binary.
+
+PostgreSQL integration tests need Docker. Without it they skip rather than fail, so `make test`
+still passes — but two backends get exercised instead of three. CI runs with Docker available.
 
 ### 3. Commit and Push
 

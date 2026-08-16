@@ -1,4 +1,4 @@
-.PHONY: help build test fmt vet generate generate-api generate-types verify-generated clean run dev setup check-coverage lint security check check-full docker-smoke-test
+.PHONY: help build test test-e2e fmt vet generate generate-api generate-types verify-generated clean run dev setup check-coverage lint security check check-full docker-smoke-test
 
 # Default target
 .DEFAULT_GOAL := help
@@ -14,7 +14,7 @@ help: ## Display this help message
 	@echo "  make <target>"
 	@echo ""
 	@echo "Targets:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 # Build all Go packages
 build: ## Build all Go packages
@@ -42,6 +42,12 @@ test: ## Run all tests (Go + frontend)
 
 test-go: ## Run only Go tests
 	go test ./...
+
+# Opt-in: not part of `make test`. Playwright boots the binary built here and
+# drives a real browser against it, so the browser must be installed first
+# (`cd web && npx playwright install chromium`).
+test-e2e: binary ## Run Playwright end-to-end tests against the built binary
+	cd web && npm run test:e2e
 
 test-coverage: ## Run tests with HTML coverage report
 	go test -coverprofile=coverage.out ./...
