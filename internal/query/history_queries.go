@@ -221,6 +221,22 @@ func (s *HistoryService) mapEventTypeToEntityAndAction(eventType string) (entity
 		return "citation", "deleted"
 	case "GedcomImported":
 		return "skip", ""
+	case "SnapshotCreated", "SnapshotDeleted":
+		// Snapshot markers are event-sourced for the audit trail (issue #624) but
+		// are not genealogical changes: showing "a snapshot was taken" inside the
+		// diff BETWEEN two snapshots is noise. The audit record remains in the
+		// event log; only this change-log view skips it.
+		//
+		// KNOWN LIMITATION: skipping happens after the store paginates, so a
+		// skipped event still counts toward TotalCount and still consumes a slot
+		// in the page — global history under-fills and over-reports. That is
+		// pre-existing (GedcomImported does the same) but snapshot create/delete
+		// is a routine action where an import is not, so it is now easy to hit.
+		// The real fix is shared with the ~30 event types that have no case here
+		// and render as "unknown" in violation of the ChangeEntry enum; both want
+		// one authoritative event-type table used to filter AT the store. Tracked
+		// separately — do not fix piecemeal.
+		return "skip", ""
 	default:
 		return "unknown", "unknown"
 	}

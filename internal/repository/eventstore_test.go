@@ -208,6 +208,8 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 	store := memory.NewEventStore()
 	ctx := context.Background()
 
+	snapshotDeleteID := uuid.New()
+
 	tests := []struct {
 		name      string
 		event     domain.Event
@@ -529,6 +531,22 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 				}
 				if e.Position != 42 {
 					t.Errorf("Position = %d, want 42", e.Position)
+				}
+			},
+		},
+		{
+			name: "SnapshotDeleted",
+			event: func() domain.Event {
+				return domain.NewSnapshotDeleted(snapshotDeleteID)
+			}(),
+			eventType: "SnapshotDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.SnapshotDeleted)
+				if !ok {
+					t.Fatalf("Expected SnapshotDeleted, got %T", decoded)
+				}
+				if e.SnapshotID != snapshotDeleteID {
+					t.Errorf("SnapshotID = %s, want %s", e.SnapshotID, snapshotDeleteID)
 				}
 			},
 		},
@@ -975,7 +993,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"CitationCreated", "CitationUpdated", "CitationDeleted",
 		"MediaCreated", "MediaUpdated", "MediaDeleted",
 		"NameAdded", "NameUpdated", "NameRemoved",
-		"SnapshotCreated", "PersonMerged",
+		"SnapshotCreated", "SnapshotDeleted", "PersonMerged",
 		"BranchCreated", "BranchDeleted", "BranchMerged",
 		"NoteCreated", "NoteUpdated", "NoteDeleted",
 		"SubmitterCreated", "SubmitterUpdated", "SubmitterDeleted",
