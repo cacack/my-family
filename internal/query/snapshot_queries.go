@@ -12,6 +12,12 @@ import (
 )
 
 // SnapshotService provides query operations for research milestone snapshots.
+//
+// Reads only. Creating and deleting a snapshot are commands on
+// command.Handler — they append SnapshotCreated / SnapshotDeleted and let the
+// projection write this store (issue #624). A mutating method here would be a
+// second path to the registry that bypasses the event log, which is the exact
+// gap #624 closed.
 type SnapshotService struct {
 	snapshotStore  repository.SnapshotStore
 	eventStore     repository.EventStore
@@ -27,28 +33,6 @@ func NewSnapshotService(snapshotStore repository.SnapshotStore, eventStore repos
 	}
 }
 
-// CreateSnapshot creates a new snapshot capturing the current max position from the event store.
-func (s *SnapshotService) CreateSnapshot(ctx context.Context, name, description string) (*domain.Snapshot, error) {
-	// Get the current max position from the event store
-	position, err := s.snapshotStore.GetMaxPosition(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("get max position: %w", err)
-	}
-
-	// Create the snapshot
-	snapshot, err := domain.NewSnapshot(name, description, position)
-	if err != nil {
-		return nil, fmt.Errorf("create snapshot: %w", err)
-	}
-
-	// Store the snapshot
-	if err := s.snapshotStore.Create(ctx, snapshot); err != nil {
-		return nil, fmt.Errorf("store snapshot: %w", err)
-	}
-
-	return snapshot, nil
-}
-
 // ListSnapshots returns all snapshots ordered by created_at DESC.
 func (s *SnapshotService) ListSnapshots(ctx context.Context) ([]*domain.Snapshot, error) {
 	return s.snapshotStore.List(ctx)
@@ -57,11 +41,6 @@ func (s *SnapshotService) ListSnapshots(ctx context.Context) ([]*domain.Snapshot
 // GetSnapshot retrieves a single snapshot by ID.
 func (s *SnapshotService) GetSnapshot(ctx context.Context, id uuid.UUID) (*domain.Snapshot, error) {
 	return s.snapshotStore.Get(ctx, id)
-}
-
-// DeleteSnapshot removes a snapshot (events remain untouched).
-func (s *SnapshotService) DeleteSnapshot(ctx context.Context, id uuid.UUID) error {
-	return s.snapshotStore.Delete(ctx, id)
 }
 
 // SnapshotComparisonResult contains the events between two snapshot positions.

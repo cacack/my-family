@@ -1053,7 +1053,7 @@ func TestMergeBranch_InterruptedClaimIsNotReplayedTwice(t *testing.T) {
 // it would silently override it — exactly what ADR-005 §Conflict definition
 // exists to prevent.
 
-// stalePositions wraps the merge's MaxPositionReader so a test can land a rival
+// stalePositions wraps the merge's position source so a test can land a rival
 // mainline write inside that window. GetMaxPosition is called between PlanMerge
 // returning and the staleness check, which makes it a precise hook for it.
 //
@@ -1067,8 +1067,10 @@ func TestMergeBranch_InterruptedClaimIsNotReplayedTwice(t *testing.T) {
 // rival is armed by the test AFTER setup: CreateBranch reads the same position
 // source, and firing there would put the write before planning rather than
 // after it, testing nothing.
+// The embedded store carries every method but GetMaxPosition, which this type
+// intercepts.
 type stalePositions struct {
-	inner command.MaxPositionReader
+	repository.SnapshotStore
 	rival func()
 	fired bool
 }
@@ -1078,7 +1080,7 @@ func (p *stalePositions) GetMaxPosition(ctx context.Context) (int64, error) {
 		p.fired = true
 		p.rival()
 	}
-	return p.inner.GetMaxPosition(ctx)
+	return p.SnapshotStore.GetMaxPosition(ctx)
 }
 
 // newStaleMergeFixture is newBranchFixture with the position source wrapped, so
@@ -1086,8 +1088,8 @@ func (p *stalePositions) GetMaxPosition(ctx context.Context) (int64, error) {
 func newStaleMergeFixture() (*branchFixture, *stalePositions) {
 	var positions *stalePositions
 	f := newBranchFixtureWith(branchFixtureDeps{
-		wrapPositions: func(inner command.MaxPositionReader) command.MaxPositionReader {
-			positions = &stalePositions{inner: inner}
+		wrapPositions: func(inner repository.SnapshotStore) repository.SnapshotStore {
+			positions = &stalePositions{SnapshotStore: inner}
 			return positions
 		},
 	})

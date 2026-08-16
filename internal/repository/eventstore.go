@@ -287,6 +287,12 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "SnapshotDeleted":
+		var event domain.SnapshotDeleted
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	case "BranchCreated":
 		var event domain.BranchCreated
 		if err := json.Unmarshal(e.Data, &event); err != nil {

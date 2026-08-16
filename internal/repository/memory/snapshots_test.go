@@ -262,3 +262,84 @@ func TestSnapshotStore_Reset(t *testing.T) {
 		t.Errorf("List() after Reset() returned %d items, want 0", len(list))
 	}
 }
+
+// TestSnapshotStore_Upsert covers the projection's write path (issue #624):
+// inserting when absent, overwriting when present, so replaying SnapshotCreated
+// is idempotent.
+func TestSnapshotStore_Upsert(t *testing.T) {
+	store := memory.NewSnapshotStore(memory.NewEventStore())
+	ctx := context.Background()
+
+	snapshot := &domain.Snapshot{
+		ID:          uuid.New(),
+		Name:        "Pre-DNA results",
+		Description: "before",
+		Position:    42,
+		CreatedAt:   time.Now().UTC(),
+	}
+
+	if err := store.Upsert(ctx, snapshot); err != nil {
+		t.Fatalf("Upsert() insert error = %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.Name != snapshot.Name || retrieved.Position != snapshot.Position {
+		t.Errorf("row = %+v, want %+v", retrieved, snapshot)
+	}
+
+	// Second Upsert of the same ID overwrites rather than failing or duplicating.
+	updated := *snapshot
+	updated.Name = "After courthouse trip"
+	updated.Description = "after"
+	updated.Position = 99
+	if err := store.Upsert(ctx, &updated); err != nil {
+		t.Fatalf("Upsert() overwrite error = %v", err)
+	}
+
+	retrieved, err = store.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Get() after overwrite error = %v", err)
+	}
+	if retrieved.Name != "After courthouse trip" || retrieved.Description != "after" || retrieved.Position != 99 {
+		t.Errorf("row after overwrite = %+v, want the updated values", retrieved)
+	}
+
+	all, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(all) != 1 {
+		t.Errorf("List() returned %d snapshots, want 1", len(all))
+	}
+}
+
+// TestSnapshotStore_UpsertDoesNotAliasCaller guards the copy-on-write the other
+// memory-store methods make: mutating the argument afterwards must not change
+// the stored row.
+func TestSnapshotStore_UpsertDoesNotAliasCaller(t *testing.T) {
+	store := memory.NewSnapshotStore(memory.NewEventStore())
+	ctx := context.Background()
+
+	snapshot := &domain.Snapshot{
+		ID:        uuid.New(),
+		Name:      "original",
+		Position:  1,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := store.Upsert(ctx, snapshot); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+
+	snapshot.Name = "mutated after the write"
+
+	retrieved, err := store.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.Name != "original" {
+		t.Errorf("stored name = %q, want it unaffected by the caller's mutation", retrieved.Name)
+	}
+}

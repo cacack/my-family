@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -378,4 +379,67 @@ func TestCreateSnapshot_InvalidJSON(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("Status = %d, want %d. Body: %s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
+}
+
+// TestSnapshotEndpointsAppendEvents is the API-level guard for issue #624: the
+// create and delete endpoints must go through the command handler, so the
+// lifecycle lands on the event log rather than writing the registry directly.
+func TestSnapshotEndpointsAppendEvents(t *testing.T) {
+	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	eventStore := memory.NewEventStore()
+	snapshotStore := memory.NewSnapshotStore(eventStore)
+	server := api.NewServer(cfg, eventStore, memory.NewReadModelStore(), snapshotStore, nil)
+
+	// Create.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/snapshots",
+		strings.NewReader(`{"name":"Pre-DNA results"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d. Body: %s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var created map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("create response has no id")
+	}
+
+	if types := snapshotEventTypes(t, eventStore); len(types) != 1 || types[0] != "SnapshotCreated" {
+		t.Fatalf("event types after create = %v, want [SnapshotCreated]", types)
+	}
+
+	// Delete.
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/snapshots/"+id, http.NoBody)
+	rec = httptest.NewRecorder()
+	server.Echo().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want %d. Body: %s", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+
+	types := snapshotEventTypes(t, eventStore)
+	if len(types) != 2 || types[1] != "SnapshotDeleted" {
+		t.Fatalf("event types after delete = %v, want [SnapshotCreated SnapshotDeleted]", types)
+	}
+}
+
+// snapshotEventTypes lists the snapshot lifecycle event types on the log, in
+// position order.
+func snapshotEventTypes(t *testing.T, eventStore *memory.EventStore) []string {
+	t.Helper()
+	all, err := eventStore.ReadAll(context.Background(), 0, 100)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	var types []string
+	for _, e := range all {
+		if strings.HasPrefix(e.EventType, "Snapshot") {
+			types = append(types, e.EventType)
+		}
+	}
+	return types
 }

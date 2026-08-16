@@ -745,6 +745,8 @@ func TestMapEventTypeToEntityAndAction(t *testing.T) {
 		{"CitationUpdated", "citation", "updated"},
 		{"CitationDeleted", "citation", "deleted"},
 		{"GedcomImported", "skip", ""},
+		{"SnapshotCreated", "skip", ""},
+		{"SnapshotDeleted", "skip", ""},
 		{"UnknownEvent", "unknown", "unknown"},
 	}
 
@@ -1327,6 +1329,48 @@ func TestGedcomImportedEventsAreSkipped(t *testing.T) {
 	entries, err := service.transformStoredEvents(context.Background(), events)
 	require.NoError(t, err)
 	assert.Empty(t, entries, "GedcomImported events should be filtered out")
+}
+
+// TestSnapshotEventsAreSkipped covers issue #624: snapshot markers are on the
+// log for the audit trail, but a change log — and especially the diff BETWEEN
+// two snapshots, which reads the range one of them sits in — must not list them
+// as genealogical changes.
+func TestSnapshotEventsAreSkipped(t *testing.T) {
+	now := time.Now().UTC()
+
+	snapshot, err := domain.NewSnapshot("Pre-DNA results", "before", 1)
+	require.NoError(t, err)
+	createdData, _ := json.Marshal(domain.NewSnapshotCreated(snapshot))
+	deletedData, _ := json.Marshal(domain.NewSnapshotDeleted(snapshot.ID))
+
+	service := NewHistoryService(&mockEventStore{}, &mockReadModelStore{})
+
+	events := []repository.StoredEvent{
+		{
+			ID:         uuid.New(),
+			StreamID:   snapshot.ID,
+			StreamType: "snapshot",
+			EventType:  "SnapshotCreated",
+			Data:       createdData,
+			Version:    1,
+			Position:   2,
+			Timestamp:  now,
+		},
+		{
+			ID:         uuid.New(),
+			StreamID:   snapshot.ID,
+			StreamType: "snapshot",
+			EventType:  "SnapshotDeleted",
+			Data:       deletedData,
+			Version:    2,
+			Position:   3,
+			Timestamp:  now,
+		},
+	}
+
+	entries, err := service.transformStoredEvents(context.Background(), events)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "snapshot lifecycle events should be filtered out of the change log")
 }
 
 func TestUnknownEventTypeStillReturnsUnknown(t *testing.T) {
