@@ -36,6 +36,8 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **DB-003** | `ReadModelStore` returns `nil` (not error) for missing entities | Interface contract test |
 | **DB-004** | No PostgreSQL-specific features without SQLite fallback or graceful degradation | Feature parity checklist |
 | **DB-005** | Full-text search works on both databases (tsvector vs FTS5) | Search integration test |
+| **DB-006** | Event store and read model table names are disjoint — both stores may share one database | Integration harness builds both stores on a single database per backend |
+| **DB-007** | On a database predating the `life_events` rename, the read model store must be constructed before the event store; the event store refuses (`ErrReadModelEventsTable`) rather than mutating a read-model table | Per-backend legacy-migration tests in `internal/repository/{sqlite,postgres}/` |
 
 ### Projection Invariants (PR) - Source: [ADR-003](./adr/003-synchronous-projections.md)
 
@@ -155,14 +157,14 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | Source Document | Invariant IDs | Count |
 |-----------------|---------------|-------|
 | ADR-001 (Event Sourcing) | ES-001 through ES-007 | 7 |
-| ADR-002 (Dual Database) | DB-001 through DB-005 | 5 |
+| ADR-002 (Dual Database) | DB-001 through DB-007 | 7 |
 | ADR-003 (Sync Projections) | PR-001 through PR-004 | 4 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-004, QA-001 through QA-003 | 13 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **46** |
+| **Total** | | **48** |
 
 ---
 

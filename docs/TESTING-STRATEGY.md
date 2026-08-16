@@ -195,6 +195,8 @@ Quick reference for which tests verify which invariants.
 | DB-003 | `internal/repository/*_test.go` - nil for missing | Automated |
 | DB-004 | Feature parity checklist | Code review |
 | DB-005 | `internal/repository/soundex_test.go` + per-backend `readmodel_test.go` | Automated |
+| DB-006 | `internal/integration/harness_test.go` - both stores on one database per backend | Automated |
+| DB-007 | `internal/repository/{sqlite,postgres}/` - legacy-migration and construction-order tests | Automated |
 | PR-001 | `internal/command/*_test.go` - transaction test | Automated |
 | PR-002 | `internal/repository/projection_test.go` - version check | Automated |
 | PR-003 | `internal/repository/projection_test.go` - deletion | Automated |

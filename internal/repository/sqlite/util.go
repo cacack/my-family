@@ -30,6 +30,27 @@ func OpenDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// eventsTableBelongsToReadModel reports whether an existing `events` table is the
+// read model's pre-#733 life-fact table rather than the event log's. Only the read
+// model's table carries an owner_type column, so that column is the discriminator —
+// and this function is its single home, shared by EventStore.createTables (which
+// refuses such a database) and ReadModelStore.renameLegacyEventsTable (which renames
+// it). Both stores must agree on who owns the name, so the probe must not be
+// duplicated.
+//
+// pragma_table_info yields no rows for a table that does not exist, so a database
+// with no `events` table at all reports (false, nil). A query error is returned, never
+// swallowed: a failed probe must not be read as "not the read model's table".
+func eventsTableBelongsToReadModel(db *sql.DB) (bool, error) {
+	var ownerTypeCols int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('events') WHERE name = 'owner_type'`,
+	).Scan(&ownerTypeCols); err != nil {
+		return false, fmt.Errorf("inspect events table ownership: %w", err)
+	}
+	return ownerTypeCols > 0, nil
+}
+
 // parseTimestamp parses an ISO 8601 timestamp string.
 func parseTimestamp(s string) (time.Time, error) {
 	formats := []string{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -34,7 +35,29 @@ type ReadModelStore struct {
 // the overlay resolution (ADR-005 / #669).
 var mainBranchID = domain.MainBranchID.String()
 
+// ErrConflictingEventsTables is returned by NewReadModelStore when a database holds
+// BOTH a pre-#733 read-model `events` table (one carrying owner_type) and a
+// `life_events` table. Which of the two holds the live life facts cannot be decided
+// from the schema, so the store refuses to open rather than guess: renaming would
+// fail, and silently preferring either one risks serving an empty or stale table
+// while the real rows sit orphaned.
+var ErrConflictingEventsTables = errors.New(
+	`this database holds both a pre-#733 read-model "events" table and a "life_events" table: ` +
+		`the migration state is ambiguous — either could hold the live life facts, so the read model ` +
+		`refuses to open. Inspect both tables manually, keep the one with the current rows as ` +
+		`"life_events", and drop or archive the other (see issue #733)`)
+
 // NewReadModelStore creates a new SQLite read model store.
+//
+// It can fail at construction. On a pre-#733 database — one whose life-fact table is
+// still named `events` — it performs the rename to `life_events` and returns an error
+// if that rename cannot be completed, including ErrConflictingEventsTables when both
+// table names are already taken. Nothing is served from a half-migrated schema.
+//
+// On such a pre-#733 database this store must be constructed BEFORE the event store:
+// the event store refuses a database whose `events` table is the read model's
+// (ErrReadModelEventsTable), and this constructor is what frees the name. On a fresh
+// or already-migrated database the construction order does not matter.
 func NewReadModelStore(db *sql.DB) (*ReadModelStore, error) {
 	store := &ReadModelStore{db: db}
 	if err := store.createTables(); err != nil {
@@ -92,6 +115,17 @@ func (s *ReadModelStore) guardBranchWrite(branchID domain.BranchID) error {
 
 // createTables creates the read model schema if it doesn't exist.
 func (s *ReadModelStore) createTables() error {
+	// Rename a PRE-EXISTING read-model `events` table to `life_events` FIRST, before
+	// the schema block below creates an empty `life_events` — after that the rename
+	// would fail and strand the legacy rows in an orphaned table (#733).
+	//
+	// Its error is FATAL and returned immediately: unlike the ADD COLUMN migrations in
+	// this file, this is a DESTRUCTIVE rename, so it must not follow runMigrations'
+	// best-effort swallow idiom. See renameLegacyEventsTable for why.
+	if err := s.renameLegacyEventsTable(); err != nil {
+		return err
+	}
+
 	// Add the #669 branch columns to any PRE-EXISTING slice table FIRST. The schema
 	// block below creates indexes on branch_id in the same batch as the tables, so on
 	// an upgraded database (tables already exist without branch_id) those CREATE INDEX
@@ -430,8 +464,10 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_associations_associate ON associations(associate_id);
 		CREATE INDEX IF NOT EXISTS idx_associations_role ON associations(role);
 
-		-- Events table (life events for persons and families)
-		CREATE TABLE IF NOT EXISTS events (
+		-- Life events table (life events for persons and families). Named life_events
+		-- rather than events so the read model can share one database with the event
+		-- log, which owns the events table (#733).
+		CREATE TABLE IF NOT EXISTS life_events (
 			id TEXT PRIMARY KEY,
 			owner_type TEXT NOT NULL,
 			owner_id TEXT NOT NULL,
@@ -451,8 +487,8 @@ func (s *ReadModelStore) createTables() error {
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_events_owner ON events(owner_type, owner_id);
-		CREATE INDEX IF NOT EXISTS idx_events_fact_type ON events(fact_type);
+		CREATE INDEX IF NOT EXISTS idx_life_events_owner ON life_events(owner_type, owner_id);
+		CREATE INDEX IF NOT EXISTS idx_life_events_fact_type ON life_events(fact_type);
 
 		-- Attributes table (person attributes)
 		CREATE TABLE IF NOT EXISTS attributes (
@@ -595,8 +631,9 @@ func (s *ReadModelStore) runMigrations() {
 	_, _ = s.db.Exec(`ALTER TABLE persons ADD COLUMN brick_wall_resolved_at TEXT`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_persons_brick_wall ON persons(brick_wall_since)`)
 
-	// Add is_negated column for negative assertions / NO tags (issue #222)
-	_, _ = s.db.Exec(`ALTER TABLE events ADD COLUMN is_negated INTEGER NOT NULL DEFAULT 0`)
+	// Add is_negated column for negative assertions / NO tags (issue #222).
+	// Targets life_events, not events: the latter is the event log's table (#733).
+	_, _ = s.db.Exec(`ALTER TABLE life_events ADD COLUMN is_negated INTEGER NOT NULL DEFAULT 0`)
 
 	// Add GEDCOM 7.0 shared-note (SNOTE) metadata columns (issue #225).
 	// SQLite ALTER TABLE ADD COLUMN has no IF NOT EXISTS; rely on the _,_ = swallowing.
@@ -726,6 +763,61 @@ func (s *ReadModelStore) migrateBranchColumns() {
 		// #nosec G201 -- tbl comes from the fixed branchScopedTables list, not user input.
 		_, _ = s.db.Exec(`ALTER TABLE ` + tbl + ` ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`)
 	}
+}
+
+// renameLegacyEventsTable renames a pre-#733 read-model `events` table to
+// `life_events`, preserving its rows. It is idempotent and MUST run before
+// createTables' DDL batch — see the note there.
+//
+// EVERY failure is reported, none swallowed. This is a DESTRUCTIVE rename, not one of
+// this file's additive ADD COLUMN migrations, so it deliberately does NOT follow
+// runMigrations' best-effort idiom. If a needed rename is skipped, the DDL batch
+// creates an empty `life_events` beside the still-populated legacy table,
+// NewReadModelStore returns success, and every GetEvent/ListEvents answers zero rows
+// while the real data sits orphaned. Worse, it never recovers: the next open sees
+// `life_events` and takes the already-migrated path. A startup failure is
+// recoverable; a silently empty read model is not.
+//
+// The owner_type discriminator (eventsTableBelongsToReadModel) is the load-bearing
+// guard: the event log's own `events` table lives in the same database once both
+// stores share one SQLITE_PATH (ADR-002), and only the read model's table has that
+// column. Without the check this would rename the event log's source of truth out
+// from under it. Do not remove it, and do not treat a failed probe as "not legacy".
+func (s *ReadModelStore) renameLegacyEventsTable() error {
+	legacy, err := eventsTableBelongsToReadModel(s.db)
+	if err != nil {
+		return fmt.Errorf("check whether the events table belongs to the read model: %w", err)
+	}
+	if !legacy {
+		// Fresh database, already migrated, or the table is the event log's: nothing to do.
+		return nil
+	}
+
+	var existing int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'life_events'`,
+	).Scan(&existing); err != nil {
+		return fmt.Errorf("check for an existing life_events table: %w", err)
+	}
+	if existing > 0 {
+		return ErrConflictingEventsTables
+	}
+
+	// SQLite carries indexes across ALTER TABLE ... RENAME TO, so the old idx_events_*
+	// names would end up attached to life_events beside the new idx_life_events_* ones.
+	// Spelled out rather than looped over a slice so each statement is a static string
+	// literal: nothing is concatenated into SQL here, which is both simpler to audit and
+	// keeps SQL-injection scanners from flagging a query they cannot see is constant.
+	if _, err := s.db.Exec(`DROP INDEX IF EXISTS idx_events_owner`); err != nil {
+		return fmt.Errorf("drop stale read-model index idx_events_owner: %w", err)
+	}
+	if _, err := s.db.Exec(`DROP INDEX IF EXISTS idx_events_fact_type`); err != nil {
+		return fmt.Errorf("drop stale read-model index idx_events_fact_type: %w", err)
+	}
+	if _, err := s.db.Exec(`ALTER TABLE events RENAME TO life_events`); err != nil {
+		return fmt.Errorf("rename the read model's legacy events table to life_events: %w", err)
+	}
+	return nil
 }
 
 // tryCreateFTS5 attempts to create FTS5 virtual table for full-text search.
@@ -3115,7 +3207,7 @@ func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repositor
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
 		       age, research_status, is_negated, version, created_at
-		FROM events WHERE id = ?
+		FROM life_events WHERE id = ?
 	`, id.String())
 
 	return scanEvent(row)
@@ -3125,7 +3217,7 @@ func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repositor
 func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
 	// Count total
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events").Scan(&total)
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM life_events").Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count events: %w", err)
 	}
@@ -3135,7 +3227,7 @@ func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOpt
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
 		       age, research_status, is_negated, version, created_at
-		FROM events
+		FROM life_events
 		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
 		LIMIT ? OFFSET ?
 	`
@@ -3164,7 +3256,7 @@ func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
 		       age, research_status, is_negated, version, created_at
-		FROM events
+		FROM life_events
 		WHERE owner_type = 'person' AND owner_id = ?
 		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
 	`, personID.String())
@@ -3191,7 +3283,7 @@ func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.
 		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		       place, place_lat, place_long, address, description, cause,
 		       age, research_status, is_negated, version, created_at
-		FROM events
+		FROM life_events
 		WHERE owner_type = 'family' AND owner_id = ?
 		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
 	`, familyID.String())
@@ -3245,7 +3337,7 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO events (id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		INSERT INTO life_events (id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
 		                    age, research_status, is_negated, version, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -3277,7 +3369,7 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 
 // DeleteEvent deletes an event by ID.
 func (s *ReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM events WHERE id = ?", id.String())
+	_, err := s.db.ExecContext(ctx, "DELETE FROM life_events WHERE id = ?", id.String())
 	if err != nil {
 		return fmt.Errorf("delete event: %w", err)
 	}
@@ -4206,7 +4298,7 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT place, COUNT(DISTINCT owner_id) as count
-		FROM events
+		FROM life_events
 		WHERE fact_type IN (?, ?) AND place != '' AND place IS NOT NULL
 		GROUP BY place
 		ORDER BY place ASC
@@ -4235,7 +4327,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT p.id)
 		FROM persons p
-		INNER JOIN events e ON e.owner_id = p.id
+		INNER JOIN life_events e ON e.owner_id = p.id
 		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
 	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place).Scan(&total)
 	if err != nil {
@@ -4249,7 +4341,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM persons p
-		INNER JOIN events e ON e.owner_id = p.id
+		INNER JOIN life_events e ON e.owner_id = p.id
 		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
 		ORDER BY p.surname ASC, p.given_name ASC
 		LIMIT ? OFFSET ?
