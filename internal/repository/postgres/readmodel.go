@@ -646,21 +646,29 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 
 	// Postgres carries indexes across a table rename, so the old idx_events_* names
 	// would end up attached to life_events beside the new idx_life_events_* ones.
+	// An identifier cannot be a bind parameter, so schema-qualifying this DDL requires
+	// building the statement as a string. Every interpolated part is either a literal
+	// from the list below or an identifier passed through pq.QuoteIdentifier, which is
+	// the correct defense for identifiers; no external value reaches these statements.
 	for _, idx := range []string{"idx_events_owner", "idx_events_fact_type"} {
 		// #nosec G201 -- idx comes from this fixed literal list and the schema from
 		// pq.QuoteIdentifier over CURRENT_SCHEMA(); neither is user input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		if _, err := s.db.Exec(`DROP INDEX IF EXISTS ` + qualifiedSchema + `.` + pq.QuoteIdentifier(idx)); err != nil {
 			return fmt.Errorf("drop stale read-model index %s: %w", idx, err)
 		}
 	}
 
 	// #nosec G201 -- qualifiedSchema comes from pq.QuoteIdentifier over CURRENT_SCHEMA(), not user input.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	if _, err := s.db.Exec(`ALTER TABLE ` + qualifiedSchema + `.events RENAME TO life_events`); err != nil {
 		return fmt.Errorf("rename the read model's legacy events table to life_events: %w", err)
 	}
 
+	// Bound as $1, not interpolated: to_regclass takes the qualified name as a value.
 	qualifiedTable := qualifiedSchema + `.life_events`
 	var pkName string
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	err = s.db.QueryRow(`
 		SELECT conname FROM pg_constraint
 		WHERE conrelid = to_regclass($1) AND contype = 'p'
@@ -677,6 +685,7 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 		return nil
 	}
 	// #nosec G201 -- pkName comes from pg_constraint for a fixed internal table, not user input.
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	if _, err := s.db.Exec(`ALTER TABLE ` + qualifiedTable + ` RENAME CONSTRAINT ` + pq.QuoteIdentifier(pkName) + ` TO life_events_pkey`); err != nil {
 		return fmt.Errorf("rename the life_events primary key %s to life_events_pkey: %w", pkName, err)
 	}

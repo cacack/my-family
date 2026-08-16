@@ -805,11 +805,14 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 
 	// SQLite carries indexes across ALTER TABLE ... RENAME TO, so the old idx_events_*
 	// names would end up attached to life_events beside the new idx_life_events_* ones.
-	for _, idx := range []string{"idx_events_owner", "idx_events_fact_type"} {
-		// #nosec G201 -- idx comes from this fixed literal list, not user input.
-		if _, err := s.db.Exec(`DROP INDEX IF EXISTS ` + idx); err != nil {
-			return fmt.Errorf("drop stale read-model index %s: %w", idx, err)
-		}
+	// Spelled out rather than looped over a slice so each statement is a static string
+	// literal: nothing is concatenated into SQL here, which is both simpler to audit and
+	// keeps SQL-injection scanners from flagging a query they cannot see is constant.
+	if _, err := s.db.Exec(`DROP INDEX IF EXISTS idx_events_owner`); err != nil {
+		return fmt.Errorf("drop stale read-model index idx_events_owner: %w", err)
+	}
+	if _, err := s.db.Exec(`DROP INDEX IF EXISTS idx_events_fact_type`); err != nil {
+		return fmt.Errorf("drop stale read-model index idx_events_fact_type: %w", err)
 	}
 	if _, err := s.db.Exec(`ALTER TABLE events RENAME TO life_events`); err != nil {
 		return fmt.Errorf("rename the read model's legacy events table to life_events: %w", err)
