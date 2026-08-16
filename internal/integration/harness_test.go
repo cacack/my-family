@@ -3,9 +3,9 @@
 // than only in memory (DB-001).
 //
 // One caveat worth stating plainly: `cmd/myfamily` wires the in-memory stores
-// unconditionally today, and the SQL backends here each run on TWO databases to
-// dodge the table collision in #733. So this proves backend parity for the
-// branch/merge flows, not that any deployed topology works end to end.
+// unconditionally today. So this proves backend parity for the branch/merge
+// flows, not that any deployed topology works end to end — though each SQL
+// backend does run on the single database `internal/config` can express.
 //
 // The package holds no non-test code: it is a harness plus scenarios. Each
 // scenario body is written ONCE and executed against every entry in `backends`,
@@ -81,45 +81,29 @@ func setupMemory(t *testing.T) stores {
 	}
 }
 
-// The SQL backends need TWO databases, not one, because the event log and the
-// read model both define a table called `events` — the log's append-only stream
-// in eventstore.go, the read model's life-event facts in readmodel.go. Their
-// columns are unrelated, and `CREATE TABLE IF NOT EXISTS` makes the second
-// definition a silent no-op whose indexes then fail ("no such column:
-// owner_type"), whichever order the stores are built in.
-//
-// Splitting them is sound: no code path joins the two schemas or spans them in a
-// transaction — each store reaches its own tables through its own *sql.DB. The
-// grouping below is the one the schemas require: the snapshot store's
-// GetMaxPosition reads `MAX(position) FROM events`, i.e. the LOG's table, so it
-// belongs with the event store, while the branch registry belongs with the read
-// model it purges overlay rows from.
-//
-// This is a real defect in the SQL backends, not a property of this harness —
-// tracked as #733. Nothing has caught it before because cmd/myfamily wires the
-// in-memory stores only, and every existing SQL test builds one store at a time.
-// When #733 renames one of the two tables, collapse this back to a single
-// database per backend so the tested topology matches the deployed one.
+// All four stores share ONE database per SQL backend — the topology ADR-002
+// describes and the only one config can express (a single `SQLITE_PATH` /
+// `DATABASE_URL`). The schemas coexist because their table names are disjoint
+// (DB-006): the log owns `events`, the read model's life facts live in
+// `life_events`.
 func setupSQLite(t *testing.T) stores {
 	t.Helper()
 
-	dir := t.TempDir()
-	logDB := openSQLite(t, filepath.Join(dir, "eventlog.db"))
-	readDB := openSQLite(t, filepath.Join(dir, "readmodel.db"))
+	db := openSQLite(t, filepath.Join(t.TempDir(), "myfamily.db"))
 
-	eventStore, err := sqlite.NewEventStore(logDB)
+	eventStore, err := sqlite.NewEventStore(db)
 	if err != nil {
 		t.Fatalf("create sqlite event store: %v", err)
 	}
-	snapshotStore, err := sqlite.NewSnapshotStore(logDB)
+	snapshotStore, err := sqlite.NewSnapshotStore(db)
 	if err != nil {
 		t.Fatalf("create sqlite snapshot store: %v", err)
 	}
-	readStore, err := sqlite.NewReadModelStore(readDB)
+	readStore, err := sqlite.NewReadModelStore(db)
 	if err != nil {
 		t.Fatalf("create sqlite read model store: %v", err)
 	}
-	branchStore, err := sqlite.NewBranchStore(readDB)
+	branchStore, err := sqlite.NewBranchStore(db)
 	if err != nil {
 		t.Fatalf("create sqlite branch store: %v", err)
 	}
@@ -193,23 +177,22 @@ func setupPostgres(t *testing.T) stores {
 		t.Fatalf("ping postgres: %v", pingErr)
 	}
 
-	// Two databases, for the `events` table collision documented on setupSQLite.
-	logDB := createPostgresDatabase(t, admin, connStr, "eventlog")
-	readDB := createPostgresDatabase(t, admin, connStr, "readmodel")
+	// One database for all four stores, as on SQLite (DB-006).
+	db := createPostgresDatabase(t, admin, connStr, "myfamily")
 
-	eventStore, err := pgstore.NewEventStore(logDB)
+	eventStore, err := pgstore.NewEventStore(db)
 	if err != nil {
 		t.Fatalf("create postgres event store: %v", err)
 	}
-	snapshotStore, err := pgstore.NewSnapshotStore(logDB)
+	snapshotStore, err := pgstore.NewSnapshotStore(db)
 	if err != nil {
 		t.Fatalf("create postgres snapshot store: %v", err)
 	}
-	readStore, err := pgstore.NewReadModelStore(readDB)
+	readStore, err := pgstore.NewReadModelStore(db)
 	if err != nil {
 		t.Fatalf("create postgres read model store: %v", err)
 	}
-	branchStore, err := pgstore.NewBranchStore(readDB)
+	branchStore, err := pgstore.NewBranchStore(db)
 	if err != nil {
 		t.Fatalf("create postgres branch store: %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -23,7 +24,27 @@ type EventStore struct {
 	mu sync.Mutex // serialize writes for consistency
 }
 
+// ErrReadModelEventsTable is returned by NewEventStore when the database's `events`
+// table is the read model's pre-#733 life-fact table (it carries owner_type) rather
+// than the event log. Nothing has been mutated when it is returned: the event store
+// must not rename or migrate a table it does not own.
+//
+// The remedy is ordering, not repair. Since #733 constructing the read model store
+// either completes the events -> life_events rename or fails loudly (see
+// ErrConflictingEventsTables and ReadModelStore.renameLegacyEventsTable), so once
+// NewReadModelStore has returned nil the name is free and reopening the event store
+// succeeds. The advice below is therefore sound, not a hope.
+var ErrReadModelEventsTable = errors.New(
+	`the "events" table in this database belongs to the read model (pre-#733 schema), not the event log; ` +
+		`open the read model store first so it renames itself to "life_events", then reopen the event store (see issue #733)`)
+
 // NewEventStore creates a new PostgreSQL event store.
+//
+// It can fail at construction. On a pre-#733 database — one whose `events` table is
+// still the read model's life-fact table — it returns ErrReadModelEventsTable without
+// touching the schema. Construct the read model store FIRST on such a database
+// (NewReadModelStore renames its table to `life_events`), then call this. On a fresh
+// or already-migrated database the construction order does not matter.
 func NewEventStore(db *sql.DB) (*EventStore, error) {
 	store := &EventStore{db: db}
 	if err := store.createTables(); err != nil {
@@ -41,9 +62,32 @@ func NewEventStore(db *sql.DB) (*EventStore, error) {
 // than a table constraint so the fresh and upgraded paths converge on exactly
 // one mechanism.
 func (s *EventStore) createTables() error {
+	// DO NOT REMOVE: this guard looks like dead code on a current database, but it
+	// is what keeps a pre-#733 database from being handled blind. Before #733 the
+	// read model also owned a table named events, and ADR-002 puts both stores in
+	// one database. Against that table every statement below aims at the wrong
+	// relation: CREATE TABLE IF NOT EXISTS no-ops, ALTER TABLE ... ADD COLUMN
+	// branch_id would land on the read model's table, and the composite index
+	// finally fails on the missing stream_id with an unreadable "column stream_id
+	// does not exist". Only the implicit transaction around a multi-statement Exec
+	// rolls the ADD COLUMN back — split this batch and the read model's table is
+	// mutated for real. The event log must not migrate a table it does not own, so
+	// refuse with a diagnosable error instead;
+	// ReadModelStore.renameLegacyEventsTable is the mirror of this check and owns
+	// the actual rename; both sides share one discriminator probe
+	// (eventsTableBelongsToReadModel) so they can never disagree about who owns
+	// the name — or about which schema they are asking about.
+	ownedByReadModel, err := eventsTableBelongsToReadModel(s.db)
+	if err != nil {
+		return err
+	}
+	if ownedByReadModel {
+		return ErrReadModelEventsTable
+	}
+
 	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
 	mainBranch := domain.MainBranchID.String()
-	_, err := s.db.Exec(fmt.Sprintf(`
+	_, err = s.db.Exec(fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS streams (
 			id UUID PRIMARY KEY,
 			type VARCHAR(50) NOT NULL,

@@ -20,6 +20,20 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// ErrReadModelEventsTable is returned by NewEventStore when the database's `events`
+// table is the read model's pre-#733 life-fact table (it carries owner_type) rather
+// than the event log. Nothing has been mutated when it is returned: the event store
+// must not rename or migrate a table it does not own.
+//
+// The remedy is to construct the read model store first. Since #733 that construction
+// either completes the events -> life_events rename or fails loudly (see
+// ErrConflictingEventsTables and ReadModelStore.renameLegacyEventsTable), so once
+// NewReadModelStore has returned nil the name is free and reopening the event store
+// succeeds. The advice below is therefore sound, not a hope.
+var ErrReadModelEventsTable = errors.New(
+	`the "events" table in this database belongs to the read model, not the event log (pre-#733 schema): ` +
+		`open the read model store first so it renames its table to "life_events", then reopen the event store`)
+
 // EventStore is a SQLite implementation of repository.EventStore.
 type EventStore struct {
 	db *sql.DB
@@ -27,6 +41,12 @@ type EventStore struct {
 }
 
 // NewEventStore creates a new SQLite event store.
+//
+// It can fail at construction. On a pre-#733 database — one whose `events` table is
+// still the read model's life-fact table — it returns ErrReadModelEventsTable without
+// touching the schema. Construct the read model store FIRST on such a database
+// (NewReadModelStore renames its table to `life_events`), then call this. On a fresh
+// or already-migrated database the construction order does not matter.
 func NewEventStore(db *sql.DB) (*EventStore, error) {
 	store := &EventStore{db: db}
 	if err := store.createTables(); err != nil {
@@ -41,9 +61,27 @@ func NewEventStore(db *sql.DB) (*EventStore, error) {
 // below; existing databases are upgraded first — migrateBranchID adds the
 // column, migrateCompositeVersionKey rebuilds the table for the composite
 // UNIQUE. Both run BEFORE the schema batch because that batch indexes branch_id,
-// which an un-migrated table doesn't have yet.
+// which an un-migrated table doesn't have yet — and both run AFTER the #733
+// ownership guard, which refuses a database whose `events` table is the read
+// model's so neither migration can mutate it.
 func (s *EventStore) createTables() error {
 	mainBranch := domain.MainBranchID.String()
+
+	// #733 guard: refuse a database whose `events` table is the read model's, BEFORE
+	// either migration touches it. migrateBranchID would happily ALTER a branch_id
+	// column onto the read model's table, and migrateCompositeVersionKey would read
+	// its DDL, conclude the event log is legacy, and abort mid-rebuild with the
+	// opaque "copy events: no such column: stream_id". This is NOT dead code just
+	// because both stores now use distinct table names — pre-#733 databases in the
+	// wild still carry the old name, and the read model only renames itself when it
+	// is opened. Do not remove it.
+	ownedByReadModel, err := eventsTableBelongsToReadModel(s.db)
+	if err != nil {
+		return err
+	}
+	if ownedByReadModel {
+		return ErrReadModelEventsTable
+	}
 
 	s.migrateBranchID(mainBranch)
 	if err := s.migrateCompositeVersionKey(mainBranch); err != nil {
@@ -51,7 +89,7 @@ func (s *EventStore) createTables() error {
 	}
 
 	// #nosec G201 -- mainBranch is a constant UUID literal, not user input.
-	_, err := s.db.Exec(fmt.Sprintf(`
+	_, err = s.db.Exec(fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS streams (
 			id TEXT PRIMARY KEY,
 			type TEXT NOT NULL,
