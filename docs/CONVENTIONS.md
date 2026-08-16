@@ -206,12 +206,13 @@ func TestParseDate(t *testing.T) {
 ### Test File Location
 
 - Unit tests: Same package, `_test.go` suffix
-- Integration tests: `*_integration_test.go` with build tag if needed
+- Integration tests: co-located in the package under test; cross-backend scenarios live in
+  `internal/integration/`. No build tags — tests needing Docker skip themselves when it is absent.
 
 ### Frontend Tests
 
-- Component tests with Testing Library
-- E2E tests with Playwright for critical paths
+- Component tests with Testing Library (Vitest, `web/src/**/*.test.ts`)
+- E2E tests with Playwright (`web/e2e/`), run via `make test-e2e` — opt-in, not part of `make test`
 
 ## Database
 

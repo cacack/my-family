@@ -532,12 +532,15 @@
 		</section>
 
 		<section class="changes">
-			<div class="side">
+			<!-- The two sides render the same entities in the same shape, so only the
+			     container tells them apart. The E2E suite needs a handle that survives
+			     a CSS rename to assert which side a change landed on. -->
+			<div class="side" data-testid="branch-changes">
 				<h2>On this branch</h2>
 				<p class="side-count">{comparison.branch_change_count} change{comparison.branch_change_count === 1 ? '' : 's'} since the fork</p>
 				{@render changeList(comparison.branch_changes, 'No changes on this branch yet.', true)}
 			</div>
-			<div class="side">
+			<div class="side" data-testid="main-changes">
 				<h2>On the mainline</h2>
 				<p class="side-count">
 					{comparison.main_change_count} change{comparison.main_change_count === 1 ? '' : 's'} to the

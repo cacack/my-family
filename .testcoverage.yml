@@ -57,4 +57,5 @@ exclude:
     - internal/web                   # static file embedding (build-tag dependent)
     - internal/repository/postgres   # integration tests require Docker
     - internal/repository/sqlite     # sqlite requires complex setup
+    - internal/integration           # test-only package, no statements to cover
     - generated\.go$                 # generated code from oapi-codegen
