@@ -28,7 +28,7 @@ permissions:
 
 jobs:
   automerge:
-    uses: cacack/workflows/.github/workflows/dependabot-automerge.yml@42f4a8b03bbeb4cda758290b3c8cdbb88ed6d33e # v2.0.0
+    uses: cacack/workflows/.github/workflows/dependabot-automerge.yml@3325a01c0abd49361d05b209d42bf3b4a2d0c230 # v2.0.1
     secrets:
       BOT_APP_ID: ${{ secrets.BOT_APP_ID }}
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
