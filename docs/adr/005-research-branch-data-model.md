@@ -296,14 +296,43 @@ Snapshots and branch base points are the same primitive — a named pointer to a
 - **Rollback** to a snapshot is a read/compare operation over positions and, under the overlay
   model, is naturally scoped by `branch_id`.
 
-This ADR does **not** change how snapshots are created. However, it surfaces a coupling that
-**#624** must resolve: `SnapshotCreated` exists and decodes (ES-007) but is never emitted —
-`SnapshotService.CreateSnapshot` writes directly to the `SnapshotStore`, bypassing the
-event-sourced pipeline. **Recommendation for #624 (not implemented here):** route snapshot
-creation/deletion through the event pipeline (emit `SnapshotCreated`, add a projection) so
-snapshots carry the same audit-trail guarantee (ADR-001) as every other mutation, and so a
-branch-scoped snapshot is expressible as a branch-tagged event. #624 remains the issue that
-implements this decision.
+This ADR did **not** change how snapshots are created. It surfaced a coupling that **#624** had
+to resolve: `SnapshotCreated` existed and decoded (ES-007) but was never emitted —
+`SnapshotService.CreateSnapshot` wrote directly to the `SnapshotStore`, bypassing the
+event-sourced pipeline. The recommendation recorded here was to route snapshot creation and
+deletion through the event pipeline.
+
+#### Implementation Note — snapshot event model (#624, delivered)
+
+The recommendation was adopted. Snapshots are now event-sourced, exactly like the branch registry:
+
+- **`CreateSnapshot` / `DeleteSnapshot` are commands** on `command.Handler`, not query-service
+  methods. They append `SnapshotCreated` / the new `SnapshotDeleted` on the snapshot's own stream
+  (stream type `snapshot`, the snapshot id as stream id) on `repository.MainScope`.
+- **The registry is projection-written.** `projectSnapshotCreated` upserts the row and
+  `projectSnapshotDeleted` drops it, so rebuilding the projection reconstructs the registry — the
+  property a directly-written store could never have. `SnapshotStore` gained `Upsert` (all three
+  backends) for idempotent replay, and a replayed delete against a missing row is a no-op.
+- **The marker never perturbs what it marks.** `CreateSnapshot` reads the log head *before*
+  appending, so the snapshot's `Position` excludes its own creation event. This is the answer to
+  the chicken-and-egg the issue raised, and it matches how `CreateBranch` pins a base position.
+- **Snapshot events are hidden from the change log.** `mapEventTypeToEntityAndAction` skips both
+  types: they are audit records on the log, not genealogical changes, and a snapshot comparison
+  reads a range that contains one of the two markers.
+
+**Still open — branch-scoped snapshots.** The bullet above ("a snapshot taken *on a branch* points
+to `(branch_id, position)`") is **not** implemented: the `snapshots` table has no `branch_id`
+column. Rather than record a branch snapshot as if it were a mainline one, both commands refuse on
+a branch-scoped handler with `ErrSnapshotNotBranchScoped`. Closing that gap means giving the
+snapshot registry the same `branch_id` overlay treatment #676 is fanning out to the other
+read-model entities.
+
+**Still open — snapshots created before #624.** Rows written by the old direct-store path carry no
+`SnapshotCreated` event, so "the registry rebuilds from the log" holds only for snapshots created
+after this change. Nothing replays the log into a projector today, so no data is at risk yet; the
+constraint is that rebuild tooling (#680) must backfill those rows — or consciously drop them —
+rather than assume the log is complete. Deleting such a snapshot works: `GetStreamVersion` reports
+0 for a stream with no events, and `DeleteSnapshot` translates that to a new-stream append.
 
 ## Consequences
 
