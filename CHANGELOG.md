@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.12.0](https://github.com/cacack/my-family/compare/v0.11.0...v0.12.0) (2026-08-19)
+
+
+### Features
+
+* **branches:** merge research branches with review ([44626bd](https://github.com/cacack/my-family/commit/44626bd01ce58db9d5bf425eb9db9729aa531348))
+* **branches:** research branch lifecycle — create, isolate, compare, archive ([ada623e](https://github.com/cacack/my-family/commit/ada623e8665e886052025ac5162fc079e6ee9d17))
+* **repository:** branch-aware read model & projections ([#669](https://github.com/cacack/my-family/issues/669) slice) ([5cbc84d](https://github.com/cacack/my-family/commit/5cbc84d398d49a1023ca326e4ddc1c6eb122b47f))
+* **web:** add merge review UI for research branches ([6d0bf96](https://github.com/cacack/my-family/commit/6d0bf96bd8acd53494e837675238d37d98de4f0e)), closes [#95](https://github.com/cacack/my-family/issues/95)
+* **web:** research branches UI ([3c42d91](https://github.com/cacack/my-family/commit/3c42d913cdf4d6c09bbc8c4856614815d743612a)), closes [#94](https://github.com/cacack/my-family/issues/94)
+
+
+### Bug Fixes
+
+* **branches:** tighten a merge-review assertion and an ADR line ([0cfe715](https://github.com/cacack/my-family/commit/0cfe7152825591a69cd718ace44d063a36de68b6))
+* **ci:** declare the real Node floor and pin one version repo-wide ([1423f34](https://github.com/cacack/my-family/commit/1423f3469acc68168889d589bcb687774affdf12)), closes [#729](https://github.com/cacack/my-family/issues/729)
+* **command:** create family on a new stream, not a phantom version 0 ([4cb0ba5](https://github.com/cacack/my-family/commit/4cb0ba50beb3ee89fa45def037aa4a655f1988ad))
+* **command:** pin merge plan to the main versions it verified against ([8bbcc60](https://github.com/cacack/my-family/commit/8bbcc60c20b70590405b46be9dba8e143361c7ae)), closes [#698](https://github.com/cacack/my-family/issues/698)
+* **repository:** rename read-model events table to life_events ([5c07e3e](https://github.com/cacack/my-family/commit/5c07e3e539adf5680c40c9215b80a782b4a16ebf))
+* **repository:** silence false-positive SQL-injection scans on migration DDL ([3316774](https://github.com/cacack/my-family/commit/331677458379b0af4debe20714ab7cbf8c1bb3c4))
+* **web:** make the manage-branches menu entry keyboard-reachable ([69d9a31](https://github.com/cacack/my-family/commit/69d9a31b87f3026ce60a8e56e35d384473d1306e))
+* **web:** order comparison requests and guard the switch reload ([4886e9a](https://github.com/cacack/my-family/commit/4886e9ace5fd48e92270d87b4cf024daaa66a63b))
+
 ## [0.11.0](https://github.com/cacack/my-family/compare/v0.10.0...v0.11.0) (2026-07-19)
 
 
