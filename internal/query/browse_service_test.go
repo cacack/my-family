@@ -843,3 +843,207 @@ func TestGetPersonsByCemetery_LimitCapping(t *testing.T) {
 		t.Errorf("Offset = %d, want 0 (defaulted)", result2.Offset)
 	}
 }
+
+// ============================================================================
+// Branch scope plumbing (sub-issue A of #676, issue #756)
+// ============================================================================
+
+// branchScopeSpy records the branch scope each browse/map store call receives.
+// It embeds the interface so only the methods under test need overriding; any
+// other call would panic on the nil embedded value, which keeps the spy honest.
+type branchScopeSpy struct {
+	repository.ReadModelStore
+
+	surnameIndex      []domain.BranchID
+	surnamesByLetter  []domain.BranchID
+	personsBySurname  []domain.BranchID
+	placeHierarchy    []domain.BranchID
+	personsByPlace    []domain.BranchID
+	personsByCemetery []domain.BranchID
+	mapLocations      []domain.BranchID
+
+	// The main-only methods carry no scope at all — the counters just prove the
+	// service still reaches them unchanged.
+	cemeteryIndexCalls    int
+	brickWallCalls        int
+	setBrickWallCalls     int
+	resolveBrickWallCalls int
+}
+
+func (s *branchScopeSpy) GetSurnameIndex(_ context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	s.surnameIndex = append(s.surnameIndex, branchID)
+	return nil, nil, nil
+}
+
+func (s *branchScopeSpy) GetSurnamesByLetter(_ context.Context, branchID domain.BranchID, _ string) ([]repository.SurnameEntry, error) {
+	s.surnamesByLetter = append(s.surnamesByLetter, branchID)
+	return nil, nil
+}
+
+func (s *branchScopeSpy) GetPersonsBySurname(_ context.Context, _ string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	s.personsBySurname = append(s.personsBySurname, opts.BranchID)
+	return nil, 0, nil
+}
+
+func (s *branchScopeSpy) GetPlaceHierarchy(_ context.Context, branchID domain.BranchID, _ string) ([]repository.PlaceEntry, error) {
+	s.placeHierarchy = append(s.placeHierarchy, branchID)
+	return nil, nil
+}
+
+func (s *branchScopeSpy) GetPersonsByPlace(_ context.Context, _ string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	s.personsByPlace = append(s.personsByPlace, opts.BranchID)
+	return nil, 0, nil
+}
+
+func (s *branchScopeSpy) GetPersonsByCemetery(_ context.Context, _ string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	s.personsByCemetery = append(s.personsByCemetery, opts.BranchID)
+	return nil, 0, nil
+}
+
+func (s *branchScopeSpy) GetMapLocations(_ context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
+	s.mapLocations = append(s.mapLocations, branchID)
+	return nil, nil
+}
+
+func (s *branchScopeSpy) GetCemeteryIndex(_ context.Context) ([]repository.CemeteryEntry, error) {
+	s.cemeteryIndexCalls++
+	return nil, nil
+}
+
+func (s *branchScopeSpy) GetBrickWalls(_ context.Context, _ bool) ([]repository.BrickWallEntry, error) {
+	s.brickWallCalls++
+	return nil, nil
+}
+
+func (s *branchScopeSpy) SetBrickWall(_ context.Context, _ uuid.UUID, _ string) error {
+	s.setBrickWallCalls++
+	return nil
+}
+
+func (s *branchScopeSpy) ResolveBrickWall(_ context.Context, _ uuid.UUID) error {
+	s.resolveBrickWallCalls++
+	return nil
+}
+
+// TestBrowseService_BranchScopeReachesStore checks that the scope the caller
+// supplies arrives at the store for each of the six branch-aware browse/map
+// reads, and that omitting it means the mainline.
+func TestBrowseService_BranchScopeReachesStore(t *testing.T) {
+	branchID := domain.BranchID(uuid.New())
+
+	tests := []struct {
+		name string
+		call func(*query.BrowseService, domain.BranchID) error
+		got  func(*branchScopeSpy) []domain.BranchID
+	}{
+		{
+			name: "GetSurnameIndex",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetSurnameIndex(context.Background(), query.GetSurnameIndexInput{BranchID: b})
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.surnameIndex },
+		},
+		{
+			name: "GetSurnameIndex_ByLetter",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetSurnameIndex(context.Background(), query.GetSurnameIndexInput{Letter: "S", BranchID: b})
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.surnamesByLetter },
+		},
+		{
+			name: "GetPersonsBySurname",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetPersonsBySurname(context.Background(), query.GetPersonsBySurnameInput{Surname: "Smith", BranchID: b})
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.personsBySurname },
+		},
+		{
+			name: "GetPlaceHierarchy",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetPlaceHierarchy(context.Background(), query.GetPlaceHierarchyInput{BranchID: b})
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.placeHierarchy },
+		},
+		{
+			name: "GetPersonsByPlace",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetPersonsByPlace(context.Background(), query.GetPersonsByPlaceInput{Place: "Ohio", BranchID: b})
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.personsByPlace },
+		},
+		{
+			name: "GetPersonsByCemetery",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetPersonsByCemetery(context.Background(), query.GetPersonsByCemeteryInput{Place: "Oak Grove", BranchID: b})
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.personsByCemetery },
+		},
+		{
+			name: "GetMapLocations",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetMapLocations(context.Background(), b)
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.mapLocations },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spy := &branchScopeSpy{}
+			service := query.NewBrowseService(spy)
+
+			if err := tt.call(service, branchID); err != nil {
+				t.Fatalf("branch-scoped call failed: %v", err)
+			}
+			if err := tt.call(service, domain.MainBranchID); err != nil {
+				t.Fatalf("mainline call failed: %v", err)
+			}
+
+			scopes := tt.got(spy)
+			if len(scopes) != 2 {
+				t.Fatalf("store received %d calls, want 2", len(scopes))
+			}
+			if scopes[0] != branchID {
+				t.Errorf("branch-scoped call passed %v, want %v", scopes[0], branchID)
+			}
+			if scopes[1] != domain.MainBranchID {
+				t.Errorf("mainline call passed %v, want MainBranchID", scopes[1])
+			}
+		})
+	}
+}
+
+// TestBrowseService_MainOnlyPathsUnscoped pins the four reads that stay on the
+// mainline this cycle: their store methods take no branch scope at all, so
+// there is nothing for a caller to redirect (sub-issues B/#757 and F/#761).
+func TestBrowseService_MainOnlyPathsUnscoped(t *testing.T) {
+	spy := &branchScopeSpy{}
+	service := query.NewBrowseService(spy)
+	ctx := context.Background()
+
+	if _, err := service.GetCemeteryIndex(ctx); err != nil {
+		t.Fatalf("GetCemeteryIndex failed: %v", err)
+	}
+	if _, err := service.GetBrickWalls(ctx, true); err != nil {
+		t.Fatalf("GetBrickWalls failed: %v", err)
+	}
+	if err := service.SetBrickWall(ctx, uuid.New(), "note"); err != nil {
+		t.Fatalf("SetBrickWall failed: %v", err)
+	}
+	if err := service.ResolveBrickWall(ctx, uuid.New()); err != nil {
+		t.Fatalf("ResolveBrickWall failed: %v", err)
+	}
+
+	if spy.cemeteryIndexCalls != 1 || spy.brickWallCalls != 1 ||
+		spy.setBrickWallCalls != 1 || spy.resolveBrickWallCalls != 1 {
+		t.Errorf("main-only calls = %d/%d/%d/%d, want 1 each",
+			spy.cemeteryIndexCalls, spy.brickWallCalls, spy.setBrickWallCalls, spy.resolveBrickWallCalls)
+	}
+}

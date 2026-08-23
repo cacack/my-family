@@ -177,7 +177,9 @@ The **Branch** column means "this entity can be written on a research branch"
 ([ADR-005](./adr/005-research-branch-data-model.md); `?branch=` on the API). ❌ means main-only —
 the API does not expose `?branch=` on those operations, and an event-sourced write attempted on a
 branch scope is rejected with `ErrEventTypeNotBranchAware` (BR-006). Widening this is
-[#676](https://github.com/cacack/my-family/issues/676).
+[#676](https://github.com/cacack/my-family/issues/676). The column says nothing about branch
+*reads*: the browse and map aggregates are branch-aware without being entities of their own — see
+[Branch coverage detail](#branch-coverage-detail-669-read--670-write--756-aggregates) below.
 
 Notes on partial rows:
 
@@ -185,10 +187,11 @@ Notes on partial rows:
 - **Snapshot**: bypasses the event-sourced pipeline — `SnapshotService` writes directly to `SnapshotStore` (implemented in all three backends, hence ReadModel ✅). A `SnapshotCreated` event type exists in `domain/events.go` but is never emitted, so Events/Commands/Projections remain partial.
 - **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
-### Branch coverage detail (#669 read / #670 write)
+### Branch coverage detail (#669 read / #670 write / #756 aggregates)
 
-Seven read-model types are branch-aware (copy-on-write overlay, #669). Branch **writes** cover a
-narrower set, because a write also needs a branch-scoped command path:
+Seven read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
+overlay (#669). Branch **writes** cover a narrower set, because a write also needs a branch-scoped
+command path:
 
 | Read-model type | Branch reads (#669) | Branch writes (#670) | How it is written on a branch |
 |---|---|---|---|
@@ -201,12 +204,38 @@ narrower set, because a write also needs a branch-scoped command path:
 | FamilyExternalID | ✅ | ❌ | same as PersonExternalID |
 
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
-`getPedigree`) are the 16 API operations carrying `?branch=`.
+`getPedigree`) were the original #669/#670 slice. Sub-issue A of #676
+([#756](https://github.com/cacack/my-family/issues/756)) added six aggregate reads that derive from
+that slice's overlay and own no `branch_id` column of their own:
 
-The frontend mirrors exactly those 16 in `isBranchScopedRequest()`
+| operationId | Method | Path |
+|---|---|---|
+| `browseSurnames` | GET | `/browse/surnames` |
+| `getPersonsBySurname` | GET | `/browse/surnames/{surname}/persons` |
+| `browsePlaces` | GET | `/browse/places` |
+| `getPersonsByPlace` | GET | `/browse/places/{place}/persons` |
+| `getPersonsByCemetery` | GET | `/browse/cemeteries/{place}/persons` |
+| `getMapLocations` | GET | `/map/locations` |
+
+That is **22 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+of record — the drift test described below re-derives it from the spec on every run.
+
+The frontend mirrors exactly those 22 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
-`?branch=` while `listFamilies` does not. Every other surface renders `MainlineNotice.svelte` while
-a branch is active, so the UI never presents mainline data as branch data. Grow both with #676.
+`?branch=` while `listFamilies` does not. The free-text `{surname}` and `{place}` segments are
+matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
+name still resolves. A drift test in `web/src/lib/api/client.test.ts` parses `openapi.yaml` and
+fails in **both** directions, so the allowlist cannot silently fall behind the spec.
+
+Branch scoping is no longer confined to the seven-type slice, so "everything else is main-only" is
+not the rule. The surfaces that *are* still mainline-only while a branch is active render
+`MainlineNotice.svelte`, so the UI never presents mainline data as branch data. Within browse and
+map that is now exactly two: the cemetery **index** (`browseCemeteries`, which aggregates
+`life_events` — no `branch_id` yet, [#757](https://github.com/cacack/my-family/issues/757)) and
+brick walls (not event-sourced, [#761](https://github.com/cacack/my-family/issues/761)). The
+surname index and per-surname list, the place index and per-place list, the per-cemetery person
+list, and the map all follow the active branch. Grow the allowlist and the notice coverage together
+as the remaining #676 sub-issues land.
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
 `internal/api/branch_handlers_test.go`), and the command layer resolves its *reads* — existence

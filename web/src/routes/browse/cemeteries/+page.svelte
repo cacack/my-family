@@ -1,5 +1,6 @@
 <script lang="ts">
 	import CemeteryBrowser from '$lib/components/CemeteryBrowser.svelte';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 </script>
 
 <svelte:head>
@@ -7,6 +8,10 @@
 </svelte:head>
 
 <div class="browse-page">
+	<MainlineNotice
+		surface="The cemetery index"
+		detail="It is built from life events, which carry no branch yet, while the person list for an individual cemetery does follow the branch. The two can disagree: a count here may include people your branch has deleted, so opening that cemetery can show fewer — or none."
+	/>
 	<header class="page-header">
 		<h1>Browse by Cemetery</h1>
 		<p class="description">Explore burial and cremation places in your family tree.</p>

@@ -4434,30 +4434,67 @@ type GetBrickWallsParams struct {
 
 // GetPersonsByCemeteryParams defines parameters for GetPersonsByCemetery.
 type GetPersonsByCemeteryParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // BrowsePlacesParams defines parameters for BrowsePlaces.
 type BrowsePlacesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Parent Parent place to get children for (empty for top-level)
 	Parent *string `form:"parent,omitempty" json:"parent,omitempty"`
 }
 
 // GetPersonsByPlaceParams defines parameters for GetPersonsByPlace.
 type GetPersonsByPlaceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // BrowseSurnamesParams defines parameters for BrowseSurnames.
 type BrowseSurnamesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Letter Filter surnames by starting letter (A-Z)
 	Letter *string `form:"letter,omitempty" json:"letter,omitempty"`
 }
 
 // GetPersonsBySurnameParams defines parameters for GetPersonsBySurname.
 type GetPersonsBySurnameParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
@@ -4673,6 +4710,17 @@ type ListLDSOrdinancesParamsOrder string
 type DeleteLDSOrdinanceParams struct {
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetMapLocationsParams defines parameters for GetMapLocations.
+type GetMapLocationsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // DeleteMediaParams defines parameters for DeleteMedia.
@@ -5409,7 +5457,7 @@ type ServerInterface interface {
 	UpdateLDSOrdinance(ctx echo.Context, id LdsOrdinanceId) error
 	// Get geographic locations for map visualization
 	// (GET /map/locations)
-	GetMapLocations(ctx echo.Context) error
+	GetMapLocations(ctx echo.Context, params GetMapLocationsParams) error
 	// Delete media
 	// (DELETE /media/{id})
 	DeleteMedia(ctx echo.Context, id openapi_types.UUID, params DeleteMediaParams) error
@@ -5931,6 +5979,13 @@ func (w *ServerInterfaceWrapper) GetPersonsByCemetery(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetPersonsByCemeteryParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -5956,6 +6011,13 @@ func (w *ServerInterfaceWrapper) BrowsePlaces(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params BrowsePlacesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "parent" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "parent", ctx.QueryParams(), &params.Parent, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -5981,6 +6043,13 @@ func (w *ServerInterfaceWrapper) GetPersonsByPlace(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetPersonsByPlaceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -6006,6 +6075,13 @@ func (w *ServerInterfaceWrapper) BrowseSurnames(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params BrowseSurnamesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "letter" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "letter", ctx.QueryParams(), &params.Letter, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -6031,6 +6107,13 @@ func (w *ServerInterfaceWrapper) GetPersonsBySurname(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetPersonsBySurnameParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -7025,8 +7108,17 @@ func (w *ServerInterfaceWrapper) UpdateLDSOrdinance(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) GetMapLocations(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMapLocationsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetMapLocations(ctx)
+	err = w.Handler.GetMapLocations(ctx, params)
 	return err
 }
 
@@ -11838,6 +11930,7 @@ func (response UpdateLDSOrdinance409JSONResponse) VisitUpdateLDSOrdinanceRespons
 }
 
 type GetMapLocationsRequestObject struct {
+	Params GetMapLocationsParams
 }
 
 type GetMapLocationsResponseObject interface {
@@ -17655,8 +17748,10 @@ func (sh *strictHandler) UpdateLDSOrdinance(ctx echo.Context, id LdsOrdinanceId)
 }
 
 // GetMapLocations operation middleware
-func (sh *strictHandler) GetMapLocations(ctx echo.Context) error {
+func (sh *strictHandler) GetMapLocations(ctx echo.Context, params GetMapLocationsParams) error {
 	var request GetMapLocationsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMapLocations(ctx.Request().Context(), request.(GetMapLocationsRequestObject))

@@ -102,6 +102,15 @@ export function getClientBranch(): string | null {
 const UUID_SEGMENT = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 
 /**
+ * One non-empty path segment of free text — a surname or a place name, already
+ * percent-encoded by the caller. Unlike `{id}` segments these are not UUIDs, so
+ * they cannot be pinned to a shape; excluding `/` is what keeps the pattern
+ * honest, since an encoded name never contains a literal slash (`encodeURIComponent`
+ * emits `%2F`) and a longer path must not collapse into a one-segment match.
+ */
+const TEXT_SEGMENT = '[^/]+';
+
+/**
  * The operations that declare the `?branch=` (`branchScope`) parameter in
  * `internal/api/openapi.yaml`.
  *
@@ -114,9 +123,18 @@ const UUID_SEGMENT = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4
  * two-segment literal routes — `GET /persons/duplicates` and
  * `POST /persons/merge` — cannot be mistaken for `/persons/{id}`.
  *
- * This is the #669 vertical slice and nothing more. Every other read model is
- * mainline-only until #676 fans the branch overlay out; grow this table there,
- * and never by blanket-appending the parameter to every request.
+ * The table covers the #669 vertical slice (persons, person names, families,
+ * family children, pedigree) plus the browse and map aggregates that #676
+ * sub-issue A (#756) fanned out over. The aggregates own no `branch_id` of
+ * their own — they read the slice's overlay — so scoping them is exactly this
+ * parameter and nothing else.
+ *
+ * Read models still answering only from the mainline, and therefore absent
+ * here on purpose: the cemetery *index* (`GET /browse/cemeteries`, blocked on
+ * `life_events` having no `branch_id` — #757), brick walls (not event-sourced —
+ * #761), and the remaining entity read models. Those surfaces render
+ * `MainlineNotice.svelte`. Grow this table one operation at a time as the spec
+ * grows, and never by blanket-appending the parameter to every request.
  *
  * `client.test.ts` parses `openapi.yaml` and fails if the two disagree in
  * either direction, so adding `branchScope` to an operation without adding it
@@ -140,7 +158,15 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 		methods: ['DELETE'],
 		pattern: new RegExp(`^/families/${UUID_SEGMENT}/children/${UUID_SEGMENT}$`)
 	},
-	{ methods: ['GET'], pattern: new RegExp(`^/pedigree/${UUID_SEGMENT}$`) }
+	{ methods: ['GET'], pattern: new RegExp(`^/pedigree/${UUID_SEGMENT}$`) },
+	// Browse and map aggregates (#756). `GET /browse/cemeteries` — the index —
+	// is deliberately absent; only its per-place person list is scoped.
+	{ methods: ['GET'], pattern: new RegExp('^/browse/surnames$') },
+	{ methods: ['GET'], pattern: new RegExp(`^/browse/surnames/${TEXT_SEGMENT}/persons$`) },
+	{ methods: ['GET'], pattern: new RegExp('^/browse/places$') },
+	{ methods: ['GET'], pattern: new RegExp(`^/browse/places/${TEXT_SEGMENT}/persons$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/browse/cemeteries/${TEXT_SEGMENT}/persons$`) },
+	{ methods: ['GET'], pattern: new RegExp('^/map/locations$') }
 ];
 
 /**

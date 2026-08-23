@@ -632,6 +632,49 @@ entity, but there is no way to promote a subset of one aggregate's changes and t
 that expresses a partially-merged branch — `merged` is terminal. Cherry-pick is tracked as
 follow-up work (#684).
 
+## Implementation Note — browse and map aggregates (#676 sub-issue A, #756, delivered)
+
+**Aggregates are branch-aware without owning a `branch_id`.** The surname index, per-surname person
+list, place hierarchy, per-place person list, per-cemetery person list and map locations are all
+*derived* views: each is computed over the seven-type read-model slice, which already carries the
+`branch_id` overlay of §The model. Scoping them therefore needed no new column, no new tombstone
+rule and no second resolution path — the aggregate query resolves the overlay exactly once, in the
+same set-based statement the Implementation Notes above demand, and the branch's shadow rows and
+tombstones fall out of the count for free. This is the general shape for the rest of #676:
+**a view that reads only branch-aware tables inherits branch-awareness; only a table that stores its
+own rows needs its own `branch_id`.**
+
+The API surface is six `GET` operations carrying `?branch=` (`browseSurnames`,
+`getPersonsBySurname`, `browsePlaces`, `getPersonsByPlace`, `getPersonsByCemetery`,
+`getMapLocations`), bringing the total to 22. Omitting the parameter is byte-identical to the
+previous mainline behaviour.
+
+Two browse surfaces stayed main-only in this pass, and say so in the UI via
+`MainlineNotice.svelte`:
+
+- **The cemetery *index*** (`browseCemeteries`) aggregates the `life_events` table, which has no
+  `branch_id` yet. Giving it one is sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)).
+  The per-cemetery *person list* is scoped, because it resolves persons through the overlay.
+- **Brick walls** (`getBrickWalls`, `setPersonBrickWall`, `resolvePersonBrickWall`) are not
+  event-sourced: the flag is written straight to the read model, so there is no branch-tagged event
+  for BR-006 to allow and nothing for a merge to replay. Deciding whether brick walls become
+  event-sourced is sub-issue F ([#761](https://github.com/cacack/my-family/issues/761)), a sibling
+  of the #624 snapshot/rollback question and blocked on the same "what is an event" call.
+
+**Entity types the maintainer has ruled permanently main-only.** Submitter, Repository,
+RepositoryExternalID and LDSOrdinance will not gain `branch_id`, and #676 should not be read as
+eventually covering them. Submitter, Repository and RepositoryExternalID are file- and
+archive-level metadata — who supplied the GEDCOM, which archive holds a source, what that archive
+calls it. LDSOrdinance records ordinances performed. None of these is an artifact a *research
+hypothesis* forks: a branch exploring "was Mary the daughter of John?" does not produce a competing
+version of an archive's address. Keeping them on `main` is the deliberate scope line, not a gap.
+
+**A caveat on place accuracy, not on branch scoping.** `GetPlaceHierarchy` parses place strings
+differently on SQLite and PostgreSQL — a pre-existing divergence, tracked as
+[#763](https://github.com/cacack/my-family/issues/763) and untouched here. Branch overlay resolution
+for the place views has cross-backend parity (`TestBranchScenario_AggregateIsolation` runs the same
+scenario on all three backends); the *place parsing underneath it* does not yet.
+
 ## References
 
 - [ADR-001: Event Sourcing with CQRS-lite](./001-event-sourcing-cqrs.md)

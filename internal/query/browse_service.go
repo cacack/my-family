@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -56,14 +57,15 @@ type PlaceEntry struct {
 
 // GetSurnameIndexInput contains the input for GetSurnameIndex.
 type GetSurnameIndexInput struct {
-	Letter string // Optional: filter by starting letter
+	Letter   string          // Optional: filter by starting letter
+	BranchID domain.BranchID // Branch to read; domain.MainBranchID for the mainline
 }
 
 // GetSurnameIndex returns the surname index with optional letter filtering.
 func (s *BrowseService) GetSurnameIndex(ctx context.Context, input GetSurnameIndexInput) (*SurnameIndexResult, error) {
 	if input.Letter != "" {
 		// Get surnames for specific letter
-		entries, err := s.readStore.GetSurnamesByLetter(ctx, input.Letter)
+		entries, err := s.readStore.GetSurnamesByLetter(ctx, input.BranchID, input.Letter)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +85,7 @@ func (s *BrowseService) GetSurnameIndex(ctx context.Context, input GetSurnameInd
 	}
 
 	// Get full index
-	entries, letterCounts, err := s.readStore.GetSurnameIndex(ctx)
+	entries, letterCounts, err := s.readStore.GetSurnameIndex(ctx, input.BranchID)
 	if err != nil {
 		return nil, err
 	}
@@ -113,9 +115,10 @@ func (s *BrowseService) GetSurnameIndex(ctx context.Context, input GetSurnameInd
 
 // GetPersonsBySurnameInput contains the input for GetPersonsBySurname.
 type GetPersonsBySurnameInput struct {
-	Surname string
-	Limit   int
-	Offset  int
+	Surname  string
+	Limit    int
+	Offset   int
+	BranchID domain.BranchID // Branch to read; domain.MainBranchID for the mainline
 }
 
 // GetPersonsBySurname returns persons with a specific surname.
@@ -134,8 +137,9 @@ func (s *BrowseService) GetPersonsBySurname(ctx context.Context, input GetPerson
 	}
 
 	opts := repository.ListOptions{
-		Limit:  limit,
-		Offset: offset,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: input.BranchID,
 	}
 
 	persons, total, err := s.readStore.GetPersonsBySurname(ctx, input.Surname, opts)
@@ -158,12 +162,13 @@ func (s *BrowseService) GetPersonsBySurname(ctx context.Context, input GetPerson
 
 // GetPlaceHierarchyInput contains the input for GetPlaceHierarchy.
 type GetPlaceHierarchyInput struct {
-	Parent string // Empty for top-level places
+	Parent   string          // Empty for top-level places
+	BranchID domain.BranchID // Branch to read; domain.MainBranchID for the mainline
 }
 
 // GetPlaceHierarchy returns places at a given level in the hierarchy.
 func (s *BrowseService) GetPlaceHierarchy(ctx context.Context, input GetPlaceHierarchyInput) (*PlaceIndexResult, error) {
-	entries, err := s.readStore.GetPlaceHierarchy(ctx, input.Parent)
+	entries, err := s.readStore.GetPlaceHierarchy(ctx, input.BranchID, input.Parent)
 	if err != nil {
 		return nil, err
 	}
@@ -197,9 +202,10 @@ func (s *BrowseService) GetPlaceHierarchy(ctx context.Context, input GetPlaceHie
 
 // GetPersonsByPlaceInput contains the input for GetPersonsByPlace.
 type GetPersonsByPlaceInput struct {
-	Place  string
-	Limit  int
-	Offset int
+	Place    string
+	Limit    int
+	Offset   int
+	BranchID domain.BranchID // Branch to read; domain.MainBranchID for the mainline
 }
 
 // GetPersonsByPlace returns persons associated with a place.
@@ -218,8 +224,9 @@ func (s *BrowseService) GetPersonsByPlace(ctx context.Context, input GetPersonsB
 	}
 
 	opts := repository.ListOptions{
-		Limit:  limit,
-		Offset: offset,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: input.BranchID,
 	}
 
 	persons, total, err := s.readStore.GetPersonsByPlace(ctx, input.Place, opts)
@@ -253,6 +260,8 @@ type CemeteryEntry struct {
 }
 
 // GetCemeteryIndex returns the cemetery/burial place index.
+//
+// Main-only: it aggregates `life_events`, which carries no branch_id (sub-issue B, #757).
 func (s *BrowseService) GetCemeteryIndex(ctx context.Context) (*CemeteryIndexResult, error) {
 	entries, err := s.readStore.GetCemeteryIndex(ctx)
 	if err != nil {
@@ -275,12 +284,17 @@ func (s *BrowseService) GetCemeteryIndex(ctx context.Context) (*CemeteryIndexRes
 
 // GetPersonsByCemeteryInput contains the input for GetPersonsByCemetery.
 type GetPersonsByCemeteryInput struct {
-	Place  string
-	Limit  int
-	Offset int
+	Place    string
+	Limit    int
+	Offset   int
+	BranchID domain.BranchID // Branch to read; domain.MainBranchID for the mainline
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given place.
+//
+// Split scope: only the person side follows input.BranchID's overlay; the burial and
+// cremation `life_events` joined against it stay main-only (sub-issue B, #757), so a
+// branch's counts here can disagree with GetCemeteryIndex.
 func (s *BrowseService) GetPersonsByCemetery(ctx context.Context, input GetPersonsByCemeteryInput) (*PersonListResult, error) {
 	// Apply defaults
 	limit := input.Limit
@@ -296,8 +310,9 @@ func (s *BrowseService) GetPersonsByCemetery(ctx context.Context, input GetPerso
 	}
 
 	opts := repository.ListOptions{
-		Limit:  limit,
-		Offset: offset,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: input.BranchID,
 	}
 
 	persons, total, err := s.readStore.GetPersonsByCemetery(ctx, input.Place, opts)
@@ -335,8 +350,9 @@ type MapLocation struct {
 }
 
 // GetMapLocations returns aggregated geographic locations for map visualization.
-func (s *BrowseService) GetMapLocations(ctx context.Context) (*MapLocationsResult, error) {
-	locations, err := s.readStore.GetMapLocations(ctx)
+// branchID selects the branch to read; domain.MainBranchID is the mainline.
+func (s *BrowseService) GetMapLocations(ctx context.Context, branchID domain.BranchID) (*MapLocationsResult, error) {
+	locations, err := s.readStore.GetMapLocations(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -380,6 +396,8 @@ type BrickWallItem struct {
 }
 
 // GetBrickWalls returns brick wall entries.
+//
+// Main-only: brick walls are not event-sourced, so they have no branch overlay (sub-issue F, #761).
 func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool) (*BrickWallsResult, error) {
 	// Always fetch all entries so counts are accurate regardless of filter
 	entries, err := s.readStore.GetBrickWalls(ctx, true)
@@ -420,11 +438,15 @@ func (s *BrowseService) GetBrickWalls(ctx context.Context, includeResolved bool)
 }
 
 // SetBrickWall marks a person as a brick wall with a note.
+//
+// Main-only: brick walls are not event-sourced, so they have no branch overlay (sub-issue F, #761).
 func (s *BrowseService) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
 	return s.readStore.SetBrickWall(ctx, personID, note)
 }
 
 // ResolveBrickWall resolves a brick wall (marks as broken through).
+//
+// Main-only: brick walls are not event-sourced, so they have no branch overlay (sub-issue F, #761).
 func (s *BrowseService) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
 	return s.readStore.ResolveBrickWall(ctx, personID)
 }

@@ -277,16 +277,16 @@ func (m *mockReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) 
 }
 
 // Browse stub methods
-func (m *mockReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+func (m *mockReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
 	return nil, nil, nil
 }
-func (m *mockReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string) ([]repository.SurnameEntry, error) {
+func (m *mockReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) ([]repository.PlaceEntry, error) {
+func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
@@ -298,7 +298,7 @@ func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository
 func (m *mockReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapLocation, error) {
+func (m *mockReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
 	return nil, nil
 }
 

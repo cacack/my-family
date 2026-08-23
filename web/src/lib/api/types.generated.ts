@@ -259,7 +259,9 @@ export interface paths {
         };
         /**
          * Get surname index with counts
-         * @description Returns an alphabetical index of surnames with person counts
+         * @description Returns an alphabetical index of surnames with person counts. With
+         *     `?branch=` the index is built from that branch's isolated view; omit it
+         *     for the mainline.
          */
         get: operations["browseSurnames"];
         put?: never;
@@ -280,7 +282,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get persons with a specific surname */
+        /**
+         * Get persons with a specific surname
+         * @description Returns the people carrying the surname. With `?branch=` the results come
+         *     from that branch's isolated view; omit it for the mainline.
+         */
         get: operations["getPersonsBySurname"];
         put?: never;
         post?: never;
@@ -299,7 +305,9 @@ export interface paths {
         };
         /**
          * Get place hierarchy with counts
-         * @description Returns hierarchical place data (Country > State > County > City)
+         * @description Returns hierarchical place data (Country > State > County > City). With
+         *     `?branch=` the places and counts are derived from that branch's isolated
+         *     view; omit it for the mainline.
          */
         get: operations["browsePlaces"];
         put?: never;
@@ -320,7 +328,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get persons associated with a place */
+        /**
+         * Get persons associated with a place
+         * @description Returns the people associated with the place. With `?branch=` the results
+         *     come from that branch's isolated view; omit it for the mainline.
+         */
         get: operations["getPersonsByPlace"];
         put?: never;
         post?: never;
@@ -339,7 +351,14 @@ export interface paths {
         };
         /**
          * Get cemetery/burial place index with counts
-         * @description Returns unique burial and cremation places with person counts
+         * @description Returns unique burial and cremation places with person counts. `?branch=`
+         *     is NOT accepted here and is silently ignored if supplied: the index is
+         *     aggregated from the burial and cremation life events alone, and those
+         *     carry no branch yet
+         *     ([#757](https://github.com/cacack/my-family/issues/757)), so the response
+         *     is always the mainline. The counts can therefore disagree with
+         *     `getPersonsByCemetery` on a branch, whose person side does follow the
+         *     branch.
          */
         get: operations["browseCemeteries"];
         put?: never;
@@ -360,7 +379,13 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get persons buried or cremated at a place */
+        /**
+         * Get persons buried or cremated at a place
+         * @description Returns the people buried or cremated at the place. With `?branch=` the
+         *     person side follows that branch's isolated view, while the burial and
+         *     cremation life events matched against it are still read from the
+         *     mainline; omit the parameter for the mainline throughout.
+         */
         get: operations["getPersonsByCemetery"];
         put?: never;
         post?: never;
@@ -379,7 +404,9 @@ export interface paths {
         };
         /**
          * Get geographic locations for map visualization
-         * @description Returns aggregated birth and death locations with coordinates for map display
+         * @description Returns aggregated birth and death locations with coordinates for map
+         *     display. With `?branch=` the locations are aggregated from that branch's
+         *     isolated view; omit it for the mainline.
          */
         get: operations["getMapLocations"];
         put?: never;
@@ -397,7 +424,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List brick wall research blocks */
+        /**
+         * List brick wall research blocks
+         * @description Returns the brick wall research blocks. `?branch=` is NOT accepted here
+         *     and is silently ignored if supplied: brick walls are not event-sourced,
+         *     so there is no branch overlay to read
+         *     ([#761](https://github.com/cacack/my-family/issues/761)) and the response
+         *     is always the mainline.
+         */
         get: operations["getBrickWalls"];
         put?: never;
         post?: never;
@@ -417,10 +451,24 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Mark person as a brick wall */
+        /**
+         * Mark person as a brick wall
+         * @description Marks the person as a brick wall. `?branch=` is NOT accepted here and is
+         *     silently ignored if supplied: brick walls are not event-sourced, so there
+         *     is no branch overlay to write to
+         *     ([#761](https://github.com/cacack/my-family/issues/761)) — the mark always
+         *     lands on the mainline and is visible from every branch.
+         */
         put: operations["setPersonBrickWall"];
         post?: never;
-        /** Resolve a brick wall (mark as broken through) */
+        /**
+         * Resolve a brick wall (mark as broken through)
+         * @description Resolves the person's brick wall. `?branch=` is NOT accepted here and is
+         *     silently ignored if supplied: brick walls are not event-sourced, so there
+         *     is no branch overlay to write to
+         *     ([#761](https://github.com/cacack/my-family/issues/761)) — the resolution
+         *     always lands on the mainline and is visible from every branch.
+         */
         delete: operations["resolvePersonBrickWall"];
         options?: never;
         head?: never;
@@ -5319,6 +5367,15 @@ export interface operations {
     browseSurnames: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Filter surnames by starting letter (A-Z) */
                 letter?: string;
             };
@@ -5342,6 +5399,15 @@ export interface operations {
     getPersonsBySurname: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
             };
@@ -5368,6 +5434,15 @@ export interface operations {
     browsePlaces: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Parent place to get children for (empty for top-level) */
                 parent?: string;
             };
@@ -5391,6 +5466,15 @@ export interface operations {
     getPersonsByPlace: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
             };
@@ -5437,6 +5521,15 @@ export interface operations {
     getPersonsByCemetery: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
             };
@@ -5462,7 +5555,17 @@ export interface operations {
     };
     getMapLocations: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

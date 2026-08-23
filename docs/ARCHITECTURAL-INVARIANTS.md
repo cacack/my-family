@@ -72,7 +72,25 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > FamilyExternalID, FamilyChild, PedigreeEdge — with copy-on-write overlay, tombstones, and
 > `PurgeBranch` on `BranchDeleted` across the memory, sqlite, and postgres backends. Identical
 > end-to-end scenario tests (`internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go`)
-> verify DB-001 parity. Extending branch-scoping to the remaining entity types is a follow-up.
+> verify DB-001 parity.
+>
+> **Implementation status (#676 sub-issue A, [#756](https://github.com/cacack/my-family/issues/756)):**
+> the browse and map aggregates — surname index, per-surname person list, place hierarchy,
+> per-place person list, per-cemetery person list and map locations — are **delivered** as
+> branch-aware reads. They own no `branch_id` of their own: each is computed over the BR-003
+> overlay of the seven-type slice, so branch rows shadow `main` and tombstones drop out of the
+> aggregate for free. Verified by `TestBranchScenario_AggregateIsolation`
+> (`internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go`, one identical copy per
+> backend for DB-001 parity),
+> `TestBrowseService_BranchScopeReachesStore` and `TestBrowseService_MainOnlyPathsUnscoped`
+> (`internal/query/browse_service_test.go`), and the `?branch=` handler tests in
+> `internal/api/browse_handlers_test.go`. The frontend allowlist
+> (`web/src/lib/api/client.ts`) is pinned to the spec by a drift test in
+> `web/src/lib/api/client.test.ts`. Still main-only, deliberately: the cemetery *index*, whose
+> `life_events` source table has no `branch_id`
+> ([#757](https://github.com/cacack/my-family/issues/757)), and brick walls, which are not
+> event-sourced ([#761](https://github.com/cacack/my-family/issues/761)). Extending branch-scoping
+> to the remaining entity types is the rest of #676.
 >
 > **Implementation status (#670):** BR-005 and BR-006 arrived with the branch lifecycle
 > (create / isolate / compare / archive) and the `?branch=` HTTP scope. Branch **writes** cover a
