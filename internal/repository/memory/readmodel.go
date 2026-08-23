@@ -1566,15 +1566,16 @@ func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) erro
 	return nil
 }
 
-// GetSurnameIndex returns a list of unique surnames with counts and letter distribution.
-func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+// GetSurnameIndex returns a list of unique surnames with counts and letter
+// distribution, aggregated over branchID's overlay of persons (ADR-005).
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	surnameCount := make(map[string]int)
 	surnamesByLetter := make(map[string]map[string]bool) // letter -> set of surnames
 
-	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
+	for _, p := range resolveAllRows(s.persons, branchID) {
 		surname := p.Surname
 		surnameCount[surname]++
 		if surname != "" {
@@ -1605,13 +1606,14 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.Surn
 	return surnames, letters, nil
 }
 
-// GetSurnamesByLetter returns surnames starting with a specific letter.
-func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string) ([]repository.SurnameEntry, error) {
+// GetSurnamesByLetter returns surnames starting with a specific letter, aggregated
+// over branchID's overlay of persons (ADR-005).
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	surnameCount := make(map[string]int)
-	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
+	for _, p := range resolveAllRows(s.persons, branchID) {
 		surname := p.Surname
 		if surname != "" && strings.EqualFold(string(surname[0]), letter) {
 			surnameCount[surname]++
@@ -1629,13 +1631,14 @@ func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string)
 	return surnames, nil
 }
 
-// GetPersonsBySurname returns persons with a specific surname.
+// GetPersonsBySurname returns persons with a specific surname from opts.BranchID's
+// overlay of persons (ADR-005).
 func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.PersonReadModel
-	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
+	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
 		if strings.EqualFold(p.Surname, surname) {
 			results = append(results, *p)
 		}
@@ -1661,15 +1664,16 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 	return results, total, nil
 }
 
-// GetPlaceHierarchy returns places at a given level of hierarchy.
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) ([]repository.PlaceEntry, error) {
+// GetPlaceHierarchy returns places at a given level of hierarchy, aggregated over
+// branchID's overlay of persons (ADR-005).
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Simple implementation: extract unique places
 	placeCount := make(map[string]int)
 
-	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
+	for _, p := range resolveAllRows(s.persons, branchID) {
 		for _, place := range []string{p.BirthPlace, p.DeathPlace} {
 			if place != "" {
 				placeCount[place]++
@@ -1692,13 +1696,14 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 	return entries, nil
 }
 
-// GetPersonsByPlace returns persons associated with a specific place.
+// GetPersonsByPlace returns persons associated with a specific place from
+// opts.BranchID's overlay of persons (ADR-005).
 func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.PersonReadModel
-	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
+	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
 		if strings.Contains(p.BirthPlace, place) || strings.Contains(p.DeathPlace, place) {
 			results = append(results, *p)
 		}
@@ -1728,6 +1733,18 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 }
 
 // GetCemeteryIndex returns unique burial/cremation places with person counts.
+//
+// MAIN-ONLY on purpose: it reads life events alone, and life events are not
+// branch-scoped yet (sub-issue B of #676, #757). There is no overlay to resolve, so
+// this takes no branchID -- do not "fix" it to accept one before #757 lands.
+//
+// KNOWN DIVERGENCE: these counts can disagree with GetPersonsByCemetery under a
+// branch scope. The count here is distinct OwnerID over life events with no lookup
+// into persons, so it still counts a person the branch tombstoned;
+// GetPersonsByCemetery resolves the person side through the overlay and drops
+// tombstones. A branch that deleted a buried person therefore sees "Oak Grove -
+// 1 person" in the index and an empty list on click-through. Closing the gap needs
+// both sides branch-aware, which waits on #757.
 func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -1761,12 +1778,16 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.Cem
 	return entries, nil
 }
 
-// GetPersonsByCemetery returns persons with burial/cremation events at the given place.
+// GetPersonsByCemetery returns persons with burial/cremation events at the given
+// place, drawn from opts.BranchID's overlay of persons (ADR-005).
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Find distinct person IDs with matching burial/cremation events (exact case-insensitive match)
+	// Find distinct person IDs with matching burial/cremation events (exact
+	// case-insensitive match). This half of the join stays on main: life events are
+	// not branch-scoped yet (sub-issue B of #676, #757). Only the persons side below
+	// honors the branch scope.
 	matchedIDs := make(map[uuid.UUID]struct{})
 	for _, e := range s.events {
 		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
@@ -1778,7 +1799,7 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	}
 
 	var results []repository.PersonReadModel
-	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
+	for _, p := range resolveAllRows(s.persons, opts.BranchID) {
 		if _, ok := matchedIDs[p.ID]; ok {
 			results = append(results, *p)
 		}
@@ -1807,8 +1828,9 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	return results, total, nil
 }
 
-// GetMapLocations returns aggregated geographic locations from person birth/death coordinates.
-func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapLocation, error) {
+// GetMapLocations returns aggregated geographic locations from the birth/death
+// coordinates of branchID's overlay of persons (ADR-005).
+func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -1825,7 +1847,7 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 
 	agg := make(map[locKey]*locData)
 
-	for _, p := range resolveAllRows(s.persons, domain.MainBranchID) {
+	for _, p := range resolveAllRows(s.persons, branchID) {
 		// Birth location
 		if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
 			lat, errLat := gedcom.ParseCoordinate(*p.BirthPlaceLat)
@@ -1877,6 +1899,11 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 }
 
 // SetBrickWall marks a person as a brick wall with a note.
+//
+// MAIN-ONLY on purpose: brick-wall state is written straight to the read model rather
+// than projected from an event, so there is no overlay to copy-on-write into and the
+// main row is the only row to write. Whether brick walls should become branch-aware
+// is sub-issue F of #676 (#761) -- keep the main pin until that is decided.
 func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1893,6 +1920,9 @@ func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, n
 }
 
 // ResolveBrickWall marks a brick wall as resolved.
+//
+// MAIN-ONLY on purpose, for the same reason as SetBrickWall: written outside the
+// event store, so there is no overlay to resolve (sub-issue F of #676, #761).
 func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1907,6 +1937,10 @@ func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUI
 }
 
 // GetBrickWalls returns persons with brick wall status.
+//
+// MAIN-ONLY for symmetry with SetBrickWall/ResolveBrickWall, which only ever write
+// the main row: reading a branch overlay here would report shadow rows whose
+// brick-wall fields no writer maintains (sub-issue F of #676, #761).
 func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

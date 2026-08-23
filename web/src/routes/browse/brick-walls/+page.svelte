@@ -2,6 +2,7 @@
 	import { api, type BrickWallEntry } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Card, CardHeader, CardContent, CardFooter } from '$lib/components/ui/card';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
 	let entries: BrickWallEntry[] = $state([]);
 	let activeCount = $state(0);
@@ -61,6 +62,10 @@
 </svelte:head>
 
 <div class="browse-page">
+	<MainlineNotice
+		surface="Brick-wall tracking"
+		detail="Brick-wall flags are not event-sourced yet, so they are not part of a research branch."
+	/>
 	<header class="page-header">
 		<h1>Brick Walls</h1>
 		<p class="description">Track and celebrate research breakthroughs.</p>

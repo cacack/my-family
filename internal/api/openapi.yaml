@@ -596,9 +596,13 @@ paths:
     get:
       operationId: browseSurnames
       summary: Get surname index with counts
-      description: Returns an alphabetical index of surnames with person counts
+      description: |
+        Returns an alphabetical index of surnames with person counts. With
+        `?branch=` the index is built from that branch's isolated view; omit it
+        for the mainline.
       tags: [browse]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: letter
           in: query
           description: Filter surnames by starting letter (A-Z)
@@ -624,8 +628,12 @@ paths:
     get:
       operationId: getPersonsBySurname
       summary: Get persons with a specific surname
+      description: |
+        Returns the people carrying the surname. With `?branch=` the results come
+        from that branch's isolated view; omit it for the mainline.
       tags: [browse]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
       responses:
@@ -640,9 +648,13 @@ paths:
     get:
       operationId: browsePlaces
       summary: Get place hierarchy with counts
-      description: Returns hierarchical place data (Country > State > County > City)
+      description: |
+        Returns hierarchical place data (Country > State > County > City). With
+        `?branch=` the places and counts are derived from that branch's isolated
+        view; omit it for the mainline.
       tags: [browse]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: parent
           in: query
           description: Parent place to get children for (empty for top-level)
@@ -667,8 +679,12 @@ paths:
     get:
       operationId: getPersonsByPlace
       summary: Get persons associated with a place
+      description: |
+        Returns the people associated with the place. With `?branch=` the results
+        come from that branch's isolated view; omit it for the mainline.
       tags: [browse]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
       responses:
@@ -683,7 +699,15 @@ paths:
     get:
       operationId: browseCemeteries
       summary: Get cemetery/burial place index with counts
-      description: Returns unique burial and cremation places with person counts
+      description: |
+        Returns unique burial and cremation places with person counts. `?branch=`
+        is NOT accepted here and is silently ignored if supplied: the index is
+        aggregated from the burial and cremation life events alone, and those
+        carry no branch yet
+        ([#757](https://github.com/cacack/my-family/issues/757)), so the response
+        is always the mainline. The counts can therefore disagree with
+        `getPersonsByCemetery` on a branch, whose person side does follow the
+        branch.
       tags: [browse]
       responses:
         '200':
@@ -704,8 +728,14 @@ paths:
     get:
       operationId: getPersonsByCemetery
       summary: Get persons buried or cremated at a place
+      description: |
+        Returns the people buried or cremated at the place. With `?branch=` the
+        person side follows that branch's isolated view, while the burial and
+        cremation life events matched against it are still read from the
+        mainline; omit the parameter for the mainline throughout.
       tags: [browse]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
       responses:
@@ -720,8 +750,13 @@ paths:
     get:
       operationId: getMapLocations
       summary: Get geographic locations for map visualization
-      description: Returns aggregated birth and death locations with coordinates for map display
+      description: |
+        Returns aggregated birth and death locations with coordinates for map
+        display. With `?branch=` the locations are aggregated from that branch's
+        isolated view; omit it for the mainline.
       tags: [browse]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Geographic location data
@@ -734,6 +769,12 @@ paths:
     get:
       operationId: getBrickWalls
       summary: List brick wall research blocks
+      description: |
+        Returns the brick wall research blocks. `?branch=` is NOT accepted here
+        and is silently ignored if supplied: brick walls are not event-sourced,
+        so there is no branch overlay to read
+        ([#761](https://github.com/cacack/my-family/issues/761)) and the response
+        is always the mainline.
       tags: [browse]
       parameters:
         - name: include_resolved
@@ -755,6 +796,12 @@ paths:
     put:
       operationId: setPersonBrickWall
       summary: Mark person as a brick wall
+      description: |
+        Marks the person as a brick wall. `?branch=` is NOT accepted here and is
+        silently ignored if supplied: brick walls are not event-sourced, so there
+        is no branch overlay to write to
+        ([#761](https://github.com/cacack/my-family/issues/761)) — the mark always
+        lands on the mainline and is visible from every branch.
       tags: [persons]
       requestBody:
         required: true
@@ -777,6 +824,12 @@ paths:
     delete:
       operationId: resolvePersonBrickWall
       summary: Resolve a brick wall (mark as broken through)
+      description: |
+        Resolves the person's brick wall. `?branch=` is NOT accepted here and is
+        silently ignored if supplied: brick walls are not event-sourced, so there
+        is no branch overlay to write to
+        ([#761](https://github.com/cacack/my-family/issues/761)) — the resolution
+        always lands on the mainline and is visible from every branch.
       tags: [persons]
       responses:
         '204':

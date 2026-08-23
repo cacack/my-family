@@ -64,9 +64,47 @@ describe('isBranchScopedRequest', () => {
 		['DELETE', `/families/${FAMILY_ID}`],
 		['POST', `/families/${FAMILY_ID}/children`],
 		['DELETE', `/families/${FAMILY_ID}/children/${PERSON_ID}`],
-		['GET', `/pedigree/${PERSON_ID}`]
+		['GET', `/pedigree/${PERSON_ID}`],
+		['GET', '/browse/surnames'],
+		['GET', '/browse/surnames/Smith/persons'],
+		['GET', '/browse/places'],
+		['GET', '/browse/places/Ohio/persons'],
+		['GET', '/browse/cemeteries/Oak%20Hill%20Cemetery/persons'],
+		['GET', '/map/locations']
 	])('allows %s %s', (method, path) => {
 		expect(isBranchScopedRequest(method, path)).toBe(true);
+	});
+
+	it('matches free-text segments the way the client actually encodes them', () => {
+		// The browse client percent-encodes the surname/place segment, so the
+		// pattern has to survive `%20`, `%2C`, non-ASCII and an encoded slash
+		// without either rejecting the path or spilling across a `/`.
+		const place = 'Saint-Étienne, Loire, France / Cimetière';
+		expect(encodeURIComponent(place)).not.toContain('/');
+		expect(
+			isBranchScopedRequest('GET', `/browse/places/${encodeURIComponent(place)}/persons`)
+		).toBe(true);
+		expect(
+			isBranchScopedRequest('GET', `/browse/cemeteries/${encodeURIComponent(place)}/persons`)
+		).toBe(true);
+		expect(
+			isBranchScopedRequest('GET', `/browse/surnames/${encodeURIComponent("O'Brien")}/persons`)
+		).toBe(true);
+	});
+
+	it('does not let a free-text segment swallow a slash', () => {
+		expect(isBranchScopedRequest('GET', '/browse/places/Ohio/Franklin/persons')).toBe(false);
+		expect(isBranchScopedRequest('GET', '/browse/surnames//persons')).toBe(false);
+	});
+
+	it('leaves the main-only browse operations unscoped', () => {
+		// The cemetery index aggregates `life_events`, which has no `branch_id`
+		// yet (#757); brick walls are not event-sourced (#761). Sending
+		// `?branch=` on these would imply a scoping the server does not apply.
+		expect(isBranchScopedRequest('GET', '/browse/cemeteries')).toBe(false);
+		expect(isBranchScopedRequest('GET', '/browse/brick-walls')).toBe(false);
+		expect(isBranchScopedRequest('PUT', `/persons/${PERSON_ID}/brick-wall`)).toBe(false);
+		expect(isBranchScopedRequest('DELETE', `/persons/${PERSON_ID}/brick-wall`)).toBe(false);
 	});
 
 	it('does not allow GET /families - listFamilies has no branch parameter', () => {

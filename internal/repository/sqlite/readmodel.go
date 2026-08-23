@@ -935,6 +935,28 @@ func personOverlaySubquery(branchID domain.BranchID) (string, []any) {
 	return sub, []any{branchID.String(), branchID.String(), mainBranchID}
 }
 
+// personOverlayCTE is personOverlaySubquery for a statement that reads the overlay
+// more than once (the birth-place and death-place legs of GetPlaceHierarchy's UNION).
+// Off main it hoists the overlay into a `resolved` CTE, which SQLite materializes
+// because it is referenced more than once, so the ROW_NUMBER pass over the branch's
+// rows plus all of main's runs once per call instead of once per leg.
+//
+// Main keeps the inline subquery (the #669 fast path): its plain indexed branch_id
+// filter flattens into each leg and touches only that leg's column, so a mainline call
+// must not start materializing a CTE it did not before.
+//
+// Returns the WITH head to prefix to the statement's own CTE list, the source to read
+// FROM, the args bound once for the CTE, and the args bound at each FROM reference.
+// Exactly one of cteArgs/legArgs is non-empty, so callers interleave both in
+// statement order.
+func personOverlayCTE(branchID domain.BranchID) (withClause, src string, cteArgs, legArgs []any) {
+	sub, args := personOverlaySubquery(branchID)
+	if branchID.IsMain() {
+		return "WITH ", sub, nil, args
+	}
+	return "WITH resolved AS " + sub + ",\n\t\t\t", "resolved", args, nil
+}
+
 // GetPerson retrieves a person by ID within the branch overlay.
 func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PersonReadModel, error) {
 	row := s.db.QueryRowContext(ctx, `
@@ -4038,15 +4060,20 @@ func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
 	return m, nil
 }
 
-// GetSurnameIndex returns all unique surnames with counts and letter counts.
-func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+// GetSurnameIndex returns unique surnames with counts and letter counts within
+// the branch overlay (ADR-005 / #756): a branch sees its own shadow rows in place
+// of main's and never counts a tombstoned person.
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	overlay, overlayArgs := personOverlaySubquery(branchID)
+
 	// Get surname counts
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT surname, COUNT(*) as count
-		FROM persons
+		FROM `+overlay+`
 		GROUP BY surname
 		ORDER BY surname ASC
-	`)
+	`, overlayArgs...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query surname index: %w", err)
 	}
@@ -4065,13 +4092,14 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.Surn
 	}
 
 	// Get letter counts
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	letterRows, err := s.db.QueryContext(ctx, `
 		SELECT UPPER(SUBSTR(surname, 1, 1)) as letter, COUNT(DISTINCT surname) as count
-		FROM persons
+		FROM `+overlay+`
 		WHERE surname != ''
 		GROUP BY UPPER(SUBSTR(surname, 1, 1))
 		ORDER BY letter ASC
-	`)
+	`, overlayArgs...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query letter counts: %w", err)
 	}
@@ -4089,15 +4117,20 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.Surn
 	return surnames, letterCounts, letterRows.Err()
 }
 
-// GetSurnamesByLetter returns surnames starting with a specific letter.
-func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string) ([]repository.SurnameEntry, error) {
+// GetSurnamesByLetter returns surnames starting with a specific letter within the
+// branch overlay (ADR-005 / #756).
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
+	overlay, overlayArgs := personOverlaySubquery(branchID)
+
+	args := append(append([]any{}, overlayArgs...), letter)
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT surname, COUNT(*) as count
-		FROM persons
+		FROM `+overlay+`
 		WHERE UPPER(SUBSTR(surname, 1, 1)) = UPPER(?)
 		GROUP BY surname
 		ORDER BY surname ASC
-	`, letter)
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query surnames by letter: %w", err)
 	}
@@ -4115,26 +4148,33 @@ func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string)
 	return surnames, rows.Err()
 }
 
-// GetPersonsBySurname returns persons with a specific surname.
+// GetPersonsBySurname returns persons with a specific surname within the branch
+// overlay carried on opts.BranchID (ADR-005 / #756). Count and page resolve the
+// same overlay so they always agree on scope.
 func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+
 	// Count total
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM persons WHERE LOWER(surname) = LOWER(?)", surname).Scan(&total)
+	countArgs := append(append([]any{}, overlayArgs...), surname)
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+overlay+" WHERE LOWER(surname) = LOWER(?)", countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by surname: %w", err)
 	}
 
+	queryArgs := append(append([]any{}, overlayArgs...), surname, opts.Limit, opts.Offset)
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
-		FROM persons
+		FROM `+overlay+`
 		WHERE LOWER(surname) = LOWER(?)
 		ORDER BY given_name ASC
 		LIMIT ? OFFSET ?
-	`, surname, opts.Limit, opts.Offset)
+	`, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by surname: %w", err)
 	}
@@ -4155,17 +4195,27 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 // GetPlaceHierarchy returns places at a given level in the hierarchy.
 // Places are parsed from comma-separated strings like "City, County, State, Country"
 // working from right to left (Country is top level).
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) ([]repository.PlaceEntry, error) {
+// Scoped to the branch overlay (ADR-005 / #756): the birth-place and death-place
+// legs of each UNION both read the overlay, so a branch sees its own places and
+// tombstoned persons contribute none.
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
 	var rows *sql.Rows
 	var err error
 
+	withClause, src, cteArgs, legArgs := personOverlayCTE(branchID)
+
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma)
+		// Args in statement order: the CTE's binds (off main), then each leg's own
+		// overlay binds (main only, where the subquery is still inlined per leg).
+		args := append(append([]any{}, cteArgs...), legArgs...)
+		args = append(args, legArgs...)
+		// #nosec G202 -- withClause/src are built from the constant literals returned by personOverlayCTE; every value is a bound ? placeholder
 		rows, err = s.db.QueryContext(ctx, `
-			WITH all_places AS (
-				SELECT DISTINCT birth_place as place FROM persons WHERE birth_place != '' AND birth_place IS NOT NULL
+			`+withClause+`all_places AS (
+				SELECT DISTINCT birth_place as place FROM `+src+` WHERE birth_place != '' AND birth_place IS NOT NULL
 				UNION
-				SELECT DISTINCT death_place as place FROM persons WHERE death_place != '' AND death_place IS NOT NULL
+				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place != '' AND death_place IS NOT NULL
 			),
 			parsed AS (
 				SELECT
@@ -4190,14 +4240,21 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 			WHERE top_level != ''
 			GROUP BY top_level
 			ORDER BY top_level ASC
-		`)
+		`, args...)
 	} else {
-		// Child level: get places that end with parent
+		// Child level: get places that end with parent. Args in statement order: the
+		// CTE's binds (off main), then per leg its own overlay binds (main only) plus
+		// that leg's parent bind, then the four remaining parent binds.
+		args := append(append([]any{}, cteArgs...), legArgs...)
+		args = append(args, parent)
+		args = append(args, legArgs...)
+		args = append(args, parent, parent, parent, parent, parent)
+		// #nosec G202 -- withClause/src are built from the constant literals returned by personOverlayCTE; every value is a bound ? placeholder
 		rows, err = s.db.QueryContext(ctx, `
-			WITH all_places AS (
-				SELECT DISTINCT birth_place as place FROM persons WHERE birth_place LIKE '%' || ? AND birth_place != ''
+			`+withClause+`all_places AS (
+				SELECT DISTINCT birth_place as place FROM `+src+` WHERE birth_place LIKE '%' || ? AND birth_place != ''
 				UNION
-				SELECT DISTINCT death_place as place FROM persons WHERE death_place LIKE '%' || ? AND death_place != ''
+				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place LIKE '%' || ? AND death_place != ''
 			),
 			parsed AS (
 				SELECT
@@ -4233,7 +4290,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 			WHERE level_name != '' AND level_name != ?
 			GROUP BY level_name
 			ORDER BY level_name ASC
-		`, parent, parent, parent, parent, parent, parent)
+		`, args...)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query place hierarchy: %w", err)
@@ -4254,29 +4311,35 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 	return places, rows.Err()
 }
 
-// GetPersonsByPlace returns persons associated with a place.
+// GetPersonsByPlace returns persons associated with a place within the branch
+// overlay carried on opts.BranchID (ADR-005 / #756).
 func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+
 	// Count total - match place at any position in birth_place or death_place
 	var total int
+	countArgs := append(append([]any{}, overlayArgs...), place, place)
 	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM persons
+		SELECT COUNT(*) FROM `+overlay+`
 		WHERE birth_place LIKE '%' || ? || '%' OR death_place LIKE '%' || ? || '%'
-	`, place, place).Scan(&total)
+	`, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
 	}
 
+	queryArgs := append(append([]any{}, overlayArgs...), place, place, opts.Limit, opts.Offset)
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, given_name, surname, full_name, gender,
 			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
 			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
 			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
 			   version, updated_at
-		FROM persons
+		FROM `+overlay+`
 		WHERE birth_place LIKE '%' || ? || '%' OR death_place LIKE '%' || ? || '%'
 		ORDER BY surname ASC, given_name ASC
 		LIMIT ? OFFSET ?
-	`, place, place, opts.Limit, opts.Offset)
+	`, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by place: %w", err)
 	}
@@ -4295,6 +4358,18 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 }
 
 // GetCemeteryIndex returns unique burial/cremation places with person counts.
+//
+// MAIN-ONLY carve-out (#756): it reads `life_events` alone and never touches
+// `persons`, so there is no person overlay to resolve. Making it branch-aware waits
+// on branch-scoping `life_events` itself (sub-issue B of #676, #757).
+//
+// KNOWN DIVERGENCE: these counts can disagree with GetPersonsByCemetery under a
+// branch scope. The count here is DISTINCT owner_id over `life_events` with no join
+// to `persons`, so it still counts a person the branch tombstoned; GetPersonsByCemetery
+// resolves the person side through the overlay and drops tombstones. A branch that
+// deleted a buried person therefore sees "Oak Grove - 1 person" in the index and an
+// empty list on click-through. Closing the gap needs the join to be branch-aware on
+// both sides, which waits on #757.
 func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT place, COUNT(DISTINCT owner_id) as count
@@ -4320,32 +4395,44 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.Cem
 	return entries, rows.Err()
 }
 
-// GetPersonsByCemetery returns persons with burial/cremation events at the given place.
+// GetPersonsByCemetery returns persons with burial/cremation events at the given
+// place, with the PERSON side resolved through the branch overlay carried on
+// opts.BranchID (ADR-005 / #756).
+//
+// The `life_events` side of the join stays main-scoped: that table has no branch_id
+// column yet, so a branch's burial facts are not distinguishable from main's. Branch
+// scoping person/family facts is sub-issue B of #676 (#757).
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+
 	// Count total distinct persons
 	var total int
+	countArgs := append(append([]any{}, overlayArgs...), string(domain.FactPersonBurial), string(domain.FactPersonCremation), place)
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT p.id)
-		FROM persons p
+		FROM `+overlay+` p
 		INNER JOIN life_events e ON e.owner_id = p.id
 		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
-	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place).Scan(&total)
+	`, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by cemetery: %w", err)
 	}
 
+	queryArgs := append(append([]any{}, overlayArgs...),
+		string(domain.FactPersonBurial), string(domain.FactPersonCremation), place, opts.Limit, opts.Offset)
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
-		FROM persons p
+		FROM `+overlay+` p
 		INNER JOIN life_events e ON e.owner_id = p.id
 		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
 		ORDER BY p.surname ASC, p.given_name ASC
 		LIMIT ? OFFSET ?
-	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place, opts.Limit, opts.Offset)
+	`, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by cemetery: %w", err)
 	}
@@ -4363,16 +4450,20 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	return persons, total, rows.Err()
 }
 
-// GetMapLocations returns aggregated geographic locations from person birth/death coordinates.
-func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapLocation, error) {
+// GetMapLocations returns aggregated geographic locations from person birth/death
+// coordinates within the branch overlay (ADR-005 / #756).
+func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
+	overlay, overlayArgs := personOverlaySubquery(branchID)
+
 	// Query birth locations
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, birth_place, birth_place_lat, birth_place_long
-		FROM persons
+		FROM `+overlay+`
 		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
 		  AND birth_place_lat != '' AND birth_place_long != ''
 		ORDER BY birth_place ASC
-	`)
+	`, overlayArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query birth map locations: %w", err)
 	}
@@ -4415,13 +4506,14 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 	}
 
 	// Query death locations
+	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
 	rows2, err := s.db.QueryContext(ctx, `
 		SELECT id, death_place, death_place_lat, death_place_long
-		FROM persons
+		FROM `+overlay+`
 		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
 		  AND death_place_lat != '' AND death_place_long != ''
 		ORDER BY death_place ASC
-	`)
+	`, overlayArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query death map locations: %w", err)
 	}
@@ -4473,36 +4565,44 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 	return results, nil
 }
 
-// SetBrickWall marks a person as a brick wall with a note.
+// Brick-wall state is written straight to the read model rather than projected from
+// events, so there is no overlay to resolve. All three methods are MAIN-ONLY and say
+// so with an explicit branch_id predicate: without it the UPDATEs would rewrite every
+// branch's shadow row for the person and the SELECT would list shadows and tombstones
+// as extra people (BR-003). Whether brick walls should become branch-aware at all is
+// sub-issue F of #676 (#761).
+
+// SetBrickWall marks a person as a brick wall with a note (main only).
 func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE persons SET brick_wall_note = ?, brick_wall_since = ?, brick_wall_resolved_at = NULL
-		WHERE id = ?
-	`, note, formatTimestamp(time.Now()), personID.String())
+		WHERE id = ? AND branch_id = ?
+	`, note, formatTimestamp(time.Now()), personID.String(), mainBranchID)
 	return err
 }
 
-// ResolveBrickWall marks a brick wall as resolved.
+// ResolveBrickWall marks a brick wall as resolved (main only).
 func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE persons SET brick_wall_resolved_at = ?
-		WHERE id = ?
-	`, formatTimestamp(time.Now()), personID.String())
+		WHERE id = ? AND branch_id = ?
+	`, formatTimestamp(time.Now()), personID.String(), mainBranchID)
 	return err
 }
 
-// GetBrickWalls returns persons with brick wall status.
+// GetBrickWalls returns persons with brick wall status (main only).
 func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
 	query := `
 		SELECT id, full_name, brick_wall_note, brick_wall_since, brick_wall_resolved_at
 		FROM persons
-		WHERE brick_wall_since IS NOT NULL AND brick_wall_since != ''`
+		WHERE branch_id = ? AND deleted = 0
+		  AND brick_wall_since IS NOT NULL AND brick_wall_since != ''`
 	if !includeResolved {
 		query += ` AND (brick_wall_resolved_at IS NULL OR brick_wall_resolved_at = '')`
 	}
 	query += ` ORDER BY brick_wall_since DESC`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query, mainBranchID)
 	if err != nil {
 		return nil, fmt.Errorf("query brick walls: %w", err)
 	}

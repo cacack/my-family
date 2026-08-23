@@ -733,25 +733,48 @@ func (s *ReadModelStore) runMigrations() {
 		_, _ = tx.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_given_name VARCHAR(200)`)
 		_, _ = tx.Exec(`ALTER TABLE family_children ADD COLUMN IF NOT EXISTS person_surname VARCHAR(200)`)
 
+		// The backfill joins persons, which is branch-overlaid (ADR-005): with no branch
+		// predicate the join is ambiguous once shadow rows exist and can copy a branch
+		// row's name onto the main family (issue #756). Pin both sides to main. The
+		// column adds repeat runBranchMigration's idempotent statements because this
+		// transaction runs before it, so a pre-#669 database has no branch_id column yet
+		// and the predicate below would abort the whole migration.
+		//
+		// The pin only prevents new bad copies; it cannot repair old ones. The IS NULL
+		// guard that makes the backfill idempotent also makes it skip every row the
+		// unpinned version already wrote, which is exactly the set that could be wrong.
+		// The window is narrow: a family whose denormalized partner name was still NULL
+		// at the moment shadow rows existed for that partner -- i.e. a database that ran
+		// the #669 branch migration, then created a branch that edited the partner, and
+		// only then ran this backfill for the first time. A repair migration is a larger
+		// decision and is deliberately not attempted here.
+		for _, t := range []string{"persons", "families", "family_children"} {
+			_, _ = tx.Exec(`ALTER TABLE ` + t + ` ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL ` + mainBranchDefault)
+		}
+
 		// Backfill split fields from persons table; idempotent via IS NULL guard.
+		main := domain.MainBranchID.UUID()
 		_, _ = tx.Exec(`
 			UPDATE families f SET
 				partner1_given_name = p.given_name,
 				partner1_surname    = p.surname
 			FROM persons p WHERE f.partner1_id = p.id AND f.partner1_given_name IS NULL
-		`)
+			  AND f.branch_id = $1 AND p.branch_id = $1
+		`, main)
 		_, _ = tx.Exec(`
 			UPDATE families f SET
 				partner2_given_name = p.given_name,
 				partner2_surname    = p.surname
 			FROM persons p WHERE f.partner2_id = p.id AND f.partner2_given_name IS NULL
-		`)
+			  AND f.branch_id = $1 AND p.branch_id = $1
+		`, main)
 		_, _ = tx.Exec(`
 			UPDATE family_children fc SET
 				person_given_name = p.given_name,
 				person_surname    = p.surname
 			FROM persons p WHERE fc.person_id = p.id AND fc.person_given_name IS NULL
-		`)
+			  AND fc.branch_id = $1 AND p.branch_id = $1
+		`, main)
 
 		// Drop legacy denormalized columns once the split is populated.
 		_, _ = tx.Exec(`ALTER TABLE families DROP COLUMN IF EXISTS partner1_name, DROP COLUMN IF EXISTS partner2_name`)
@@ -776,8 +799,6 @@ func (s *ReadModelStore) runMigrations() {
 // leaves the table either wholly pre- or post-migration. FK drops must precede
 // the persons/families PK swap because a PK cannot be dropped while referenced.
 func (s *ReadModelStore) runBranchMigration() {
-	const mainDefault = `DEFAULT '00000000-0000-0000-0000-000000000000'`
-
 	// Drop every foreign key that references persons(id) or families(id); these
 	// span slice and non-slice tables. Done first (outside the per-table PK swaps)
 	// so the referenced PKs are free to change.
@@ -817,7 +838,10 @@ func (s *ReadModelStore) runBranchMigration() {
 	}
 	for _, t := range tables {
 		// Column adds are idempotent and safe outside a transaction.
-		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL ` + mainDefault)
+		// #nosec G202 -- t.name comes from the fixed `tables` literal above and
+		// mainBranchDefault is a package constant; no external input reaches this DDL.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL ` + mainBranchDefault)
 		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE`)
 
 		// Already the target shape? Nothing to do. Checked explicitly so the swap
@@ -901,6 +925,12 @@ func (s *ReadModelStore) runBranchMigration() {
 		_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_` + tbl + `_branch ON ` + tbl + `(branch_id)`)
 	}
 }
+
+// mainBranchDefault is the column default that backfills existing rows to the
+// reserved main branch id (domain.MainBranchID / uuid.Nil) when branch_id is added
+// to a slice table. A DDL default cannot be parameterized, so the literal is kept
+// here rather than repeated at each ALTER TABLE.
+const mainBranchDefault = `DEFAULT '00000000-0000-0000-0000-000000000000'`
 
 // Column lists for the branch overlay queries (ADR-005). The overlay resolves a
 // branch's view of a slice table in a single set-based query: an inner
@@ -3622,15 +3652,77 @@ func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
 	return m, nil
 }
 
-// GetSurnameIndex returns all unique surnames with counts and letter counts.
-func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+// resolvedPersonsSrc builds the persons source for a branch-scoped browse/map
+// aggregate (ADR-005). It returns a parenthesized subquery yielding cols from the
+// branch's resolved view of persons, the leading query args, and the next free
+// $-placeholder number for the caller's own parameters. Callers alias it
+// (FROM <src> p) and read unqualified column names out of it, so cols must be
+// unqualified (personSelectCols, not personCols).
+//
+// Off main the whole overlay resolves in ONE set-based pass: the inner
+// SELECT DISTINCT ON (id) prefers the branch's row over main's for each identity,
+// and the OUTER "WHERE NOT deleted" drops identities whose winning row is a
+// tombstone. The NOT deleted filter must stay outside the DISTINCT ON, or a branch
+// tombstone would fail to suppress the main fallback.
+//
+// Main takes the fast path (issue #669): main never shadows itself, so persons holds
+// exactly one row per id and the overlay is pure overhead that would materialize and
+// sort the table before the aggregate runs. The plain branch-filtered subquery is
+// inlined by the planner, so a mainline aggregate keeps the plan it had before
+// branches existed. Main rows are hard-deleted (see DeletePerson), so NOT deleted is
+// a no-op there and only guards a rebuilt-from-branch row.
+func resolvedPersonsSrc(cols string, branchID domain.BranchID) (string, []any, int) {
+	if branchID.IsMain() {
+		return "(SELECT " + cols + " FROM persons WHERE branch_id = $1 AND NOT deleted)",
+			[]any{domain.MainBranchID.UUID()}, 2
+	}
+	return `(
+			SELECT ` + cols + ` FROM (
+				SELECT DISTINCT ON (id) ` + cols + `, deleted
+				FROM persons WHERE branch_id IN ($1, $2)
+				ORDER BY id, (branch_id = $1) DESC
+			) o WHERE NOT deleted
+		)`, []any{branchID.UUID(), domain.MainBranchID.UUID()}, 3
+}
+
+// resolvedPersonsCTE is resolvedPersonsSrc for a statement that reads the overlay
+// more than once (the birth-place and death-place legs of GetPlaceHierarchy's UNION).
+// Off main it hoists the overlay into a `resolved` CTE and returns the WITH head the
+// caller prefixes to its own CTE list, so the DISTINCT ON pass over the branch's rows
+// plus all of main's is planned and executed once per call instead of once per leg.
+// A CTE referenced more than once is materialized by default in PG12+, which is the
+// behavior wanted here.
+//
+// Main keeps the inline subquery and gets a bare "WITH " head: its plain branch_id
+// filter is index-driven and flattens into each leg, touching only that leg's column,
+// so a mainline call must not start materializing a CTE it did not before (#669).
+//
+// Returns the WITH head, the source to read FROM, the leading query args, and the next
+// free $-placeholder number. The args are the same either way -- $-placeholders are
+// reused, not repeated, so hoisting does not change the arg list.
+func resolvedPersonsCTE(cols string, branchID domain.BranchID) (string, string, []any, int) {
+	src, args, n := resolvedPersonsSrc(cols, branchID)
+	if branchID.IsMain() {
+		return "WITH ", src, args, n
+	}
+	return "WITH resolved AS " + src + ",\n\t\t\t", "resolved", args, n
+}
+
+// GetSurnameIndex returns all unique surnames with counts and letter counts,
+// resolved through the branch overlay (ADR-005).
+func (s *ReadModelStore) GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]repository.SurnameEntry, []repository.LetterCount, error) {
+	// Both queries read the same resolved source so the counts agree on scope.
+	src, args, _ := resolvedPersonsSrc("surname", branchID)
+
 	// Get surname counts
+	// #nosec G201 G202 -- src is an internal SQL fragment carrying only $-placeholders, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT surname, COUNT(*) as count
-		FROM persons
+		FROM `+src+` p
 		GROUP BY surname
 		ORDER BY surname ASC
-	`)
+	`, args...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query surname index: %w", err)
 	}
@@ -3649,13 +3741,15 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.Surn
 	}
 
 	// Get letter counts
+	// #nosec G201 G202 -- src is an internal SQL fragment carrying only $-placeholders, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	letterRows, err := s.db.QueryContext(ctx, `
 		SELECT UPPER(SUBSTRING(surname, 1, 1)) as letter, COUNT(DISTINCT surname) as count
-		FROM persons
+		FROM `+src+` p
 		WHERE surname != ''
 		GROUP BY UPPER(SUBSTRING(surname, 1, 1))
 		ORDER BY letter ASC
-	`)
+	`, args...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query letter counts: %w", err)
 	}
@@ -3673,15 +3767,21 @@ func (s *ReadModelStore) GetSurnameIndex(ctx context.Context) ([]repository.Surn
 	return surnames, letterCounts, letterRows.Err()
 }
 
-// GetSurnamesByLetter returns surnames starting with a specific letter.
-func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string) ([]repository.SurnameEntry, error) {
-	rows, err := s.db.QueryContext(ctx, `
+// GetSurnamesByLetter returns surnames starting with a specific letter, resolved
+// through the branch overlay (ADR-005).
+func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]repository.SurnameEntry, error) {
+	src, args, n := resolvedPersonsSrc("surname", branchID)
+
+	// #nosec G201 -- src/n are internal SQL fragments; letter stays a bound parameter
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
 		SELECT surname, COUNT(*) as count
-		FROM persons
-		WHERE UPPER(SUBSTRING(surname, 1, 1)) = UPPER($1)
+		FROM %s p
+		WHERE UPPER(SUBSTRING(surname, 1, 1)) = UPPER($%d)
 		GROUP BY surname
 		ORDER BY surname ASC
-	`, letter)
+	`, src, n)
+	rows, err := s.db.QueryContext(ctx, query, append(args, letter)...)
 	if err != nil {
 		return nil, fmt.Errorf("query surnames by letter: %w", err)
 	}
@@ -3699,26 +3799,33 @@ func (s *ReadModelStore) GetSurnamesByLetter(ctx context.Context, letter string)
 	return surnames, rows.Err()
 }
 
-// GetPersonsBySurname returns persons with a specific surname.
+// GetPersonsBySurname returns persons with a specific surname, scoped to
+// opts.BranchID through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	// One resolved source for both statements so the count and the page agree on scope.
+	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID)
+	countArgs := append(args, surname)
+
 	// Count total
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM persons WHERE LOWER(surname) = LOWER($1)", surname).Scan(&total)
+	// #nosec G201 -- src/n are internal SQL fragments; surname stays a bound parameter
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s p WHERE LOWER(surname) = LOWER($%d)", src, n)
+	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by surname: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-			   version, updated_at
-		FROM persons
-		WHERE LOWER(surname) = LOWER($1)
+	// #nosec G201 -- src/n/personSelectCols are internal SQL fragments, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
+		SELECT `+personSelectCols+`
+		FROM %s p
+		WHERE LOWER(surname) = LOWER($%d)
 		ORDER BY given_name ASC
-		LIMIT $2 OFFSET $3
-	`, surname, opts.Limit, opts.Offset)
+		LIMIT $%d OFFSET $%d
+	`, src, n, n+1, n+2)
+	rows, err := s.db.QueryContext(ctx, query, append(countArgs, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by surname: %w", err)
 	}
@@ -3739,17 +3846,24 @@ func (s *ReadModelStore) GetPersonsBySurname(ctx context.Context, surname string
 // GetPlaceHierarchy returns places at a given level in the hierarchy.
 // Places are parsed from comma-separated strings like "City, County, State, Country"
 // working from right to left (Country is top level).
-func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) ([]repository.PlaceEntry, error) {
+func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]repository.PlaceEntry, error) {
 	var rows *sql.Rows
 	var err error
 
+	// Both levels read persons twice (birth + death). Off main the overlay is hoisted
+	// into a `resolved` CTE so both UNION legs share one resolution pass; main keeps the
+	// inline indexed filter. Either way the UNION is branch-scoped end to end (ADR-005).
+	withClause, src, args, n := resolvedPersonsCTE("birth_place, death_place", branchID)
+
 	if parent == "" {
 		// Top-level: get unique countries/top-level places (rightmost part after last comma)
-		rows, err = s.db.QueryContext(ctx, `
-			WITH all_places AS (
-				SELECT DISTINCT birth_place as place FROM persons WHERE birth_place != '' AND birth_place IS NOT NULL
+		// #nosec G201 -- withClause/src are internal SQL fragments carrying only $-placeholders, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+			%[1]sall_places AS (
+				SELECT DISTINCT birth_place as place FROM %[2]s p WHERE birth_place != '' AND birth_place IS NOT NULL
 				UNION
-				SELECT DISTINCT death_place as place FROM persons WHERE death_place != '' AND death_place IS NOT NULL
+				SELECT DISTINCT death_place as place FROM %[2]s p WHERE death_place != '' AND death_place IS NOT NULL
 			),
 			parsed AS (
 				SELECT
@@ -3774,21 +3888,23 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 			WHERE top_level != ''
 			GROUP BY top_level
 			ORDER BY top_level ASC
-		`)
+		`, withClause, src), args...)
 	} else {
 		// Child level: get places that end with parent
-		rows, err = s.db.QueryContext(ctx, `
-			WITH all_places AS (
-				SELECT DISTINCT birth_place as place FROM persons WHERE birth_place LIKE '%' || $1 AND birth_place != ''
+		// #nosec G201 -- withClause/src/n are internal SQL fragments; parent stays a bound parameter
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+			%[1]sall_places AS (
+				SELECT DISTINCT birth_place as place FROM %[2]s p WHERE birth_place LIKE '%%' || $%[3]d AND birth_place != ''
 				UNION
-				SELECT DISTINCT death_place as place FROM persons WHERE death_place LIKE '%' || $1 AND death_place != ''
+				SELECT DISTINCT death_place as place FROM %[2]s p WHERE death_place LIKE '%%' || $%[3]d AND death_place != ''
 			),
 			parsed AS (
 				SELECT
 					place,
 					CASE
-						WHEN place = $1 THEN ''
-						ELSE TRIM(REPLACE(place, ', ' || $1, ''))
+						WHEN place = $%[3]d THEN ''
+						ELSE TRIM(REPLACE(place, ', ' || $%[3]d, ''))
 					END as remainder
 				FROM all_places
 			),
@@ -3806,7 +3922,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 			)
 			SELECT
 				level_name as place_name,
-				level_name || ', ' || $1 as full_name,
+				level_name || ', ' || $%[3]d as full_name,
 				COUNT(DISTINCT place) as count,
 				CASE
 					WHEN COUNT(DISTINCT place) > COUNT(DISTINCT CASE WHEN remainder = level_name THEN place END)
@@ -3814,10 +3930,10 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 					ELSE false
 				END as has_children
 			FROM next_level
-			WHERE level_name != '' AND level_name != $1
+			WHERE level_name != '' AND level_name != $%[3]d
 			GROUP BY level_name
 			ORDER BY level_name ASC
-		`, parent)
+		`, withClause, src, n), append(args, parent)...)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query place hierarchy: %w", err)
@@ -3836,29 +3952,36 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, parent string) (
 	return places, rows.Err()
 }
 
-// GetPersonsByPlace returns persons associated with a place.
+// GetPersonsByPlace returns persons associated with a place, scoped to
+// opts.BranchID through the branch overlay (ADR-005).
 func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	// One resolved source for both statements so the count and the page agree on scope.
+	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID)
+	countArgs := append(args, place)
+
 	// Count total - match place at any position in birth_place or death_place
 	var total int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM persons
-		WHERE birth_place ILIKE '%' || $1 || '%' OR death_place ILIKE '%' || $1 || '%'
-	`, place).Scan(&total)
+	// #nosec G201 -- src/n are internal SQL fragments; place stays a bound parameter
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	countQuery := fmt.Sprintf(`
+		SELECT COUNT(*) FROM %[1]s p
+		WHERE birth_place ILIKE '%%' || $%[2]d || '%%' OR death_place ILIKE '%%' || $%[2]d || '%%'
+	`, src, n)
+	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by place: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-			   version, updated_at
-		FROM persons
-		WHERE birth_place ILIKE '%' || $1 || '%' OR death_place ILIKE '%' || $1 || '%'
+	// #nosec G201 -- src/n/personSelectCols are internal SQL fragments, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
+		SELECT `+personSelectCols+`
+		FROM %[1]s p
+		WHERE birth_place ILIKE '%%' || $%[2]d || '%%' OR death_place ILIKE '%%' || $%[2]d || '%%'
 		ORDER BY surname ASC, given_name ASC
-		LIMIT $2 OFFSET $3
-	`, place, opts.Limit, opts.Offset)
+		LIMIT $%[3]d OFFSET $%[4]d
+	`, src, n, n+1, n+2)
+	rows, err := s.db.QueryContext(ctx, query, append(countArgs, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by place: %w", err)
 	}
@@ -3877,6 +4000,17 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 }
 
 // GetCemeteryIndex returns unique burial/cremation places with person counts.
+//
+// Exempt from the branch overlay: it reads life_events only and never touches
+// persons, and life_events is not branch-scoped yet (sub-issue B of #676, #757).
+//
+// KNOWN DIVERGENCE: these counts can disagree with GetPersonsByCemetery under a
+// branch scope. The count here is DISTINCT owner_id over life_events with no join to
+// persons, so it still counts a person the branch tombstoned and still counts by
+// main's identity; GetPersonsByCemetery resolves the person side through the overlay
+// and drops tombstones. A branch that deleted a buried person therefore sees
+// "Oak Grove - 1 person" in the index and an empty list on click-through. Closing the
+// gap needs the join to be branch-aware on both sides, which waits on #757.
 func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT place, COUNT(DISTINCT owner_id) as count
@@ -3903,31 +4037,42 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.Cem
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given place.
+//
+// Only the persons side is branch-scoped (opts.BranchID): life_events carries no
+// branch_id yet, so the burial/cremation filter is always main data (sub-issue B of
+// #676, #757). Once life_events is branch-aware the join gains its own predicate.
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
+	factArgs := []any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), place}
+
 	// Count total distinct persons
+	countSrc, countArgs, cn := resolvedPersonsSrc("id", opts.BranchID)
 	var total int
-	err := s.db.QueryRowContext(ctx, `
+	// #nosec G201 -- countSrc/cn are internal SQL fragments; fact types and place stay bound parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	countQuery := fmt.Sprintf(`
 		SELECT COUNT(DISTINCT p.id)
-		FROM persons p
+		FROM %s p
 		INNER JOIN life_events e ON e.owner_id = p.id
-		WHERE e.fact_type IN ($1, $2) AND LOWER(e.place) = LOWER($3)
-	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place).Scan(&total)
+		WHERE e.fact_type IN ($%d, $%d) AND LOWER(e.place) = LOWER($%d)
+	`, countSrc, cn, cn+1, cn+2)
+	err := s.db.QueryRowContext(ctx, countQuery, append(countArgs, factArgs...)...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by cemetery: %w", err)
 	}
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
-			   p.version, p.updated_at
-		FROM persons p
+	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID)
+	// #nosec G201 -- src/n/personCols are internal SQL fragments, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
+		SELECT DISTINCT `+personCols+`
+		FROM %s p
 		INNER JOIN life_events e ON e.owner_id = p.id
-		WHERE e.fact_type IN ($1, $2) AND LOWER(e.place) = LOWER($3)
+		WHERE e.fact_type IN ($%d, $%d) AND LOWER(e.place) = LOWER($%d)
 		ORDER BY p.surname ASC, p.given_name ASC
-		LIMIT $4 OFFSET $5
-	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place, opts.Limit, opts.Offset)
+		LIMIT $%d OFFSET $%d
+	`, src, n, n+1, n+2, n+3, n+4)
+	queryArgs := append(append(args, factArgs...), opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by cemetery: %w", err)
 	}
@@ -3945,16 +4090,20 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 	return persons, total, rows.Err()
 }
 
-// GetMapLocations returns aggregated geographic locations from person birth/death coordinates.
-func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapLocation, error) {
+// GetMapLocations returns aggregated geographic locations from person birth/death
+// coordinates, resolved through the branch overlay (ADR-005).
+func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]repository.MapLocation, error) {
 	// Query birth locations — individual rows, aggregate in Go
+	birthSrc, birthArgs, _ := resolvedPersonsSrc("id, birth_place, birth_place_lat, birth_place_long", branchID)
+	// #nosec G201 G202 -- birthSrc is an internal SQL fragment carrying only $-placeholders, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, birth_place, birth_place_lat, birth_place_long
-		FROM persons
+		FROM `+birthSrc+` p
 		WHERE birth_place_lat IS NOT NULL AND birth_place_long IS NOT NULL
 		  AND birth_place_lat != '' AND birth_place_long != ''
 		ORDER BY birth_place ASC
-	`)
+	`, birthArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query birth map locations: %w", err)
 	}
@@ -3994,13 +4143,16 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 	}
 
 	// Query death locations
+	deathSrc, deathArgs, _ := resolvedPersonsSrc("id, death_place, death_place_lat, death_place_long", branchID)
+	// #nosec G201 G202 -- deathSrc is an internal SQL fragment carrying only $-placeholders, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows2, err := s.db.QueryContext(ctx, `
 		SELECT id, death_place, death_place_lat, death_place_long
-		FROM persons
+		FROM `+deathSrc+` p
 		WHERE death_place_lat IS NOT NULL AND death_place_long IS NOT NULL
 		  AND death_place_lat != '' AND death_place_long != ''
 		ORDER BY death_place ASC
-	`)
+	`, deathArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query death map locations: %w", err)
 	}
@@ -4050,35 +4202,42 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context) ([]repository.MapL
 }
 
 // SetBrickWall marks a person as a brick wall with a note.
+//
+// Main-pinned: brick-wall state is not branch data today, so the UPDATE targets the
+// main row only. Without the branch predicate it rewrites every branch's shadow row
+// for the person (sub-issue F of #676, #761, decides whether it should become
+// branch-scoped).
 func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE persons SET brick_wall_note = $1, brick_wall_since = NOW(), brick_wall_resolved_at = NULL
-		WHERE id = $2
-	`, note, personID)
+		WHERE id = $2 AND branch_id = $3
+	`, note, personID, domain.MainBranchID.UUID())
 	return err
 }
 
-// ResolveBrickWall marks a brick wall as resolved.
+// ResolveBrickWall marks a brick wall as resolved. Main-pinned, like SetBrickWall.
 func (s *ReadModelStore) ResolveBrickWall(ctx context.Context, personID uuid.UUID) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE persons SET brick_wall_resolved_at = NOW()
-		WHERE id = $1
-	`, personID)
+		WHERE id = $1 AND branch_id = $2
+	`, personID, domain.MainBranchID.UUID())
 	return err
 }
 
-// GetBrickWalls returns persons with brick wall status.
+// GetBrickWalls returns persons with brick wall status. Main-pinned, like
+// SetBrickWall: a branch shadow row must not surface as a second entry for the same
+// person, and a main row is never a tombstone (see DeletePerson).
 func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool) ([]repository.BrickWallEntry, error) {
 	query := `
 		SELECT id, full_name, brick_wall_note, brick_wall_since, brick_wall_resolved_at
 		FROM persons
-		WHERE brick_wall_since IS NOT NULL`
+		WHERE branch_id = $1 AND NOT deleted AND brick_wall_since IS NOT NULL`
 	if !includeResolved {
 		query += ` AND brick_wall_resolved_at IS NULL`
 	}
 	query += ` ORDER BY brick_wall_since DESC`
 
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query, domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query brick walls: %w", err)
 	}

@@ -360,20 +360,38 @@ type ProofSummaryReadModel struct {
 
 // ReadModelStore provides access to denormalized read models.
 //
-// Branch scoping (ADR-005) is applied to a fixed slice of seven entity families:
-// Person, PersonName, PersonExternalID, Family, FamilyExternalID, FamilyChild, and
-// PedigreeEdge. Their methods take an explicit domain.BranchID (single-row) or carry
-// it on ListOptions/SearchOptions (list/search); a copy-on-write overlay resolves the
+// Branch scoping (ADR-005) divides the methods below into three categories.
+//
+// 1. BRANCH-SCOPED SLICE ENTITIES (#669) — Person, PersonName, PersonExternalID,
+// Family, FamilyExternalID, FamilyChild, and PedigreeEdge. These own branch_id-keyed
+// tables. Their methods take an explicit domain.BranchID (single-row) or carry it on
+// ListOptions/SearchOptions (list/search); a copy-on-write overlay resolves the
 // branch's row for an entity else falls back to the reserved main row, and branch
-// deletes write tombstones. Every OTHER entity below (Source, Citation, Media, Event,
-// Attribute, Note, Submitter, Repository, Association, LDSOrdinance, EvidenceAnalysis,
-// ...) is intentionally MAIN-ONLY: its methods have no branchID and ignore branch
-// context entirely. This is a deliberate vertical-slice boundary (#669), not an
-// oversight — extending branch-scoping to further entities is tracked as follow-up
-// work and must replicate the same branch_id column + overlay + tombstone + cascade
-// pattern. The branch SCOPE is the distinct domain.BranchID type (not a bare uuid) so
-// transposing it with an entity id is a compile error; the zero value equals
-// domain.MainBranchID (main).
+// deletes write tombstones.
+//
+// 2. BRANCH-AWARE AGGREGATES (#756, sub-issue A of #676) — the browse and map
+// aggregates: GetSurnameIndex, GetSurnamesByLetter, GetPersonsBySurname,
+// GetPlaceHierarchy, GetPersonsByPlace, GetPersonsByCemetery, and GetMapLocations.
+// They own no table of their own; they aggregate `persons`, so they resolve through
+// the slice's overlay and need no new schema. They carry the scope the same way
+// category 1 does — an explicit branchID, or opts.BranchID for the list methods — and
+// so report the branch's view of the tree, not main's.
+//
+// 3. MAIN-ONLY — every other method has no branchID and ignores branch context
+// entirely. That is the non-slice entities (Source, Citation, Media, Event, Attribute,
+// Note, Submitter, Repository, Association, LDSOrdinance, EvidenceAnalysis, ...) plus
+// two carve-outs that sit next to the category-2 methods:
+//   - GetCemeteryIndex reads `life_events` alone, which is not branch-scoped.
+//   - SetBrickWall, ResolveBrickWall and GetBrickWalls write and read the read model
+//     outside the event store, so there is no overlay to resolve; whether they should
+//     become branch-aware is a separate decision tracked in sub-issue F of #676
+//     (#761). Their backends only constrain the query to main.
+//
+// This is a deliberate vertical-slice boundary, not an oversight — extending
+// branch-scoping to further entities is tracked as follow-up work and must replicate
+// the same branch_id column + overlay + tombstone + cascade pattern. The branch SCOPE
+// is the distinct domain.BranchID type (not a bare uuid) so transposing it with an
+// entity id is a compile error; the zero value equals domain.MainBranchID (main).
 //
 // Tombstone representation is an internal, backend-specific detail and NOT part of
 // this contract: only the fact that a branch row is a tombstone is meaningful (memory
@@ -545,18 +563,37 @@ type ReadModelStore interface {
 	DeleteProofSummary(ctx context.Context, id uuid.UUID) error
 
 	// Browse operations
-	GetSurnameIndex(ctx context.Context) ([]SurnameEntry, []LetterCount, error)
-	GetSurnamesByLetter(ctx context.Context, letter string) ([]SurnameEntry, error)
+	//
+	// These aggregate `persons`, so they see the branch overlay (ADR-005):
+	// single-row aggregates take an explicit branchID, the paged ones carry it on
+	// opts.BranchID. GetCemeteryIndex is the one main-only carve-out.
+
+	// GetSurnameIndex returns surname and initial-letter counts within the branch
+	// overlay (ADR-005).
+	GetSurnameIndex(ctx context.Context, branchID domain.BranchID) ([]SurnameEntry, []LetterCount, error)
+	// GetSurnamesByLetter returns the surnames starting with letter within the
+	// branch overlay (ADR-005).
+	GetSurnamesByLetter(ctx context.Context, branchID domain.BranchID, letter string) ([]SurnameEntry, error)
 	GetPersonsBySurname(ctx context.Context, surname string, opts ListOptions) ([]PersonReadModel, int, error)
-	GetPlaceHierarchy(ctx context.Context, parent string) ([]PlaceEntry, error)
+	// GetPlaceHierarchy returns the places directly under parent within the branch
+	// overlay (ADR-005).
+	GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]PlaceEntry, error)
 	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
+	// GetCemeteryIndex is MAIN-ONLY: it reads `life_events`, which is not
+	// branch-scoped.
 	GetCemeteryIndex(ctx context.Context) ([]CemeteryEntry, error)
 	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 
 	// Map operations
-	GetMapLocations(ctx context.Context) ([]MapLocation, error)
+
+	// GetMapLocations aggregates person birth/death coordinates within the branch
+	// overlay (ADR-005).
+	GetMapLocations(ctx context.Context, branchID domain.BranchID) ([]MapLocation, error)
 
 	// Brick wall operations
+	//
+	// MAIN-ONLY: brick-wall state is written straight to the read model rather than
+	// projected from events, so there is no overlay to resolve (sub-issue F of #676).
 	SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error
 	ResolveBrickWall(ctx context.Context, personID uuid.UUID) error
 	GetBrickWalls(ctx context.Context, includeResolved bool) ([]BrickWallEntry, error)

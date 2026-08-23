@@ -3,13 +3,14 @@
 	 * Inline notice for surfaces that are NOT branch-scoped, shown only while a
 	 * research branch is active.
 	 *
-	 * The `?branch=` parameter is declared on the #669 vertical slice only —
-	 * persons, person names, families (detail, not list), family children and
-	 * pedigree. Every other read model still answers from the mainline. Rendering
-	 * one of them unlabelled beneath the branch banner would be the UI quietly
-	 * lying about what the user is looking at.
+	 * The `?branch=` parameter is declared on the #669 vertical slice — persons,
+	 * person names, families (detail, not list), family children and pedigree —
+	 * and, since #676 sub-issue A (#756), on the browse and map aggregates that
+	 * read that slice's overlay. The remaining read models still answer from the
+	 * mainline. Rendering one of them unlabelled beneath the branch banner would
+	 * be the UI quietly lying about what the user is looking at.
 	 *
-	 * #676 fans the branch overlay out; this notice retires with it.
+	 * The rest of #676 fans the overlay out further; this notice retires with it.
 	 *
 	 * ## Where it is placed, and where it deliberately is not
 	 *
@@ -26,13 +27,24 @@
 	 * - `/sources` — sources and citations
 	 * - `/history` — the global change feed
 	 * - `/ahnentafel/{id}` — the ancestor report
+	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
+	 * - `/browse/cemeteries` — the *index* only; it aggregates `life_events`,
+	 *   which carries no `branch_id` yet (#757). The per-cemetery person list
+	 *   at `/browse/cemeteries/{place}` is branch-scoped and carries no notice.
+	 *   That split is a hazard, not a reassurance: on a branch the index counts
+	 *   people the click-through list drops, so this page's `detail` warns that
+	 *   the two numbers can contradict each other. Resolved by #757.
 	 *
-	 * Known gap, to close with #676 rather than by sprinkling more notices:
-	 * `/` (dashboard and discovery feed), `/browse/*`, `/descendancy/{id}`,
-	 * `/map`, `/relationship`, `/repositories`, `/import`, and the panels on
-	 * person and family detail pages that are not themselves scoped — change
-	 * history, restore points, media, citations and evidence. All of them
-	 * answer from the mainline today; none of them says so.
+	 * Deliberately not placed, because these surfaces now follow the branch:
+	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
+	 * and per-place list) and `/map`.
+	 *
+	 * Known gap, to close with the rest of #676 rather than by sprinkling more
+	 * notices: `/` (dashboard and discovery feed), `/descendancy/{id}`,
+	 * `/relationship`, `/repositories`, `/import`, and the panels on person and
+	 * family detail pages that are not themselves scoped — change history,
+	 * restore points, media, citations and evidence. All of them answer from
+	 * the mainline today; none of them says so.
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 
@@ -48,7 +60,7 @@
 
 	let {
 		surface,
-		detail = 'Branch scoping currently covers people, families and pedigrees only.'
+		detail = 'Branch scoping currently covers people, families, pedigrees and the browse and map views.'
 	}: Props = $props();
 </script>
 

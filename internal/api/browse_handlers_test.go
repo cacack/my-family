@@ -615,3 +615,131 @@ func TestGetPersonsByCemetery_Pagination(t *testing.T) {
 		t.Errorf("Limit = %d, want 2", resp.Limit)
 	}
 }
+
+// ============================================================================
+// Branch scope on the browse/map reads (sub-issue A of #676, issue #756)
+// ============================================================================
+
+// browseBranchScopePaths are the six browse/map operations that accept ?branch=.
+// The four main-only ones (/browse/cemeteries, /browse/brick-walls and the two
+// brick-wall writes) are deliberately absent — see sub-issues B (#757) and F (#761).
+func browseBranchScopePaths(branchID string) []struct {
+	name string
+	path string
+} {
+	return []struct {
+		name string
+		path string
+	}{
+		{"browseSurnames", "/api/v1/browse/surnames?branch=" + branchID},
+		{"getPersonsBySurname", "/api/v1/browse/surnames/Hopper/persons?branch=" + branchID},
+		{"browsePlaces", "/api/v1/browse/places?branch=" + branchID},
+		{"getPersonsByPlace", "/api/v1/browse/places/Ohio/persons?branch=" + branchID},
+		{"getPersonsByCemetery", "/api/v1/browse/cemeteries/Oak%20Grove/persons?branch=" + branchID},
+		{"getMapLocations", "/api/v1/map/locations?branch=" + branchID},
+	}
+}
+
+// TestBrowseSurnames_BranchScope is the end-to-end check that ?branch= reaches
+// the read model: a person created on a branch shows up in the branch's surname
+// index and person list, and in neither mainline view.
+func TestBrowseSurnames_BranchScope(t *testing.T) {
+	server := setupBranchTestServer()
+	createPerson(t, server, "Ada", "Lovelace")
+
+	branchID := createBranch(t, server, "Hopper theory")
+	rec := do(t, server, http.MethodPost, "/api/v1/persons?branch="+branchID,
+		`{"given_name":"Grace","surname":"Hopper"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Create person on branch: status = %d, want 201. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	surnameTotal := func(path string) int {
+		t.Helper()
+		rec := do(t, server, http.MethodGet, path, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: status = %d, want 200. Body: %s", path, rec.Code, rec.Body.String())
+		}
+		total, _ := decodeJSON(t, rec)["total"].(float64)
+		return int(total)
+	}
+
+	if got := surnameTotal("/api/v1/browse/surnames"); got != 1 {
+		t.Errorf("Mainline surname index total = %d, want 1 (Lovelace only)", got)
+	}
+	if got := surnameTotal("/api/v1/browse/surnames?branch=" + branchID); got != 2 {
+		t.Errorf("Branch surname index total = %d, want 2 (Lovelace + Hopper)", got)
+	}
+
+	if got := surnameTotal("/api/v1/browse/surnames/Hopper/persons"); got != 0 {
+		t.Errorf("Mainline persons-by-surname total = %d, want 0", got)
+	}
+	if got := surnameTotal("/api/v1/browse/surnames/Hopper/persons?branch=" + branchID); got != 1 {
+		t.Errorf("Branch persons-by-surname total = %d, want 1", got)
+	}
+}
+
+// TestBrowseBranchScope_UnknownBranch pins the shared 404 for a branch id that
+// was never created, on every one of the six.
+func TestBrowseBranchScope_UnknownBranch(t *testing.T) {
+	server := setupBranchTestServer()
+	createPerson(t, server, "Ada", "Lovelace")
+
+	for _, tt := range browseBranchScopePaths(unknownUUID) {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := do(t, server, http.MethodGet, tt.path, "")
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("Status = %d, want 404. Body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestBrowseBranchScope_ArchivedBranch pins the 404 for a terminal branch: its
+// overlay rows are purged on archive, so there is no isolated view to browse.
+func TestBrowseBranchScope_ArchivedBranch(t *testing.T) {
+	server := setupBranchTestServer()
+	createPerson(t, server, "Ada", "Lovelace")
+
+	branchID := createBranch(t, server, "Abandoned")
+	if rec := do(t, server, http.MethodDelete, "/api/v1/branches/"+branchID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("Delete branch: status = %d, want 204", rec.Code)
+	}
+
+	for _, tt := range browseBranchScopePaths(branchID) {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := do(t, server, http.MethodGet, tt.path, "")
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("Status = %d, want 404. Body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestBrowseBranchScope_MalformedUUID confirms the malformed-id 400 comes from
+// parameter binding, before the handler runs, exactly as elsewhere.
+func TestBrowseBranchScope_MalformedUUID(t *testing.T) {
+	server := setupBranchTestServer()
+	rec := do(t, server, http.MethodGet, "/api/v1/browse/surnames?branch=not-a-uuid", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want 400. Body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestBrowseMainOnlyOperations_IgnoreBranch documents the current carve-out:
+// the cemetery index and the brick-wall reads take no ?branch= at all, so the
+// parameter is simply an unknown query string and the mainline answers.
+func TestBrowseMainOnlyOperations_IgnoreBranch(t *testing.T) {
+	server := setupBranchTestServer()
+	branchID := createBranch(t, server, "Ignored")
+
+	for _, path := range []string{
+		"/api/v1/browse/cemeteries?branch=" + branchID,
+		"/api/v1/browse/brick-walls?branch=" + branchID,
+	} {
+		rec := do(t, server, http.MethodGet, path, "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s: status = %d, want 200. Body: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}

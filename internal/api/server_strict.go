@@ -165,13 +165,19 @@ func formatEventLineStr(date string, place *string) string {
 
 // BrowsePlaces implements StrictServerInterface.
 func (ss *StrictServer) BrowsePlaces(ctx context.Context, request BrowsePlacesRequestObject) (BrowsePlacesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	parent := ""
 	if request.Params.Parent != nil {
 		parent = *request.Params.Parent
 	}
 
 	result, err := ss.server.browseService.GetPlaceHierarchy(ctx, query.GetPlaceHierarchyInput{
-		Parent: parent,
+		Parent:   parent,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -202,6 +208,11 @@ func (ss *StrictServer) BrowsePlaces(ctx context.Context, request BrowsePlacesRe
 
 // GetPersonsByPlace implements StrictServerInterface.
 func (ss *StrictServer) GetPersonsByPlace(ctx context.Context, request GetPersonsByPlaceRequestObject) (GetPersonsByPlaceResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	place, err := url.PathUnescape(request.Place)
 	if err != nil {
 		// Since there's no 400 response defined, return a generic error
@@ -218,9 +229,10 @@ func (ss *StrictServer) GetPersonsByPlace(ctx context.Context, request GetPerson
 	}
 
 	result, err := ss.server.browseService.GetPersonsByPlace(ctx, query.GetPersonsByPlaceInput{
-		Place:  place,
-		Limit:  limit,
-		Offset: offset,
+		Place:    place,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -243,13 +255,19 @@ func (ss *StrictServer) GetPersonsByPlace(ctx context.Context, request GetPerson
 
 // BrowseSurnames implements StrictServerInterface.
 func (ss *StrictServer) BrowseSurnames(ctx context.Context, request BrowseSurnamesRequestObject) (BrowseSurnamesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	letter := ""
 	if request.Params.Letter != nil {
 		letter = *request.Params.Letter
 	}
 
 	result, err := ss.server.browseService.GetSurnameIndex(ctx, query.GetSurnameIndexInput{
-		Letter: letter,
+		Letter:   letter,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -283,6 +301,11 @@ func (ss *StrictServer) BrowseSurnames(ctx context.Context, request BrowseSurnam
 
 // GetPersonsBySurname implements StrictServerInterface.
 func (ss *StrictServer) GetPersonsBySurname(ctx context.Context, request GetPersonsBySurnameRequestObject) (GetPersonsBySurnameResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	surname, err := url.PathUnescape(request.Surname)
 	if err != nil {
 		// Since there's no 400 response defined, return a generic error
@@ -299,9 +322,10 @@ func (ss *StrictServer) GetPersonsBySurname(ctx context.Context, request GetPers
 	}
 
 	result, err := ss.server.browseService.GetPersonsBySurname(ctx, query.GetPersonsBySurnameInput{
-		Surname: surname,
-		Limit:   limit,
-		Offset:  offset,
+		Surname:  surname,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -346,6 +370,11 @@ func (ss *StrictServer) BrowseCemeteries(ctx context.Context, request BrowseCeme
 
 // GetPersonsByCemetery implements StrictServerInterface.
 func (ss *StrictServer) GetPersonsByCemetery(ctx context.Context, request GetPersonsByCemeteryRequestObject) (GetPersonsByCemeteryResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	place, err := url.PathUnescape(request.Place)
 	if err != nil {
 		return nil, err
@@ -361,9 +390,10 @@ func (ss *StrictServer) GetPersonsByCemetery(ctx context.Context, request GetPer
 	}
 
 	result, err := ss.server.browseService.GetPersonsByCemetery(ctx, query.GetPersonsByCemeteryInput{
-		Place:  place,
-		Limit:  limit,
-		Offset: offset,
+		Place:    place,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -386,7 +416,12 @@ func (ss *StrictServer) GetPersonsByCemetery(ctx context.Context, request GetPer
 
 // GetMapLocations implements StrictServerInterface.
 func (ss *StrictServer) GetMapLocations(ctx context.Context, request GetMapLocationsRequestObject) (GetMapLocationsResponseObject, error) {
-	result, err := ss.server.browseService.GetMapLocations(ctx)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ss.server.browseService.GetMapLocations(ctx, branchScopeID(branch))
 	if err != nil {
 		return nil, err
 	}
