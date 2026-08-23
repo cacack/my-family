@@ -838,6 +838,9 @@ func (s *ReadModelStore) runBranchMigration() {
 	}
 	for _, t := range tables {
 		// Column adds are idempotent and safe outside a transaction.
+		// #nosec G202 -- t.name comes from the fixed `tables` literal above and
+		// mainBranchDefault is a package constant; no external input reaches this DDL.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS branch_id UUID NOT NULL ` + mainBranchDefault)
 		_, _ = s.db.Exec(`ALTER TABLE ` + t.name + ` ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE`)
 
