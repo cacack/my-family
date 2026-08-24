@@ -2999,91 +2999,53 @@ func stringFromParam(s *string) string {
 	return *s
 }
 
-// SearchPersons implements StrictServerInterface.
-func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
-	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
-		return SearchPersons400JSONResponse{BadRequestJSONResponse{
-			Code:    "invalid_parameter",
-			Message: "Invalid sort or order parameter",
-		}}, nil
-	}
-	queryStr := stringFromParam(request.Params.Q)
-	birthPlace := stringFromParam(request.Params.BirthPlace)
-	deathPlace := stringFromParam(request.Params.DeathPlace)
-
-	birthDateFrom := dateFromParam(request.Params.BirthDateFrom)
-	birthDateTo := dateFromParam(request.Params.BirthDateTo)
-	deathDateFrom := dateFromParam(request.Params.DeathDateFrom)
-	deathDateTo := dateFromParam(request.Params.DeathDateTo)
-
-	// Validate: at least one search criterion must be provided
-	hasQuery := queryStr != ""
-	hasDateRange := birthDateFrom != nil || birthDateTo != nil || deathDateFrom != nil || deathDateTo != nil
-	hasPlace := birthPlace != "" || deathPlace != ""
-	if !hasQuery && !hasDateRange && !hasPlace {
-		return SearchPersons400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "At least one search criterion is required: query, date range, or place",
-		}}, nil
-	}
-
-	if hasQuery && len(queryStr) < 2 {
-		return SearchPersons400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "Search query must be at least 2 characters",
-		}}, nil
-	}
-
-	fuzzy := request.Params.Fuzzy != nil && *request.Params.Fuzzy
-	soundex := request.Params.Soundex != nil && *request.Params.Soundex
-
+func searchPersonsInput(params SearchPersonsParams) query.SearchPersonsInput {
 	sortField := ""
-	if request.Params.Sort != nil {
-		sortField = string(*request.Params.Sort)
+	if params.Sort != nil {
+		sortField = string(*params.Sort)
 	}
 	order := ""
-	if request.Params.Order != nil {
-		order = string(*request.Params.Order)
+	if params.Order != nil {
+		order = string(*params.Order)
 	}
 
 	limit := 20
-	if request.Params.Limit != nil {
-		limit = *request.Params.Limit
+	if params.Limit != nil {
+		limit = *params.Limit
 	}
 
-	result, err := ss.server.personService.SearchPersons(ctx, query.SearchPersonsInput{
-		Query:         queryStr,
-		Fuzzy:         fuzzy,
-		Soundex:       soundex,
-		BirthDateFrom: birthDateFrom,
-		BirthDateTo:   birthDateTo,
-		DeathDateFrom: deathDateFrom,
-		DeathDateTo:   deathDateTo,
-		BirthPlace:    birthPlace,
-		DeathPlace:    deathPlace,
+	return query.SearchPersonsInput{
+		Query:         stringFromParam(params.Q),
+		Fuzzy:         params.Fuzzy != nil && *params.Fuzzy,
+		Soundex:       params.Soundex != nil && *params.Soundex,
+		BirthDateFrom: dateFromParam(params.BirthDateFrom),
+		BirthDateTo:   dateFromParam(params.BirthDateTo),
+		DeathDateFrom: dateFromParam(params.DeathDateFrom),
+		DeathDateTo:   dateFromParam(params.DeathDateTo),
+		BirthPlace:    stringFromParam(params.BirthPlace),
+		DeathPlace:    stringFromParam(params.DeathPlace),
 		Sort:          sortField,
 		Order:         order,
 		Limit:         limit,
 		BranchID:      domain.MainBranchID,
-	})
-	if err != nil {
-		return nil, err
 	}
+}
 
+func searchPersonsResponse(result *query.SearchPersonsResult) SearchPersons200JSONResponse {
 	items := make([]SearchResult, len(result.Items))
-	for i, r := range result.Items {
-		score := float32(r.Score)
+	for i, searchResult := range result.Items {
+		score := float32(searchResult.Score)
 		items[i] = SearchResult{
-			Id:        r.ID,
-			GivenName: r.GivenName,
-			Surname:   r.Surname,
+			Id:        searchResult.ID,
+			GivenName: searchResult.GivenName,
+			Surname:   searchResult.Surname,
 			Score:     &score,
 		}
-		if r.BirthDate != nil {
-			items[i].BirthDate = convertDomainGenDateToGenerated(r.BirthDate)
+		if searchResult.BirthDate != nil {
+			items[i].BirthDate = convertDomainGenDateToGenerated(searchResult.BirthDate)
 		}
-		if r.DeathDate != nil {
-			items[i].DeathDate = convertDomainGenDateToGenerated(r.DeathDate)
+		if searchResult.DeathDate != nil {
+			items[i].DeathDate = convertDomainGenDateToGenerated(searchResult.DeathDate)
 		}
 	}
 
@@ -3092,7 +3054,43 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 		Items: items,
 		Total: result.Total,
 		Query: &resultQuery,
-	}, nil
+	}
+}
+
+// SearchPersons implements StrictServerInterface.
+func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
+	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
+		return SearchPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid sort or order parameter",
+		}}, nil
+	}
+	input := searchPersonsInput(request.Params)
+
+	// Validate: at least one search criterion must be provided
+	hasQuery := input.Query != ""
+	hasDateRange := input.BirthDateFrom != nil || input.BirthDateTo != nil || input.DeathDateFrom != nil || input.DeathDateTo != nil
+	hasPlace := input.BirthPlace != "" || input.DeathPlace != ""
+	if !hasQuery && !hasDateRange && !hasPlace {
+		return SearchPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "At least one search criterion is required: query, date range, or place",
+		}}, nil
+	}
+
+	if hasQuery && len(input.Query) < 2 {
+		return SearchPersons400JSONResponse{BadRequestJSONResponse{
+			Code:    "bad_request",
+			Message: "Search query must be at least 2 characters",
+		}}, nil
+	}
+
+	result, err := ss.server.personService.SearchPersons(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return searchPersonsResponse(result), nil
 }
 
 // ============================================================================
