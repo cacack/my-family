@@ -3,7 +3,7 @@
 # Storage API by default, whose globals shadow jsdom's in the test suite
 # (vitest-dev/vitest#8757, still open). Keeping every Node surface on one
 # version is the point; revisit when that lands upstream.
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS frontend-builder
+FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS frontend-builder
 
 WORKDIR /app/web
 COPY web/package*.json ./
