@@ -38,7 +38,7 @@ func newBranchFixture() *branchFixture {
 // seed and assert through it without going back through its own wrapper.
 type branchFixtureDeps struct {
 	wrapEvents    func(repository.EventStore) repository.EventStore
-	wrapPositions func(command.MaxPositionReader) command.MaxPositionReader
+	wrapPositions func(repository.SnapshotStore) repository.SnapshotStore
 }
 
 func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
@@ -50,7 +50,7 @@ func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
 	if deps.wrapEvents != nil {
 		events = deps.wrapEvents(eventStore)
 	}
-	var positions command.MaxPositionReader = memory.NewSnapshotStore(eventStore)
+	var positions repository.SnapshotStore = memory.NewSnapshotStore(eventStore)
 	if deps.wrapPositions != nil {
 		positions = deps.wrapPositions(positions)
 	}
@@ -63,8 +63,14 @@ func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
 	}
 }
 
-// failingPositions is a MaxPositionReader that always errors.
-type failingPositions struct{ err error }
+// failingPositions is a snapshot store whose position read always errors. The
+// embedded nil interface supplies the rest of the surface: these tests only ever
+// reach GetMaxPosition, and a nil-panic on any other method is the signal that
+// assumption has broken.
+type failingPositions struct {
+	repository.SnapshotStore
+	err error
+}
 
 func (f failingPositions) GetMaxPosition(context.Context) (int64, error) { return 0, f.err }
 
