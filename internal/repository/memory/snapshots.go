@@ -11,6 +11,9 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// Compile-time assertion that SnapshotStore satisfies the interface.
+var _ repository.SnapshotStore = (*SnapshotStore)(nil)
+
 // SnapshotStore is an in-memory implementation of repository.SnapshotStore for testing.
 type SnapshotStore struct {
 	mu         sync.RWMutex
@@ -28,6 +31,19 @@ func NewSnapshotStore(eventStore *EventStore) *SnapshotStore {
 
 // Create stores a new snapshot.
 func (s *SnapshotStore) Create(_ context.Context, snapshot *domain.Snapshot) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Make a copy to prevent external mutation
+	copied := *snapshot
+	s.snapshots[snapshot.ID] = &copied
+	return nil
+}
+
+// Upsert stores a snapshot, inserting it or overwriting an existing entry with
+// the same ID. The projection uses this so replaying SnapshotCreated is
+// idempotent.
+func (s *SnapshotStore) Upsert(_ context.Context, snapshot *domain.Snapshot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

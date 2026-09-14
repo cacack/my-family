@@ -324,3 +324,65 @@ func TestSQLiteSnapshotStore_GetMaxPosition(t *testing.T) {
 		t.Errorf("GetMaxPosition() = %d, want 10", pos)
 	}
 }
+
+// TestSQLiteSnapshotStore_Upsert covers the projection's write path (issue
+// #624): inserting when absent, overwriting when present, so replaying
+// SnapshotCreated is idempotent.
+func TestSQLiteSnapshotStore_Upsert(t *testing.T) {
+	db := setupSnapshotTestDB(t)
+	defer db.Close()
+
+	store, err := sqlite.NewSnapshotStore(db)
+	if err != nil {
+		t.Fatalf("NewSnapshotStore() error = %v", err)
+	}
+	ctx := context.Background()
+
+	snapshot := &domain.Snapshot{
+		ID:          uuid.New(),
+		Name:        "Pre-DNA results",
+		Description: "before",
+		Position:    42,
+		CreatedAt:   time.Now().UTC().Truncate(time.Second),
+	}
+
+	if err := store.Upsert(ctx, snapshot); err != nil {
+		t.Fatalf("Upsert() insert error = %v", err)
+	}
+
+	retrieved, err := store.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if retrieved.Name != snapshot.Name || retrieved.Position != snapshot.Position {
+		t.Errorf("row = %+v, want %+v", retrieved, snapshot)
+	}
+
+	updated := *snapshot
+	updated.Name = "After courthouse trip"
+	updated.Description = ""
+	updated.Position = 99
+	if err := store.Upsert(ctx, &updated); err != nil {
+		t.Fatalf("Upsert() overwrite error = %v", err)
+	}
+
+	retrieved, err = store.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Get() after overwrite error = %v", err)
+	}
+	if retrieved.Name != "After courthouse trip" || retrieved.Position != 99 {
+		t.Errorf("row after overwrite = %+v, want the updated values", retrieved)
+	}
+	// A cleared description must overwrite as NULL, not linger from the insert.
+	if retrieved.Description != "" {
+		t.Errorf("description = %q, want it cleared by the overwrite", retrieved.Description)
+	}
+
+	all, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(all) != 1 {
+		t.Errorf("List() returned %d snapshots, want 1", len(all))
+	}
+}
