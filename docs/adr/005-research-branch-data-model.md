@@ -305,6 +305,69 @@ snapshots carry the same audit-trail guarantee (ADR-001) as every other mutation
 branch-scoped snapshot is expressible as a branch-tagged event. #624 remains the issue that
 implements this decision.
 
+## Entities that stay main-only
+
+Branch scoping is a bounded set, not a migration in progress. Three different reasons keep a
+read-model entity on `main`, and they must not be confused:
+
+- **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
+  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676):
+  person/family facts ([#757](https://github.com/cacack/my-family/issues/757)), evidence
+  ([#758](https://github.com/cacack/my-family/issues/758)), media metadata
+  ([#759](https://github.com/cacack/my-family/issues/759)) and GPS artifacts
+  ([#760](https://github.com/cacack/my-family/issues/760)).
+- **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
+  be answered first. This is snapshots and brick walls, both waiting on
+  [#624](https://github.com/cacack/my-family/issues/624) (below).
+- **Decided** — the entity will not gain a `branch_id` at all. That set is fixed here.
+
+### The decided set
+
+**Submitter**, **Repository**, **RepositoryExternalID** and **LDSOrdinance** are permanently
+main-only.
+
+Submitters, repositories and their external identifiers are *file-* and *archive-level metadata* —
+who supplied a GEDCOM, which archive holds a source document, and what that archive calls it. They
+describe the provenance of the dataset and the identity of real-world institutions, not a
+genealogical claim. LDS ordinance records are sacramental records transcribed from an external
+authority. None of them is an artifact a **research hypothesis** forks: a branch exploring "was Mary
+the daughter of John?" does not produce a competing version of an archive's street address, and a
+branch that changed one would be asserting a fact about the world rather than about a family.
+
+The cost side is the same as for any branch-scoped entity, and it buys nothing here: a `branch_id`
+column, a composite `(id, branch_id)` primary key, a `branch_id`-leading index, overlay resolution
+on three backends, tombstones, a manual cascade in every Delete method, and triplicate cross-backend
+tests — for no expressible research use case.
+
+**The decision is reversible.** The pattern is mechanical, so if a real use case appears the work is
+ordinary rather than exploratory. This section is the place to revisit it; changing it means
+amending this ADR, not silently adding a column.
+
+### Blocked on the #624 question — brick walls and snapshots
+
+`SetBrickWall` and `ResolveBrickWall` (`internal/repository/{postgres,sqlite,memory}/readmodel.go`)
+**write the read model directly, bypassing the event store.** There is no `BrickWallSet` event and no
+projection handler; the read model is the system of record for brick-wall status.
+
+An entity whose state never passes through the event log cannot be branch-scoped in the sense this
+ADR defines: there are no branch-tagged events to project, nothing to replay on merge, and nothing
+for conflict detection to compare against the base position. **Branch-scoping brick walls therefore
+means first deciding whether they become event-sourced** — the same call
+[#624](https://github.com/cacack/my-family/issues/624) must make for snapshots, and for the same
+reason (see *Interaction with snapshots and rollback*, above). This ADR records the question and its
+coupling; it does not answer it.
+
+Until then brick walls stay main-only. Sub-issue A ([#756](https://github.com/cacack/my-family/issues/756))
+applied only the *leak* fix — constraining the mainline UPDATE to mainline rows, so a mainline call
+stops mutating every branch's shadow row (BR-003) — and left the scoping question open.
+
+**Snapshots are in the same state, for the same reason.** `SnapshotService.CreateSnapshot` writes
+straight to the `SnapshotStore`, so `SnapshotCreated` decodes but is never emitted (see *Interaction
+with snapshots and rollback*, above). A snapshot therefore cannot be branch-scoped until #624
+decides whether it becomes event-sourced. Snapshot is **not** a #676 sub-issue, and
+`docs/INTEGRATION-MATRIX.md` marks its Branch column ⛔ rather than ❌ to keep it out of the pending
+bucket.
+
 ## Consequences
 
 ### Positive
@@ -656,18 +719,13 @@ Two browse surfaces stayed main-only in this pass, and say so in the UI via
   `branch_id` yet. Giving it one is sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)).
   The per-cemetery *person list* is scoped, because it resolves persons through the overlay.
 - **Brick walls** (`getBrickWalls`, `setPersonBrickWall`, `resolvePersonBrickWall`) are not
-  event-sourced: the flag is written straight to the read model, so there is no branch-tagged event
-  for BR-006 to allow and nothing for a merge to replay. Deciding whether brick walls become
-  event-sourced is sub-issue F ([#761](https://github.com/cacack/my-family/issues/761)), a sibling
-  of the #624 snapshot/rollback question and blocked on the same "what is an event" call.
+  event-sourced, so there is no branch-tagged event for BR-006 to allow and nothing for a merge to
+  replay. This pass fixed only the mainline leak; the scoping question is recorded in
+  *Entities that stay main-only* above.
 
-**Entity types the maintainer has ruled permanently main-only.** Submitter, Repository,
-RepositoryExternalID and LDSOrdinance will not gain `branch_id`, and #676 should not be read as
-eventually covering them. Submitter, Repository and RepositoryExternalID are file- and
-archive-level metadata — who supplied the GEDCOM, which archive holds a source, what that archive
-calls it. LDSOrdinance records ordinances performed. None of these is an artifact a *research
-hypothesis* forks: a branch exploring "was Mary the daughter of John?" does not produce a competing
-version of an archive's address. Keeping them on `main` is the deliberate scope line, not a gap.
+**#676 does not eventually cover every entity.** Submitter, Repository, RepositoryExternalID and
+LDSOrdinance are permanently main-only — see *Entities that stay main-only* above for the set and
+the reasoning.
 
 **A caveat on place accuracy, not on branch scoping.** `GetPlaceHierarchy` parses place strings
 differently on SQLite and PostgreSQL — a pre-existing divergence, tracked as

@@ -4569,8 +4569,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 // events, so there is no overlay to resolve. All three methods are MAIN-ONLY and say
 // so with an explicit branch_id predicate: without it the UPDATEs would rewrite every
 // branch's shadow row for the person and the SELECT would list shadows and tombstones
-// as extra people (BR-003). Whether brick walls should become branch-aware at all is
-// sub-issue F of #676 (#761).
+// as extra people (BR-003). Whether brick walls should become branch-aware at all waits
+// on the #624 event-sourcing decision (ADR-005, "Entities that stay main-only").
 
 // SetBrickWall marks a person as a brick wall with a note (main only).
 func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {

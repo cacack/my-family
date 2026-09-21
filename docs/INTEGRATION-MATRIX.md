@@ -162,23 +162,42 @@ Current implementation status for tracking completeness.
 | Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
 | Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
 | Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
-| Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
 | Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
-| LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
 | LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
 | Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
-| Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
-| Snapshot | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | N/A | ❌ | Partial |
+| Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
+| Snapshot | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | N/A | ⛔ | Partial |
 | Branch | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | Complete |
 
-Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing | N/A Not applicable
+Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing/pending | ⛔ Blocked on a decision | N/A Not applicable
 
 The **Branch** column means "this entity can be written on a research branch"
-([ADR-005](./adr/005-research-branch-data-model.md); `?branch=` on the API). ❌ means main-only —
-the API does not expose `?branch=` on those operations, and an event-sourced write attempted on a
-branch scope is rejected with `ErrEventTypeNotBranchAware` (BR-006). Widening this is
-[#676](https://github.com/cacack/my-family/issues/676). The column says nothing about branch
-*reads*: the browse and map aggregates are branch-aware without being entities of their own — see
+([ADR-005](./adr/005-research-branch-data-model.md); `?branch=` on the API). Both ❌ and N/A mean
+main-only today — the API does not expose `?branch=` on those operations, and an event-sourced write
+attempted on a branch scope is rejected with `ErrEventTypeNotBranchAware` (BR-006) — but they mean
+it for opposite reasons:
+
+- **❌ = pending.** The entity is destined for branch scoping and simply is not there yet. Widening
+  this is [#676](https://github.com/cacack/my-family/issues/676) and its sub-issues.
+- **⛔ = blocked on a decision.** Branch scoping is neither scheduled nor ruled out, because a prior
+  question has to be answered first. Snapshot is the only row in this state: it bypasses the
+  event-sourced pipeline, and an entity whose state never passes through the event log has no
+  branch-tagged events to project or replay. Branch-scoping it therefore means first deciding
+  whether it becomes event-sourced — [#624](https://github.com/cacack/my-family/issues/624), not a
+  #676 sub-issue. Brick walls are in the same state for the same reason, but are operations rather
+  than an entity, so they have no row here. See
+  [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only).
+- **N/A = decided.** Branch scoping does not apply to the entity. Submitter, Repository and
+  LDSOrdinance — along with RepositoryExternalID, which has no row in this matrix — are permanently
+  main-only: file-/archive-level metadata and transcribed sacramental records, not claims a research
+  hypothesis forks. See
+  [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only).
+  (Branch itself is N/A for the structural reason that a branch cannot live on a branch.)
+
+The column says nothing about branch *reads*: the browse and map aggregates are branch-aware without
+being entities of their own — see
 [Branch coverage detail](#branch-coverage-detail-669-read--670-write--756-aggregates) below.
 
 Notes on partial rows:
@@ -232,7 +251,9 @@ not the rule. The surfaces that *are* still mainline-only while a branch is acti
 `MainlineNotice.svelte`, so the UI never presents mainline data as branch data. Within browse and
 map that is now exactly two: the cemetery **index** (`browseCemeteries`, which aggregates
 `life_events` — no `branch_id` yet, [#757](https://github.com/cacack/my-family/issues/757)) and
-brick walls (not event-sourced, [#761](https://github.com/cacack/my-family/issues/761)). The
+brick walls (not event-sourced, so branch-scoping them means first deciding whether they become
+event-sourced — [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
+[#761](https://github.com/cacack/my-family/issues/761)). The
 surname index and per-surname list, the place index and per-place list, the per-cemetery person
 list, and the map all follow the active branch. Grow the allowlist and the notice coverage together
 as the remaining #676 sub-issues land.
