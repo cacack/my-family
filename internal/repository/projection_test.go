@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -4747,5 +4748,76 @@ func TestProjector_BranchLifecycleNilStore(t *testing.T) {
 	}
 	if err := projector.Project(ctx, domain.NewBranchDeleted(branch.ID), 3, domain.MainBranchID); err != nil {
 		t.Errorf("BranchDeleted with nil store should no-op, got %v", err)
+	}
+}
+
+// TestProjector_SnapshotLifecycleRegistry covers issue #624: the snapshot
+// registry is written by the projection, and replaying is idempotent.
+func TestProjector_SnapshotLifecycleRegistry(t *testing.T) {
+	snapshotStore := memory.NewSnapshotStore(memory.NewEventStore())
+	projector := repository.NewProjectorWithSnapshots(memory.NewReadModelStore(), nil, snapshotStore)
+	ctx := context.Background()
+
+	snapshot, err := domain.NewSnapshot("Pre-DNA results", "before the test", 42)
+	if err != nil {
+		t.Fatalf("NewSnapshot failed: %v", err)
+	}
+	created := domain.NewSnapshotCreated(snapshot)
+
+	// SnapshotCreated -> Upsert into the registry.
+	if err := projector.Project(ctx, created, 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project SnapshotCreated failed: %v", err)
+	}
+	got, err := snapshotStore.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("registry Get after create failed: %v", err)
+	}
+	if got.Name != "Pre-DNA results" || got.Description != "before the test" || got.Position != 42 {
+		t.Errorf("registry row = %+v, want name/description/position from the event", got)
+	}
+	if !got.CreatedAt.Equal(created.OccurredAt()) {
+		t.Errorf("CreatedAt = %s, want the event timestamp %s", got.CreatedAt, created.OccurredAt())
+	}
+
+	// Replaying SnapshotCreated must be a no-op, not a duplicate-key failure.
+	if err := projector.Project(ctx, created, 1, domain.MainBranchID); err != nil {
+		t.Fatalf("replaying SnapshotCreated failed: %v", err)
+	}
+	all, err := snapshotStore.List(ctx)
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(all) != 1 {
+		t.Errorf("registry holds %d snapshots after a replay, want 1", len(all))
+	}
+
+	// SnapshotDeleted -> row gone.
+	deleted := domain.NewSnapshotDeleted(snapshot.ID)
+	if err := projector.Project(ctx, deleted, 2, domain.MainBranchID); err != nil {
+		t.Fatalf("Project SnapshotDeleted failed: %v", err)
+	}
+	if _, err := snapshotStore.Get(ctx, snapshot.ID); !errors.Is(err, repository.ErrSnapshotNotFound) {
+		t.Errorf("Get after delete = %v, want ErrSnapshotNotFound", err)
+	}
+
+	// Replaying the delete against an already-missing row must also no-op, or a
+	// projection rebuild would fail partway through.
+	if err := projector.Project(ctx, deleted, 2, domain.MainBranchID); err != nil {
+		t.Errorf("replaying SnapshotDeleted failed: %v", err)
+	}
+}
+
+// TestProjector_SnapshotLifecycleNilStore mirrors the branch case: with no
+// registry wired the handlers warn and no-op rather than panicking.
+func TestProjector_SnapshotLifecycleNilStore(t *testing.T) {
+	projector := repository.NewProjector(memory.NewReadModelStore(), nil)
+	ctx := context.Background()
+
+	snapshot, _ := domain.NewSnapshot("x", "", 0)
+	if err := projector.Project(ctx, domain.NewSnapshotCreated(snapshot), 1, domain.MainBranchID); err != nil {
+		t.Errorf("SnapshotCreated with nil store should no-op, got %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewSnapshotDeleted(snapshot.ID), 2, domain.MainBranchID); err != nil {
+		t.Errorf("SnapshotDeleted with nil store should no-op, got %v", err)
 	}
 }
