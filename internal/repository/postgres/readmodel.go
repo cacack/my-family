@@ -4205,8 +4205,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 //
 // Main-pinned: brick-wall state is not branch data today, so the UPDATE targets the
 // main row only. Without the branch predicate it rewrites every branch's shadow row
-// for the person (sub-issue F of #676, #761, decides whether it should become
-// branch-scoped).
+// for the person. Whether brick walls should become branch-scoped waits on the #624
+// event-sourcing decision (ADR-005, "Entities that stay main-only").
 func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE persons SET brick_wall_note = $1, brick_wall_since = NOW(), brick_wall_resolved_at = NULL

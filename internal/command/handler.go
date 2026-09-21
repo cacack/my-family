@@ -48,12 +48,18 @@ var (
 //   - PersonMerged — branch-scoped for the slice writes, but it also rewrites
 //     citations, life events, media, attributes, evidence and research rows that
 //     are main-only, so a branch-scoped merge would mutate main.
-//   - AssociationCreated, LDSOrdinanceCreated — they read persons on the branch
-//     scope to denormalize a name, but save to main-only tables.
+//   - AssociationCreated — reads persons on the branch scope to denormalize a
+//     name, but saves to a main-only table. PENDING: sub-issue B of #676 (#757)
+//     branch-scopes associations, and this entry goes away with it.
+//   - LDSOrdinanceCreated — same shape, but PERMANENT. LDS ordinances are
+//     deliberately never branch-scoped, so this entry is not waiting on anything.
+//     See docs/adr/005-research-branch-data-model.md, "Entities that stay
+//     main-only"; admitting it would contradict that decision.
 //
 // Issue #676 (branch fan-out) grows this set as the remaining projections and
-// read-model tables become branch-aware. It lives next to the guard that uses
-// it so its coupling to the projector stays visible.
+// read-model tables become branch-aware — but it does not grow to cover every
+// exclusion above, so check which kind an entry is before removing it. This lives
+// next to the guard that uses it so its coupling to the projector stays visible.
 var branchAwareEventTypes = map[string]struct{}{
 	"PersonCreated":           {},
 	"PersonUpdated":           {},

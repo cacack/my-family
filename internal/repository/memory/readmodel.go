@@ -1903,7 +1903,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 // MAIN-ONLY on purpose: brick-wall state is written straight to the read model rather
 // than projected from an event, so there is no overlay to copy-on-write into and the
 // main row is the only row to write. Whether brick walls should become branch-aware
-// is sub-issue F of #676 (#761) -- keep the main pin until that is decided.
+// waits on the #624 event-sourcing decision (ADR-005, "Entities that stay main-only")
+// -- keep the main pin until that is decided.
 func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

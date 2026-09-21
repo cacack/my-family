@@ -89,8 +89,15 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > `web/src/lib/api/client.test.ts`. Still main-only, deliberately: the cemetery *index*, whose
 > `life_events` source table has no `branch_id`
 > ([#757](https://github.com/cacack/my-family/issues/757)), and brick walls, which are not
-> event-sourced ([#761](https://github.com/cacack/my-family/issues/761)). Extending branch-scoping
-> to the remaining entity types is the rest of #676.
+> event-sourced and so cannot be branch-scoped until the #624 "what is an event" call is made
+> ([#761](https://github.com/cacack/my-family/issues/761)).
+>
+> **BR-003's scope is bounded by decision, not only by progress.** Extending branch-scoping to the
+> pending entity types is the rest of #676, but four entities — Submitter, Repository,
+> RepositoryExternalID and LDSOrdinance — will never carry a `branch_id`: they are file-/archive-level
+> metadata and transcribed sacramental records, not claims a research hypothesis forks. Recorded in
+> [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only)
+> ([#761](https://github.com/cacack/my-family/issues/761)).
 >
 > **Implementation status (#670):** BR-005 and BR-006 arrived with the branch lifecycle
 > (create / isolate / compare / archive) and the `?branch=` HTTP scope. Branch **writes** cover a
