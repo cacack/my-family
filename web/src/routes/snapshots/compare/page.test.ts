@@ -185,7 +185,9 @@ describe('Snapshot comparison page', () => {
 
 		// A deleted entity has no page to link to.
 		expect(within(items[3]).queryByRole('link')).toBeNull();
-		expect(within(items[3]).getByText('Duplicate John')).toBeDefined();
+		expect(within(items[3]).getByText('Duplicate John').classList.contains('deleted')).toBe(true);
+		// Only a deletion is struck through, not every entry without a link.
+		expect(items[1].querySelector('.entity-name')?.classList.contains('deleted')).toBe(false);
 	});
 
 	it('lists sub-records by name, with their before/after values, linked to their owner', async () => {

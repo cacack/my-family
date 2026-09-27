@@ -143,3 +143,61 @@ func TestFormatHelpers(t *testing.T) {
 	assert.Equal(t, "raw text", normalizeFieldValue(map[string]any{"raw": "raw text", "year": 1850}))
 	assert.Empty(t, (*streamState)(nil).str("anything"))
 }
+
+// People a family, an association or a child link refers to are still named
+// once they are gone from the read model: from their own folded stream, read
+// in one extra set-based read when the batch does not already hold it.
+func TestTransform_DeletedRelatedPeopleNamedFromStreams(t *testing.T) {
+	ctx := context.Background()
+	es := memory.NewEventStore()
+	rs := memory.NewReadModelStore()
+	projector := repository.NewProjector(rs, memory.NewBranchStore())
+	versions := map[uuid.UUID]int64{}
+	write := func(streamID uuid.UUID, streamType string, events ...domain.Event) {
+		t.Helper()
+		require.NoError(t, es.Append(ctx, streamID, streamType, events, -1, repository.MainScope))
+		for _, e := range events {
+			versions[streamID]++
+			require.NoError(t, projector.Project(ctx, e, versions[streamID], domain.MainBranchID))
+		}
+	}
+
+	ann, bob, kid, family, assoc := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	write(ann, "Person", domain.NewPersonCreated(&domain.Person{ID: ann, GivenName: "Ann", Surname: "Lee"}))
+	write(bob, "Person", domain.NewPersonCreated(&domain.Person{ID: bob, GivenName: "Bob", Surname: "Lee"}))
+	write(kid, "Person", domain.NewPersonCreated(&domain.Person{ID: kid, GivenName: "Cy", Surname: "Lee"}))
+	write(family, "Family",
+		domain.NewFamilyCreated(&domain.Family{ID: family, Partner1ID: &ann, Partner2ID: &bob}),
+		domain.NewChildLinkedToFamily(&domain.FamilyChild{FamilyID: family, PersonID: kid, RelationshipType: domain.ChildBiological}))
+	write(assoc, "Association", domain.NewAssociationCreated(&domain.Association{ID: assoc, PersonID: ann, AssociateID: bob, Role: "godparent"}))
+	write(assoc, "Association", domain.NewAssociationDeleted(assoc, ""))
+	write(family, "Family", domain.NewFamilyDeleted(family, ""))
+	for _, id := range []uuid.UUID{ann, bob, kid} {
+		write(id, "Person", domain.NewPersonDeleted(id, ""))
+	}
+
+	service := NewHistoryService(es, rs)
+
+	// Entity history holds only the family's stream: the partners and the
+	// child need the extra read.
+	famHistory, err := service.GetEntityHistory(ctx, "family", family, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, famHistory.Entries, 3)
+	for _, entry := range famHistory.Entries {
+		assert.Equal(t, "Ann Lee & Bob Lee", entry.EntityName, entry.Action)
+	}
+	assert.Equal(t, "Child linked: Cy Lee", famHistory.Entries[1].Changes["children"].NewValue)
+
+	assocHistory, err := service.GetEntityHistory(ctx, "association", assoc, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, assocHistory.Entries, 2)
+	assert.Equal(t, "godparent: Ann Lee and Bob Lee", assocHistory.Entries[0].EntityName)
+
+	// Global history: the people's streams are in the batch itself.
+	global, err := service.GetGlobalHistory(ctx, GetGlobalHistoryInput{Limit: 50})
+	require.NoError(t, err)
+	for _, entry := range global.Entries {
+		assert.NotContains(t, entry.EntityName, ann.String(), "%s %s", entry.EntityType, entry.Action)
+		assert.NotContains(t, entry.EntityName, bob.String(), "%s %s", entry.EntityType, entry.Action)
+	}
+}

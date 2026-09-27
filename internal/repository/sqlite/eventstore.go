@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -135,6 +134,7 @@ const eventsIndexDDL = `
 	CREATE INDEX IF NOT EXISTS idx_events_position ON events(position);
 	CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
+	CREATE INDEX IF NOT EXISTS idx_events_branch_julian_position ON events(branch_id, julianday(timestamp), position, event_type);
 	CREATE INDEX IF NOT EXISTS idx_events_branch ON events(branch_id);
 	CREATE INDEX IF NOT EXISTS idx_events_stream_branch ON events(stream_id, branch_id);
 `
@@ -616,27 +616,31 @@ func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branc
 	}, nil
 }
 
-// Fixed WHERE-clause fragments for ReadGlobalHistory. The type lists expand
-// to one ? per element; every value is a bind parameter.
+// Fixed SQL fragments for ReadGlobalHistory. The type lists expand to one ?
+// per element; every value is a bind parameter.
 //
 // Timestamps are compared and ordered through julianday(), not as text: the
 // stored RFC 3339 form drops trailing fractional zeros, so "…:01Z" sorts after
-// "…:01.5Z" as a string although it is earlier.
+// "…:01.5Z" as a string although it is earlier. The expression index
+// idx_events_branch_julian_position matches these expressions exactly, so a
+// page walks the index in order — no full scan and sort — and the count is
+// answered from the index alone.
 const (
 	globalHistoryFromTime = "julianday(timestamp) >= julianday(?)"
 	globalHistoryToTime   = "julianday(timestamp) <= julianday(?)"
 	globalHistoryInclude  = "event_type IN (%s)"
 	globalHistoryExclude  = "event_type NOT IN (%s)"
 	globalHistoryBranch   = "branch_id = ?"
+	globalHistoryCount    = "SELECT COUNT(*) FROM events"
+	globalHistorySelect   = "SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position FROM events"
+	globalHistoryOrder    = " ORDER BY julianday(timestamp) ASC, position ASC LIMIT ? OFFSET ?"
 )
 
-// ReadGlobalHistory returns one page of the global history with every filter
-// applied before pagination (see repository.GlobalHistoryQuery). The total is
-// counted by its own query rather than a window function, so a page past the
-// end still reports the real total instead of zero.
-func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+// globalHistorySQL builds ReadGlobalHistory's count and page queries from the
+// constants above, with the filter's bind arguments (the page query takes
+// limit and offset after them).
+func globalHistorySQL(q repository.GlobalHistoryQuery) (countQuery, pageQuery string, args []any) {
 	var where []string
-	var args []any
 	inList := func(fragment string, values []string) {
 		placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(values)), ", ")
 		where = append(where, fmt.Sprintf(fragment, placeholders))
@@ -666,21 +670,27 @@ func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalH
 	if len(where) > 0 {
 		whereClause = " WHERE " + strings.Join(where, " AND ")
 	}
+	return globalHistoryCount + whereClause, globalHistorySelect + whereClause + globalHistoryOrder, args
+}
+
+// ReadGlobalHistory returns one page of the global history with every filter
+// applied before pagination (see repository.GlobalHistoryQuery). The total is
+// counted by its own query rather than a window function, so a page past the
+// end still reports the real total instead of zero.
+func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+	countQuery, pageQuery, args := globalHistorySQL(q)
 
 	var total int
-	// #nosec G202 -- whereClause is joined from the package constants above, carrying only ? placeholders
+	// #nosec G202 -- countQuery is joined from the package constants above, carrying only ? placeholders
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events"+whereClause, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, fmt.Errorf("count global history: %w", err)
 	}
 
 	limit := max(q.Limit, 0)
 	offset := max(q.Offset, 0)
 	pageArgs := append(append([]any{}, args...), limit, offset)
-	// #nosec G202 -- whereClause is joined from the package constants above; limit and offset are bind parameters
-	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	pageQuery := "SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position FROM events" +
-		whereClause + " ORDER BY julianday(timestamp) ASC, position ASC LIMIT ? OFFSET ?"
+	// #nosec G202 -- pageQuery is joined from the package constants above; limit and offset are bind parameters
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, pageQuery, pageArgs...)
 	if err != nil {
@@ -699,130 +709,6 @@ func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalH
 		Events:     events,
 		TotalCount: total,
 		HasMore:    offset+len(events) < total,
-	}, nil
-}
-
-// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
-// Results are ordered by timestamp ascending.
-func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
-	// Build WHERE clause dynamically
-	var whereClauses []string
-	var args []any
-
-	// Handle time boundaries
-	if !fromTime.IsZero() {
-		whereClauses = append(whereClauses, "timestamp >= ?")
-		args = append(args, formatTimestamp(fromTime))
-	}
-
-	if !toTime.IsZero() {
-		whereClauses = append(whereClauses, "timestamp <= ?")
-		args = append(args, formatTimestamp(toTime))
-	}
-
-	// Handle event type filter
-	if len(eventTypes) > 0 {
-		placeholders := ""
-		for i, et := range eventTypes {
-			if i > 0 {
-				placeholders += ", "
-			}
-			placeholders += "?"
-			args = append(args, et)
-		}
-		whereClauses = append(whereClauses, fmt.Sprintf("event_type IN (%s)", placeholders))
-	}
-
-	whereClause := ""
-	if len(whereClauses) > 0 {
-		whereClause = "WHERE " + whereClauses[0]
-		for i := 1; i < len(whereClauses); i++ {
-			whereClause += " AND " + whereClauses[i]
-		}
-	}
-
-	// Add limit and offset to args
-	args = append(args, limit, offset)
-
-	// Query with window function for total count
-	// #nosec G201 -- whereClause contains only hardcoded SQL fragments; user values are parameterized in args
-	query := fmt.Sprintf(`
-		SELECT
-			id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position,
-			COUNT(*) OVER() as total_count
-		FROM events
-		%s
-		ORDER BY timestamp ASC, position ASC
-		LIMIT ? OFFSET ?
-	`, whereClause)
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query events by time: %w", err)
-	}
-	defer rows.Close()
-
-	var events []repository.StoredEvent
-	var totalCount int
-
-	for rows.Next() {
-		var (
-			idStr, streamIDStr, streamType, branchIDStr, eventType, dataStr, timestampStr string
-			version, position                                                             int64
-			metadataStr                                                                   sql.NullString
-		)
-		err := rows.Scan(&idStr, &streamIDStr, &streamType, &branchIDStr, &version, &eventType, &dataStr, &metadataStr, &timestampStr, &position, &totalCount)
-		if err != nil {
-			return nil, fmt.Errorf("scan event: %w", err)
-		}
-
-		id, _ := uuid.Parse(idStr)
-		sid, _ := uuid.Parse(streamIDStr)
-		branchID, _ := uuid.Parse(branchIDStr)
-
-		event := repository.StoredEvent{
-			ID:         id,
-			StreamID:   sid,
-			StreamType: streamType,
-			BranchID:   domain.BranchID(branchID),
-			EventType:  eventType,
-			Data:       []byte(dataStr),
-			Version:    version,
-			Position:   position,
-		}
-
-		if metadataStr.Valid {
-			event.Metadata = []byte(metadataStr.String)
-		}
-
-		// Parse timestamp
-		ts, err := parseTimestamp(timestampStr)
-		if err == nil {
-			event.Timestamp = ts
-		}
-
-		events = append(events, event)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate events: %w", err)
-	}
-
-	// Return empty page if no results
-	if len(events) == 0 {
-		return &repository.HistoryPage{
-			Events:     []repository.StoredEvent{},
-			TotalCount: 0,
-			HasMore:    false,
-		}, nil
-	}
-
-	hasMore := offset+len(events) < totalCount
-
-	return &repository.HistoryPage{
-		Events:     events,
-		TotalCount: totalCount,
-		HasMore:    hasMore,
 	}, nil
 }
 

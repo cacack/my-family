@@ -214,7 +214,7 @@ func (m *mockEventStoreExt) ReadByStream(ctx context.Context, streamID uuid.UUID
 	return &repository.HistoryPage{}, nil
 }
 
-func (m *mockEventStoreExt) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
+func (m *mockEventStoreExt) readGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
 	if m.readGlobalByTimeFunc != nil {
 		return m.readGlobalByTimeFunc(ctx, fromTime, toTime, eventTypes, limit, offset)
 	}
@@ -437,5 +437,5 @@ func TestSnapshotService_CompareSnapshots_HasMore(t *testing.T) {
 }
 
 func (m *mockEventStoreExt) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
-	return m.ReadGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
+	return m.readGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
 }

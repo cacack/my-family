@@ -84,7 +84,7 @@ describe('ChangeHistory global log (#739)', () => {
 					entity_type: 'note',
 					entity_id: NOTE_ID,
 					entity_name: 'A note excerpt',
-					action: 'created'
+					action: 'updated'
 				}),
 				entry({
 					id: 'c',
@@ -118,6 +118,8 @@ describe('ChangeHistory global log (#739)', () => {
 		expect(await screen.findByText('A note excerpt')).toBeDefined();
 		expect(screen.getByText('Note', { selector: '.entity-type' })).toBeDefined();
 		expect(screen.queryByRole('link', { name: 'A note excerpt' })).toBeNull();
+		// No page to link to is not the same as deleted: a live note is not struck through.
+		expect(screen.getByText('A note excerpt').classList.contains('deleted')).toBe(false);
 		expect(screen.getByRole('link', { name: '1850 Census (Birth)' }).getAttribute('href')).toBe(
 			`/sources/${SOURCE_ID}`
 		);

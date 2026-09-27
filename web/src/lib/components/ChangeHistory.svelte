@@ -186,7 +186,7 @@
 						{#if link}
 							<a href={link} class="entity-name">{entry.entity_name}</a>
 						{:else}
-							<span class="entity-name deleted">{entry.entity_name}</span>
+							<span class="entity-name" class:deleted={entry.action === 'deleted'}>{entry.entity_name}</span>
 						{/if}
 					</div>
 

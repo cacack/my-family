@@ -50,10 +50,6 @@ func (m *rollbackMockEventStore) ReadByStream(ctx context.Context, streamID uuid
 	return &repository.HistoryPage{}, nil
 }
 
-func (m *rollbackMockEventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
-	return &repository.HistoryPage{}, nil
-}
-
 func TestNewRollbackService(t *testing.T) {
 	eventStore := &rollbackMockEventStore{}
 	readStore := &mockReadModelStore{}
@@ -1859,6 +1855,6 @@ func TestGetRestorePoints_LimitConstraints(t *testing.T) {
 	assert.Equal(t, 0, result.Offset)
 }
 
-func (m *rollbackMockEventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
-	return m.ReadGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
+func (m *rollbackMockEventStore) ReadGlobalHistory(_ context.Context, _ repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+	return &repository.HistoryPage{}, nil
 }

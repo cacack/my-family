@@ -52,7 +52,10 @@ Updates (and merges) carry field-level `changes` with **both** `old_value` and `
 old value is derived from the entity's earlier events as the scope sees them (the mainline, or a
 branch's overlay view of the stream — `branchVisibleStreamEvents`), read for the whole batch with
 one set-based event-store read per side; names of persons, families, sources and citations still
-come from the read model in one batched lookup per type (#697). Nothing is read per entry.
+come from the read model in one batched lookup per type (#697). A person a family, association
+or child link refers to who is gone from the read model (deleted since) is named from their own
+folded stream, read for all such people with one more set-based read per side — never a raw id
+while the log still names them. Nothing is read per entry.
 
 ## Excluded (not genealogical changes)
 

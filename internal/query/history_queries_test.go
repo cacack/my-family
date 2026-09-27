@@ -56,7 +56,7 @@ func (m *mockEventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, b
 	return &repository.HistoryPage{}, nil
 }
 
-func (m *mockEventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
+func (m *mockEventStore) readGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
 	if m.readGlobalByTimeFunc != nil {
 		return m.readGlobalByTimeFunc(ctx, fromTime, toTime, eventTypes, limit, offset)
 	}
@@ -65,7 +65,7 @@ func (m *mockEventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime 
 
 func (m *mockEventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
 	m.lastGlobalQuery = q
-	return m.ReadGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
+	return m.readGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
 }
 
 // mockReadModelStore implements repository.ReadModelStore for testing.

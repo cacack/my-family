@@ -376,48 +376,6 @@ func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branc
 	return scanHistoryPage(rows, limit, offset)
 }
 
-// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
-func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
-	var whereClauses []string
-	var args []interface{}
-	paramN := 1
-
-	if !fromTime.IsZero() {
-		whereClauses = append(whereClauses, fmt.Sprintf("timestamp >= $%d", paramN))
-		args = append(args, fromTime)
-		paramN++
-	}
-	if !toTime.IsZero() {
-		whereClauses = append(whereClauses, fmt.Sprintf("timestamp <= $%d", paramN))
-		args = append(args, toTime)
-		paramN++
-	}
-	if len(eventTypes) > 0 {
-		whereClauses = append(whereClauses, fmt.Sprintf("event_type = ANY($%d)", paramN))
-		args = append(args, pq.Array(eventTypes))
-		paramN++
-	}
-
-	query := `
-		SELECT
-			id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position,
-			COUNT(*) OVER() as total_count
-		FROM events`
-	if len(whereClauses) > 0 {
-		query += " WHERE " + strings.Join(whereClauses, " AND ")
-	}
-	query += fmt.Sprintf(` ORDER BY timestamp ASC, position ASC LIMIT $%d OFFSET $%d`, paramN, paramN+1)
-	args = append(args, limit, offset)
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query events by time: %w", err)
-	}
-	defer rows.Close()
-
-	return scanHistoryPage(rows, limit, offset)
-}
-
 // Fixed WHERE-clause fragments for ReadGlobalHistory. Each carries only a %d
 // for its $-placeholder number; every value is a bind parameter.
 const (

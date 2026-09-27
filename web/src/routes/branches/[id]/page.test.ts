@@ -305,6 +305,8 @@ describe('Branch comparison page', () => {
 		expect(within(items[1]).getByText('Note')).toBeDefined();
 		expect(within(items[1]).getAllByText('Ada wrote the first algorithm')).toHaveLength(2);
 		expect(within(items[1]).queryByRole('link')).toBeNull();
+		// ...and, being live, is not struck through as if deleted.
+		expect(items[1].querySelector('.entity-name')?.classList.contains('deleted')).toBe(false);
 
 		// A life event links to the person that presents it.
 		expect(within(items[2]).getByText('Life event')).toBeDefined();

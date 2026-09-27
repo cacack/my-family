@@ -35,10 +35,13 @@ import (
 //     current state in the scope, which names it.
 //  3. Person/family/source/citation names still come from the read model in
 //     one batched lookup per type (resolveEntityNamesOn), including the
-//     people an association or a merge refers to.
+//     people an association, a family or a child link refers to.
+//  4. A referred-to person the read model no longer holds (deleted since) is
+//     named from their own folded stream, read for all such people with one
+//     more set-based read per side (foldRelatedPeople).
 //
 // The read-model query count therefore stays bounded by the number of entity
-// types, and the event-store read count by two, whatever the batch size.
+// types, and the event-store read count by four, whatever the batch size.
 
 // maxHistoryStateEvents caps each event-store read that rebuilds the state of
 // a batch's streams. A batch whose streams hold more events than this still
@@ -136,6 +139,9 @@ func (s *HistoryService) describeEvents(ctx context.Context, branchID domain.Bra
 	if desc.names, err = s.resolveEntityNamesOn(ctx, branchID, refs); err != nil {
 		return nil, err
 	}
+	if err := s.foldRelatedPeople(ctx, branchID, desc, refs); err != nil {
+		return nil, err
+	}
 	return desc, nil
 }
 
@@ -153,6 +159,14 @@ func (s *HistoryService) readBatchStreams(ctx context.Context, branchID domain.B
 			streamIDs = append(streamIDs, events[i].StreamID)
 		}
 	}
+	return s.readStreams(ctx, branchID, streamIDs, events)
+}
+
+// readStreams reads every event of streamIDs as branchID sees them — one
+// set-based read on main and, on a branch, one more for the branch's own
+// events — plus the given extra events, grouped by stream and filtered to
+// what the scope sees. See readBatchStreams for reliableUpTo.
+func (s *HistoryService) readStreams(ctx context.Context, branchID domain.BranchID, streamIDs []uuid.UUID, extra []repository.StoredEvent) (map[uuid.UUID][]repository.StoredEvent, int64, error) {
 	if len(streamIDs) == 0 {
 		return nil, math.MaxInt64, nil
 	}
@@ -184,10 +198,10 @@ func (s *HistoryService) readBatchStreams(ctx context.Context, branchID domain.B
 	for i := range all {
 		byID[all[i].ID] = true
 	}
-	for i := range events {
-		if !byID[events[i].ID] {
-			byID[events[i].ID] = true
-			all = append(all, events[i])
+	for i := range extra {
+		if !byID[extra[i].ID] {
+			byID[extra[i].ID] = true
+			all = append(all, extra[i])
 		}
 	}
 
@@ -199,6 +213,36 @@ func (s *HistoryService) readBatchStreams(ctx context.Context, branchID domain.B
 		grouped[streamID] = branchVisibleStreamEvents(streamEvents, branchID)
 	}
 	return grouped, reliableUpTo, nil
+}
+
+// foldRelatedPeople folds the streams of the people the batch's names refer
+// to (a family's partners, an association's people, a linked child) that
+// neither the read model nor the batch's own streams can name — people who
+// have since been deleted. It is one more set-based read per side, and only
+// when such a person exists, so the event-store read count stays bounded.
+func (s *HistoryService) foldRelatedPeople(ctx context.Context, branchID domain.BranchID, d *historyDescription, refs entityRefs) error {
+	var missing []uuid.UUID
+	for _, id := range refs.ids(entityTypePerson) {
+		if d.names.persons[id] == nil && d.states[id] == nil {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i].String() < missing[j].String() })
+	streams, _, err := s.readStreams(ctx, branchID, missing, nil)
+	if err != nil {
+		return err
+	}
+	for streamID, streamEvents := range streams {
+		state := newStreamState()
+		for i := range streamEvents {
+			state.apply(&streamEvents[i])
+		}
+		d.states[streamID] = state
+	}
+	return nil
 }
 
 // registerRelated registers the other entities a sub-record's display name
@@ -496,7 +540,7 @@ func joinLabel(sep string, parts ...string) string {
 // source, citation), otherwise a label built from its folded stream, falling
 // back to the event payload and finally the id (entityNames.name).
 func (d *historyDescription) name(entityType string, entityID uuid.UUID, evt *repository.StoredEvent) string {
-	if label := d.stateLabel(entityType, entityID, evt); label != "" {
+	if label := d.stateLabel(entityType, entityID); label != "" {
 		return label
 	}
 	return d.names.name(entityType, entityID, evt)
@@ -504,7 +548,7 @@ func (d *historyDescription) name(entityType string, entityID uuid.UUID, evt *re
 
 // stateLabel labels an entity from its folded stream, or returns "" when the
 // read model names it (or nothing in the stream does).
-func (d *historyDescription) stateLabel(entityType string, entityID uuid.UUID, evt *repository.StoredEvent) string {
+func (d *historyDescription) stateLabel(entityType string, entityID uuid.UUID) string {
 	state := d.states[entityID]
 	switch entityType {
 	case entityTypePerson:
@@ -512,7 +556,7 @@ func (d *historyDescription) stateLabel(entityType string, entityID uuid.UUID, e
 			return d.personFromState(state)
 		}
 	case entityTypeFamily:
-		if d.names.families[entityID] == nil && (evt == nil || evt.EventType != "FamilyCreated") {
+		if d.names.families[entityID] == nil {
 			return d.familyFromState(state)
 		}
 	case entityTypeSource:
@@ -599,6 +643,20 @@ func (d *historyDescription) personFromState(state *streamState) string {
 	return ""
 }
 
+// personLabel names a person another entry refers to (a partner, an
+// associate, a linked child): the read-model name, else the name folded from
+// the person's own stream — a person deleted since is still named — else the
+// id.
+func (d *historyDescription) personLabel(id uuid.UUID) string {
+	if person := d.names.persons[id]; person != nil {
+		return person.FullName
+	}
+	if name := d.personFromState(d.states[id]); name != "" {
+		return name
+	}
+	return id.String()
+}
+
 func (d *historyDescription) familyFromState(state *streamState) string {
 	if state == nil {
 		return ""
@@ -606,7 +664,7 @@ func (d *historyDescription) familyFromState(state *streamState) string {
 	var partners []string
 	for _, field := range []string{"partner1_id", "partner2_id"} {
 		if id, ok := state.id(field); ok {
-			partners = append(partners, d.names.personName(id, nil))
+			partners = append(partners, d.personLabel(id))
 		}
 	}
 	return strings.Join(partners, " & ")
@@ -633,7 +691,7 @@ func (d *historyDescription) associationName(state *streamState) string {
 	var people []string
 	for _, field := range []string{"person_id", "associate_id"} {
 		if id, ok := state.id(field); ok {
-			people = append(people, d.names.personName(id, nil))
+			people = append(people, d.personLabel(id))
 		}
 	}
 	return joinLabel(": ", state.str("role"), strings.Join(people, " and "))

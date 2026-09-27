@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -251,54 +250,6 @@ func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branc
 	// Copy the slice to prevent mutation
 	result := make([]repository.StoredEvent, end-start)
 	copy(result, stream[start:end])
-
-	return &repository.HistoryPage{
-		Events:     result,
-		TotalCount: totalCount,
-		HasMore:    end < totalCount,
-	}, nil
-}
-
-// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
-func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	// Build a set of event types for fast lookup
-	typeFilter := make(map[string]bool)
-	for _, t := range eventTypes {
-		typeFilter[t] = true
-	}
-	filterByType := len(eventTypes) > 0
-
-	// Filter events by time and optionally by type
-	var filtered []repository.StoredEvent
-	for _, event := range s.events {
-		if event.Timestamp.Before(fromTime) || event.Timestamp.After(toTime) {
-			continue
-		}
-		if filterByType && !typeFilter[event.EventType] {
-			continue
-		}
-		filtered = append(filtered, event)
-	}
-
-	totalCount := len(filtered)
-
-	// Apply offset and limit
-	start := offset
-	if start > totalCount {
-		start = totalCount
-	}
-	end := start + limit
-	if end > totalCount {
-		end = totalCount
-	}
-
-	result := filtered[start:end]
-	if result == nil {
-		result = []repository.StoredEvent{}
-	}
 
 	return &repository.HistoryPage{
 		Events:     result,

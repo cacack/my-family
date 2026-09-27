@@ -369,7 +369,7 @@ func (d *historyDescription) entryChanges(evt *repository.StoredEvent) map[strin
 			verb = "unlinked"
 		}
 		return map[string]FieldChange{
-			"children": {NewValue: fmt.Sprintf("Child %s: %s", verb, d.names.personName(link.PersonID, nil))},
+			"children": {NewValue: fmt.Sprintf("Child %s: %s", verb, d.personLabel(link.PersonID))},
 		}
 	}
 	return d.changes[evt.ID]

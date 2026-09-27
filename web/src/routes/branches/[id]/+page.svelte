@@ -365,7 +365,7 @@
 						{#if link}
 							<a href={link} class="entity-name">{entry.entity_name || 'Unnamed'}</a>
 						{:else}
-							<span class="entity-name deleted">{entry.entity_name || 'Unnamed'}</span>
+							<span class="entity-name" class:deleted={entry.action === 'deleted'}>{entry.entity_name || 'Unnamed'}</span>
 						{/if}
 					</div>
 					{#if entry.changes && Object.keys(entry.changes).length > 0}

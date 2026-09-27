@@ -119,19 +119,8 @@ type EventStore interface {
 	// Returns a HistoryPage with events, total count, and hasMore flag.
 	ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*HistoryPage, error)
 
-	// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
-	// Results are ordered by timestamp ascending.
-	// Parameters:
-	//   - fromTime: Start of time range (inclusive)
-	//   - toTime: End of time range (inclusive)
-	//   - eventTypes: Optional list of event types to filter (nil or empty means all types)
-	//   - limit: Maximum number of events to return
-	//   - offset: Number of events to skip (for pagination)
-	// Returns a HistoryPage with events, total count, and hasMore flag.
-	ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*HistoryPage, error)
-
-	// ReadGlobalHistory is ReadGlobalByTime with every filter the global change
-	// history needs applied IN THE STORE, before pagination, so the page and
+	// ReadGlobalHistory returns one page of the global change history, with
+	// every filter it needs applied IN THE STORE, before pagination, so the page and
 	// its TotalCount/HasMore are computed over the same set of events (#739).
 	// See GlobalHistoryQuery for the filters. Results are ordered by timestamp,
 	// then position, ascending.
