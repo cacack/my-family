@@ -43,7 +43,7 @@
 	const toId = $derived($page.url.searchParams.get('to') ?? '');
 
 	let comparison = $state<SnapshotComparisonResult | null>(null);
-	let loading = $state(false);
+	let loading = $state(true);
 	let error: string | null = $state(null);
 	let notFound = $state(false);
 	let entityFilter = $state<EntityFilter>('all');
