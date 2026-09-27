@@ -1490,6 +1490,10 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Take the media lock before any row lock (see lockMediaBlobs).
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
 
 	if branchID.IsMain() {
 		// Reproduce the pre-#669 ON DELETE CASCADE explicitly: the read-model FKs
@@ -2185,6 +2189,10 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Take the media lock before any row lock (see lockMediaBlobs).
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
 
 	// The family's own life events cascade with it on either scope (#757), and
 	// so does its media (#759).
@@ -2492,6 +2500,10 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Take the media lock before any row lock (see lockMediaBlobs).
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
 
 	// Main media tombstones kept alive only for this branch's shadows go first,
 	// while the branch rows that name them still exist (#759).
@@ -2885,6 +2897,10 @@ func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.Branc
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Take the media lock before any row lock (see lockMediaBlobs).
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
 
 	if err := cascadeOverlayRows(ctx, tx, "citations", citationSelectCols, sourceCitationsFilter, branchID, id); err != nil {
 		return err
@@ -4005,6 +4021,10 @@ const mediaBlobLockKey int64 = 0x6d65646961
 
 // lockMediaBlobs takes mediaBlobLockKey for the rest of db's transaction. It
 // is re-entrant within a transaction, so nested callers may each take it.
+// Every transaction that takes it must do so before its first row write, so
+// the advisory lock is always ordered before row locks: a DeletePerson that
+// locked a family_children row and then waited here, while a DeleteFamily
+// holding the lock waited for that row, would otherwise deadlock.
 func lockMediaBlobs(ctx context.Context, db sqlExecer) error {
 	if _, err := db.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, mediaBlobLockKey); err != nil {
 		return fmt.Errorf("lock media blobs: %w", err)
