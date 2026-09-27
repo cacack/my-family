@@ -209,7 +209,15 @@
 </svelte:head>
 
 <div class="analytics-page">
-	<MainlineNotice surface="Data Quality" />
+	<!--
+		People (and so every score, issue count and research-status figure) come
+		from the branch-scoped persons list; families come from the families list,
+		which is still mainline until #829. Only the family-derived figures are
+		mainline, so the notice names them rather than the whole page.
+	-->
+	<MainlineNotice
+		message={`On a research branch, people and their quality scores follow your branch, but families still come from the mainline: the family count and the "No family connections" check reflect mainline families, not your branch's.`}
+	/>
 	<header class="page-header">
 		<h1>Data Quality</h1>
 	</header>

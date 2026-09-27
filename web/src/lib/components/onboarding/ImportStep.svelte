@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { api, type ImportResult } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import BranchImportBlocked from '$lib/components/import/BranchImportBlocked.svelte';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 
 	interface Props {
 		onComplete: (data: { personCount: number }) => void;
@@ -14,6 +16,9 @@
 	let result: ImportResult | null = $state(null);
 	let error: string | null = $state(null);
 	let dragOver = $state(false);
+
+	// GEDCOM import always writes the mainline; withdraw it on a branch (#825).
+	const importBlockedByBranch = $derived(activeBranch.id !== null);
 
 	function handleFileSelect(e: Event) {
 		const input = e.target as HTMLInputElement;
@@ -61,7 +66,7 @@
 	}
 
 	async function importFile() {
-		if (!file) return;
+		if (!file || importBlockedByBranch) return;
 		importing = true;
 		error = null;
 		result = null;
@@ -82,7 +87,9 @@
 	<h2>Import GEDCOM File</h2>
 	<p class="description">Upload your existing family tree data from a GEDCOM 5.5 file.</p>
 
-	{#if result}
+	{#if importBlockedByBranch}
+		<BranchImportBlocked />
+	{:else if result}
 		<div class="result">
 			<h3>Import Successful!</h3>
 			<div class="stats">

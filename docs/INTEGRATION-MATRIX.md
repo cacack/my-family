@@ -357,8 +357,15 @@ the place index and per-place list, the cemetery index and per-cemetery person l
 all follow the active branch, and so do the source list and source detail pages (#758), the
 person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). With every
 #676 sub-issue delivered, what still renders the notice is mainline by nature (aggregates such as
-analytics and quality, the change history) or by decision (brick walls); grow the allowlist and the
-notice coverage together if that changes.
+analytics and quality, the change history) or by decision (brick walls, repositories, exports);
+grow the allowlist and the notice coverage together if that changes.
+
+Mainline-only *writes* get a guard, not a notice. GEDCOM import always writes the mainline, so
+`/import` and the onboarding import step withdraw their upload controls while a branch is active
+(`BranchImportBlocked.svelte`, offering the switch back to the mainline), the onboarding wizard
+never opens on a branch, and the API refuses an import request carrying `?branch=` with a 400
+(#825). Repositories, main-only by decision, stay editable on a branch but say they are shared
+across all branches.
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
 `internal/api/branch_handlers_test.go`), and the command layer resolves its *reads* — existence
