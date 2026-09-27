@@ -38,10 +38,18 @@ type faultyReplayStore struct {
 	// this one's back. skipMainScans lets that many reads pass first.
 	afterMainScan func()
 	skipMainScans int
+
+	// mainScans, while recordScans is set, records the stream ids of every
+	// set-based read of main's streams.
+	recordScans bool
+	mainScans   [][]uuid.UUID
 }
 
 func (s *faultyReplayStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
 	events, err := s.EventStore.ReadStreamsForBranch(ctx, streamIDs, branchID, fromPosition, limit)
+	if s.recordScans && branchID.IsMain() {
+		s.mainScans = append(s.mainScans, slices.Clone(streamIDs))
+	}
 	if hook := s.afterMainScan; hook != nil && branchID.IsMain() {
 		if s.skipMainScans > 0 {
 			s.skipMainScans--

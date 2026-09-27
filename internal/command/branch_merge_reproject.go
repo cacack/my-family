@@ -82,7 +82,7 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 	if err != nil {
 		return nil, err
 	}
-	mergedAway, err := h.missingPersonsMergedAway(ctx, behind, states, mainEvents)
+	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, behind, states, mainEvents)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 			return nil, fmt.Errorf("stream %s is on main by payload id but main has no events for it", group.streamID)
 		}
 		if !states[group.streamID].present {
-			gone, err := h.goneForLoggedReason(ctx, group, events, mergedAway[group.streamID])
+			gone, err := h.goneForLoggedReason(ctx, group, events, removedElsewhere[group.streamID])
 			if err != nil {
 				return nil, err
 			}
@@ -112,13 +112,12 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 
 // goneForLoggedReason reports whether a stream's missing main read-model row is
 // missing for a reason the log explains (see reprojectLandedStreams), so
-// re-projecting it would resurrect something main removed.
-func (h *Handler) goneForLoggedReason(ctx context.Context, group streamGroup, events []repository.StoredEvent, mergedAway bool) (bool, error) {
-	if endsInDelete(events) || mergedAway {
+// re-projecting it would resurrect something main removed. removedElsewhere
+// carries the verdict of missingRowsRemovedElsewhere for the stream: a person
+// merged away, or a citation cascaded away with its source.
+func (h *Handler) goneForLoggedReason(ctx context.Context, group streamGroup, events []repository.StoredEvent, removedElsewhere bool) (bool, error) {
+	if endsInDelete(events) || removedElsewhere {
 		return true, nil
-	}
-	if isCitationStream(group.streamType) {
-		return h.citationCascadedAway(ctx, group.streamID, events)
 	}
 	if !isAssociationStream(group.streamType) {
 		return false, nil
@@ -250,6 +249,35 @@ func (h *Handler) streamsBehindOnMain(ctx context.Context, groups []streamGroup,
 		behind = append(behind, group)
 	}
 	return behind, states, nil
+}
+
+// missingRowsRemovedElsewhere reports which missing rows were removed by a
+// write to ANOTHER stream that main's log records: a person merged into
+// another (PersonMerged), or a citation whose source was deleted (the
+// source→citation cascade). Each kind is detected with one set-based scan
+// across all the missing streams, never a scan per stream.
+func (h *Handler) missingRowsRemovedElsewhere(
+	ctx context.Context,
+	missing []streamGroup,
+	states map[uuid.UUID]readModelState,
+	mainEvents map[uuid.UUID][]repository.StoredEvent,
+) (map[uuid.UUID]bool, error) {
+	mergedAway, err := h.missingPersonsMergedAway(ctx, missing, states, mainEvents)
+	if err != nil {
+		return nil, err
+	}
+	cascaded, err := h.missingCitationsCascadedAway(ctx, missing, states, mainEvents)
+	if err != nil {
+		return nil, err
+	}
+	removed := make(map[uuid.UUID]bool, len(mergedAway)+len(cascaded))
+	for id := range mergedAway {
+		removed[id] = true
+	}
+	for id := range cascaded {
+		removed[id] = true
+	}
+	return removed, nil
 }
 
 // missingPersonsMergedAway reports which missing person rows are missing

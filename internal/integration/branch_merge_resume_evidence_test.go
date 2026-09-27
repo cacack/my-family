@@ -32,6 +32,20 @@ func TestBranchMergeResume_Evidence(t *testing.T) {
 				wrapped.events = faulty
 				runResumeCitedSourceDeletedOnMain(t, newServer(t, wrapped), faulty)
 			})
+			t.Run("failed count bump is recounted", func(t *testing.T) {
+				st := backend.setup(t)
+				reads := &faultyReadStore{ReadModelStore: st.read}
+				wrapped := st
+				wrapped.read = reads
+				runResumeRecountsCitationCount(t, newServer(t, wrapped), reads)
+			})
+			t.Run("cascaded citation is not resurrected", func(t *testing.T) {
+				st := backend.setup(t)
+				reads := &faultyReadStore{ReadModelStore: st.read}
+				wrapped := st
+				wrapped.read = reads
+				runResumeCascadedCitationStaysGone(t, newServer(t, wrapped), reads)
+			})
 		})
 	}
 }
@@ -173,4 +187,81 @@ func runResumeCitedSourceDeletedOnMain(t *testing.T, server *api.Server, faulty 
 	if got := mustString(t, getEntity(t, server, personPath, ""), "surname"); got != "Revised" {
 		t.Errorf("person surname on main = %q, want the landed rename", got)
 	}
+}
+
+// runResumeRecountsCitationCount: the branch cites main's source S; the merge
+// saves the citation but its projection fails bumping S's citation_count, so
+// the citation row is level with the log over a count one short. The resume
+// must recount S (reporting the citation as re-projected) without appending,
+// and a second resume must find nothing to do.
+func runResumeRecountsCitationCount(t *testing.T, server *api.Server, reads *faultyReadStore) {
+	t.Helper()
+	person := createPerson(t, server, "Alex", "Original")
+	cited := createSource(t, server, "", "1880 Census")
+	branchID := createBranch(t, server, "count-bump")
+	branchPath := "/api/v1/branches/" + branchID
+	sourcePath := "/api/v1/sources/" + cited
+	cit := createCitation(t, server, branchID, cited, person)
+
+	reads.failSourceCountFor(uuid.MustParse(cited))
+	failed := mustDo(t, server, http.MethodPost, branchPath+"/merge", `{}`, http.StatusInternalServerError)
+	reads.failSourceCountFor(uuid.Nil)
+	if failed["code"] != "merge_partially_applied" {
+		t.Fatalf("merge code = %v, want merge_partially_applied", failed["code"])
+	}
+	mustDo(t, server, http.MethodGet, "/api/v1/citations/"+cit, "", http.StatusOK)
+	if got := getEntity(t, server, sourcePath, "")["citation_count"]; got != float64(0) {
+		t.Fatalf("citation_count after the failed bump = %v, want 0", got)
+	}
+
+	resumed := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusOK)
+	if got := resumed["replayed_event_count"]; got != float64(0) {
+		t.Errorf("replayed_event_count = %v, want 0 (the citation is already in the log)", got)
+	}
+	if got := entryStrings(t, jsonArray(t, resumed, "reprojected_stream_ids")); len(got) != 1 || got[0] != cit {
+		t.Errorf("reprojected_stream_ids = %v, want [%s]", got, cit)
+	}
+	if got := getEntity(t, server, sourcePath, "")["citation_count"]; got != float64(1) {
+		t.Errorf("citation_count = %v, want 1 (recounted)", got)
+	}
+
+	again := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusOK)
+	if got := jsonArray(t, again, "reprojected_stream_ids"); len(got) != 0 {
+		t.Errorf("second resume reprojected_stream_ids = %v, want none", got)
+	}
+}
+
+// runResumeCascadedCitationStaysGone: the branch cites main's source S; the
+// citation's append lands but its projection fails, so main's read model never
+// shows it and main may then delete S. The citation row is missing because S's
+// delete cascade would have removed it, which main's log explains — the
+// resume must not re-project it into an orphan.
+func runResumeCascadedCitationStaysGone(t *testing.T, server *api.Server, reads *faultyReadStore) {
+	t.Helper()
+	person := createPerson(t, server, "Alex", "Original")
+	cited := createSource(t, server, "", "1880 Census")
+	branchID := createBranch(t, server, "cite-then-cascade")
+	branchPath := "/api/v1/branches/" + branchID
+	sourcePath := "/api/v1/sources/" + cited
+	cit := createCitation(t, server, branchID, cited, person)
+
+	reads.failCitationFor(uuid.MustParse(cit))
+	failed := mustDo(t, server, http.MethodPost, branchPath+"/merge", `{}`, http.StatusInternalServerError)
+	reads.failCitationFor(uuid.Nil)
+	if failed["code"] != "merge_partially_applied" {
+		t.Fatalf("merge code = %v, want merge_partially_applied", failed["code"])
+	}
+	mustDo(t, server, http.MethodGet, "/api/v1/citations/"+cit, "", http.StatusNotFound)
+	mustDo(t, server, http.MethodDelete,
+		fmt.Sprintf("%s?version=%d", sourcePath, entityVersion(t, server, sourcePath, "")), "", http.StatusNoContent)
+
+	resumed := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusOK)
+	if got := resumed["replayed_event_count"]; got != float64(0) {
+		t.Errorf("replayed_event_count = %v, want 0", got)
+	}
+	if got := jsonArray(t, resumed, "reprojected_stream_ids"); len(got) != 0 {
+		t.Errorf("reprojected_stream_ids = %v, want none", got)
+	}
+	mustDo(t, server, http.MethodGet, "/api/v1/citations/"+cit, "", http.StatusNotFound)
+	mustDo(t, server, http.MethodGet, sourcePath, "", http.StatusNotFound)
 }

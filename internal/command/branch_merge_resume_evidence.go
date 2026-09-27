@@ -10,25 +10,53 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
-// citationCascadedAway reports whether a citation's missing main row was
-// removed by its source's delete cascade: the source main's log last has the
-// citation citing ends in a delete on main. The store's source→citation
+// missingCitationsCascadedAway reports which missing citation rows were
+// removed by their source's delete cascade: the source the citation's main log
+// last has it citing ends in a delete on main. The store's source→citation
 // cascade (#758) removes the citation row without writing to the citation's
 // stream, so this is a removal the log explains, like an association losing a
 // person — and re-projecting the citation would resurrect an orphan.
-func (h *Handler) citationCascadedAway(ctx context.Context, citationID uuid.UUID, events []repository.StoredEvent) (bool, error) {
-	outcome, err := citationOutcomeOf(streamGroup{streamID: citationID, events: events})
+//
+// Only citations whose row is missing and whose stream does not itself end in
+// a delete are candidates, and the main histories of all their final sources
+// are read in ONE set-based paged scan, not a scan per citation.
+func (h *Handler) missingCitationsCascadedAway(
+	ctx context.Context,
+	missing []streamGroup,
+	states map[uuid.UUID]readModelState,
+	mainEvents map[uuid.UUID][]repository.StoredEvent,
+) (map[uuid.UUID]bool, error) {
+	sourceOf := make(map[uuid.UUID]uuid.UUID)
+	var sourceIDs []uuid.UUID
+	for _, group := range missing {
+		events := mainEvents[group.streamID]
+		if states[group.streamID].present || len(events) == 0 || !isCitationStream(group.streamType) || endsInDelete(events) {
+			continue
+		}
+		outcome, err := citationOutcomeOf(streamGroup{streamID: group.streamID, events: events})
+		if err != nil {
+			return nil, err
+		}
+		if !outcome.repointed {
+			continue
+		}
+		sourceOf[group.streamID] = outcome.sourceID
+		sourceIDs = appendUnique(sourceIDs, outcome.sourceID)
+	}
+	if len(sourceIDs) == 0 {
+		return nil, nil
+	}
+	sourceEvents, err := h.readMainStreams(ctx, sourceIDs)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	if !outcome.repointed {
-		return false, nil
+	cascaded := make(map[uuid.UUID]bool)
+	for citationID, sourceID := range sourceOf {
+		if endsInDelete(sourceEvents[sourceID]) {
+			cascaded[citationID] = true
+		}
 	}
-	sourceEvents, err := h.readMainStreams(ctx, []uuid.UUID{outcome.sourceID})
-	if err != nil {
-		return false, err
-	}
-	return endsInDelete(sourceEvents[outcome.sourceID]), nil
+	return cascaded, nil
 }
 
 // reconcileCitationCounts recounts, on main, the citation_count of every

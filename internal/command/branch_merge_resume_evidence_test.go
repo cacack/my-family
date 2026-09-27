@@ -435,6 +435,72 @@ func TestResumeMerge_CitationCascadedAwayIsNotResurrected(t *testing.T) {
 	}
 }
 
+// TestResumeMerge_CascadedCitationsAreDetectedInOneScan: two landed citations
+// whose projections failed, each citing a source main then deleted. Deciding
+// that both were cascaded away must read the two sources' histories in one
+// set-based scan, not one scan per citation.
+func TestResumeMerge_CascadedCitationsAreDetectedInOneScan(t *testing.T) {
+	e := newEvidenceResume(t)
+	ctx := context.Background()
+	first := e.source(t, e.f.handler, "1880 Census")
+	second := e.source(t, e.f.handler, "1900 Census")
+	branch, scoped := e.branch(t, "lost-sources")
+	cit1 := e.cite(t, scoped, first.ID)
+	cit2 := e.cite(t, scoped, second.ID)
+
+	e.reads.armed, e.reads.failCitation = true, cit1.ID
+	if _, err := e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID}); !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePartiallyApplied", err)
+	}
+	if e.mainCitation(t, cit2.ID) != nil {
+		// cit2 landed before cit1 and projected; drop its row as a failed
+		// projection would have left it.
+		if err := e.f.readStore.DeleteCitation(ctx, domain.MainBranchID, cit2.ID); err != nil {
+			t.Fatalf("DeleteCitation failed: %v", err)
+		}
+	} else {
+		e.reads.failCitation = cit2.ID
+		if _, err := e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID}); !errors.Is(err, command.ErrMergePartiallyApplied) {
+			t.Fatalf("first ResumeMerge error = %v, want ErrMergePartiallyApplied", err)
+		}
+		if err := e.f.readStore.DeleteCitation(ctx, domain.MainBranchID, cit1.ID); err != nil {
+			t.Fatalf("DeleteCitation failed: %v", err)
+		}
+	}
+	e.reads.armed, e.reads.failCitation = false, uuid.Nil
+	if e.mainCitation(t, cit1.ID) != nil || e.mainCitation(t, cit2.ID) != nil {
+		t.Fatal("setup: both citations must be missing from main's read model")
+	}
+	e.deleteMainSource(t, first.ID)
+	e.deleteMainSource(t, second.ID)
+
+	e.faulty.recordScans = true
+	result, err := e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	e.faulty.recordScans = false
+	if err != nil {
+		t.Fatalf("ResumeMerge failed: %v", err)
+	}
+	if len(result.ReprojectedStreamIDs) != 0 || result.ReplayedEventCount != 0 {
+		t.Errorf("resume = reprojected %v replayed %d, want nothing", result.ReprojectedStreamIDs, result.ReplayedEventCount)
+	}
+	if e.mainCitation(t, cit1.ID) != nil || e.mainCitation(t, cit2.ID) != nil {
+		t.Error("resume resurrected an orphaned citation")
+	}
+	sourceScans := 0
+	for _, scan := range e.faulty.mainScans {
+		hasFirst, hasSecond := slices.Contains(scan, first.ID), slices.Contains(scan, second.ID)
+		if hasFirst != hasSecond {
+			t.Errorf("main scan %v reads one cascaded citation's source without the other (a scan per citation)", scan)
+		}
+		if hasFirst {
+			sourceScans++
+		}
+	}
+	if sourceScans == 0 {
+		t.Error("no main scan read the deleted sources' histories")
+	}
+}
+
 // TestResumeMerge_LegacyClaimRefusesExcludingALandedCitationsSource: a claim
 // with no recorded plan leaves every unreplayed stream to the caller. When a
 // citation of a branch-created source is on main and the source is not, a

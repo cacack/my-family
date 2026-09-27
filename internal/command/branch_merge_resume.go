@@ -936,13 +936,13 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 	if err != nil {
 		return nil, err
 	}
-	mergedAway, err := h.missingPersonsMergedAway(ctx, missing, states, mainEvents)
+	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, missing, states, mainEvents)
 	if err != nil {
 		return nil, err
 	}
 	removed := make(map[uuid.UUID]bool, len(missing))
 	for _, group := range missing {
-		gone, err := h.goneForLoggedReason(ctx, group, mainEvents[group.streamID], mergedAway[group.streamID])
+		gone, err := h.goneForLoggedReason(ctx, group, mainEvents[group.streamID], removedElsewhere[group.streamID])
 		if err != nil {
 			return nil, err
 		}

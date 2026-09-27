@@ -179,11 +179,16 @@ func entryStrings(t *testing.T, values []any) []string {
 
 // faultyReadStore wraps a backend's read-model store and, while armed, fails
 // mainline SavePerson for one person — so a replay's Append commits to the log
-// and its synchronous projection does not.
+// and its synchronous projection does not. For evidence (#758) it can instead
+// fail one citation's own save (failCitation), or only a save of one source
+// that changes its citation count (failSourceCount) — the count bump a
+// citation projection makes after saving the citation.
 type faultyReadStore struct {
 	repository.ReadModelStore
-	mu         sync.Mutex
-	failPerson uuid.UUID
+	mu              sync.Mutex
+	failPerson      uuid.UUID
+	failCitation    uuid.UUID
+	failSourceCount uuid.UUID
 }
 
 func (s *faultyReadStore) failFor(id uuid.UUID) {
@@ -200,6 +205,44 @@ func (s *faultyReadStore) SavePerson(ctx context.Context, branchID domain.Branch
 		return errors.New("injected read-model failure during projection")
 	}
 	return s.ReadModelStore.SavePerson(ctx, branchID, person)
+}
+
+func (s *faultyReadStore) failCitationFor(id uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failCitation = id
+}
+
+func (s *faultyReadStore) failSourceCountFor(id uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failSourceCount = id
+}
+
+func (s *faultyReadStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
+	s.mu.Lock()
+	fail := branchID.IsMain() && citation.ID == s.failCitation
+	s.mu.Unlock()
+	if fail {
+		return errors.New("injected citation read-model failure during projection")
+	}
+	return s.ReadModelStore.SaveCitation(ctx, branchID, citation)
+}
+
+func (s *faultyReadStore) SaveSource(ctx context.Context, branchID domain.BranchID, source *repository.SourceReadModel) error {
+	s.mu.Lock()
+	watch := branchID.IsMain() && source.ID == s.failSourceCount
+	s.mu.Unlock()
+	if watch {
+		current, err := s.GetSource(ctx, branchID, source.ID)
+		if err != nil {
+			return err
+		}
+		if current != nil && current.CitationCount != source.CitationCount {
+			return errors.New("injected source count read-model failure during projection")
+		}
+	}
+	return s.ReadModelStore.SaveSource(ctx, branchID, source)
 }
 
 // TestBranchMergeResume_DecisionsAndProjection covers, on every backend, the
