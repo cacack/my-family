@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import type * as apiModule from '$lib/api/client';
 import type { PersonDetail } from '$lib/api/client';
@@ -7,12 +7,23 @@ import type { PersonDetail } from '$lib/api/client';
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
 
-const { branchState, getPerson, setPersonBrickWall, resolvePersonBrickWall } = vi.hoisted(() => ({
+const {
+	branchState,
+	getPerson,
+	setPersonBrickWall,
+	resolvePersonBrickWall,
+	getPersonHistory,
+	listPersonMedia,
+	getPersonRestorePoints
+} = vi.hoisted(() => ({
 	// The real store exposes a read-only view, so the active branch is injected.
 	branchState: { id: null as string | null },
 	getPerson: vi.fn(),
 	setPersonBrickWall: vi.fn(),
-	resolvePersonBrickWall: vi.fn()
+	resolvePersonBrickWall: vi.fn(),
+	getPersonHistory: vi.fn(async () => ({ items: [], total: 0 })),
+	listPersonMedia: vi.fn(async () => ({ items: [], total: 0 })),
+	getPersonRestorePoints: vi.fn(async () => ({ items: [], total: 0, has_more: false }))
 }));
 
 /**
@@ -39,6 +50,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		getPerson,
 		setPersonBrickWall,
 		resolvePersonBrickWall,
+		getPersonHistory,
+		listPersonMedia,
+		getPersonRestorePoints,
 		// These two answer with a bare array rather than a wrapper object.
 		getConflictsBySubject: vi.fn(async () => []),
 		getResearchLogsBySubject: vi.fn(async () => [])
@@ -120,5 +134,83 @@ describe('Person detail brick-wall controls', () => {
 		expect(screen.queryByRole('button', { name: /Resolve Brick Wall/ })).toBeNull();
 		expect(screen.getByText(/recorded on the mainline only/)).toBeDefined();
 		expect(resolvePersonBrickWall).not.toHaveBeenCalled();
+	});
+});
+
+describe('Person detail badge counts (#823)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPerson.mockResolvedValue(person());
+		getPersonHistory.mockResolvedValue({ ...EMPTY_RESPONSE, total: 4 });
+		listPersonMedia.mockResolvedValue({ ...EMPTY_RESPONSE, total: 2 });
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+	});
+
+	it('shows the history count once the person has loaded', async () => {
+		render(Page);
+		const heading = await screen.findByRole('heading', { name: /History/ });
+		await waitFor(() => expect(heading.textContent).toContain('4'));
+	});
+
+	// A person created on a branch used to fail here: the history lookup ran in
+	// the same try as the person, so its failure blanked the whole page.
+	it('still renders the person when the history count fails', async () => {
+		branchState.id = BRANCH_ID;
+		getPersonHistory.mockRejectedValue({ message: 'Person not found' });
+
+		render(Page);
+
+		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeDefined();
+		expect(screen.queryByText('Person not found')).toBeNull();
+		const heading = screen.getByRole('heading', { name: /History/ });
+		await waitFor(() => expect(getPersonHistory).toHaveBeenCalled());
+		expect(heading.textContent?.trim()).toBe('History');
+	});
+
+	it('still renders the person when the media count fails', async () => {
+		listPersonMedia.mockRejectedValue({ message: 'boom' });
+
+		render(Page);
+
+		expect(await screen.findByRole('heading', { name: 'Ada Lovelace' })).toBeDefined();
+		// The gallery reports its own failure; the page itself stays usable.
+		await waitFor(() => expect(listPersonMedia).toHaveBeenCalled());
+		expect(screen.getByRole('button', { name: 'Edit' })).toBeDefined();
+	});
+});
+
+describe('Person detail rollback on a branch (#824)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPerson.mockResolvedValue(person());
+		getPersonHistory.mockResolvedValue({ ...EMPTY_RESPONSE });
+		listPersonMedia.mockResolvedValue({ ...EMPTY_RESPONSE });
+		getPersonRestorePoints.mockResolvedValue({ items: [], total: 0, has_more: false });
+	});
+
+	async function openHistory() {
+		await fireEvent.click(await screen.findByRole('button', { name: /History/ }));
+	}
+
+	it('offers the Restore tab on the mainline', async () => {
+		render(Page);
+		await openHistory();
+		expect(screen.getByRole('button', { name: 'Restore' })).toBeDefined();
+		expect(screen.queryByText(/work on the mainline only/)).toBeNull();
+	});
+
+	it('withdraws Restore and rollback on a branch, keeping the change log', async () => {
+		branchState.id = BRANCH_ID;
+
+		render(Page);
+		await openHistory();
+
+		expect(screen.getByText(/Restore points and rollback work on the mainline only/)).toBeDefined();
+		expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Change Log' })).toBeNull();
+		await waitFor(() => expect(getPersonHistory).toHaveBeenCalledWith(PERSON_ID, { limit: 20, offset: 0 }));
+		expect(getPersonRestorePoints).not.toHaveBeenCalled();
 	});
 });

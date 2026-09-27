@@ -25,7 +25,12 @@
 	 * surfaces whose content is most easily mistaken for branch content.
 	 *
 	 * Placed:
-	 * - `/analytics` — quality scores computed over mainline persons
+	 * - `/` (dashboard) — the family count, recent families and research
+	 *   suggestions (discovery feed) come from the mainline while the people
+	 *   count and recent people follow the branch; the notice says which is which
+	 * - `/analytics` — people and their scores follow the branch, but families
+	 *   (the family count and the "no family connections" check) are mainline
+	 *   until #829 scopes the families list; the notice says exactly that
 	 * - `/families` (list only; family *detail* is branch-scoped)
 	 * - `/quality` — validation issues and duplicate pairs
 	 * - `/search` — advanced search
@@ -34,6 +39,18 @@
 	 *   position and its comparison lists mainline events only
 	 * - `/ahnentafel/{id}` — the ancestor report
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
+	 * - `/repositories` (list and detail, including its edit form) —
+	 *   repositories are main-only by decision (ADR-005), so creating, editing
+	 *   or deleting one writes the mainline and every branch sees it
+	 * - `/import`, export section — JSON, CSV and GEDCOM exports cover the
+	 *   mainline
+	 *
+	 * GEDCOM import is not labelled but withdrawn: it always writes the mainline,
+	 * so `/import` and the onboarding wizard's import step replace their upload
+	 * controls with `BranchImportBlocked` while a branch is active (the same
+	 * pattern as the merge page's `mergeBlockedByBranch`), and the API refuses an
+	 * import that carries `?branch=`. The onboarding wizard itself is suppressed
+	 * on a branch, so an empty branch view never offers to "start" a tree.
 	 *
 	 * Deliberately not placed, because these surfaces now follow the branch:
 	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
@@ -43,26 +60,35 @@
 	 * media gallery on person detail pages follows the branch too (since #759),
 	 * and so does the evidence panel (since #760).
 	 *
-	 * Known gap, not closed by #676 (whose sub-issues are all delivered): `/`
-	 * (dashboard and discovery feed), `/descendancy/{id}`, `/relationship`,
-	 * `/repositories`, `/import`, and the panels on person and family detail
-	 * pages that are not themselves scoped — change history and restore points.
-	 * All of them answer from the mainline today; none of them says so.
+	 * Known gaps still open: `/descendancy/{id}` and `/relationship` (#829).
+	 * Both answer from the mainline today; neither says so.
+	 *
+	 * The history panels on person and family detail pages follow the branch
+	 * (#824), labelling each entry as the branch's own or inherited from the
+	 * mainline. Restore points and rollback are mainline-only (ADR-005), so those
+	 * pages withdraw them on a branch rather than labelling them.
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 
 	interface Props {
 		/** What this page shows, e.g. "Sources". Used in the sentence. */
-		surface: string;
+		surface?: string;
 		/**
 		 * Replaces the default explanation. The families *list* needs its own,
 		 * because family detail pages are branch-scoped while the list is not.
 		 */
 		detail?: string;
+		/**
+		 * Replaces the whole sentence, for surfaces that are only partly mainline
+		 * (the dashboard, `/analytics`) or that are shared rather than merely
+		 * unscoped (repositories, exports). `surface` and `detail` are ignored.
+		 */
+		message?: string;
 	}
 
 	let {
-		surface,
+		surface = 'This page',
+		message,
 		detail = 'Branch scoping currently covers people, families, pedigrees, sources, citations, notes, media and the browse and map views.'
 	}: Props = $props();
 </script>
@@ -82,7 +108,11 @@
 			<line x1="12" y1="8" x2="12.01" y2="8" />
 		</svg>
 		<span>
-			{surface} always shows mainline data, even while a research branch is active. {detail}
+			{#if message}
+				{message}
+			{:else}
+				{surface} always shows mainline data, even while a research branch is active. {detail}
+			{/if}
 		</span>
 	</div>
 {/if}

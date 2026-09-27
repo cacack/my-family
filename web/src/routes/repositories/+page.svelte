@@ -1,4 +1,5 @@
 <script lang="ts">
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { api, type Repository, type Address } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 
@@ -166,6 +167,10 @@
 			<Button onclick={openAddForm}>Add Repository</Button>
 		</div>
 	</header>
+
+	<MainlineNotice
+		message="Repositories are shared across all branches. Creating, editing or deleting a repository here changes the mainline, and every research branch sees the change."
+	/>
 
 	{#if showAddForm}
 		<div class="add-form-container">

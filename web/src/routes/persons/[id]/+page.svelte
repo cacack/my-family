@@ -16,6 +16,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -42,6 +43,12 @@
 	let brickWallCelebrating = $state(false);
 	let brickWallToast = $state('');
 
+	// Rollback is mainline-only (ADR-005, #824): its version and deleted checks
+	// read the mainline, so on a branch the Restore tab and the rollback dialog
+	// are withdrawn (the API refuses a branch-scoped rollback as a backstop). The
+	// change log stays: on a branch it is the branch's view of the person.
+	const rollbackOnMainlineOnly = $derived(activeBranch.id !== null);
+
 	// Rollback state
 	let rollbackDialog = $state({ open: false, targetVersion: 0, targetSummary: '' });
 	let rollbackSuccess: { show: boolean; message: string; changes?: Record<string, unknown> } = $state({ show: false, message: '' });
@@ -65,17 +72,38 @@
 		try {
 			person = await api.getPerson(id);
 			resetForm();
-			// Fetch history count for badge
-			const historyResponse = await api.getPersonHistory(id, { limit: 1, offset: 0 });
-			historyCount = historyResponse.total;
-			// Fetch media count for badge
-			const mediaResponse = await api.listPersonMedia(id, { limit: 1, offset: 0 });
-			mediaCount = mediaResponse.total;
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to load person';
 			person = null;
 		} finally {
 			loading = false;
+		}
+		if (person) {
+			await loadCounts(id);
+		}
+	}
+
+	// Guards loadCounts against a slower, older request overwriting a newer one.
+	let countsRequest = 0;
+
+	/**
+	 * The badge counts, loaded independently of the person (#823): a count that
+	 * fails to load drops its badge but never blanks the page. The History panel
+	 * reports its own load error when opened.
+	 */
+	async function loadCounts(id: string) {
+		const request = ++countsRequest;
+		const [history, media] = await Promise.allSettled([
+			api.getPersonHistory(id, { limit: 1, offset: 0 }),
+			api.listPersonMedia(id, { limit: 1, offset: 0 })
+		]);
+		if (request !== countsRequest) return;
+		historyCount = history.status === 'fulfilled' ? history.value.total : null;
+		mediaCount = media.status === 'fulfilled' ? media.value.total : null;
+		for (const result of [history, media]) {
+			if (result.status === 'rejected') {
+				console.warn('Failed to load a person badge count', result.reason);
+			}
 		}
 	}
 
@@ -84,6 +112,7 @@
 	}
 
 	function handleSelectVersion(version: number, summary: string) {
+		if (rollbackOnMainlineOnly) return;
 		rollbackDialog = { open: true, targetVersion: version, targetSummary: summary };
 	}
 
@@ -564,24 +593,28 @@
 						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
 					</button>
 					{#if historyExpanded}
-						<div class="history-tabs">
-							<button
-								class="tab-btn"
-								class:active={historyTab === 'history'}
-								onclick={() => historyTab = 'history'}
-							>
-								Change Log
-							</button>
-							<button
-								class="tab-btn"
-								class:active={historyTab === 'restore'}
-								onclick={() => historyTab = 'restore'}
-							>
-								Restore
-							</button>
-						</div>
+						{#if rollbackOnMainlineOnly}
+							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
+						{:else}
+							<div class="history-tabs">
+								<button
+									class="tab-btn"
+									class:active={historyTab === 'history'}
+									onclick={() => historyTab = 'history'}
+								>
+									Change Log
+								</button>
+								<button
+									class="tab-btn"
+									class:active={historyTab === 'restore'}
+									onclick={() => historyTab = 'restore'}
+								>
+									Restore
+								</button>
+							</div>
+						{/if}
 						<div class="history-content">
-							{#if historyTab === 'history'}
+							{#if historyTab === 'history' || rollbackOnMainlineOnly}
 								<ChangeHistory entityType="person" entityId={person.id} />
 							{:else}
 								<RestorePointBrowser
@@ -595,17 +628,19 @@
 					{/if}
 				</div>
 
-				<RollbackConfirmDialog
-					open={rollbackDialog.open}
-					entityType="person"
-					entityId={person.id}
-					entityName={formatPersonName(person)}
-					currentVersion={person.version}
-					targetVersion={rollbackDialog.targetVersion}
-					targetSummary={rollbackDialog.targetSummary}
-					onConfirm={handleRollbackConfirm}
-					onCancel={handleRollbackCancel}
-				/>
+				{#if !rollbackOnMainlineOnly}
+					<RollbackConfirmDialog
+						open={rollbackDialog.open}
+						entityType="person"
+						entityId={person.id}
+						entityName={formatPersonName(person)}
+						currentVersion={person.version}
+						targetVersion={rollbackDialog.targetVersion}
+						targetSummary={rollbackDialog.targetSummary}
+						onConfirm={handleRollbackConfirm}
+						onCancel={handleRollbackCancel}
+					/>
+				{/if}
 			</div>
 		{/if}
 	{/if}
@@ -976,6 +1011,14 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
 		color: #475569;
+		line-height: 1.5;
+	}
+
+	.rollback-mainline-only {
+		margin: 0 0 0.75rem;
+		font-size: 0.8125rem;
+		font-style: italic;
+		color: #64748b;
 		line-height: 1.5;
 	}
 

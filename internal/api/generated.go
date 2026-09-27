@@ -187,6 +187,24 @@ func (e ChangeEntryEntityType) Valid() bool {
 	}
 }
 
+// Defines values for ChangeEntryOrigin.
+const (
+	ChangeEntryOriginBranch ChangeEntryOrigin = "branch"
+	ChangeEntryOriginMain   ChangeEntryOrigin = "main"
+)
+
+// Valid indicates whether the value is a known member of the ChangeEntryOrigin enum.
+func (e ChangeEntryOrigin) Valid() bool {
+	switch e {
+	case ChangeEntryOriginBranch:
+		return true
+	case ChangeEntryOriginMain:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CitationValidationIssueLevel.
 const (
 	CitationValidationIssueLevelError   CitationValidationIssueLevel = "error"
@@ -2227,7 +2245,12 @@ type ChangeEntry struct {
 	EntityName *string               `json:"entity_name,omitempty"`
 	EntityType ChangeEntryEntityType `json:"entity_type"`
 	Id         openapi_types.UUID    `json:"id"`
-	Timestamp  time.Time             `json:"timestamp"`
+
+	// Origin Set only on branch-scoped entity history (`?branch=`): `branch` for
+	// the branch's own events, `main` for the mainline events its view
+	// inherits (ADR-005). Absent everywhere else.
+	Origin    *ChangeEntryOrigin `json:"origin,omitempty"`
+	Timestamp time.Time          `json:"timestamp"`
 
 	// UserId ID of user who made the change (null if single-user)
 	UserId *string `json:"user_id,omitempty"`
@@ -2238,6 +2261,11 @@ type ChangeEntryAction string
 
 // ChangeEntryEntityType defines model for ChangeEntry.EntityType.
 type ChangeEntryEntityType string
+
+// ChangeEntryOrigin Set only on branch-scoped entity history (`?branch=`): `branch` for
+// the branch's own events, `main` for the mainline events its view
+// inherits (ADR-005). Absent everywhere else.
+type ChangeEntryOrigin string
 
 // ChangeHistoryResponse defines model for ChangeHistoryResponse.
 type ChangeHistoryResponse struct {
@@ -4713,6 +4741,25 @@ type FormatCitationParams struct {
 type GetCitationRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// RollbackCitationParams defines parameters for RollbackCitation.
+type RollbackCitationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetDescendancyParams defines parameters for GetDescendancy.
@@ -4930,12 +4977,39 @@ type RemoveChildFromFamilyParams struct {
 type GetFamilyHistoryParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetFamilyRestorePointsParams defines parameters for GetFamilyRestorePoints.
 type GetFamilyRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// RollbackFamilyParams defines parameters for RollbackFamily.
+type RollbackFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // ExportGedcomParams defines parameters for ExportGedcom.
@@ -5258,6 +5332,14 @@ type GetCitationsForPersonParams struct {
 type GetPersonHistoryParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // ListPersonMediaParams defines parameters for ListPersonMedia.
@@ -5350,6 +5432,25 @@ type UpdatePersonNameParams struct {
 type GetPersonRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// RollbackPersonParams defines parameters for RollbackPerson.
+type RollbackPersonParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // ListProofSummariesParams defines parameters for ListProofSummaries.
@@ -5697,6 +5798,25 @@ type GetSourceHistoryParams struct {
 type GetSourceRestorePointsParams struct {
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// RollbackSourceParams defines parameters for RollbackSource.
+type RollbackSourceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // ListSubmittersParams defines parameters for ListSubmitters.
@@ -5948,7 +6068,7 @@ type ServerInterface interface {
 	GetCitationRestorePoints(ctx echo.Context, id openapi_types.UUID, params GetCitationRestorePointsParams) error
 	// Rollback a citation to a previous version
 	// (POST /citations/{id}/rollback)
-	RollbackCitation(ctx echo.Context, id openapi_types.UUID) error
+	RollbackCitation(ctx echo.Context, id openapi_types.UUID, params RollbackCitationParams) error
 	// Get descendancy tree for a person
 	// (GET /descendancy/{id})
 	GetDescendancy(ctx echo.Context, id PersonId, params GetDescendancyParams) error
@@ -6041,7 +6161,7 @@ type ServerInterface interface {
 	GetFamilyRestorePoints(ctx echo.Context, id FamilyId, params GetFamilyRestorePointsParams) error
 	// Rollback a family to a previous version
 	// (POST /families/{id}/rollback)
-	RollbackFamily(ctx echo.Context, id FamilyId) error
+	RollbackFamily(ctx echo.Context, id FamilyId, params RollbackFamilyParams) error
 	// Export all data as GEDCOM
 	// (GET /gedcom/export)
 	ExportGedcom(ctx echo.Context, params ExportGedcomParams) error
@@ -6176,7 +6296,7 @@ type ServerInterface interface {
 	GetPersonRestorePoints(ctx echo.Context, id PersonId, params GetPersonRestorePointsParams) error
 	// Rollback a person to a previous version
 	// (POST /persons/{id}/rollback)
-	RollbackPerson(ctx echo.Context, id PersonId) error
+	RollbackPerson(ctx echo.Context, id PersonId, params RollbackPersonParams) error
 	// List all proof summaries
 	// (GET /proof-summaries)
 	ListProofSummaries(ctx echo.Context, params ListProofSummariesParams) error
@@ -6290,7 +6410,7 @@ type ServerInterface interface {
 	GetSourceRestorePoints(ctx echo.Context, id openapi_types.UUID, params GetSourceRestorePointsParams) error
 	// Rollback a source to a previous version
 	// (POST /sources/{id}/rollback)
-	RollbackSource(ctx echo.Context, id openapi_types.UUID) error
+	RollbackSource(ctx echo.Context, id openapi_types.UUID, params RollbackSourceParams) error
 	// Get tree-wide statistics
 	// (GET /statistics)
 	GetStatistics(ctx echo.Context) error
@@ -7015,6 +7135,13 @@ func (w *ServerInterfaceWrapper) GetCitationRestorePoints(ctx echo.Context) erro
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetCitationRestorePoints(ctx, id, params)
 	return err
@@ -7031,8 +7158,17 @@ func (w *ServerInterfaceWrapper) RollbackCitation(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RollbackCitationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.RollbackCitation(ctx, id)
+	err = w.Handler.RollbackCitation(ctx, id, params)
 	return err
 }
 
@@ -7644,6 +7780,13 @@ func (w *ServerInterfaceWrapper) GetFamilyHistory(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetFamilyHistory(ctx, id, params)
 	return err
@@ -7692,6 +7835,13 @@ func (w *ServerInterfaceWrapper) GetFamilyRestorePoints(ctx echo.Context) error 
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetFamilyRestorePoints(ctx, id, params)
 	return err
@@ -7708,8 +7858,17 @@ func (w *ServerInterfaceWrapper) RollbackFamily(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RollbackFamilyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.RollbackFamily(ctx, id)
+	err = w.Handler.RollbackFamily(ctx, id, params)
 	return err
 }
 
@@ -8561,6 +8720,13 @@ func (w *ServerInterfaceWrapper) GetPersonHistory(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetPersonHistory(ctx, id, params)
 	return err
@@ -8789,6 +8955,13 @@ func (w *ServerInterfaceWrapper) GetPersonRestorePoints(ctx echo.Context) error 
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetPersonRestorePoints(ctx, id, params)
 	return err
@@ -8805,8 +8978,17 @@ func (w *ServerInterfaceWrapper) RollbackPerson(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RollbackPersonParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.RollbackPerson(ctx, id)
+	err = w.Handler.RollbackPerson(ctx, id, params)
 	return err
 }
 
@@ -9792,6 +9974,13 @@ func (w *ServerInterfaceWrapper) GetSourceRestorePoints(ctx echo.Context) error 
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
 	}
 
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetSourceRestorePoints(ctx, id, params)
 	return err
@@ -9808,8 +9997,17 @@ func (w *ServerInterfaceWrapper) RollbackSource(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RollbackSourceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.RollbackSource(ctx, id)
+	err = w.Handler.RollbackSource(ctx, id, params)
 	return err
 }
 
@@ -11451,9 +11649,24 @@ func (response GetCitationRestorePoints404JSONResponse) VisitGetCitationRestoreP
 	return err
 }
 
+type GetCitationRestorePoints409JSONResponse Error
+
+func (response GetCitationRestorePoints409JSONResponse) VisitGetCitationRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackCitationRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *RollbackCitationJSONRequestBody
+	Id     openapi_types.UUID `json:"id"`
+	Params RollbackCitationParams
+	Body   *RollbackCitationJSONRequestBody
 }
 
 type RollbackCitationResponseObject interface {
@@ -12662,9 +12875,24 @@ func (response GetFamilyRestorePoints404JSONResponse) VisitGetFamilyRestorePoint
 	return err
 }
 
+type GetFamilyRestorePoints409JSONResponse Error
+
+func (response GetFamilyRestorePoints409JSONResponse) VisitGetFamilyRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackFamilyRequestObject struct {
-	Id   FamilyId `json:"id"`
-	Body *RollbackFamilyJSONRequestBody
+	Id     FamilyId `json:"id"`
+	Params RollbackFamilyParams
+	Body   *RollbackFamilyJSONRequestBody
 }
 
 type RollbackFamilyResponseObject interface {
@@ -14784,9 +15012,24 @@ func (response GetPersonRestorePoints404JSONResponse) VisitGetPersonRestorePoint
 	return err
 }
 
+type GetPersonRestorePoints409JSONResponse Error
+
+func (response GetPersonRestorePoints409JSONResponse) VisitGetPersonRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackPersonRequestObject struct {
-	Id   PersonId `json:"id"`
-	Body *RollbackPersonJSONRequestBody
+	Id     PersonId `json:"id"`
+	Params RollbackPersonParams
+	Body   *RollbackPersonJSONRequestBody
 }
 
 type RollbackPersonResponseObject interface {
@@ -16325,9 +16568,24 @@ func (response GetSourceRestorePoints404JSONResponse) VisitGetSourceRestorePoint
 	return err
 }
 
+type GetSourceRestorePoints409JSONResponse Error
+
+func (response GetSourceRestorePoints409JSONResponse) VisitGetSourceRestorePointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RollbackSourceRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *RollbackSourceJSONRequestBody
+	Id     openapi_types.UUID `json:"id"`
+	Params RollbackSourceParams
+	Body   *RollbackSourceJSONRequestBody
 }
 
 type RollbackSourceResponseObject interface {
@@ -17925,10 +18183,11 @@ func (sh *strictHandler) GetCitationRestorePoints(ctx echo.Context, id openapi_t
 }
 
 // RollbackCitation operation middleware
-func (sh *strictHandler) RollbackCitation(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) RollbackCitation(ctx echo.Context, id openapi_types.UUID, params RollbackCitationParams) error {
 	var request RollbackCitationRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body RollbackCitationJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -18741,10 +19000,11 @@ func (sh *strictHandler) GetFamilyRestorePoints(ctx echo.Context, id FamilyId, p
 }
 
 // RollbackFamily operation middleware
-func (sh *strictHandler) RollbackFamily(ctx echo.Context, id FamilyId) error {
+func (sh *strictHandler) RollbackFamily(ctx echo.Context, id FamilyId, params RollbackFamilyParams) error {
 	var request RollbackFamilyRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body RollbackFamilyJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -19987,10 +20247,11 @@ func (sh *strictHandler) GetPersonRestorePoints(ctx echo.Context, id PersonId, p
 }
 
 // RollbackPerson operation middleware
-func (sh *strictHandler) RollbackPerson(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) RollbackPerson(ctx echo.Context, id PersonId, params RollbackPersonParams) error {
 	var request RollbackPersonRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body RollbackPersonJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -21003,10 +21264,11 @@ func (sh *strictHandler) GetSourceRestorePoints(ctx echo.Context, id openapi_typ
 }
 
 // RollbackSource operation middleware
-func (sh *strictHandler) RollbackSource(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) RollbackSource(ctx echo.Context, id openapi_types.UUID, params RollbackSourceParams) error {
 	var request RollbackSourceRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body RollbackSourceJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {

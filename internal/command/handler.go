@@ -27,6 +27,9 @@ var (
 	// branch the expected version comes from main's counter while the append is
 	// checked against the branch's independent one. Rolling back within a branch
 	// is out of scope for issue #670, so refuse instead of mixing the two scopes.
+	// ADR-005 records rollback as mainline-only (#824): the API routes a
+	// ?branch= rollback to the branch-scoped handler so this refusal fires, and
+	// answers it with 409 rollback_mainline_only.
 	ErrRollbackNotBranchScoped = errors.New("rollback is not supported on a branch-scoped handler")
 )
 
@@ -259,8 +262,8 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 //
 //   - ImportGedcom appends and projects with a hardcoded main scope, so it stays
 //     mainline on a branch-scoped handler instead of failing. Importing onto a
-//     branch is a stated non-goal of #670; the HTTP import route exposes no
-//     ?branch= parameter.
+//     branch is a stated non-goal of #670; the HTTP import routes expose no
+//     ?branch= parameter and refuse a request that carries one (#825).
 //   - CreateBranch, DeleteBranch and MergeBranch take their target branch as an
 //     argument and derive their own scopes from it, so the handler's scope is
 //     irrelevant. MergeBranch derives two: the branch's own scope for the

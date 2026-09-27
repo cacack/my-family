@@ -10,6 +10,8 @@
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -19,6 +21,9 @@
 	let historyExpanded = $state(false);
 	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
+
+	// Rollback is mainline-only (ADR-005, #824); see ROLLBACK_MAINLINE_ONLY.
+	const rollbackOnMainlineOnly = $derived(activeBranch.id !== null);
 
 	// Rollback state
 	let rollbackDialog = $state({ open: false, targetVersion: 0, targetSummary: '' });
@@ -37,14 +42,33 @@
 		try {
 			family = await api.getFamily(id);
 			resetForm();
-			// Fetch history count for badge
-			const historyResponse = await api.getFamilyHistory(id, { limit: 1, offset: 0 });
-			historyCount = historyResponse.total;
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to load family';
 			family = null;
 		} finally {
 			loading = false;
+		}
+		if (family) {
+			await loadHistoryCount(id);
+		}
+	}
+
+	// Guards loadHistoryCount against a slower, older request overwriting a newer one.
+	let historyCountRequest = 0;
+
+	/**
+	 * The History badge count, loaded independently of the family (#823): if it
+	 * fails the badge is dropped but the page still renders. The History panel
+	 * reports its own load error when opened.
+	 */
+	async function loadHistoryCount(id: string) {
+		const request = ++historyCountRequest;
+		try {
+			const response = await api.getFamilyHistory(id, { limit: 1, offset: 0 });
+			if (request === historyCountRequest) historyCount = response.total;
+		} catch (e) {
+			if (request === historyCountRequest) historyCount = null;
+			console.warn('Failed to load the family history count', e);
 		}
 	}
 
@@ -53,6 +77,7 @@
 	}
 
 	function handleSelectVersion(version: number, summary: string) {
+		if (rollbackOnMainlineOnly) return;
 		rollbackDialog = { open: true, targetVersion: version, targetSummary: summary };
 	}
 
@@ -323,24 +348,28 @@
 						<span class="expand-icon">{historyExpanded ? '−' : '+'}</span>
 					</button>
 					{#if historyExpanded}
-						<div class="history-tabs">
-							<button
-								class="tab-btn"
-								class:active={historyTab === 'history'}
-								onclick={() => historyTab = 'history'}
-							>
-								Change Log
-							</button>
-							<button
-								class="tab-btn"
-								class:active={historyTab === 'restore'}
-								onclick={() => historyTab = 'restore'}
-							>
-								Restore
-							</button>
-						</div>
+						{#if rollbackOnMainlineOnly}
+							<p class="rollback-mainline-only" role="note">{ROLLBACK_MAINLINE_ONLY}</p>
+						{:else}
+							<div class="history-tabs">
+								<button
+									class="tab-btn"
+									class:active={historyTab === 'history'}
+									onclick={() => historyTab = 'history'}
+								>
+									Change Log
+								</button>
+								<button
+									class="tab-btn"
+									class:active={historyTab === 'restore'}
+									onclick={() => historyTab = 'restore'}
+								>
+									Restore
+								</button>
+							</div>
+						{/if}
 						<div class="history-content">
-							{#if historyTab === 'history'}
+							{#if historyTab === 'history' || rollbackOnMainlineOnly}
 								<ChangeHistory entityType="family" entityId={family.id} />
 							{:else}
 								<RestorePointBrowser
@@ -354,17 +383,19 @@
 					{/if}
 				</div>
 
-				<RollbackConfirmDialog
-					open={rollbackDialog.open}
-					entityType="family"
-					entityId={family.id}
-					entityName={getPartnerDisplay()}
-					currentVersion={family.version}
-					targetVersion={rollbackDialog.targetVersion}
-					targetSummary={rollbackDialog.targetSummary}
-					onConfirm={handleRollbackConfirm}
-					onCancel={handleRollbackCancel}
-				/>
+				{#if !rollbackOnMainlineOnly}
+					<RollbackConfirmDialog
+						open={rollbackDialog.open}
+						entityType="family"
+						entityId={family.id}
+						entityName={getPartnerDisplay()}
+						currentVersion={family.version}
+						targetVersion={rollbackDialog.targetVersion}
+						targetSummary={rollbackDialog.targetSummary}
+						onConfirm={handleRollbackConfirm}
+						onCancel={handleRollbackCancel}
+					/>
+				{/if}
 			</div>
 		{/if}
 	{/if}
@@ -382,6 +413,14 @@
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 1.5rem;
+	}
+
+	.rollback-mainline-only {
+		margin: 0 0 0.75rem;
+		font-size: 0.8125rem;
+		font-style: italic;
+		color: #64748b;
+		line-height: 1.5;
 	}
 
 	.back-link {

@@ -2,7 +2,17 @@
 	import { api, type ImportResult, type ImportProgress } from '$lib/api/client';
 	import { ExportButton } from '$lib/components/export';
 	import ImportProgressBar from '$lib/components/import/ImportProgress.svelte';
+	import BranchImportBlocked from '$lib/components/import/BranchImportBlocked.svelte';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+
+	/**
+	 * GEDCOM import always writes the mainline, so it is withdrawn while a
+	 * research branch is active (#825) — see BranchImportBlocked. Exports stay
+	 * available but are labelled: they cover the mainline too.
+	 */
+	const importBlockedByBranch = $derived(activeBranch.id !== null);
 
 	let file: File | null = $state(null);
 	let importing = $state(false);
@@ -243,7 +253,7 @@
 	}
 
 	async function importFile() {
-		if (!file) return;
+		if (!file || importBlockedByBranch) return;
 		importing = true;
 		error = null;
 		result = null;
@@ -353,7 +363,9 @@
 				families to your database.
 			</p>
 
-			{#if result}
+			{#if importBlockedByBranch}
+				<BranchImportBlocked />
+			{:else if result}
 				<div class="result" class:success={result.success}>
 					<h3>{result.success ? 'Import Successful!' : 'Import Completed with Issues'}</h3>
 					<div class="stats">
@@ -465,6 +477,9 @@
 
 		<section class="export-section">
 			<h2>Export Data</h2>
+			<MainlineNotice
+				message="Exports always cover the mainline, even while a research branch is active. Changes made on your branch are not included until the branch is merged."
+			/>
 			<p class="description">
 				Download your family tree data in various formats. GEDCOM files can be imported into other
 				genealogy software, while JSON and CSV formats are useful for data analysis.

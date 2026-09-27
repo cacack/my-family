@@ -196,6 +196,11 @@ func NewServer(
 func (s *Server) registerRoutes() {
 	api := s.echo.Group("/api/v1")
 
+	// Refuse a branch-scoped GEDCOM import before it reaches either import
+	// handler (#825). Registered on the Echo instance, not the group, because
+	// the generated strict routes are registered on the instance too.
+	s.echo.Use(refuseBranchScopedImport)
+
 	// Health check (outside generated routes)
 	api.GET("/health", s.healthCheck)
 

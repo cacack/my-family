@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,7 +44,18 @@ type ChangeEntry struct {
 	Action     string                 `json:"action"`      // "created", "updated", "deleted"
 	Changes    map[string]FieldChange `json:"changes,omitempty"`
 	UserID     *string                `json:"user_id,omitempty"`
+	// Origin is set only by branch-scoped entity history (GetEntityHistoryOn
+	// with a non-main branch): ChangeOriginBranch for the branch's own events,
+	// ChangeOriginMain for the mainline events its view inherits. Empty
+	// everywhere else.
+	Origin string `json:"origin,omitempty"`
 }
+
+// Origins of a branch-scoped history entry (ChangeEntry.Origin).
+const (
+	ChangeOriginMain   = "main"
+	ChangeOriginBranch = "branch"
+)
 
 // FieldChange represents before/after values for a field update.
 type FieldChange struct {
@@ -82,10 +94,9 @@ func (s *HistoryService) GetEntityHistory(ctx context.Context, entityType string
 		offset = 0
 	}
 
-	// Read events for this entity's stream. Scoped to main: the history endpoints
-	// take no ?branch= parameter, so an entity's audit trail is the mainline's and
-	// must not interleave any branch's in-progress edits (ADR-005). Branch-scoped
-	// history is future work — it needs an API parameter first.
+	// Read events for this entity's stream. Scoped to main: the mainline audit
+	// trail must not interleave any branch's in-progress edits (ADR-005). A
+	// branch's view of the stream is GetEntityHistoryOn.
 	page, err := s.eventStore.ReadByStream(ctx, entityID, domain.MainBranchID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("reading stream: %w", err)
@@ -104,6 +115,112 @@ func (s *HistoryService) GetEntityHistory(ctx context.Context, entityType string
 		Limit:      limit,
 		Offset:     offset,
 	}, nil
+}
+
+// GetEntityHistoryOn retrieves an entity's change history as branchID sees it.
+// On the mainline it is exactly GetEntityHistory.
+//
+// On a branch it follows the read model's copy-on-write overlay (ADR-005), so
+// the history explains the state the branch actually shows:
+//
+//   - The branch's own events for the stream (Origin "branch").
+//   - The mainline events the branch's view inherits (Origin "main"). The
+//     overlay is live: until the branch first writes the entity, a branch read
+//     falls back to main's current row, and the branch's first write seeds its
+//     shadow row from that row. So every mainline event before the branch's
+//     first event on the stream is inherited — including mainline edits made
+//     after the fork but before that first write — and none after it, since
+//     the branch's own row no longer reflects them (they surface in the branch
+//     compare and at merge instead). With no branch events on the stream, the
+//     whole mainline history is inherited.
+//
+// Entries are ordered by global position (oldest first) and paginated after
+// the branch filter, so TotalCount and HasMore describe this branch's view.
+// The stream is read once (ReadStream) and entity names are resolved in one
+// batched read-model lookup through the branch's overlay — no per-event query.
+func (s *HistoryService) GetEntityHistoryOn(ctx context.Context, branchID domain.BranchID, entityType string, entityID uuid.UUID, limit, offset int) (*ChangeHistoryResult, error) {
+	if branchID.IsMain() {
+		return s.GetEntityHistory(ctx, entityType, entityID, limit, offset)
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	all, err := s.eventStore.ReadStream(ctx, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("reading stream: %w", err)
+	}
+	visible := branchVisibleStreamEvents(all, branchID)
+
+	total := len(visible)
+	start := min(offset, total)
+	end := min(start+limit, total)
+	page := visible[start:end]
+
+	entries, err := s.transformStoredEventsOn(ctx, branchID, page)
+	if err != nil {
+		return nil, fmt.Errorf("transforming events: %w", err)
+	}
+	origins := make(map[uuid.UUID]string, len(page))
+	for i := range page {
+		if page[i].BranchID == branchID {
+			origins[page[i].ID] = ChangeOriginBranch
+		} else {
+			origins[page[i].ID] = ChangeOriginMain
+		}
+	}
+	for i := range entries {
+		entries[i].Origin = origins[entries[i].ID]
+	}
+
+	return &ChangeHistoryResult{
+		Entries:    entries,
+		TotalCount: total,
+		HasMore:    end < total,
+		Limit:      limit,
+		Offset:     offset,
+	}, nil
+}
+
+// branchVisibleStreamEvents filters one stream's events (from ReadStream, which
+// interleaves every branch) down to those branchID's overlay view is built
+// from — see GetEntityHistoryOn — ordered by global position. Other branches'
+// events never appear.
+func branchVisibleStreamEvents(events []repository.StoredEvent, branchID domain.BranchID) []repository.StoredEvent {
+	sorted := make([]repository.StoredEvent, 0, len(events))
+	for i := range events {
+		if events[i].BranchID == branchID || events[i].BranchID.IsMain() {
+			sorted = append(sorted, events[i])
+		}
+	}
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Position < sorted[j].Position })
+
+	// The branch's first event on the stream is where its copy-on-write row
+	// took over from main's.
+	var firstBranchPos int64
+	branchWrote := false
+	for i := range sorted {
+		if sorted[i].BranchID == branchID {
+			firstBranchPos = sorted[i].Position
+			branchWrote = true
+			break
+		}
+	}
+
+	visible := sorted[:0]
+	for i := range sorted {
+		evt := sorted[i]
+		if evt.BranchID == branchID || !branchWrote || evt.Position < firstBranchPos {
+			visible = append(visible, evt)
+		}
+	}
+	return visible
 }
 
 // GetGlobalHistory retrieves system-wide change history with optional time and type filters.
