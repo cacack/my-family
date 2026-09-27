@@ -310,6 +310,27 @@ func TestSearchPersons_QueryTooShort(t *testing.T) {
 	}
 }
 
+// TestSearchPersons_ControlCharacters verifies control characters in the free-text
+// search parameters are rejected with 400 rather than reaching the store, where a
+// NUL fails the PostgreSQL text encoding and ends an FTS5 string early (issue #762).
+func TestSearchPersons_ControlCharacters(t *testing.T) {
+	server := setupTestServer()
+	for _, target := range []string{
+		"/api/v1/search?q=Jo%00hn",
+		"/api/v1/search?q=%00%00",
+		"/api/v1/search?q=John%07",
+		"/api/v1/search?birth_place=Bo%00ston",
+		"/api/v1/search?death_place=%0BParis",
+	} {
+		req := httptest.NewRequest(http.MethodGet, target, http.NoBody)
+		rec := httptest.NewRecorder()
+		server.Echo().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("GET %s: status = %d, want %d (body %s)", target, rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	}
+}
+
 func TestOpenAPISpec(t *testing.T) {
 	server := setupTestServer()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/openapi.yaml", http.NoBody)

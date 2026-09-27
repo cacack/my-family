@@ -166,6 +166,11 @@ jobs:
           fi
           go test -race -coverprofile=coverage.out $COVERAGE_PKGS
 
+      - name: Run SQLite FTS5 search tests
+        # mattn/go-sqlite3 compiles in FTS5 only under the sqlite_fts5 tag; the
+        # run above covers the LIKE path, this one asserts the FTS5 path (#762).
+        run: make test-fts5
+
       - name: Check coverage threshold
         run: |
           # Exclude generated files to match .testcoverage.yml so this coarse
