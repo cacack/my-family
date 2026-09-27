@@ -65,7 +65,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows. A branch's overlay is purged when the branch reaches a terminal status — `merged` or `archived` — so no terminal branch retains an isolated view | `internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go` (overlay, tombstone, `PurgeBranch` on `BranchDeleted`); `TestProjector_BranchMergedPurgesOverlay` (`internal/repository`) for the merge purge; `TestBranchIsolation*` in `internal/command` and `internal/api`; `TestBranchLifecycle_EndToEnd` (`internal/integration`) asserts branch isolation on every backend, and that a merged branch is no longer readable — note it does **not** prove the purge itself, since the API refuses a terminal branch by status before reaching the read model; cross-backend purge-on-merge coverage is still a gap |
 | **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | `TestMergeBranch_AppendOnly` (`internal/command`): the branch's own stored events are byte-identical after the merge and `main` gains only new events at new positions. `TestBranchService_PlanMerge_ReplaySetExcludesLifecycleEvents` (`internal/query`) pins the replay set to mutation events only; `TestMergeBranch_PreservesProvenance` (`internal/command`) pins the replayed payload and `OccurredAt` to the originals; `TestMergeBranch_SecondMergeIsRefused` and `TestMergeBranch_ConcurrentClaimLoses` pin the single `BranchMerged`. `TestBranchLifecycle_EndToEnd` and `TestBranchConflict_*` (`internal/integration`) re-verify the replay and both conflict-resolution directions against memory, SQLite and PostgreSQL |
 | **BR-005** | Optimistic versioning is per-`(stream_id, branch_id)`. A branch's first write to an aggregate that exists on `main` seeds its version from that aggregate's `main` version at the branch's `base_position`, then increments within the branch; concurrent branches never contend at write time | `runBranchVersioningScenario` — identical copies in `internal/repository/eventstore_test.go` (memory), `sqlite/eventstore_test.go`, `postgres/eventstore_test.go` (DB-001 parity); exercised end-to-end by `TestBranchLifecycle_EndToEnd` (`internal/integration`), whose branch edits seed from `main` versions on every backend |
-| **BR-006** | A branch-scoped write is legal only for event types whose projection handler writes exclusively branch-keyed rows; any other event type is rejected before the append (`command.ErrEventTypeNotBranchAware`) | `TestExecute_RejectsNonBranchAwareEvent` (`internal/command`); the allowed set in `internal/command/handler.go` is derived from `internal/repository/projection.go` |
+| **BR-006** | A branch-scoped write is legal only for event types whose projection handler writes exclusively branch-keyed rows; any other event type is rejected before the append (`command.ErrEventTypeNotBranchAware`) | `TestExecute_RejectsNonBranchAwareEvent` (`internal/command`); the allowed set in `internal/command/handler.go` is derived from `internal/repository/projection.go`, and `TestBranchAwareEventTypes_LeaveMainUntouched` projects one probe per allowlisted type on a branch and asserts main is unchanged |
 
 > **Implementation status (#669):** BR-003 and the branch-lifecycle side of PR-004 are
 > realized for the first read-model slice — Person, PersonName, PersonExternalID, Family,
@@ -99,6 +99,18 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > `TestReadModelStore_Delete*Cascade` tests, `TestBranchAssociationLifecycle` and
 > `TestBranchAwareEventTypes_LeaveMainUntouched` (`internal/command`), and the `?branch=` handler
 > tests in `internal/api/fact_branch_handlers_test.go`.
+>
+> **Implementation status (#676 sub-issue C, [#758](https://github.com/cacack/my-family/issues/758)):**
+> BR-003 now also covers the evidence — Source, SourceExternalID, Citation and Note — on all three
+> backends. `DeleteSource` cascades to the source's external identifiers and citations on the same
+> branch only (replacing the dropped `sources(id)` foreign keys), a citation's denormalized source
+> title and its source's citation count resolve through the same branch, and `SearchSources`
+> resolves the overlay before it matches. Their nine event types are on the BR-006 allowlist.
+> Verified by `TestBranchScenario_EvidenceOverlay` and `TestReadModelStore_DeleteSourceCascade`
+> (identical copies per backend), `TestReadModelStore_MigratesEvidenceTablesToBranchKeys`
+> (PostgreSQL) and `TestPreEvidence*` (SQLite), `TestBranchEvidenceLifecycle` and
+> `TestBranchAwareEventTypes_LeaveMainUntouched` (`internal/command`), and the `?branch=` handler
+> tests in `internal/api/evidence_branch_handlers_test.go`.
 >
 > **BR-003's scope is bounded by decision, not only by progress.** Extending branch-scoping to the
 > pending entity types is the rest of #676, but four entities — Submitter, Repository,

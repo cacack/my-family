@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
@@ -131,7 +132,7 @@ func TestGetSource(t *testing.T) {
 	})
 
 	// Get source
-	result, err := queryService.GetSource(ctx, createResult.ID)
+	result, err := queryService.GetSource(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetSource failed: %v", err)
 	}
@@ -156,7 +157,7 @@ func TestGetSource_NotFound(t *testing.T) {
 	queryService := query.NewSourceService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetSource(ctx, uuid.New())
+	_, err := queryService.GetSource(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -215,7 +216,7 @@ func TestSearchSources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := queryService.SearchSources(ctx, tt.query, 10)
+			results, err := queryService.SearchSources(ctx, domain.MainBranchID, tt.query, 10)
 			if err != nil {
 				t.Fatalf("SearchSources failed: %v", err)
 			}
@@ -277,7 +278,7 @@ func TestGetCitationsForPerson(t *testing.T) {
 	})
 
 	// Get citations for first person
-	citations, err := queryService.GetCitationsForPerson(ctx, personResult.ID)
+	citations, err := queryService.GetCitationsForPerson(ctx, domain.MainBranchID, personResult.ID)
 	if err != nil {
 		t.Fatalf("GetCitationsForPerson failed: %v", err)
 	}
@@ -334,7 +335,7 @@ func TestGetCitationsForFact(t *testing.T) {
 	})
 
 	// Get citations for birth fact
-	citations, err := queryService.GetCitationsForFact(ctx, "person_birth", personResult.ID)
+	citations, err := queryService.GetCitationsForFact(ctx, domain.MainBranchID, "person_birth", personResult.ID)
 	if err != nil {
 		t.Fatalf("GetCitationsForFact failed: %v", err)
 	}
@@ -389,7 +390,7 @@ func TestSourceDetail_WithCitations(t *testing.T) {
 	})
 
 	// Get source detail
-	detail, err := queryService.GetSource(ctx, sourceResult.ID)
+	detail, err := queryService.GetSource(ctx, domain.MainBranchID, sourceResult.ID)
 	if err != nil {
 		t.Fatalf("GetSource failed: %v", err)
 	}
@@ -496,7 +497,7 @@ func TestGetCitation(t *testing.T) {
 	}
 
 	// Get the citation
-	citation, err := queryService.GetCitation(ctx, citationResult.ID)
+	citation, err := queryService.GetCitation(ctx, domain.MainBranchID, citationResult.ID)
 	if err != nil {
 		t.Fatalf("GetCitation failed: %v", err)
 	}
@@ -531,7 +532,7 @@ func TestGetCitation_NotFound(t *testing.T) {
 	queryService := query.NewSourceService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetCitation(ctx, uuid.New())
+	_, err := queryService.GetCitation(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -557,7 +558,7 @@ func TestSearchSources_Limit(t *testing.T) {
 	}
 
 	// Search with limit
-	results, err := queryService.SearchSources(ctx, "Test", 10)
+	results, err := queryService.SearchSources(ctx, domain.MainBranchID, "Test", 10)
 	if err != nil {
 		t.Fatalf("SearchSources failed: %v", err)
 	}
@@ -575,20 +576,20 @@ func TestGetSource_ExternalIDs(t *testing.T) {
 	ctx := context.Background()
 
 	sourceID := uuid.New()
-	if err := readStore.SaveSource(ctx, &repository.SourceReadModel{
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:         sourceID,
 		SourceType: "book",
 		Title:      "Census Records",
 	}); err != nil {
 		t.Fatalf("SaveSource failed: %v", err)
 	}
-	if err := readStore.ReplaceSourceExternalIDs(ctx, sourceID, []repository.SourceExternalIDReadModel{
+	if err := readStore.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, sourceID, []repository.SourceExternalIDReadModel{
 		{SourceID: sourceID, Sequence: 0, Value: "S123", Type: "http://www.familysearch.org/ark"},
 	}); err != nil {
 		t.Fatalf("ReplaceSourceExternalIDs failed: %v", err)
 	}
 
-	detail, err := queryService.GetSource(ctx, sourceID)
+	detail, err := queryService.GetSource(ctx, domain.MainBranchID, sourceID)
 	if err != nil {
 		t.Fatalf("GetSource failed: %v", err)
 	}

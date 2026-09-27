@@ -78,7 +78,7 @@ func TestExportService_GetEstimate_WithData(t *testing.T) {
 			ID:    uuid.New(),
 			Title: "Test Source",
 		}
-		if err := readStore.SaveSource(ctx, source); err != nil {
+		if err := readStore.SaveSource(ctx, domain.MainBranchID, source); err != nil {
 			t.Fatalf("SaveSource failed: %v", err)
 		}
 	}
@@ -88,7 +88,7 @@ func TestExportService_GetEstimate_WithData(t *testing.T) {
 			ID:   uuid.New(),
 			Text: "Test note",
 		}
-		if err := readStore.SaveNote(ctx, note); err != nil {
+		if err := readStore.SaveNote(ctx, domain.MainBranchID, note); err != nil {
 			t.Fatalf("SaveNote failed: %v", err)
 		}
 	}
@@ -178,8 +178,8 @@ func TestExportService_GetEstimate_ByteCalculation(t *testing.T) {
 
 	_ = readStore.SavePerson(ctx, domain.MainBranchID, person)
 	_ = readStore.SaveFamily(ctx, domain.MainBranchID, family)
-	_ = readStore.SaveSource(ctx, source)
-	_ = readStore.SaveNote(ctx, note)
+	_ = readStore.SaveSource(ctx, domain.MainBranchID, source)
+	_ = readStore.SaveNote(ctx, domain.MainBranchID, note)
 
 	estimate, err := svc.GetEstimate(ctx)
 	if err != nil {

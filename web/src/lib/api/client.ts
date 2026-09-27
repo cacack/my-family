@@ -125,8 +125,11 @@ const TEXT_SEGMENT = '[^/]+';
  *
  * The table covers the #669 vertical slice (persons, person names, families,
  * family children, pedigree), the browse and map aggregates that #676
- * sub-issue A (#756) fanned out over, and the person/family facts of
- * sub-issue B (#757): the cemetery index and the association endpoints. The
+ * sub-issue A (#756) fanned out over, the person/family facts of
+ * sub-issue B (#757) — the cemetery index and the association endpoints — and
+ * the evidence of sub-issue C (#758): sources (including search), citations
+ * and notes. Source and citation history, restore points and rollback stay
+ * mainline-only, as rollback does for every entity. The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -170,7 +173,18 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	// Person/family facts (#757).
 	{ methods: ['GET', 'POST'], pattern: new RegExp('^/associations$') },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/associations/${UUID_SEGMENT}$`) },
-	{ methods: ['GET'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/associations$`) }
+	{ methods: ['GET'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/associations$`) },
+	// Evidence (#758): sources, citations and notes.
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/sources$') },
+	{ methods: ['GET'], pattern: new RegExp('^/sources/search$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/sources/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/sources/${UUID_SEGMENT}/citations$`) },
+	{ methods: ['POST'], pattern: new RegExp('^/citations$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/citations/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/citations/${UUID_SEGMENT}/format$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/citations$`) },
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/notes$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/notes/${UUID_SEGMENT}$`) }
 ];
 
 /**

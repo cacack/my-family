@@ -124,10 +124,10 @@ func TestGetEntity_ExternalLinks(t *testing.T) {
 		t.Fatalf("seed family external ids: %v", err)
 	}
 
-	if err := readStore.SaveSource(ctx, &repository.SourceReadModel{ID: sourceID, SourceType: "book", Title: "Census"}); err != nil {
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{ID: sourceID, SourceType: "book", Title: "Census"}); err != nil {
 		t.Fatalf("seed source: %v", err)
 	}
-	if err := readStore.ReplaceSourceExternalIDs(ctx, sourceID, []repository.SourceExternalIDReadModel{
+	if err := readStore.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, sourceID, []repository.SourceExternalIDReadModel{
 		{SourceID: sourceID, Sequence: 0, Value: "S100", Type: "http://example.com/unknown-system"},
 	}); err != nil {
 		t.Fatalf("seed source external ids: %v", err)

@@ -35,9 +35,10 @@ func (p *Projector) Apply(ctx context.Context, event domain.Event) error {
 // Project applies a domain event to the read model on the given branch. A zero
 // branchID (domain.MainBranchID) reproduces pre-branch, main-only behavior.
 // Only the branch-scoped entities — the #669 slice (Person, PersonName, Person
-// EXID, Family, Family EXID, FamilyChild, PedigreeEdge) and the person/family
-// facts (LifeEvent, Attribute, Association; #757) — honor branchID; all other
-// handlers ignore it and write main-only.
+// EXID, Family, Family EXID, FamilyChild, PedigreeEdge), the person/family
+// facts (LifeEvent, Attribute, Association; #757) and the evidence (Source,
+// SourceExternalID, Citation, Note; #758) — honor branchID; all other handlers
+// ignore it and write main-only.
 func (p *Projector) Project(ctx context.Context, event domain.Event, version int64, branchID domain.BranchID) error {
 	switch e := event.(type) {
 	case domain.PersonCreated:
@@ -57,17 +58,17 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.FamilyDeleted:
 		return p.projectFamilyDeleted(ctx, e, branchID)
 	case domain.SourceCreated:
-		return p.projectSourceCreated(ctx, e, version)
+		return p.projectSourceCreated(ctx, e, version, branchID)
 	case domain.SourceUpdated:
-		return p.projectSourceUpdated(ctx, e, version)
+		return p.projectSourceUpdated(ctx, e, version, branchID)
 	case domain.SourceDeleted:
-		return p.projectSourceDeleted(ctx, e)
+		return p.projectSourceDeleted(ctx, e, branchID)
 	case domain.CitationCreated:
-		return p.projectCitationCreated(ctx, e, version)
+		return p.projectCitationCreated(ctx, e, version, branchID)
 	case domain.CitationUpdated:
-		return p.projectCitationUpdated(ctx, e, version)
+		return p.projectCitationUpdated(ctx, e, version, branchID)
 	case domain.CitationDeleted:
-		return p.projectCitationDeleted(ctx, e)
+		return p.projectCitationDeleted(ctx, e, branchID)
 	case domain.MediaCreated:
 		return p.projectMediaCreated(ctx, e, version)
 	case domain.MediaUpdated:
@@ -101,11 +102,11 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.PersonMerged:
 		return p.projectPersonMerged(ctx, e, version, branchID)
 	case domain.NoteCreated:
-		return p.projectNoteCreated(ctx, e, version)
+		return p.projectNoteCreated(ctx, e, version, branchID)
 	case domain.NoteUpdated:
-		return p.projectNoteUpdated(ctx, e, version)
+		return p.projectNoteUpdated(ctx, e, version, branchID)
 	case domain.NoteDeleted:
-		return p.projectNoteDeleted(ctx, e)
+		return p.projectNoteDeleted(ctx, e, branchID)
 	case domain.SubmitterCreated:
 		return p.projectSubmitterCreated(ctx, e, version)
 	case domain.SubmitterUpdated:
@@ -603,7 +604,7 @@ func (p *Projector) projectFamilyDeleted(ctx context.Context, e domain.FamilyDel
 	return p.readStore.DeleteFamily(ctx, branchID, e.FamilyID)
 }
 
-func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCreated, version int64) error {
+func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCreated, version int64, branchID domain.BranchID) error {
 	var publishDateSort *time.Time
 	var publishDateRaw string
 
@@ -635,11 +636,11 @@ func (p *Projector) projectSourceCreated(ctx context.Context, e domain.SourceCre
 		UpdatedAt:       e.OccurredAt(),
 	}
 
-	return p.readStore.SaveSource(ctx, source)
+	return p.readStore.SaveSource(ctx, branchID, source)
 }
 
-func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpdated, version int64) error {
-	source, err := p.readStore.GetSource(ctx, e.SourceID)
+func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpdated, version int64, branchID domain.BranchID) error {
+	source, err := p.readStore.GetSource(ctx, branchID, e.SourceID)
 	if err != nil {
 		return err
 	}
@@ -707,25 +708,34 @@ func (p *Projector) projectSourceUpdated(ctx context.Context, e domain.SourceUpd
 	source.Version = version
 	source.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveSource(ctx, source)
+	return p.readStore.SaveSource(ctx, branchID, source)
 }
 
-func (p *Projector) projectSourceDeleted(ctx context.Context, e domain.SourceDeleted) error {
-	return p.readStore.DeleteSource(ctx, e.SourceID)
+func (p *Projector) projectSourceDeleted(ctx context.Context, e domain.SourceDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteSource(ctx, branchID, e.SourceID)
 }
 
-func (p *Projector) projectCitationCreated(ctx context.Context, e domain.CitationCreated, version int64) error {
-	// Get source title for denormalization
+// projectCitationCreated saves the citation on branchID and bumps its source's
+// citation count there. The denormalized source title is resolved through the
+// SAME branch (#758): a citation created on a branch that retitled its source
+// carries the branch's title, not main's.
+func (p *Projector) projectCitationCreated(ctx context.Context, e domain.CitationCreated, version int64, branchID domain.BranchID) error {
+	source, err := p.readStore.GetSource(ctx, branchID, e.SourceID)
+	if err != nil {
+		return fmt.Errorf("resolve source %s for citation %s: %w", e.SourceID, e.CitationID, err)
+	}
 	var sourceTitle string
-	if source, _ := p.readStore.GetSource(ctx, e.SourceID); source != nil {
+	if source != nil {
 		sourceTitle = source.Title
 	}
 
 	var fieldsJSON string
 	if len(e.Fields) > 0 {
-		if b, err := json.Marshal(e.Fields); err == nil {
-			fieldsJSON = string(b)
+		b, err := json.Marshal(e.Fields)
+		if err != nil {
+			return fmt.Errorf("marshal citation %s fields: %w", e.CitationID, err)
 		}
+		fieldsJSON = string(b)
 	}
 
 	citation := &CitationReadModel{
@@ -748,26 +758,25 @@ func (p *Projector) projectCitationCreated(ctx context.Context, e domain.Citatio
 		CreatedAt:     e.OccurredAt(),
 	}
 
-	if err := p.readStore.SaveCitation(ctx, citation); err != nil {
+	if err := p.readStore.SaveCitation(ctx, branchID, citation); err != nil {
 		return err
 	}
 
-	// Increment citation count on source
-	source, err := p.readStore.GetSource(ctx, e.SourceID)
-	if err != nil {
-		return err
-	}
+	// Increment citation count on the source, on the same branch.
 	if source != nil {
 		source.CitationCount++
 		source.UpdatedAt = e.OccurredAt()
-		return p.readStore.SaveSource(ctx, source)
+		return p.readStore.SaveSource(ctx, branchID, source)
 	}
 
 	return nil
 }
 
-func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.CitationUpdated, version int64) error {
-	citation, err := p.readStore.GetCitation(ctx, e.CitationID)
+// projectCitationUpdated applies a citation's changes on branchID. A change of
+// source moves one citation count from the old source to the new one and
+// re-denormalizes the new source's title, all resolved through the same branch.
+func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.CitationUpdated, version int64, branchID domain.BranchID) error {
+	citation, err := p.readStore.GetCitation(ctx, branchID, e.CitationID)
 	if err != nil {
 		return err
 	}
@@ -780,23 +789,9 @@ func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.Citatio
 		switch key {
 		case "source_id":
 			if v, ok := value.(string); ok {
-				if newSourceID, err := uuid.Parse(v); err == nil {
-					// Update source citation counts
-					if citation.SourceID != newSourceID {
-						// Decrement old source
-						if oldSource, _ := p.readStore.GetSource(ctx, citation.SourceID); oldSource != nil {
-							if oldSource.CitationCount > 0 {
-								oldSource.CitationCount--
-							}
-							_ = p.readStore.SaveSource(ctx, oldSource)
-						}
-						// Increment new source
-						if newSource, _ := p.readStore.GetSource(ctx, newSourceID); newSource != nil {
-							newSource.CitationCount++
-							citation.SourceTitle = newSource.Title
-							_ = p.readStore.SaveSource(ctx, newSource)
-						}
-						citation.SourceID = newSourceID
+				if newSourceID, err := uuid.Parse(v); err == nil && citation.SourceID != newSourceID {
+					if err := p.moveCitationSource(ctx, branchID, citation, newSourceID); err != nil {
+						return err
 					}
 				}
 			}
@@ -843,27 +838,60 @@ func (p *Projector) projectCitationUpdated(ctx context.Context, e domain.Citatio
 				citation.TemplateID = v
 			}
 		case "fields":
-			if b, err := json.Marshal(value); err == nil {
-				citation.FieldsJSON = string(b)
+			b, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("marshal citation %s fields: %w", e.CitationID, err)
 			}
+			citation.FieldsJSON = string(b)
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "CitationUpdated", "key", key)
 		}
 	}
 
 	citation.Version = version
-	return p.readStore.SaveCitation(ctx, citation)
+	return p.readStore.SaveCitation(ctx, branchID, citation)
 }
 
-func (p *Projector) projectCitationDeleted(ctx context.Context, e domain.CitationDeleted) error {
+// moveCitationSource re-points citation at newSourceID on branchID: the old
+// source loses one citation, the new one gains one, and the citation takes the
+// new source's title. Both sources are resolved through branchID (#758).
+func (p *Projector) moveCitationSource(ctx context.Context, branchID domain.BranchID, citation *CitationReadModel, newSourceID uuid.UUID) error {
+	oldSource, err := p.readStore.GetSource(ctx, branchID, citation.SourceID)
+	if err != nil {
+		return fmt.Errorf("resolve old source %s for citation %s: %w", citation.SourceID, citation.ID, err)
+	}
+	if oldSource != nil {
+		if oldSource.CitationCount > 0 {
+			oldSource.CitationCount--
+		}
+		if err := p.readStore.SaveSource(ctx, branchID, oldSource); err != nil {
+			return fmt.Errorf("decrement citation count of source %s: %w", oldSource.ID, err)
+		}
+	}
+	newSource, err := p.readStore.GetSource(ctx, branchID, newSourceID)
+	if err != nil {
+		return fmt.Errorf("resolve new source %s for citation %s: %w", newSourceID, citation.ID, err)
+	}
+	if newSource != nil {
+		newSource.CitationCount++
+		citation.SourceTitle = newSource.Title
+		if err := p.readStore.SaveSource(ctx, branchID, newSource); err != nil {
+			return fmt.Errorf("increment citation count of source %s: %w", newSource.ID, err)
+		}
+	}
+	citation.SourceID = newSourceID
+	return nil
+}
+
+func (p *Projector) projectCitationDeleted(ctx context.Context, e domain.CitationDeleted, branchID domain.BranchID) error {
 	// Get citation first to update source citation count
-	citation, err := p.readStore.GetCitation(ctx, e.CitationID)
+	citation, err := p.readStore.GetCitation(ctx, branchID, e.CitationID)
 	if err != nil {
 		return err
 	}
 	if citation != nil {
 		// Decrement source citation count
-		source, err := p.readStore.GetSource(ctx, citation.SourceID)
+		source, err := p.readStore.GetSource(ctx, branchID, citation.SourceID)
 		if err != nil {
 			return err
 		}
@@ -872,13 +900,13 @@ func (p *Projector) projectCitationDeleted(ctx context.Context, e domain.Citatio
 				source.CitationCount--
 			}
 			source.UpdatedAt = e.OccurredAt()
-			if err := p.readStore.SaveSource(ctx, source); err != nil {
+			if err := p.readStore.SaveSource(ctx, branchID, source); err != nil {
 				return err
 			}
 		}
 	}
 
-	return p.readStore.DeleteCitation(ctx, e.CitationID)
+	return p.readStore.DeleteCitation(ctx, branchID, e.CitationID)
 }
 
 func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreated, version int64) error {
@@ -1533,13 +1561,13 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 4. Reassign citations from merged person to survivor
-	citations, err := p.readStore.GetCitationsForPerson(ctx, e.MergedID)
+	citations, err := p.readStore.GetCitationsForPerson(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch citations for merged person %s: %w", e.MergedID, err)
 	}
 	for _, citation := range citations {
 		citation.FactOwnerID = e.SurvivorID
-		if err := p.readStore.SaveCitation(ctx, &citation); err != nil {
+		if err := p.readStore.SaveCitation(ctx, branchID, &citation); err != nil {
 			return fmt.Errorf("migrate citation %s for merged person %s: %w", citation.ID, e.MergedID, err)
 		}
 	}
@@ -1650,7 +1678,7 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 
 // Note projections
 
-func (p *Projector) projectNoteCreated(ctx context.Context, e domain.NoteCreated, version int64) error {
+func (p *Projector) projectNoteCreated(ctx context.Context, e domain.NoteCreated, version int64, branchID domain.BranchID) error {
 	note := &NoteReadModel{
 		ID:           e.NoteID,
 		Text:         e.Text,
@@ -1662,11 +1690,11 @@ func (p *Projector) projectNoteCreated(ctx context.Context, e domain.NoteCreated
 		UpdatedAt:    e.OccurredAt(),
 	}
 
-	return p.readStore.SaveNote(ctx, note)
+	return p.readStore.SaveNote(ctx, branchID, note)
 }
 
-func (p *Projector) projectNoteUpdated(ctx context.Context, e domain.NoteUpdated, version int64) error {
-	note, err := p.readStore.GetNote(ctx, e.NoteID)
+func (p *Projector) projectNoteUpdated(ctx context.Context, e domain.NoteUpdated, version int64, branchID domain.BranchID) error {
+	note, err := p.readStore.GetNote(ctx, branchID, e.NoteID)
 	if err != nil {
 		return err
 	}
@@ -1686,11 +1714,11 @@ func (p *Projector) projectNoteUpdated(ctx context.Context, e domain.NoteUpdated
 	note.Version = version
 	note.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveNote(ctx, note)
+	return p.readStore.SaveNote(ctx, branchID, note)
 }
 
-func (p *Projector) projectNoteDeleted(ctx context.Context, e domain.NoteDeleted) error {
-	return p.readStore.DeleteNote(ctx, e.NoteID)
+func (p *Projector) projectNoteDeleted(ctx context.Context, e domain.NoteDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteNote(ctx, branchID, e.NoteID)
 }
 
 // Submitter projections

@@ -850,7 +850,9 @@ export interface paths {
         };
         /**
          * Format a citation using its template
-         * @description Renders the citation as full and short formatted text using the associated template
+         * @description Renders the citation as full and short formatted text using the
+         *     associated template. With `?branch=` the citation is read from that
+         *     branch's isolated view.
          */
         get: operations["formatCitation"];
         put?: never;
@@ -950,10 +952,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all sources */
+        /**
+         * List all sources
+         * @description Returns a paginated list of sources. With `?branch=` the list is that
+         *     branch's isolated view; omit it for the mainline.
+         */
         get: operations["listSources"];
         put?: never;
-        /** Create a new source */
+        /**
+         * Create a new source
+         * @description Creates a source. With `?branch=` the source is created on that branch
+         *     only.
+         */
         post: operations["createSource"];
         delete?: never;
         options?: never;
@@ -968,7 +978,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search sources */
+        /**
+         * Search sources
+         * @description Case-insensitive substring search over source titles and authors. With
+         *     `?branch=` the search runs over that branch's isolated view: a source
+         *     the branch retitled matches its branch title only, and one the branch
+         *     deleted never matches.
+         */
         get: operations["searchSources"];
         put?: never;
         post?: never;
@@ -987,12 +1003,21 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get a source by ID */
+        /**
+         * Get a source by ID
+         * @description Returns the source with its citations and external identifiers. With
+         *     `?branch=` all three are read from that branch's isolated view.
+         */
         get: operations["getSource"];
         /** Update a source */
         put: operations["updateSource"];
         post?: never;
-        /** Delete a source */
+        /**
+         * Delete a source
+         * @description Deletes a source that has no citations. With `?branch=` the source is
+         *     deleted on that branch only (the mainline keeps it), and "has no
+         *     citations" is judged by the branch's view.
+         */
         delete: operations["deleteSource"];
         options?: never;
         head?: never;
@@ -1027,7 +1052,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a new citation */
+        /**
+         * Create a new citation
+         * @description Creates a citation of a source. With `?branch=` the source must exist on
+         *     that branch, the citation is created on the branch only, and its
+         *     denormalized `source_title` is the branch's title for the source.
+         */
         post: operations["createCitation"];
         delete?: never;
         options?: never;
@@ -1816,7 +1846,8 @@ export interface paths {
         };
         /**
          * List all notes
-         * @description Returns paginated list of shared GEDCOM NOTE records
+         * @description Returns paginated list of shared GEDCOM NOTE records. With `?branch=`
+         *     the list is that branch's isolated view; omit it for the mainline.
          */
         get: operations["listNotes"];
         put?: never;
@@ -6241,7 +6272,17 @@ export interface operations {
     };
     formatCitation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6476,6 +6517,15 @@ export interface operations {
     listSources: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "title" | "source_type" | "created_at" | "updated_at";
@@ -6503,7 +6553,17 @@ export interface operations {
     };
     createSource: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6529,6 +6589,15 @@ export interface operations {
     searchSources: {
         parameters: {
             query: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Search query */
                 q: string;
                 limit?: components["parameters"]["limitParam"];
@@ -6553,7 +6622,17 @@ export interface operations {
     };
     getSource: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6576,7 +6655,17 @@ export interface operations {
     };
     updateSource: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6606,6 +6695,15 @@ export interface operations {
     deleteSource: {
         parameters: {
             query: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
                 version: components["parameters"]["versionParam"];
             };
@@ -6631,7 +6729,17 @@ export interface operations {
     };
     getCitationsForSource: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6654,7 +6762,17 @@ export interface operations {
     };
     createCitation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -6688,7 +6806,17 @@ export interface operations {
     };
     getCitation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6711,7 +6839,17 @@ export interface operations {
     };
     updateCitation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6741,6 +6879,15 @@ export interface operations {
     deleteCitation: {
         parameters: {
             query: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
                 version: components["parameters"]["versionParam"];
             };
@@ -6766,7 +6913,17 @@ export interface operations {
     };
     getCitationsForPerson: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -7803,6 +7960,15 @@ export interface operations {
     listNotes: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
                 order?: "asc" | "desc";
@@ -7827,7 +7993,17 @@ export interface operations {
     };
     createNote: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7852,7 +8028,17 @@ export interface operations {
     };
     getNote: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Note UUID */
@@ -7876,7 +8062,17 @@ export interface operations {
     };
     updateNote: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Note UUID */
@@ -7907,6 +8103,15 @@ export interface operations {
     deleteNote: {
         parameters: {
             query: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
                 version: components["parameters"]["versionParam"];
             };

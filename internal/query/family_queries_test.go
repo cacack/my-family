@@ -775,11 +775,11 @@ func TestGetGroupSheet_NegatedBirthWithCitations(t *testing.T) {
 
 	// Create a citation for the negated birth fact
 	sourceID := uuid.New()
-	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+	_ = readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:    sourceID,
 		Title: "Census Record",
 	})
-	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	_ = readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    sourceID,
 		SourceTitle: "Census Record",
@@ -847,11 +847,11 @@ func TestGetGroupSheet_NegatedDeathWithCitations(t *testing.T) {
 
 	// Create a citation for the negated death
 	sourceID := uuid.New()
-	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+	_ = readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:    sourceID,
 		Title: "Death Index",
 	})
-	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	_ = readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    sourceID,
 		SourceTitle: "Death Index",
@@ -921,11 +921,11 @@ func TestGetGroupSheet_NegatedMarriageWithCitations(t *testing.T) {
 
 	// Create a citation for the negated marriage
 	sourceID := uuid.New()
-	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+	_ = readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:    sourceID,
 		Title: "Marriage Registry",
 	})
-	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	_ = readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    sourceID,
 		SourceTitle: "Marriage Registry",
@@ -992,11 +992,11 @@ func TestGetGroupSheet_ExistingEventMarkedNegatedWithCitations(t *testing.T) {
 
 	// Create a citation for the birth fact
 	sourceID := uuid.New()
-	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+	_ = readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:    sourceID,
 		Title: "Parish Register",
 	})
-	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	_ = readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    sourceID,
 		SourceTitle: "Parish Register",
@@ -1066,11 +1066,11 @@ func TestGetGroupSheet_NonNegatedEventsStillHaveCitations(t *testing.T) {
 
 	// Create citations for non-negated events
 	sourceID := uuid.New()
-	_ = readStore.SaveSource(ctx, &repository.SourceReadModel{
+	_ = readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:    sourceID,
 		Title: "Birth Certificate",
 	})
-	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	_ = readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    sourceID,
 		SourceTitle: "Birth Certificate",
@@ -1079,7 +1079,7 @@ func TestGetGroupSheet_NonNegatedEventsStillHaveCitations(t *testing.T) {
 		Page:        "1",
 		Version:     1,
 	})
-	_ = readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	_ = readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    sourceID,
 		SourceTitle: "Birth Certificate",

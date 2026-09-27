@@ -1254,13 +1254,13 @@ func TestReadModelStore_SaveAndGetSource(t *testing.T) {
 	}
 
 	// Save source
-	err := store.SaveSource(ctx, source)
+	err := store.SaveSource(ctx, domain.MainBranchID, source)
 	if err != nil {
 		t.Fatalf("SaveSource() failed: %v", err)
 	}
 
 	// Get source
-	retrieved, err := store.GetSource(ctx, source.ID)
+	retrieved, err := store.GetSource(ctx, domain.MainBranchID, source.ID)
 	if err != nil {
 		t.Fatalf("GetSource() failed: %v", err)
 	}
@@ -1287,7 +1287,7 @@ func TestReadModelStore_GetSourceNonExistent(t *testing.T) {
 
 	nonExistentID := uuid.New()
 
-	retrieved, err := store.GetSource(ctx, nonExistentID)
+	retrieved, err := store.GetSource(ctx, domain.MainBranchID, nonExistentID)
 	if err != nil {
 		t.Fatalf("GetSource() failed: %v", err)
 	}
@@ -1324,7 +1324,7 @@ func TestReadModelStore_ListSources(t *testing.T) {
 	}
 
 	for _, s := range sources {
-		err := store.SaveSource(ctx, s)
+		err := store.SaveSource(ctx, domain.MainBranchID, s)
 		if err != nil {
 			t.Fatalf("SaveSource() failed: %v", err)
 		}
@@ -1418,7 +1418,7 @@ func TestReadModelStore_SearchSources(t *testing.T) {
 	}
 
 	for _, s := range sources {
-		err := store.SaveSource(ctx, s)
+		err := store.SaveSource(ctx, domain.MainBranchID, s)
 		if err != nil {
 			t.Fatalf("SaveSource() failed: %v", err)
 		}
@@ -1464,7 +1464,7 @@ func TestReadModelStore_SearchSources(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := store.SearchSources(ctx, tt.query, tt.limit)
+			results, err := store.SearchSources(ctx, domain.MainBranchID, tt.query, tt.limit)
 			if err != nil {
 				t.Fatalf("SearchSources() failed: %v", err)
 			}
@@ -1488,19 +1488,19 @@ func TestReadModelStore_DeleteSource(t *testing.T) {
 	}
 
 	// Save source
-	err := store.SaveSource(ctx, source)
+	err := store.SaveSource(ctx, domain.MainBranchID, source)
 	if err != nil {
 		t.Fatalf("SaveSource() failed: %v", err)
 	}
 
 	// Delete source
-	err = store.DeleteSource(ctx, source.ID)
+	err = store.DeleteSource(ctx, domain.MainBranchID, source.ID)
 	if err != nil {
 		t.Fatalf("DeleteSource() failed: %v", err)
 	}
 
 	// Verify deleted
-	retrieved, err := store.GetSource(ctx, source.ID)
+	retrieved, err := store.GetSource(ctx, domain.MainBranchID, source.ID)
 	if err != nil {
 		t.Fatalf("GetSource() after delete failed: %v", err)
 	}
@@ -1530,13 +1530,13 @@ func TestReadModelStore_SaveAndGetCitation(t *testing.T) {
 	}
 
 	// Save citation
-	err := store.SaveCitation(ctx, citation)
+	err := store.SaveCitation(ctx, domain.MainBranchID, citation)
 	if err != nil {
 		t.Fatalf("SaveCitation() failed: %v", err)
 	}
 
 	// Get citation
-	retrieved, err := store.GetCitation(ctx, citation.ID)
+	retrieved, err := store.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if err != nil {
 		t.Fatalf("GetCitation() failed: %v", err)
 	}
@@ -1563,7 +1563,7 @@ func TestReadModelStore_GetCitationNonExistent(t *testing.T) {
 
 	nonExistentID := uuid.New()
 
-	retrieved, err := store.GetCitation(ctx, nonExistentID)
+	retrieved, err := store.GetCitation(ctx, domain.MainBranchID, nonExistentID)
 	if err != nil {
 		t.Fatalf("GetCitation() failed: %v", err)
 	}
@@ -1601,12 +1601,12 @@ func TestReadModelStore_GetCitationsForSource(t *testing.T) {
 		FactOwnerID: factOwnerID,
 	}
 
-	store.SaveCitation(ctx, citation1)
-	store.SaveCitation(ctx, citation2)
-	store.SaveCitation(ctx, citation3)
+	store.SaveCitation(ctx, domain.MainBranchID, citation1)
+	store.SaveCitation(ctx, domain.MainBranchID, citation2)
+	store.SaveCitation(ctx, domain.MainBranchID, citation3)
 
 	// Get citations for source
-	citations, err := store.GetCitationsForSource(ctx, sourceID)
+	citations, err := store.GetCitationsForSource(ctx, domain.MainBranchID, sourceID)
 	if err != nil {
 		t.Fatalf("GetCitationsForSource() failed: %v", err)
 	}
@@ -1660,12 +1660,12 @@ func TestReadModelStore_GetCitationsForPerson(t *testing.T) {
 		FactOwnerID: otherPersonID,
 	}
 
-	store.SaveCitation(ctx, citation1)
-	store.SaveCitation(ctx, citation2)
-	store.SaveCitation(ctx, citation3)
+	store.SaveCitation(ctx, domain.MainBranchID, citation1)
+	store.SaveCitation(ctx, domain.MainBranchID, citation2)
+	store.SaveCitation(ctx, domain.MainBranchID, citation3)
 
 	// Get citations for person
-	citations, err := store.GetCitationsForPerson(ctx, personID)
+	citations, err := store.GetCitationsForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("GetCitationsForPerson() failed: %v", err)
 	}
@@ -1713,13 +1713,13 @@ func TestReadModelStore_GetCitationsForFact(t *testing.T) {
 		FactOwnerID: otherPersonID,
 	}
 
-	store.SaveCitation(ctx, citation1)
-	store.SaveCitation(ctx, citation2)
-	store.SaveCitation(ctx, citation3)
-	store.SaveCitation(ctx, citation4)
+	store.SaveCitation(ctx, domain.MainBranchID, citation1)
+	store.SaveCitation(ctx, domain.MainBranchID, citation2)
+	store.SaveCitation(ctx, domain.MainBranchID, citation3)
+	store.SaveCitation(ctx, domain.MainBranchID, citation4)
 
 	// Get citations for person's birth fact
-	citations, err := store.GetCitationsForFact(ctx, domain.FactPersonBirth, personID)
+	citations, err := store.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonBirth, personID)
 	if err != nil {
 		t.Fatalf("GetCitationsForFact() failed: %v", err)
 	}
@@ -1767,19 +1767,19 @@ func TestReadModelStore_DeleteCitation(t *testing.T) {
 	}
 
 	// Save citation
-	err := store.SaveCitation(ctx, citation)
+	err := store.SaveCitation(ctx, domain.MainBranchID, citation)
 	if err != nil {
 		t.Fatalf("SaveCitation() failed: %v", err)
 	}
 
 	// Delete citation
-	err = store.DeleteCitation(ctx, citation.ID)
+	err = store.DeleteCitation(ctx, domain.MainBranchID, citation.ID)
 	if err != nil {
 		t.Fatalf("DeleteCitation() failed: %v", err)
 	}
 
 	// Verify deleted
-	retrieved, err := store.GetCitation(ctx, citation.ID)
+	retrieved, err := store.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if err != nil {
 		t.Fatalf("GetCitation() after delete failed: %v", err)
 	}
@@ -3595,7 +3595,7 @@ func TestReadModelStore_ListCitations(t *testing.T) {
 	}
 
 	for _, c := range citations {
-		err := store.SaveCitation(ctx, c)
+		err := store.SaveCitation(ctx, domain.MainBranchID, c)
 		if err != nil {
 			t.Fatalf("SaveCitation() failed: %v", err)
 		}

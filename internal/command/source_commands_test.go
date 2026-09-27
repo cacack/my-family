@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -80,7 +81,7 @@ func TestCreateSource(t *testing.T) {
 				}
 
 				// Verify source in read model
-				source, _ := readStore.GetSource(ctx, result.ID)
+				source, _ := readStore.GetSource(ctx, domain.MainBranchID, result.ID)
 				if source == nil {
 					t.Fatal("Source not found in read model")
 				}
@@ -215,7 +216,7 @@ func TestDeleteSource(t *testing.T) {
 	}
 
 	// Verify deleted from read model
-	source, _ := readStore.GetSource(ctx, createResult.ID)
+	source, _ := readStore.GetSource(ctx, domain.MainBranchID, createResult.ID)
 	if source != nil {
 		t.Error("Source should be deleted from read model")
 	}
@@ -374,7 +375,7 @@ func TestCreateCitation(t *testing.T) {
 				}
 
 				// Verify citation in read model
-				citation, _ := readStore.GetCitation(ctx, result.ID)
+				citation, _ := readStore.GetCitation(ctx, domain.MainBranchID, result.ID)
 				if citation == nil {
 					t.Fatal("Citation not found in read model")
 				}
@@ -504,7 +505,7 @@ func TestDeleteCitation(t *testing.T) {
 	}
 
 	// Verify deleted from read model
-	citation, _ := readStore.GetCitation(ctx, createResult.ID)
+	citation, _ := readStore.GetCitation(ctx, domain.MainBranchID, createResult.ID)
 	if citation != nil {
 		t.Error("Citation should be deleted from read model")
 	}
@@ -593,7 +594,7 @@ func TestUpdateSource_AllFields(t *testing.T) {
 	}
 
 	// Verify changes in read model
-	source, _ := readStore.GetSource(ctx, createResult.ID)
+	source, _ := readStore.GetSource(ctx, domain.MainBranchID, createResult.ID)
 	if source.Title != "Updated Title" {
 		t.Errorf("Title = %s, want Updated Title", source.Title)
 	}
@@ -667,7 +668,7 @@ func TestUpdateCitation_SourceIDChange(t *testing.T) {
 	}
 
 	// Verify change in read model
-	citation, _ := readStore.GetCitation(ctx, createResult.ID)
+	citation, _ := readStore.GetCitation(ctx, domain.MainBranchID, createResult.ID)
 	if citation.SourceID != source2.ID {
 		t.Errorf("SourceID = %v, want %v", citation.SourceID, source2.ID)
 	}
@@ -814,7 +815,7 @@ func TestUpdateCitation_AllFields(t *testing.T) {
 	}
 
 	// Verify changes in read model
-	citation, _ := readStore.GetCitation(ctx, createResult.ID)
+	citation, _ := readStore.GetCitation(ctx, domain.MainBranchID, createResult.ID)
 	if citation.Page != "123" {
 		t.Errorf("Page = %s, want 123", citation.Page)
 	}

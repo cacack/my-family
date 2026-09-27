@@ -37,6 +37,9 @@ type ListNotesInput struct {
 	Limit     int
 	Offset    int
 	SortOrder string // asc, desc (sorted by updated_at)
+	// BranchID scopes the list to a branch's overlay (ADR-005, #758); the zero
+	// value (MainBranchID) lists the mainline.
+	BranchID domain.BranchID
 }
 
 // NoteListResult contains paginated note results.
@@ -53,6 +56,8 @@ func (s *NoteService) ListNotes(ctx context.Context, input ListNotesInput) (*Not
 		Limit:  input.Limit,
 		Offset: input.Offset,
 		Order:  input.SortOrder,
+		// BranchID scopes the list to the branch overlay (ADR-005, #758).
+		BranchID: input.BranchID,
 	}
 
 	if opts.Limit <= 0 {
@@ -83,9 +88,10 @@ func (s *NoteService) ListNotes(ctx context.Context, input ListNotesInput) (*Not
 	}, nil
 }
 
-// GetNote returns a note by ID.
-func (s *NoteService) GetNote(ctx context.Context, id uuid.UUID) (*Note, error) {
-	rm, err := s.readStore.GetNote(ctx, id)
+// GetNote returns a note by ID within the branch overlay (ADR-005, #758); the
+// zero branchID (MainBranchID) reads the mainline.
+func (s *NoteService) GetNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*Note, error) {
+	rm, err := s.readStore.GetNote(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}

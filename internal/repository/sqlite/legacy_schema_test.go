@@ -304,6 +304,227 @@ func TestPreFactBranchSchemaPurgesExistingBranch(t *testing.T) {
 	}
 }
 
+// preEvidenceSQLiteDDL is the evidence schema as it stood before #758: sources,
+// citations and notes keyed by a lone id, source_external_ids keyed by
+// (source_id, sequence), and both source children holding a foreign key to
+// sources(id). SQLite cannot re-key these tables in place.
+const preEvidenceSQLiteDDL = `
+	CREATE TABLE sources (
+		id TEXT PRIMARY KEY,
+		source_type TEXT NOT NULL,
+		title TEXT NOT NULL,
+		author TEXT,
+		publisher TEXT,
+		publish_date_raw TEXT,
+		publish_date_sort TEXT,
+		url TEXT,
+		repository_id TEXT,
+		repository_name TEXT,
+		collection_name TEXT,
+		call_number TEXT,
+		notes TEXT,
+		gedcom_xref TEXT,
+		citation_count INTEGER NOT NULL DEFAULT 0,
+		version INTEGER NOT NULL DEFAULT 1,
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE TABLE citations (
+		id TEXT PRIMARY KEY,
+		source_id TEXT NOT NULL,
+		source_title TEXT,
+		fact_type TEXT NOT NULL,
+		fact_owner_id TEXT NOT NULL,
+		page TEXT,
+		volume TEXT,
+		source_quality TEXT,
+		informant_type TEXT,
+		evidence_type TEXT,
+		quoted_text TEXT,
+		analysis TEXT,
+		template_id TEXT,
+		fields_data TEXT,
+		gedcom_xref TEXT,
+		version INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		FOREIGN KEY (source_id) REFERENCES sources(id)
+	);
+	CREATE TABLE notes (
+		id TEXT PRIMARY KEY,
+		text TEXT NOT NULL,
+		mime TEXT,
+		language TEXT,
+		translations TEXT,
+		gedcom_xref TEXT,
+		version INTEGER NOT NULL DEFAULT 1,
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE TABLE source_external_ids (
+		source_id TEXT NOT NULL,
+		sequence INTEGER NOT NULL,
+		value TEXT NOT NULL,
+		type TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (source_id, sequence),
+		FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
+	);
+`
+
+// TestPreEvidenceBranchSchemaRefusesBranchWrites covers a database built between
+// #757 and #758: the slice and fact tables carry branch keys, but the evidence
+// tables keep their pre-branch keys (and foreign keys to sources(id)). Such a
+// database must refuse every evidence branch write with
+// repository.ErrBranchesUnsupported — and, like any partially branch-keyed
+// schema, every other branch write too — while mainline evidence reads and
+// writes, including upserts and the DeleteSource cascade, keep working.
+func TestPreEvidenceBranchSchemaRefusesBranchWrites(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-preevidence-readmodel-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(preEvidenceSQLiteDDL); err != nil {
+		t.Fatalf("create pre-#758 evidence tables: %v", err)
+	}
+
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	ctx := context.Background()
+	main := domain.MainBranchID
+	branch := domain.BranchID(uuid.New())
+	now := time.Now()
+	src := &repository.SourceReadModel{ID: uuid.New(), SourceType: domain.SourceCensus, Title: "Census 1880", Version: 1, UpdatedAt: now}
+	cit := &repository.CitationReadModel{ID: uuid.New(), SourceID: src.ID, SourceTitle: src.Title, FactType: domain.FactPersonBirth, FactOwnerID: uuid.New(), Version: 1, CreatedAt: now}
+	note := &repository.NoteReadModel{ID: uuid.New(), Text: "Seen in the register", Version: 1, UpdatedAt: now}
+	extIDs := []repository.SourceExternalIDReadModel{{Value: "MAIN-1", Type: "http://example.org/ids"}}
+
+	// Branch writes are refused up front.
+	for name, err := range map[string]error{
+		"SaveSource":               store.SaveSource(ctx, branch, src),
+		"DeleteSource":             store.DeleteSource(ctx, branch, src.ID),
+		"ReplaceSourceExternalIDs": store.ReplaceSourceExternalIDs(ctx, branch, src.ID, extIDs),
+		"SaveCitation":             store.SaveCitation(ctx, branch, cit),
+		"DeleteCitation":           store.DeleteCitation(ctx, branch, cit.ID),
+		"SaveNote":                 store.SaveNote(ctx, branch, note),
+		"DeleteNote":               store.DeleteNote(ctx, branch, note.ID),
+		"SavePerson":               store.SavePerson(ctx, branch, branchPersonRM(uuid.New(), "Branch", "Row")),
+	} {
+		if !errors.Is(err, repository.ErrBranchesUnsupported) {
+			t.Errorf("branch %s on pre-#758 schema: want ErrBranchesUnsupported, got %v", name, err)
+		}
+	}
+
+	// Mainline keeps working: insert, upsert, read, then the DeleteSource cascade
+	// (citations first, so the legacy foreign key never trips).
+	if err := store.SaveSource(ctx, main, src); err != nil {
+		t.Fatalf("main SaveSource: %v", err)
+	}
+	src.Title = "Census 1880 (Revised)"
+	if err := store.SaveSource(ctx, main, src); err != nil {
+		t.Fatalf("main SaveSource upsert: %v", err)
+	}
+	if err := store.ReplaceSourceExternalIDs(ctx, main, src.ID, extIDs); err != nil {
+		t.Fatalf("main ReplaceSourceExternalIDs: %v", err)
+	}
+	if err := store.SaveCitation(ctx, main, cit); err != nil {
+		t.Fatalf("main SaveCitation: %v", err)
+	}
+	if err := store.SaveCitation(ctx, main, cit); err != nil {
+		t.Fatalf("main SaveCitation upsert: %v", err)
+	}
+	if err := store.SaveNote(ctx, main, note); err != nil {
+		t.Fatalf("main SaveNote: %v", err)
+	}
+	if err := store.SaveNote(ctx, main, note); err != nil {
+		t.Fatalf("main SaveNote upsert: %v", err)
+	}
+	if got, err := store.GetSource(ctx, main, src.ID); err != nil || got == nil || got.Title != "Census 1880 (Revised)" {
+		t.Fatalf("main GetSource = %+v (err=%v), want the upserted title", got, err)
+	}
+	if got, err := store.SearchSources(ctx, main, "revised", 10); err != nil || len(got) != 1 {
+		t.Errorf("main SearchSources = %+v (err=%v), want 1 hit", got, err)
+	}
+	if got, err := store.GetSourceExternalIDs(ctx, main, src.ID); err != nil || len(got) != 1 {
+		t.Errorf("main GetSourceExternalIDs = %+v (err=%v), want 1", got, err)
+	}
+	if got, err := store.GetNote(ctx, main, note.ID); err != nil || got == nil {
+		t.Errorf("main GetNote = %+v (err=%v), want the note", got, err)
+	}
+	if err := store.DeleteSource(ctx, main, src.ID); err != nil {
+		t.Fatalf("main DeleteSource: %v", err)
+	}
+	if got, err := store.GetCitation(ctx, main, cit.ID); err != nil || got != nil {
+		t.Errorf("main GetCitation after DeleteSource = %+v (err=%v), want cascaded", got, err)
+	}
+	if got, err := store.GetSourceExternalIDs(ctx, main, src.ID); err != nil || len(got) != 0 {
+		t.Errorf("main GetSourceExternalIDs after DeleteSource = %+v (err=%v), want cascaded", got, err)
+	}
+	if err := store.DeleteNote(ctx, main, note.ID); err != nil {
+		t.Fatalf("main DeleteNote: %v", err)
+	}
+	if got, err := store.GetNote(ctx, main, note.ID); err != nil || got != nil {
+		t.Errorf("main GetNote after delete = %+v (err=%v), want absent", got, err)
+	}
+}
+
+// TestPreEvidenceExternalIDKeyIsNotBranchCapable pins the detail that made
+// detectBranchCapable look for branch_id itself: source_external_ids was already
+// keyed by the composite (source_id, sequence) before #758, so "more than one
+// key column" would wrongly call it branch-capable. With only that table left on
+// its old key, branch writes must still be refused.
+func TestPreEvidenceExternalIDKeyIsNotBranchCapable(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-preevidence-exid-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		CREATE TABLE source_external_ids (
+			source_id TEXT NOT NULL,
+			sequence INTEGER NOT NULL,
+			value TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (source_id, sequence)
+		)`); err != nil {
+		t.Fatalf("create pre-#758 source_external_ids: %v", err)
+	}
+
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	if err := store.ReplaceSourceExternalIDs(ctx, branch, uuid.New(), nil); !errors.Is(err, repository.ErrBranchesUnsupported) {
+		t.Errorf("branch ReplaceSourceExternalIDs: want ErrBranchesUnsupported, got %v", err)
+	}
+	// Mainline external IDs keep working on the old key.
+	sourceID := uuid.New()
+	ids := []repository.SourceExternalIDReadModel{{Value: "A"}, {Value: "B"}}
+	if err := store.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, sourceID, ids); err != nil {
+		t.Fatalf("main ReplaceSourceExternalIDs: %v", err)
+	}
+	if got, err := store.GetSourceExternalIDs(ctx, domain.MainBranchID, sourceID); err != nil || len(got) != 2 {
+		t.Errorf("main GetSourceExternalIDs = %+v (err=%v), want 2", got, err)
+	}
+}
+
 // legacyEventFixture is one row of the pre-ADR-005 events table. Ids and
 // positions are asserted to survive the rebuild byte-for-byte.
 type legacyEventFixture struct {

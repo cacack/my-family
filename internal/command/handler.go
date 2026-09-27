@@ -42,13 +42,13 @@ var (
 // internal/repository/projection.go, not from entity names: an event belongs
 // here only when every store call its handler makes is branch-keyed (the
 // copy-on-write overlay #669 added for persons, person names, families, family
-// children and pedigree edges, and #757 extended to life events, attributes and
-// associations).
+// children and pedigree edges, #757 extended to life events, attributes and
+// associations, and #758 to sources, citations and notes).
 //
 // Deliberately excluded despite their handlers taking a branchID:
-//   - PersonMerged — branch-scoped for the slice and fact writes, but it also
-//     rewrites citations, media, evidence and research rows that are main-only,
-//     so a branch-scoped merge would mutate main.
+//   - PersonMerged — branch-scoped for the slice, fact and citation writes, but
+//     it also rewrites media, evidence-analysis and research rows that are
+//     main-only, so a branch-scoped merge would mutate main.
 //   - LDSOrdinanceCreated — same shape, but PERMANENT. LDS ordinances are
 //     deliberately never branch-scoped, so this entry is not waiting on anything.
 //     See docs/adr/005-research-branch-data-model.md, "Entities that stay
@@ -80,6 +80,17 @@ var branchAwareEventTypes = map[string]struct{}{
 	"AssociationCreated": {},
 	"AssociationUpdated": {},
 	"AssociationDeleted": {},
+	// Evidence (#758). CitationCreated/Updated/Deleted also rewrite the source's
+	// citation count and denormalized title, both resolved on the same branch.
+	"SourceCreated":   {},
+	"SourceUpdated":   {},
+	"SourceDeleted":   {},
+	"CitationCreated": {},
+	"CitationUpdated": {},
+	"CitationDeleted": {},
+	"NoteCreated":     {},
+	"NoteUpdated":     {},
+	"NoteDeleted":     {},
 }
 
 // BranchAwareEventTypes returns the event types a branch-scoped handler may
@@ -191,13 +202,15 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 // commands whose events are all in BranchAwareEventTypes: CreatePerson,
 // UpdatePerson, DeletePerson, AddName, UpdateName, DeleteName, CreateFamily,
 // UpdateFamily, DeleteFamily, LinkChild, UnlinkChild, CreateAssociation,
-// UpdateAssociation and DeleteAssociation. (Life events and attributes have no
+// UpdateAssociation, DeleteAssociation, CreateSource, UpdateSource,
+// DeleteSource, CreateCitation, UpdateCitation, DeleteCitation, CreateNote,
+// UpdateNote and DeleteNote. (Life events and attributes have no
 // commands of their own yet — GEDCOM import writes them, on main — but their
 // events are allowlisted so a branch merge or a future command can carry them.)
 //
-// Every other entity command — sources, citations, media, notes, submitters,
-// repositories, LDS ordinances, evidence, research logs, proof summaries and
-// MergePersons — routes through execute too, so on a branch it
+// Every other entity command — media, submitters, repositories, LDS
+// ordinances, evidence analyses and conflicts, research logs, proof summaries
+// and MergePersons — routes through execute too, so on a branch it
 // fails loudly rather than writing main. Issue #676 moves those onto the branch
 // as their projections become branch-aware.
 //
@@ -301,7 +314,7 @@ func (h *Handler) RollbackFamily(ctx context.Context, familyID uuid.UUID, target
 // It computes the changes needed and generates a compensating SourceUpdated event.
 func (h *Handler) RollbackSource(ctx context.Context, sourceID uuid.UUID, targetVersion int64) (*RollbackResult, error) {
 	return h.rollbackEntity(ctx, "Source", sourceID, targetVersion, func(id uuid.UUID) (bool, error) {
-		source, err := h.readStore.GetSource(ctx, id)
+		source, err := h.readStore.GetSource(ctx, domain.MainBranchID, id)
 		if err != nil {
 			return false, err
 		}
@@ -313,7 +326,7 @@ func (h *Handler) RollbackSource(ctx context.Context, sourceID uuid.UUID, target
 // It computes the changes needed and generates a compensating CitationUpdated event.
 func (h *Handler) RollbackCitation(ctx context.Context, citationID uuid.UUID, targetVersion int64) (*RollbackResult, error) {
 	return h.rollbackEntity(ctx, "Citation", citationID, targetVersion, func(id uuid.UUID) (bool, error) {
-		citation, err := h.readStore.GetCitation(ctx, id)
+		citation, err := h.readStore.GetCitation(ctx, domain.MainBranchID, id)
 		if err != nil {
 			return false, err
 		}

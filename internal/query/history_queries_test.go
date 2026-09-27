@@ -83,14 +83,14 @@ func (m *mockReadModelStore) GetFamily(ctx context.Context, _ domain.BranchID, i
 	return nil, repository.ErrStreamNotFound
 }
 
-func (m *mockReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {
+func (m *mockReadModelStore) GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.SourceReadModel, error) {
 	if m.getSourceFunc != nil {
 		return m.getSourceFunc(ctx, id)
 	}
 	return nil, repository.ErrStreamNotFound
 }
 
-func (m *mockReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*repository.CitationReadModel, error) {
+func (m *mockReadModelStore) GetCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.CitationReadModel, error) {
 	if m.getCitationFunc != nil {
 		return m.getCitationFunc(ctx, id)
 	}
@@ -136,10 +136,10 @@ func (m *mockReadModelStore) ReplaceFamilyExternalIDs(ctx context.Context, _ dom
 func (m *mockReadModelStore) GetFamilyExternalIDs(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.FamilyExternalIDReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
+func (m *mockReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
+func (m *mockReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []repository.RepositoryExternalIDReadModel) error {
@@ -191,31 +191,31 @@ func (m *mockReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Br
 func (m *mockReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) SearchSources(ctx context.Context, query string, limit int) ([]repository.SourceReadModel, error) {
+func (m *mockReadModelStore) SearchSources(ctx context.Context, branchID domain.BranchID, query string, limit int) ([]repository.SourceReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SaveSource(ctx context.Context, source *repository.SourceReadModel) error {
+func (m *mockReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchID, source *repository.SourceReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteSource(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 func (m *mockReadModelStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
+func (m *mockReadModelStore) GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.CitationReadModel, error) {
+func (m *mockReadModelStore) GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.CitationReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
+func (m *mockReadModelStore) GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SaveCitation(ctx context.Context, citation *repository.CitationReadModel) error {
+func (m *mockReadModelStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 
@@ -314,16 +314,16 @@ func (m *mockReadModelStore) GetBrickWalls(ctx context.Context, includeResolved 
 }
 
 // Note stub methods
-func (m *mockReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
+func (m *mockReadModelStore) GetNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.NoteReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) ListNotes(ctx context.Context, opts repository.ListOptions) ([]repository.NoteReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) SaveNote(ctx context.Context, note *repository.NoteReadModel) error {
+func (m *mockReadModelStore) SaveNote(ctx context.Context, branchID domain.BranchID, note *repository.NoteReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteNote(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 

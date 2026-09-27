@@ -376,7 +376,7 @@ func TestExport_WithSources(t *testing.T) {
 		RepositoryName: "State Archive",
 		Notes:          "Important source",
 	}
-	if err := readStore.SaveSource(ctx, source); err != nil {
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, source); err != nil {
 		t.Fatal(err)
 	}
 
@@ -430,7 +430,7 @@ func TestExport_SourceWithXref(t *testing.T) {
 		Title:      "Test Source",
 		GedcomXref: "@S100@",
 	}
-	if err := readStore.SaveSource(ctx, source); err != nil {
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, source); err != nil {
 		t.Fatal(err)
 	}
 
@@ -460,7 +460,7 @@ func TestExport_WithCitations(t *testing.T) {
 		SourceType: "book",
 		Title:      "Birth Register",
 	}
-	readStore.SaveSource(ctx, source)
+	readStore.SaveSource(ctx, domain.MainBranchID, source)
 
 	// Create a person
 	personID := uuid.New()
@@ -487,7 +487,7 @@ func TestExport_WithCitations(t *testing.T) {
 		EvidenceType:  "direct",
 		QuotedText:    "Born January 1st",
 	}
-	readStore.SaveCitation(ctx, citation)
+	readStore.SaveCitation(ctx, domain.MainBranchID, citation)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -535,7 +535,7 @@ func TestExport_FamilyCitations(t *testing.T) {
 		SourceType: "archive",
 		Title:      "Marriage Records",
 	}
-	readStore.SaveSource(ctx, source)
+	readStore.SaveSource(ctx, domain.MainBranchID, source)
 
 	// Create persons
 	husbandID := uuid.New()
@@ -575,7 +575,7 @@ func TestExport_FamilyCitations(t *testing.T) {
 		InformantType: "secondary",
 		QuotedText:    "Married on June 10th",
 	}
-	readStore.SaveCitation(ctx, citation)
+	readStore.SaveCitation(ctx, domain.MainBranchID, citation)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -612,12 +612,12 @@ func TestExport_MultipleCitations(t *testing.T) {
 	// Create sources
 	source1ID := uuid.New()
 	source2ID := uuid.New()
-	readStore.SaveSource(ctx, &repository.SourceReadModel{
+	readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:         source1ID,
 		SourceType: "book",
 		Title:      "Source 1",
 	})
-	readStore.SaveSource(ctx, &repository.SourceReadModel{
+	readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:         source2ID,
 		SourceType: "book",
 		Title:      "Source 2",
@@ -635,14 +635,14 @@ func TestExport_MultipleCitations(t *testing.T) {
 	readStore.SavePerson(ctx, domain.MainBranchID, person)
 
 	// Create two citations for birth
-	readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    source1ID,
 		FactType:    domain.FactPersonBirth,
 		FactOwnerID: personID,
 		Page:        "10",
 	})
-	readStore.SaveCitation(ctx, &repository.CitationReadModel{
+	readStore.SaveCitation(ctx, domain.MainBranchID, &repository.CitationReadModel{
 		ID:          uuid.New(),
 		SourceID:    source2ID,
 		FactType:    domain.FactPersonBirth,
@@ -678,7 +678,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 	ctx := context.Background()
 
 	sourceID := uuid.New()
-	readStore.SaveSource(ctx, &repository.SourceReadModel{
+	readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:         sourceID,
 		SourceType: "book",
 		Title:      "Test Source",
@@ -733,7 +733,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear previous citations
 			readStore := memory.NewReadModelStore()
-			readStore.SaveSource(ctx, &repository.SourceReadModel{
+			readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 				ID:         sourceID,
 				SourceType: "book",
 				Title:      "Test Source",
@@ -755,7 +755,7 @@ func TestExport_CitationQualityMapping(t *testing.T) {
 				EvidenceType:  tt.evidenceType,
 				InformantType: tt.informantType,
 			}
-			readStore.SaveCitation(ctx, citation)
+			readStore.SaveCitation(ctx, domain.MainBranchID, citation)
 
 			exporter := gedcom.NewExporter(readStore)
 			buf := &bytes.Buffer{}
@@ -787,7 +787,7 @@ func TestExport_SourceWithMultilineNotes(t *testing.T) {
 		Title:      "Test Source",
 		Notes:      "First line\nSecond line\nThird line",
 	}
-	readStore.SaveSource(ctx, source)
+	readStore.SaveSource(ctx, domain.MainBranchID, source)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -815,7 +815,7 @@ func TestExport_CitationWithMultilineText(t *testing.T) {
 	ctx := context.Background()
 
 	sourceID := uuid.New()
-	readStore.SaveSource(ctx, &repository.SourceReadModel{
+	readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:         sourceID,
 		SourceType: "book",
 		Title:      "Test Source",
@@ -837,7 +837,7 @@ func TestExport_CitationWithMultilineText(t *testing.T) {
 		FactOwnerID: personID,
 		QuotedText:  "First line of quote\nSecond line of quote",
 	}
-	readStore.SaveCitation(ctx, citation)
+	readStore.SaveCitation(ctx, domain.MainBranchID, citation)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -2617,7 +2617,7 @@ func TestExport_Repositories(t *testing.T) {
 		RepositoryName: "National Archives",
 		GedcomXref:     "@S1@",
 	}
-	if err := readStore.SaveSource(ctx, linkedSource); err != nil {
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, linkedSource); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2630,7 +2630,7 @@ func TestExport_Repositories(t *testing.T) {
 		RepositoryName: "St. Mary's Church",
 		GedcomXref:     "@S2@",
 	}
-	if err := readStore.SaveSource(ctx, unlinkedSource); err != nil {
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, unlinkedSource); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2708,7 +2708,7 @@ func TestExport_SourceLinkedByRepositoryID(t *testing.T) {
 		RepositoryName: "National Archives",
 		GedcomXref:     "@S1@",
 	}
-	if err := readStore.SaveSource(ctx, source); err != nil {
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, source); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2817,7 +2817,7 @@ func TestExport_RepositoryRoundTrip(t *testing.T) {
 			GedcomXref:     s.GedcomXref,
 			Version:        1,
 		}
-		if err := readStore.SaveSource(ctx, sm); err != nil {
+		if err := readStore.SaveSource(ctx, domain.MainBranchID, sm); err != nil {
 			t.Fatalf("Failed to save source: %v", err)
 		}
 	}
@@ -3063,7 +3063,7 @@ func TestExternalIDs_RoundTrip_FamilySourceRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourceID := uuid.New()
-	if err := readStore.SaveSource(ctx, &repository.SourceReadModel{ID: sourceID, SourceType: domain.SourceBook, Title: "Test Source"}); err != nil {
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{ID: sourceID, SourceType: domain.SourceBook, Title: "Test Source"}); err != nil {
 		t.Fatal(err)
 	}
 	repoID := uuid.New()
@@ -3081,7 +3081,7 @@ func TestExternalIDs_RoundTrip_FamilySourceRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	srcIDs := []repository.SourceExternalIDReadModel{{Value: "SRC-EXID-1", Type: "http://example.com/src"}}
-	if err := readStore.ReplaceSourceExternalIDs(ctx, sourceID, srcIDs); err != nil {
+	if err := readStore.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, sourceID, srcIDs); err != nil {
 		t.Fatal(err)
 	}
 	repoIDs := []repository.RepositoryExternalIDReadModel{{Value: "REPO-EXID-1", Type: "http://example.com/repo"}}
@@ -3159,7 +3159,7 @@ func TestExport_SharedNote(t *testing.T) {
 			{Text: "Nota en texto plano", MIME: "text/plain", Language: "es"},
 		},
 	}
-	if err := readStore.SaveNote(ctx, note); err != nil {
+	if err := readStore.SaveNote(ctx, domain.MainBranchID, note); err != nil {
 		t.Fatalf("SaveNote failed: %v", err)
 	}
 
@@ -3204,7 +3204,7 @@ func TestExport_PlainNoteStaysNote(t *testing.T) {
 		ID:   uuid.New(),
 		Text: "A plain shared note",
 	}
-	if err := readStore.SaveNote(ctx, note); err != nil {
+	if err := readStore.SaveNote(ctx, domain.MainBranchID, note); err != nil {
 		t.Fatalf("SaveNote failed: %v", err)
 	}
 
@@ -3244,7 +3244,7 @@ func TestSharedNote_RoundTrip(t *testing.T) {
 			{Text: "Nota de texto enriquecido.", MIME: "text/plain", Language: "es"},
 		},
 	}
-	if err := readStore.SaveNote(ctx, original); err != nil {
+	if err := readStore.SaveNote(ctx, domain.MainBranchID, original); err != nil {
 		t.Fatalf("SaveNote failed: %v", err)
 	}
 
@@ -3441,7 +3441,7 @@ func TestExport_InlineRepositoryNameRoundTrip(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()
 
-	if err := readStore.SaveSource(ctx, &repository.SourceReadModel{
+	if err := readStore.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:             uuid.New(),
 		SourceType:     "book",
 		Title:          "Parish Register",

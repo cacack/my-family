@@ -6,8 +6,9 @@
 	 * The `?branch=` parameter is declared on the #669 vertical slice — persons,
 	 * person names, families (detail, not list), family children and pedigree —
 	 * on the browse and map aggregates that read that slice's overlay (#676
-	 * sub-issue A, #756), and on the person/family facts of sub-issue B (#757):
-	 * the cemetery index and the association endpoints. The remaining read
+	 * sub-issue A, #756), on the person/family facts of sub-issue B (#757):
+	 * the cemetery index and the association endpoints, and on the evidence of
+	 * sub-issue C (#758): sources, citations and notes. The remaining read
 	 * models still answer from the mainline. Rendering one of them unlabelled beneath the branch banner would
 	 * be the UI quietly lying about what the user is looking at.
 	 *
@@ -25,7 +26,6 @@
 	 * - `/families` (list only; family *detail* is branch-scoped)
 	 * - `/quality` — validation issues and duplicate pairs
 	 * - `/search` — advanced search
-	 * - `/sources` — sources and citations
 	 * - `/history` — the global change feed
 	 * - `/ahnentafel/{id}` — the ancestor report
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
@@ -33,13 +33,13 @@
 	 * Deliberately not placed, because these surfaces now follow the branch:
 	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
 	 * and per-place list), `/browse/cemeteries` (index and per-cemetery list,
-	 * since #757) and `/map`.
+	 * since #757), `/map` and `/sources` (list and detail, since #758).
 	 *
 	 * Known gap, to close with the rest of #676 rather than by sprinkling more
 	 * notices: `/` (dashboard and discovery feed), `/descendancy/{id}`,
 	 * `/relationship`, `/repositories`, `/import`, and the panels on person and
 	 * family detail pages that are not themselves scoped — change history,
-	 * restore points, media, citations and evidence. All of them answer from
+	 * restore points, media and evidence. All of them answer from
 	 * the mainline today; none of them says so.
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
@@ -56,7 +56,7 @@
 
 	let {
 		surface,
-		detail = 'Branch scoping currently covers people, families, pedigrees and the browse and map views.'
+		detail = 'Branch scoping currently covers people, families, pedigrees, sources, citations, notes and the browse and map views.'
 	}: Props = $props();
 </script>
 

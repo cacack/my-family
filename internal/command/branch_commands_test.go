@@ -438,52 +438,172 @@ func TestBranchAssociationLifecycle(t *testing.T) {
 }
 
 // TestExecute_RejectsNonBranchAwareEvent guards the silent-write-to-main hazard:
-// a Source is not part of the branch-aware slice, so a branch-scoped source
-// command must fail rather than land on main.
+// a Repository is deliberately main-only (ADR-005, "Entities that stay
+// main-only"), so a branch-scoped repository command must fail rather than land
+// on main.
 func TestExecute_RejectsNonBranchAwareEvent(t *testing.T) {
 	f := newBranchFixture()
 	ctx := context.Background()
 
-	branch, err := f.handler.CreateBranch(ctx, "sources", "")
+	branch, err := f.handler.CreateBranch(ctx, "repositories", "")
 	if err != nil {
 		t.Fatalf("CreateBranch failed: %v", err)
 	}
 
-	_, err = f.handler.WithBranch(branch).CreateSource(ctx, command.CreateSourceInput{
-		Title:      "1880 Census",
-		SourceType: "census",
+	_, err = f.handler.WithBranch(branch).CreateRepository(ctx, command.CreateRepositoryInput{
+		Name: "National Archives",
 	})
 	if !errors.Is(err, command.ErrEventTypeNotBranchAware) {
-		t.Fatalf("branch-scoped CreateSource error = %v, want ErrEventTypeNotBranchAware", err)
+		t.Fatalf("branch-scoped CreateRepository error = %v, want ErrEventTypeNotBranchAware", err)
 	}
-	if !strings.Contains(err.Error(), "SourceCreated") {
-		t.Errorf("error %v should name the offending event type SourceCreated", err)
+	if !strings.Contains(err.Error(), "RepositoryCreated") {
+		t.Errorf("error %v should name the offending event type RepositoryCreated", err)
 	}
 
-	// Nothing landed anywhere: no source on main, no event in the log.
-	sources, _, err := f.readStore.ListSources(ctx, repository.ListOptions{Limit: 10})
+	// Nothing landed anywhere: no repository on main, no event in the log.
+	repos, _, err := f.readStore.ListRepositories(ctx, repository.ListOptions{Limit: 10})
 	if err != nil {
-		t.Fatalf("ListSources failed: %v", err)
+		t.Fatalf("ListRepositories failed: %v", err)
 	}
-	if len(sources) != 0 {
-		t.Errorf("main holds %d sources after a rejected branch write, want 0", len(sources))
+	if len(repos) != 0 {
+		t.Errorf("main holds %d repositories after a rejected branch write, want 0", len(repos))
 	}
 	all, err := f.eventStore.ReadAll(ctx, 0, 100)
 	if err != nil {
 		t.Fatalf("ReadAll failed: %v", err)
 	}
 	for _, e := range all {
-		if e.EventType == "SourceCreated" {
-			t.Fatal("rejected branch write still appended a SourceCreated event")
+		if e.EventType == "RepositoryCreated" {
+			t.Fatal("rejected branch write still appended a RepositoryCreated event")
 		}
 	}
 
 	// The same command on the unscoped handler still works.
-	if _, err := f.handler.CreateSource(ctx, command.CreateSourceInput{
-		Title:      "1880 Census",
-		SourceType: "census",
+	if _, err := f.handler.CreateRepository(ctx, command.CreateRepositoryInput{
+		Name: "National Archives",
 	}); err != nil {
-		t.Fatalf("mainline CreateSource failed: %v", err)
+		t.Fatalf("mainline CreateRepository failed: %v", err)
+	}
+}
+
+// TestBranchEvidenceLifecycle is the #758 round trip through the command layer:
+// a branch-scoped handler creates, updates and deletes sources, citations and
+// notes on the branch only (BR-006 admits the events), a citation's
+// denormalized source title follows the branch's retitle, and main's evidence is
+// untouched throughout.
+func TestBranchEvidenceLifecycle(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+
+	person, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	src, err := f.handler.CreateSource(ctx, command.CreateSourceInput{Title: "1880 Census", SourceType: "census"})
+	if err != nil {
+		t.Fatalf("main CreateSource failed: %v", err)
+	}
+	note, err := f.handler.CreateNote(ctx, command.CreateNoteInput{Text: "main text"})
+	if err != nil {
+		t.Fatalf("main CreateNote failed: %v", err)
+	}
+
+	branch, err := f.handler.CreateBranch(ctx, "evidence", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	scoped := f.handler.WithBranch(branch)
+	branchID := domain.BranchID(branch.ID)
+
+	// Retitle the main source on the branch, then cite it there: the citation
+	// denormalizes the BRANCH title and bumps the branch's citation count only.
+	title := "1880 Census (Branch Reading)"
+	if _, err := scoped.UpdateSource(ctx, command.UpdateSourceInput{ID: src.ID, Title: &title, Version: src.Version}); err != nil {
+		t.Fatalf("branch UpdateSource failed: %v", err)
+	}
+	cit, err := scoped.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID: src.ID, FactType: string(domain.FactPersonBirth), FactOwnerID: person.ID, Page: "12",
+	})
+	if err != nil {
+		t.Fatalf("branch CreateCitation failed: %v", err)
+	}
+	onBranch, err := f.readStore.GetCitation(ctx, branchID, cit.ID)
+	if err != nil || onBranch == nil || onBranch.SourceTitle != title {
+		t.Fatalf("branch GetCitation = %+v (err=%v), want source title %q", onBranch, err, title)
+	}
+	if got, err := f.readStore.GetCitation(ctx, domain.MainBranchID, cit.ID); err != nil || got != nil {
+		t.Errorf("main GetCitation(branch-created) = %+v (err=%v), want absent", got, err)
+	}
+	branchSrc, err := f.readStore.GetSource(ctx, branchID, src.ID)
+	if err != nil || branchSrc == nil || branchSrc.CitationCount != 1 || branchSrc.Title != title {
+		t.Fatalf("branch GetSource = %+v (err=%v), want the branch title and 1 citation", branchSrc, err)
+	}
+	mainSrc, err := f.readStore.GetSource(ctx, domain.MainBranchID, src.ID)
+	if err != nil || mainSrc == nil || mainSrc.CitationCount != 0 || mainSrc.Title != "1880 Census" {
+		t.Fatalf("main GetSource = %+v (err=%v), want the main title and 0 citations", mainSrc, err)
+	}
+
+	// A source with branch citations cannot be deleted on the branch, but main
+	// (which sees none) still can judge its own view.
+	if err := scoped.DeleteSource(ctx, src.ID, branchSrc.Version, ""); !errors.Is(err, command.ErrSourceHasCitations) {
+		t.Errorf("branch DeleteSource with a branch citation: err = %v, want ErrSourceHasCitations", err)
+	}
+	if err := scoped.DeleteCitation(ctx, cit.ID, onBranch.Version, ""); err != nil {
+		t.Fatalf("branch DeleteCitation failed: %v", err)
+	}
+	if got, err := f.readStore.GetCitation(ctx, branchID, cit.ID); err != nil || got != nil {
+		t.Errorf("branch GetCitation after delete = %+v (err=%v), want gone", got, err)
+	}
+	branchSrc, err = f.readStore.GetSource(ctx, branchID, src.ID)
+	if err != nil || branchSrc == nil || branchSrc.CitationCount != 0 {
+		t.Fatalf("branch GetSource after citation delete = %+v (err=%v), want 0 citations", branchSrc, err)
+	}
+	if err := scoped.DeleteSource(ctx, src.ID, branchSrc.Version, "branch hypothesis"); err != nil {
+		t.Fatalf("branch DeleteSource failed: %v", err)
+	}
+	if got, err := f.readStore.GetSource(ctx, branchID, src.ID); err != nil || got != nil {
+		t.Errorf("branch GetSource after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := f.readStore.GetSource(ctx, domain.MainBranchID, src.ID); err != nil || got == nil {
+		t.Errorf("main GetSource after branch delete = %+v (err=%v), want it kept", got, err)
+	}
+	// Citing the branch-deleted source on the branch is refused.
+	if _, err := scoped.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID: src.ID, FactType: string(domain.FactPersonBirth), FactOwnerID: person.ID,
+	}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("branch CreateCitation of a branch-deleted source: err = %v, want ErrInvalidInput", err)
+	}
+
+	// Notes: update and delete main's note on the branch; create a branch-only one.
+	text := "branch text"
+	if _, err := scoped.UpdateNote(ctx, command.UpdateNoteInput{ID: note.ID, Text: &text, Version: note.Version}); err != nil {
+		t.Fatalf("branch UpdateNote failed: %v", err)
+	}
+	if got, err := f.readStore.GetNote(ctx, branchID, note.ID); err != nil || got == nil || got.Text != text {
+		t.Fatalf("branch GetNote = %+v (err=%v), want branch text", got, err)
+	}
+	if got, err := f.readStore.GetNote(ctx, domain.MainBranchID, note.ID); err != nil || got == nil || got.Text != "main text" {
+		t.Fatalf("main GetNote after branch update = %+v (err=%v), want main text", got, err)
+	}
+	branchNote, err := scoped.CreateNote(ctx, command.CreateNoteInput{Text: "branch only"})
+	if err != nil {
+		t.Fatalf("branch CreateNote failed: %v", err)
+	}
+	if got, err := f.readStore.GetNote(ctx, domain.MainBranchID, branchNote.ID); err != nil || got != nil {
+		t.Errorf("main GetNote(branch-created) = %+v (err=%v), want absent", got, err)
+	}
+	onBranchNote, err := f.readStore.GetNote(ctx, branchID, note.ID)
+	if err != nil || onBranchNote == nil {
+		t.Fatalf("branch GetNote failed: %+v (err=%v)", onBranchNote, err)
+	}
+	if err := scoped.DeleteNote(ctx, note.ID, onBranchNote.Version, ""); err != nil {
+		t.Fatalf("branch DeleteNote failed: %v", err)
+	}
+	if got, err := f.readStore.GetNote(ctx, branchID, note.ID); err != nil || got != nil {
+		t.Errorf("branch GetNote after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := f.readStore.GetNote(ctx, domain.MainBranchID, note.ID); err != nil || got == nil {
+		t.Errorf("main GetNote after branch delete = %+v (err=%v), want it kept", got, err)
 	}
 }
 
@@ -1157,6 +1277,9 @@ type driftSeed struct {
 	lifeEvent   uuid.UUID
 	attribute   uuid.UUID
 	association uuid.UUID
+	source      uuid.UUID
+	citation    uuid.UUID
+	note        uuid.UUID
 }
 
 func seedDriftFixture(t *testing.T) driftSeed {
@@ -1226,6 +1349,25 @@ func seedDriftFixture(t *testing.T) driftSeed {
 		t.Fatalf("CreateAssociation failed: %v", err)
 	}
 	seed.association = assoc.ID
+
+	// Evidence (#758): a source cited once, and a shared note.
+	src, err := f.handler.CreateSource(ctx, command.CreateSourceInput{Title: "1880 Census", SourceType: "census"})
+	if err != nil {
+		t.Fatalf("CreateSource failed: %v", err)
+	}
+	seed.source = src.ID
+	cit, err := f.handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID: src.ID, FactType: string(domain.FactPersonBirth), FactOwnerID: seed.person, Page: "12",
+	})
+	if err != nil {
+		t.Fatalf("CreateCitation failed: %v", err)
+	}
+	seed.citation = cit.ID
+	note, err := f.handler.CreateNote(ctx, command.CreateNoteInput{Text: "Seen in the parish register"})
+	if err != nil {
+		t.Fatalf("CreateNote failed: %v", err)
+	}
+	seed.note = note.ID
 
 	branch, err := f.handler.CreateBranch(ctx, "drift-probe", "")
 	if err != nil {
@@ -1302,6 +1444,33 @@ var branchAwareProbes = map[string]func(s driftSeed) domain.Event{
 	"AssociationDeleted": func(s driftSeed) domain.Event {
 		return domain.NewAssociationDeleted(s.association, "branch hypothesis")
 	},
+	"SourceCreated": func(s driftSeed) domain.Event {
+		return domain.NewSourceCreated(domain.NewSource("Parish Register", domain.SourceChurch))
+	},
+	"SourceUpdated": func(s driftSeed) domain.Event {
+		return domain.NewSourceUpdated(s.source, map[string]any{"title": "1880 Census (retitled)"})
+	},
+	"SourceDeleted": func(s driftSeed) domain.Event {
+		return domain.NewSourceDeleted(s.source, "branch hypothesis")
+	},
+	"CitationCreated": func(s driftSeed) domain.Event {
+		return domain.NewCitationCreated(domain.NewCitation(s.source, domain.FactPersonDeath, s.person))
+	},
+	"CitationUpdated": func(s driftSeed) domain.Event {
+		return domain.NewCitationUpdated(s.citation, map[string]any{"page": "13"})
+	},
+	"CitationDeleted": func(s driftSeed) domain.Event {
+		return domain.NewCitationDeleted(s.citation, "branch hypothesis")
+	},
+	"NoteCreated": func(s driftSeed) domain.Event {
+		return domain.NewNoteCreated(domain.NewNote("Branch-only note"))
+	},
+	"NoteUpdated": func(s driftSeed) domain.Event {
+		return domain.NewNoteUpdated(s.note, map[string]any{"text": "Revised on the branch"})
+	},
+	"NoteDeleted": func(s driftSeed) domain.Event {
+		return domain.NewNoteDeleted(s.note, "branch hypothesis")
+	},
 }
 
 // mainRows is the mainline read-model state a branch-scoped projection must
@@ -1315,6 +1484,10 @@ type mainRows struct {
 	Events       [][]repository.EventReadModel
 	Attributes   [][]repository.AttributeReadModel
 	Associations [][]repository.AssociationReadModel
+	Citations    [][]repository.CitationReadModel
+	Source       *repository.SourceReadModel
+	SourceCites  []repository.CitationReadModel
+	Note         *repository.NoteReadModel
 }
 
 func readMainRows(t *testing.T, s driftSeed) mainRows {
@@ -1354,7 +1527,28 @@ func readMainRows(t *testing.T, s driftSeed) mainRows {
 		rows.Events = append(rows.Events, events)
 		rows.Attributes = append(rows.Attributes, attributes)
 		rows.Associations = append(rows.Associations, associations)
+		citations, err := rs.GetCitationsForPerson(ctx, domain.MainBranchID, id)
+		if err != nil {
+			t.Fatalf("GetCitationsForPerson(main, %s) failed: %v", id, err)
+		}
+		rows.Citations = append(rows.Citations, citations)
 	}
+
+	source, err := rs.GetSource(ctx, domain.MainBranchID, s.source)
+	if err != nil {
+		t.Fatalf("GetSource(main) failed: %v", err)
+	}
+	rows.Source = source
+	sourceCites, err := rs.GetCitationsForSource(ctx, domain.MainBranchID, s.source)
+	if err != nil {
+		t.Fatalf("GetCitationsForSource(main) failed: %v", err)
+	}
+	rows.SourceCites = sourceCites
+	note, err := rs.GetNote(ctx, domain.MainBranchID, s.note)
+	if err != nil {
+		t.Fatalf("GetNote(main) failed: %v", err)
+	}
+	rows.Note = note
 
 	family, err := rs.GetFamily(ctx, domain.MainBranchID, s.family)
 	if err != nil {
@@ -1488,6 +1682,13 @@ var conflictBlindEventTypes = map[string]string{
 	"LifeEventCreated":   "opens a branch-only stream; identity collisions are the create_create scan's job",
 	"AttributeCreated":   "opens a branch-only stream; identity collisions are the create_create scan's job",
 	"AssociationCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
+	// Evidence (#758): each source, citation and note is its own aggregate, so a
+	// *Created opens a stream nothing on main can have touched. (CitationCreated
+	// also bumps its source's citation count, but that is a projection-side
+	// derivation re-computed when the event replays on merge, not a field edit.)
+	"SourceCreated":   "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"CitationCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"NoteCreated":     "opens a branch-only stream; identity collisions are the create_create scan's job",
 }
 
 // TestBranchAwareEventTypes_AreConflictComparable is the drift guard between the

@@ -77,7 +77,25 @@ describe('isBranchScopedRequest', () => {
 		['GET', `/associations/${PERSON_ID}`],
 		['PUT', `/associations/${PERSON_ID}`],
 		['DELETE', `/associations/${PERSON_ID}`],
-		['GET', `/persons/${PERSON_ID}/associations`]
+		['GET', `/persons/${PERSON_ID}/associations`],
+		['GET', '/sources'],
+		['POST', '/sources'],
+		['GET', '/sources/search'],
+		['GET', `/sources/${PERSON_ID}`],
+		['PUT', `/sources/${PERSON_ID}`],
+		['DELETE', `/sources/${PERSON_ID}`],
+		['GET', `/sources/${PERSON_ID}/citations`],
+		['POST', '/citations'],
+		['GET', `/citations/${PERSON_ID}`],
+		['PUT', `/citations/${PERSON_ID}`],
+		['DELETE', `/citations/${PERSON_ID}`],
+		['GET', `/citations/${PERSON_ID}/format`],
+		['GET', `/persons/${PERSON_ID}/citations`],
+		['GET', '/notes'],
+		['POST', '/notes'],
+		['GET', `/notes/${PERSON_ID}`],
+		['PUT', `/notes/${PERSON_ID}`],
+		['DELETE', `/notes/${PERSON_ID}`]
 	])('allows %s %s', (method, path) => {
 		expect(isBranchScopedRequest(method, path)).toBe(true);
 	});
@@ -129,7 +147,15 @@ describe('isBranchScopedRequest', () => {
 	it('leaves branch lifecycle and other mainline-only endpoints alone', () => {
 		expect(isBranchScopedRequest('GET', '/branches')).toBe(false);
 		expect(isBranchScopedRequest('GET', `/branches/${BRANCH_ID}/compare`)).toBe(false);
-		expect(isBranchScopedRequest('GET', '/sources')).toBe(false);
+		expect(isBranchScopedRequest('GET', '/repositories')).toBe(false);
+		// Source and citation history, restore points and rollback stay mainline
+		// (#758 scopes the entities, not their audit trail).
+		expect(isBranchScopedRequest('GET', `/sources/${PERSON_ID}/history`)).toBe(false);
+		expect(isBranchScopedRequest('POST', `/sources/${PERSON_ID}/rollback`)).toBe(false);
+		expect(isBranchScopedRequest('GET', `/citations/${PERSON_ID}/restore-points`)).toBe(false);
+		// GET /citations has no list operation, and /sources/search takes no writes.
+		expect(isBranchScopedRequest('GET', '/citations')).toBe(false);
+		expect(isBranchScopedRequest('POST', '/sources/search')).toBe(false);
 		expect(isBranchScopedRequest('GET', `/persons/${PERSON_ID}/history`)).toBe(false);
 		expect(isBranchScopedRequest('GET', `/families/${FAMILY_ID}/group-sheet`)).toBe(false);
 	});

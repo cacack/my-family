@@ -834,7 +834,7 @@ func createTestSource(t *testing.T, store *memory.ReadModelStore, title, author 
 		Version:        1,
 		UpdatedAt:      now,
 	}
-	err := store.SaveSource(context.Background(), &source)
+	err := store.SaveSource(context.Background(), domain.MainBranchID, &source)
 	require.NoError(t, err)
 	return source
 }
@@ -858,7 +858,7 @@ func createTestCitation(t *testing.T, store *memory.ReadModelStore, source *repo
 		Version:       1,
 		CreatedAt:     now,
 	}
-	err := store.SaveCitation(context.Background(), &citation)
+	err := store.SaveCitation(context.Background(), domain.MainBranchID, &citation)
 	require.NoError(t, err)
 	return citation
 }

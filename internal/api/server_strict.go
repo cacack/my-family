@@ -530,6 +530,11 @@ func (ss *StrictServer) ResolvePersonBrickWall(ctx context.Context, request Reso
 
 // CreateCitation implements StrictServerInterface.
 func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitationRequestObject) (CreateCitationResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateCitationInput{
 		SourceID:    request.Body.SourceId,
 		FactType:    request.Body.FactType,
@@ -567,12 +572,12 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 		input.GedcomXref = *request.Body.GedcomXref
 	}
 
-	result, err := ss.server.commandHandler.CreateCitation(ctx, input)
+	result, err := ss.branchWriter(branch).CreateCitation(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 
-	cit, err := ss.server.sourceService.GetCitation(ctx, result.ID)
+	cit, err := ss.server.sourceService.GetCitation(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -582,7 +587,12 @@ func (ss *StrictServer) CreateCitation(ctx context.Context, request CreateCitati
 
 // GetCitation implements StrictServerInterface.
 func (ss *StrictServer) GetCitation(ctx context.Context, request GetCitationRequestObject) (GetCitationResponseObject, error) {
-	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	cit, err := ss.server.sourceService.GetCitation(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetCitation404JSONResponse{NotFoundJSONResponse{
@@ -598,6 +608,11 @@ func (ss *StrictServer) GetCitation(ctx context.Context, request GetCitationRequ
 
 // UpdateCitation implements StrictServerInterface.
 func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitationRequestObject) (UpdateCitationResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateCitationInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -631,7 +646,7 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 		input.Fields = *request.Body.Fields
 	}
 
-	_, err := ss.server.commandHandler.UpdateCitation(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateCitation(ctx, input)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateCitation409JSONResponse{ConflictJSONResponse{
@@ -648,7 +663,7 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 		return nil, err
 	}
 
-	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	cit, err := ss.server.sourceService.GetCitation(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -658,7 +673,12 @@ func (ss *StrictServer) UpdateCitation(ctx context.Context, request UpdateCitati
 
 // DeleteCitation implements StrictServerInterface.
 func (ss *StrictServer) DeleteCitation(ctx context.Context, request DeleteCitationRequestObject) (DeleteCitationResponseObject, error) {
-	err := ss.server.commandHandler.DeleteCitation(ctx, request.Id, request.Params.Version, "")
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteCitation(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteCitation404JSONResponse{NotFoundJSONResponse{
@@ -754,7 +774,12 @@ func (ss *StrictServer) PreviewCitationTemplate(ctx context.Context, request Pre
 
 // FormatCitation implements StrictServerInterface.
 func (ss *StrictServer) FormatCitation(ctx context.Context, request FormatCitationRequestObject) (FormatCitationResponseObject, error) {
-	cit, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	cit, err := ss.server.sourceService.GetCitation(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return FormatCitation404JSONResponse{NotFoundJSONResponse{
@@ -840,7 +865,7 @@ func convertCitationTemplate(t citation.Template) CitationTemplate {
 
 // GetCitationRestorePoints implements StrictServerInterface.
 func (ss *StrictServer) GetCitationRestorePoints(ctx context.Context, request GetCitationRestorePointsRequestObject) (GetCitationRestorePointsResponseObject, error) {
-	_, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	_, err := ss.server.sourceService.GetCitation(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetCitationRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -876,7 +901,7 @@ func (ss *StrictServer) GetCitationRestorePoints(ctx context.Context, request Ge
 
 // RollbackCitation implements StrictServerInterface.
 func (ss *StrictServer) RollbackCitation(ctx context.Context, request RollbackCitationRequestObject) (RollbackCitationResponseObject, error) {
-	_, err := ss.server.sourceService.GetCitation(ctx, request.Id)
+	_, err := ss.server.sourceService.GetCitation(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return RollbackCitation404JSONResponse{NotFoundJSONResponse{
@@ -2147,7 +2172,12 @@ func (ss *StrictServer) DeletePerson(ctx context.Context, request DeletePersonRe
 
 // GetCitationsForPerson implements StrictServerInterface.
 func (ss *StrictServer) GetCitationsForPerson(ctx context.Context, request GetCitationsForPersonRequestObject) (GetCitationsForPersonResponseObject, error) {
-	citations, err := ss.server.sourceService.GetCitationsForPerson(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	citations, err := ss.server.sourceService.GetCitationsForPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetCitationsForPerson404JSONResponse{NotFoundJSONResponse{
@@ -3130,11 +3160,17 @@ func (ss *StrictServer) ListSources(ctx context.Context, request ListSourcesRequ
 		sortOrder = string(*request.Params.Order)
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := ss.server.sourceService.ListSources(ctx, query.ListSourcesInput{
 		Limit:     limit,
 		Offset:    offset,
 		SortBy:    sortBy,
 		SortOrder: sortOrder,
+		BranchID:  branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -3157,6 +3193,11 @@ func (ss *StrictServer) ListSources(ctx context.Context, request ListSourcesRequ
 
 // CreateSource implements StrictServerInterface.
 func (ss *StrictServer) CreateSource(ctx context.Context, request CreateSourceRequestObject) (CreateSourceResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateSourceInput{
 		SourceType: request.Body.SourceType,
 		Title:      request.Body.Title,
@@ -3187,12 +3228,12 @@ func (ss *StrictServer) CreateSource(ctx context.Context, request CreateSourceRe
 		input.Notes = *request.Body.Notes
 	}
 
-	result, err := ss.server.commandHandler.CreateSource(ctx, input)
+	result, err := ss.branchWriter(branch).CreateSource(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 
-	source, err := ss.server.sourceService.GetSource(ctx, result.ID)
+	source, err := ss.server.sourceService.GetSource(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -3214,7 +3255,12 @@ func (ss *StrictServer) SearchSources(ctx context.Context, request SearchSources
 		limit = *request.Params.Limit
 	}
 
-	sources, err := ss.server.sourceService.SearchSources(ctx, request.Params.Q, limit)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	sources, err := ss.server.sourceService.SearchSources(ctx, branchScopeID(branch), request.Params.Q, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -3232,7 +3278,12 @@ func (ss *StrictServer) SearchSources(ctx context.Context, request SearchSources
 
 // GetSource implements StrictServerInterface.
 func (ss *StrictServer) GetSource(ctx context.Context, request GetSourceRequestObject) (GetSourceResponseObject, error) {
-	source, err := ss.server.sourceService.GetSource(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	source, err := ss.server.sourceService.GetSource(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetSource404JSONResponse{NotFoundJSONResponse{
@@ -3248,6 +3299,11 @@ func (ss *StrictServer) GetSource(ctx context.Context, request GetSourceRequestO
 
 // UpdateSource implements StrictServerInterface.
 func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRequestObject) (UpdateSourceResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateSourceInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -3284,7 +3340,7 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 		input.Notes = request.Body.Notes
 	}
 
-	_, err := ss.server.commandHandler.UpdateSource(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateSource(ctx, input)
 	if err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return UpdateSource409JSONResponse{ConflictJSONResponse{
@@ -3301,7 +3357,7 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 		return nil, err
 	}
 
-	source, err := ss.server.sourceService.GetSource(ctx, request.Id)
+	source, err := ss.server.sourceService.GetSource(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -3311,7 +3367,12 @@ func (ss *StrictServer) UpdateSource(ctx context.Context, request UpdateSourceRe
 
 // DeleteSource implements StrictServerInterface.
 func (ss *StrictServer) DeleteSource(ctx context.Context, request DeleteSourceRequestObject) (DeleteSourceResponseObject, error) {
-	err := ss.server.commandHandler.DeleteSource(ctx, request.Id, request.Params.Version, "")
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteSource(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return DeleteSource404JSONResponse{NotFoundJSONResponse{
@@ -3327,7 +3388,12 @@ func (ss *StrictServer) DeleteSource(ctx context.Context, request DeleteSourceRe
 
 // GetCitationsForSource implements StrictServerInterface.
 func (ss *StrictServer) GetCitationsForSource(ctx context.Context, request GetCitationsForSourceRequestObject) (GetCitationsForSourceResponseObject, error) {
-	source, err := ss.server.sourceService.GetSource(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	source, err := ss.server.sourceService.GetSource(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetCitationsForSource404JSONResponse{NotFoundJSONResponse{
@@ -3351,7 +3417,7 @@ func (ss *StrictServer) GetCitationsForSource(ctx context.Context, request GetCi
 
 // GetSourceHistory implements StrictServerInterface.
 func (ss *StrictServer) GetSourceHistory(ctx context.Context, request GetSourceHistoryRequestObject) (GetSourceHistoryResponseObject, error) {
-	_, err := ss.server.sourceService.GetSource(ctx, request.Id)
+	_, err := ss.server.sourceService.GetSource(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetSourceHistory404JSONResponse{NotFoundJSONResponse{
@@ -3381,7 +3447,7 @@ func (ss *StrictServer) GetSourceHistory(ctx context.Context, request GetSourceH
 
 // GetSourceRestorePoints implements StrictServerInterface.
 func (ss *StrictServer) GetSourceRestorePoints(ctx context.Context, request GetSourceRestorePointsRequestObject) (GetSourceRestorePointsResponseObject, error) {
-	_, err := ss.server.sourceService.GetSource(ctx, request.Id)
+	_, err := ss.server.sourceService.GetSource(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetSourceRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -3417,7 +3483,7 @@ func (ss *StrictServer) GetSourceRestorePoints(ctx context.Context, request GetS
 
 // RollbackSource implements StrictServerInterface.
 func (ss *StrictServer) RollbackSource(ctx context.Context, request RollbackSourceRequestObject) (RollbackSourceResponseObject, error) {
-	_, err := ss.server.sourceService.GetSource(ctx, request.Id)
+	_, err := ss.server.sourceService.GetSource(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return RollbackSource404JSONResponse{NotFoundJSONResponse{
@@ -4306,10 +4372,16 @@ func (ss *StrictServer) ListNotes(ctx context.Context, request ListNotesRequestO
 		order = string(*request.Params.Order)
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := ss.server.noteService.ListNotes(ctx, query.ListNotesInput{
 		Limit:     limit,
 		Offset:    offset,
 		SortOrder: order,
+		BranchID:  branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -4332,6 +4404,11 @@ func (ss *StrictServer) ListNotes(ctx context.Context, request ListNotesRequestO
 
 // CreateNote implements StrictServerInterface.
 func (ss *StrictServer) CreateNote(ctx context.Context, request CreateNoteRequestObject) (CreateNoteResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateNoteInput{
 		Text: request.Body.Text,
 	}
@@ -4339,7 +4416,7 @@ func (ss *StrictServer) CreateNote(ctx context.Context, request CreateNoteReques
 		input.GedcomXref = *request.Body.GedcomXref
 	}
 
-	result, err := ss.server.commandHandler.CreateNote(ctx, input)
+	result, err := ss.branchWriter(branch).CreateNote(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrInvalidInput) {
 			return CreateNote400JSONResponse{BadRequestJSONResponse{
@@ -4351,7 +4428,7 @@ func (ss *StrictServer) CreateNote(ctx context.Context, request CreateNoteReques
 	}
 
 	// Fetch the created note
-	note, err := ss.server.noteService.GetNote(ctx, result.ID)
+	note, err := ss.server.noteService.GetNote(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -4361,7 +4438,12 @@ func (ss *StrictServer) CreateNote(ctx context.Context, request CreateNoteReques
 
 // GetNote implements StrictServerInterface.
 func (ss *StrictServer) GetNote(ctx context.Context, request GetNoteRequestObject) (GetNoteResponseObject, error) {
-	note, err := ss.server.noteService.GetNote(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	note, err := ss.server.noteService.GetNote(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetNote404JSONResponse{NotFoundJSONResponse{
@@ -4377,6 +4459,11 @@ func (ss *StrictServer) GetNote(ctx context.Context, request GetNoteRequestObjec
 
 // UpdateNote implements StrictServerInterface.
 func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteRequestObject) (UpdateNoteResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateNoteInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -4385,7 +4472,7 @@ func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteReques
 		input.Text = request.Body.Text
 	}
 
-	result, err := ss.server.commandHandler.UpdateNote(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateNote(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrNoteNotFound) {
 			return UpdateNote404JSONResponse{NotFoundJSONResponse{
@@ -4409,18 +4496,22 @@ func (ss *StrictServer) UpdateNote(ctx context.Context, request UpdateNoteReques
 	}
 
 	// Fetch the updated note
-	note, err := ss.server.noteService.GetNote(ctx, request.Id)
+	note, err := ss.server.noteService.GetNote(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	_ = result // Used for version check above
 	return UpdateNote200JSONResponse(convertQueryNoteToGenerated(*note)), nil
 }
 
 // DeleteNote implements StrictServerInterface.
 func (ss *StrictServer) DeleteNote(ctx context.Context, request DeleteNoteRequestObject) (DeleteNoteResponseObject, error) {
-	err := ss.server.commandHandler.DeleteNote(ctx, request.Id, request.Params.Version, "")
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteNote(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrNoteNotFound) {
 			return DeleteNote404JSONResponse{NotFoundJSONResponse{
