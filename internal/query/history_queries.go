@@ -147,12 +147,21 @@ func (s *HistoryService) GetGlobalHistory(ctx context.Context, input GetGlobalHi
 // resolves them all, and the second builds the entries from that result — so
 // the read-model query count does not grow with the number of events.
 func (s *HistoryService) transformStoredEvents(ctx context.Context, events []repository.StoredEvent) ([]ChangeEntry, error) {
+	return s.transformStoredEventsOn(ctx, domain.MainBranchID, events)
+}
+
+// transformStoredEventsOn is transformStoredEvents with entity names resolved
+// through branchID's overlay (resolveEntityNamesOn): CompareBranch names the
+// branch's own changes as the branch sees them, so an entity the branch
+// created or renamed is labelled with its branch name rather than its id or
+// main's stale name.
+func (s *HistoryService) transformStoredEventsOn(ctx context.Context, branchID domain.BranchID, events []repository.StoredEvent) ([]ChangeEntry, error) {
 	refs := newEntityRefs()
 	for i := range events {
 		entityType, _ := s.mapEventTypeToEntityAndAction(events[i].EventType)
 		refs.addEvent(entityType, events[i].StreamID, &events[i])
 	}
-	names, err := s.resolveEntityNames(ctx, refs)
+	names, err := s.resolveEntityNamesOn(ctx, branchID, refs)
 	if err != nil {
 		return nil, err
 	}

@@ -18,8 +18,9 @@ import (
 // now two-phase: a caller first registers every entity it will need a name for
 // (entityRefs), then resolveEntityNames reads each entity type with ONE batched
 // ReadModelStore lookup, and the names are served from memory. The number of
-// read-model queries is therefore bounded by the number of entity types (four),
-// not by the number of entries.
+// read-model queries is therefore bounded by the number of entity types (four;
+// twice that for a branch scope, see resolveEntityNamesOn), not by the number
+// of entries.
 
 // Entity-type vocabulary shared with ChangeEntry.EntityType.
 const (
@@ -108,49 +109,89 @@ type entityNames struct {
 	citations map[uuid.UUID]*repository.CitationReadModel
 }
 
-// resolveEntityNames reads every registered entity with one batched lookup per
-// entity type that has any ids (so at most four queries, whatever the number of
-// refs). A lookup failure is returned, not papered over: an entity that merely
-// no longer exists is absent from the batch and still gets its fallback name,
-// but a store that cannot answer is an error the caller must see.
-//
-// Names resolve against main: the history and compare endpoints take no
-// ?branch= parameter, so, as before, an entry is labelled with the mainline's
-// current name (ADR-005). The batch methods honour branchID exactly like the
-// single-row getters, so scoping this to a branch is a one-argument change.
+// resolveEntityNames resolves names against main — the scope of the history
+// endpoints and snapshot compare, which take no ?branch= parameter, so an
+// entry is labelled with the mainline's current name (ADR-005). See
+// resolveEntityNamesOn.
 func (s *HistoryService) resolveEntityNames(ctx context.Context, refs entityRefs) (*entityNames, error) {
-	branchID := domain.MainBranchID
-	names := &entityNames{}
+	return s.resolveEntityNamesOn(ctx, domain.MainBranchID, refs)
+}
 
-	if ids := refs.ids(entityTypePerson); len(ids) > 0 {
-		rows, err := s.readStore.GetPersonsByIDs(ctx, branchID, ids)
-		if err != nil {
-			return nil, fmt.Errorf("resolve person names: %w", err)
-		}
-		names.persons = indexByID(rows, func(p *repository.PersonReadModel) uuid.UUID { return p.ID })
+// resolveEntityNamesOn reads every registered entity with one batched lookup
+// per entity type that has any ids, through branchID's overlay. A lookup
+// failure is returned, not papered over: an entity that merely no longer exists
+// is absent from the batch and still gets its fallback name, but a store that
+// cannot answer is an error the caller must see.
+//
+// On main that is at most four queries, whatever the number of refs. On a
+// branch, the overlay already serves main's row for every entity the branch
+// has not touched, so an id it does not resolve is one the branch deleted (a
+// tombstone) or one that exists nowhere. Those — and only those — are looked
+// up once more on main, in one further batched lookup per type, so an entity
+// the branch deletes is still labelled with the name main knows it by. A branch
+// scope is therefore at most eight queries, still independent of the number of
+// refs.
+func (s *HistoryService) resolveEntityNamesOn(ctx context.Context, branchID domain.BranchID, refs entityRefs) (*entityNames, error) {
+	names := &entityNames{}
+	var err error
+
+	if names.persons, err = lookupByIDs(ctx, branchID, refs.ids(entityTypePerson), s.readStore.GetPersonsByIDs,
+		func(p *repository.PersonReadModel) uuid.UUID { return p.ID }); err != nil {
+		return nil, fmt.Errorf("resolve person names: %w", err)
 	}
-	if ids := refs.ids(entityTypeFamily); len(ids) > 0 {
-		rows, err := s.readStore.GetFamiliesByIDs(ctx, branchID, ids)
-		if err != nil {
-			return nil, fmt.Errorf("resolve family names: %w", err)
-		}
-		names.families = indexByID(rows, func(f *repository.FamilyReadModel) uuid.UUID { return f.ID })
+	if names.families, err = lookupByIDs(ctx, branchID, refs.ids(entityTypeFamily), s.readStore.GetFamiliesByIDs,
+		func(f *repository.FamilyReadModel) uuid.UUID { return f.ID }); err != nil {
+		return nil, fmt.Errorf("resolve family names: %w", err)
 	}
-	if ids := refs.ids(entityTypeSource); len(ids) > 0 {
-		rows, err := s.readStore.GetSourcesByIDs(ctx, branchID, ids)
-		if err != nil {
-			return nil, fmt.Errorf("resolve source names: %w", err)
-		}
-		names.sources = indexByID(rows, func(src *repository.SourceReadModel) uuid.UUID { return src.ID })
+	if names.sources, err = lookupByIDs(ctx, branchID, refs.ids(entityTypeSource), s.readStore.GetSourcesByIDs,
+		func(src *repository.SourceReadModel) uuid.UUID { return src.ID }); err != nil {
+		return nil, fmt.Errorf("resolve source names: %w", err)
 	}
-	if ids := refs.ids(entityTypeCitation); len(ids) > 0 {
-		rows, err := s.readStore.GetCitationsByIDs(ctx, branchID, ids)
-		if err != nil {
-			return nil, fmt.Errorf("resolve citation names: %w", err)
-		}
-		names.citations = indexByID(rows, func(c *repository.CitationReadModel) uuid.UUID { return c.ID })
+	if names.citations, err = lookupByIDs(ctx, branchID, refs.ids(entityTypeCitation), s.readStore.GetCitationsByIDs,
+		func(c *repository.CitationReadModel) uuid.UUID { return c.ID }); err != nil {
+		return nil, fmt.Errorf("resolve citation names: %w", err)
 	}
 	return names, nil
+}
+
+// lookupByIDs reads ids with one batched call on branchID and, on a branch,
+// one more on main for the ids the branch did not resolve (see
+// resolveEntityNamesOn). No ids, no call.
+func lookupByIDs[T any](
+	ctx context.Context,
+	branchID domain.BranchID,
+	ids []uuid.UUID,
+	get func(context.Context, domain.BranchID, []uuid.UUID) ([]T, error),
+	id func(*T) uuid.UUID,
+) (map[uuid.UUID]*T, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := get(ctx, branchID, ids)
+	if err != nil {
+		return nil, err
+	}
+	index := indexByID(rows, id)
+	if branchID == domain.MainBranchID {
+		return index, nil
+	}
+	var unresolved []uuid.UUID
+	for _, want := range ids {
+		if index[want] == nil {
+			unresolved = append(unresolved, want)
+		}
+	}
+	if len(unresolved) == 0 {
+		return index, nil
+	}
+	mainRows, err := get(ctx, domain.MainBranchID, unresolved)
+	if err != nil {
+		return nil, err
+	}
+	for i := range mainRows {
+		index[id(&mainRows[i])] = &mainRows[i]
+	}
+	return index, nil
 }
 
 // indexByID maps each row to its id.

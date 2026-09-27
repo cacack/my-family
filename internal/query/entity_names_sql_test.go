@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 	"github.com/cacack/my-family/internal/repository/postgres"
@@ -228,11 +229,47 @@ func TestEnrichConflictEntities_SQLStatementCountDoesNotScale(t *testing.T) {
 				}
 				counter.reset()
 
-				require.NoError(t, service.enrichConflictEntities(ctx, set.events, conflicts))
+				require.NoError(t, service.enrichConflictEntities(ctx, domain.MainBranchID, set.events, conflicts))
 				assert.Equal(t, int64(4), counter.count(), "one SQL statement per entity type, independent of conflict count")
 
 				for _, c := range conflicts {
 					assert.Equal(t, set.wantNames[c.StreamID], c.EntityName)
+				}
+			})
+		}
+	}
+}
+
+// TestTransformStoredEventsOn_SQLStatementCountDoesNotScale is the branch-scope
+// counterpart: through a branch overlay with a deleted entity of every type,
+// naming costs one statement per type on the branch plus one main fallback per
+// type, for 2 entities per type and for 60.
+func TestTransformStoredEventsOn_SQLStatementCountDoesNotScale(t *testing.T) {
+	ctx := context.Background()
+	for _, backend := range countedSQLBackends() {
+		for _, n := range []int{2, 60} {
+			t.Run(fmt.Sprintf("%s/%d per type", backend.name, n), func(t *testing.T) {
+				store, counter := backend.open(t)
+				set := seedNamedEvents(t, ctx, store, n)
+				branch, want := overlayOnBranch(t, ctx, store, set)
+				service := NewHistoryService(memory.NewEventStore(), store)
+				counter.reset()
+
+				entries, err := service.transformStoredEventsOn(ctx, branch, set.events)
+				require.NoError(t, err)
+				require.Len(t, entries, 5*n)
+				assert.Equal(t, int64(8), counter.count(), "one branch and one main-fallback statement per entity type")
+
+				for _, entry := range entries {
+					assert.Equal(t, want[entry.EntityID], entry.EntityName, "entry %s", entry.EntityID)
+				}
+				// The branch's view must not have leaked onto main.
+				counter.reset()
+				mainEntries, err := service.transformStoredEvents(ctx, set.events)
+				require.NoError(t, err)
+				assert.Equal(t, int64(4), counter.count())
+				for _, entry := range mainEntries {
+					assert.Equal(t, set.wantNames[entry.EntityID], entry.EntityName)
 				}
 			})
 		}

@@ -279,7 +279,7 @@ func (s *BranchService) detectConflicts(ctx context.Context, diff *branchDiffSou
 	}
 
 	conflicts := classifyConflicts(diff.branchEvents, diff.mainEvents, mainTail)
-	if err := s.enrichConflictEntities(ctx, diff.branchEvents, conflicts); err != nil {
+	if err := s.enrichConflictEntities(ctx, domain.BranchID(diff.branch.ID), diff.branchEvents, conflicts); err != nil {
 		return nil, false, fmt.Errorf("name conflicting entities: %w", err)
 	}
 
@@ -723,11 +723,14 @@ func createdGedcomXref(evt repository.StoredEvent) string {
 // the entity it is about, so a reviewer sees "Ada Lovelace" and not a UUID.
 //
 // Names resolve in one batched read-model lookup per entity type, however many
-// conflicts there are (#697). An entity with no resolvable name degrades to an
+// conflicts there are (#697), through the branch's overlay (branchID): a
+// conflict is about the branch's change, so an entity is named as the branch
+// sees it, and one the branch deletes by the name main still has for it
+// (resolveEntityNamesOn). An entity with no resolvable name degrades to an
 // empty string rather than an error, the same posture transformStoredEvents
 // takes: a missing name makes a conflict less readable, never wrong, and the
 // caller still has StreamID. A read-model failure, by contrast, is returned.
-func (s *BranchService) enrichConflictEntities(ctx context.Context, branchEvents []repository.StoredEvent, conflicts []MergeConflict) error {
+func (s *BranchService) enrichConflictEntities(ctx context.Context, branchID domain.BranchID, branchEvents []repository.StoredEvent, conflicts []MergeConflict) error {
 	if len(conflicts) == 0 {
 		return nil
 	}
@@ -757,7 +760,7 @@ func (s *BranchService) enrichConflictEntities(ctx context.Context, branchEvents
 		refs.addEvent(conflicts[i].EntityType, conflicts[i].StreamID, evt)
 	}
 
-	names, err := s.historyService.resolveEntityNames(ctx, refs)
+	names, err := s.historyService.resolveEntityNamesOn(ctx, branchID, refs)
 	if err != nil {
 		return err
 	}

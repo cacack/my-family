@@ -153,6 +153,121 @@ func seedNamedEvents(t *testing.T, ctx context.Context, store repository.ReadMod
 	return set
 }
 
+// overlayOnBranch gives a seeded set a branch view: every person is renamed on
+// the branch, and person, family, source and citation 0 are deleted there
+// (tombstoned). It returns the branch and the names a branch-scoped resolution
+// must produce: the branch's name where the branch has a row, and main's name
+// for each entity the branch deleted — so every entity type needs the one
+// fallback lookup on main.
+func overlayOnBranch(t *testing.T, ctx context.Context, store repository.ReadModelStore, set namedEventSet) (domain.BranchID, map[uuid.UUID]string) {
+	t.Helper()
+	branch := domain.BranchID(uuid.New())
+	want := make(map[uuid.UUID]string, len(set.wantNames))
+	for id, name := range set.wantNames {
+		want[id] = name
+	}
+	var first [4]uuid.UUID // person, family, source, citation of entity 0
+	for i := range set.events {
+		evt := set.events[i]
+		if i < 5 {
+			switch evt.StreamType {
+			case "Person":
+				first[0] = evt.StreamID
+			case "Family":
+				first[1] = evt.StreamID
+			case "Source":
+				first[2] = evt.StreamID
+			case "Citation":
+				first[3] = evt.StreamID
+			}
+		}
+		if evt.StreamType != "Person" || evt.StreamID == first[0] {
+			continue
+		}
+		surname := set.wantNames[evt.StreamID]
+		name := "Branch " + surname
+		require.NoError(t, store.SavePerson(ctx, branch, &repository.PersonReadModel{
+			ID: evt.StreamID, GivenName: "Branch", Surname: surname, FullName: name, Version: 2,
+		}))
+		want[evt.StreamID] = name
+	}
+	require.NoError(t, store.DeleteCitation(ctx, branch, first[3]))
+	require.NoError(t, store.DeleteSource(ctx, branch, first[2]))
+	require.NoError(t, store.DeleteFamily(ctx, branch, first[1]))
+	require.NoError(t, store.DeletePerson(ctx, branch, first[0]))
+	return branch, want
+}
+
+// On a branch, names come through the overlay, and an entity the branch
+// deleted falls back to main's name in ONE further batched lookup per type —
+// never one per entry.
+func TestTransformStoredEventsOn_BranchScopeQueryCountDoesNotScale(t *testing.T) {
+	ctx := context.Background()
+	for _, n := range []int{2, 60} {
+		t.Run(fmt.Sprintf("%d per type", n), func(t *testing.T) {
+			store := &countingReadStore{ReadModelStore: memory.NewReadModelStore()}
+			set := seedNamedEvents(t, ctx, store, n)
+			branch, want := overlayOnBranch(t, ctx, store, set)
+			service := NewHistoryService(memory.NewEventStore(), store)
+			store.reset()
+
+			entries, err := service.transformStoredEventsOn(ctx, branch, set.events)
+			require.NoError(t, err)
+			require.Len(t, entries, 5*n)
+
+			single, batched := store.counts()
+			assert.Zero(t, single, "no per-entry single-row lookups")
+			assert.Equal(t, 8, batched, "one branch lookup and one main fallback per entity type, independent of entry count")
+			for _, entry := range entries {
+				assert.Equal(t, want[entry.EntityID], entry.EntityName, "entry %s", entry.EntityID)
+			}
+		})
+	}
+}
+
+// Without anything to fall back for, a branch scope costs exactly what main
+// does.
+func TestTransformStoredEventsOn_BranchWithoutTombstonesNeedsNoFallback(t *testing.T) {
+	ctx := context.Background()
+	store := &countingReadStore{ReadModelStore: memory.NewReadModelStore()}
+	set := seedNamedEvents(t, ctx, store, 3)
+	service := NewHistoryService(memory.NewEventStore(), store)
+	store.reset()
+
+	entries, err := service.transformStoredEventsOn(ctx, domain.BranchID(uuid.New()), set.events)
+	require.NoError(t, err)
+	_, batched := store.counts()
+	assert.Equal(t, 4, batched)
+	for _, entry := range entries {
+		assert.Equal(t, set.wantNames[entry.EntityID], entry.EntityName)
+	}
+}
+
+// A failing main fallback surfaces like any other lookup failure.
+func TestTransformStoredEventsOn_FallbackErrorPropagates(t *testing.T) {
+	ctx := context.Background()
+	boom := errors.New("main read model unavailable")
+	store := &failMainReadStore{countingReadStore: countingReadStore{ReadModelStore: memory.NewReadModelStore()}, err: boom}
+	set := seedNamedEvents(t, ctx, store, 1)
+	branch, _ := overlayOnBranch(t, ctx, store, set)
+
+	_, err := NewHistoryService(memory.NewEventStore(), store).transformStoredEventsOn(ctx, branch, set.events)
+	require.ErrorIs(t, err, boom)
+}
+
+// failMainReadStore fails every batched person lookup on main.
+type failMainReadStore struct {
+	countingReadStore
+	err error
+}
+
+func (f *failMainReadStore) GetPersonsByIDs(ctx context.Context, b domain.BranchID, ids []uuid.UUID) ([]repository.PersonReadModel, error) {
+	if b == domain.MainBranchID {
+		return nil, f.err
+	}
+	return f.countingReadStore.GetPersonsByIDs(ctx, b, ids)
+}
+
 // TestTransformStoredEvents_QueryCountDoesNotScale is the #697 acceptance test
 // for history/compare: naming the entries costs one batched lookup per entity
 // type and no single-row lookups, whether there are 2 entities per type or 60.
@@ -240,7 +355,7 @@ func TestEnrichConflictEntities_QueryCountDoesNotScale(t *testing.T) {
 			conflicts = append(conflicts, MergeConflict{StreamID: uuid.New(), Kind: ConflictEditEdit})
 			store.reset()
 
-			require.NoError(t, service.enrichConflictEntities(ctx, set.events, conflicts))
+			require.NoError(t, service.enrichConflictEntities(ctx, domain.MainBranchID, set.events, conflicts))
 
 			single, batched := store.counts()
 			assert.Zero(t, single, "no per-conflict single-row lookups")
@@ -257,6 +372,39 @@ func TestEnrichConflictEntities_QueryCountDoesNotScale(t *testing.T) {
 	}
 }
 
+// Conflicts are named as the branch sees the entity, and an entity the branch
+// deletes by main's name, in a bounded number of lookups.
+func TestEnrichConflictEntities_BranchScope(t *testing.T) {
+	ctx := context.Background()
+	for _, n := range []int{2, 60} {
+		t.Run(fmt.Sprintf("%d per type", n), func(t *testing.T) {
+			store := &countingReadStore{ReadModelStore: memory.NewReadModelStore()}
+			set := seedNamedEvents(t, ctx, store, n)
+			branch, want := overlayOnBranch(t, ctx, store, set)
+			eventStore := memory.NewEventStore()
+			service := NewBranchService(memory.NewBranchStore(), eventStore, NewHistoryService(eventStore, store))
+
+			seen := make(map[uuid.UUID]bool)
+			var conflicts []MergeConflict
+			for _, evt := range set.events {
+				if !seen[evt.StreamID] {
+					seen[evt.StreamID] = true
+					conflicts = append(conflicts, MergeConflict{StreamID: evt.StreamID, Kind: ConflictEditEdit})
+				}
+			}
+			store.reset()
+
+			require.NoError(t, service.enrichConflictEntities(ctx, branch, set.events, conflicts))
+			single, batched := store.counts()
+			assert.Zero(t, single)
+			assert.Equal(t, 8, batched)
+			for _, c := range conflicts {
+				assert.Equal(t, want[c.StreamID], c.EntityName)
+			}
+		})
+	}
+}
+
 func TestEnrichConflictEntities_LookupErrorPropagates(t *testing.T) {
 	ctx := context.Background()
 	boom := errors.New("read model unavailable")
@@ -267,7 +415,7 @@ func TestEnrichConflictEntities_LookupErrorPropagates(t *testing.T) {
 	service := NewBranchService(memory.NewBranchStore(), eventStore, NewHistoryService(eventStore, store))
 
 	conflicts := []MergeConflict{{StreamID: set.events[0].StreamID, Kind: ConflictEditEdit}}
-	require.ErrorIs(t, service.enrichConflictEntities(ctx, set.events, conflicts), boom)
+	require.ErrorIs(t, service.enrichConflictEntities(ctx, domain.MainBranchID, set.events, conflicts), boom)
 }
 
 // End to end: PlanMerge surfaces a naming failure rather than a plan full of

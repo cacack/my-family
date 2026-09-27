@@ -113,7 +113,9 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 		return nil, err
 	}
 
-	branchChanges, err := s.historyService.transformStoredEvents(ctx, diff.branchEvents)
+	// Each side is named as it sees itself: the branch's changes through the
+	// branch overlay, main's on main.
+	branchChanges, err := s.historyService.transformStoredEventsOn(ctx, domain.BranchID(diff.branch.ID), diff.branchEvents)
 	if err != nil {
 		return nil, fmt.Errorf("transform branch events: %w", err)
 	}
