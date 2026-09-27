@@ -360,7 +360,9 @@ type ProofSummaryReadModel struct {
 
 // ReadModelStore provides access to denormalized read models.
 //
-// Branch scoping (ADR-005) divides the methods below into three categories.
+// Branch scoping (ADR-005) divides the methods below into four categories. Note that
+// categories 3 and 4 both mean "main-only today" for very different reasons — 3 is
+// unfinished work, 4 is a decision.
 //
 // 1. BRANCH-SCOPED SLICE ENTITIES (#669) — Person, PersonName, PersonExternalID,
 // Family, FamilyExternalID, FamilyChild, and PedigreeEdge. These own branch_id-keyed
@@ -377,21 +379,35 @@ type ProofSummaryReadModel struct {
 // category 1 does — an explicit branchID, or opts.BranchID for the list methods — and
 // so report the branch's view of the tree, not main's.
 //
-// 3. MAIN-ONLY — every other method has no branchID and ignores branch context
-// entirely. That is the non-slice entities (Source, Citation, Media, Event, Attribute,
-// Note, Submitter, Repository, Association, LDSOrdinance, EvidenceAnalysis, ...) plus
-// two carve-outs that sit next to the category-2 methods:
-//   - GetCemeteryIndex reads `life_events` alone, which is not branch-scoped.
-//   - SetBrickWall, ResolveBrickWall and GetBrickWalls write and read the read model
-//     outside the event store, so there is no overlay to resolve; whether they should
-//     become branch-aware is a separate decision tracked in sub-issue F of #676
-//     (#761). Their backends only constrain the query to main.
+// 3. MAIN-ONLY, PENDING — no branchID yet, but destined for one. These are the
+// remaining sub-issues of #676, and each must replicate the category-1 pattern
+// (branch_id column + overlay + tombstone + cascade) on all three backends:
+//   - LifeEvent (EventReadModel), Attribute, Association, and GetCemeteryIndex —
+//     which reads `life_events` alone — are sub-issue B (#757).
+//   - Source, SourceExternalID, Citation and Note are sub-issue C (#758).
+//   - Media metadata is sub-issue D (#759); blobs stay shared and are never copied
+//     into a branch shadow row.
+//   - EvidenceAnalysis, EvidenceConflict, ResearchLog and ProofSummary are
+//     sub-issue E (#760).
 //
-// This is a deliberate vertical-slice boundary, not an oversight — extending
-// branch-scoping to further entities is tracked as follow-up work and must replicate
-// the same branch_id column + overlay + tombstone + cascade pattern. The branch SCOPE
-// is the distinct domain.BranchID type (not a bare uuid) so transposing it with an
-// entity id is a compile error; the zero value equals domain.MainBranchID (main).
+// 4. MAIN-ONLY BY DECISION — Submitter, Repository, RepositoryExternalID and
+// LDSOrdinance will NOT gain a branch_id. They are file- and archive-level metadata
+// and transcribed sacramental records — provenance of the dataset and the identity of
+// real-world institutions, not genealogical claims a research hypothesis forks. Their
+// absence from category 1 is a recorded decision, NOT an unfinished TODO: see
+// docs/adr/005-research-branch-data-model.md, "Entities that stay main-only", which is
+// also where to revisit it if a use case appears.
+//
+// Brick walls sit outside all four categories. SetBrickWall, ResolveBrickWall and
+// GetBrickWalls write and read the read model outside the event store, so there are no
+// branch-tagged events to project and no overlay to resolve; their backends only
+// constrain the query to main. Whether they should become event-sourced first is the
+// same open call #624 must make for snapshots; #624 is the live tracker, while #761
+// only recorded the question in the ADR section above.
+//
+// The branch SCOPE is the distinct domain.BranchID type (not a bare uuid) so
+// transposing it with an entity id is a compile error; the zero value equals
+// domain.MainBranchID (main).
 //
 // Tombstone representation is an internal, backend-specific detail and NOT part of
 // this contract: only the fact that a branch row is a tombstone is meaningful (memory
@@ -566,7 +582,8 @@ type ReadModelStore interface {
 	//
 	// These aggregate `persons`, so they see the branch overlay (ADR-005):
 	// single-row aggregates take an explicit branchID, the paged ones carry it on
-	// opts.BranchID. GetCemeteryIndex is the one main-only carve-out.
+	// opts.BranchID. GetCemeteryIndex is the one carve-out — category 3 (main-only,
+	// pending) rather than category 2.
 
 	// GetSurnameIndex returns surname and initial-letter counts within the branch
 	// overlay (ADR-005).
@@ -579,8 +596,9 @@ type ReadModelStore interface {
 	// overlay (ADR-005).
 	GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]PlaceEntry, error)
 	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
-	// GetCemeteryIndex is MAIN-ONLY: it reads `life_events`, which is not
-	// branch-scoped.
+	// GetCemeteryIndex is MAIN-ONLY, PENDING (category 3): it reads `life_events`,
+	// which has no branch_id yet. Sub-issue B of #676 (#757) gives it one, and this
+	// method joins category 2 with it.
 	GetCemeteryIndex(ctx context.Context) ([]CemeteryEntry, error)
 	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 
@@ -593,7 +611,9 @@ type ReadModelStore interface {
 	// Brick wall operations
 	//
 	// MAIN-ONLY: brick-wall state is written straight to the read model rather than
-	// projected from events, so there is no overlay to resolve (sub-issue F of #676).
+	// projected from events, so there is no overlay to resolve. Branch-scoping them
+	// waits on the #624 event-sourcing decision (ADR-005, "Entities that stay
+	// main-only"), not on a #676 sub-issue.
 	SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error
 	ResolveBrickWall(ctx context.Context, personID uuid.UUID) error
 	GetBrickWalls(ctx context.Context, includeResolved bool) ([]BrickWallEntry, error)
