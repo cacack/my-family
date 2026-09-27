@@ -20,7 +20,7 @@ var (
 	ErrBranchStoreRequired = errors.New("branch registry store is not configured")
 
 	// ErrPositionSourceRequired is returned when CreateBranch runs on a handler
-	// built without a MaxPositionReader, so a base position cannot be determined.
+	// built without a snapshot store, so a base position cannot be determined.
 	ErrPositionSourceRequired = errors.New("event position source is not configured")
 
 	// ErrBranchNotActive is returned when a branch command targets a branch that
@@ -32,14 +32,6 @@ var (
 // A branch's own id is its stream id.
 const branchStreamType = "branch"
 
-// MaxPositionReader reports the event log's current head position. It is the
-// only thing CreateBranch needs from the snapshot store, kept narrow so the
-// command package does not depend on the whole repository.SnapshotStore surface.
-// repository.SnapshotStore satisfies it.
-type MaxPositionReader interface {
-	GetMaxPosition(ctx context.Context) (int64, error)
-}
-
 // CreateBranch establishes a new research branch off main at the event log's
 // current head (ADR-005). The branch registry row is written by the projection
 // of the BranchCreated event, never by a direct BranchStore call, so rebuilding
@@ -48,11 +40,11 @@ func (h *Handler) CreateBranch(ctx context.Context, name, description string) (*
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
 	}
-	if h.positions == nil {
+	if h.snapshots == nil {
 		return nil, ErrPositionSourceRequired
 	}
 
-	basePosition, err := h.positions.GetMaxPosition(ctx)
+	basePosition, err := h.snapshots.GetMaxPosition(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting max event position: %w", err)
 	}

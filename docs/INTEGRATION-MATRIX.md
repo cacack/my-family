@@ -168,7 +168,7 @@ Current implementation status for tracking completeness.
 | LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
 | Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
 | Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
-| Snapshot | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ✅ | N/A | ⛔ | Partial |
+| Snapshot | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ❌ | Complete |
 | Branch | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | Complete |
 
 Legend: ✅ Complete | ⚠️ Partial/Needed | ❌ Missing/pending | ⛔ Blocked on a decision | N/A Not applicable
@@ -182,12 +182,12 @@ it for opposite reasons:
 - **❌ = pending.** The entity is destined for branch scoping and simply is not there yet. Widening
   this is [#676](https://github.com/cacack/my-family/issues/676) and its sub-issues.
 - **⛔ = blocked on a decision.** Branch scoping is neither scheduled nor ruled out, because a prior
-  question has to be answered first. Snapshot is the only row in this state: it bypasses the
-  event-sourced pipeline, and an entity whose state never passes through the event log has no
-  branch-tagged events to project or replay. Branch-scoping it therefore means first deciding
-  whether it becomes event-sourced — [#624](https://github.com/cacack/my-family/issues/624), not a
-  #676 sub-issue. Brick walls are in the same state for the same reason, but are operations rather
-  than an entity, so they have no row here. See
+  question has to be answered first. No row is in this state today. Brick walls are — they bypass
+  the event-sourced pipeline, and an entity whose state never passes through the event log has no
+  branch-tagged events to project or replay — but they are operations rather than an entity, so
+  they have no row here. Snapshot left this state when
+  [#624](https://github.com/cacack/my-family/issues/624) made it event-sourced; its Branch column is
+  now ❌ (pending). See
   [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only).
 - **N/A = decided.** Branch scoping does not apply to the entity. Submitter, Repository and
   LDSOrdinance — along with RepositoryExternalID, which has no row in this matrix — are permanently
@@ -203,7 +203,7 @@ being entities of their own — see
 Notes on partial rows:
 
 - **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`).
-- **Snapshot**: bypasses the event-sourced pipeline — `SnapshotService` writes directly to `SnapshotStore` (implemented in all three backends, hence ReadModel ✅). A `SnapshotCreated` event type exists in `domain/events.go` but is never emitted, so Events/Commands/Projections remain partial.
+- **Snapshot**: event-sourced since [#624](https://github.com/cacack/my-family/issues/624) — `Handler.CreateSnapshot` / `DeleteSnapshot` emit `SnapshotCreated` / `SnapshotDeleted` and the projection writes the registry, so snapshots created from that point on rebuild from the log. Rows predating #624 have no event and would not survive a rebuild (see ADR-005 "Still open"); rebuild tooling ([#680](https://github.com/cacack/my-family/issues/680)) must backfill them. GEDCOM is N/A (a research marker is not a genealogy record). The Branch column is ❌ rather than N/A (or ⛔, where it sat until #624 made snapshots event-sourced): a snapshot *taken on a branch* is meaningful (ADR-005) but the registry has no `branch_id` column yet, so both commands refuse on a branch-scoped handler.
 - **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
 ### Branch coverage detail (#669 read / #670 write / #756 aggregates)
