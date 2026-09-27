@@ -5748,9 +5748,9 @@ const (
 
 	// GPS artifact filters. %[1]d (and %[2]d) are the placeholder numbers the
 	// caller binds after overlayArgs.
-	gpsSubjectFilter      = `subject_id = $%[1]d`
-	gpsFactFilter         = `fact_type = $%[1]d AND subject_id = $%[2]d`
-	gpsConflictOpenFilter = `status = $%[1]d`
+	gpsSubjectFilter        = `subject_id = $%[1]d`
+	gpsFactFilter           = `fact_type = $%[1]d AND subject_id = $%[2]d`
+	gpsConflictStatusFilter = `status = $%[1]d`
 
 	// gpsSubjectOrder is the deterministic order of every per-subject and
 	// per-fact GPS list, on every backend.
@@ -5797,10 +5797,21 @@ func gpsListOrder(opts repository.ListOptions) string {
 }
 
 // queryGPSPage runs the COUNT and the paged SELECT of a GPS list over
-// opts.BranchID's resolved view of table, calling scan once per row.
-func (s *ReadModelStore) queryGPSPage(ctx context.Context, table, cols string, opts repository.ListOptions, scan func(*sql.Rows) error) (int, error) {
+// opts.BranchID's resolved view of table, calling scan once per row. filter (a
+// package constant with %[n]d placeholders, or "") is applied to each id's
+// winning row, binding values in order.
+func (s *ReadModelStore) queryGPSPage(ctx context.Context, table, cols, filter string, opts repository.ListOptions, scan func(*sql.Rows) error, values ...any) (int, error) {
 	args, n := overlayArgs(opts.BranchID)
-	src := overlaySrc(table, cols, "", opts.BranchID)
+	if filter != "" {
+		placeholders := make([]any, len(values))
+		for i := range values {
+			placeholders[i] = n + i
+		}
+		filter = fmt.Sprintf(filter, placeholders...)
+		args = append(args, values...)
+		n += len(values)
+	}
+	src := overlaySrc(table, cols, filter, opts.BranchID)
 
 	var total int
 	// #nosec G202 -- src is built from package constants carrying only $-placeholders
@@ -5943,7 +5954,7 @@ func (s *ReadModelStore) GetEvidenceAnalysis(ctx context.Context, branchID domai
 // on opts.BranchID.
 func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
 	var results []repository.EvidenceAnalysisReadModel
-	total, err := s.queryGPSPage(ctx, "evidence_analyses", analysisSelectCols, opts, collectRows(&results, scanAnalysisRow))
+	total, err := s.queryGPSPage(ctx, "evidence_analyses", analysisSelectCols, "", opts, collectRows(&results, scanAnalysisRow))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -6017,7 +6028,12 @@ func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, branchID domai
 // visible on opts.BranchID.
 func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
 	var results []repository.EvidenceConflictReadModel
-	total, err := s.queryGPSPage(ctx, "evidence_conflicts", conflictSelectCols, opts, collectRows(&results, scanConflictRow))
+	filter, values := "", []any(nil)
+	if opts.ConflictStatus != nil {
+		filter, values = gpsConflictStatusFilter, []any{string(*opts.ConflictStatus)}
+	}
+	total, err := s.queryGPSPage(ctx, "evidence_conflicts", conflictSelectCols, filter, opts,
+		collectRows(&results, scanConflictRow), values...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -6041,7 +6057,7 @@ func (s *ReadModelStore) GetConflictsForSubject(ctx context.Context, branchID do
 // that branch even though main's row for it is still open.
 func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context, branchID domain.BranchID) ([]repository.EvidenceConflictReadModel, error) {
 	var results []repository.EvidenceConflictReadModel
-	if err := s.queryGPSFiltered(ctx, "evidence_conflicts", conflictSelectCols, gpsConflictOpenFilter, branchID,
+	if err := s.queryGPSFiltered(ctx, "evidence_conflicts", conflictSelectCols, gpsConflictStatusFilter, branchID,
 		collectRows(&results, scanConflictRow), string(domain.ConflictStatusOpen)); err != nil {
 		return nil, fmt.Errorf("unresolved conflicts: %w", err)
 	}
@@ -6093,7 +6109,7 @@ func (s *ReadModelStore) GetResearchLog(ctx context.Context, branchID domain.Bra
 // opts.BranchID.
 func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
 	var results []repository.ResearchLogReadModel
-	total, err := s.queryGPSPage(ctx, "research_logs", researchLogSelectCols, opts, collectRows(&results, scanResearchLogRow))
+	total, err := s.queryGPSPage(ctx, "research_logs", researchLogSelectCols, "", opts, collectRows(&results, scanResearchLogRow))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -6156,7 +6172,7 @@ func (s *ReadModelStore) GetProofSummary(ctx context.Context, branchID domain.Br
 // opts.BranchID.
 func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
 	var results []repository.ProofSummaryReadModel
-	total, err := s.queryGPSPage(ctx, "proof_summaries", proofSummarySelectCols, opts, collectRows(&results, scanProofSummaryRow))
+	total, err := s.queryGPSPage(ctx, "proof_summaries", proofSummarySelectCols, "", opts, collectRows(&results, scanProofSummaryRow))
 	if err != nil {
 		return nil, 0, err
 	}

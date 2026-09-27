@@ -269,7 +269,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err := validateConflictResolutions(plan.Conflicts, input.Resolutions); err != nil {
 		return nil, err
 	}
-	if err := h.validateNoDanglingReferences(ctx, groups, input.Resolutions); err != nil {
+	if err := h.validateNoDanglingReferences(ctx, plan, groups, input.Resolutions); err != nil {
 		return nil, err
 	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
@@ -674,7 +674,7 @@ func groupEventsByStream(events []repository.StoredEvent) []streamGroup {
 //
 // Only link events are checked. Unlinking a person main does not have removes
 // nothing and is harmless.
-func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
+func (h *Handler) validateNoDanglingReferences(ctx context.Context, plan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
 	replayed := make(map[uuid.UUID]bool, len(groups))
 	for _, group := range groups {
 		if resolutions[group.streamID] != ResolveMain {
@@ -715,7 +715,7 @@ func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []str
 			checked[payload.PersonID] = true
 		}
 	}
-	return h.validateNoDanglingEvidence(ctx, groups, resolutions)
+	return h.validateNoDanglingEvidence(ctx, plan, groups, resolutions)
 }
 
 // validateResolutions rejects resolutions the merge cannot honor: one naming a

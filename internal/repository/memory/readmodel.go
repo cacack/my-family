@@ -2816,7 +2816,12 @@ func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, branchID domai
 func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	rows, total := pageGPS(resolveGPS(s.evidenceConflicts, opts.BranchID, nil, conflictTimes), opts, conflictTimes)
+	var keep func(*repository.EvidenceConflictReadModel) bool
+	if opts.ConflictStatus != nil {
+		status := *opts.ConflictStatus
+		keep = func(c *repository.EvidenceConflictReadModel) bool { return c.Status == status }
+	}
+	rows, total := pageGPS(resolveGPS(s.evidenceConflicts, opts.BranchID, keep, conflictTimes), opts, conflictTimes)
 	return rows, total, nil
 }
 

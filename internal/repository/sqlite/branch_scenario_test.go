@@ -1786,6 +1786,39 @@ func runBranchGPSScenario(t *testing.T, readStore repository.ReadModelStore, bra
 	if got := unresolved(branchID); len(got) != 0 {
 		t.Errorf("branch ListUnresolvedConflicts = %v, want none (the branch resolved it)", got)
 	}
+	// ListEvidenceConflicts' status filter is resolve-then-filter too, and pages
+	// and counts in the store: the branch lists main's conflict as resolved
+	// only, main as open only.
+	for _, tc := range []struct {
+		label     string
+		branchID  domain.BranchID
+		status    domain.ConflictStatus
+		offset    int
+		wantRows  int
+		wantTotal int
+	}{
+		{"branch open", branchID, domain.ConflictStatusOpen, 0, 0, 0},
+		{"branch resolved", branchID, domain.ConflictStatusResolved, 0, 1, 1},
+		{"branch resolved past the end", branchID, domain.ConflictStatusResolved, 1, 0, 1},
+		{"main open", main, domain.ConflictStatusOpen, 0, 1, 1},
+		{"main resolved", main, domain.ConflictStatusResolved, 0, 0, 0},
+	} {
+		status := tc.status
+		rows, total, err := readStore.ListEvidenceConflicts(ctx, repository.ListOptions{
+			Limit: 1, Offset: tc.offset, BranchID: tc.branchID, ConflictStatus: &status,
+		})
+		if err != nil {
+			t.Fatalf("%s: ListEvidenceConflicts: %v", tc.label, err)
+		}
+		if len(rows) != tc.wantRows || total != tc.wantTotal {
+			t.Errorf("%s: ListEvidenceConflicts = %d rows of %d, want %d of %d", tc.label, len(rows), total, tc.wantRows, tc.wantTotal)
+		}
+		for _, c := range rows {
+			if c.Status != tc.status {
+				t.Errorf("%s: listed conflict %s with status %s", tc.label, c.ID, c.Status)
+			}
+		}
+	}
 	if got := conflictsFor(branchID, subject.ID); len(got) != 1 || got[0].Status != domain.ConflictStatusResolved || got[0].Resolution != "The register wins" {
 		t.Errorf("branch GetConflictsForSubject = %+v, want the resolved shadow", got)
 	}

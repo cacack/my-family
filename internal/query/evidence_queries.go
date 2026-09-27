@@ -198,54 +198,26 @@ func (s *EvidenceQueryService) GetEvidenceConflict(ctx context.Context, branchID
 
 // ListEvidenceConflicts returns a paginated list of evidence conflicts.
 //
-// With input.Status set, the status is matched on each conflict's resolved row
-// (the branch overlay is resolved by the store first) and only then paginated,
-// so Total counts every matching conflict and a page is never short because
-// non-matching rows took its slots.
+// With input.Status set, the store matches the status on each conflict's
+// resolved row (the branch overlay is resolved first) and pages and counts the
+// matches itself, so Total counts every matching conflict and a page is never
+// short because non-matching rows took its slots.
 func (s *EvidenceQueryService) ListEvidenceConflicts(ctx context.Context, input ListInput) (*EvidenceConflictListResult, error) {
 	opts := normalizeListOptions(input)
-	if input.Status == "" {
-		readModels, total, err := s.readStore.ListEvidenceConflicts(ctx, opts)
-		if err != nil {
-			return nil, err
-		}
-		conflicts := make([]EvidenceConflict, 0, len(readModels))
-		for _, rm := range readModels {
-			conflicts = append(conflicts, convertReadModelToEvidenceConflict(rm))
-		}
-		return &EvidenceConflictListResult{Conflicts: conflicts, Total: total, Limit: opts.Limit, Offset: opts.Offset}, nil
+	if input.Status != "" {
+		status := domain.ConflictStatus(input.Status)
+		opts.ConflictStatus = &status
 	}
-
-	// Read every conflict the scope sees, in the requested order, then filter and
-	// page here: the store has no status-filtered paged list.
-	all := opts
-	all.Offset = 0
-	all.Limit = maxConflictStatusScan
-	readModels, _, err := s.readStore.ListEvidenceConflicts(ctx, all)
+	readModels, total, err := s.readStore.ListEvidenceConflicts(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-	matching := make([]EvidenceConflict, 0, len(readModels))
+	conflicts := make([]EvidenceConflict, 0, len(readModels))
 	for _, rm := range readModels {
-		if string(rm.Status) == input.Status {
-			matching = append(matching, convertReadModelToEvidenceConflict(rm))
-		}
+		conflicts = append(conflicts, convertReadModelToEvidenceConflict(rm))
 	}
-	total := len(matching)
-	start := min(opts.Offset, total)
-	end := min(start+opts.Limit, total)
-	return &EvidenceConflictListResult{
-		Conflicts: matching[start:end],
-		Total:     total,
-		Limit:     opts.Limit,
-		Offset:    opts.Offset,
-	}, nil
+	return &EvidenceConflictListResult{Conflicts: conflicts, Total: total, Limit: opts.Limit, Offset: opts.Offset}, nil
 }
-
-// maxConflictStatusScan bounds the read behind a status-filtered conflict list.
-// Evidence conflicts are recorded one per disagreeing fact, so a tree holds far
-// fewer than this; the bound only keeps the read finite.
-const maxConflictStatusScan = 100000
 
 // GetConflictsForSubject returns all evidence conflicts for a given subject.
 func (s *EvidenceQueryService) GetConflictsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]EvidenceConflict, error) {

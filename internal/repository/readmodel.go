@@ -823,6 +823,11 @@ type ListOptions struct {
 	// ResearchStatus filters by research_status: certain, probable, possible,
 	// unknown, or "unset" for NULL.
 	ResearchStatus *string
+	// ConflictStatus filters ListEvidenceConflicts by status (open, resolved,
+	// accepted). The predicate applies to each conflict's winning overlay row,
+	// so a conflict a branch resolved is not listed as open there (#760).
+	// Other lists ignore it.
+	ConflictStatus *domain.ConflictStatus
 	// BranchID scopes list queries over branch-aware slice entities (ADR-005).
 	// The zero value (domain.MainBranchID) lists the mainline only, reproducing
 	// pre-branch behavior. On a non-main branch the store returns the copy-on-write
