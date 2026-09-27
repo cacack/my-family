@@ -96,8 +96,9 @@ var (
 	// the one case Append's optimistic concurrency cannot catch either.
 	//
 	// Deliberately not mapped to a 4xx code: a caller cannot fix it, and the
-	// generic 500 is the honest answer. Anticipated trigger is a second plan
-	// constructor, e.g. the stored/replayed plan #685 needs.
+	// generic 500 is the honest answer. ResumeMerge (#685) replays from the
+	// plan recorded on the claim rather than from a MergePlan, and applies the
+	// same never-default rule to it.
 	ErrMergePlanIncomplete = errors.New("merge plan is incomplete: a replayed stream has no pinned main version")
 
 	// ErrMergePartiallyApplied is returned when the branch was claimed (it is
@@ -113,8 +114,8 @@ var (
 	// single-stream branch losing the residual staleness race, and it needs a
 	// different response from a genuine half-application, so the message says
 	// explicitly whether anything reached main (see replayOntoMain). Either way
-	// the branch is terminal and there is no resume path; resumable merge is
-	// tracked as #685.
+	// the branch is terminal: the way forward is Handler.ResumeMerge (#685),
+	// never a second MergeBranch.
 	ErrMergePartiallyApplied = errors.New("branch was marked merged but the replay onto main did not finish")
 )
 
@@ -210,10 +211,12 @@ type MergeBranchResult struct {
 // partially updated — or, when the FIRST stream fails, with main untouched. The
 // returned error names the stream that failed, how many events had already been
 // replayed, and which of those two states this is, so it is diagnosable without
-// counting. Resumable merge is deliberate follow-up work (#685), not an
-// oversight. Replaying one Append per
-// stream (rather than per event) keeps the failure granularity at whole-entity,
-// since the SQL backends wrap an Append in a transaction.
+// counting. The claim records the replay plan (the streams to replay and their
+// pinned main versions), so ResumeMerge (#685) can finish the replay from the
+// log alone. Replaying one Append per stream (rather than per event) keeps the
+// failure granularity at whole-entity, since the SQL backends wrap an Append in
+// a transaction — which is also what lets a resume classify each stream as
+// wholly replayed or not replayed at all.
 func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*MergeBranchResult, error) {
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
@@ -294,7 +297,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, err
 	}
 
-	if err := h.claimMerge(ctx, branch, mergedAtPosition, input.Note); err != nil {
+	if err := h.claimMerge(ctx, branch, mergedAtPosition, input.Note, replayPlan(groups, plan.MainStreamVersions, input.Resolutions)); err != nil {
 		return nil, err
 	}
 
@@ -329,10 +332,11 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 // which ADR-002 makes the primary production backend
 // (internal/repository/postgres/eventstore.go:122,
 // internal/repository/sqlite/eventstore.go, internal/repository/memory/eventstore.go)
-// — so the -1 a branch-created stream is appended with turns the check OFF
-// entirely rather than asserting "no prior events". Leaning on Append would
-// therefore leave exactly the case where main GAINS a stream the branch also
-// created — the create-vs-create shape — completely unguarded.
+// — so a -1 turns the check OFF entirely rather than asserting "no prior
+// events", and Append in any case compares only against the version the caller
+// just read, never against the plan's pin. Leaning on Append would therefore
+// leave a mainline write landing between planning and the replay's own read
+// completely unguarded.
 //
 // Scoped to the streams that will actually be replayed. A stream resolved to
 // main is not written, so main moving under it changes nothing this merge does,
@@ -342,8 +346,8 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 // activity.
 //
 // A stream main has never seen is planned at 0 and still reads 0, so it does not
-// trip the guard — that is the whole point of keeping the 0 → -1 translation out
-// of the plan and down in replayStream.
+// trip the guard. (replayStream passes that 0 to Append as-is, which asserts "no
+// prior events" — unlike the -1 sentinel, which would switch the check off.)
 func (h *Handler) validatePlanNotStale(
 	ctx context.Context,
 	plan *query.MergePlan,
@@ -359,8 +363,7 @@ func (h *Handler) validatePlanNotStale(
 		// at 0, so an absent key would compare 0 == 0 and wave through exactly
 		// the create-vs-create shape this guard exists for — the one case Append
 		// provably cannot catch. PlanMerge always populates every replayed
-		// stream; this refuses a plan from any future constructor that does not
-		// (#685's stored plans).
+		// stream; this refuses a plan from any future constructor that does not.
 		planned, pinned := plan.MainStreamVersions[group.streamID]
 		if !pinned {
 			return fmt.Errorf(
@@ -393,7 +396,10 @@ func (h *Handler) validatePlanNotStale(
 // The registry row is written by the projection, never by a direct
 // BranchStore.MarkMerged call — the same rule CreateBranch and DeleteBranch
 // follow, so a projection rebuild reconstructs the merge record.
-func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedAtPosition int64, note string) error {
+//
+// replayVersions is the replay plan recorded on the claim — see
+// domain.BranchMerged.ReplayStreamVersions and ResumeMerge.
+func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedAtPosition int64, note string, replayVersions map[uuid.UUID]int64) error {
 	scope := branchScope(branch)
 
 	currentVersion, err := h.eventStore.GetStreamVersion(ctx, branch.ID, scope.BranchID)
@@ -428,18 +434,18 @@ func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedA
 	if claimed != nil {
 		// Heal the registry the failed attempt left behind — projecting the
 		// event that already exists is idempotent — then refuse. Refusing
-		// rather than continuing is deliberate: from here we cannot tell
-		// whether the earlier attempt's replay ran, so resuming it risks
-		// duplicating main's history. GET /branches/{id}/compare reports what
-		// actually landed (#685 tracks resuming it properly).
+		// rather than continuing is deliberate: a fresh merge would re-plan
+		// against a main the earlier attempt may already have written to.
+		// Finishing that attempt is ResumeMerge's job (#685), which works from
+		// the plan the claim recorded and detects what already landed.
 		if err := h.projector.Project(ctx, claimed, currentVersion, scope.BranchID); err != nil {
 			return fmt.Errorf("repairing branch registry after an interrupted claim: %w", err)
 		}
 		return fmt.Errorf("%w: %s was already claimed by an earlier attempt whose registry update did not land; "+
-			"the registry has been repaired — verify with compare before retrying", ErrMergeAlreadyClaimed, branch.ID)
+			"the registry has been repaired — finish that merge with POST /branches/{id}/merge/resume", ErrMergeAlreadyClaimed, branch.ID)
 	}
 
-	event := domain.NewBranchMerged(branch.ID, branch.BasePosition, mergedAtPosition, note)
+	event := domain.NewBranchMerged(branch.ID, branch.BasePosition, mergedAtPosition, note, replayVersions)
 	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, currentVersion, scope); err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return fmt.Errorf("%w: %s", ErrMergeAlreadyClaimed, branch.ID)
@@ -543,13 +549,12 @@ func (h *Handler) replayOntoMain(
 				return 0, nil, fmt.Errorf(
 					"merging branch %s: stream %s failed before any event reached main — "+
 						"MAIN WAS NOT MODIFIED (0 of %d events across 0 of %d streams replayed), "+
-						"but the branch is already marked merged, so there is nothing to unwind on main "+
-						"and no resume path yet (#685): %w",
+						"but the branch is already marked merged; finish it with POST /branches/{id}/merge/resume: %w",
 					branch.ID, group.streamID, totalEvents, streamsToReplay, err)
 			}
 			return 0, nil, fmt.Errorf(
 				"merging branch %s: stream %s failed after %d of %d events across %d of %d streams reached main — "+
-					"MAIN IS PARTIALLY UPDATED: %w",
+					"MAIN IS PARTIALLY UPDATED; finish it with POST /branches/{id}/merge/resume: %w",
 				branch.ID, group.streamID, replayed, totalEvents, streamsDone, streamsToReplay, err)
 		}
 		streamsDone++
@@ -595,23 +600,21 @@ func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVe
 	if err != nil {
 		return 0, fmt.Errorf("getting main stream version: %w", err)
 	}
-	// Asserted BEFORE the 0 → -1 translation below, on the true version, so a
-	// stream main gained since planning (0 → 1) is caught rather than erased by
-	// the sentinel.
+	// Asserted on the true version, so a stream main gained since planning
+	// (0 → 1) is caught.
 	if currentVersion != plannedVersion {
 		return 0, fmt.Errorf(
 			"%w: main reached version %d for stream %s between the pre-merge check and this append, "+
 				"but the merge plan was computed against version %d",
 			ErrMergePlanStale, currentVersion, group.streamID, plannedVersion)
 	}
-	// Same 0 → -1 convention as everywhere else: main has no events for a
-	// stream the branch created, so the append must claim a new stream.
-	expectedVersion := currentVersion
-	if currentVersion == 0 {
-		expectedVersion = -1
-	}
-
-	if err := h.eventStore.Append(ctx, group.streamID, group.streamType, events, expectedVersion, repository.MainScope); err != nil {
+	// The version just read is passed as-is, 0 included, NOT translated to the
+	// -1 "new stream" sentinel. Every backend gates its optimistic check on
+	// expectedVersion >= 0, so -1 would turn the check off for exactly the
+	// streams main has never seen — and two concurrent ResumeMerge calls (#685)
+	// would then both append the branch's creation onto main. 0 asserts "main
+	// has no events for this stream", which is the claim being made.
+	if err := h.eventStore.Append(ctx, group.streamID, group.streamType, events, currentVersion, repository.MainScope); err != nil {
 		return 0, fmt.Errorf("appending replayed events to main: %w", err)
 	}
 
@@ -623,6 +626,22 @@ func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVe
 		}
 	}
 	return len(events), nil
+}
+
+// replayPlan is the replay plan a claim records: every stream the merge will
+// replay, mapped to its pinned main version. Streams resolved to main are left
+// out, which is how a resume knows not to replay them. validatePlanNotStale has
+// already refused a plan missing a pin for any of these streams, so every entry
+// is a real pinned version, never a defaulted zero.
+func replayPlan(groups []streamGroup, pinned map[uuid.UUID]int64, resolutions map[uuid.UUID]MergeResolution) map[uuid.UUID]int64 {
+	plan := make(map[uuid.UUID]int64, len(groups))
+	for _, group := range groups {
+		if resolutions[group.streamID] == ResolveMain {
+			continue
+		}
+		plan[group.streamID] = pinned[group.streamID]
+	}
+	return plan
 }
 
 // streamGroup is one aggregate's slice of the replay set, in position order.
@@ -656,66 +675,196 @@ func groupEventsByStream(events []repository.StoredEvent) []streamGroup {
 //
 // Resolutions are per-aggregate, but the branch's events reference each other
 // ACROSS aggregates: ChildLinkedToFamily lives on the family's stream and names
-// a person on another. So excluding a person — by resolving their stream to
-// main, which is the ONLY resolution offered when main is the deleter — does
-// not exclude the family event that links them. Replayed on its own, that event
-// writes a family_children row for a person main does not have: the projection
-// saves the row unconditionally (internal/repository/projection.go,
-// projectChildLinked reads the person only to denormalize a name), and the
-// branch-scoping work dropped the FK cascade that would once have caught it.
-// The result is a "successful" 200 leaving main with a blank-named phantom
-// child, reported nowhere — skipped_stream_ids names the person, never the
-// family still pointing at them.
+// a person on another, and AssociationCreated (#757) lives on the
+// association's stream and names two. So excluding a person — by resolving
+// their stream to main, which is the ONLY resolution offered when main is the
+// deleter — does not exclude the event that references them. Replayed on its
+// own, that event writes a row for a person main does not have: the
+// projections save the row unconditionally (internal/repository/projection.go,
+// projectChildLinked and projectAssociationCreated read the person only to
+// denormalize a name), and the branch-scoping work dropped the FK cascade that
+// would once have caught it. The result is a "successful" 200 leaving main
+// with a blank-named phantom child or association, reported nowhere —
+// skipped_stream_ids names the person, never the stream still pointing at them.
 //
 // A person is fine if main already has them or the replay is about to create
-// them. Anything else is refused, rather than silently dropping the link:
-// dropping is the same silent-discard class of bug that per-conflict resolution
-// exists to prevent.
+// them — the replay carries a group that creates the person (see
+// createsPerson). Merely replaying the person's stream is not enough: a
+// stream of edits does not bring back a person main no longer has. main can
+// remove a person without writing to their stream (PersonMerged lands on the
+// survivor's), so an edit-only stream for a merged-away person is not even a
+// conflict, yet replaying it restores nothing. Anything else is refused,
+// rather than silently dropping the reference: dropping is the same
+// silent-discard class of bug that per-conflict resolution exists to prevent.
 //
-// Only link events are checked. Unlinking a person main does not have removes
-// nothing and is harmless.
+// Only events that ADD a reference are checked. Unlinking a person main does
+// not have removes nothing and is harmless.
 func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
-	replayed := make(map[uuid.UUID]bool, len(groups))
-	for _, group := range groups {
-		if resolutions[group.streamID] != ResolveMain {
-			replayed[group.streamID] = true
-		}
-	}
-
-	checked := make(map[uuid.UUID]bool)
+	created := make(map[uuid.UUID]bool, len(groups))
+	checkedGroups := make([]streamGroup, 0, len(groups))
 	for _, group := range groups {
 		if resolutions[group.streamID] == ResolveMain {
 			continue
 		}
-		for _, evt := range group.events {
-			if evt.EventType != "ChildLinkedToFamily" {
-				continue
-			}
-			var payload struct {
-				PersonID uuid.UUID `json:"person_id"`
-			}
-			if err := json.Unmarshal(evt.Data, &payload); err != nil {
-				return fmt.Errorf("decoding child link on stream %s: %w", group.streamID, err)
-			}
-			// The replay will create or update this person, so the link lands
-			// on something real.
-			if replayed[payload.PersonID] || checked[payload.PersonID] {
-				continue
-			}
-			person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, payload.PersonID)
-			if err != nil {
-				return fmt.Errorf("checking person %s on main: %w", payload.PersonID, err)
-			}
-			if person == nil {
-				return fmt.Errorf(
-					"%w: the branch links person %s into family %s, but that person will not exist on main "+
-						"(deleted there, or excluded by a \"main\" resolution)",
-					ErrMergeDanglingReference, payload.PersonID, group.streamID)
-			}
-			checked[payload.PersonID] = true
+		checkedGroups = append(checkedGroups, group)
+		if createsPerson(group) {
+			created[group.streamID] = true
 		}
 	}
+
+	dangling, err := h.findDanglingReferences(ctx, checkedGroups, func(personID uuid.UUID) bool { return created[personID] })
+	if err != nil {
+		return err
+	}
+	if len(dangling) > 0 {
+		return dangling[0].err()
+	}
 	return h.validateNoDanglingEvidence(ctx, groups, resolutions)
+}
+
+// createsPerson reports whether a replay group leaves its person in existence
+// on main by itself: it is a person stream that creates the person and does
+// not end by deleting them.
+func createsPerson(group streamGroup) bool {
+	if !isPersonStream(group.streamType) || endsInDelete(group.events) {
+		return false
+	}
+	for i := range group.events {
+		if group.events[i].EventType == "PersonCreated" {
+			return true
+		}
+	}
+	return false
+}
+
+// danglingReference is one branch stream whose replay would point main at a
+// person main will not have.
+type danglingReference struct {
+	streamID uuid.UUID
+	personID uuid.UUID
+}
+
+func (d danglingReference) err() error {
+	return fmt.Errorf(
+		"%w: the branch's stream %s (a family partner or child link, or an association) references person %s, "+
+			"but that person will not exist on main (deleted or merged away there, or excluded by a \"main\" resolution)",
+		ErrMergeDanglingReference, d.streamID, d.personID)
+}
+
+// findDanglingReferences reports, for each group, the first person one of its
+// events references (see personReferences) who is neither vouched for by
+// present nor on main's read model. Groups are reported in order, at most once
+// each. Each person is looked up on main at most once.
+func (h *Handler) findDanglingReferences(ctx context.Context, groups []streamGroup, present func(uuid.UUID) bool) ([]danglingReference, error) {
+	onMain := make(map[uuid.UUID]bool)
+	var dangling []danglingReference
+	for _, group := range groups {
+	events:
+		for i := range group.events {
+			personIDs, err := personReferences(group.events[i])
+			if err != nil {
+				return nil, err
+			}
+			for _, personID := range personIDs {
+				if present(personID) {
+					continue
+				}
+				found, looked := onMain[personID]
+				if !looked {
+					person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, personID)
+					if err != nil {
+						return nil, fmt.Errorf("checking person %s on main: %w", personID, err)
+					}
+					found = person != nil
+					onMain[personID] = found
+				}
+				if !found {
+					dangling = append(dangling, danglingReference{streamID: group.streamID, personID: personID})
+					break events
+				}
+			}
+		}
+	}
+	return dangling, nil
+}
+
+// personReferences returns the persons a branch event makes main point at: the
+// partners a FamilyCreated names, a partner a FamilyUpdated sets, the child of
+// a ChildLinkedToFamily, and both sides of an AssociationCreated (an
+// association's persons are fixed at creation; AssociationUpdated cannot
+// change them). A FamilyUpdated that clears a partner references no one.
+func personReferences(evt repository.StoredEvent) ([]uuid.UUID, error) {
+	switch evt.EventType {
+	case "FamilyCreated":
+		var payload struct {
+			Partner1ID *uuid.UUID `json:"partner1_id"`
+			Partner2ID *uuid.UUID `json:"partner2_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding family on stream %s: %w", evt.StreamID, err)
+		}
+		return nonNilPersons(payload.Partner1ID, payload.Partner2ID), nil
+	case "FamilyUpdated":
+		var payload struct {
+			Changes map[string]json.RawMessage `json:"changes"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding family update on stream %s: %w", evt.StreamID, err)
+		}
+		var ids []uuid.UUID
+		for _, key := range []string{"partner1_id", "partner2_id"} {
+			if id := partnerChange(payload.Changes[key]); id != nil {
+				ids = append(ids, *id)
+			}
+		}
+		return ids, nil
+	case "ChildLinkedToFamily":
+		var payload struct {
+			PersonID uuid.UUID `json:"person_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding child link on stream %s: %w", evt.StreamID, err)
+		}
+		return []uuid.UUID{payload.PersonID}, nil
+	case "AssociationCreated":
+		var payload struct {
+			PersonID    uuid.UUID `json:"person_id"`
+			AssociateID uuid.UUID `json:"associate_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding association on stream %s: %w", evt.StreamID, err)
+		}
+		return []uuid.UUID{payload.PersonID, payload.AssociateID}, nil
+	}
+	return nil, nil
+}
+
+// partnerChange decodes one partner entry of a FamilyUpdated's changes the
+// way the projection reads it (resolvePartnerChange in
+// internal/repository/projection.go): a UUID string sets that person; an
+// absent entry, null, or any value the projection would store as "no partner"
+// references no one.
+func partnerChange(raw json.RawMessage) *uuid.UUID {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil || s == "" {
+		return nil
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return nil // the projection clears the partner for this value too
+	}
+	return &id
+}
+
+// nonNilPersons returns the set ids among ids, in order.
+func nonNilPersons(ids ...*uuid.UUID) []uuid.UUID {
+	var out []uuid.UUID
+	for _, id := range ids {
+		if id != nil {
+			out = append(out, *id)
+		}
+	}
+	return out
 }
 
 // validateResolutions rejects resolutions the merge cannot honor: one naming a

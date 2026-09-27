@@ -108,8 +108,8 @@ type MergePlan struct {
 	// `current == planned` comparison passes silently. The command therefore
 	// requires the key rather than defaulting it (see validatePlanNotStale).
 	// PlanMerge always populates it from the same event slice ReplayEvents comes
-	// from; the requirement is for any future constructor — #685's stored,
-	// replayed plan being the anticipated one.
+	// from; the requirement is for any future constructor. (#685's resume does
+	// not build a MergePlan: it replays from the plan recorded on the claim.)
 	//
 	// DELIBERATELY NOT PINNED: the create-vs-create class. A colliding create on
 	// main lives on a DIFFERENT stream by definition (see readMainCreateTail), so
@@ -189,6 +189,44 @@ func (s *BranchService) PlanMerge(ctx context.Context, branchID uuid.UUID) (*Mer
 		BranchTruncated:    diff.branchTruncated,
 		MainTruncated:      diff.mainTruncated || tailTruncated,
 		EventCap:           maxComparisonEvents,
+	}, nil
+}
+
+// MergeReplaySet is a branch's replay set on its own, without a conflict
+// verdict: what a merge of the branch re-appends onto main.
+type MergeReplaySet struct {
+	Branch *domain.Branch
+
+	// ReplayEvents are the branch's own mutation events in ascending position
+	// order, lifecycle events stripped — the same slice MergePlan.ReplayEvents
+	// carries, read through the same helper.
+	ReplayEvents []repository.StoredEvent
+
+	// Truncated reports that the branch's scan hit EventCap, so ReplayEvents is
+	// incomplete.
+	Truncated bool
+
+	// EventCap is the scan cap Truncated was measured against.
+	EventCap int
+}
+
+// LoadMergeReplaySet reads a branch's replay set and nothing else. It is what a
+// resumed merge (#685) needs: the conflict verdict and the staleness pins were
+// fixed when the merge was claimed and are recorded on its BranchMerged event,
+// so re-running PlanMerge would only recompute a verdict against a main the
+// replay has already partly written to — a verdict that no longer means
+// anything. A claimed branch accepts no further writes, so this set is the same
+// one the original merge replayed from.
+func (s *BranchService) LoadMergeReplaySet(ctx context.Context, branchID uuid.UUID) (*MergeReplaySet, error) {
+	diff, err := s.loadBranchSide(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	return &MergeReplaySet{
+		Branch:       diff.branch,
+		ReplayEvents: diff.branchEvents,
+		Truncated:    diff.branchTruncated,
+		EventCap:     maxComparisonEvents,
 	}, nil
 }
 

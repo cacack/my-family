@@ -943,26 +943,100 @@ func NewBranchDeleted(branchID uuid.UUID) BranchDeleted {
 //
 // Note carries the researcher's rationale for the merge — the "merge commit
 // message" that makes the promotion reviewable after the fact (#55).
+//
+// ReplayStreamVersions is the replay PLAN the claim committed to (#685): one
+// entry per stream the merge will replay onto main, mapped to main's version of
+// that stream when the conflict verdict was computed. A stream the branch
+// touched but that is absent here was resolved to "main" and is deliberately
+// not replayed. Recording it on the claim is what makes an interrupted replay
+// resumable: the resolutions and the #698 staleness pins survive the request
+// that chose them, in the log, rather than only in that request's memory.
+//
+// The tag has NO omitempty, on purpose. A merge that replays nothing records
+// `{}`, which decodes to an empty non-nil map; a claim written before #685
+// carries no key at all and decodes to nil. Those are different facts — "the
+// plan was: replay nothing" versus "the plan was not recorded" — and resume
+// must be able to tell them apart (see command.Handler.ResumeMerge).
 type BranchMerged struct {
 	BaseEvent
-	BranchID         uuid.UUID `json:"branch_id"`
-	BasePosition     int64     `json:"base_position"`
-	MergedAtPosition int64     `json:"merged_at_position"`
-	Note             string    `json:"note,omitempty"`
+	BranchID             uuid.UUID           `json:"branch_id"`
+	BasePosition         int64               `json:"base_position"`
+	MergedAtPosition     int64               `json:"merged_at_position"`
+	Note                 string              `json:"note,omitempty"`
+	ReplayStreamVersions map[uuid.UUID]int64 `json:"replay_stream_versions"`
 }
 
 func (e BranchMerged) EventType() string      { return "BranchMerged" }
 func (e BranchMerged) AggregateID() uuid.UUID { return e.BranchID }
 
 // NewBranchMerged creates a BranchMerged event. note may be empty — a merge
-// rationale is encouraged but not required.
-func NewBranchMerged(branchID uuid.UUID, basePosition, mergedAtPosition int64, note string) BranchMerged {
+// rationale is encouraged but not required. replayStreamVersions is the replay
+// plan (see BranchMerged.ReplayStreamVersions); a nil map is stored as `{}`, so
+// every claim this constructor builds records its plan, even an empty one. The
+// map is copied, so the caller may reuse its own.
+func NewBranchMerged(branchID uuid.UUID, basePosition, mergedAtPosition int64, note string, replayStreamVersions map[uuid.UUID]int64) BranchMerged {
+	plan := make(map[uuid.UUID]int64, len(replayStreamVersions))
+	for streamID, version := range replayStreamVersions {
+		plan[streamID] = version
+	}
 	return BranchMerged{
-		BaseEvent:        NewBaseEvent(),
-		BranchID:         branchID,
-		BasePosition:     basePosition,
-		MergedAtPosition: mergedAtPosition,
-		Note:             note,
+		BaseEvent:            NewBaseEvent(),
+		BranchID:             branchID,
+		BasePosition:         basePosition,
+		MergedAtPosition:     mergedAtPosition,
+		Note:                 note,
+		ReplayStreamVersions: plan,
+	}
+}
+
+// BranchMergeResumed records the decisions a resumed merge made (#685). It is
+// appended to the branch's OWN stream, after the BranchMerged claim, by
+// command.Handler.ResumeMerge — and only when that resume had to decide
+// something the claim could not (a stream main moved on after the claim, or a
+// claim that predates #685 and recorded no plan). Like BranchMerged it is a
+// marker and is never replayed onto main.
+//
+// ReplayStreamVersions is the replay plan AS IT NOW STANDS, replacing the
+// claim's (and any earlier BranchMergeResumed's) in full, with the same
+// meaning as BranchMerged.ReplayStreamVersions: every stream the merge
+// replays, mapped to the main version its replay asserts; a stream the branch
+// touched but absent here was resolved to "main". Recording the whole plan,
+// rather than only the delta, keeps "what is the plan now" a matter of reading
+// the latest marker. Resolutions is the audit record of what this resume was
+// asked to decide ("branch" or "main" per stream).
+//
+// Without this record a resume-time "main" decision would exist only as the
+// absence of replayed events, so the next resume would find the stream
+// unreplayed and stale again and ask for — and accept — a fresh decision,
+// letting a second request quietly reverse what the first one reviewed.
+type BranchMergeResumed struct {
+	BaseEvent
+	BranchID             uuid.UUID            `json:"branch_id"`
+	MergedAtPosition     int64                `json:"merged_at_position"`
+	ReplayStreamVersions map[uuid.UUID]int64  `json:"replay_stream_versions"`
+	Resolutions          map[uuid.UUID]string `json:"resolutions"`
+}
+
+func (e BranchMergeResumed) EventType() string      { return "BranchMergeResumed" }
+func (e BranchMergeResumed) AggregateID() uuid.UUID { return e.BranchID }
+
+// NewBranchMergeResumed creates a BranchMergeResumed event. Both maps are
+// copied, and a nil map is stored as `{}`.
+func NewBranchMergeResumed(branchID uuid.UUID, mergedAtPosition int64, replayStreamVersions map[uuid.UUID]int64, resolutions map[uuid.UUID]string) BranchMergeResumed {
+	plan := make(map[uuid.UUID]int64, len(replayStreamVersions))
+	for streamID, version := range replayStreamVersions {
+		plan[streamID] = version
+	}
+	decided := make(map[uuid.UUID]string, len(resolutions))
+	for streamID, side := range resolutions {
+		decided[streamID] = side
+	}
+	return BranchMergeResumed{
+		BaseEvent:            NewBaseEvent(),
+		BranchID:             branchID,
+		MergedAtPosition:     mergedAtPosition,
+		ReplayStreamVersions: plan,
+		Resolutions:          decided,
 	}
 }
 

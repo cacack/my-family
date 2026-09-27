@@ -7,9 +7,8 @@ package command
 // carries a pinned main version — holds by construction today: PlanMerge derives
 // MergePlan.MainStreamVersions and MergePlan.ReplayEvents from the same event
 // slice, so no black-box route through MergeBranch can produce a plan that
-// violates it. The refusal exists for the SECOND plan constructor ADR-005
-// anticipates (#685's stored, replayed plan), and a guard no test can reach is a
-// guard that quietly stops working. Handing the guard a hand-built plan is the
+// violates it. The refusal exists for any future plan constructor, and a guard
+// no test can reach is a guard that quietly stops working. Handing the guard a hand-built plan is the
 // only way to exercise it, and that means reaching past the exported surface.
 
 import (

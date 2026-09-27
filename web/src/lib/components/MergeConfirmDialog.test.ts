@@ -330,7 +330,7 @@ describe('MergeConfirmDialog', () => {
 			);
 		});
 
-		it('does not offer a retry for merge_partially_applied, and links #685', async () => {
+		it('does not offer a retry for merge_partially_applied, and points at resuming', async () => {
 			await refuse({
 				status: 500,
 				code: 'merge_partially_applied',
@@ -339,9 +339,13 @@ describe('MergeConfirmDialog', () => {
 
 			await screen.findByText(MERGE_REFUSAL_COPY.merge_partially_applied.title);
 			expect(screen.queryByRole('button', { name: /try merging again/i })).toBeNull();
-			expect(screen.getByRole('link', { name: '#685' }).getAttribute('href')).toBe(
-				'https://github.com/cacack/my-family/issues/685'
-			);
+			// Resuming is supported now, so there is no tracking issue to send
+			// the user to - the copy names the resume instead, in user terms
+			// (the resume is API-only, so no raw endpoint is shown).
+			expect(screen.queryByRole('link', { name: '#685' })).toBeNull();
+			expect(MERGE_REFUSAL_COPY.merge_partially_applied.issue).toBeUndefined();
+			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).toMatch(/administrator can finish this merge by resuming it/);
+			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).not.toMatch(/POST|\/branches\//);
 			// The only valid recovery: verify by comparing again.
 			expect(screen.getByRole('button', { name: /compare again/i })).toBeDefined();
 		});

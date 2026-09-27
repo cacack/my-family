@@ -383,6 +383,113 @@ func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (Mer
 	return nil, err
 }
 
+// ResumeBranchMerge implements StrictServerInterface. It finishes a merge whose
+// replay onto main was interrupted (#685); see the operation description in
+// openapi.yaml and command.Handler.ResumeMerge.
+func (ss *StrictServer) ResumeBranchMerge(ctx context.Context, request ResumeBranchMergeRequestObject) (ResumeBranchMergeResponseObject, error) {
+	if ss.server.branchStore == nil {
+		return ResumeBranchMerge503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+
+	input := command.ResumeMergeInput{BranchID: request.Id}
+	if request.Body != nil {
+		resolutions, err := convertGeneratedResolutionsToCommand(request.Body.Resolutions)
+		if err != nil {
+			return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_resolution",
+				Message: err.Error(),
+			}}, nil
+		}
+		input.Resolutions = resolutions
+	}
+
+	// result is non-nil alongside ErrMergeResumeNeedsResolution and carries the
+	// pending streams; every other error path returns a nil result.
+	result, err := ss.server.commandHandler.ResumeMerge(ctx, input)
+	if err != nil {
+		return resumeBranchMergeErrorResponse(result, err)
+	}
+
+	return ResumeBranchMerge200JSONResponse{
+		Branch:                   convertDomainBranchToGenerated(result.Branch),
+		MergedAtPosition:         result.MergedAtPosition,
+		ReplayedEventCount:       result.ReplayedEventCount,
+		AlreadyReplayedStreamIds: nonNilUUIDs(result.AlreadyReplayedStreamIDs),
+		SkippedStreamIds:         nonNilUUIDs(result.SkippedStreamIDs),
+		ReprojectedStreamIds:     nonNilUUIDs(result.ReprojectedStreamIDs),
+	}, nil
+}
+
+// resumeBranchMergeErrorResponse maps the resume command's sentinel errors
+// onto the operation's responses. Unrecognized errors are returned to
+// customErrorHandler as a 500.
+func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error) (ResumeBranchMergeResponseObject, error) {
+	refuse := func(code BranchMergeResumeErrorCode) (ResumeBranchMergeResponseObject, error) {
+		return ResumeBranchMerge409JSONResponse{Code: code, Message: err.Error()}, nil
+	}
+
+	switch {
+	case errors.Is(err, command.ErrMergeResumeNeedsResolution):
+		var pending []openapi_types.UUID
+		if result != nil {
+			pending = result.PendingStreamIDs
+		}
+		pending = nonNilUUIDs(pending)
+		return ResumeBranchMerge409JSONResponse{
+			Code:             ResumeNeedsResolution,
+			Message:          err.Error(),
+			PendingStreamIds: &pending,
+		}, nil
+
+	case errors.Is(err, command.ErrMergeNotClaimed):
+		return refuse(ResumeMergeNotClaimed)
+
+	case errors.Is(err, command.ErrMergeDanglingReference):
+		return refuse(ResumeDanglingReference)
+
+	case errors.Is(err, command.ErrBranchTooLargeToMerge):
+		return refuse(ResumeBranchTooLarge)
+
+	case errors.Is(err, command.ErrMergeResumeConcurrent):
+		return refuse(ResumeConcurrent)
+
+	case errors.Is(err, command.ErrUnknownResolution):
+		return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_resolution",
+			Message: err.Error(),
+		}}, nil
+
+	// Checked before any stale-plan sentinel it may wrap, for the same reason
+	// as in mergeBranchErrorResponse: the resume wrote something and must say
+	// so. Retrying the resume IS the remedy here.
+	case errors.Is(err, command.ErrMergePartiallyApplied):
+		return ResumeBranchMerge500JSONResponse{
+			Code:    "merge_partially_applied",
+			Message: err.Error(),
+		}, nil
+
+	case errors.Is(err, repository.ErrBranchNotFound):
+		return ResumeBranchMerge404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Branch not found",
+		}}, nil
+
+	case errors.Is(err, command.ErrBranchStoreRequired):
+		return ResumeBranchMerge503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+
+	return nil, err
+}
+
+// nonNilUUIDs returns ids, or an empty slice for nil, so a required array
+// serializes as [] rather than null.
+func nonNilUUIDs(ids []uuid.UUID) []openapi_types.UUID {
+	if ids == nil {
+		return []openapi_types.UUID{}
+	}
+	return ids
+}
+
 // convertGeneratedResolutionsToCommand turns the wire array into the command's
 // streamID→side map. The array carries no uniqueness guarantee, so a repeated
 // stream_id is rejected rather than silently resolved last-one-wins — two
