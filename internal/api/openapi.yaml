@@ -970,10 +970,22 @@ paths:
     get:
       operationId: getPersonHistory
       summary: Get change history for a person
-      tags: [history]
+      description: |
+        Returns the person's change history, oldest first. Without `?branch=` it is
+        the mainline's history of the person's stream.
+
+        With `?branch=` it is the history of the person *as that branch sees it*
+        (ADR-005): the branch's own events for the stream plus the mainline
+        events its view inherits. The overlay is live, so until the branch first
+        writes the person every mainline event is inherited; from that write on,
+        the branch keeps its own copy and later mainline events are not part of
+        its view (they surface in the branch compare and at merge). Each entry
+        carries `origin` (`branch` or `main`). A person that exists only on the
+        branch has only branch entries; one the branch deleted is not found.
       parameters:
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Person change history
@@ -991,10 +1003,22 @@ paths:
     get:
       operationId: getFamilyHistory
       summary: Get change history for a family
-      tags: [history]
+      description: |
+        Returns the family's change history, oldest first. Without `?branch=` it is
+        the mainline's history of the family's stream.
+
+        With `?branch=` it is the history of the family *as that branch sees it*
+        (ADR-005): the branch's own events for the stream plus the mainline
+        events its view inherits. The overlay is live, so until the branch first
+        writes the family every mainline event is inherited; from that write on,
+        the branch keeps its own copy and later mainline events are not part of
+        its view (they surface in the branch compare and at merge). Each entry
+        carries `origin` (`branch` or `main`). A family that exists only on the
+        branch has only branch entries; one the branch deleted is not found.
       parameters:
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Family change history
@@ -1040,11 +1064,16 @@ paths:
     get:
       operationId: getPersonRestorePoints
       summary: Get restore points for a person
-      description: Returns a list of versions to which the person can be rolled back
+      description: |
+        Returns a list of versions to which the person can be rolled back.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
       parameters:
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of restore points
@@ -1070,6 +1099,14 @@ paths:
                 has_more: false
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+            points are mainline-only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /persons/{id}/rollback:
     parameters:
@@ -1078,8 +1115,14 @@ paths:
     post:
       operationId: rollbackPerson
       summary: Rollback a person to a previous version
-      description: Restores the person's data to match the state at the specified version
+      description: |
+        Restores the person's data to match the state at the specified version.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1108,7 +1151,9 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Cannot rollback deleted entity
+          description: |
+            Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+            (`rollback_mainline_only`), or the branch is not active
           content:
             application/json:
               schema:
@@ -1121,11 +1166,16 @@ paths:
     get:
       operationId: getFamilyRestorePoints
       summary: Get restore points for a family
-      description: Returns a list of versions to which the family can be rolled back
+      description: |
+        Returns a list of versions to which the family can be rolled back.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
       parameters:
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of restore points
@@ -1135,6 +1185,14 @@ paths:
                 $ref: '#/components/schemas/RestorePointsResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+            points are mainline-only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /families/{id}/rollback:
     parameters:
@@ -1143,8 +1201,14 @@ paths:
     post:
       operationId: rollbackFamily
       summary: Rollback a family to a previous version
-      description: Restores the family's data to match the state at the specified version
+      description: |
+        Restores the family's data to match the state at the specified version.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1163,7 +1227,9 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Cannot rollback deleted entity
+          description: |
+            Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+            (`rollback_mainline_only`), or the branch is not active
           content:
             application/json:
               schema:
@@ -1181,11 +1247,16 @@ paths:
     get:
       operationId: getSourceRestorePoints
       summary: Get restore points for a source
-      description: Returns a list of versions to which the source can be rolled back
+      description: |
+        Returns a list of versions to which the source can be rolled back.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
       parameters:
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of restore points
@@ -1195,6 +1266,14 @@ paths:
                 $ref: '#/components/schemas/RestorePointsResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+            points are mainline-only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /sources/{id}/rollback:
     parameters:
@@ -1208,8 +1287,14 @@ paths:
     post:
       operationId: rollbackSource
       summary: Rollback a source to a previous version
-      description: Restores the source's data to match the state at the specified version
+      description: |
+        Restores the source's data to match the state at the specified version.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1228,7 +1313,9 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Cannot rollback deleted entity
+          description: |
+            Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+            (`rollback_mainline_only`), or the branch is not active
           content:
             application/json:
               schema:
@@ -1246,11 +1333,16 @@ paths:
     get:
       operationId: getCitationRestorePoints
       summary: Get restore points for a citation
-      description: Returns a list of versions to which the citation can be rolled back
+      description: |
+        Returns a list of versions to which the citation can be rolled back.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
       parameters:
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of restore points
@@ -1260,6 +1352,14 @@ paths:
                 $ref: '#/components/schemas/RestorePointsResponse'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+            points are mainline-only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /citations/{id}/rollback:
     parameters:
@@ -1273,8 +1373,14 @@ paths:
     post:
       operationId: rollbackCitation
       summary: Rollback a citation to a previous version
-      description: Restores the citation's data to match the state at the specified version
+      description: |
+        Restores the citation's data to match the state at the specified version.
+
+        Rollback is mainline-only (ADR-005): with `?branch=` the request is
+        refused with 409 `rollback_mainline_only` and nothing is read or written.
       tags: [rollback]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1293,7 +1399,9 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Cannot rollback deleted entity
+          description: |
+            Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+            (`rollback_mainline_only`), or the branch is not active
           content:
             application/json:
               schema:
@@ -5425,6 +5533,13 @@ components:
         user_id:
           type: string
           description: ID of user who made the change (null if single-user)
+        origin:
+          type: string
+          enum: [main, branch]
+          description: |
+            Set only on branch-scoped entity history (`?branch=`): `branch` for
+            the branch's own events, `main` for the mainline events its view
+            inherits (ADR-005). Absent everywhere else.
 
     FieldChange:
       type: object

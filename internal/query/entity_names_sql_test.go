@@ -154,9 +154,24 @@ func openCountedSQLite(t *testing.T) (repository.ReadModelStore, *statementCount
 
 func openCountedPostgres(t *testing.T) (repository.ReadModelStore, *statementCounter) {
 	t.Helper()
+	dsn := createTestPostgresDatabase(t)
+	counter := &statementCounter{}
+	db := sql.OpenDB(&countingConnector{drv: &pq.Driver{}, dsn: dsn, counter: counter})
+	t.Cleanup(func() { _ = db.Close() })
+	store, err := postgres.NewReadModelStore(db)
+	require.NoError(t, err)
+	return store, counter
+}
+
+// createTestPostgresDatabase creates a throwaway database on the server named by
+// MYFAMILY_TEST_POSTGRES_URL (skipping the test when it is unset), drops it when
+// the test ends, and returns its DSN. Register the cleanup of any connection
+// opened on it after calling this, so it closes before the drop.
+func createTestPostgresDatabase(t *testing.T) string {
+	t.Helper()
 	serverURL := os.Getenv("MYFAMILY_TEST_POSTGRES_URL")
 	if serverURL == "" {
-		t.Skip("MYFAMILY_TEST_POSTGRES_URL not set, skipping PostgreSQL statement-count test")
+		t.Skip("MYFAMILY_TEST_POSTGRES_URL not set, skipping PostgreSQL test")
 	}
 	admin, err := sql.Open("postgres", serverURL)
 	require.NoError(t, err)
@@ -164,21 +179,16 @@ func openCountedPostgres(t *testing.T) (repository.ReadModelStore, *statementCou
 	// #nosec G202 -- name is generated above from a UUID, never external input.
 	_, err = admin.Exec("CREATE DATABASE " + name)
 	require.NoError(t, err)
-
-	dsn, err := url.Parse(serverURL)
-	require.NoError(t, err)
-	dsn.Path = "/" + name
-	counter := &statementCounter{}
-	db := sql.OpenDB(&countingConnector{drv: &pq.Driver{}, dsn: dsn.String(), counter: counter})
 	t.Cleanup(func() {
-		_ = db.Close()
 		// #nosec G202 -- name is generated above from a UUID, never external input.
 		_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
 		_ = admin.Close()
 	})
-	store, err := postgres.NewReadModelStore(db)
+
+	dsn, err := url.Parse(serverURL)
 	require.NoError(t, err)
-	return store, counter
+	dsn.Path = "/" + name
+	return dsn.String()
 }
 
 // TestTransformStoredEvents_SQLStatementCountDoesNotScale checks, per SQL

@@ -297,7 +297,9 @@ Snapshots and branch base points are the same primitive — a named pointer to a
 - A snapshot taken *on a branch* points to `(branch_id, position)`; on `main` it points to
   `(main, position)`, i.e. today's behavior.
 - **Rollback** to a snapshot is a read/compare operation over positions and, under the overlay
-  model, is naturally scoped by `branch_id`.
+  model, is naturally scoped by `branch_id`. *Entity* rollback (restore points and
+  `Rollback*`) is nevertheless kept **mainline-only** — see *Implementation Note — entity history
+  and rollback on a branch* below (#824).
 
 This ADR did **not** change how snapshots are created. It surfaced a coupling that **#624** had
 to resolve: `SnapshotCreated` existed and decoded (ES-007) but was never emitted —
@@ -1369,6 +1371,60 @@ paginates, so `total` counts every matching conflict.
 a primary key, so `detectBranchCapable` also requires `branch_id` in their primary keys; a database
 created before #760 refuses every branch write with `ErrBranchesUnsupported` until the read model is
 rebuilt (#680), while its mainline GPS artifacts keep working.
+
+## Implementation Note — entity history and rollback on a branch (#823, #824, delivered)
+
+Two defects shared one cause: the person and family detail pages rendered the history panel, its
+Restore tab and the rollback dialog on a branch, while every one of those endpoints answered from
+(and rollback wrote to) the mainline. A person or family created on a branch could not even be
+opened — the page loaded the history count in the same `try` as the entity, and the mainline
+history lookup 404'd — and Restore on a branch silently rewrote the mainline.
+
+**Entity history follows the branch.** `getPersonHistory` and `getFamilyHistory` take `?branch=`
+(source history, which no page shows, stays mainline). A branch's history of an entity is defined
+by the copy-on-write overlay of §The model, so it explains exactly the state the branch shows
+(`HistoryService.GetEntityHistoryOn`):
+
+- the branch's own events on the stream (`origin: branch`), plus
+- the mainline events its view inherits (`origin: main`): because the overlay is *live*, that is
+  every mainline event **before the branch's first event on the stream** — all of them while the
+  branch has not touched the entity. The branch's first write seeds its shadow row from the row it
+  was reading (the mainline's current one), so a mainline edit made after the fork but before that
+  write is in the branch's data and belongs in its history. Mainline events after it are not: the
+  branch's own row no longer reflects them; they surface in the branch compare and at merge.
+
+Cutting inherited history at `base_position` instead was rejected: for an entity the branch has not
+touched the page shows the mainline's current row, and a history stopped at the fork would omit
+edits that are on screen. Other branches' events never appear. The stream is read once
+(`ReadStream`, which spans branches) and filtered, ordered by global position and paginated in the
+service, so `total` and `has_more` describe the branch's view; names resolve in one batched lookup
+through the overlay. The existence check resolves through the overlay too, so a branch-only entity
+has a history on its branch and a branch-deleted one is not found there.
+
+**Rollback stays mainline-only — decided, not deferred.** A branch-scoped rollback would have to
+compute the target state from the branch's view (inherited plus own events), compare it against the
+branch's own version line, and append compensating events on the branch; none of the current
+`RollbackService` reads are branch-aware, and restoring a *mainline* version onto a branch is a
+different operation from undoing a branch edit. Research on a branch is already disposable (archive
+the branch, or fork a new one), so the cost is not justified yet. The decision is enforced twice:
+
+- **UI.** On a branch the person and family pages withdraw the Restore tab and do not mount
+  `RollbackConfirmDialog`, and explain why in their place; the change log stays. No other page
+  renders `RestorePointBrowser` or `RollbackConfirmDialog`.
+- **API backstop.** The eight restore-point and rollback operations (person, family, source,
+  citation) declare `branchScope` so the scope reaches the handler instead of being dropped. A
+  rollback resolves the scope as a write and hands it to the branch-scoped command handler, whose
+  `ErrRollbackNotBranchScoped` — previously unreachable over HTTP — now fires before anything is
+  read or written; a restore-point read refuses outright. Both answer 409 `rollback_mainline_only`
+  (unknown branch 404; a rollback naming a terminal branch 409 at scope resolution, a restore-point
+  read of one 404, as for every scoped operation). The client forwards the scope on these operations
+  like any other, so a call that slipped past the UI fails instead of writing to the mainline.
+
+With the two history reads that is ten more operations carrying `?branch=`, 86 in all.
+
+Verified by `TestGetEntityHistoryOn_AllBackends` (`internal/query`, memory/SQLite/PostgreSQL),
+`TestPersonHistory_*`, `TestFamilyHistory_*`, `TestRollback_RefusedOnBranch` (`internal/api`), the
+person and family page tests, and `e2e/branch-entity-pages.spec.ts`.
 
 ## References
 

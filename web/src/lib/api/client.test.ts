@@ -178,21 +178,33 @@ describe('isBranchScopedRequest', () => {
 		expect(isBranchScopedRequest('GET', '/branches')).toBe(false);
 		expect(isBranchScopedRequest('GET', `/branches/${BRANCH_ID}/compare`)).toBe(false);
 		expect(isBranchScopedRequest('GET', '/repositories')).toBe(false);
-		// Source and citation history, restore points and rollback stay mainline
-		// (#758 scopes the entities, not their audit trail).
+		// Source history stays mainline (#758 scopes the entity, not its audit trail).
 		expect(isBranchScopedRequest('GET', `/sources/${PERSON_ID}/history`)).toBe(false);
-		expect(isBranchScopedRequest('POST', `/sources/${PERSON_ID}/rollback`)).toBe(false);
-		expect(isBranchScopedRequest('GET', `/citations/${PERSON_ID}/restore-points`)).toBe(false);
 		// GET /citations has no list operation, and /sources/search takes no writes.
 		expect(isBranchScopedRequest('GET', '/citations')).toBe(false);
 		expect(isBranchScopedRequest('POST', '/sources/search')).toBe(false);
-		expect(isBranchScopedRequest('GET', `/persons/${PERSON_ID}/history`)).toBe(false);
 		expect(isBranchScopedRequest('GET', `/families/${FAMILY_ID}/group-sheet`)).toBe(false);
 		// Media history and rollback stay mainline (#759 scopes the metadata, not
 		// its audit trail), and the content/thumbnail reads take no writes.
 		expect(isBranchScopedRequest('GET', `/media/${NAME_ID}/history`)).toBe(false);
 		expect(isBranchScopedRequest('POST', `/media/${NAME_ID}/rollback`)).toBe(false);
 		expect(isBranchScopedRequest('PUT', `/media/${NAME_ID}/content`)).toBe(false);
+	});
+
+	it('scopes person and family history to the branch (#824)', () => {
+		expect(isBranchScopedRequest('GET', `/persons/${PERSON_ID}/history`)).toBe(true);
+		expect(isBranchScopedRequest('GET', `/families/${FAMILY_ID}/history?limit=1&offset=0`)).toBe(
+			true
+		);
+	});
+
+	it('forwards the scope to restore points and rollback so the server refuses them (#824)', () => {
+		for (const kind of ['persons', 'families', 'sources', 'citations']) {
+			expect(isBranchScopedRequest('GET', `/${kind}/${PERSON_ID}/restore-points`)).toBe(true);
+			expect(isBranchScopedRequest('POST', `/${kind}/${PERSON_ID}/rollback`)).toBe(true);
+			expect(isBranchScopedRequest('GET', `/${kind}/${PERSON_ID}/rollback`)).toBe(false);
+		}
+		expect(isBranchScopedRequest('POST', `/notes/${PERSON_ID}/rollback`)).toBe(false);
 	});
 
 	it('ignores an existing query string when matching', () => {

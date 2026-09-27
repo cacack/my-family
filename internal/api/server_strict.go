@@ -865,8 +865,19 @@ func convertCitationTemplate(t citation.Template) CitationTemplate {
 }
 
 // GetCitationRestorePoints implements StrictServerInterface.
+//
+// Restore points are mainline-only (ADR-005): a ?branch= scope is refused with
+// 409 rollback_mainline_only.
 func (ss *StrictServer) GetCitationRestorePoints(ctx context.Context, request GetCitationRestorePointsRequestObject) (GetCitationRestorePointsResponseObject, error) {
-	_, err := ss.server.sourceService.GetCitation(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	if branch != nil {
+		return GetCitationRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
+	}
+
+	_, err = ss.server.sourceService.GetCitation(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetCitationRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -901,26 +912,40 @@ func (ss *StrictServer) GetCitationRestorePoints(ctx context.Context, request Ge
 }
 
 // RollbackCitation implements StrictServerInterface.
+//
+// Rollback is mainline-only (ADR-005). A ?branch= scope reaches the
+// branch-scoped command handler, which refuses with
+// command.ErrRollbackNotBranchScoped before reading or writing anything; that
+// maps to 409 rollback_mainline_only. The mainline pre-checks are skipped on a
+// branch so the refusal is what the client sees, even for an entity that
+// exists only on the branch.
 func (ss *StrictServer) RollbackCitation(ctx context.Context, request RollbackCitationRequestObject) (RollbackCitationResponseObject, error) {
-	_, err := ss.server.sourceService.GetCitation(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return RollbackCitation404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Citation not found",
-			}}, nil
-		}
 		return nil, err
 	}
 
-	if request.Body.TargetVersion < 1 {
-		return RollbackCitation400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "target_version must be a positive integer",
-		}}, nil
+	if branch == nil {
+		_, err = ss.server.sourceService.GetCitation(ctx, domain.MainBranchID, request.Id)
+		if err != nil {
+			if errors.Is(err, query.ErrNotFound) {
+				return RollbackCitation404JSONResponse{NotFoundJSONResponse{
+					Code:    "not_found",
+					Message: "Citation not found",
+				}}, nil
+			}
+			return nil, err
+		}
+
+		if request.Body.TargetVersion < 1 {
+			return RollbackCitation400JSONResponse{BadRequestJSONResponse{
+				Code:    "bad_request",
+				Message: "target_version must be a positive integer",
+			}}, nil
+		}
 	}
 
-	result, err := ss.server.commandHandler.RollbackCitation(ctx, request.Id, request.Body.TargetVersion)
+	result, err := ss.branchWriter(branch).RollbackCitation(ctx, request.Id, request.Body.TargetVersion)
 	if err != nil {
 		return handleRollbackErrorStrict[RollbackCitationResponseObject](err,
 			func(e Error) RollbackCitationResponseObject {
@@ -1427,8 +1452,17 @@ func (ss *StrictServer) GetFamilyGroupSheet(ctx context.Context, request GetFami
 }
 
 // GetFamilyHistory implements StrictServerInterface.
+//
+// With ?branch= the family is resolved through the branch overlay, so a family
+// created on the branch has a history there (#823), and the history is the
+// branch's view of the stream (#824, HistoryService.GetEntityHistoryOn).
 func (ss *StrictServer) GetFamilyHistory(ctx context.Context, request GetFamilyHistoryRequestObject) (GetFamilyHistoryResponseObject, error) {
-	_, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = ss.server.familyService.GetFamily(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamilyHistory404JSONResponse{NotFoundJSONResponse{
@@ -1448,7 +1482,7 @@ func (ss *StrictServer) GetFamilyHistory(ctx context.Context, request GetFamilyH
 		offset = *request.Params.Offset
 	}
 
-	result, err := ss.server.historyService.GetEntityHistory(ctx, "family", request.Id, limit, offset)
+	result, err := ss.server.historyService.GetEntityHistoryOn(ctx, branchScopeID(branch), "family", request.Id, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -1457,8 +1491,19 @@ func (ss *StrictServer) GetFamilyHistory(ctx context.Context, request GetFamilyH
 }
 
 // GetFamilyRestorePoints implements StrictServerInterface.
+//
+// Restore points are mainline-only (ADR-005): a ?branch= scope is refused with
+// 409 rollback_mainline_only.
 func (ss *StrictServer) GetFamilyRestorePoints(ctx context.Context, request GetFamilyRestorePointsRequestObject) (GetFamilyRestorePointsResponseObject, error) {
-	_, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	if branch != nil {
+		return GetFamilyRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
+	}
+
+	_, err = ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamilyRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -1493,26 +1538,40 @@ func (ss *StrictServer) GetFamilyRestorePoints(ctx context.Context, request GetF
 }
 
 // RollbackFamily implements StrictServerInterface.
+//
+// Rollback is mainline-only (ADR-005). A ?branch= scope reaches the
+// branch-scoped command handler, which refuses with
+// command.ErrRollbackNotBranchScoped before reading or writing anything; that
+// maps to 409 rollback_mainline_only. The mainline pre-checks are skipped on a
+// branch so the refusal is what the client sees, even for an entity that
+// exists only on the branch.
 func (ss *StrictServer) RollbackFamily(ctx context.Context, request RollbackFamilyRequestObject) (RollbackFamilyResponseObject, error) {
-	_, err := ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return RollbackFamily404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Family not found",
-			}}, nil
-		}
 		return nil, err
 	}
 
-	if request.Body.TargetVersion < 1 {
-		return RollbackFamily400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "target_version must be a positive integer",
-		}}, nil
+	if branch == nil {
+		_, err = ss.server.familyService.GetFamily(ctx, domain.MainBranchID, request.Id)
+		if err != nil {
+			if errors.Is(err, query.ErrNotFound) {
+				return RollbackFamily404JSONResponse{NotFoundJSONResponse{
+					Code:    "not_found",
+					Message: "Family not found",
+				}}, nil
+			}
+			return nil, err
+		}
+
+		if request.Body.TargetVersion < 1 {
+			return RollbackFamily400JSONResponse{BadRequestJSONResponse{
+				Code:    "bad_request",
+				Message: "target_version must be a positive integer",
+			}}, nil
+		}
 	}
 
-	result, err := ss.server.commandHandler.RollbackFamily(ctx, request.Id, request.Body.TargetVersion)
+	result, err := ss.branchWriter(branch).RollbackFamily(ctx, request.Id, request.Body.TargetVersion)
 	if err != nil {
 		return handleRollbackErrorStrict[RollbackFamilyResponseObject](err,
 			func(e Error) RollbackFamilyResponseObject {
@@ -2245,8 +2304,17 @@ func (ss *StrictServer) GetCitationsForPerson(ctx context.Context, request GetCi
 }
 
 // GetPersonHistory implements StrictServerInterface.
+//
+// With ?branch= the person is resolved through the branch overlay, so a person
+// created on the branch has a history there (#823), and the history is the
+// branch's view of the stream (#824, HistoryService.GetEntityHistoryOn).
 func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonHistoryRequestObject) (GetPersonHistoryResponseObject, error) {
-	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = ss.server.personService.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetPersonHistory404JSONResponse{NotFoundJSONResponse{
@@ -2266,7 +2334,7 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 		offset = *request.Params.Offset
 	}
 
-	result, err := ss.server.historyService.GetEntityHistory(ctx, "person", request.Id, limit, offset)
+	result, err := ss.server.historyService.GetEntityHistoryOn(ctx, branchScopeID(branch), "person", request.Id, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -2542,8 +2610,19 @@ func (ss *StrictServer) DeletePersonName(ctx context.Context, request DeletePers
 }
 
 // GetPersonRestorePoints implements StrictServerInterface.
+//
+// Restore points are mainline-only (ADR-005): a ?branch= scope is refused with
+// 409 rollback_mainline_only.
 func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetPersonRestorePointsRequestObject) (GetPersonRestorePointsResponseObject, error) {
-	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	if branch != nil {
+		return GetPersonRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
+	}
+
+	_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetPersonRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -2578,26 +2657,40 @@ func (ss *StrictServer) GetPersonRestorePoints(ctx context.Context, request GetP
 }
 
 // RollbackPerson implements StrictServerInterface.
+//
+// Rollback is mainline-only (ADR-005). A ?branch= scope reaches the
+// branch-scoped command handler, which refuses with
+// command.ErrRollbackNotBranchScoped before reading or writing anything; that
+// maps to 409 rollback_mainline_only. The mainline pre-checks are skipped on a
+// branch so the refusal is what the client sees, even for an entity that
+// exists only on the branch.
 func (ss *StrictServer) RollbackPerson(ctx context.Context, request RollbackPersonRequestObject) (RollbackPersonResponseObject, error) {
-	_, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return RollbackPerson404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Person not found",
-			}}, nil
-		}
 		return nil, err
 	}
 
-	if request.Body.TargetVersion < 1 {
-		return RollbackPerson400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "target_version must be a positive integer",
-		}}, nil
+	if branch == nil {
+		_, err = ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
+		if err != nil {
+			if errors.Is(err, query.ErrNotFound) {
+				return RollbackPerson404JSONResponse{NotFoundJSONResponse{
+					Code:    "not_found",
+					Message: "Person not found",
+				}}, nil
+			}
+			return nil, err
+		}
+
+		if request.Body.TargetVersion < 1 {
+			return RollbackPerson400JSONResponse{BadRequestJSONResponse{
+				Code:    "bad_request",
+				Message: "target_version must be a positive integer",
+			}}, nil
+		}
 	}
 
-	result, err := ss.server.commandHandler.RollbackPerson(ctx, request.Id, request.Body.TargetVersion)
+	result, err := ss.branchWriter(branch).RollbackPerson(ctx, request.Id, request.Body.TargetVersion)
 	if err != nil {
 		return handleRollbackErrorStrict[RollbackPersonResponseObject](err,
 			func(e Error) RollbackPersonResponseObject {
@@ -3520,8 +3613,19 @@ func (ss *StrictServer) GetSourceHistory(ctx context.Context, request GetSourceH
 }
 
 // GetSourceRestorePoints implements StrictServerInterface.
+//
+// Restore points are mainline-only (ADR-005): a ?branch= scope is refused with
+// 409 rollback_mainline_only.
 func (ss *StrictServer) GetSourceRestorePoints(ctx context.Context, request GetSourceRestorePointsRequestObject) (GetSourceRestorePointsResponseObject, error) {
-	_, err := ss.server.sourceService.GetSource(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	if branch != nil {
+		return GetSourceRestorePoints409JSONResponse(errRollbackMainlineOnly), nil
+	}
+
+	_, err = ss.server.sourceService.GetSource(ctx, domain.MainBranchID, request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetSourceRestorePoints404JSONResponse{NotFoundJSONResponse{
@@ -3556,26 +3660,40 @@ func (ss *StrictServer) GetSourceRestorePoints(ctx context.Context, request GetS
 }
 
 // RollbackSource implements StrictServerInterface.
+//
+// Rollback is mainline-only (ADR-005). A ?branch= scope reaches the
+// branch-scoped command handler, which refuses with
+// command.ErrRollbackNotBranchScoped before reading or writing anything; that
+// maps to 409 rollback_mainline_only. The mainline pre-checks are skipped on a
+// branch so the refusal is what the client sees, even for an entity that
+// exists only on the branch.
 func (ss *StrictServer) RollbackSource(ctx context.Context, request RollbackSourceRequestObject) (RollbackSourceResponseObject, error) {
-	_, err := ss.server.sourceService.GetSource(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
 	if err != nil {
-		if errors.Is(err, query.ErrNotFound) {
-			return RollbackSource404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Source not found",
-			}}, nil
-		}
 		return nil, err
 	}
 
-	if request.Body.TargetVersion < 1 {
-		return RollbackSource400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "target_version must be a positive integer",
-		}}, nil
+	if branch == nil {
+		_, err = ss.server.sourceService.GetSource(ctx, domain.MainBranchID, request.Id)
+		if err != nil {
+			if errors.Is(err, query.ErrNotFound) {
+				return RollbackSource404JSONResponse{NotFoundJSONResponse{
+					Code:    "not_found",
+					Message: "Source not found",
+				}}, nil
+			}
+			return nil, err
+		}
+
+		if request.Body.TargetVersion < 1 {
+			return RollbackSource400JSONResponse{BadRequestJSONResponse{
+				Code:    "bad_request",
+				Message: "target_version must be a positive integer",
+			}}, nil
+		}
 	}
 
-	result, err := ss.server.commandHandler.RollbackSource(ctx, request.Id, request.Body.TargetVersion)
+	result, err := ss.branchWriter(branch).RollbackSource(ctx, request.Id, request.Body.TargetVersion)
 	if err != nil {
 		return handleRollbackErrorStrict[RollbackSourceResponseObject](err,
 			func(e Error) RollbackSourceResponseObject {
@@ -3632,9 +3750,21 @@ func (ss *StrictServer) GetStatistics(ctx context.Context, request GetStatistics
 // Conversion helpers
 // ============================================================================
 
+// errRollbackMainlineOnly is the 409 body for a rollback or restore-point
+// request that carries a ?branch= scope. Rollback stays mainline-only
+// (ADR-005, #824): its version and deleted checks read the mainline, so
+// honoring a branch only on the append would mix scopes, and restoring on a
+// branch would otherwise write to main.
+var errRollbackMainlineOnly = Error{
+	Code:    "rollback_mainline_only",
+	Message: "Rollback and restore points are mainline-only; switch to the mainline to restore a previous version",
+}
+
 // handleRollbackErrorStrict handles rollback errors and returns appropriate response types.
 func handleRollbackErrorStrict[T any](err error, badReq func(Error) T, notFound func(Error) T, conflict func(Error) T) (T, error) {
 	switch {
+	case errors.Is(err, command.ErrRollbackNotBranchScoped):
+		return conflict(errRollbackMainlineOnly), nil
 	case errors.Is(err, command.ErrRollbackInvalidVersion):
 		return badReq(Error{Code: "bad_request", Message: "Invalid target version: must be positive and less than current version"}), nil
 	case errors.Is(err, command.ErrRollbackDeletedEntity):

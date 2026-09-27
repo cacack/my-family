@@ -26,6 +26,9 @@ var (
 	// branch the expected version comes from main's counter while the append is
 	// checked against the branch's independent one. Rolling back within a branch
 	// is out of scope for issue #670, so refuse instead of mixing the two scopes.
+	// ADR-005 records rollback as mainline-only (#824): the API routes a
+	// ?branch= rollback to the branch-scoped handler so this refusal fires, and
+	// answers it with 409 rollback_mainline_only.
 	ErrRollbackNotBranchScoped = errors.New("rollback is not supported on a branch-scoped handler")
 )
 
