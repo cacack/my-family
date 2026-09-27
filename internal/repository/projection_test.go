@@ -796,7 +796,7 @@ func TestProjector_SourceCreated(t *testing.T) {
 	}
 
 	// Verify source in read model
-	rm, err := readStore.GetSource(ctx, source.ID)
+	rm, err := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if err != nil {
 		t.Fatalf("GetSource failed: %v", err)
 	}
@@ -833,7 +833,7 @@ func TestProjector_SourceRepositoryID(t *testing.T) {
 		t.Fatalf("Project create failed: %v", err)
 	}
 
-	rm, err := readStore.GetSource(ctx, source.ID)
+	rm, err := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if err != nil {
 		t.Fatalf("GetSource failed: %v", err)
 	}
@@ -851,7 +851,7 @@ func TestProjector_SourceRepositoryID(t *testing.T) {
 	if err := projector.Project(ctx, domain.NewSourceUpdated(source.ID, changes), 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project update failed: %v", err)
 	}
-	rm, err = readStore.GetSource(ctx, source.ID)
+	rm, err = readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if err != nil {
 		t.Fatalf("GetSource failed: %v", err)
 	}
@@ -886,7 +886,7 @@ func TestProjector_SourceUpdated(t *testing.T) {
 	}
 
 	// Verify updates
-	rm, _ := readStore.GetSource(ctx, source.ID)
+	rm, _ := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if rm.Title != "Updated Title" {
 		t.Errorf("Title = %s, want Updated Title", rm.Title)
 	}
@@ -997,7 +997,7 @@ func TestProjector_SourceUpdated_AllFields(t *testing.T) {
 				t.Fatalf("Project update failed: %v", err)
 			}
 
-			rm, err := readStore.GetSource(ctx, source.ID)
+			rm, err := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 			if err != nil {
 				t.Fatalf("GetSource failed: %v", err)
 			}
@@ -1034,7 +1034,7 @@ func TestProjector_SourceDeleted(t *testing.T) {
 	}
 
 	// Verify deletion
-	rm, _ := readStore.GetSource(ctx, source.ID)
+	rm, _ := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if rm != nil {
 		t.Error("Source should be deleted")
 	}
@@ -1064,7 +1064,7 @@ func TestProjector_CitationCreated(t *testing.T) {
 	}
 
 	// Verify citation in read model
-	rm, err := readStore.GetCitation(ctx, citation.ID)
+	rm, err := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if err != nil {
 		t.Fatalf("GetCitation failed: %v", err)
 	}
@@ -1085,7 +1085,7 @@ func TestProjector_CitationCreated(t *testing.T) {
 	}
 
 	// Verify source citation count updated
-	sourceRM, _ := readStore.GetSource(ctx, source.ID)
+	sourceRM, _ := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if sourceRM.CitationCount != 1 {
 		t.Errorf("Source CitationCount = %d, want 1", sourceRM.CitationCount)
 	}
@@ -1185,7 +1185,7 @@ func TestProjector_CitationUpdated(t *testing.T) {
 				t.Fatalf("Project update failed: %v", err)
 			}
 
-			rm, _ := readStore.GetCitation(ctx, citation.ID)
+			rm, _ := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 			tt.validate(t, rm)
 
 			if rm.Version != version {
@@ -1211,7 +1211,7 @@ func TestProjector_CitationDeleted(t *testing.T) {
 	}
 
 	// Verify citation count is 1
-	sourceRM, _ := readStore.GetSource(ctx, source.ID)
+	sourceRM, _ := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if sourceRM.CitationCount != 1 {
 		t.Errorf("Initial CitationCount = %d, want 1", sourceRM.CitationCount)
 	}
@@ -1224,13 +1224,13 @@ func TestProjector_CitationDeleted(t *testing.T) {
 	}
 
 	// Verify deletion
-	rm, _ := readStore.GetCitation(ctx, citation.ID)
+	rm, _ := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if rm != nil {
 		t.Error("Citation should be deleted")
 	}
 
 	// Verify source citation count updated
-	sourceRM, _ = readStore.GetSource(ctx, source.ID)
+	sourceRM, _ = readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if sourceRM.CitationCount != 0 {
 		t.Errorf("CitationCount after delete = %d, want 0", sourceRM.CitationCount)
 	}
@@ -1910,7 +1910,7 @@ func TestProjector_SourceUpdated_DateClearing(t *testing.T) {
 	}
 
 	// Verify date is set
-	rm, _ := readStore.GetSource(ctx, source.ID)
+	rm, _ := readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if rm.PublishDateSort == nil {
 		t.Fatal("PublishDateSort should be set initially")
 	}
@@ -1926,7 +1926,7 @@ func TestProjector_SourceUpdated_DateClearing(t *testing.T) {
 	}
 
 	// Verify raw date updated but sort is nil for unparseable dates
-	rm, _ = readStore.GetSource(ctx, source.ID)
+	rm, _ = readStore.GetSource(ctx, domain.MainBranchID, source.ID)
 	if rm.PublishDateRaw != "UNKNOWN" {
 		t.Errorf("PublishDateRaw = %s, want UNKNOWN", rm.PublishDateRaw)
 	}
@@ -1954,7 +1954,7 @@ func TestProjector_CitationUpdated_SourceChange(t *testing.T) {
 	}
 
 	// Verify source1 has citation count of 1
-	s1, _ := readStore.GetSource(ctx, source1.ID)
+	s1, _ := readStore.GetSource(ctx, domain.MainBranchID, source1.ID)
 	if s1.CitationCount != 1 {
 		t.Errorf("Source1 CitationCount = %d, want 1", s1.CitationCount)
 	}
@@ -1970,8 +1970,8 @@ func TestProjector_CitationUpdated_SourceChange(t *testing.T) {
 	}
 
 	// Verify source1 count decremented and source2 incremented
-	s1, _ = readStore.GetSource(ctx, source1.ID)
-	s2, _ := readStore.GetSource(ctx, source2.ID)
+	s1, _ = readStore.GetSource(ctx, domain.MainBranchID, source1.ID)
+	s2, _ := readStore.GetSource(ctx, domain.MainBranchID, source2.ID)
 	if s1.CitationCount != 0 {
 		t.Errorf("Source1 CitationCount after move = %d, want 0", s1.CitationCount)
 	}
@@ -1980,7 +1980,7 @@ func TestProjector_CitationUpdated_SourceChange(t *testing.T) {
 	}
 
 	// Verify citation has new source title
-	c, _ := readStore.GetCitation(ctx, citation.ID)
+	c, _ := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if c.SourceID != source2.ID {
 		t.Errorf("Citation SourceID = %v, want %v", c.SourceID, source2.ID)
 	}
@@ -2019,7 +2019,7 @@ func TestProjector_CitationUpdated_FactOwnerChange(t *testing.T) {
 	}
 
 	// Verify updates
-	c, _ := readStore.GetCitation(ctx, citation.ID)
+	c, _ := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if c.FactType != domain.FactPersonDeath {
 		t.Errorf("FactType = %s, want person_death", c.FactType)
 	}
@@ -2241,7 +2241,7 @@ func TestProjector_CitationCreated_NoSource(t *testing.T) {
 	}
 
 	// Verify citation was created (without source title)
-	rm, _ := readStore.GetCitation(ctx, citation.ID)
+	rm, _ := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if rm == nil {
 		t.Fatal("Citation not found")
 	}
@@ -2269,7 +2269,7 @@ func TestProjector_CitationDeleted_NoSource(t *testing.T) {
 	}
 
 	// Verify citation is deleted
-	rm, _ := readStore.GetCitation(ctx, citation.ID)
+	rm, _ := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if rm != nil {
 		t.Error("Citation should be deleted")
 	}
@@ -2626,7 +2626,7 @@ func TestProjector_PersonMerged_CitationTransfer(t *testing.T) {
 	projector.Project(ctx, domain.NewCitationCreated(citation), 1, domain.MainBranchID)
 
 	// Verify citation is for merged person
-	citationRM, _ := readStore.GetCitation(ctx, citation.ID)
+	citationRM, _ := readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if citationRM.FactOwnerID != merged.ID {
 		t.Error("Citation should be for merged person initially")
 	}
@@ -2650,7 +2650,7 @@ func TestProjector_PersonMerged_CitationTransfer(t *testing.T) {
 	}
 
 	// Verify citation was transferred to survivor
-	citationRM, _ = readStore.GetCitation(ctx, citation.ID)
+	citationRM, _ = readStore.GetCitation(ctx, domain.MainBranchID, citation.ID)
 	if citationRM.FactOwnerID != survivor.ID {
 		t.Errorf("Citation FactOwnerID = %v, want %v", citationRM.FactOwnerID, survivor.ID)
 	}

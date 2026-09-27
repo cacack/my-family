@@ -148,13 +148,13 @@ type ReadModelStore struct {
 	familyChildren        map[branchKey][]repository.FamilyChildReadModel      // keyed by (branch, family ID)
 	familyExternalIDs     map[branchKey][]repository.FamilyExternalIDReadModel // keyed by (branch, family ID)
 	pedigreeEdges         map[branchKey]*repository.PedigreeEdge               // keyed by (branch, person ID)
-	sources               map[uuid.UUID]*repository.SourceReadModel
-	sourceExternalIDs     map[uuid.UUID][]repository.SourceExternalIDReadModel // keyed by source ID
-	citations             map[uuid.UUID]*repository.CitationReadModel
+	sources               map[branchKey]*repository.SourceReadModel            // branch-scoped (#758)
+	sourceExternalIDs     map[branchKey][]repository.SourceExternalIDReadModel // branch-scoped bucket keyed by source ID (#758)
+	citations             map[branchKey]*repository.CitationReadModel          // branch-scoped (#758)
 	media                 map[uuid.UUID]*repository.MediaReadModel
 	events                map[branchKey]*repository.EventReadModel     // branch-scoped (#757)
 	attributes            map[branchKey]*repository.AttributeReadModel // branch-scoped (#757)
-	notes                 map[uuid.UUID]*repository.NoteReadModel
+	notes                 map[branchKey]*repository.NoteReadModel      // branch-scoped (#758)
 	submitters            map[uuid.UUID]*repository.SubmitterReadModel
 	repositories          map[uuid.UUID]*repository.RepositoryReadModel
 	repositoryExternalIDs map[uuid.UUID][]repository.RepositoryExternalIDReadModel // keyed by repository ID
@@ -176,13 +176,13 @@ func NewReadModelStore() *ReadModelStore {
 		familyChildren:        make(map[branchKey][]repository.FamilyChildReadModel),
 		familyExternalIDs:     make(map[branchKey][]repository.FamilyExternalIDReadModel),
 		pedigreeEdges:         make(map[branchKey]*repository.PedigreeEdge),
-		sources:               make(map[uuid.UUID]*repository.SourceReadModel),
-		sourceExternalIDs:     make(map[uuid.UUID][]repository.SourceExternalIDReadModel),
-		citations:             make(map[uuid.UUID]*repository.CitationReadModel),
+		sources:               make(map[branchKey]*repository.SourceReadModel),
+		sourceExternalIDs:     make(map[branchKey][]repository.SourceExternalIDReadModel),
+		citations:             make(map[branchKey]*repository.CitationReadModel),
 		media:                 make(map[uuid.UUID]*repository.MediaReadModel),
 		events:                make(map[branchKey]*repository.EventReadModel),
 		attributes:            make(map[branchKey]*repository.AttributeReadModel),
-		notes:                 make(map[uuid.UUID]*repository.NoteReadModel),
+		notes:                 make(map[branchKey]*repository.NoteReadModel),
 		submitters:            make(map[uuid.UUID]*repository.SubmitterReadModel),
 		repositories:          make(map[uuid.UUID]*repository.RepositoryReadModel),
 		repositoryExternalIDs: make(map[uuid.UUID][]repository.RepositoryExternalIDReadModel),
@@ -741,13 +741,15 @@ func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID doma
 	return result, nil
 }
 
-// ReplaceSourceExternalIDs replaces all external identifiers for a source.
-func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
+// ReplaceSourceExternalIDs replaces all external identifiers for a source on the
+// given branch (#758). On a non-main branch an empty set writes a tombstone
+// bucket so the main fallback does not resurrect the identifiers.
+func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if len(ids) == 0 {
-		delete(s.sourceExternalIDs, sourceID)
+		storeBucket(s.sourceExternalIDs, branchID, sourceID, nil)
 		return nil
 	}
 	stored := make([]repository.SourceExternalIDReadModel, len(ids))
@@ -756,18 +758,18 @@ func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID 
 		id.Sequence = i
 		stored[i] = id
 	}
-	s.sourceExternalIDs[sourceID] = stored
+	storeBucket(s.sourceExternalIDs, branchID, sourceID, stored)
 	return nil
 }
 
-// GetSourceExternalIDs retrieves all external identifiers for a source, ordered
-// by their original sequence.
-func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
+// GetSourceExternalIDs retrieves all external identifiers for a source within the
+// branch overlay, ordered by their original sequence.
+func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	ids := s.sourceExternalIDs[sourceID]
-	if len(ids) == 0 {
+	ids, ok := resolveBucket(s.sourceExternalIDs, branchID, sourceID)
+	if !ok || len(ids) == 0 {
 		return nil, nil
 	}
 	result := make([]repository.SourceExternalIDReadModel, len(ids))
@@ -1040,8 +1042,9 @@ func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain
 }
 
 // PurgeBranch hard-deletes every map entry keyed to branchID across the
-// branch-scoped entities (the seven #669 slice entities plus life events,
-// attributes and associations, #757). It is a no-op for the mainline
+// branch-scoped entities (the seven #669 slice entities, life events,
+// attributes and associations (#757), and sources, source external IDs,
+// citations and notes (#758)). It is a no-op for the mainline
 // (domain.MainBranchID), which is never purged. See ADR-005 and the
 // branch-delete projection handler.
 func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
@@ -1062,6 +1065,10 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	deleteBranchRows(s.events, branchID)
 	deleteBranchRows(s.attributes, branchID)
 	deleteBranchRows(s.associations, branchID)
+	deleteBranchRows(s.sources, branchID)
+	deleteBranchRows(s.sourceExternalIDs, branchID)
+	deleteBranchRows(s.citations, branchID)
+	deleteBranchRows(s.notes, branchID)
 	return nil
 }
 
@@ -1086,12 +1093,13 @@ func (s *ReadModelStore) Reset() {
 	s.families = make(map[branchKey]*repository.FamilyReadModel)
 	s.familyChildren = make(map[branchKey][]repository.FamilyChildReadModel)
 	s.pedigreeEdges = make(map[branchKey]*repository.PedigreeEdge)
-	s.sources = make(map[uuid.UUID]*repository.SourceReadModel)
-	s.citations = make(map[uuid.UUID]*repository.CitationReadModel)
+	s.sources = make(map[branchKey]*repository.SourceReadModel)
+	s.sourceExternalIDs = make(map[branchKey][]repository.SourceExternalIDReadModel)
+	s.citations = make(map[branchKey]*repository.CitationReadModel)
 	s.media = make(map[uuid.UUID]*repository.MediaReadModel)
 	s.events = make(map[branchKey]*repository.EventReadModel)
 	s.attributes = make(map[branchKey]*repository.AttributeReadModel)
-	s.notes = make(map[uuid.UUID]*repository.NoteReadModel)
+	s.notes = make(map[branchKey]*repository.NoteReadModel)
 	s.submitters = make(map[uuid.UUID]*repository.SubmitterReadModel)
 	s.repositories = make(map[uuid.UUID]*repository.RepositoryReadModel)
 	s.associations = make(map[branchKey]*repository.AssociationReadModel)
@@ -1102,32 +1110,42 @@ func (s *ReadModelStore) Reset() {
 	s.proofSummaries = make(map[uuid.UUID]*repository.ProofSummaryReadModel)
 }
 
-// GetSource retrieves a source by ID.
-func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {
+// GetSource retrieves a source by ID within the branch overlay (ADR-005, #758).
+func (s *ReadModelStore) GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.SourceReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	src, exists := s.sources[id]
-	if !exists {
+	src, _ := resolveRow(s.sources, branchID, id)
+	if src == nil {
 		return nil, nil
 	}
 	result := *src
 	return &result, nil
 }
 
-// ListSources returns a paginated list of sources.
+// compareSources orders sources by title, then id — the order the SQL backends
+// return them in.
+func compareSources(a, b *repository.SourceReadModel) int {
+	if cmp := strings.Compare(a.Title, b.Title); cmp != 0 {
+		return cmp
+	}
+	return strings.Compare(a.ID.String(), b.ID.String())
+}
+
+// ListSources returns a paginated list of the sources visible on opts.BranchID.
 func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	sources := make([]repository.SourceReadModel, 0, len(s.sources))
-	for _, src := range s.sources {
+	resolved := resolveAllRows(s.sources, opts.BranchID)
+	sources := make([]repository.SourceReadModel, 0, len(resolved))
+	for _, src := range resolved {
 		sources = append(sources, *src)
 	}
 
-	// Sort by title
+	// Sort by title (id breaks ties)
 	sort.Slice(sources, func(i, j int) bool {
-		cmp := strings.Compare(sources[i].Title, sources[j].Title)
+		cmp := compareSources(&sources[i], &sources[j])
 		if opts.Order == "desc" {
 			return cmp > 0
 		}
@@ -1135,95 +1153,100 @@ func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOp
 	})
 
 	total := len(sources)
-
-	// Paginate
-	start := opts.Offset
-	if start > len(sources) {
-		start = len(sources)
-	}
-	end := start + opts.Limit
-	if end > len(sources) {
-		end = len(sources)
-	}
-
+	start, end := pageBounds(len(sources), opts)
 	return sources[start:end], total, nil
 }
 
-// SearchSources searches for sources by title.
-func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit int) ([]repository.SourceReadModel, error) {
+// SearchSources searches the sources visible on branchID by title or author
+// (case-insensitive substring). The overlay is resolved first and the query is
+// matched against the winning rows, so a branch retitle is found under its new
+// title only and a branch-deleted source is never returned.
+func (s *ReadModelStore) SearchSources(ctx context.Context, branchID domain.BranchID, query string, limit int) ([]repository.SourceReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	query = strings.ToLower(query)
 	var results []repository.SourceReadModel
-
-	for _, src := range s.sources {
-		title := strings.ToLower(src.Title)
-		author := strings.ToLower(src.Author)
-
-		if strings.Contains(title, query) || strings.Contains(author, query) {
+	for _, src := range resolveAllRows(s.sources, branchID) {
+		if strings.Contains(strings.ToLower(src.Title), query) || strings.Contains(strings.ToLower(src.Author), query) {
 			results = append(results, *src)
-			if len(results) >= limit {
-				break
-			}
 		}
 	}
-
+	sort.Slice(results, func(i, j int) bool { return compareSources(&results[i], &results[j]) < 0 })
+	if limit >= 0 && len(results) > limit {
+		results = results[:limit]
+	}
 	return results, nil
 }
 
-// SaveSource saves or updates a source.
-func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.SourceReadModel) error {
+// SaveSource saves or updates a source on the given branch (ADR-005, #758).
+func (s *ReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchID, source *repository.SourceReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := *source
-	s.sources[source.ID] = &result
+	s.sources[branchKey{branchID, source.ID}] = &result
 	return nil
 }
 
-// DeleteSource removes a source.
-func (s *ReadModelStore) DeleteSource(ctx context.Context, id uuid.UUID) error {
+// DeleteSource removes a source on the given branch: a real removal on main, a
+// tombstone on a non-main branch. The source's external identifiers and its
+// citations go with it on the same branch (#758) — the manual cascade that
+// replaces the dropped foreign keys; other branches are untouched.
+func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.sources, id)
-	delete(s.sourceExternalIDs, id)
+	for _, c := range resolveAllRows(s.citations, branchID) {
+		if c.SourceID == id {
+			removeRow(s.citations, branchID, c.ID)
+		}
+	}
+	storeBucket(s.sourceExternalIDs, branchID, id, nil)
+	removeRow(s.sources, branchID, id)
 	return nil
 }
 
-// GetCitation retrieves a citation by ID.
-func (s *ReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*repository.CitationReadModel, error) {
+// GetCitation retrieves a citation by ID within the branch overlay (ADR-005, #758).
+func (s *ReadModelStore) GetCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.CitationReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	cit, exists := s.citations[id]
-	if !exists {
+	cit, _ := resolveRow(s.citations, branchID, id)
+	if cit == nil {
 		return nil, nil
 	}
 	result := *cit
 	return &result, nil
 }
 
-// ListCitations returns all citations with pagination.
+// compareCitations orders citations by source title, then fact type, then id —
+// the order the SQL backends return them in.
+func compareCitations(a, b *repository.CitationReadModel) int {
+	cmp := strings.Compare(a.SourceTitle, b.SourceTitle)
+	if cmp == 0 {
+		cmp = strings.Compare(string(a.FactType), string(b.FactType))
+	}
+	if cmp == 0 {
+		cmp = strings.Compare(a.ID.String(), b.ID.String())
+	}
+	return cmp
+}
+
+// ListCitations returns the citations visible on opts.BranchID with pagination.
 func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	citations := make([]repository.CitationReadModel, 0, len(s.citations))
-	for _, cit := range s.citations {
+	resolved := resolveAllRows(s.citations, opts.BranchID)
+	citations := make([]repository.CitationReadModel, 0, len(resolved))
+	for _, cit := range resolved {
 		citations = append(citations, *cit)
 	}
 
 	// Sort by source title, then by fact type, then by ID for deterministic ordering
 	sort.Slice(citations, func(i, j int) bool {
-		cmp := strings.Compare(citations[i].SourceTitle, citations[j].SourceTitle)
-		if cmp == 0 {
-			cmp = strings.Compare(string(citations[i].FactType), string(citations[j].FactType))
-		}
-		if cmp == 0 {
-			cmp = strings.Compare(citations[i].ID.String(), citations[j].ID.String())
-		}
+		cmp := compareCitations(&citations[i], &citations[j])
 		if opts.Order == "desc" {
 			return cmp > 0
 		}
@@ -1231,78 +1254,71 @@ func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.List
 	})
 
 	total := len(citations)
-
-	// Paginate
-	start := opts.Offset
-	if start > len(citations) {
-		start = len(citations)
-	}
-	end := start + opts.Limit
-	if end > len(citations) {
-		end = len(citations)
-	}
-
+	start, end := pageBounds(len(citations), opts)
 	return citations[start:end], total, nil
 }
 
-// GetCitationsForSource returns all citations for a source.
-func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+// filterCitations returns the citations visible on branchID that keep accepts,
+// in compareCitations order. The filter is applied to the winning row, so a
+// branch that re-pointed a citation lists it under its new source/owner only.
+// Callers hold s.mu.
+func (s *ReadModelStore) filterCitations(branchID domain.BranchID, keep func(*repository.CitationReadModel) bool) []repository.CitationReadModel {
 	var results []repository.CitationReadModel
-	for _, cit := range s.citations {
-		if cit.SourceID == sourceID {
+	for _, cit := range resolveAllRows(s.citations, branchID) {
+		if keep(cit) {
 			results = append(results, *cit)
 		}
 	}
-	return results, nil
+	sort.Slice(results, func(i, j int) bool { return compareCitations(&results[i], &results[j]) < 0 })
+	return results
 }
 
-// GetCitationsForPerson returns all citations for a person.
-func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.CitationReadModel, error) {
+// GetCitationsForSource returns all citations of a source within the branch overlay.
+func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.CitationReadModel
-	for _, cit := range s.citations {
-		if cit.FactOwnerID == personID && strings.HasPrefix(string(cit.FactType), "person_") {
-			results = append(results, *cit)
-		}
-	}
-	return results, nil
+	return s.filterCitations(branchID, func(c *repository.CitationReadModel) bool {
+		return c.SourceID == sourceID
+	}), nil
 }
 
-// GetCitationsForFact returns all citations for a specific fact.
-func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
+// GetCitationsForPerson returns all citations of a person's facts within the
+// branch overlay.
+func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.CitationReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.CitationReadModel
-	for _, cit := range s.citations {
-		if cit.FactType == factType && cit.FactOwnerID == factOwnerID {
-			results = append(results, *cit)
-		}
-	}
-	return results, nil
+	return s.filterCitations(branchID, func(c *repository.CitationReadModel) bool {
+		return c.FactOwnerID == personID && strings.HasPrefix(string(c.FactType), "person_")
+	}), nil
 }
 
-// SaveCitation saves or updates a citation.
-func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.CitationReadModel) error {
+// GetCitationsForFact returns all citations of a specific fact within the branch
+// overlay.
+func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.filterCitations(branchID, func(c *repository.CitationReadModel) bool {
+		return c.FactType == factType && c.FactOwnerID == factOwnerID
+	}), nil
+}
+
+// SaveCitation saves or updates a citation on the given branch (ADR-005, #758).
+func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := *citation
-	s.citations[citation.ID] = &result
+	s.citations[branchKey{branchID, citation.ID}] = &result
 	return nil
 }
 
-// DeleteCitation removes a citation.
-func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error {
+// DeleteCitation removes a citation: a real removal on main, a tombstone on a
+// non-main branch. Other branches' rows are untouched.
+func (s *ReadModelStore) DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.citations, id)
+	removeRow(s.citations, branchID, id)
 	return nil
 }
 
@@ -2005,38 +2021,42 @@ func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool
 	return entries, nil
 }
 
-// GetNote retrieves a note by ID.
-func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
+// GetNote retrieves a note by ID within the branch overlay (ADR-005, #758).
+func (s *ReadModelStore) GetNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.NoteReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	n, exists := s.notes[id]
-	if !exists {
+	n, _ := resolveRow(s.notes, branchID, id)
+	if n == nil {
 		return nil, nil
 	}
 	result := *n
 	return &result, nil
 }
 
-// ListNotes returns a paginated list of notes.
+// ListNotes returns a paginated list of the notes visible on opts.BranchID.
 func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOptions) ([]repository.NoteReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.NoteReadModel
-	for _, n := range s.notes {
+	for _, n := range resolveAllRows(s.notes, opts.BranchID) {
 		results = append(results, *n)
 	}
 
 	total := len(results)
 
-	// Sort by updated_at
+	// Sort by updated_at (id breaks ties so pages are stable)
 	asc := opts.Order == "asc"
 	sort.Slice(results, func(i, j int) bool {
-		if asc {
-			return results[i].UpdatedAt.Before(results[j].UpdatedAt)
+		cmp := compareTimestamps(results[i].UpdatedAt, results[j].UpdatedAt)
+		if cmp == 0 {
+			cmp = strings.Compare(results[i].ID.String(), results[j].ID.String())
 		}
-		return results[i].UpdatedAt.After(results[j].UpdatedAt)
+		if asc {
+			return cmp < 0
+		}
+		return cmp > 0
 	})
 
 	// Apply pagination
@@ -2052,22 +2072,23 @@ func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOpti
 	return results, total, nil
 }
 
-// SaveNote saves or updates a note.
-func (s *ReadModelStore) SaveNote(ctx context.Context, note *repository.NoteReadModel) error {
+// SaveNote saves or updates a note on the given branch (ADR-005, #758).
+func (s *ReadModelStore) SaveNote(ctx context.Context, branchID domain.BranchID, note *repository.NoteReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := *note
-	s.notes[note.ID] = &result
+	s.notes[branchKey{branchID, note.ID}] = &result
 	return nil
 }
 
-// DeleteNote removes a note.
-func (s *ReadModelStore) DeleteNote(ctx context.Context, id uuid.UUID) error {
+// DeleteNote removes a note: a real removal on main, a tombstone on a non-main
+// branch.
+func (s *ReadModelStore) DeleteNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.notes, id)
+	removeRow(s.notes, branchID, id)
 	return nil
 }
 

@@ -58,11 +58,11 @@ func TestReadModelStore_SourceRepositoryID(t *testing.T) {
 		RepositoryName: "National Archives",
 		Version:        1,
 	}
-	if err := store.SaveSource(ctx, linked); err != nil {
+	if err := store.SaveSource(ctx, domain.MainBranchID, linked); err != nil {
 		t.Fatalf("SaveSource (linked): %v", err)
 	}
 
-	got, err := store.GetSource(ctx, linked.ID)
+	got, err := store.GetSource(ctx, domain.MainBranchID, linked.ID)
 	if err != nil {
 		t.Fatalf("GetSource: %v", err)
 	}
@@ -80,10 +80,10 @@ func TestReadModelStore_SourceRepositoryID(t *testing.T) {
 		Title:      "Unlinked Source",
 		Version:    1,
 	}
-	if err := store.SaveSource(ctx, unlinked); err != nil {
+	if err := store.SaveSource(ctx, domain.MainBranchID, unlinked); err != nil {
 		t.Fatalf("SaveSource (unlinked): %v", err)
 	}
-	got, err = store.GetSource(ctx, unlinked.ID)
+	got, err = store.GetSource(ctx, domain.MainBranchID, unlinked.ID)
 	if err != nil {
 		t.Fatalf("GetSource: %v", err)
 	}
@@ -963,7 +963,7 @@ func TestReadModelStore_ListCitations(t *testing.T) {
 		Version:    1,
 		UpdatedAt:  time.Now(),
 	}
-	if err := store.SaveSource(ctx, source); err != nil {
+	if err := store.SaveSource(ctx, domain.MainBranchID, source); err != nil {
 		t.Fatalf("save source: %v", err)
 	}
 
@@ -987,7 +987,7 @@ func TestReadModelStore_ListCitations(t *testing.T) {
 			Version:     1,
 			CreatedAt:   time.Now(),
 		}
-		if err := store.SaveCitation(ctx, cit); err != nil {
+		if err := store.SaveCitation(ctx, domain.MainBranchID, cit); err != nil {
 			t.Fatalf("save citation: %v", err)
 		}
 	}

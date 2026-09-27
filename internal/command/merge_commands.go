@@ -299,7 +299,7 @@ func (h *Handler) collectAffectedFamilies(ctx context.Context, mergedID uuid.UUI
 
 // collectAffectedCitations returns IDs of citations linked to merged person.
 func (h *Handler) collectAffectedCitations(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	citations, err := h.readStore.GetCitationsForPerson(ctx, mergedID)
+	citations, err := h.readStore.GetCitationsForPerson(ctx, domain.MainBranchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("getting citations for person: %w", err)
 	}

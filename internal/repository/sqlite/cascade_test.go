@@ -353,3 +353,123 @@ func TestReadModelStore_BranchDeleteCascadesFacts(t *testing.T) {
 		t.Errorf("main cemetery index changed by a branch delete: got %+v", mainCemeteries)
 	}
 }
+
+// TestReadModelStore_DeleteSourceCascade verifies the #758 source cascade that
+// replaces the dropped sources(id) foreign keys: deleting a source removes (main)
+// or tombstones (branch) its external identifiers and every citation of it on
+// that same branch, and never touches another branch's rows. The assertions are
+// byte-for-byte identical across the memory/sqlite/postgres backends (DB-001).
+func TestReadModelStore_DeleteSourceCascade(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	main := domain.MainBranchID
+	branch := domain.BranchID(uuid.New())
+	otherBranch := domain.BranchID(uuid.New())
+	sourceID, keptSourceID, ownerID := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now()
+
+	for _, src := range []*repository.SourceReadModel{
+		{ID: sourceID, SourceType: domain.SourceCensus, Title: "Census 1880", CitationCount: 1, Version: 1, UpdatedAt: now},
+		{ID: keptSourceID, SourceType: domain.SourceBook, Title: "Family Bible", CitationCount: 1, Version: 1, UpdatedAt: now},
+	} {
+		if err := store.SaveSource(ctx, main, src); err != nil {
+			t.Fatalf("SaveSource main: %v", err)
+		}
+	}
+	if err := store.ReplaceSourceExternalIDs(ctx, main, sourceID, []repository.SourceExternalIDReadModel{{Value: "MAIN-1", Type: "http://example.org/ids"}}); err != nil {
+		t.Fatalf("ReplaceSourceExternalIDs main: %v", err)
+	}
+	mainCite := &repository.CitationReadModel{ID: uuid.New(), SourceID: sourceID, SourceTitle: "Census 1880", FactType: domain.FactPersonBirth, FactOwnerID: ownerID, Version: 1, CreatedAt: now}
+	keptCite := &repository.CitationReadModel{ID: uuid.New(), SourceID: keptSourceID, SourceTitle: "Family Bible", FactType: domain.FactPersonDeath, FactOwnerID: ownerID, Version: 1, CreatedAt: now}
+	for _, c := range []*repository.CitationReadModel{mainCite, keptCite} {
+		if err := store.SaveCitation(ctx, main, c); err != nil {
+			t.Fatalf("SaveCitation main: %v", err)
+		}
+	}
+	// A branch-only citation of the source, and one on a sibling branch that the
+	// cascade must not touch.
+	branchCite := &repository.CitationReadModel{ID: uuid.New(), SourceID: sourceID, SourceTitle: "Census 1880", FactType: domain.FactPersonBurial, FactOwnerID: ownerID, Version: 1, CreatedAt: now}
+	if err := store.SaveCitation(ctx, branch, branchCite); err != nil {
+		t.Fatalf("SaveCitation branch: %v", err)
+	}
+	siblingCite := &repository.CitationReadModel{ID: uuid.New(), SourceID: sourceID, SourceTitle: "Census 1880", FactType: domain.FactPersonBaptism, FactOwnerID: ownerID, Version: 1, CreatedAt: now}
+	if err := store.SaveCitation(ctx, otherBranch, siblingCite); err != nil {
+		t.Fatalf("SaveCitation sibling branch: %v", err)
+	}
+
+	// --- Branch delete: tombstones the source, its external IDs and every citation
+	// of it the branch sees, on that branch only. ---
+	if err := store.DeleteSource(ctx, branch, sourceID); err != nil {
+		t.Fatalf("DeleteSource branch: %v", err)
+	}
+	if got, err := store.GetSource(ctx, branch, sourceID); err != nil || got != nil {
+		t.Errorf("branch GetSource after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := store.GetSourceExternalIDs(ctx, branch, sourceID); err != nil || len(got) != 0 {
+		t.Errorf("branch source external ids not tombstoned: got %+v (err=%v)", got, err)
+	}
+	if got, err := store.GetCitationsForSource(ctx, branch, sourceID); err != nil || len(got) != 0 {
+		t.Errorf("branch citations of the source not tombstoned: got %+v (err=%v)", got, err)
+	}
+	for _, id := range []uuid.UUID{mainCite.ID, branchCite.ID} {
+		if got, err := store.GetCitation(ctx, branch, id); err != nil || got != nil {
+			t.Errorf("branch GetCitation(%s) = %+v (err=%v), want tombstoned", id, got, err)
+		}
+	}
+	if got, err := store.GetCitation(ctx, branch, keptCite.ID); err != nil || got == nil {
+		t.Errorf("branch cascade removed another source's citation: got %+v (err=%v)", got, err)
+	}
+	// Main keeps everything.
+	if got, err := store.GetSource(ctx, main, sourceID); err != nil || got == nil {
+		t.Errorf("main GetSource after branch delete = %+v (err=%v), want kept", got, err)
+	}
+	if got, err := store.GetSourceExternalIDs(ctx, main, sourceID); err != nil || len(got) != 1 {
+		t.Errorf("main source external ids after branch delete = %+v (err=%v), want 1", got, err)
+	}
+	if got, err := store.GetCitationsForSource(ctx, main, sourceID); err != nil || len(got) != 1 || got[0].ID != mainCite.ID {
+		t.Errorf("main citations of the source after branch delete = %+v (err=%v), want [main]", got, err)
+	}
+	// The sibling branch is untouched.
+	if got, err := store.GetCitationsForSource(ctx, otherBranch, sourceID); err != nil || len(got) != 2 {
+		t.Errorf("sibling branch citations of the source = %d rows (err=%v), want 2 (main's + its own)", len(got), err)
+	}
+	if got, err := store.GetSource(ctx, otherBranch, sourceID); err != nil || got == nil {
+		t.Errorf("sibling branch GetSource = %+v (err=%v), want main's row", got, err)
+	}
+
+	// Deleting a citation on the branch never touches another branch's rows.
+	if err := store.DeleteCitation(ctx, branch, siblingCite.ID); err != nil {
+		t.Fatalf("DeleteCitation branch (sibling's id): %v", err)
+	}
+	if got, err := store.GetCitation(ctx, otherBranch, siblingCite.ID); err != nil || got == nil {
+		t.Errorf("branch DeleteCitation reached the sibling branch: got %+v (err=%v)", got, err)
+	}
+
+	// --- Main delete: removes the source, its external IDs and its main
+	// citations; the other source and its citation survive. ---
+	if err := store.DeleteSource(ctx, main, sourceID); err != nil {
+		t.Fatalf("DeleteSource main: %v", err)
+	}
+	if got, err := store.GetSource(ctx, main, sourceID); err != nil || got != nil {
+		t.Errorf("main GetSource after delete = %+v (err=%v), want gone", got, err)
+	}
+	if got, err := store.GetSourceExternalIDs(ctx, main, sourceID); err != nil || len(got) != 0 {
+		t.Errorf("main source external ids not cascaded: got %+v (err=%v)", got, err)
+	}
+	if got, err := store.GetCitation(ctx, main, mainCite.ID); err != nil || got != nil {
+		t.Errorf("main citation of the source not cascaded: got %+v (err=%v)", got, err)
+	}
+	if got, err := store.GetCitation(ctx, main, keptCite.ID); err != nil || got == nil {
+		t.Errorf("main cascade removed another source's citation: got %+v (err=%v)", got, err)
+	}
+	if _, total, err := store.ListSources(ctx, repository.ListOptions{Limit: 10}); err != nil || total != 1 {
+		t.Errorf("main ListSources total after delete = %d (err=%v), want 1", total, err)
+	}
+	// The sibling branch's own citation of the deleted source is its own row:
+	// main's cascade leaves other branches' rows alone.
+	if got, err := store.GetCitation(ctx, otherBranch, siblingCite.ID); err != nil || got == nil {
+		t.Errorf("main DeleteSource reached the sibling branch's citation: got %+v (err=%v)", got, err)
+	}
+}

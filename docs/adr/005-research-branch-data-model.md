@@ -342,8 +342,7 @@ Branch scoping is a bounded set, not a migration in progress. Three different re
 read-model entity on `main`, and they must not be confused:
 
 - **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
-  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676): evidence
-  ([#758](https://github.com/cacack/my-family/issues/758)), media metadata
+  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676): media metadata
   ([#759](https://github.com/cacack/my-family/issues/759)) and GPS artifacts
   ([#760](https://github.com/cacack/my-family/issues/760)). Snapshots are pending too, though not
   as a #676 sub-issue: #624 made them event-sourced, and what remains is giving the registry a
@@ -682,6 +681,17 @@ before the claim: a replayed link must name a person `main` already has or that 
 will create. Dropping the link silently was rejected as the same class of defect per-conflict
 review exists to prevent. Unlink events are not checked — removing a person `main` lacks is a no-op.
 
+#758 put sources and citations on the allowlist, which opened two more shapes of the same class,
+now refused by the same check (`validateNoDanglingEvidence`). A citation lives on its own stream
+and names a source on another. (1) A replayed citation whose *final* source — the last one a
+`CitationCreated` or a `source_id` change in `CitationUpdated` set, unless the stream ends deleted
+— must exist on `main` or be created and not deleted by the replay; otherwise `main` would gain a
+citation of a source it does not have, with a blank title. (2) A replayed `SourceDeleted` is refused
+while `main` has a citation of that source that the replay does not itself delete or re-point
+elsewhere. The branch's own delete guard (`ErrSourceHasCitations`) only sees the branch's view, so a
+citation `main` added after the fork would otherwise be deleted from `main` by the source→citation
+cascade, with no `CitationDeleted` event and no conflict shown.
+
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that
 is claimed in the log but still reads `active`. Because the CAS keys on the *stream version*, a
@@ -816,6 +826,75 @@ only fact writes would be worse: a branch `DeletePerson` has to tombstone the pe
 half-capable schema would accept branches it could not delete cleanly. The one exception is
 `PurgeBranch`: a database built between #669 and #757 may already hold branches in its slice tables,
 so purging is never refused — deleting or merging such a branch still drops its overlay rows.
+
+## Implementation Note — evidence (#676 sub-issue C, #758, delivered)
+
+**Sources, source external IDs, citations and notes own their own `branch_id`.** `sources`,
+`citations` and `notes` get the same treatment as the person/family facts — composite `(id,
+branch_id)` key, `branch_id`-leading index, `deleted` tombstone, one set-based overlay read with a
+main-scope fast path, a place in `PurgeBranch` — and `source_external_ids` follows the
+`person_external_ids` precedent: a per-source bucket keyed `(source_id, sequence, branch_id)`, where
+a present branch bucket wins wholesale and an empty-marker row is its tombstone. The nine
+`Source*`, `Citation*` and `Note*` event types are on the BR-006 allowlist; each `*Created` is
+conflict-blind like the facts' creates, because every source, citation and note is its own
+aggregate.
+
+**Source before citation.** A citation row carries a denormalized source title, and its source row
+carries a citation count. Both are derived in the projector, so both must resolve through the
+branch the event is projected on: `projectCitationCreated`, `projectCitationUpdated` (when a
+citation is re-pointed at another source) and `projectCitationDeleted` read the source with the
+branch-scoped `GetSource` and write the count back on the same branch. A citation created on a
+branch that retitled its source therefore carries the branch's title, not main's, and bumping the
+count forks the source onto the branch rather than touching main's row. On merge these are simply
+re-derived: the replayed `CitationCreated` bumps main's count and denormalizes main's title at that
+point in the log.
+
+*Merge replays sources around citations, not in first-touch order.* The replay is one append per
+stream, so re-deriving only works if each citation stream lands while the sources it names are in
+the right state on main. `orderEvidenceForReplay` puts every surviving source stream first (a
+citation re-pointed at a source the branch created later still finds it, with its title and count)
+and every source stream that ends in `SourceDeleted` last (the store's source→citation cascade then
+runs only after every replayed citation has moved off or been deleted). All other streams keep
+their first-touch order. Sources reference no other replayed aggregate, so the move is safe.
+
+*Known consequence — a stale source view on the branch.* That fork is a side effect of creating,
+re-pointing or deleting a *citation*, not of editing the source, yet it writes a full copy-on-write
+row of the source (title, author, repository, …) on the branch, and a branch row always wins the
+overlay. From then on the branch no longer sees main's later edits to that source: cite main's
+"1880 Census" on a branch, retitle it on main, and the branch still shows the old title. No
+`SourceUpdated` exists on the branch, so neither compare nor merge reports a divergence, and a merge
+is unaffected (it replays events, and the replayed citation re-derives main's count and title). Persons and families fork only on an explicit edit;
+sources can fork implicitly. The fix is to stop materialising `citation_count` and derive it at read
+time from the resolved citations overlay, so a citation write never touches the source row — tracked as
+[#815](https://github.com/cacack/my-family/issues/815) because it changes the source read path on all three backends.
+
+**`SearchSources` resolves before it matches.** The title/author match runs over the resolved view
+of every source (the overlay subquery), never over raw rows filtered afterwards, so a source whose
+branch shadow and main row both match is returned once, a branch retitle is found only under its new
+title, and a branch-deleted source never matches.
+
+**The cascade replaces two foreign keys.** `citations.source_id` and `source_external_ids.source_id`
+referenced `sources(id)`, which stops being unique once sources join the overlay, so both foreign
+keys are dropped (on PostgreSQL by the migration, before the primary-key swap). `DeleteSource` now
+deletes (main) or tombstones (branch) the source's external-ID bucket and every citation of it that
+the branch sees, on that branch only — a sibling branch's own citation of the same source is never
+touched, and neither is main's row when a branch deletes. The command layer still refuses to delete
+a source that has citations, judged by the branch's view, so the cascade is the store's own
+integrity guarantee rather than a user-visible behaviour change. Parity is pinned by
+`TestReadModelStore_DeleteSourceCascade` and `TestBranchScenario_EvidenceOverlay`.
+
+**API and UI.** Eighteen operations gained `?branch=` — the source, citation and note CRUD, source
+search, the per-source and per-person citation lists and `formatCitation` — bringing the total to
+47; the sources pages dropped their `MainlineNotice`. Source and citation history, restore points
+and rollback stay mainline, as rollback does for every entity, and so do the GEDCOM exporter and
+the bulk `/export/sources` and `/export/citations` endpoints.
+
+**Upgrading an existing database.** PostgreSQL migrates the four tables in place. SQLite cannot
+alter a primary key, so `detectBranchCapable` now also requires `branch_id` in the primary key of
+`sources`, `source_external_ids`, `citations` and `notes`; a database created before #758 refuses
+every branch write with `ErrBranchesUnsupported` until the read model is rebuilt (#680), exactly as
+a pre-#757 one does. The check now looks for `branch_id` in the key rather than for a multi-column
+key, because `source_external_ids` was already keyed by the composite `(source_id, sequence)`.
 
 ## References
 

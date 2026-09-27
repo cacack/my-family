@@ -72,7 +72,7 @@ type UpdateNoteResult struct {
 // UpdateNote updates an existing note record.
 func (h *Handler) UpdateNote(ctx context.Context, input UpdateNoteInput) (*UpdateNoteResult, error) {
 	// Get current note from read model
-	current, err := h.readStore.GetNote(ctx, input.ID)
+	current, err := h.readStore.GetNote(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting note: %w", err)
 	}
@@ -112,7 +112,7 @@ func (h *Handler) UpdateNote(ctx context.Context, input UpdateNoteInput) (*Updat
 // DeleteNote deletes a note record.
 func (h *Handler) DeleteNote(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	// Get current note from read model
-	current, err := h.readStore.GetNote(ctx, id)
+	current, err := h.readStore.GetNote(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting note: %w", err)
 	}

@@ -60,13 +60,15 @@ var (
 	// (query.MergeConflict.SupportedResolutions).
 	ErrUnsupportedResolution = errors.New("merge resolution is not supported for this conflict")
 
-	// ErrMergeDanglingReference is returned when the replay would leave main
-	// holding a relationship that points at a person main will not have —
-	// typically because that person was deleted on main, which forces their
-	// stream to a "main" resolution while the family event linking them lives
-	// on a different stream and would still be replayed. Refused rather than
-	// silently dropping the link (see validateNoDanglingReferences).
-	ErrMergeDanglingReference = errors.New("merge would leave a relationship pointing at a person main does not have")
+	// ErrMergeDanglingReference is returned when the replay would break a
+	// reference that crosses aggregates. Either main would end up holding a
+	// reference to an entity it will not have (a family child whose person
+	// was deleted on main, a citation whose source was), or a replayed delete
+	// would take down main rows that still reference the deleted entity (a
+	// branch SourceDeleted cascading onto a citation main added after the
+	// fork). Refused rather than silently dropping or orphaning data (see
+	// validateNoDanglingReferences and validateNoDanglingEvidence).
+	ErrMergeDanglingReference = errors.New("merge would leave a reference pointing at an entity main does not have")
 
 	// ErrMergePlanStale is returned when main moved on a stream this merge would
 	// replay, after the conflict verdict was computed against it. The verdict
@@ -260,7 +262,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 			ErrMainTooFarAheadToMerge, plan.EventCap, branch.ID)
 	}
 
-	groups := groupEventsByStream(plan.ReplayEvents)
+	groups := orderEvidenceForReplay(groupEventsByStream(plan.ReplayEvents))
 	if err := validateResolutions(input.Resolutions, groups); err != nil {
 		return nil, err
 	}
@@ -713,7 +715,7 @@ func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []str
 			checked[payload.PersonID] = true
 		}
 	}
-	return nil
+	return h.validateNoDanglingEvidence(ctx, groups, resolutions)
 }
 
 // validateResolutions rejects resolutions the merge cannot honor: one naming a

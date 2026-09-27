@@ -1395,8 +1395,13 @@ paths:
     get:
       operationId: formatCitation
       summary: Format a citation using its template
-      description: Renders the citation as full and short formatted text using the associated template
+      description: |
+        Renders the citation as full and short formatted text using the
+        associated template. With `?branch=` the citation is read from that
+        branch's isolated view.
       tags: [citations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Formatted citation text
@@ -1611,8 +1616,12 @@ paths:
     get:
       operationId: listSources
       summary: List all sources
+      description: |
+        Returns a paginated list of sources. With `?branch=` the list is that
+        branch's isolated view; omit it for the mainline.
       tags: [sources]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: sort
@@ -1645,7 +1654,12 @@ paths:
     post:
       operationId: createSource
       summary: Create a new source
+      description: |
+        Creates a source. With `?branch=` the source is created on that branch
+        only.
       tags: [sources]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1666,8 +1680,14 @@ paths:
     get:
       operationId: searchSources
       summary: Search sources
+      description: |
+        Case-insensitive substring search over source titles and authors. With
+        `?branch=` the search runs over that branch's isolated view: a source
+        the branch retitled matches its branch title only, and one the branch
+        deleted never matches.
       tags: [sources]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: q
           in: query
           required: true
@@ -1698,7 +1718,12 @@ paths:
     get:
       operationId: getSource
       summary: Get a source by ID
+      description: |
+        Returns the source with its citations and external identifiers. With
+        `?branch=` all three are read from that branch's isolated view.
       tags: [sources]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Source details
@@ -1713,6 +1738,8 @@ paths:
       operationId: updateSource
       summary: Update a source
       tags: [sources]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1736,8 +1763,13 @@ paths:
     delete:
       operationId: deleteSource
       summary: Delete a source
+      description: |
+        Deletes a source that has no citations. With `?branch=` the source is
+        deleted on that branch only (the mainline keeps it), and "has no
+        citations" is judged by the branch's view.
       tags: [sources]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':
@@ -1762,6 +1794,8 @@ paths:
       operationId: getCitationsForSource
       summary: Get citations for a source
       tags: [sources]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of citations
@@ -1777,7 +1811,13 @@ paths:
     post:
       operationId: createCitation
       summary: Create a new citation
+      description: |
+        Creates a citation of a source. With `?branch=` the source must exist on
+        that branch, the citation is created on the branch only, and its
+        denormalized `source_title` is the branch's title for the source.
       tags: [citations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1813,6 +1853,8 @@ paths:
       operationId: getCitation
       summary: Get a citation by ID
       tags: [citations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Citation details
@@ -1827,6 +1869,8 @@ paths:
       operationId: updateCitation
       summary: Update a citation
       tags: [citations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1852,6 +1896,7 @@ paths:
       summary: Delete a citation
       tags: [citations]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':
@@ -1871,6 +1916,8 @@ paths:
       operationId: getCitationsForPerson
       summary: Get citations for a person
       tags: [citations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of citations
@@ -2790,14 +2837,17 @@ paths:
               stream id of the entity that moved (not a resolved name), the
               version the plan assumed and the version the mainline is actually
               at, as free text — there is no structured field for them.
-            - `merge_dangling_reference` — the replay would leave the mainline
-              holding a relationship pointing at a person the mainline will not
-              have, because that person was deleted there or was excluded by a
-              `main` resolution while the family event linking them would still
-              be replayed. Resolutions are per entity, but the branch's events
-              reference each other across entities, so excluding a person does
-              not exclude the links to them. The message names both the person
-              and the family. Refused rather than silently dropping the link.
+            - `merge_dangling_reference` — the replay would break a reference
+              between entities. Either the mainline would end up holding a
+              reference to an entity it will not have (a family child whose
+              person was deleted there or excluded by a `main` resolution, or a
+              citation whose source was), or a replayed source deletion would
+              also delete a mainline citation that still cites that source
+              (typically one added on the mainline after the fork). Resolutions
+              are per entity, but the branch's events reference each other
+              across entities, so excluding one entity does not exclude the
+              references to it. The message names both entities. Refused rather
+              than silently dropping or orphaning data.
           content:
             application/json:
               schema:
@@ -2865,9 +2915,12 @@ paths:
     get:
       operationId: listNotes
       summary: List all notes
-      description: Returns paginated list of shared GEDCOM NOTE records
+      description: |
+        Returns paginated list of shared GEDCOM NOTE records. With `?branch=`
+        the list is that branch's isolated view; omit it for the mainline.
       tags: [notes]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: order
@@ -2890,6 +2943,8 @@ paths:
       operationId: createNote
       summary: Create a new note
       tags: [notes]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -2914,6 +2969,8 @@ paths:
       operationId: getNote
       summary: Get a note by ID
       tags: [notes]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Note details
@@ -2928,6 +2985,8 @@ paths:
       operationId: updateNote
       summary: Update a note
       tags: [notes]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -2953,6 +3012,7 @@ paths:
       summary: Delete a note
       tags: [notes]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':

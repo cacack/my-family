@@ -74,6 +74,9 @@ type ListSourcesInput struct {
 	SortBy    string // title, source_type, updated_at
 	SortOrder string // asc, desc
 	Query     string // optional search term
+	// BranchID scopes the list to a branch's overlay (ADR-005, #758); the zero
+	// value (MainBranchID) lists the mainline.
+	BranchID domain.BranchID
 }
 
 // SourceListResult contains paginated source results.
@@ -91,6 +94,8 @@ func (s *SourceService) ListSources(ctx context.Context, input ListSourcesInput)
 		Offset: input.Offset,
 		Sort:   input.SortBy,
 		Order:  input.SortOrder,
+		// BranchID scopes the list to the branch overlay (ADR-005, #758).
+		BranchID: input.BranchID,
 	}
 
 	if opts.Limit <= 0 {
@@ -124,9 +129,11 @@ func (s *SourceService) ListSources(ctx context.Context, input ListSourcesInput)
 	}, nil
 }
 
-// GetSource returns a source by ID with its citations.
-func (s *SourceService) GetSource(ctx context.Context, id uuid.UUID) (*SourceDetail, error) {
-	rm, err := s.readStore.GetSource(ctx, id)
+// GetSource returns a source by ID with its citations and external identifiers,
+// all resolved within the branch overlay (ADR-005, #758); the zero branchID
+// (MainBranchID) reads the mainline.
+func (s *SourceService) GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*SourceDetail, error) {
+	rm, err := s.readStore.GetSource(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +147,7 @@ func (s *SourceService) GetSource(ctx context.Context, id uuid.UUID) (*SourceDet
 	}
 
 	// Get citations for this source
-	citationRMs, err := s.readStore.GetCitationsForSource(ctx, id)
+	citationRMs, err := s.readStore.GetCitationsForSource(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +159,7 @@ func (s *SourceService) GetSource(ctx context.Context, id uuid.UUID) (*SourceDet
 
 	// Get GEDCOM 7.0 external identifiers (EXID) so the UI can render
 	// "View on <system>" links.
-	externalIDs, err := s.readStore.GetSourceExternalIDs(ctx, id)
+	externalIDs, err := s.readStore.GetSourceExternalIDs(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -166,8 +173,8 @@ func (s *SourceService) GetSource(ctx context.Context, id uuid.UUID) (*SourceDet
 	return detail, nil
 }
 
-// SearchSources searches for sources by title, author, or other fields.
-func (s *SourceService) SearchSources(ctx context.Context, query string, limit int) ([]Source, error) {
+// SearchSources searches the sources visible on branchID by title or author.
+func (s *SourceService) SearchSources(ctx context.Context, branchID domain.BranchID, query string, limit int) ([]Source, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -175,7 +182,7 @@ func (s *SourceService) SearchSources(ctx context.Context, query string, limit i
 		limit = 100
 	}
 
-	readModels, err := s.readStore.SearchSources(ctx, query, limit)
+	readModels, err := s.readStore.SearchSources(ctx, branchID, query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -188,9 +195,10 @@ func (s *SourceService) SearchSources(ctx context.Context, query string, limit i
 	return sources, nil
 }
 
-// GetCitationsForPerson returns all citations for a person.
-func (s *SourceService) GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]Citation, error) {
-	readModels, err := s.readStore.GetCitationsForPerson(ctx, personID)
+// GetCitationsForPerson returns all citations for a person within the branch
+// overlay.
+func (s *SourceService) GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]Citation, error) {
+	readModels, err := s.readStore.GetCitationsForPerson(ctx, branchID, personID)
 	if err != nil {
 		return nil, err
 	}
@@ -203,9 +211,9 @@ func (s *SourceService) GetCitationsForPerson(ctx context.Context, personID uuid
 	return citations, nil
 }
 
-// GetCitation returns a single citation by ID.
-func (s *SourceService) GetCitation(ctx context.Context, id uuid.UUID) (*Citation, error) {
-	rm, err := s.readStore.GetCitation(ctx, id)
+// GetCitation returns a single citation by ID within the branch overlay.
+func (s *SourceService) GetCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*Citation, error) {
+	rm, err := s.readStore.GetCitation(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -217,9 +225,10 @@ func (s *SourceService) GetCitation(ctx context.Context, id uuid.UUID) (*Citatio
 	return &citation, nil
 }
 
-// GetCitationsForFact returns citations for a specific fact.
-func (s *SourceService) GetCitationsForFact(ctx context.Context, factType string, factOwnerID uuid.UUID) ([]Citation, error) {
-	readModels, err := s.readStore.GetCitationsForFact(ctx, domain.FactType(factType), factOwnerID)
+// GetCitationsForFact returns citations for a specific fact within the branch
+// overlay.
+func (s *SourceService) GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType string, factOwnerID uuid.UUID) ([]Citation, error) {
+	readModels, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactType(factType), factOwnerID)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -64,7 +65,7 @@ func TestCreateNote(t *testing.T) {
 				}
 
 				// Verify note in read model
-				note, _ := readStore.GetNote(ctx, result.ID)
+				note, _ := readStore.GetNote(ctx, domain.MainBranchID, result.ID)
 				if note == nil {
 					t.Fatal("Note not found in read model")
 				}
@@ -197,7 +198,7 @@ func TestDeleteNote(t *testing.T) {
 	}
 
 	// Verify deleted from read model
-	note, _ := readStore.GetNote(ctx, createResult.ID)
+	note, _ := readStore.GetNote(ctx, domain.MainBranchID, createResult.ID)
 	if note != nil {
 		t.Error("Note should be deleted from read model")
 	}
@@ -264,7 +265,7 @@ func TestUpdateNote_TextChange(t *testing.T) {
 	}
 
 	// Verify change in read model
-	note, _ := readStore.GetNote(ctx, createResult.ID)
+	note, _ := readStore.GetNote(ctx, domain.MainBranchID, createResult.ID)
 	if note.Text != newText {
 		t.Errorf("Text = %s, want %s", note.Text, newText)
 	}

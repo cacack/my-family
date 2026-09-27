@@ -107,9 +107,9 @@
 			recovery: 'recompare'
 		},
 		merge_dangling_reference: {
-			title: 'An entity you left behind is still referenced by one being merged',
+			title: 'The merge would break a reference between entities',
 			body:
-				"Excluding it would leave the mainline holding a relationship that points at a person the mainline will not have. Decisions are made per entity, but the branch's events reference each other across entities, so leaving a person out does not leave the links to them out. Nothing was written - close this and revisit what you are excluding.",
+				"Merging would leave the mainline holding a reference to something it will not have - a family child whose person was deleted there, or a citation whose source was - or would delete a mainline citation of a source the branch deleted. Decisions are made per entity, but the branch's events reference each other across entities, so leaving one entity out does not leave the references to it out. Nothing was written - close this and revisit what you are excluding.",
 			recovery: 'close'
 		},
 		merge_partially_applied: {

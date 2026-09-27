@@ -871,3 +871,345 @@ func runBranchFactScenario(t *testing.T, readStore repository.ReadModelStore, br
 		t.Errorf("purged branch ListAssociations total = %d (err=%v), want main's 1", total, err)
 	}
 }
+
+// TestBranchScenario_EvidenceOverlay drives the ADR-005 copy-on-write overlay
+// through the evidence tables (sub-issue C of #676, #758) — sources, source
+// external IDs, citations and notes — against the postgres backend. The scenario
+// body (runBranchEvidenceScenario) is an identical copy of the other backends'
+// so all three prove the same behavior (DB-001). Fixtures use neutral
+// placeholder names only (public repo — no real PII).
+func TestBranchScenario_EvidenceOverlay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	readStore, err := pgstore.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	branchStore, err := pgstore.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("create branch store: %v", err)
+	}
+	runBranchEvidenceScenario(t, readStore, branchStore)
+}
+
+// runBranchEvidenceScenario is the backend-agnostic evidence scenario for
+// sub-issue C of #676 (#758): sources, source external IDs, citations and notes.
+// Each backend package carries an identical copy (there is no shared test
+// harness in this repo); keeping the assertions byte-identical is the DB-001
+// parity guarantee.
+//
+// Shape: one person, two cited sources (one with external IDs) and a note on
+// main, seeded through the projector. A branch then retitles both sources, cites
+// the retitled one (the citation must denormalize the BRANCH title — the
+// Source-before-Citation ordering constraint), edits and re-points citations,
+// replaces external IDs, edits and adds notes, and finally deletes a source
+// (cascading to its external IDs and citations on the branch only). Every step
+// asserts that main is untouched and that the branch resolves shadow-over-main
+// with tombstones honoured, including SearchSources, which must resolve the
+// overlay before matching. Last, deleting the branch purges its evidence rows so
+// the branch id resolves to main again.
+func runBranchEvidenceScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
+	t.Helper()
+	ctx := context.Background()
+	projector := repository.NewProjector(readStore, branchStore)
+	main := domain.MainBranchID
+	mainOpts := repository.ListOptions{Limit: 100, BranchID: main}
+
+	project := func(label string, branchID domain.BranchID, events ...domain.Event) {
+		t.Helper()
+		for i, ev := range events {
+			if err := projector.Project(ctx, ev, int64(i+2), branchID); err != nil {
+				t.Fatalf("%s: project %s: %v", label, ev.EventType(), err)
+			}
+		}
+	}
+	searchIDs := func(branchID domain.BranchID, q string) []uuid.UUID {
+		t.Helper()
+		got, err := readStore.SearchSources(ctx, branchID, q, 10)
+		if err != nil {
+			t.Fatalf("SearchSources(%q): %v", q, err)
+		}
+		ids := make([]uuid.UUID, 0, len(got))
+		for _, s := range got {
+			ids = append(ids, s.ID)
+		}
+		return ids
+	}
+
+	// --- Step 1: seed main. ---
+	subject := domain.NewPerson("Alex", "Original")
+	census := domain.NewSource("Census 1880", domain.SourceCensus)
+	census.Author = "Enumerator"
+	register := domain.NewSource("Parish Register", domain.SourceChurch)
+	birthCite := domain.NewCitation(census.ID, domain.FactPersonBirth, subject.ID)
+	birthCite.Page = "12"
+	deathCite := domain.NewCitation(register.ID, domain.FactPersonDeath, subject.ID)
+	note := domain.NewNote("Seen in the register")
+	project("seed main", main,
+		domain.NewPersonCreated(subject),
+		domain.NewSourceCreated(census),
+		domain.NewSourceCreated(register),
+		domain.NewCitationCreated(birthCite),
+		domain.NewCitationCreated(deathCite),
+		domain.NewNoteCreated(note),
+	)
+	if err := readStore.ReplaceSourceExternalIDs(ctx, main, census.ID, []repository.SourceExternalIDReadModel{
+		{Value: "MAIN-1", Type: "http://example.org/ids"},
+	}); err != nil {
+		t.Fatalf("seed main external ids: %v", err)
+	}
+
+	branch, err := domain.NewBranch("evidence-scope", "evidence must fork", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create branch", main, domain.NewBranchCreated(branch))
+	branchID := domain.BranchID(branch.ID)
+	branchOpts := repository.ListOptions{Limit: 100, BranchID: branchID}
+
+	// mainView asserts main's evidence is exactly what step 1 seeded.
+	mainView := func(label string) {
+		t.Helper()
+		if got, err := readStore.GetSource(ctx, main, census.ID); err != nil || got == nil || got.Title != "Census 1880" || got.CitationCount != 1 {
+			t.Errorf("%s: main GetSource(census) = %+v (err=%v), want Census 1880 with 1 citation", label, got, err)
+		}
+		if got, err := readStore.GetSource(ctx, main, register.ID); err != nil || got == nil || got.Title != "Parish Register" || got.CitationCount != 1 {
+			t.Errorf("%s: main GetSource(register) = %+v (err=%v), want Parish Register with 1 citation", label, got, err)
+		}
+		if _, total, err := readStore.ListSources(ctx, mainOpts); err != nil || total != 2 {
+			t.Errorf("%s: main ListSources total = %d (err=%v), want 2", label, total, err)
+		}
+		if got := searchIDs(main, "parish"); !reflect.DeepEqual(got, []uuid.UUID{register.ID}) {
+			t.Errorf("%s: main SearchSources(parish) = %v, want [register]", label, got)
+		}
+		if got := searchIDs(main, "enumerator"); !reflect.DeepEqual(got, []uuid.UUID{census.ID}) {
+			t.Errorf("%s: main SearchSources(enumerator) = %v, want [census]", label, got)
+		}
+		if got, err := readStore.GetSourceExternalIDs(ctx, main, census.ID); err != nil || len(got) != 1 || got[0].Value != "MAIN-1" {
+			t.Errorf("%s: main GetSourceExternalIDs = %+v (err=%v), want [MAIN-1]", label, got, err)
+		}
+		if got, err := readStore.GetCitation(ctx, main, birthCite.ID); err != nil || got == nil || got.Page != "12" || got.SourceTitle != "Census 1880" {
+			t.Errorf("%s: main GetCitation(birth) = %+v (err=%v), want page 12 of Census 1880", label, got, err)
+		}
+		if got, err := readStore.GetCitationsForSource(ctx, main, register.ID); err != nil || len(got) != 1 || got[0].ID != deathCite.ID {
+			t.Errorf("%s: main GetCitationsForSource(register) = %+v (err=%v), want [death]", label, got, err)
+		}
+		if got, err := readStore.GetCitationsForPerson(ctx, main, subject.ID); err != nil || len(got) != 2 {
+			t.Errorf("%s: main GetCitationsForPerson = %d rows (err=%v), want 2", label, len(got), err)
+		}
+		if got, err := readStore.GetCitationsForFact(ctx, main, domain.FactPersonBirth, subject.ID); err != nil || len(got) != 1 || got[0].ID != birthCite.ID {
+			t.Errorf("%s: main GetCitationsForFact(birth) = %+v (err=%v), want [birth]", label, got, err)
+		}
+		if _, total, err := readStore.ListCitations(ctx, mainOpts); err != nil || total != 2 {
+			t.Errorf("%s: main ListCitations total = %d (err=%v), want 2", label, total, err)
+		}
+		if got, err := readStore.GetNote(ctx, main, note.ID); err != nil || got == nil || got.Text != "Seen in the register" {
+			t.Errorf("%s: main GetNote = %+v (err=%v), want the seeded text", label, got, err)
+		}
+		if _, total, err := readStore.ListNotes(ctx, mainOpts); err != nil || total != 1 {
+			t.Errorf("%s: main ListNotes total = %d (err=%v), want 1", label, total, err)
+		}
+	}
+	mainView("baseline")
+
+	// Before the branch writes anything it resolves entirely to main.
+	if got, err := readStore.GetSource(ctx, branchID, census.ID); err != nil || got == nil || got.Title != "Census 1880" {
+		t.Fatalf("fresh branch GetSource(census) = %+v (err=%v), want main's row", got, err)
+	}
+	if got, err := readStore.GetSourceExternalIDs(ctx, branchID, census.ID); err != nil || len(got) != 1 || got[0].Value != "MAIN-1" {
+		t.Fatalf("fresh branch GetSourceExternalIDs = %+v (err=%v), want main's bucket", got, err)
+	}
+
+	// --- Step 2: the branch retitles both sources, THEN cites the census: the new
+	// citation must carry the branch's title. It also edits a citation and a note,
+	// adds a source and a note, and replaces the census's external IDs. ---
+	burialCite := domain.NewCitation(census.ID, domain.FactPersonBurial, subject.ID)
+	diary := domain.NewSource("Family Diary", domain.SourceBook)
+	branchNote := domain.NewNote("Branch-only note")
+	project("branch edits", branchID,
+		domain.NewSourceUpdated(census.ID, map[string]any{"title": "Census 1880 (Revised)"}),
+		domain.NewSourceUpdated(register.ID, map[string]any{"title": "Baptism Roll"}),
+		domain.NewCitationCreated(burialCite),
+		domain.NewCitationUpdated(birthCite.ID, map[string]any{"page": "99"}),
+		domain.NewSourceCreated(diary),
+		domain.NewNoteUpdated(note.ID, map[string]any{"text": "Revised on the branch"}),
+		domain.NewNoteCreated(branchNote),
+	)
+	if err := readStore.ReplaceSourceExternalIDs(ctx, branchID, census.ID, []repository.SourceExternalIDReadModel{
+		{Value: "BRANCH-1", Type: "http://example.org/ids"},
+		{Value: "BRANCH-2", Type: "http://example.org/ids"},
+	}); err != nil {
+		t.Fatalf("branch ReplaceSourceExternalIDs: %v", err)
+	}
+	mainView("after branch edits")
+
+	if got, err := readStore.GetSource(ctx, branchID, census.ID); err != nil || got == nil || got.Title != "Census 1880 (Revised)" || got.CitationCount != 2 {
+		t.Errorf("branch GetSource(census) = %+v (err=%v), want the revised title with 2 citations", got, err)
+	}
+	if got, err := readStore.GetCitation(ctx, branchID, burialCite.ID); err != nil || got == nil || got.SourceTitle != "Census 1880 (Revised)" {
+		t.Errorf("branch GetCitation(burial) = %+v (err=%v), want the BRANCH source title denormalized", got, err)
+	}
+	if got, err := readStore.GetCitation(ctx, main, burialCite.ID); err != nil || got != nil {
+		t.Errorf("main GetCitation(branch-only burial) = %+v (err=%v), want absent", got, err)
+	}
+	if got, err := readStore.GetCitation(ctx, branchID, birthCite.ID); err != nil || got == nil || got.Page != "99" {
+		t.Errorf("branch GetCitation(birth) = %+v (err=%v), want the shadow's page 99", got, err)
+	}
+	if got, err := readStore.GetCitationsForSource(ctx, branchID, census.ID); err != nil || len(got) != 2 {
+		t.Errorf("branch GetCitationsForSource(census) = %d rows (err=%v), want 2", len(got), err)
+	}
+	if got, err := readStore.GetCitationsForPerson(ctx, branchID, subject.ID); err != nil || len(got) != 3 {
+		t.Errorf("branch GetCitationsForPerson = %d rows (err=%v), want 3", len(got), err)
+	}
+	if got, err := readStore.GetCitationsForFact(ctx, branchID, domain.FactPersonBirth, subject.ID); err != nil || len(got) != 1 || got[0].Page != "99" {
+		t.Errorf("branch GetCitationsForFact(birth) = %+v (err=%v), want the page-99 shadow only", got, err)
+	}
+	if rows, total, err := readStore.ListCitations(ctx, branchOpts); err != nil || total != 3 || len(rows) != 3 {
+		t.Errorf("branch ListCitations = total %d, %d rows (err=%v), want 3", total, len(rows), err)
+	}
+	if rows, total, err := readStore.ListSources(ctx, branchOpts); err != nil || total != 3 || len(rows) != 3 {
+		t.Errorf("branch ListSources = total %d, %d rows (err=%v), want 3", total, len(rows), err)
+	}
+	// SearchSources resolves the overlay FIRST: the census matches once (its main
+	// row and branch shadow are one source), the register's main title no longer
+	// matches on the branch, and its branch title matches on the branch only.
+	if got := searchIDs(branchID, "1880"); !reflect.DeepEqual(got, []uuid.UUID{census.ID}) {
+		t.Errorf("branch SearchSources(1880) = %v, want [census] exactly once", got)
+	}
+	if got := searchIDs(branchID, "parish"); len(got) != 0 {
+		t.Errorf("branch SearchSources(parish) = %v, want none (the branch retitled it)", got)
+	}
+	if got := searchIDs(branchID, "baptism"); !reflect.DeepEqual(got, []uuid.UUID{register.ID}) {
+		t.Errorf("branch SearchSources(baptism) = %v, want [register]", got)
+	}
+	if got := searchIDs(main, "baptism"); len(got) != 0 {
+		t.Errorf("main SearchSources(baptism) = %v, want none", got)
+	}
+	if got := searchIDs(branchID, "diary"); !reflect.DeepEqual(got, []uuid.UUID{diary.ID}) {
+		t.Errorf("branch SearchSources(diary) = %v, want [diary]", got)
+	}
+	if got := searchIDs(branchID, "enumerator"); !reflect.DeepEqual(got, []uuid.UUID{census.ID}) {
+		t.Errorf("branch SearchSources(enumerator) = %v, want [census] (author is unchanged)", got)
+	}
+	if got, err := readStore.GetSourceExternalIDs(ctx, branchID, census.ID); err != nil || len(got) != 2 || got[0].Value != "BRANCH-1" || got[1].Value != "BRANCH-2" {
+		t.Errorf("branch GetSourceExternalIDs = %+v (err=%v), want [BRANCH-1 BRANCH-2]", got, err)
+	}
+	if got, err := readStore.GetNote(ctx, branchID, note.ID); err != nil || got == nil || got.Text != "Revised on the branch" {
+		t.Errorf("branch GetNote = %+v (err=%v), want the shadow's text", got, err)
+	}
+	if got, err := readStore.GetNote(ctx, main, branchNote.ID); err != nil || got != nil {
+		t.Errorf("main GetNote(branch-only) = %+v (err=%v), want absent", got, err)
+	}
+	if rows, total, err := readStore.ListNotes(ctx, branchOpts); err != nil || total != 2 || len(rows) != 2 {
+		t.Errorf("branch ListNotes = total %d, %d rows (err=%v), want 2", total, len(rows), err)
+	}
+
+	// --- Step 3: re-point the death citation at the census on the branch. The
+	// counts move and the title re-denormalizes, all through the branch; the
+	// per-source list follows the WINNING row. ---
+	project("branch re-point", branchID,
+		domain.NewCitationUpdated(deathCite.ID, map[string]any{"source_id": census.ID.String()}),
+	)
+	mainView("after re-point")
+	if got, err := readStore.GetCitation(ctx, branchID, deathCite.ID); err != nil || got == nil || got.SourceID != census.ID || got.SourceTitle != "Census 1880 (Revised)" {
+		t.Errorf("branch GetCitation(death) after re-point = %+v (err=%v), want the census with its branch title", got, err)
+	}
+	if got, err := readStore.GetCitationsForSource(ctx, branchID, register.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch GetCitationsForSource(register) after re-point = %+v (err=%v), want none", got, err)
+	}
+	if got, err := readStore.GetSource(ctx, branchID, register.ID); err != nil || got == nil || got.CitationCount != 0 {
+		t.Errorf("branch GetSource(register) after re-point = %+v (err=%v), want 0 citations", got, err)
+	}
+	if got, err := readStore.GetSource(ctx, branchID, census.ID); err != nil || got == nil || got.CitationCount != 3 {
+		t.Errorf("branch GetSource(census) after re-point = %+v (err=%v), want 3 citations", got, err)
+	}
+
+	// --- Step 4: deletes. A citation and a note are tombstoned; deleting the census
+	// on the branch cascades to its external IDs and every citation of it the
+	// branch sees (the re-pointed death citation and the branch-only burial one),
+	// on the branch only. ---
+	project("branch deletes", branchID,
+		domain.NewCitationDeleted(birthCite.ID, "branch hypothesis"),
+		domain.NewNoteDeleted(note.ID, "branch hypothesis"),
+		domain.NewSourceDeleted(census.ID, "branch hypothesis"),
+	)
+	mainView("after branch deletes")
+	if got, err := readStore.GetSource(ctx, branchID, census.ID); err != nil || got != nil {
+		t.Errorf("branch GetSource(census) after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := readStore.GetSourceExternalIDs(ctx, branchID, census.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch GetSourceExternalIDs after source delete = %+v (err=%v), want none", got, err)
+	}
+	for _, id := range []uuid.UUID{birthCite.ID, deathCite.ID, burialCite.ID} {
+		if got, err := readStore.GetCitation(ctx, branchID, id); err != nil || got != nil {
+			t.Errorf("branch GetCitation(%s) after deletes = %+v (err=%v), want tombstoned", id, got, err)
+		}
+	}
+	if got, err := readStore.GetCitationsForPerson(ctx, branchID, subject.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch GetCitationsForPerson after deletes = %+v (err=%v), want none", got, err)
+	}
+	if _, total, err := readStore.ListCitations(ctx, branchOpts); err != nil || total != 0 {
+		t.Errorf("branch ListCitations total after deletes = %d (err=%v), want 0", total, err)
+	}
+	if got := searchIDs(branchID, "1880"); len(got) != 0 {
+		t.Errorf("branch SearchSources(1880) after delete = %v, want none", got)
+	}
+	if _, total, err := readStore.ListSources(ctx, branchOpts); err != nil || total != 2 {
+		t.Errorf("branch ListSources total after delete = %d (err=%v), want 2 (register shadow, diary)", total, err)
+	}
+	if got, err := readStore.GetNote(ctx, branchID, note.ID); err != nil || got != nil {
+		t.Errorf("branch GetNote after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if _, total, err := readStore.ListNotes(ctx, branchOpts); err != nil || total != 1 {
+		t.Errorf("branch ListNotes total after delete = %d (err=%v), want 1", total, err)
+	}
+
+	// A save after a delete clears the tombstone.
+	mainNote, err := readStore.GetNote(ctx, main, note.ID)
+	if err != nil || mainNote == nil {
+		t.Fatalf("main GetNote: %+v (err=%v)", mainNote, err)
+	}
+	if err := readStore.SaveNote(ctx, branchID, mainNote); err != nil {
+		t.Fatalf("branch SaveNote over tombstone: %v", err)
+	}
+	if got, err := readStore.GetNote(ctx, branchID, note.ID); err != nil || got == nil {
+		t.Errorf("branch GetNote after re-save = %+v (err=%v), want it back", got, err)
+	}
+
+	// --- Step 5: deleting the branch purges its evidence rows; the branch id then
+	// resolves to main exactly. ---
+	project("delete branch", main, domain.NewBranchDeleted(branch.ID))
+	mainView("after purge")
+	if got, err := readStore.GetSource(ctx, branchID, census.ID); err != nil || got == nil || got.Title != "Census 1880" || got.CitationCount != 1 {
+		t.Errorf("purged branch GetSource(census) = %+v (err=%v), want main's row", got, err)
+	}
+	if got, err := readStore.GetSourceExternalIDs(ctx, branchID, census.ID); err != nil || len(got) != 1 || got[0].Value != "MAIN-1" {
+		t.Errorf("purged branch GetSourceExternalIDs = %+v (err=%v), want main's [MAIN-1]", got, err)
+	}
+	if got, err := readStore.GetCitation(ctx, branchID, burialCite.ID); err != nil || got != nil {
+		t.Errorf("purged branch GetCitation(burial) = %+v (err=%v), want absent", got, err)
+	}
+	if got, err := readStore.GetCitation(ctx, branchID, birthCite.ID); err != nil || got == nil || got.Page != "12" {
+		t.Errorf("purged branch GetCitation(birth) = %+v (err=%v), want main's page 12", got, err)
+	}
+	if _, total, err := readStore.ListSources(ctx, branchOpts); err != nil || total != 2 {
+		t.Errorf("purged branch ListSources total = %d (err=%v), want main's 2", total, err)
+	}
+	if _, total, err := readStore.ListCitations(ctx, branchOpts); err != nil || total != 2 {
+		t.Errorf("purged branch ListCitations total = %d (err=%v), want main's 2", total, err)
+	}
+	if got, err := readStore.GetNote(ctx, branchID, note.ID); err != nil || got == nil || got.Text != "Seen in the register" {
+		t.Errorf("purged branch GetNote = %+v (err=%v), want main's text", got, err)
+	}
+	if _, total, err := readStore.ListNotes(ctx, branchOpts); err != nil || total != 1 {
+		t.Errorf("purged branch ListNotes total = %d (err=%v), want main's 1", total, err)
+	}
+	if got := searchIDs(branchID, "parish"); !reflect.DeepEqual(got, []uuid.UUID{register.ID}) {
+		t.Errorf("purged branch SearchSources(parish) = %v, want [register]", got)
+	}
+}
