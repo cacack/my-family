@@ -589,15 +589,15 @@ the same guarantee the original attempt ran under, re-asserted at append time by
 `replayStream`. Otherwise (a mainline write landed on it after the claim, which is exactly the
 residual staleness window below; `main` deleted the entity or merged it away since the claim; a
 pre-#685 claim with no plan; or a replay that would now leave `main` referencing a person it no
-longer has) resume refuses with
+longer has, or break an evidence or media-owner rule — see below) resume refuses with
 `ErrMergeResumeNeedsResolution` (`409 merge_resume_needs_resolution`), **writing nothing**, and
 lists the streams. The caller reviews them with `compare` and resumes again with a resolution per
 listed stream: `branch` replays over `main` as it now stands (asserting *that* version, so a
 further write still trips the guard), `main` leaves the entity as `main` has it — the deliberate
 roll-forward. `branch` is a `400` for an entity `main` has removed since the claim — its stream
 ends in a delete, `main` merged the person into another (`PersonMerged` writes only to the
-survivor's stream, so the merged person's stream still sits at its pin), or an association lost a
-person to the delete cascade — for the reason `MergeBranch` offers only `main` on a main-side
+survivor's stream, so the merged person's stream still sits at its pin), an association lost a
+person to the delete cascade, or a citation or media item lost its source or owner the same way — for the reason `MergeBranch` offers only `main` on a main-side
 delete: replaying edits onto an absent row appends them after its removal and restores nothing. A
 resolution for any stream the claim or an earlier resume already decided is a
 `400` (unless `main` has since moved that stream again; see below): a second request must not
@@ -646,6 +646,29 @@ such a stream forward without it; `branch` is refused as a dangling reference. T
 checked again, and a `main` resolution may not exclude a source the replay creates while a citation
 already on `main` cites it (reachable only from a pre-#685 claim).
 
+**Media on resume (#759).** The merge's media-owner rule is part of the same shared check
+(`checkEvidence`), so a resume applies it on the same terms: a media upload the plan would replay
+automatically is pending when its owner (person, family or source) will not exist on `main` when it
+lands — `main` deleted it after the claim, this request resolves the stream that creates it to
+`main`, or a stream already on `main` deleted it (an owner-deleting stream counts as deleting
+*after* the upload only while it is itself still to be replayed). `main` rolls such a stream
+forward without it; `branch` is refused as a dangling reference, and a `main` resolution may not
+exclude an owner the replay creates while an upload already on `main` is attached to it. Landed
+detection is the usual payload-id scan, and a media stream's `main` row is read with `GetMedia`,
+never the bytes. The read-model repair follows the version rule — every media projection writes the
+row, version included, in one save — and cannot copy or lose file bytes: it projects `main`'s own
+events onto `main` only, the only event carrying bytes is `MediaCreated` (whose bytes are `main`'s
+own, in `main`'s log), `MediaUpdated` re-saves metadata with nil bytes (which keep what is stored),
+and no branch row is ever written. A missing media row counts as removed for a reason the log
+explains when its owner's `main` stream ends in a delete (the owner→media cascade writes nothing to
+the media stream), following a person owner through any person merges `main` recorded since; a
+pending edit of such an item resolves only to `main`, and a landed upload is not resurrected. One
+case is refused rather than repaired: a landed upload whose projection failed and whose owner
+person `main` then merged into a person it still has. `PersonMerged` would have moved the item to
+the survivor, and that transfer is not in the media stream, so re-projecting it would attach it to
+the merged-away person; the resume says so and writes nothing, and repairing that item needs a
+read-model rebuild from the log (#680).
+
 A claim written before #685 has no plan, so its first resume must decide every stream not yet on
 `main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams
 the original request already declined. The log cannot distinguish those from unreplayed ones, so
@@ -677,15 +700,17 @@ projection would duplicate them — and `main`'s read model is behind the log fo
 repo has no read-model rebuild command yet (#680), so resume repairs it itself: for every
 already-replayed stream it compares `main`'s read-model version with `main`'s stream version. Every
 projection handler for the branch-aware event set a branch can carry (BR-006: person, family and —
-since #757 — association streams, and since #758 source, citation and note streams) writes the
+since #757 — association streams, since #758 source, citation and note streams, and since #759
+media streams) writes the
 aggregate's version as its last step, so a row behind the log is re-projected from the first event
 past its version; re-running an event whose projection stopped midway is safe because its writes are
 upserts and deletes, and the counter it bumps is part of the final write that did not happen. A
 missing row is re-projected from the start unless the log explains its absence (the stream ends in a
 delete; `main` merged the person away with `PersonMerged`, which writes nothing to the merged
 person's stream; an association's person is gone from `main`, whose delete cascade removes the
-row without writing to the association's stream; or a citation's source was deleted on `main`, whose
-cascade removes the citation the same way). Repaired streams are reported in
+row without writing to the association's stream; a citation's source was deleted on `main`, whose
+cascade removes the citation the same way; or a media item's owner was, likewise — see *Media on
+resume*). Repaired streams are reported in
 `reprojected_stream_ids`; a resume after that finds nothing behind.
 
 The one evidence write outside that version rule is a source's `citation_count`, which the citation
@@ -722,7 +747,10 @@ merge and its resume over HTTP against memory, SQLite and PostgreSQL — includi
 `main` decision that a later resume must neither re-ask nor reverse, a family whose child `main`
 deleted after the interruption, a replay whose projection failed after its append committed, a
 merge carrying sources and citations (a re-pointed citation and a source delete included) interrupted
-mid-replay, and a cited source `main` deleted after the interruption.
+mid-replay, a cited source `main` deleted after the interruption, and (#759,
+`branch_merge_resume_media_test.go` in both packages) a merge carrying media uploads and edits
+interrupted mid-replay, a media owner `main` deleted after the interruption, and a failed media
+projection repaired with the shared bytes intact on `main` and the branch.
 
 **The conflict verdict is pinned to the versions it was computed against (#698, delivered).**
 `PlanMerge` runs once, and a mainline write landing before the replay was never compared with the
@@ -881,7 +909,8 @@ exists on `main` or is replayed — and a replayed owner that the replay itself 
 when its stream replays *after* the upload, so the owner's delete cascades the item on `main` as it
 did on the branch. Otherwise `main` would gain a media item attached to nothing. A branch that
 uploads to a person it created and then deletes that person is therefore refused; deleting the
-media first makes it mergeable.
+media first makes it mergeable. `ResumeMerge` applies the same rule with its pending semantics
+(see *Media on resume* under the merge implementation note).
 
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that
@@ -1141,9 +1170,11 @@ each item's *winning* row, like the life-event lists, so a branch that re-links 
 (`PersonMerged` moves a merged person's media to the survivor) lists it under its new owner only.
 
 **BR-006 and merge.** `MediaCreated`, `MediaUpdated` and `MediaDeleted` join the allowlist;
-`MediaCreated` is conflict-blind like the other per-entity creates. `PersonMerged` stays off the
-allowlist: its media transfer is now branch-scoped, but it still rewrites evidence-analysis and
-research rows that are main-only until #760.
+`MediaCreated` is conflict-blind like the other per-entity creates. A merge interrupted mid-replay
+resumes media streams like any other (#685): the media-owner rule applies with resume's pending
+semantics, and the read-model repair never copies or drops shared bytes — see *Media on resume*.
+`PersonMerged` stays off the allowlist: its media transfer is now branch-scoped, but it still
+rewrites evidence-analysis and research rows that are main-only until #760.
 
 **API and UI.** Seven operations gained `?branch=` — `getMedia`, `updateMedia`, `deleteMedia`,
 `listPersonMedia`, `uploadPersonMedia`, `downloadMedia` and `getMediaThumbnail` — bringing the total

@@ -57,7 +57,14 @@ type readModelState struct {
 // of its persons is gone from main, whose delete cascade removes the
 // association's row without writing to its stream either; or (for a citation)
 // the source it cites was deleted on main, whose cascade removes the citation
-// the same way.
+// the same way; or (for media, #759) its owner was deleted on main, whose
+// cascade removes the item the same way.
+//
+// Media streams (#759) follow the same version rule: each media projection
+// writes the row, version included, in one save (or deletes it). The repair
+// projects onto main only and never copies bytes: see
+// branch_merge_resume_media.go, including the owner-merged case it refuses
+// (errMediaRepairUnsound) rather than repair.
 //
 // Source, citation and note streams (#758) are covered by the same version
 // rule: each of their projections writes the row, version included, in one
@@ -82,7 +89,7 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 	if err != nil {
 		return nil, err
 	}
-	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, behind, states, mainEvents)
+	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, behind, states, mainEvents, landed)
 	if err != nil {
 		return nil, err
 	}
@@ -253,14 +260,20 @@ func (h *Handler) streamsBehindOnMain(ctx context.Context, groups []streamGroup,
 
 // missingRowsRemovedElsewhere reports which missing rows were removed by a
 // write to ANOTHER stream that main's log records: a person merged into
-// another (PersonMerged), or a citation whose source was deleted (the
-// source→citation cascade). Each kind is detected with one set-based scan
+// another (PersonMerged), a citation whose source was deleted (the
+// source→citation cascade), or a media item whose owner was deleted (the
+// owner→media cascade, #759). Each kind is detected with one set-based scan
 // across all the missing streams, never a scan per stream.
+//
+// landed names the streams already on main by payload id; a landed media
+// stream whose repair would be unsound is refused (errMediaRepairUnsound, see
+// missingMediaCascadedAway).
 func (h *Handler) missingRowsRemovedElsewhere(
 	ctx context.Context,
 	missing []streamGroup,
 	states map[uuid.UUID]readModelState,
 	mainEvents map[uuid.UUID][]repository.StoredEvent,
+	landed map[uuid.UUID]bool,
 ) (map[uuid.UUID]bool, error) {
 	mergedAway, err := h.missingPersonsMergedAway(ctx, missing, states, mainEvents)
 	if err != nil {
@@ -270,12 +283,15 @@ func (h *Handler) missingRowsRemovedElsewhere(
 	if err != nil {
 		return nil, err
 	}
-	removed := make(map[uuid.UUID]bool, len(mergedAway)+len(cascaded))
-	for id := range mergedAway {
-		removed[id] = true
+	mediaCascaded, err := h.missingMediaCascadedAway(ctx, missing, states, mainEvents, landed)
+	if err != nil {
+		return nil, err
 	}
-	for id := range cascaded {
-		removed[id] = true
+	removed := make(map[uuid.UUID]bool, len(mergedAway)+len(cascaded)+len(mediaCascaded))
+	for _, set := range []map[uuid.UUID]bool{mergedAway, cascaded, mediaCascaded} {
+		for id := range set {
+			removed[id] = true
+		}
 	}
 	return removed, nil
 }
@@ -315,8 +331,8 @@ func endsInDelete(events []repository.StoredEvent) bool {
 
 // mainReadModelState reads main's read-model row for a replayed aggregate. The
 // replay set holds only BR-006's branch-aware events. Those a branch can
-// actually carry live on person, family, association, source, citation and
-// note streams (#757 made life events and attributes branch-aware too, but
+// actually carry live on person, family, association, source, citation, note
+// and media streams (#757 made life events and attributes branch-aware too, but
 // nothing writes one on a branch yet); any other stream type means a branch
 // write path grew without this check, so it is refused rather than reported
 // as in sync.
@@ -353,9 +369,12 @@ func (h *Handler) mainReadModelState(ctx context.Context, group streamGroup) (re
 	return h.mainEvidenceState(ctx, group)
 }
 
-// mainEvidenceState is mainReadModelState for the evidence streams (#758).
+// mainEvidenceState is mainReadModelState for the evidence streams (#758)
+// and media (#759).
 func (h *Handler) mainEvidenceState(ctx context.Context, group streamGroup) (readModelState, error) {
 	switch {
+	case isMediaStream(group.streamType):
+		return h.mainMediaState(ctx, group)
 	case isSourceStream(group.streamType):
 		source, err := h.readStore.GetSource(ctx, domain.MainBranchID, group.streamID)
 		if err != nil {

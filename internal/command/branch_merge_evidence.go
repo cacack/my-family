@@ -169,8 +169,8 @@ type evidencePlan struct {
 
 	// removed names the streams whose entity main has removed since the
 	// merge was claimed (resume only; see streamsRemovedOnMain). Replaying
-	// such a source stream restores nothing, so it does not count as a
-	// source main will have.
+	// such a source or media-owner stream restores nothing, so it does not
+	// count as one main will have.
 	removed map[uuid.UUID]bool
 
 	// order is each stream's position in the replay order

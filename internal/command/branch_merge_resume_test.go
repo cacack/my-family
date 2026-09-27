@@ -101,6 +101,9 @@ type faultyReadStore struct {
 	failSourceCount uuid.UUID
 	failNote        uuid.UUID
 
+	// Media (#759): failMedia fails the media item's own mainline save.
+	failMedia uuid.UUID
+
 	beforeMainSavePerson func()
 
 	// beforeMainSaveSource, when set, runs once just before the next mainline
@@ -137,6 +140,13 @@ func (s *faultyReadStore) SaveNote(ctx context.Context, branchID domain.BranchID
 		return errInjectedProjectionFailure
 	}
 	return s.ReadModelStore.SaveNote(ctx, branchID, note)
+}
+
+func (s *faultyReadStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
+	if s.armed && branchID.IsMain() && media.ID == s.failMedia {
+		return errInjectedProjectionFailure
+	}
+	return s.ReadModelStore.SaveMedia(ctx, branchID, media)
 }
 
 func (s *faultyReadStore) SaveAssociation(ctx context.Context, branchID domain.BranchID, association *repository.AssociationReadModel) error {

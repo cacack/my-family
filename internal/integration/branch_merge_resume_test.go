@@ -182,13 +182,15 @@ func entryStrings(t *testing.T, values []any) []string {
 // and its synchronous projection does not. For evidence (#758) it can instead
 // fail one citation's own save (failCitation), or only a save of one source
 // that changes its citation count (failSourceCount) — the count bump a
-// citation projection makes after saving the citation.
+// citation projection makes after saving the citation. For media (#759) it can
+// fail one media item's mainline save (failMedia).
 type faultyReadStore struct {
 	repository.ReadModelStore
 	mu              sync.Mutex
 	failPerson      uuid.UUID
 	failCitation    uuid.UUID
 	failSourceCount uuid.UUID
+	failMedia       uuid.UUID
 }
 
 func (s *faultyReadStore) failFor(id uuid.UUID) {
