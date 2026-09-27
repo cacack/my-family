@@ -275,7 +275,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err := validateConflictResolutions(plan.Conflicts, input.Resolutions); err != nil {
 		return nil, err
 	}
-	if err := h.validateNoDanglingReferences(ctx, groups, input.Resolutions); err != nil {
+	if err := h.validateNoDanglingReferences(ctx, plan, groups, input.Resolutions); err != nil {
 		return nil, err
 	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
@@ -702,7 +702,7 @@ func groupEventsByStream(events []repository.StoredEvent) []streamGroup {
 //
 // Only events that ADD a reference are checked. Unlinking a person main does
 // not have removes nothing and is harmless.
-func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
+func (h *Handler) validateNoDanglingReferences(ctx context.Context, plan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
 	created := make(map[uuid.UUID]bool, len(groups))
 	checkedGroups := make([]streamGroup, 0, len(groups))
 	for _, group := range groups {
@@ -722,7 +722,7 @@ func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []str
 	if len(dangling) > 0 {
 		return dangling[0].err()
 	}
-	return h.validateNoDanglingEvidence(ctx, groups, resolutions)
+	return h.validateNoDanglingEvidence(ctx, plan, groups, resolutions)
 }
 
 // createsPerson reports whether a replay group leaves its person in existence

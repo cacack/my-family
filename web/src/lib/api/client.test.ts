@@ -103,7 +103,29 @@ describe('isBranchScopedRequest', () => {
 		['PUT', `/media/${NAME_ID}`],
 		['DELETE', `/media/${NAME_ID}`],
 		['GET', `/media/${NAME_ID}/content`],
-		['GET', `/media/${NAME_ID}/thumbnail`]
+		['GET', `/media/${NAME_ID}/thumbnail`],
+		['GET', '/evidence-analyses'],
+		['POST', '/evidence-analyses'],
+		['GET', '/evidence-analyses/by-fact?factType=person_birth&subjectId=' + PERSON_ID],
+		['GET', `/evidence-analyses/${NAME_ID}`],
+		['PUT', `/evidence-analyses/${NAME_ID}`],
+		['DELETE', `/evidence-analyses/${NAME_ID}?version=1`],
+		['GET', '/evidence-conflicts?status=open'],
+		['GET', `/evidence-conflicts/${NAME_ID}`],
+		['POST', `/evidence-conflicts/${NAME_ID}/resolve`],
+		['GET', `/evidence-conflicts/by-subject/${PERSON_ID}`],
+		['GET', '/research-logs'],
+		['POST', '/research-logs'],
+		['GET', `/research-logs/${NAME_ID}`],
+		['PUT', `/research-logs/${NAME_ID}`],
+		['DELETE', `/research-logs/${NAME_ID}`],
+		['GET', `/research-logs/by-subject/${PERSON_ID}`],
+		['GET', '/proof-summaries'],
+		['POST', '/proof-summaries'],
+		['GET', '/proof-summaries/by-fact?factType=person_birth&subjectId=' + PERSON_ID],
+		['GET', `/proof-summaries/${NAME_ID}`],
+		['PUT', `/proof-summaries/${NAME_ID}`],
+		['DELETE', `/proof-summaries/${NAME_ID}`]
 	])('allows %s %s', (method, path) => {
 		expect(isBranchScopedRequest(method, path)).toBe(true);
 	});

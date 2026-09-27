@@ -3716,12 +3716,12 @@ func TestReadModelStore_SaveAndGetEvidenceAnalysis(t *testing.T) {
 		UpdatedAt:       time.Now(),
 	}
 
-	err := store.SaveEvidenceAnalysis(ctx, analysis)
+	err := store.SaveEvidenceAnalysis(ctx, domain.MainBranchID, analysis)
 	if err != nil {
 		t.Fatalf("SaveEvidenceAnalysis() failed: %v", err)
 	}
 
-	retrieved, err := store.GetEvidenceAnalysis(ctx, analysis.ID)
+	retrieved, err := store.GetEvidenceAnalysis(ctx, domain.MainBranchID, analysis.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceAnalysis() failed: %v", err)
 	}
@@ -3736,7 +3736,7 @@ func TestReadModelStore_SaveAndGetEvidenceAnalysis(t *testing.T) {
 	}
 
 	// Test not found
-	notFound, err := store.GetEvidenceAnalysis(ctx, uuid.New())
+	notFound, err := store.GetEvidenceAnalysis(ctx, domain.MainBranchID, uuid.New())
 	if err != nil {
 		t.Fatalf("GetEvidenceAnalysis() not found failed: %v", err)
 	}
@@ -3745,11 +3745,11 @@ func TestReadModelStore_SaveAndGetEvidenceAnalysis(t *testing.T) {
 	}
 
 	// Test delete
-	err = store.DeleteEvidenceAnalysis(ctx, analysis.ID)
+	err = store.DeleteEvidenceAnalysis(ctx, domain.MainBranchID, analysis.ID)
 	if err != nil {
 		t.Fatalf("DeleteEvidenceAnalysis() failed: %v", err)
 	}
-	deleted, err := store.GetEvidenceAnalysis(ctx, analysis.ID)
+	deleted, err := store.GetEvidenceAnalysis(ctx, domain.MainBranchID, analysis.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceAnalysis() after delete failed: %v", err)
 	}
@@ -3772,7 +3772,7 @@ func TestReadModelStore_ListEvidenceAnalyses(t *testing.T) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now().Add(time.Duration(i) * time.Second),
 		}
-		if err := store.SaveEvidenceAnalysis(ctx, a); err != nil {
+		if err := store.SaveEvidenceAnalysis(ctx, domain.MainBranchID, a); err != nil {
 			t.Fatalf("SaveEvidenceAnalysis() failed: %v", err)
 		}
 	}
@@ -3819,12 +3819,12 @@ func TestReadModelStore_SaveAndGetEvidenceConflict(t *testing.T) {
 		UpdatedAt:       time.Now(),
 	}
 
-	err := store.SaveEvidenceConflict(ctx, conflict)
+	err := store.SaveEvidenceConflict(ctx, domain.MainBranchID, conflict)
 	if err != nil {
 		t.Fatalf("SaveEvidenceConflict() failed: %v", err)
 	}
 
-	retrieved, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	retrieved, err := store.GetEvidenceConflict(ctx, domain.MainBranchID, conflict.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceConflict() failed: %v", err)
 	}
@@ -3842,12 +3842,12 @@ func TestReadModelStore_SaveAndGetEvidenceConflict(t *testing.T) {
 	conflict.Resolution = "Certificate is authoritative"
 	conflict.Status = domain.ConflictStatusResolved
 	conflict.Version = 2
-	err = store.SaveEvidenceConflict(ctx, conflict)
+	err = store.SaveEvidenceConflict(ctx, domain.MainBranchID, conflict)
 	if err != nil {
 		t.Fatalf("SaveEvidenceConflict() update failed: %v", err)
 	}
 
-	updated, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	updated, err := store.GetEvidenceConflict(ctx, domain.MainBranchID, conflict.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceConflict() after update failed: %v", err)
 	}
@@ -3859,11 +3859,11 @@ func TestReadModelStore_SaveAndGetEvidenceConflict(t *testing.T) {
 	}
 
 	// Test delete
-	err = store.DeleteEvidenceConflict(ctx, conflict.ID)
+	err = store.DeleteEvidenceConflict(ctx, domain.MainBranchID, conflict.ID)
 	if err != nil {
 		t.Fatalf("DeleteEvidenceConflict() failed: %v", err)
 	}
-	deleted, err := store.GetEvidenceConflict(ctx, conflict.ID)
+	deleted, err := store.GetEvidenceConflict(ctx, domain.MainBranchID, conflict.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceConflict() after delete failed: %v", err)
 	}
@@ -3887,7 +3887,7 @@ func TestReadModelStore_ListEvidenceConflicts(t *testing.T) {
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now().Add(time.Duration(i) * time.Second),
 		}
-		if err := store.SaveEvidenceConflict(ctx, c); err != nil {
+		if err := store.SaveEvidenceConflict(ctx, domain.MainBranchID, c); err != nil {
 			t.Fatalf("SaveEvidenceConflict() failed: %v", err)
 		}
 	}
@@ -3924,12 +3924,12 @@ func TestReadModelStore_SaveAndGetResearchLog(t *testing.T) {
 		UpdatedAt:         time.Now(),
 	}
 
-	err := store.SaveResearchLog(ctx, log)
+	err := store.SaveResearchLog(ctx, domain.MainBranchID, log)
 	if err != nil {
 		t.Fatalf("SaveResearchLog() failed: %v", err)
 	}
 
-	retrieved, err := store.GetResearchLog(ctx, log.ID)
+	retrieved, err := store.GetResearchLog(ctx, domain.MainBranchID, log.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLog() failed: %v", err)
 	}
@@ -3944,11 +3944,11 @@ func TestReadModelStore_SaveAndGetResearchLog(t *testing.T) {
 	}
 
 	// Test delete
-	err = store.DeleteResearchLog(ctx, log.ID)
+	err = store.DeleteResearchLog(ctx, domain.MainBranchID, log.ID)
 	if err != nil {
 		t.Fatalf("DeleteResearchLog() failed: %v", err)
 	}
-	deleted, err := store.GetResearchLog(ctx, log.ID)
+	deleted, err := store.GetResearchLog(ctx, domain.MainBranchID, log.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLog() after delete failed: %v", err)
 	}
@@ -3974,7 +3974,7 @@ func TestReadModelStore_ListResearchLogs(t *testing.T) {
 			CreatedAt:         time.Now(),
 			UpdatedAt:         time.Now().Add(time.Duration(i) * time.Second),
 		}
-		if err := store.SaveResearchLog(ctx, l); err != nil {
+		if err := store.SaveResearchLog(ctx, domain.MainBranchID, l); err != nil {
 			t.Fatalf("SaveResearchLog() failed: %v", err)
 		}
 	}
@@ -4010,12 +4010,12 @@ func TestReadModelStore_SaveAndGetProofSummary(t *testing.T) {
 		UpdatedAt:       time.Now(),
 	}
 
-	err := store.SaveProofSummary(ctx, summary)
+	err := store.SaveProofSummary(ctx, domain.MainBranchID, summary)
 	if err != nil {
 		t.Fatalf("SaveProofSummary() failed: %v", err)
 	}
 
-	retrieved, err := store.GetProofSummary(ctx, summary.ID)
+	retrieved, err := store.GetProofSummary(ctx, domain.MainBranchID, summary.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummary() failed: %v", err)
 	}
@@ -4030,11 +4030,11 @@ func TestReadModelStore_SaveAndGetProofSummary(t *testing.T) {
 	}
 
 	// Test delete
-	err = store.DeleteProofSummary(ctx, summary.ID)
+	err = store.DeleteProofSummary(ctx, domain.MainBranchID, summary.ID)
 	if err != nil {
 		t.Fatalf("DeleteProofSummary() failed: %v", err)
 	}
-	deleted, err := store.GetProofSummary(ctx, summary.ID)
+	deleted, err := store.GetProofSummary(ctx, domain.MainBranchID, summary.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummary() after delete failed: %v", err)
 	}
@@ -4058,7 +4058,7 @@ func TestReadModelStore_ListProofSummaries(t *testing.T) {
 			CreatedAt:  time.Now(),
 			UpdatedAt:  time.Now().Add(time.Duration(i) * time.Second),
 		}
-		if err := store.SaveProofSummary(ctx, ps); err != nil {
+		if err := store.SaveProofSummary(ctx, domain.MainBranchID, ps); err != nil {
 			t.Fatalf("SaveProofSummary() failed: %v", err)
 		}
 	}

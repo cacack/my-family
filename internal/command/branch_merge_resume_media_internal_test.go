@@ -233,7 +233,7 @@ func TestRelinkMergedMedia(t *testing.T) {
 	// The resume's scan saw owner→first; first→second lands after it.
 	appendMainMerge(t, events, first, owner)
 	appendMainMerge(t, events, second, first)
-	if err := h.relinkMergedMedia(ctx, group, mediaRelink{target: first, mergedAt: uploaded.Add(time.Hour), scanFrom: 0}); err != nil {
+	if err := h.relinkMergedMedia(ctx, group, mergeRelink{target: first, mergedAt: uploaded.Add(time.Hour), scanFrom: 0}); err != nil {
 		t.Fatalf("relinkMergedMedia failed: %v", err)
 	}
 	row, err := store.GetMediaWithData(ctx, domain.MainBranchID, mediaID)
@@ -250,11 +250,11 @@ func TestRelinkMergedMedia(t *testing.T) {
 	if err := store.DeleteMedia(ctx, domain.MainBranchID, mediaID); err != nil {
 		t.Fatalf("DeleteMedia failed: %v", err)
 	}
-	if err := h.relinkMergedMedia(ctx, group, mediaRelink{target: second}); err != nil {
+	if err := h.relinkMergedMedia(ctx, group, mergeRelink{target: second}); err != nil {
 		t.Errorf("vanished row: err = %v, want nil", err)
 	}
 	failing := &Handler{readStore: getMediaFailStore{store}, eventStore: events}
-	if err := failing.relinkMergedMedia(ctx, group, mediaRelink{target: second}); err == nil {
+	if err := failing.relinkMergedMedia(ctx, group, mergeRelink{target: second}); err == nil {
 		t.Errorf("failed media read: want an error")
 	}
 }
@@ -281,7 +281,7 @@ func TestRelinkMergedMedia_GivesUpOnEndlessMerges(t *testing.T) {
 	// Each pass sees only one more link: the scan below its start is stale.
 	calls := 0
 	h.eventStore = &steppingMergeStore{EventStore: events, calls: &calls}
-	err := h.relinkMergedMedia(ctx, mediaUploadGroup(mediaID, "person", chain[0]), mediaRelink{target: chain[0]})
+	err := h.relinkMergedMedia(ctx, mediaUploadGroup(mediaID, "person", chain[0]), mergeRelink{target: chain[0]})
 	if !errors.Is(err, errReprojectRaced) {
 		t.Errorf("endless merges: err = %v, want errReprojectRaced", err)
 	}

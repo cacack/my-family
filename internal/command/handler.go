@@ -43,13 +43,19 @@ var (
 // here only when every store call its handler makes is branch-keyed (the
 // copy-on-write overlay #669 added for persons, person names, families, family
 // children and pedigree edges, #757 extended to life events, attributes and
-// associations, #758 to sources, citations and notes, and #759 to media
-// metadata).
+// associations, #758 to sources, citations and notes, #759 to media
+// metadata, and #760 to the GPS artifacts: evidence analyses, evidence
+// conflicts, research logs and proof summaries).
 //
 // Deliberately excluded despite their handlers taking a branchID:
-//   - PersonMerged — branch-scoped for the slice, fact, citation and media
-//     writes, but it also rewrites evidence-analysis and research rows that are
-//     main-only, so a branch-scoped merge would mutate main.
+//   - PersonMerged — since #760 every read-model write its projection makes is
+//     branch-keyed, so it no longer fails the store half of this rule. It stays
+//     off because a branch merge could not replay it safely: it rewrites rows of
+//     the merged person's aggregates (names, facts, citations, media, GPS
+//     artifacts) and deletes that person without an event on any of their
+//     streams, so the merge conflict scan cannot see a concurrent main edit to
+//     them, and the dangling-reference checks do not model it. Admitting it
+//     needs that merge design first (tracked under #676's follow-ups).
 //   - LDSOrdinanceCreated — same shape, but PERMANENT. LDS ordinances are
 //     deliberately never branch-scoped, so this entry is not waiting on anything.
 //     See docs/adr/005-research-branch-data-model.md, "Entities that stay
@@ -99,6 +105,21 @@ var branchAwareEventTypes = map[string]struct{}{
 	"MediaCreated": {},
 	"MediaUpdated": {},
 	"MediaDeleted": {},
+	// GPS artifacts (#760). Each artifact is its own aggregate. An evidence
+	// conflict here is the genealogical finding (two analyses disagree), which
+	// CreateEvidenceAnalysis/UpdateEvidenceAnalysis record on the handler's
+	// branch — not an ADR-005 merge conflict.
+	"EvidenceAnalysisCreated":  {},
+	"EvidenceAnalysisUpdated":  {},
+	"EvidenceAnalysisDeleted":  {},
+	"EvidenceConflictDetected": {},
+	"EvidenceConflictResolved": {},
+	"ResearchLogCreated":       {},
+	"ResearchLogUpdated":       {},
+	"ResearchLogDeleted":       {},
+	"ProofSummaryCreated":      {},
+	"ProofSummaryUpdated":      {},
+	"ProofSummaryDeleted":      {},
 }
 
 // BranchAwareEventTypes returns the event types a branch-scoped handler may
@@ -220,15 +241,18 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 // UpdateFamily, DeleteFamily, LinkChild, UnlinkChild, CreateAssociation,
 // UpdateAssociation, DeleteAssociation, CreateSource, UpdateSource,
 // DeleteSource, CreateCitation, UpdateCitation, DeleteCitation, CreateNote,
-// UpdateNote, DeleteNote, UploadMedia, UpdateMedia and DeleteMedia. (Life events and attributes have no
+// UpdateNote, DeleteNote, UploadMedia, UpdateMedia, DeleteMedia,
+// CreateEvidenceAnalysis, UpdateEvidenceAnalysis, DeleteEvidenceAnalysis,
+// ResolveEvidenceConflict, CreateResearchLog, UpdateResearchLog,
+// DeleteResearchLog, CreateProofSummary, UpdateProofSummary and
+// DeleteProofSummary. (Life events and attributes have no
 // commands of their own yet — GEDCOM import writes them, on main — but their
 // events are allowlisted so a branch merge or a future command can carry them.)
 //
-// Every other entity command — submitters, repositories, LDS
-// ordinances, evidence analyses and conflicts, research logs, proof summaries
-// and MergePersons — routes through execute too, so on a branch it
-// fails loudly rather than writing main. Issue #676 moves those onto the branch
-// as their projections become branch-aware.
+// Every other entity command — submitters, repositories and LDS ordinances
+// (main-only by decision, ADR-005 "Entities that stay main-only") and
+// MergePersons (see branchAwareEventTypes) — routes through execute too, so on
+// a branch it fails loudly rather than writing main.
 //
 // # What ignores the scope
 //

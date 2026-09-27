@@ -168,6 +168,10 @@ Current implementation status for tracking completeness.
 | LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | Partial |
 | Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | Partial |
 | Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
+| EvidenceAnalysis | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ✅ | Complete |
+| EvidenceConflict | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ✅ | Complete |
+| ResearchLog | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ✅ | Complete |
+| ProofSummary | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ✅ | Complete |
 | Snapshot | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ❌ | Complete |
 | Branch | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | Complete |
 
@@ -179,8 +183,9 @@ main-only today — the API does not expose `?branch=` on those operations, and 
 attempted on a branch scope is rejected with `ErrEventTypeNotBranchAware` (BR-006) — but they mean
 it for opposite reasons:
 
-- **❌ = pending.** The entity is destined for branch scoping and simply is not there yet. Widening
-  this is [#676](https://github.com/cacack/my-family/issues/676) and its sub-issues.
+- **❌ = pending.** The entity is destined for branch scoping and simply is not there yet. Since
+  [#676](https://github.com/cacack/my-family/issues/676)'s last sub-issue (#760) landed, Snapshot
+  is the only row in this state (its registry has no `branch_id` yet; see its note below).
 - **⛔ = blocked on a decision.** Branch scoping is neither scheduled nor ruled out, because a prior
   question has to be answered first. No row is in this state today. Brick walls are — they bypass
   the event-sourced pipeline, and an entity whose state never passes through the event log has no
@@ -198,19 +203,21 @@ it for opposite reasons:
 
 The column says nothing about branch *reads*: the browse and map aggregates are branch-aware without
 being entities of their own — see
-[Branch coverage detail](#branch-coverage-detail-669-read--670-write--756-aggregates) below.
+[Branch coverage detail](#branch-coverage-detail-669-read--670-write--756-aggregates--757-facts--758-evidence--759-media--760-gps) below.
 
 Notes on partial rows:
 
+- **EvidenceAnalysis / EvidenceConflict / ResearchLog / ProofSummary** (the GPS artifacts): GEDCOM is N/A — GEDCOM has no record for a research analysis, conflict, log or proof argument, so they are neither imported nor exported. Branch ✅ since [#760](https://github.com/cacack/my-family/issues/760). An *evidence* conflict is a genealogical finding (two analyses disagree about a fact); it is unrelated to a branch *merge* conflict.
 - **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`). Branch ⚠️: the read model, projections and BR-006 allowlist are branch-scoped ([#757](https://github.com/cacack/my-family/issues/757)) — a branch delete of their owner tombstones them, the cemetery index and group-sheet negations read them through the overlay, and a branch merge can carry their events — but with no command of their own there is no API path that writes one on a branch.
 - **Snapshot**: event-sourced since [#624](https://github.com/cacack/my-family/issues/624) — `Handler.CreateSnapshot` / `DeleteSnapshot` emit `SnapshotCreated` / `SnapshotDeleted` and the projection writes the registry, so snapshots created from that point on rebuild from the log. Rows predating #624 have no event and would not survive a rebuild (see ADR-005 "Still open"); rebuild tooling ([#680](https://github.com/cacack/my-family/issues/680)) must backfill them. GEDCOM is N/A (a research marker is not a genealogy record). The Branch column is ❌ rather than N/A (or ⛔, where it sat until #624 made snapshots event-sourced): a snapshot *taken on a branch* is meaningful (ADR-005) but the registry has no `branch_id` column yet, so both commands refuse on a branch-scoped handler.
 - **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. `BranchMergeResumed` ([#685](https://github.com/cacack/my-family/issues/685)) is emitted by `Handler.ResumeMerge` when a resume records its decisions; it is decoded (ES-007) and handled as a projection no-op (PR-004). The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
-### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts / #758 evidence / #759 media)
+### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts / #758 evidence / #759 media / #760 GPS)
 
-Fifteen read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
+Nineteen read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
 overlay: the seven-type #669 slice, the three person/family fact types of #757, the four
-evidence types of #758 and media metadata (#759; the file bytes are shared, never copied). Branch
+evidence types of #758, media metadata (#759; the file bytes are shared, never copied) and the
+four GPS artifact types of #760. Branch
 **writes** cover a narrower set, because a write also needs a branch-scoped command path:
 
 | Read-model type | Branch reads (#669) | Branch writes (#670) | How it is written on a branch |
@@ -230,6 +237,10 @@ evidence types of #758 and media metadata (#759; the file bytes are shared, neve
 | Citation (#758) | ✅ | ✅ | `createCitation` / `updateCitation` / `deleteCitation`; the denormalized source title and the source's citation count resolve on the branch. Known gap: bumping the count writes a branch copy of the source, which then hides later main edits to that source on the branch (stale view, tracked in [#815](https://github.com/cacack/my-family/issues/815)) |
 | Note (#758) | ✅ | ✅ | `createNote` / `updateNote` / `deleteNote` |
 | Media (#759) | ✅ | ✅ | `uploadPersonMedia` / `updateMedia` / `deleteMedia`; metadata only — a branch row stores no copy of the file or thumbnail, which are read from main's row. Also tombstoned by a branch `deletePerson` / `deleteFamily` / `deleteSource` |
+| EvidenceAnalysis (#760) | ✅ | ✅ | `createEvidenceAnalysis` / `updateEvidenceAnalysis` / `deleteEvidenceAnalysis`; the automatic evidence-conflict check compares the analyses the branch sees and records its conflict on the branch. Also tombstoned by a branch `deletePerson` / `deleteFamily` of its subject |
+| EvidenceConflict (#760) | ✅ | ✅ | recorded by `createEvidenceAnalysis` / `updateEvidenceAnalysis`; `resolveEvidenceConflict`. `ListUnresolvedConflicts` resolves the overlay before it filters on status, so a branch resolution hides main's open row on the branch only |
+| ResearchLog (#760) | ✅ | ✅ | `createResearchLog` / `updateResearchLog` / `deleteResearchLog` |
+| ProofSummary (#760) | ✅ | ✅ | `createProofSummary` / `updateProofSummary` / `deleteProofSummary` |
 
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
 `getPedigree`) were the original #669/#670 slice. Sub-issue A of #676
@@ -297,10 +308,38 @@ is not-found there too:
 | `downloadMedia` | GET | `/media/{id}/content` |
 | `getMediaThumbnail` | GET | `/media/{id}/thumbnail` |
 
-That is **54 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+Sub-issue E ([#760](https://github.com/cacack/my-family/issues/760)) added twenty-two for the GPS
+artifacts:
+
+| operationId | Method | Path |
+|---|---|---|
+| `listEvidenceAnalyses` | GET | `/evidence-analyses` |
+| `createEvidenceAnalysis` | POST | `/evidence-analyses` |
+| `getEvidenceAnalysis` | GET | `/evidence-analyses/{id}` |
+| `updateEvidenceAnalysis` | PUT | `/evidence-analyses/{id}` |
+| `deleteEvidenceAnalysis` | DELETE | `/evidence-analyses/{id}` |
+| `getAnalysesByFact` | GET | `/evidence-analyses/by-fact` |
+| `listEvidenceConflicts` | GET | `/evidence-conflicts` |
+| `getEvidenceConflict` | GET | `/evidence-conflicts/{id}` |
+| `resolveEvidenceConflict` | POST | `/evidence-conflicts/{id}/resolve` |
+| `getConflictsBySubject` | GET | `/evidence-conflicts/by-subject/{subjectId}` |
+| `listResearchLogs` | GET | `/research-logs` |
+| `createResearchLog` | POST | `/research-logs` |
+| `getResearchLog` | GET | `/research-logs/{id}` |
+| `updateResearchLog` | PUT | `/research-logs/{id}` |
+| `deleteResearchLog` | DELETE | `/research-logs/{id}` |
+| `getResearchLogsBySubject` | GET | `/research-logs/by-subject/{subjectId}` |
+| `listProofSummaries` | GET | `/proof-summaries` |
+| `createProofSummary` | POST | `/proof-summaries` |
+| `getProofSummary` | GET | `/proof-summaries/{id}` |
+| `updateProofSummary` | PUT | `/proof-summaries/{id}` |
+| `deleteProofSummary` | DELETE | `/proof-summaries/{id}` |
+| `getProofSummaryByFact` | GET | `/proof-summaries/by-fact` |
+
+That is **76 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 54 in `isBranchScopedRequest()`
+The frontend mirrors exactly those 76 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
 `?branch=` while `listFamilies` does not. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
@@ -315,9 +354,11 @@ deciding whether they become event-sourced —
 [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
 [#761](https://github.com/cacack/my-family/issues/761)). The surname index and per-surname list,
 the place index and per-place list, the cemetery index and per-cemetery person list, and the map
-all follow the active branch, and so do the source list and source detail pages (#758) and the
-person media gallery (#759). Grow the allowlist and the notice coverage together
-as the remaining #676 sub-issues land.
+all follow the active branch, and so do the source list and source detail pages (#758), the
+person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). With every
+#676 sub-issue delivered, what still renders the notice is mainline by nature (aggregates such as
+analytics and quality, the change history) or by decision (brick walls); grow the allowlist and the
+notice coverage together if that changes.
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
 `internal/api/branch_handlers_test.go`), and the command layer resolves its *reads* — existence
@@ -332,8 +373,10 @@ behaves like a normal working copy:
   the branch was created show through (the deliberate "live overlay" of ADR-005).
 
 Remaining gaps, both deliberate: GEDCOM import/export is main-only (a stated non-goal of #670), and
-rollback is main-only (`Handler.rollbackEntity`). Widening branch writes to the remaining entity
-types is [#676](https://github.com/cacack/my-family/issues/676).
+rollback is main-only (`Handler.rollbackEntity`). [#676](https://github.com/cacack/my-family/issues/676)
+widened branch writes to every entity type that is not main-only by decision; `MergePersons`
+(`PersonMerged`) is the one command still refused on a branch, because a branch merge cannot yet
+replay it safely (see `branchAwareEventTypes` in `internal/command/handler.go`).
 
 Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
 delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI
@@ -341,7 +384,7 @@ delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI
 each conflict, or leave a whole entity behind as a `main` resolution. A merge interrupted mid-replay
 is finished with `POST /branches/{id}/merge/resume` ([#685](https://github.com/cacack/my-family/issues/685);
 API only, not yet surfaced in the UI; the merge dialog tells the user an administrator can finish
-it). The resume covers every stream a branch can write — persons, families, associations, (#758) sources, citations and notes, and (#759) media — replayed in the merge's evidence order under its evidence rules, including the media-owner rule. A media stream's read-model repair re-projects main's own events onto main only, so it never copies file bytes into a branch or drops shared ones; the one case it cannot repair soundly (an item whose projection failed before main merged its owner person away) is refused before anything is written. What is still outstanding is partial merge
+it). The resume covers every stream a branch can write — persons, families, associations, (#758) sources, citations and notes, (#759) media, and (#760) evidence analyses, evidence conflicts, research logs and proof summaries — replayed in the merge's evidence order under its evidence rules, including the media-owner rule and the three GPS rules (an artifact must land on a subject main will have, an edit on an artifact main still has, and a subject delete must not cascade onto research main added or changed after the fork, or changed after the branch's own edit of it landed); an auto-planned stream that breaks one is reported pending. A media stream's read-model repair re-projects main's own events onto main only, so it never copies file bytes into a branch or drops shared ones; a GPS row missing because main deleted its subject is recognised as cascaded, not resurrected. The one case neither can repair soundly (an item or artifact whose projection failed before main merged its owner or subject person away) is refused before anything is written. What is still outstanding is partial merge
 ([#684](https://github.com/cacack/my-family/issues/684)): excluding an entity is not the same as
 promoting a subset of one entity's changes.
 

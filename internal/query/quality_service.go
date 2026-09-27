@@ -102,7 +102,7 @@ type bulkEvidenceData struct {
 
 // loadBulkEvidenceData loads all evidence data once for use in per-person loops.
 func (s *QualityService) loadBulkEvidenceData(ctx context.Context) (*bulkEvidenceData, error) {
-	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx)
+	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx, domain.MainBranchID)
 	if err != nil {
 		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
 	}
@@ -318,7 +318,7 @@ func (s *QualityService) GetQualityOverview(ctx context.Context) (*QualityOvervi
 	}
 
 	// Pre-load conflict data once to avoid per-person full-table scans
-	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx)
+	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx, domain.MainBranchID)
 	if err != nil {
 		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
 	}
@@ -490,7 +490,7 @@ func (s *QualityService) GetStatistics(ctx context.Context) (*Statistics, error)
 // - Base score is out of 70, normalized to 100
 // - Unresolved evidence conflicts: -5 points each (floor at 0)
 func (s *QualityService) computePersonScore(ctx context.Context, person repository.PersonReadModel) (float64, []string) {
-	conflicts, err := s.readStore.GetConflictsForSubject(ctx, person.ID)
+	conflicts, err := s.readStore.GetConflictsForSubject(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		// For single-person path, return base score without conflict penalty
 		conflicts = nil

@@ -244,8 +244,9 @@ func (s *BranchService) LoadMergeReplaySet(ctx context.Context, branchID uuid.UU
 //
 // The passes that do happen are inherent: the pre-claim check exists precisely
 // to observe a version FRESHER than this one, so it cannot reuse this read.
-// Collapsing each pass into one set-based read belongs with the other
-// merge-path N+1 batching (#697), not here.
+// Collapsing each pass into one set-based read needs a batched stream-version
+// read on the EventStore. #697 batched only the read-model name lookups
+// (enrichConflictEntities, transformStoredEvents), so that remains separate work.
 //
 // Only PlanMerge calls this. CompareBranch shares the two diff reads but not
 // this capture — the versions are merge-plan internals with no meaning in a
@@ -278,7 +279,9 @@ func (s *BranchService) detectConflicts(ctx context.Context, diff *branchDiffSou
 	}
 
 	conflicts := classifyConflicts(diff.branchEvents, diff.mainEvents, mainTail)
-	s.enrichConflictEntities(ctx, diff.branchEvents, conflicts)
+	if err := s.enrichConflictEntities(ctx, domain.BranchID(diff.branch.ID), diff.branchEvents, conflicts); err != nil {
+		return nil, false, fmt.Errorf("name conflicting entities: %w", err)
+	}
 
 	return conflicts, tailTruncated, nil
 }
@@ -450,6 +453,8 @@ func summarizeStreams(events []repository.StoredEvent) map[uuid.UUID]*streamSide
 			for field, value := range updatedChanges(evt) {
 				side.fields[field] = value
 			}
+		case foldEvidenceConflictResolved:
+			applyEvidenceConflictResolved(side, evt)
 		case foldIgnored:
 			// Nothing to compare — see conflictFoldFor.
 		}
@@ -472,6 +477,7 @@ const (
 	foldChildUnlinked
 	foldPersonName
 	foldChangesMap
+	foldEvidenceConflictResolved
 )
 
 // conflictFoldFor classifies an event type for conflict comparison.
@@ -490,6 +496,8 @@ func conflictFoldFor(eventType string) conflictFold {
 		return foldChildUnlinked
 	case isPersonNameEvent(eventType):
 		return foldPersonName
+	case eventType == "EvidenceConflictResolved":
+		return foldEvidenceConflictResolved
 	case strings.HasSuffix(eventType, "Updated"):
 		return foldChangesMap
 	default:
@@ -611,6 +619,24 @@ func applyNameEvent(side *streamSide, evt repository.StoredEvent) {
 	side.fields[nameFieldKey(envelope.NameID)] = payload
 }
 
+// applyEvidenceConflictResolved records an evidence-conflict resolution (#760) as
+// the two fields it asserts. The event carries them flat, with no Changes map,
+// so the *Updated fold would read nothing from it: a branch and main resolving
+// the same evidence conflict differently would then merge with no review. (The
+// evidence conflict is a genealogical finding on its own stream; this only
+// compares its events like any other aggregate's.)
+func applyEvidenceConflictResolved(side *streamSide, evt repository.StoredEvent) {
+	var payload struct {
+		Resolution string `json:"resolution"`
+		Status     string `json:"status"`
+	}
+	if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		return
+	}
+	side.fields["resolution"] = payload.Resolution
+	side.fields["status"] = payload.Status
+}
+
 // updatedChanges pulls the Changes map out of a *Updated event that carries one.
 //
 // Decoded as the one field that matters rather than through DecodeEvent's type
@@ -696,12 +722,17 @@ func createdGedcomXref(evt repository.StoredEvent) string {
 // enrichConflictEntities labels each conflict with the type and display name of
 // the entity it is about, so a reviewer sees "Ada Lovelace" and not a UUID.
 //
-// Name resolution degrades to an empty string rather than an error, the same
-// posture transformStoredEvents takes: a missing name makes a conflict less
-// readable, never wrong, and the caller still has StreamID.
-func (s *BranchService) enrichConflictEntities(ctx context.Context, branchEvents []repository.StoredEvent, conflicts []MergeConflict) {
+// Names resolve in one batched read-model lookup per entity type, however many
+// conflicts there are (#697), through the branch's overlay (branchID): a
+// conflict is about the branch's change, so an entity is named as the branch
+// sees it, and one the branch deletes by the name main still has for it
+// (resolveEntityNamesOn). An entity with no resolvable name degrades to an
+// empty string rather than an error, the same posture transformStoredEvents
+// takes: a missing name makes a conflict less readable, never wrong, and the
+// caller still has StreamID. A read-model failure, by contrast, is returned.
+func (s *BranchService) enrichConflictEntities(ctx context.Context, branchID domain.BranchID, branchEvents []repository.StoredEvent, conflicts []MergeConflict) error {
 	if len(conflicts) == 0 {
-		return
+		return nil
 	}
 
 	firstTouch := make(map[uuid.UUID]*repository.StoredEvent, len(conflicts))
@@ -711,27 +742,43 @@ func (s *BranchService) enrichConflictEntities(ctx context.Context, branchEvents
 		}
 	}
 
+	// Pass 1: type every conflict and register the entity it names.
+	refs := newEntityRefs()
 	for i := range conflicts {
 		evt := firstTouch[conflicts[i].StreamID]
 		if evt == nil {
 			continue
 		}
 		// Lower-cased, because that is the vocabulary the rest of the API speaks:
-		// ChangeEntry.EntityType is "person"/"family", and getEntityName switches
-		// on those same lower-case names — handed "Person" it silently falls
-		// through to its default and every conflict comes back unnamed. Derived
-		// from StreamType rather than mapEventTypeToEntityAndAction because that
-		// mapper answers "unknown" for every entity outside the four it knows,
-		// whereas a stream type is always the entity's real name.
-		entityType := strings.ToLower(evt.StreamType)
-		conflicts[i].EntityType = entityType
-		name := s.historyService.getEntityName(ctx, entityType, conflicts[i].StreamID, evt)
+		// ChangeEntry.EntityType is "person"/"family", and entityNames.name
+		// switches on those same lower-case names — handed "Person" it silently
+		// falls through to its default and every conflict comes back unnamed.
+		// Derived from StreamType rather than mapEventTypeToEntityAndAction
+		// because that mapper answers "unknown" for every entity outside the four
+		// it knows, whereas a stream type is always the entity's real name.
+		conflicts[i].EntityType = strings.ToLower(evt.StreamType)
+		refs.addEvent(conflicts[i].EntityType, conflicts[i].StreamID, evt)
+	}
+
+	names, err := s.historyService.resolveEntityNamesOn(ctx, branchID, refs)
+	if err != nil {
+		return err
+	}
+
+	// Pass 2: name every typed conflict from the batch.
+	for i := range conflicts {
+		evt := firstTouch[conflicts[i].StreamID]
+		if evt == nil {
+			continue
+		}
+		name := names.name(conflicts[i].EntityType, conflicts[i].StreamID, evt)
 		if name == conflicts[i].StreamID.String() {
-			// getEntityName falls back to the id when nothing resolves. The
-			// conflict already carries the id in StreamID, so report the
-			// absence as absence.
+			// name falls back to the id when nothing resolves. The conflict
+			// already carries the id in StreamID, so report the absence as
+			// absence.
 			name = ""
 		}
 		conflicts[i].EntityName = name
 	}
+	return nil
 }

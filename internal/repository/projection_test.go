@@ -2975,7 +2975,7 @@ func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 	}
 
 	// Verify analysis is on merged person before merge
-	mergedAnalyses, _ := readStore.GetAnalysesBySubject(ctx, merged.ID)
+	mergedAnalyses, _ := readStore.GetAnalysesBySubject(ctx, domain.MainBranchID, merged.ID)
 	if len(mergedAnalyses) != 1 {
 		t.Fatalf("Expected 1 analysis for merged person, got %d", len(mergedAnalyses))
 	}
@@ -2998,7 +2998,7 @@ func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 	}
 
 	// Verify analysis was transferred to survivor
-	survivorAnalyses, err := readStore.GetAnalysesBySubject(ctx, survivor.ID)
+	survivorAnalyses, err := readStore.GetAnalysesBySubject(ctx, domain.MainBranchID, survivor.ID)
 	if err != nil {
 		t.Fatalf("GetAnalysesBySubject(survivor) failed: %v", err)
 	}
@@ -3013,7 +3013,7 @@ func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 	}
 
 	// Verify analysis no longer returned for merged person ID
-	mergedAnalyses, err = readStore.GetAnalysesBySubject(ctx, merged.ID)
+	mergedAnalyses, err = readStore.GetAnalysesBySubject(ctx, domain.MainBranchID, merged.ID)
 	if err != nil {
 		t.Fatalf("GetAnalysesBySubject(merged) failed: %v", err)
 	}
@@ -3022,7 +3022,7 @@ func TestProjector_PersonMerged_EvidenceAnalysisTransfer(t *testing.T) {
 	}
 
 	// Verify record read back directly has the new SubjectID
-	rm, _ := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	rm, _ := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, ea.ID)
 	if rm == nil {
 		t.Fatal("EvidenceAnalysis should still exist after merge")
 	}
@@ -3057,7 +3057,7 @@ func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 	}
 
 	// Verify conflict is on merged person before merge
-	mergedConflicts, _ := readStore.GetConflictsForSubject(ctx, merged.ID)
+	mergedConflicts, _ := readStore.GetConflictsForSubject(ctx, domain.MainBranchID, merged.ID)
 	if len(mergedConflicts) != 1 {
 		t.Fatalf("Expected 1 conflict for merged person, got %d", len(mergedConflicts))
 	}
@@ -3080,7 +3080,7 @@ func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 	}
 
 	// Verify conflict was transferred to survivor
-	survivorConflicts, err := readStore.GetConflictsForSubject(ctx, survivor.ID)
+	survivorConflicts, err := readStore.GetConflictsForSubject(ctx, domain.MainBranchID, survivor.ID)
 	if err != nil {
 		t.Fatalf("GetConflictsForSubject(survivor) failed: %v", err)
 	}
@@ -3095,7 +3095,7 @@ func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 	}
 
 	// Verify conflict no longer returned for merged person ID
-	mergedConflicts, err = readStore.GetConflictsForSubject(ctx, merged.ID)
+	mergedConflicts, err = readStore.GetConflictsForSubject(ctx, domain.MainBranchID, merged.ID)
 	if err != nil {
 		t.Fatalf("GetConflictsForSubject(merged) failed: %v", err)
 	}
@@ -3104,7 +3104,7 @@ func TestProjector_PersonMerged_EvidenceConflictTransfer(t *testing.T) {
 	}
 
 	// Verify record read back directly has the new SubjectID
-	rm, _ := readStore.GetEvidenceConflict(ctx, ec.ID)
+	rm, _ := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, ec.ID)
 	if rm == nil {
 		t.Fatal("EvidenceConflict should still exist after merge")
 	}
@@ -3141,7 +3141,7 @@ func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 	}
 
 	// Verify log is on merged person before merge
-	mergedLogs, _ := readStore.GetResearchLogsForSubject(ctx, merged.ID)
+	mergedLogs, _ := readStore.GetResearchLogsForSubject(ctx, domain.MainBranchID, merged.ID)
 	if len(mergedLogs) != 1 {
 		t.Fatalf("Expected 1 research log for merged person, got %d", len(mergedLogs))
 	}
@@ -3164,7 +3164,7 @@ func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 	}
 
 	// Verify research log was transferred to survivor
-	survivorLogs, err := readStore.GetResearchLogsForSubject(ctx, survivor.ID)
+	survivorLogs, err := readStore.GetResearchLogsForSubject(ctx, domain.MainBranchID, survivor.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLogsForSubject(survivor) failed: %v", err)
 	}
@@ -3179,7 +3179,7 @@ func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 	}
 
 	// Verify log no longer returned for merged person ID
-	mergedLogs, err = readStore.GetResearchLogsForSubject(ctx, merged.ID)
+	mergedLogs, err = readStore.GetResearchLogsForSubject(ctx, domain.MainBranchID, merged.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLogsForSubject(merged) failed: %v", err)
 	}
@@ -3188,7 +3188,7 @@ func TestProjector_PersonMerged_ResearchLogTransfer(t *testing.T) {
 	}
 
 	// Verify record read back directly has the new SubjectID
-	rm, _ := readStore.GetResearchLog(ctx, rl.ID)
+	rm, _ := readStore.GetResearchLog(ctx, domain.MainBranchID, rl.ID)
 	if rm == nil {
 		t.Fatal("ResearchLog should still exist after merge")
 	}
@@ -3224,7 +3224,7 @@ func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 	}
 
 	// Verify summary is on merged person before merge
-	mergedSummaries, _ := readStore.GetProofSummariesBySubject(ctx, merged.ID)
+	mergedSummaries, _ := readStore.GetProofSummariesBySubject(ctx, domain.MainBranchID, merged.ID)
 	if len(mergedSummaries) != 1 {
 		t.Fatalf("Expected 1 proof summary for merged person, got %d", len(mergedSummaries))
 	}
@@ -3247,7 +3247,7 @@ func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 	}
 
 	// Verify proof summary was transferred to survivor
-	survivorSummaries, err := readStore.GetProofSummariesBySubject(ctx, survivor.ID)
+	survivorSummaries, err := readStore.GetProofSummariesBySubject(ctx, domain.MainBranchID, survivor.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummariesBySubject(survivor) failed: %v", err)
 	}
@@ -3262,7 +3262,7 @@ func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 	}
 
 	// Verify summary no longer returned for merged person ID
-	mergedSummaries, err = readStore.GetProofSummariesBySubject(ctx, merged.ID)
+	mergedSummaries, err = readStore.GetProofSummariesBySubject(ctx, domain.MainBranchID, merged.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummariesBySubject(merged) failed: %v", err)
 	}
@@ -3271,7 +3271,7 @@ func TestProjector_PersonMerged_ProofSummaryTransfer(t *testing.T) {
 	}
 
 	// Verify record read back directly has the new SubjectID
-	rm, _ := readStore.GetProofSummary(ctx, ps.ID)
+	rm, _ := readStore.GetProofSummary(ctx, domain.MainBranchID, ps.ID)
 	if rm == nil {
 		t.Fatal("ProofSummary should still exist after merge")
 	}
@@ -4088,7 +4088,7 @@ func TestProjector_EvidenceAnalysisCreated(t *testing.T) {
 		t.Fatalf("Project EvidenceAnalysisCreated failed: %v", err)
 	}
 
-	rm, err := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	rm, err := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, ea.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceAnalysis failed: %v", err)
 	}
@@ -4133,7 +4133,7 @@ func TestProjector_EvidenceAnalysisUpdated(t *testing.T) {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
-	rm, err := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	rm, err := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, ea.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceAnalysis() failed: %v", err)
 	}
@@ -4169,7 +4169,7 @@ func TestProjector_EvidenceAnalysisDeleted(t *testing.T) {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
-	rm, err := readStore.GetEvidenceAnalysis(ctx, ea.ID)
+	rm, err := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, ea.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceAnalysis() failed: %v", err)
 	}
@@ -4198,7 +4198,7 @@ func TestProjector_EvidenceConflictDetected(t *testing.T) {
 		t.Fatalf("Project EvidenceConflictDetected failed: %v", err)
 	}
 
-	rm, err := readStore.GetEvidenceConflict(ctx, ec.ID)
+	rm, err := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, ec.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceConflict() failed: %v", err)
 	}
@@ -4236,7 +4236,7 @@ func TestProjector_EvidenceConflictResolved(t *testing.T) {
 		t.Fatalf("Project resolve failed: %v", err)
 	}
 
-	rm, err := readStore.GetEvidenceConflict(ctx, ec.ID)
+	rm, err := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, ec.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceConflict() failed: %v", err)
 	}
@@ -4270,7 +4270,7 @@ func TestProjector_ResearchLogCreated(t *testing.T) {
 		t.Fatalf("Project ResearchLogCreated failed: %v", err)
 	}
 
-	rm, err := readStore.GetResearchLog(ctx, rl.ID)
+	rm, err := readStore.GetResearchLog(ctx, domain.MainBranchID, rl.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLog() failed: %v", err)
 	}
@@ -4312,7 +4312,7 @@ func TestProjector_ResearchLogUpdated(t *testing.T) {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
-	rm, err := readStore.GetResearchLog(ctx, rl.ID)
+	rm, err := readStore.GetResearchLog(ctx, domain.MainBranchID, rl.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLog() failed: %v", err)
 	}
@@ -4348,7 +4348,7 @@ func TestProjector_ResearchLogDeleted(t *testing.T) {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
-	rm, err := readStore.GetResearchLog(ctx, rl.ID)
+	rm, err := readStore.GetResearchLog(ctx, domain.MainBranchID, rl.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLog() failed: %v", err)
 	}
@@ -4378,7 +4378,7 @@ func TestProjector_ProofSummaryCreated(t *testing.T) {
 		t.Fatalf("Project ProofSummaryCreated failed: %v", err)
 	}
 
-	rm, err := readStore.GetProofSummary(ctx, ps.ID)
+	rm, err := readStore.GetProofSummary(ctx, domain.MainBranchID, ps.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummary() failed: %v", err)
 	}
@@ -4421,7 +4421,7 @@ func TestProjector_ProofSummaryUpdated(t *testing.T) {
 		t.Fatalf("Project update failed: %v", err)
 	}
 
-	rm, err := readStore.GetProofSummary(ctx, ps.ID)
+	rm, err := readStore.GetProofSummary(ctx, domain.MainBranchID, ps.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummary() failed: %v", err)
 	}
@@ -4458,7 +4458,7 @@ func TestProjector_ProofSummaryDeleted(t *testing.T) {
 		t.Fatalf("Project delete failed: %v", err)
 	}
 
-	rm, err := readStore.GetProofSummary(ctx, ps.ID)
+	rm, err := readStore.GetProofSummary(ctx, domain.MainBranchID, ps.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummary() failed: %v", err)
 	}

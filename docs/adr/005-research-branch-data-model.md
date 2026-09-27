@@ -344,14 +344,14 @@ stream).
 Branch scoping is a bounded set, not a migration in progress. Three different reasons keep a
 read-model entity on `main`, and they must not be confused:
 
-- **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
-  the remaining sub-issue of [#676](https://github.com/cacack/my-family/issues/676): GPS artifacts
-  ([#760](https://github.com/cacack/my-family/issues/760)). (Media metadata,
-  [#759](https://github.com/cacack/my-family/issues/759), is delivered; its file bytes are shared
-  by design, not pending — see the implementation note below.) Snapshots are pending too, though
-  not as a #676 sub-issue: #624 made them event-sourced, and what remains is giving the registry a
-  `branch_id` (see *Interaction with snapshots and rollback*, "Still open — branch-scoped
-  snapshots").
+- **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. The last
+  sub-issue of [#676](https://github.com/cacack/my-family/issues/676), the GPS artifacts
+  ([#760](https://github.com/cacack/my-family/issues/760)), is delivered, so no #676 entity is
+  pending. (Media metadata, [#759](https://github.com/cacack/my-family/issues/759), is delivered
+  too; its file bytes are shared by design, not pending — see the implementation note below.)
+  Snapshots are pending, though not as a #676 sub-issue: #624 made them event-sourced, and what
+  remains is giving the registry a `branch_id` (see *Interaction with snapshots and rollback*,
+  "Still open — branch-scoped snapshots").
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
   be answered first. This is brick walls, which wait on an event-sourcing decision of their own
   (below). Snapshots were here until [#624](https://github.com/cacack/my-family/issues/624) made
@@ -471,6 +471,14 @@ invariants, cited by ADRs rather than restated in them).
     in a single statement, e.g. `SELECT DISTINCT ON (id) * … WHERE branch_id IN (:branch, :main)
     ORDER BY id, (branch_id = :branch) DESC` on Postgres, with an equivalent window-function /
     correlated-subquery form on SQLite. Both backends require a composite index `(id, branch_id)`.
+    The same holds for a known *set* of ids: `GetPersonsByIDs`, `GetFamiliesByIDs`,
+    `GetSourcesByIDs` and `GetCitationsByIDs` resolve the overlay for every id in one statement
+    (the id set bound as a single `uuid[]` / JSON-array parameter), so a response that names many
+    entities — history, branch compare, merge conflicts — pays one query per entity type (#697).
+    Branch compare names the branch's own changes, and merge conflicts their entities, through the
+    branch overlay; an id the branch does not resolve (one it deleted) is looked up once more on
+    `main`, in one further batched query per entity type, so a branch-scoped response pays at most
+    two per type — still independent of the number of entries.
   - **Caching cannot mask overlay cost.** Because the overlay is *live* (§The model), any `main`
     write can change any open branch's read of an untouched entity, so branch views are not
     cache-stable; the SQL path itself must be fast per request. Don't invest in a read-through
@@ -589,7 +597,8 @@ the same guarantee the original attempt ran under, re-asserted at append time by
 `replayStream`. Otherwise (a mainline write landed on it after the claim, which is exactly the
 residual staleness window below; `main` deleted the entity or merged it away since the claim; a
 pre-#685 claim with no plan; or a replay that would now leave `main` referencing a person it no
-longer has, or break an evidence or media-owner rule — see below) resume refuses with
+longer has, or break an evidence, media-owner or GPS rule — see below and *GPS on resume* in the
+#760 note) resume refuses with
 `ErrMergeResumeNeedsResolution` (`409 merge_resume_needs_resolution`), **writing nothing**, and
 lists the streams. The caller reviews them with `compare` and resumes again with a resolution per
 listed stream: `branch` replays over `main` as it now stands (asserting *that* version, so a
@@ -597,7 +606,8 @@ further write still trips the guard), `main` leaves the entity as `main` has it 
 roll-forward. `branch` is a `400` for an entity `main` has removed since the claim — its stream
 ends in a delete, `main` merged the person into another (`PersonMerged` writes only to the
 survivor's stream, so the merged person's stream still sits at its pin), an association lost a
-person to the delete cascade, or a citation or media item lost its source or owner the same way — for the reason `MergeBranch` offers only `main` on a main-side
+person to the delete cascade, or a citation, media item or GPS artifact lost its source, owner or
+subject the same way — for the reason `MergeBranch` offers only `main` on a main-side
 delete: replaying edits onto an absent row appends them after its removal and restores nothing. A
 resolution for any stream the claim or an earlier resume already decided is a
 `400` (unless `main` has since moved that stream again; see below): a second request must not
@@ -791,7 +801,8 @@ definition exists to prevent. Three pieces close that:
   and `replayStream` skip it, since branch events that are never replayed cannot override a
   mainline write. The passes that do happen are inherent, not waste: the pre-claim check exists
   precisely to observe a version *fresher* than the capture, so it cannot reuse it. Batching each
-  pass into one set-based read is #697's business, not this guard's. The capture is deliberately not exposed on `CompareBranch`'s response, and
+  pass into one set-based read needs a batched stream-version read on the event store; #697 batched
+  only the read-model name lookups, so that remains separate work, not this guard's. The capture is deliberately not exposed on `CompareBranch`'s response, and
   `CompareBranch` does not pay for it: it is merge-plan internals with no meaning in a read-only
   diff.
 
@@ -1216,7 +1227,9 @@ media stream references nothing but its owner, so the move is safe. A merge inte
 resumes media streams like any other (#685): the media-owner rule applies with resume's pending
 semantics, and the read-model repair never copies or drops shared bytes — see *Media on resume*.
 `PersonMerged` stays off the allowlist: its media transfer is now branch-scoped, but it still
-rewrites evidence-analysis and research rows that are main-only until #760.
+rewrites evidence-analysis and research rows that are main-only until #760. (Since #760 every
+write it makes is branch-keyed; it stays off for a merge-replay reason instead — see the GPS note
+below.)
 
 **API and UI.** Seven operations gained `?branch=` — `getMedia`, `updateMedia`, `deleteMedia`,
 `listPersonMedia`, `uploadPersonMedia`, `downloadMedia` and `getMediaThumbnail` — bringing the total
@@ -1230,6 +1243,132 @@ rollback stay mainline, as rollback does for every entity.
 primary key of `media`; a database created before #759 refuses every branch write with
 `ErrBranchesUnsupported` until the read model is rebuilt (#680). Its mainline media keeps working —
 a metadata-only save supplies the row's own stored bytes, so the legacy `NOT NULL` never trips.
+
+## Implementation Note — GPS artifacts (#676 sub-issue E, #760, delivered)
+
+**Evidence analyses, evidence conflicts, research logs and proof summaries own their own
+`branch_id`.** `evidence_analyses`, `evidence_conflicts`, `research_logs` and `proof_summaries` get
+the life-event treatment on all three backends: a composite `(id, branch_id)` key, a
+`branch_id`-leading index, a `deleted` tombstone, one set-based overlay read with a main-scope fast
+path, and a place in `PurgeBranch`. This is the group that most wants branch scoping — a research
+hypothesis is exactly where a competing analysis, a log of negative searches or a draft proof
+argument should live in isolation until merged.
+
+**Resolve first, then filter.** Every filtered read — `GetAnalysesForFact`, `GetAnalysesBySubject`,
+`GetConflictsForSubject`, `GetResearchLogsForSubject`, `GetProofSummariesForFact`,
+`GetProofSummariesBySubject` and `ListUnresolvedConflicts` — resolves each id through the per-id
+overlay and applies its predicate to the *winning* row (the same twice-applied filter the life-event
+lists use). Filtering raw rows first would be wrong in the way that matters most here: a branch that
+resolves an evidence conflict writes a `resolved` shadow row, and a `status = 'open'` filter on raw
+rows would still find main's open row for the same id and list the conflict as unresolved on the
+branch. Likewise a branch that re-points a proof summary at another subject lists it under the new
+subject only. The per-subject and per-fact lists now return a deterministic order (`created_at`,
+then id) on every backend; they had none.
+
+**Evidence conflicts are not merge conflicts.** An `EvidenceConflictReadModel` is a genealogical
+finding — two analyses disagree about a fact — recorded by `CreateEvidenceAnalysis` and
+`UpdateEvidenceAnalysis`. It is unrelated to §Conflict definition, and branch-scoping it feeds
+nothing into merge conflict detection, which is computed from the event log alone. The detection
+itself now runs on the handler's branch: it compares the analyses the branch sees, reuses an open
+conflict the branch sees, and records a new one on the branch. Its failure is logged rather than
+swallowed, but still does not fail the analysis write that triggered it (the write is already
+committed).
+
+**BR-006 and merge.** The eleven GPS event types join the allowlist. The four creates
+(`EvidenceAnalysisCreated`, `EvidenceConflictDetected`, `ResearchLogCreated`,
+`ProofSummaryCreated`) are conflict-blind like the other per-entity creates. The merge conflict scan
+needed one addition: `EvidenceConflictResolved` carries its resolution and status flat, with no
+`Changes` map, so it is folded as those two fields — otherwise a branch and main resolving the same
+evidence conflict differently would merge with no review (the `NameUpdated` trap again). A GPS
+artifact also names its subject (a person or family) on another stream, the shape #759 met for
+media, so the pre-claim dangling-reference check refuses a replayed artifact whose *final* subject —
+the last `subject_id` a create or an update set, unless the stream ends deleted — will not exist on
+main when it lands, by the media rule (a subject the replay deletes counts only when its stream
+replays after the artifact's). The write path requires only a non-nil subject id, so a subject id
+no person or family ever had in the log is accepted on merge as it is on `main`; only a subject
+that was a person or family and is gone is dangling.
+
+`main`'s `DeletePerson` / `DeleteFamily` cascade removes a subject's artifacts with no event on
+their streams, so per-stream conflict detection sees neither of two loss paths, and the pre-claim
+check refuses both (`checkGPSSubjectSurvives`, `checkSubjectDeleteOrphansNoGPS`):
+
+- A replayed *edit* of an artifact `main` no longer has (removed with its subject after the fork)
+  would land on a missing row as a silent no-op. A stream whose merge conflict is still undecided
+  is left to the conflict machinery, so a main-side `*Deleted` of the artifact is still reported as
+  a conflict first. Once decided the rule applies: an `edit_edit` conflict resolved `branch` does
+  not show that `main` later deleted the subject, so replaying it onto the cascaded artifact is
+  refused (only `main` goes through).
+- A replayed `PersonDeleted` / `FamilyDeleted` while `main` has an artifact about that subject that
+  it added or changed after the fork (one set-based read of the event log over those streams), or
+  that the branch re-points away only after the delete replays, would cascade research off `main`
+  the branch never saw — the GPS counterpart of the source-delete rule (#758).
+
+One consequence is accepted and recorded rather than refused:
+
+- Two independent `EvidenceConflictDetected` for the same fact (one on the branch, one on main
+  after the fork) both survive a merge as open conflicts; they are different aggregates. The
+  analysis-id lists inside conflicts and proofs are soft references, as citation ids inside an
+  analysis always were.
+
+`PersonMerged` still stays off the allowlist. #760 removed the reason the #759 note gave — every
+read-model write its projection makes (steps 9–12 now pass the branch through) is branch-keyed —
+but a branch merge could not replay it safely: it rewrites rows of the merged person's aggregates
+and deletes that person without an event on any of their streams, so a concurrent main edit to them
+is invisible to the conflict scan and to the dangling-reference checks. Admitting it needs that
+merge design first.
+
+**The cascade is new on main too.** `DeletePerson` and `DeleteFamily` now delete (main) or tombstone
+(branch) every GPS artifact whose subject is the deleted entity, on that branch only (there was never
+a foreign key, so a deleted person's research used to survive as orphans on main).
+`TestReadModelStore_DeleteCascadesGPS` and the scenario pin it on all three backends.
+
+**GPS on resume (#685).** The three GPS rules are part of the shared `checkEvidence`, so a resume
+applies them on the terms the media rule has: an auto-planned artifact stream whose final subject
+`main` will not have when it lands (deleted after the claim, excluded by this request's `main`
+resolution, or deleted by a stream already on `main`), an auto-planned edit of an artifact `main`
+no longer has, and an auto-planned subject delete that would cascade onto research `main` added
+or changed after the fork are pending; `main` rolls such a stream forward without it, and `branch`
+is refused as a dangling reference. A resume has no undecided conflicts (every conflict was
+resolved at claim time, and a main-side delete only ever accepts `main`), so the edit rule applies
+to every stream it would replay, exactly as it applied at claim time to decided conflicts. A `main` resolution may not skip the stream of a
+subject `main` does not have while an artifact already on `main` is about it — a stream that creates
+the subject, and equally one that creates *and* deletes it, whose delete would have cascaded the
+artifact away as it did on the branch (reachable only from a pre-#685 claim). As for media, the
+subject checked is the one `main`'s row names, or with no row the one the repair would re-point it
+to; an artifact `main` has since deleted, or cascaded away with a subject it had, leaves nothing to
+orphan, so deleting the artifact on `main` is the other way out. A
+landed artifact that the replay re-pointed away from a subject but that `main`'s read model still
+lists under it is judged from `main`'s log, not the row, since its projection may have failed and
+the repair runs after the checks: if the log leaves it about another subject (or deleted), the
+delete is sound; if `main` re-pointed it back after the landing, it counts as `main`'s own research
+for the subject-delete rule. Any other landed artifact `main` still lists under the subject is not
+the "branch saw it" case a fresh merge relies on: nothing conflict-checks `main`'s writes to a landed
+stream after it landed. So if `main`'s log has an event on its stream after the landed replay's own
+events (matched by payload id), the subject delete is pending too. The media owner-delete rule
+applies the same check to a landed media item of the owner. Landed detection is
+the usual payload-id scan; the read-model repair follows the version rule (every GPS projection
+writes the row, version included, in one save). A missing GPS row counts as removed for a reason
+the log explains when its subject's `main` stream ends in a delete, following a person subject
+through any person merges `main` recorded since, so a pending edit of it resolves only to `main`
+and a landed artifact is not resurrected. As for media, a landed artifact whose projection failed
+before `main` merged its subject into a person it still has is repaired rather than refused:
+`PersonMerged` would have re-pointed it, and that transfer is not in the artifact's stream, but it
+is fully determined by `main`'s log. So the repair re-projects the artifact and then re-points its
+row's subject to the final merge survivor — the one field `PersonMerged` changes on a GPS row,
+version untouched — repeating the merge scan after the save so a racing merge of the survivor is
+followed too. A row `main` re-pointed elsewhere in the meantime is left as it is.
+
+**API and UI.** Twenty-two operations gained `?branch=` — the CRUD, list and per-fact/per-subject
+reads of all four artifacts, and `resolveEvidenceConflict` — bringing the total to 76. The
+`/evidence` page dropped its `MainlineNotice`, and the person evidence panel follows the branch. The
+quality and analytics aggregates, which read these tables in bulk, stay mainline and keep their
+notice. The status-filtered conflict list now matches the status on the resolved rows before it
+paginates, so `total` counts every matching conflict.
+
+**Upgrading an existing database.** PostgreSQL migrates the four tables in place. SQLite cannot alter
+a primary key, so `detectBranchCapable` also requires `branch_id` in their primary keys; a database
+created before #760 refuses every branch write with `ErrBranchesUnsupported` until the read model is
+rebuilt (#680), while its mainline GPS artifacts keep working.
 
 ## References
 

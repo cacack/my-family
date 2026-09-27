@@ -69,15 +69,26 @@ func lastMediaOwner(events []repository.StoredEvent) (owner mediaOwner, found bo
 	return owner, found, nil
 }
 
-// mediaRelink is the owner transfer a missing media row needs after its
-// re-projection: main merged the person the upload attached it to into
-// target (followed through every later merge), and the last of those merges
-// was recorded at mergedAt. scanFrom is where the scan for those merges
-// started, so relinkMergedMedia can repeat it to catch a merge that raced it.
-type mediaRelink struct {
+// mergeRelink is the person-merge transfer a missing media or GPS row needs
+// after its re-projection: main merged the person the stream's log attached it
+// to (from: the media owner, or the GPS subject) into target (followed through
+// every later merge), and the last of those merges was recorded at mergedAt.
+// scanFrom is where the scan for those merges started, so the re-link
+// (relinkMerged) can repeat it to catch a merge that raced it.
+type mergeRelink struct {
+	from     uuid.UUID
 	target   uuid.UUID
 	mergedAt time.Time
 	scanFrom int64
+}
+
+// relinkMerged makes a re-projected row's person-merge transfer: media are
+// re-linked by relinkMergedMedia, GPS artifacts by relinkMergedGPS.
+func (h *Handler) relinkMerged(ctx context.Context, group streamGroup, relink mergeRelink) error {
+	if isGPSStream(group.streamType) {
+		return h.relinkMergedGPS(ctx, group, relink)
+	}
+	return h.relinkMergedMedia(ctx, group, relink)
 }
 
 // missingMediaCascadedAway reports which missing media rows were removed by
@@ -104,7 +115,7 @@ func (h *Handler) missingMediaCascadedAway(
 	ownerOf map[uuid.UUID]mediaOwner,
 	mergeOf map[uuid.UUID]personMerge,
 	scanFrom int64,
-) (map[uuid.UUID]bool, map[uuid.UUID]mediaRelink, error) {
+) (map[uuid.UUID]bool, map[uuid.UUID]mergeRelink, error) {
 	if len(ownerOf) == 0 {
 		return nil, nil, nil
 	}
@@ -125,7 +136,7 @@ func (h *Handler) missingMediaCascadedAway(
 	}
 
 	cascaded := make(map[uuid.UUID]bool)
-	relink := make(map[uuid.UUID]mediaRelink)
+	relink := make(map[uuid.UUID]mergeRelink)
 	for _, group := range missing {
 		owner, ok := ownerOf[group.streamID]
 		if !ok {
@@ -136,7 +147,7 @@ func (h *Handler) missingMediaCascadedAway(
 		case endsInDelete(ownerEvents[final]):
 			cascaded[group.streamID] = true
 		case final != owner.id:
-			relink[group.streamID] = mediaRelink{target: final, mergedAt: mergedAtOf[group.streamID], scanFrom: scanFrom}
+			relink[group.streamID] = mergeRelink{from: owner.id, target: final, mergedAt: mergedAtOf[group.streamID], scanFrom: scanFrom}
 		}
 	}
 	return cascaded, relink, nil
@@ -144,7 +155,7 @@ func (h *Handler) missingMediaCascadedAway(
 
 // relinkMergedMedia makes, on main's re-projected row of a media item, the
 // owner transfer the person merges main recorded since its upload would have
-// made (see mediaRelink): the row is re-linked to the final survivor, exactly
+// made (see mergeRelink): the row is re-linked to the final survivor, exactly
 // as PersonMerged re-links a merged person's media — entity id and updated-at
 // only, the version untouched, and no bytes (GetMedia reads none, and a save
 // with nil bytes keeps those stored).
@@ -154,7 +165,7 @@ func (h *Handler) missingMediaCascadedAway(
 // each save, and the row re-linked again to any new survivor, until a scan
 // finds nothing new. A row already gone (removed while the repair ran) is
 // left alone; reprojectStream reports that.
-func (h *Handler) relinkMergedMedia(ctx context.Context, group streamGroup, relink mediaRelink) error {
+func (h *Handler) relinkMergedMedia(ctx context.Context, group streamGroup, relink mergeRelink) error {
 	for attempt := 0; attempt < reprojectAttempts; attempt++ {
 		row, err := h.readStore.GetMedia(ctx, domain.MainBranchID, group.streamID)
 		if err != nil {

@@ -3012,12 +3012,14 @@ paths:
               replay needs a decision; see `pending_stream_ids` and the
               operation description.
             - `merge_dangling_reference` — the resolutions given would leave
-              the mainline holding a relationship to a person it will not
-              have: a `branch` resolution replaying a reference to a person
-              the mainline no longer has (resolve that entity to `main`
-              instead), or a `main` resolution excluding a person the branch
-              created whom an entity already on the mainline references
-              (resolve that person to `branch`).
+              the mainline holding a relationship to an entity it will not
+              have: a `branch` resolution replaying a reference to a person,
+              source, media owner or GPS research subject the mainline no
+              longer has, or a delete that would cascade onto a citation or
+              GPS research the mainline still has (resolve that entity to
+              `main` instead), or a `main` resolution excluding an entity the
+              branch created that an entity already on the mainline
+              references (resolve it to `branch`).
             - `branch_too_large` — the branch's replay set exceeds the read cap
               and cannot be resumed in full.
             - `merge_resume_concurrent` — another resume of the same merge
@@ -3715,8 +3717,12 @@ paths:
     get:
       operationId: listEvidenceAnalyses
       summary: List all evidence analyses
+      description: |
+        Returns a paginated list of evidence analyses. With `?branch=` the list
+        is that branch's isolated view; omit it for the mainline.
       tags: [evidence-analyses]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: sort
@@ -3744,7 +3750,13 @@ paths:
     post:
       operationId: createEvidenceAnalysis
       summary: Create a new evidence analysis
+      description: |
+        Creates an evidence analysis. With `?branch=` it is created on that
+        branch only, and the automatic evidence-conflict check compares it with
+        the analyses the branch sees (a conflict it records lives on the branch).
       tags: [evidence-analyses]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -3768,7 +3780,12 @@ paths:
     get:
       operationId: getEvidenceAnalysis
       summary: Get an evidence analysis by ID
+      description: |
+        Returns the evidence analysis. With `?branch=` it is read from that
+        branch's isolated view.
       tags: [evidence-analyses]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Evidence analysis details
@@ -3782,7 +3799,12 @@ paths:
     put:
       operationId: updateEvidenceAnalysis
       summary: Update an evidence analysis
+      description: |
+        Updates an evidence analysis. With `?branch=` the edit lands on that
+        branch only; the mainline keeps its row.
       tags: [evidence-analyses]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -3806,8 +3828,12 @@ paths:
     delete:
       operationId: deleteEvidenceAnalysis
       summary: Delete an evidence analysis
+      description: |
+        Deletes an evidence analysis. With `?branch=` it is deleted on that
+        branch only (the mainline keeps it).
       tags: [evidence-analyses]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':
@@ -3823,8 +3849,12 @@ paths:
     get:
       operationId: getAnalysesByFact
       summary: Get evidence analyses by fact type and subject
+      description: |
+        Returns the evidence analyses of one fact of one subject. With
+        `?branch=` the match runs over that branch's isolated view.
       tags: [evidence-analyses]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: factType
           in: query
           required: true
@@ -3853,8 +3883,15 @@ paths:
     get:
       operationId: listEvidenceConflicts
       summary: List all evidence conflicts
+      description: |
+        Returns a paginated list of evidence conflicts (two analyses that
+        disagree about a fact; unrelated to branch merge conflicts). With
+        `?branch=` the list is that branch's isolated view, and `status` is
+        matched against the branch's row, so a conflict the branch resolved is
+        not listed as open there.
       tags: [evidence-conflicts]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: status
@@ -3880,7 +3917,12 @@ paths:
     get:
       operationId: getEvidenceConflict
       summary: Get an evidence conflict by ID
+      description: |
+        Returns the evidence conflict. With `?branch=` it is read from that
+        branch's isolated view.
       tags: [evidence-conflicts]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Evidence conflict details
@@ -3898,7 +3940,13 @@ paths:
     post:
       operationId: resolveEvidenceConflict
       summary: Resolve an evidence conflict
+      description: |
+        Resolves an evidence conflict. With `?branch=` the resolution lands on
+        that branch only; the mainline keeps the conflict open until the branch
+        is merged.
       tags: [evidence-conflicts]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -3931,7 +3979,12 @@ paths:
     get:
       operationId: getConflictsBySubject
       summary: Get evidence conflicts for a subject
+      description: |
+        Returns the evidence conflicts about one subject. With `?branch=` the
+        match runs over that branch's isolated view.
       tags: [evidence-conflicts]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of evidence conflicts for the subject
@@ -3947,8 +4000,12 @@ paths:
     get:
       operationId: listResearchLogs
       summary: List all research log entries
+      description: |
+        Returns a paginated list of research log entries. With `?branch=` the
+        list is that branch's isolated view; omit it for the mainline.
       tags: [research-logs]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: sort
@@ -3976,7 +4033,12 @@ paths:
     post:
       operationId: createResearchLog
       summary: Create a new research log entry
+      description: |
+        Creates a research log entry. With `?branch=` it is created on that
+        branch only.
       tags: [research-logs]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -4000,7 +4062,12 @@ paths:
     get:
       operationId: getResearchLog
       summary: Get a research log entry by ID
+      description: |
+        Returns the research log entry. With `?branch=` it is read from that
+        branch's isolated view.
       tags: [research-logs]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Research log entry details
@@ -4014,7 +4081,12 @@ paths:
     put:
       operationId: updateResearchLog
       summary: Update a research log entry
+      description: |
+        Updates a research log entry. With `?branch=` the edit lands on that
+        branch only; the mainline keeps its row.
       tags: [research-logs]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -4038,8 +4110,12 @@ paths:
     delete:
       operationId: deleteResearchLog
       summary: Delete a research log entry
+      description: |
+        Deletes a research log entry. With `?branch=` it is deleted on that
+        branch only (the mainline keeps it).
       tags: [research-logs]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':
@@ -4063,7 +4139,12 @@ paths:
     get:
       operationId: getResearchLogsBySubject
       summary: Get research log entries for a subject
+      description: |
+        Returns the research log entries about one subject. With `?branch=`
+        the match runs over that branch's isolated view.
       tags: [research-logs]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of research log entries for the subject
@@ -4079,8 +4160,12 @@ paths:
     get:
       operationId: listProofSummaries
       summary: List all proof summaries
+      description: |
+        Returns a paginated list of proof summaries. With `?branch=` the list
+        is that branch's isolated view; omit it for the mainline.
       tags: [proof-summaries]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: sort
@@ -4108,7 +4193,12 @@ paths:
     post:
       operationId: createProofSummary
       summary: Create a new proof summary
+      description: |
+        Creates a proof summary. With `?branch=` it is created on that branch
+        only.
       tags: [proof-summaries]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -4132,7 +4222,12 @@ paths:
     get:
       operationId: getProofSummary
       summary: Get a proof summary by ID
+      description: |
+        Returns the proof summary. With `?branch=` it is read from that
+        branch's isolated view.
       tags: [proof-summaries]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Proof summary details
@@ -4146,7 +4241,12 @@ paths:
     put:
       operationId: updateProofSummary
       summary: Update a proof summary
+      description: |
+        Updates a proof summary. With `?branch=` the edit lands on that branch
+        only; the mainline keeps its row.
       tags: [proof-summaries]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -4170,8 +4270,12 @@ paths:
     delete:
       operationId: deleteProofSummary
       summary: Delete a proof summary
+      description: |
+        Deletes a proof summary. With `?branch=` it is deleted on that branch
+        only (the mainline keeps it).
       tags: [proof-summaries]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':
@@ -4187,8 +4291,12 @@ paths:
     get:
       operationId: getProofSummaryByFact
       summary: Get proof summaries by fact type and subject
+      description: |
+        Returns the proof summaries of one fact of one subject. With
+        `?branch=` the match runs over that branch's isolated view.
       tags: [proof-summaries]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: factType
           in: query
           required: true

@@ -121,13 +121,17 @@ type ListInput struct {
 	SortBy    string
 	SortOrder string
 	Status    string // Optional filter for conflict status
+	// BranchID scopes the list to a branch's overlay (ADR-005, #760); the zero
+	// value (MainBranchID) lists the mainline.
+	BranchID domain.BranchID
 }
 
 // --- EvidenceAnalysis queries ---
 
-// GetEvidenceAnalysis returns an evidence analysis by ID.
-func (s *EvidenceQueryService) GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*EvidenceAnalysis, error) {
-	rm, err := s.readStore.GetEvidenceAnalysis(ctx, id)
+// GetEvidenceAnalysis returns an evidence analysis by ID within the branch
+// overlay (ADR-005, #760); the zero branchID (MainBranchID) reads the mainline.
+func (s *EvidenceQueryService) GetEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*EvidenceAnalysis, error) {
+	rm, err := s.readStore.GetEvidenceAnalysis(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +166,8 @@ func (s *EvidenceQueryService) ListEvidenceAnalyses(ctx context.Context, input L
 }
 
 // GetAnalysesForFact returns all evidence analyses for a given fact type and subject.
-func (s *EvidenceQueryService) GetAnalysesForFact(ctx context.Context, factType string, subjectID uuid.UUID) ([]EvidenceAnalysis, error) {
-	readModels, err := s.readStore.GetAnalysesForFact(ctx, domain.FactType(factType), subjectID)
+func (s *EvidenceQueryService) GetAnalysesForFact(ctx context.Context, branchID domain.BranchID, factType string, subjectID uuid.UUID) ([]EvidenceAnalysis, error) {
+	readModels, err := s.readStore.GetAnalysesForFact(ctx, branchID, domain.FactType(factType), subjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +183,8 @@ func (s *EvidenceQueryService) GetAnalysesForFact(ctx context.Context, factType 
 // --- EvidenceConflict queries ---
 
 // GetEvidenceConflict returns an evidence conflict by ID.
-func (s *EvidenceQueryService) GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*EvidenceConflict, error) {
-	rm, err := s.readStore.GetEvidenceConflict(ctx, id)
+func (s *EvidenceQueryService) GetEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*EvidenceConflict, error) {
+	rm, err := s.readStore.GetEvidenceConflict(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -193,42 +197,31 @@ func (s *EvidenceQueryService) GetEvidenceConflict(ctx context.Context, id uuid.
 }
 
 // ListEvidenceConflicts returns a paginated list of evidence conflicts.
+//
+// With input.Status set, the store matches the status on each conflict's
+// resolved row (the branch overlay is resolved first) and pages and counts the
+// matches itself, so Total counts every matching conflict and a page is never
+// short because non-matching rows took its slots.
 func (s *EvidenceQueryService) ListEvidenceConflicts(ctx context.Context, input ListInput) (*EvidenceConflictListResult, error) {
 	opts := normalizeListOptions(input)
-
+	if input.Status != "" {
+		status := domain.ConflictStatus(input.Status)
+		opts.ConflictStatus = &status
+	}
 	readModels, total, err := s.readStore.ListEvidenceConflicts(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
-
 	conflicts := make([]EvidenceConflict, 0, len(readModels))
 	for _, rm := range readModels {
 		conflicts = append(conflicts, convertReadModelToEvidenceConflict(rm))
 	}
-
-	// TODO: Status filtering should be pushed to the store layer for efficiency.
-	if input.Status != "" {
-		filtered := make([]EvidenceConflict, 0, len(conflicts))
-		for _, c := range conflicts {
-			if c.Status == input.Status {
-				filtered = append(filtered, c)
-			}
-		}
-		conflicts = filtered
-		total = len(filtered)
-	}
-
-	return &EvidenceConflictListResult{
-		Conflicts: conflicts,
-		Total:     total,
-		Limit:     opts.Limit,
-		Offset:    opts.Offset,
-	}, nil
+	return &EvidenceConflictListResult{Conflicts: conflicts, Total: total, Limit: opts.Limit, Offset: opts.Offset}, nil
 }
 
 // GetConflictsForSubject returns all evidence conflicts for a given subject.
-func (s *EvidenceQueryService) GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]EvidenceConflict, error) {
-	readModels, err := s.readStore.GetConflictsForSubject(ctx, subjectID)
+func (s *EvidenceQueryService) GetConflictsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]EvidenceConflict, error) {
+	readModels, err := s.readStore.GetConflictsForSubject(ctx, branchID, subjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -242,8 +235,8 @@ func (s *EvidenceQueryService) GetConflictsForSubject(ctx context.Context, subje
 }
 
 // ListUnresolvedConflicts returns all unresolved evidence conflicts.
-func (s *EvidenceQueryService) ListUnresolvedConflicts(ctx context.Context) ([]EvidenceConflict, error) {
-	readModels, err := s.readStore.ListUnresolvedConflicts(ctx)
+func (s *EvidenceQueryService) ListUnresolvedConflicts(ctx context.Context, branchID domain.BranchID) ([]EvidenceConflict, error) {
+	readModels, err := s.readStore.ListUnresolvedConflicts(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -259,8 +252,8 @@ func (s *EvidenceQueryService) ListUnresolvedConflicts(ctx context.Context) ([]E
 // --- ResearchLog queries ---
 
 // GetResearchLog returns a research log entry by ID.
-func (s *EvidenceQueryService) GetResearchLog(ctx context.Context, id uuid.UUID) (*ResearchLogEntry, error) {
-	rm, err := s.readStore.GetResearchLog(ctx, id)
+func (s *EvidenceQueryService) GetResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*ResearchLogEntry, error) {
+	rm, err := s.readStore.GetResearchLog(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -295,8 +288,8 @@ func (s *EvidenceQueryService) ListResearchLogs(ctx context.Context, input ListI
 }
 
 // GetResearchLogsForSubject returns all research log entries for a given subject.
-func (s *EvidenceQueryService) GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]ResearchLogEntry, error) {
-	readModels, err := s.readStore.GetResearchLogsForSubject(ctx, subjectID)
+func (s *EvidenceQueryService) GetResearchLogsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]ResearchLogEntry, error) {
+	readModels, err := s.readStore.GetResearchLogsForSubject(ctx, branchID, subjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -312,8 +305,8 @@ func (s *EvidenceQueryService) GetResearchLogsForSubject(ctx context.Context, su
 // --- ProofSummary queries ---
 
 // GetProofSummary returns a proof summary by ID.
-func (s *EvidenceQueryService) GetProofSummary(ctx context.Context, id uuid.UUID) (*ProofSummaryResult, error) {
-	rm, err := s.readStore.GetProofSummary(ctx, id)
+func (s *EvidenceQueryService) GetProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*ProofSummaryResult, error) {
+	rm, err := s.readStore.GetProofSummary(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -348,8 +341,8 @@ func (s *EvidenceQueryService) ListProofSummaries(ctx context.Context, input Lis
 }
 
 // GetProofSummaryForFact returns the proof summaries for a specific fact type and subject.
-func (s *EvidenceQueryService) GetProofSummaryForFact(ctx context.Context, factType string, subjectID uuid.UUID) ([]ProofSummaryResult, error) {
-	readModels, err := s.readStore.GetProofSummariesForFact(ctx, domain.FactType(factType), subjectID)
+func (s *EvidenceQueryService) GetProofSummaryForFact(ctx context.Context, branchID domain.BranchID, factType string, subjectID uuid.UUID) ([]ProofSummaryResult, error) {
+	readModels, err := s.readStore.GetProofSummariesForFact(ctx, branchID, domain.FactType(factType), subjectID)
 	if err != nil {
 		return nil, err
 	}
@@ -370,6 +363,8 @@ func normalizeListOptions(input ListInput) repository.ListOptions {
 		Offset: input.Offset,
 		Sort:   input.SortBy,
 		Order:  input.SortOrder,
+		// BranchID scopes the list to the branch overlay (ADR-005, #760).
+		BranchID: input.BranchID,
 	}
 
 	if opts.Limit <= 0 {

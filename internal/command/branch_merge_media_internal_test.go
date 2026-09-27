@@ -111,7 +111,7 @@ func TestCheckOwnerDeleteOrphansNoMedia(t *testing.T) {
 	events := &recordingEventStore{}
 	h := &Handler{readStore: store, eventStore: events}
 
-	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, nil); err != nil {
+	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, evidencePlan{}); err != nil {
 		t.Fatalf("items with no later main writes: err = %v, want nil", err)
 	}
 	if len(events.asked) != 1 || len(events.asked[0]) != len(ids) {
@@ -126,13 +126,13 @@ func TestCheckOwnerDeleteOrphansNoMedia(t *testing.T) {
 		{StreamID: ids[0], EventType: "MediaCreated", Position: 50},
 		{StreamID: late, EventType: "MediaCreated", Position: 150},
 	}
-	err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, nil)
+	err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, evidencePlan{})
 	if !errors.Is(err, ErrMergeDanglingReference) || !strings.Contains(err.Error(), late.String()) {
 		t.Errorf("item uploaded after the branch's delete: err = %v, want ErrMergeDanglingReference naming %s", err, late)
 	}
 	// The same item carried by the replay is the replay's business.
 	replayed := map[uuid.UUID]streamGroup{late: mediaUploadGroup(late, "person", owner)}
-	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, replayed); err != nil {
+	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, evidencePlan{replayed: replayed}); err != nil {
 		t.Errorf("late item the replay carries: err = %v, want nil", err)
 	}
 
@@ -141,17 +141,17 @@ func TestCheckOwnerDeleteOrphansNoMedia(t *testing.T) {
 		personGroup(owner, "PersonUpdated"),
 		mediaUploadGroup(uuid.New(), "person", owner),
 	} {
-		if err := (&Handler{}).checkOwnerDeleteOrphansNoMedia(ctx, group, nil); err != nil {
+		if err := (&Handler{}).checkOwnerDeleteOrphansNoMedia(ctx, group, evidencePlan{}); err != nil {
 			t.Errorf("%s stream without an owner delete: err = %v, want nil", group.streamType, err)
 		}
 	}
 
 	events.err = errors.New("scan failed")
-	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, nil); err == nil || errors.Is(err, ErrMergeDanglingReference) {
+	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, evidencePlan{}); err == nil || errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("failed history scan: err = %v, want a read error", err)
 	}
 	failing := &Handler{readStore: listMediaFailStore{store}, eventStore: events}
-	if err := failing.checkOwnerDeleteOrphansNoMedia(ctx, deleting, nil); err == nil || errors.Is(err, ErrMergeDanglingReference) {
+	if err := failing.checkOwnerDeleteOrphansNoMedia(ctx, deleting, evidencePlan{}); err == nil || errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("failed listing: err = %v, want a read error", err)
 	}
 }

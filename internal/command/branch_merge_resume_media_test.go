@@ -554,6 +554,32 @@ func TestResumeMerge_OwnerDeleteOntoLaterMainMediaIsPending(t *testing.T) {
 	assertResumeNoop(t, e.resume(t, branch.ID, nil))
 }
 
+// TestResumeMerge_OwnerDeleteOntoMainEditOfLandedMediaIsPending: the branch
+// retitles main's photo of a person and then deletes the person. The retitle
+// lands before the interruption, and main then retitles the photo again.
+// Replaying the delete would cascade main's post-landing edit away with no
+// record, so the delete is pending and "main" keeps the photo.
+func TestResumeMerge_OwnerDeleteOntoMainEditOfLandedMediaIsPending(t *testing.T) {
+	e := newEvidenceResume(t)
+	owner := e.mainPerson(t, "Owen")
+	photo := e.upload(t, e.f.handler, owner, "Portrait")
+	branch, scoped := e.branch(t, "tidy-owner")
+	scope := domain.BranchID(branch.ID)
+	e.retitleMedia(t, scoped, scope, photo, "Branch title")
+	e.deletePersonOnBranch(t, scoped, branch, owner)
+
+	e.interrupt(t, branch, 2)
+	if got := e.media(t, domain.MainBranchID, photo); got == nil || got.Title != "Branch title" {
+		t.Fatalf("main media after interruption = %+v, want the branch's retitle landed", got)
+	}
+	e.retitleMedia(t, e.f.handler, domain.MainBranchID, photo, "Main title")
+
+	e.assertSubjectDeletePending(t, branch, owner)
+	if got := e.media(t, domain.MainBranchID, photo); got == nil || got.Title != "Main title" {
+		t.Errorf("main media = %+v, want main's post-landing edit kept", got)
+	}
+}
+
 // uploadTo uploads a photo attached to any media owner type.
 func (e evidenceResume) uploadTo(t *testing.T, h *command.Handler, entityType string, owner uuid.UUID, title string) uuid.UUID {
 	t.Helper()

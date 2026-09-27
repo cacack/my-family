@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -40,6 +41,26 @@ func resolveRow[T any](m map[branchKey]*T, branch domain.BranchID, id uuid.UUID)
 		}
 	}
 	return nil, false
+}
+
+// resolveRowsByIDs is resolveRow for many ids: copies of the rows visible on
+// branch for ids, deduplicated and ordered by id (the order the SQL backends
+// return their batched lookups in, #697). Ids with no visible row — never
+// written, or hidden by a branch tombstone — are absent.
+func resolveRowsByIDs[T any](m map[branchKey]*T, branch domain.BranchID, ids []uuid.UUID) []T {
+	if len(ids) == 0 {
+		return nil
+	}
+	sorted := slices.Clone(ids)
+	slices.SortFunc(sorted, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	sorted = slices.Compact(sorted)
+	var rows []T
+	for _, id := range sorted {
+		if row, _ := resolveRow(m, branch, id); row != nil {
+			rows = append(rows, *row)
+		}
+	}
+	return rows
 }
 
 // resolveAllRows returns the overlay-resolved rows for a single-row slice entity
@@ -160,10 +181,10 @@ type ReadModelStore struct {
 	repositoryExternalIDs map[uuid.UUID][]repository.RepositoryExternalIDReadModel // keyed by repository ID
 	associations          map[branchKey]*repository.AssociationReadModel           // branch-scoped (#757)
 	ldsOrdinances         map[uuid.UUID]*repository.LDSOrdinanceReadModel
-	evidenceAnalyses      map[uuid.UUID]*repository.EvidenceAnalysisReadModel
-	evidenceConflicts     map[uuid.UUID]*repository.EvidenceConflictReadModel
-	researchLogs          map[uuid.UUID]*repository.ResearchLogReadModel
-	proofSummaries        map[uuid.UUID]*repository.ProofSummaryReadModel
+	evidenceAnalyses      map[branchKey]*repository.EvidenceAnalysisReadModel // branch-scoped (#760)
+	evidenceConflicts     map[branchKey]*repository.EvidenceConflictReadModel // branch-scoped (#760)
+	researchLogs          map[branchKey]*repository.ResearchLogReadModel      // branch-scoped (#760)
+	proofSummaries        map[branchKey]*repository.ProofSummaryReadModel     // branch-scoped (#760)
 }
 
 // NewReadModelStore creates a new in-memory read model store.
@@ -188,10 +209,10 @@ func NewReadModelStore() *ReadModelStore {
 		repositoryExternalIDs: make(map[uuid.UUID][]repository.RepositoryExternalIDReadModel),
 		associations:          make(map[branchKey]*repository.AssociationReadModel),
 		ldsOrdinances:         make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
-		evidenceAnalyses:      make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel),
-		evidenceConflicts:     make(map[uuid.UUID]*repository.EvidenceConflictReadModel),
-		researchLogs:          make(map[uuid.UUID]*repository.ResearchLogReadModel),
-		proofSummaries:        make(map[uuid.UUID]*repository.ProofSummaryReadModel),
+		evidenceAnalyses:      make(map[branchKey]*repository.EvidenceAnalysisReadModel),
+		evidenceConflicts:     make(map[branchKey]*repository.EvidenceConflictReadModel),
+		researchLogs:          make(map[branchKey]*repository.ResearchLogReadModel),
+		proofSummaries:        make(map[branchKey]*repository.ProofSummaryReadModel),
 	}
 }
 
@@ -207,6 +228,13 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID
 	// Return a copy
 	result := *p
 	return &result, nil
+}
+
+// GetPersonsByIDs retrieves every visible person among ids on branchID (#697).
+func (s *ReadModelStore) GetPersonsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.PersonReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.persons, branchID, ids), nil
 }
 
 // matchesResearchStatusFilter checks if a person matches the research status filter.
@@ -523,6 +551,7 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 		}
 		s.cascadePersonFacts(domain.MainBranchID, id)
 		s.cascadeMedia(domain.MainBranchID, "person", id)
+		s.cascadeGPS(domain.MainBranchID, id)
 		return nil
 	}
 	// Branch delete: tombstone the person and its branch-scoped dependents,
@@ -533,6 +562,7 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 	s.pedigreeEdges[branchKey{branchID, id}] = nil     // cascade tombstone
 	s.cascadePersonFacts(branchID, id)
 	s.cascadeMedia(branchID, "person", id)
+	s.cascadeGPS(branchID, id)
 	return nil
 }
 
@@ -832,6 +862,13 @@ func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID
 	return &result, nil
 }
 
+// GetFamiliesByIDs retrieves every visible family among ids on branchID (#697).
+func (s *ReadModelStore) GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.FamilyReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.families, branchID, ids), nil
+}
+
 // ListFamilies returns a paginated list of families for the requested branch.
 func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	s.mu.RLock()
@@ -899,6 +936,8 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 		}
 	}
 	s.cascadeMedia(branchID, "family", id)
+	// So do the GPS artifacts whose subject is the family (#760).
+	s.cascadeGPS(branchID, id)
 	if branchID == domain.MainBranchID {
 		delete(s.families, branchKey{domain.MainBranchID, id})
 		delete(s.familyChildren, branchKey{domain.MainBranchID, id})
@@ -1048,9 +1087,9 @@ func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain
 // PurgeBranch hard-deletes every map entry keyed to branchID across the
 // branch-scoped entities (the seven #669 slice entities, life events,
 // attributes and associations (#757), and sources, source external IDs,
-// citations and notes (#758), and media (#759)). It is a no-op for the mainline
-// (domain.MainBranchID), which is never purged. See ADR-005 and the
-// branch-delete projection handler.
+// citations and notes (#758), media (#759) and the GPS artifacts (#760)). It is
+// a no-op for the mainline (domain.MainBranchID), which is never purged. See
+// ADR-005 and the branch-delete projection handler.
 func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
 	if branchID == domain.MainBranchID {
 		return nil
@@ -1074,6 +1113,10 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	deleteBranchRows(s.citations, branchID)
 	deleteBranchRows(s.notes, branchID)
 	deleteBranchRows(s.media, branchID)
+	deleteBranchRows(s.evidenceAnalyses, branchID)
+	deleteBranchRows(s.evidenceConflicts, branchID)
+	deleteBranchRows(s.researchLogs, branchID)
+	deleteBranchRows(s.proofSummaries, branchID)
 	// Drop main media tombstones kept alive only for this branch's shadows (#759).
 	s.collectMainMediaTombstones()
 	return nil
@@ -1111,10 +1154,10 @@ func (s *ReadModelStore) Reset() {
 	s.repositories = make(map[uuid.UUID]*repository.RepositoryReadModel)
 	s.associations = make(map[branchKey]*repository.AssociationReadModel)
 	s.ldsOrdinances = make(map[uuid.UUID]*repository.LDSOrdinanceReadModel)
-	s.evidenceAnalyses = make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel)
-	s.evidenceConflicts = make(map[uuid.UUID]*repository.EvidenceConflictReadModel)
-	s.researchLogs = make(map[uuid.UUID]*repository.ResearchLogReadModel)
-	s.proofSummaries = make(map[uuid.UUID]*repository.ProofSummaryReadModel)
+	s.evidenceAnalyses = make(map[branchKey]*repository.EvidenceAnalysisReadModel)
+	s.evidenceConflicts = make(map[branchKey]*repository.EvidenceConflictReadModel)
+	s.researchLogs = make(map[branchKey]*repository.ResearchLogReadModel)
+	s.proofSummaries = make(map[branchKey]*repository.ProofSummaryReadModel)
 }
 
 // GetSource retrieves a source by ID within the branch overlay (ADR-005, #758).
@@ -1128,6 +1171,13 @@ func (s *ReadModelStore) GetSource(ctx context.Context, branchID domain.BranchID
 	}
 	result := *src
 	return &result, nil
+}
+
+// GetSourcesByIDs retrieves every visible source among ids on branchID (#697).
+func (s *ReadModelStore) GetSourcesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.SourceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.sources, branchID, ids), nil
 }
 
 // compareSources orders sources by title, then id — the order the SQL backends
@@ -1226,6 +1276,13 @@ func (s *ReadModelStore) GetCitation(ctx context.Context, branchID domain.Branch
 	}
 	result := *cit
 	return &result, nil
+}
+
+// GetCitationsByIDs retrieves every visible citation among ids on branchID (#697).
+func (s *ReadModelStore) GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.citations, branchID, ids), nil
 }
 
 // compareCitations orders citations by source title, then fact type, then id —
@@ -2642,424 +2699,341 @@ func (s *ReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) e
 	return nil
 }
 
-// GetEvidenceAnalysis retrieves an evidence analysis by ID.
-func (s *ReadModelStore) GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// GPS artifacts (#760): evidence analyses, evidence conflicts, research logs and
+// proof summaries are branch-scoped like the life events. Every read resolves the
+// per-id overlay (resolveRow / resolveAllRows) first and only then applies its
+// filter to the winning row, so a branch-side edit (a resolution, a re-pointed
+// subject) or tombstone decides what the branch lists.
 
-	a, exists := s.evidenceAnalyses[id]
-	if !exists {
-		return nil, nil
+// gpsTimes extracts the fields every GPS artifact list sorts by.
+type gpsTimes[T any] func(*T) (id uuid.UUID, createdAt, updatedAt time.Time)
+
+// resolveGPS returns the rows of m visible on branch that keep accepts (nil keeps
+// every row), as copies, sorted by created_at then id so the per-subject lists
+// are deterministic on every backend. Callers hold s.mu.
+func resolveGPS[T any](m map[branchKey]*T, branch domain.BranchID, keep func(*T) bool, times gpsTimes[T]) []T {
+	var out []T
+	for _, row := range resolveAllRows(m, branch) {
+		if keep == nil || keep(row) {
+			out = append(out, *row)
+		}
 	}
-	result := *a
-	return &result, nil
+	sort.Slice(out, func(i, j int) bool {
+		idI, createdI, _ := times(&out[i])
+		idJ, createdJ, _ := times(&out[j])
+		if !createdI.Equal(createdJ) {
+			return createdI.Before(createdJ)
+		}
+		return idI.String() < idJ.String()
+	})
+	return out
 }
 
-// ListEvidenceAnalyses returns a paginated list of evidence analyses.
+// pageGPS sorts rows by opts.Sort ("created_at", else updated_at) in opts.Order
+// (id breaks ties in the same direction) and returns the requested page and the
+// unpaged total. A non-positive limit returns every row from the offset on.
+func pageGPS[T any](rows []T, opts repository.ListOptions, times gpsTimes[T]) ([]T, int) {
+	asc := opts.Order == "asc"
+	sort.Slice(rows, func(i, j int) bool {
+		idI, createdI, updatedI := times(&rows[i])
+		idJ, createdJ, updatedJ := times(&rows[j])
+		ti, tj := updatedI, updatedJ
+		if opts.Sort == "created_at" {
+			ti, tj = createdI, createdJ
+		}
+		if ti.Equal(tj) {
+			if asc {
+				return idI.String() < idJ.String()
+			}
+			return idI.String() > idJ.String()
+		}
+		if asc {
+			return ti.Before(tj)
+		}
+		return ti.After(tj)
+	})
+
+	total := len(rows)
+	if opts.Offset > 0 && opts.Offset < len(rows) {
+		rows = rows[opts.Offset:]
+	} else if opts.Offset >= len(rows) {
+		rows = nil
+	}
+	if opts.Limit > 0 && opts.Limit < len(rows) {
+		rows = rows[:opts.Limit]
+	}
+	return rows, total
+}
+
+// getGPS returns a copy of the row id resolves to on branch, or nil.
+func getGPS[T any](m map[branchKey]*T, branch domain.BranchID, id uuid.UUID) *T {
+	row, _ := resolveRow(m, branch, id)
+	if row == nil {
+		return nil
+	}
+	result := *row
+	return &result
+}
+
+func analysisTimes(a *repository.EvidenceAnalysisReadModel) (uuid.UUID, time.Time, time.Time) {
+	return a.ID, a.CreatedAt, a.UpdatedAt
+}
+
+func conflictTimes(c *repository.EvidenceConflictReadModel) (uuid.UUID, time.Time, time.Time) {
+	return c.ID, c.CreatedAt, c.UpdatedAt
+}
+
+func researchLogTimes(l *repository.ResearchLogReadModel) (uuid.UUID, time.Time, time.Time) {
+	return l.ID, l.CreatedAt, l.UpdatedAt
+}
+
+func proofSummaryTimes(p *repository.ProofSummaryReadModel) (uuid.UUID, time.Time, time.Time) {
+	return p.ID, p.CreatedAt, p.UpdatedAt
+}
+
+// cascadeGPS removes, on branch, every GPS artifact whose subject is subjectID —
+// the manual cascade DeletePerson and DeleteFamily run (#760). Main rows are hard
+// deleted; a branch tombstones each row visible on it. Callers hold s.mu.
+func (s *ReadModelStore) cascadeGPS(branch domain.BranchID, subjectID uuid.UUID) {
+	for _, a := range resolveAllRows(s.evidenceAnalyses, branch) {
+		if a.SubjectID == subjectID {
+			removeRow(s.evidenceAnalyses, branch, a.ID)
+		}
+	}
+	for _, c := range resolveAllRows(s.evidenceConflicts, branch) {
+		if c.SubjectID == subjectID {
+			removeRow(s.evidenceConflicts, branch, c.ID)
+		}
+	}
+	for _, l := range resolveAllRows(s.researchLogs, branch) {
+		if l.SubjectID == subjectID {
+			removeRow(s.researchLogs, branch, l.ID)
+		}
+	}
+	for _, p := range resolveAllRows(s.proofSummaries, branch) {
+		if p.SubjectID == subjectID {
+			removeRow(s.proofSummaries, branch, p.ID)
+		}
+	}
+}
+
+// GetEvidenceAnalysis retrieves an evidence analysis by ID within the branch
+// overlay (ADR-005, #760).
+func (s *ReadModelStore) GetEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return getGPS(s.evidenceAnalyses, branchID, id), nil
+}
+
+// ListEvidenceAnalyses returns a paginated list of the evidence analyses visible
+// on opts.BranchID.
 func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.EvidenceAnalysisReadModel
-	for _, a := range s.evidenceAnalyses {
-		results = append(results, *a)
-	}
-
-	total := len(results)
-
-	sortField := opts.Sort
-	if sortField == "" {
-		sortField = "updated_at"
-	}
-	asc := opts.Order == "asc"
-	sort.Slice(results, func(i, j int) bool {
-		var ti, tj time.Time
-		switch sortField {
-		case "created_at":
-			ti, tj = results[i].CreatedAt, results[j].CreatedAt
-		default:
-			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
-		}
-		if ti.Equal(tj) {
-			if asc {
-				return results[i].ID.String() < results[j].ID.String()
-			}
-			return results[i].ID.String() > results[j].ID.String()
-		}
-		if asc {
-			return ti.Before(tj)
-		}
-		return ti.After(tj)
-	})
-
-	if opts.Offset > 0 && opts.Offset < len(results) {
-		results = results[opts.Offset:]
-	} else if opts.Offset >= len(results) {
-		results = nil
-	}
-	if opts.Limit > 0 && opts.Limit < len(results) {
-		results = results[:opts.Limit]
-	}
-
-	return results, total, nil
+	rows, total := pageGPS(resolveGPS(s.evidenceAnalyses, opts.BranchID, nil, analysisTimes), opts, analysisTimes)
+	return rows, total, nil
 }
 
-// GetAnalysesForFact returns all evidence analyses for a given fact type and subject.
-func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+// GetAnalysesForFact returns the evidence analyses for a fact type and subject
+// visible on branchID, filtered on each id's winning row.
+func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.EvidenceAnalysisReadModel
-	for _, a := range s.evidenceAnalyses {
-		if a.FactType == factType && a.SubjectID == subjectID {
-			results = append(results, *a)
-		}
-	}
-	return results, nil
+	return resolveGPS(s.evidenceAnalyses, branchID, func(a *repository.EvidenceAnalysisReadModel) bool {
+		return a.FactType == factType && a.SubjectID == subjectID
+	}, analysisTimes), nil
 }
 
-// GetAnalysesBySubject returns all evidence analyses for a given subject, regardless of fact type.
-func (s *ReadModelStore) GetAnalysesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
+// GetAnalysesBySubject returns the evidence analyses for a subject visible on
+// branchID, regardless of fact type.
+func (s *ReadModelStore) GetAnalysesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.EvidenceAnalysisReadModel
-	for _, a := range s.evidenceAnalyses {
-		if a.SubjectID == subjectID {
-			results = append(results, *a)
-		}
-	}
-	return results, nil
+	return resolveGPS(s.evidenceAnalyses, branchID, func(a *repository.EvidenceAnalysisReadModel) bool {
+		return a.SubjectID == subjectID
+	}, analysisTimes), nil
 }
 
-// SaveEvidenceAnalysis saves or updates an evidence analysis.
-func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
+// SaveEvidenceAnalysis saves or updates an evidence analysis on the given
+// branch; a save clears any prior tombstone.
+func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, analysis *repository.EvidenceAnalysisReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	result := *analysis
-	s.evidenceAnalyses[analysis.ID] = &result
+	s.evidenceAnalyses[branchKey{branchID, analysis.ID}] = &result
 	return nil
 }
 
-// DeleteEvidenceAnalysis removes an evidence analysis.
-func (s *ReadModelStore) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error {
+// DeleteEvidenceAnalysis removes an evidence analysis: a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	delete(s.evidenceAnalyses, id)
+	removeRow(s.evidenceAnalyses, branchID, id)
 	return nil
 }
 
-// GetEvidenceConflict retrieves an evidence conflict by ID.
-func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
+// GetEvidenceConflict retrieves an evidence conflict by ID within the branch
+// overlay (ADR-005, #760).
+func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	c, exists := s.evidenceConflicts[id]
-	if !exists {
-		return nil, nil
-	}
-	result := *c
-	return &result, nil
+	return getGPS(s.evidenceConflicts, branchID, id), nil
 }
 
-// ListEvidenceConflicts returns a paginated list of evidence conflicts.
+// ListEvidenceConflicts returns a paginated list of the evidence conflicts
+// visible on opts.BranchID.
 func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.EvidenceConflictReadModel
-	for _, c := range s.evidenceConflicts {
-		results = append(results, *c)
+	var keep func(*repository.EvidenceConflictReadModel) bool
+	if opts.ConflictStatus != nil {
+		status := *opts.ConflictStatus
+		keep = func(c *repository.EvidenceConflictReadModel) bool { return c.Status == status }
 	}
-
-	total := len(results)
-
-	sortField := opts.Sort
-	if sortField == "" {
-		sortField = "updated_at"
-	}
-	asc := opts.Order == "asc"
-	sort.Slice(results, func(i, j int) bool {
-		var ti, tj time.Time
-		switch sortField {
-		case "created_at":
-			ti, tj = results[i].CreatedAt, results[j].CreatedAt
-		default:
-			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
-		}
-		if ti.Equal(tj) {
-			if asc {
-				return results[i].ID.String() < results[j].ID.String()
-			}
-			return results[i].ID.String() > results[j].ID.String()
-		}
-		if asc {
-			return ti.Before(tj)
-		}
-		return ti.After(tj)
-	})
-
-	if opts.Offset > 0 && opts.Offset < len(results) {
-		results = results[opts.Offset:]
-	} else if opts.Offset >= len(results) {
-		results = nil
-	}
-	if opts.Limit > 0 && opts.Limit < len(results) {
-		results = results[:opts.Limit]
-	}
-
-	return results, total, nil
+	rows, total := pageGPS(resolveGPS(s.evidenceConflicts, opts.BranchID, keep, conflictTimes), opts, conflictTimes)
+	return rows, total, nil
 }
 
-// GetConflictsForSubject returns all evidence conflicts for a given subject.
-func (s *ReadModelStore) GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
+// GetConflictsForSubject returns the evidence conflicts for a subject visible on
+// branchID.
+func (s *ReadModelStore) GetConflictsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.EvidenceConflictReadModel
-	for _, c := range s.evidenceConflicts {
-		if c.SubjectID == subjectID {
-			results = append(results, *c)
-		}
-	}
-	return results, nil
+	return resolveGPS(s.evidenceConflicts, branchID, func(c *repository.EvidenceConflictReadModel) bool {
+		return c.SubjectID == subjectID
+	}, conflictTimes), nil
 }
 
-// ListUnresolvedConflicts returns all unresolved (open) evidence conflicts.
-func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context) ([]repository.EvidenceConflictReadModel, error) {
+// ListUnresolvedConflicts returns the open evidence conflicts visible on
+// branchID. The overlay is resolved first and the status predicate applied to
+// the winning row, so a conflict the branch resolved is not listed there even
+// though main's row for it is still open.
+func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context, branchID domain.BranchID) ([]repository.EvidenceConflictReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.EvidenceConflictReadModel
-	for _, c := range s.evidenceConflicts {
-		if c.Status == domain.ConflictStatusOpen {
-			results = append(results, *c)
-		}
-	}
-	return results, nil
+	return resolveGPS(s.evidenceConflicts, branchID, func(c *repository.EvidenceConflictReadModel) bool {
+		return c.Status == domain.ConflictStatusOpen
+	}, conflictTimes), nil
 }
 
-// SaveEvidenceConflict saves or updates an evidence conflict.
-func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *repository.EvidenceConflictReadModel) error {
+// SaveEvidenceConflict saves or updates an evidence conflict on the given
+// branch; a save clears any prior tombstone.
+func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, branchID domain.BranchID, conflict *repository.EvidenceConflictReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	result := *conflict
-	s.evidenceConflicts[conflict.ID] = &result
+	s.evidenceConflicts[branchKey{branchID, conflict.ID}] = &result
 	return nil
 }
 
-// DeleteEvidenceConflict removes an evidence conflict.
-func (s *ReadModelStore) DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error {
+// DeleteEvidenceConflict removes an evidence conflict: a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	delete(s.evidenceConflicts, id)
+	removeRow(s.evidenceConflicts, branchID, id)
 	return nil
 }
 
-// GetResearchLog retrieves a research log by ID.
-func (s *ReadModelStore) GetResearchLog(ctx context.Context, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
+// GetResearchLog retrieves a research log by ID within the branch overlay
+// (ADR-005, #760).
+func (s *ReadModelStore) GetResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	l, exists := s.researchLogs[id]
-	if !exists {
-		return nil, nil
-	}
-	result := *l
-	return &result, nil
+	return getGPS(s.researchLogs, branchID, id), nil
 }
 
-// ListResearchLogs returns a paginated list of research logs.
+// ListResearchLogs returns a paginated list of the research logs visible on
+// opts.BranchID.
 func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.ResearchLogReadModel
-	for _, l := range s.researchLogs {
-		results = append(results, *l)
-	}
-
-	total := len(results)
-
-	sortField := opts.Sort
-	if sortField == "" {
-		sortField = "updated_at"
-	}
-	asc := opts.Order == "asc"
-	sort.Slice(results, func(i, j int) bool {
-		var ti, tj time.Time
-		switch sortField {
-		case "created_at":
-			ti, tj = results[i].CreatedAt, results[j].CreatedAt
-		default:
-			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
-		}
-		if ti.Equal(tj) {
-			if asc {
-				return results[i].ID.String() < results[j].ID.String()
-			}
-			return results[i].ID.String() > results[j].ID.String()
-		}
-		if asc {
-			return ti.Before(tj)
-		}
-		return ti.After(tj)
-	})
-
-	if opts.Offset > 0 && opts.Offset < len(results) {
-		results = results[opts.Offset:]
-	} else if opts.Offset >= len(results) {
-		results = nil
-	}
-	if opts.Limit > 0 && opts.Limit < len(results) {
-		results = results[:opts.Limit]
-	}
-
-	return results, total, nil
+	rows, total := pageGPS(resolveGPS(s.researchLogs, opts.BranchID, nil, researchLogTimes), opts, researchLogTimes)
+	return rows, total, nil
 }
 
-// GetResearchLogsForSubject returns all research logs for a given subject.
-func (s *ReadModelStore) GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
+// GetResearchLogsForSubject returns the research logs for a subject visible on
+// branchID.
+func (s *ReadModelStore) GetResearchLogsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.ResearchLogReadModel
-	for _, l := range s.researchLogs {
-		if l.SubjectID == subjectID {
-			results = append(results, *l)
-		}
-	}
-	return results, nil
+	return resolveGPS(s.researchLogs, branchID, func(l *repository.ResearchLogReadModel) bool {
+		return l.SubjectID == subjectID
+	}, researchLogTimes), nil
 }
 
-// SaveResearchLog saves or updates a research log.
-func (s *ReadModelStore) SaveResearchLog(ctx context.Context, log *repository.ResearchLogReadModel) error {
+// SaveResearchLog saves or updates a research log on the given branch; a save
+// clears any prior tombstone.
+func (s *ReadModelStore) SaveResearchLog(ctx context.Context, branchID domain.BranchID, log *repository.ResearchLogReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	result := *log
-	s.researchLogs[log.ID] = &result
+	s.researchLogs[branchKey{branchID, log.ID}] = &result
 	return nil
 }
 
-// DeleteResearchLog removes a research log.
-func (s *ReadModelStore) DeleteResearchLog(ctx context.Context, id uuid.UUID) error {
+// DeleteResearchLog removes a research log: a real removal on main, a tombstone
+// on a non-main branch.
+func (s *ReadModelStore) DeleteResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	delete(s.researchLogs, id)
+	removeRow(s.researchLogs, branchID, id)
 	return nil
 }
 
-// GetProofSummary retrieves a proof summary by ID.
-func (s *ReadModelStore) GetProofSummary(ctx context.Context, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
+// GetProofSummary retrieves a proof summary by ID within the branch overlay
+// (ADR-005, #760).
+func (s *ReadModelStore) GetProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	ps, exists := s.proofSummaries[id]
-	if !exists {
-		return nil, nil
-	}
-	result := *ps
-	return &result, nil
+	return getGPS(s.proofSummaries, branchID, id), nil
 }
 
-// ListProofSummaries returns a paginated list of proof summaries.
+// ListProofSummaries returns a paginated list of the proof summaries visible on
+// opts.BranchID.
 func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.ProofSummaryReadModel
-	for _, ps := range s.proofSummaries {
-		results = append(results, *ps)
-	}
-
-	total := len(results)
-
-	sortField := opts.Sort
-	if sortField == "" {
-		sortField = "updated_at"
-	}
-	asc := opts.Order == "asc"
-	sort.Slice(results, func(i, j int) bool {
-		var ti, tj time.Time
-		switch sortField {
-		case "created_at":
-			ti, tj = results[i].CreatedAt, results[j].CreatedAt
-		default:
-			ti, tj = results[i].UpdatedAt, results[j].UpdatedAt
-		}
-		if ti.Equal(tj) {
-			if asc {
-				return results[i].ID.String() < results[j].ID.String()
-			}
-			return results[i].ID.String() > results[j].ID.String()
-		}
-		if asc {
-			return ti.Before(tj)
-		}
-		return ti.After(tj)
-	})
-
-	if opts.Offset > 0 && opts.Offset < len(results) {
-		results = results[opts.Offset:]
-	} else if opts.Offset >= len(results) {
-		results = nil
-	}
-	if opts.Limit > 0 && opts.Limit < len(results) {
-		results = results[:opts.Limit]
-	}
-
-	return results, total, nil
+	rows, total := pageGPS(resolveGPS(s.proofSummaries, opts.BranchID, nil, proofSummaryTimes), opts, proofSummaryTimes)
+	return rows, total, nil
 }
 
-// GetProofSummariesForFact returns all proof summaries for a given fact type and subject.
-func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+// GetProofSummariesForFact returns the proof summaries for a fact type and
+// subject visible on branchID.
+func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.ProofSummaryReadModel
-	for _, ps := range s.proofSummaries {
-		if ps.FactType == factType && ps.SubjectID == subjectID {
-			results = append(results, *ps)
-		}
-	}
-	return results, nil
+	return resolveGPS(s.proofSummaries, branchID, func(p *repository.ProofSummaryReadModel) bool {
+		return p.FactType == factType && p.SubjectID == subjectID
+	}, proofSummaryTimes), nil
 }
 
-// GetProofSummariesBySubject returns all proof summaries for a given subject, regardless of fact type.
-func (s *ReadModelStore) GetProofSummariesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
+// GetProofSummariesBySubject returns the proof summaries for a subject visible on
+// branchID, regardless of fact type.
+func (s *ReadModelStore) GetProofSummariesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.ProofSummaryReadModel
-	for _, ps := range s.proofSummaries {
-		if ps.SubjectID == subjectID {
-			results = append(results, *ps)
-		}
-	}
-	return results, nil
+	return resolveGPS(s.proofSummaries, branchID, func(p *repository.ProofSummaryReadModel) bool {
+		return p.SubjectID == subjectID
+	}, proofSummaryTimes), nil
 }
 
-// SaveProofSummary saves or updates a proof summary.
-func (s *ReadModelStore) SaveProofSummary(ctx context.Context, summary *repository.ProofSummaryReadModel) error {
+// SaveProofSummary saves or updates a proof summary on the given branch; a save
+// clears any prior tombstone.
+func (s *ReadModelStore) SaveProofSummary(ctx context.Context, branchID domain.BranchID, summary *repository.ProofSummaryReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	result := *summary
-	s.proofSummaries[summary.ID] = &result
+	s.proofSummaries[branchKey{branchID, summary.ID}] = &result
 	return nil
 }
 
-// DeleteProofSummary removes a proof summary.
-func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, id uuid.UUID) error {
+// DeleteProofSummary removes a proof summary: a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	delete(s.proofSummaries, id)
+	removeRow(s.proofSummaries, branchID, id)
 	return nil
 }

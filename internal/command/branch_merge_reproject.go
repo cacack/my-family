@@ -57,7 +57,8 @@ type readModelState struct {
 // association's row without writing to its stream either; or (for a citation)
 // the source it cites was deleted on main, whose cascade removes the citation
 // the same way; or (for media, #759) its owner was deleted on main, whose
-// cascade removes the item the same way.
+// cascade removes the item the same way; or (for a GPS artifact, #760) its
+// subject person or family was deleted on main, likewise.
 //
 // Media streams (#759) follow the same version rule: each media projection
 // writes the row, version included, in one save (or deletes it). The repair
@@ -65,6 +66,12 @@ type readModelState struct {
 // branch_merge_resume_media.go, including the owner-merged case, where the
 // re-projected row is then re-linked to the merge survivor as PersonMerged
 // would have done (relinkMergedMedia).
+//
+// GPS artifact streams (#760) follow the same version rule: each of their
+// projections writes the row, version included, in one save (or deletes it).
+// See branch_merge_resume_gps.go for the missing-row cases, including the
+// subject-merged case, where the re-projected row is then re-linked to the
+// merge survivor as PersonMerged would have done (relinkMergedGPS).
 //
 // Source, citation and note streams (#758) are covered by the same version
 // rule: each of their projections writes the row, version included, in one
@@ -109,11 +116,11 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 				continue // nothing to repair
 			}
 		}
-		var mediaMove *mediaRelink
-		if move, ok := relink[group.streamID]; ok {
-			mediaMove = &move
+		var move *mergeRelink
+		if m, ok := relink[group.streamID]; ok {
+			move = &m
 		}
-		if err := h.reprojectStream(ctx, group, events, mediaMove); err != nil {
+		if err := h.reprojectStream(ctx, group, events, move); err != nil {
 			return nil, err
 		}
 		repaired = append(repaired, group.streamID)
@@ -175,11 +182,11 @@ var errReprojectRaced = errors.New("main's read model kept moving while the resu
 // re-read and the pass repeated from the row's version. A row that vanished
 // during the pass is not re-created (see the comment at that check).
 //
-// relink, when set, is the owner transfer a media row needs after its
-// re-projection (see mediaRelink); it is made after every pass, before the
+// relink, when set, is the transfer a media or GPS row needs after its
+// re-projection (see mergeRelink); it is made after every pass, before the
 // row is checked against the log, so a racing write the transfer's save
 // rolled back is re-projected by the next pass like any other.
-func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events []repository.StoredEvent, relink *mediaRelink) error {
+func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events []repository.StoredEvent, relink *mergeRelink) error {
 	for attempt := 0; attempt < reprojectAttempts; attempt++ {
 		if attempt > 0 {
 			reread, err := h.readMainStreams(ctx, []uuid.UUID{group.streamID})
@@ -192,7 +199,7 @@ func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events
 			return err
 		}
 		if relink != nil {
-			if err := h.relinkMergedMedia(ctx, group, *relink); err != nil {
+			if err := h.relinkMerged(ctx, group, *relink); err != nil {
 				return err
 			}
 		}
@@ -275,28 +282,34 @@ func (h *Handler) streamsBehindOnMain(ctx context.Context, groups []streamGroup,
 // missingRowsRemovedElsewhere reports which missing rows were removed by a
 // write to ANOTHER stream that main's log records: a person merged into
 // another (PersonMerged), a citation whose source was deleted (the
-// source→citation cascade), or a media item whose owner was deleted (the
-// owner→media cascade, #759). Each kind is detected with one set-based scan
+// source→citation cascade), a media item whose owner was deleted (the
+// owner→media cascade, #759), or a GPS artifact whose subject was deleted (the
+// subject→GPS cascade, #760). Each kind is detected with one set-based scan
 // across all the missing streams, never a scan per stream.
 //
-// It also returns, for each missing media row whose person owner main merged
-// into a person it still has, the owner transfer its re-projection must be
-// followed by (see missingMediaCascadedAway).
+// It also returns, for each missing media row whose person owner — and each
+// missing GPS row whose subject person — main merged into a person it still
+// has, the transfer its re-projection must be followed by (see
+// missingMediaCascadedAway and missingGPSCascadedAway).
 func (h *Handler) missingRowsRemovedElsewhere(
 	ctx context.Context,
 	missing []streamGroup,
 	states map[uuid.UUID]readModelState,
 	mainEvents map[uuid.UUID][]repository.StoredEvent,
-) (map[uuid.UUID]bool, map[uuid.UUID]mediaRelink, error) {
+) (map[uuid.UUID]bool, map[uuid.UUID]mergeRelink, error) {
 	personCandidates, personsFrom := missingPersonCandidates(missing, states, mainEvents)
 	ownerOf, ownersFrom, err := missingMediaOwners(missing, states, mainEvents)
 	if err != nil {
 		return nil, nil, err
 	}
-	// One scan of main for person merges serves both consumers, starting at
-	// the earlier of their start points; each filters it to its own.
+	subjectOf, subjectsFrom, err := missingGPSSubjects(missing, states, mainEvents)
+	if err != nil {
+		return nil, nil, err
+	}
+	// One scan of main for person merges serves all three consumers, starting
+	// at the earliest of their start points; each filters it to its own.
 	var merges []personMerge
-	if scanFrom := earliestScan(personsFrom, ownersFrom); scanFrom >= 0 {
+	if scanFrom := earliestScan(earliestScan(personsFrom, ownersFrom), subjectsFrom); scanFrom >= 0 {
 		merges, err = h.personMergesOnMain(ctx, scanFrom)
 		if err != nil {
 			return nil, nil, err
@@ -311,8 +324,18 @@ func (h *Handler) missingRowsRemovedElsewhere(
 	if err != nil {
 		return nil, nil, err
 	}
-	removed := make(map[uuid.UUID]bool, len(mergedAway)+len(cascaded)+len(mediaCascaded))
-	for _, set := range []map[uuid.UUID]bool{mergedAway, cascaded, mediaCascaded} {
+	gpsCascaded, gpsRelink, err := h.missingGPSCascadedAway(ctx, missing, subjectOf, survivorsAfter(merges, subjectsFrom), subjectsFrom)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, move := range gpsRelink {
+		if relink == nil {
+			relink = make(map[uuid.UUID]mergeRelink, len(gpsRelink))
+		}
+		relink[id] = move
+	}
+	removed := make(map[uuid.UUID]bool, len(mergedAway)+len(cascaded)+len(mediaCascaded)+len(gpsCascaded))
+	for _, set := range []map[uuid.UUID]bool{mergedAway, cascaded, mediaCascaded, gpsCascaded} {
 		for id := range set {
 			removed[id] = true
 		}
@@ -381,8 +404,9 @@ func endsInDelete(events []repository.StoredEvent) bool {
 
 // mainReadModelState reads main's read-model row for a replayed aggregate. The
 // replay set holds only BR-006's branch-aware events. Those a branch can
-// actually carry live on person, family, association, source, citation, note
-// and media streams (#757 made life events and attributes branch-aware too, but
+// actually carry live on person, family, association, source, citation, note,
+// media and GPS artifact (evidence analysis, evidence conflict, research log,
+// proof summary; #760) streams (#757 made life events and attributes branch-aware too, but
 // nothing writes one on a branch yet); any other stream type means a branch
 // write path grew without this check, so it is refused rather than reported
 // as in sync.
@@ -419,12 +443,14 @@ func (h *Handler) mainReadModelState(ctx context.Context, group streamGroup) (re
 	return h.mainEvidenceState(ctx, group)
 }
 
-// mainEvidenceState is mainReadModelState for the evidence streams (#758)
-// and media (#759).
+// mainEvidenceState is mainReadModelState for the evidence streams (#758),
+// media (#759) and the GPS artifacts (#760).
 func (h *Handler) mainEvidenceState(ctx context.Context, group streamGroup) (readModelState, error) {
 	switch {
 	case isMediaStream(group.streamType):
 		return h.mainMediaState(ctx, group)
+	case isGPSStream(group.streamType):
+		return h.mainGPSState(ctx, group)
 	case isSourceStream(group.streamType):
 		source, err := h.readStore.GetSource(ctx, domain.MainBranchID, group.streamID)
 		if err != nil {

@@ -104,6 +104,10 @@ type faultyReadStore struct {
 	// Media (#759): failMedia fails the media item's own mainline save.
 	failMedia uuid.UUID
 
+	// GPS artifacts (#760): failGPS fails the artifact's own mainline save
+	// (research logs and evidence analyses).
+	failGPS uuid.UUID
+
 	beforeMainSavePerson func()
 
 	// beforeMainSaveSource, when set, runs once just before the next mainline
