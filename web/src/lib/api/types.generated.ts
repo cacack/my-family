@@ -4367,8 +4367,10 @@ export interface components {
             /**
              * @description What each side says, per contested field, in words: the value at
              *     the fork (`base_value`), the branch's (`branch_value`) and the
-             *     mainline's (`main_value`). Ids of referenced people, families,
-             *     sources and citations are resolved to their names.
+             *     mainline's (`main_value`). Ids of referenced entities (people,
+             *     families, sources, citations, evidence analyses, notes, media, a
+             *     subject or a fact owner) are resolved to their names; a list of ids
+             *     is rendered as its names joined with `; `.
              *
              *     - `edit_edit` - one entry per entry of `fields`, in the same order.
              *     - `delete_edit` - one entry per field the editing side changed; the
@@ -4399,10 +4401,16 @@ export interface components {
             /**
              * @description The value when the branch forked (its `base_position`). `null` when
              *     the field was not set then, or when the fork state could not be
-             *     read in full.
+             *     read in full - `base_unknown` tells the two apart.
              * @example Byron
              */
             base_value: string | null;
+            /**
+             * @description Present and `true` when the fork state could not be read in full
+             *     (the history is too long to replay), so `base_value` is unknown
+             *     rather than unset. Absent otherwise.
+             */
+            base_unknown?: boolean;
             /**
              * @description The branch's value. `null` when it is not set, or the branch deleted the entity.
              * @example Lovelace

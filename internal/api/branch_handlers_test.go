@@ -1746,6 +1746,9 @@ func TestCompareBranch_ConflictFieldValues(t *testing.T) {
 			t.Errorf("field_values[0].%s = %v, want %v", key, got[key], value)
 		}
 	}
+	if unknown, present := got["base_unknown"]; present {
+		t.Errorf("base_unknown = %v on a readable fork, want absent", unknown)
+	}
 }
 
 // A delete/edit conflict names the deleting side and values the editor's

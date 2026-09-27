@@ -326,8 +326,10 @@
 		color: #334155;
 	}
 
+	/* Empty, the live region stays rendered (so the first announcement is
+	   heard) but takes no space. */
 	.bulk-status:empty {
-		display: none;
+		margin: 0;
 	}
 
 	.rationale {

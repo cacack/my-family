@@ -102,8 +102,11 @@ func runEditEditConflict(t *testing.T, server *api.Server) {
 	if code := refusal["code"]; code != "merge_conflicts" {
 		t.Errorf("refusal code = %v, want merge_conflicts", code)
 	}
-	// The whole conflict list travels with the refusal, not just a count.
-	conflictFor(t, refusal, personID)
+	// The whole conflict list travels with the refusal, not just a count, and
+	// still says what each side holds (#828) - the review page replaces its
+	// list with this one.
+	assertFieldValues(t, conflictFor(t, refusal, personID), "surname", "Surname",
+		str("Original"), str("Branchside"), str("Mainside"))
 	if got := personSurname(t, server, personID, ""); got != "Mainside" {
 		t.Errorf("main surname = %q after a refused merge, want Mainside - the refusal wrote something", got)
 	}
@@ -294,6 +297,48 @@ func runRelationshipConflict(t *testing.T, server *api.Server) {
 	linked := entryField(t, optionalArray(t, family, "children"), "person_id")
 	if !contains(linked, childID) {
 		t.Errorf("main family children = %v, want the child %s - the branch resolution was not honored", linked, childID)
+	}
+}
+
+// ============================================================================
+// Referenced ids on a GPS artifact
+// ============================================================================
+
+// TestBranchConflict_EvidenceAnalysisReferences: an evidence analysis's
+// subject and cited evidence are ids. A conflict over them is shown as names
+// (#828), resolved through this backend's read model.
+func TestBranchConflict_EvidenceAnalysisReferences(t *testing.T) {
+	forEachBackend(t, runEvidenceAnalysisReferenceConflict)
+}
+
+func runEvidenceAnalysisReferenceConflict(t *testing.T, server *api.Server) {
+	t.Helper()
+
+	subject := createPerson(t, server, "Sam", "Subject")
+	other := createPerson(t, server, "Oli", "Other")
+	census := createCitation(t, server, "", createSource(t, server, "", "Census 1850"), subject)
+	parish := createCitation(t, server, "", createSource(t, server, "", "Parish register"), subject)
+	analysis := mustString(t, mustDo(t, server, http.MethodPost, "/api/v1/evidence-analyses",
+		fmt.Sprintf(`{"fact_type":"person_birth","subject_id":%q,"citation_ids":[%q],"conclusion":"Born 1820"}`, subject, census),
+		http.StatusCreated), "id")
+	analysisPath := "/api/v1/evidence-analyses/" + analysis
+
+	branchID := createBranch(t, server, "evidence-refs")
+	mustDo(t, server, http.MethodPut, scoped(analysisPath, branchID),
+		fmt.Sprintf(`{"subject_id":%q,"citation_ids":[%q,%q],"version":%d}`,
+			other, census, parish, entityVersion(t, server, analysisPath, branchID)), http.StatusOK)
+	mustDo(t, server, http.MethodPut, analysisPath,
+		fmt.Sprintf(`{"citation_ids":[%q],"version":%d}`, parish, entityVersion(t, server, analysisPath, "")), http.StatusOK)
+
+	conflict := conflictFor(t,
+		mustDo(t, server, http.MethodGet, comparePath(branchID), "", http.StatusOK), analysis)
+	if kind := conflict["kind"]; kind != "edit_edit" {
+		t.Fatalf("conflict kind = %v, want edit_edit", kind)
+	}
+	assertFieldValues(t, conflict, "citation_ids", "Citations",
+		str("Census 1850 (Birth)"), str("Census 1850 (Birth); Parish register (Birth)"), str("Parish register (Birth)"))
+	if detail, _ := conflict["detail"].(string); strings.Contains(detail, "ids") {
+		t.Errorf("detail = %q, want readable labels", detail)
 	}
 }
 

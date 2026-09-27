@@ -578,6 +578,10 @@ func convertQueryMergeConflictsToGenerated(conflicts []query.MergeConflict) []Me
 					BranchValue: v.BranchValue,
 					MainValue:   v.MainValue,
 				}
+				if v.BaseUnknown {
+					unknown := true
+					values[j].BaseUnknown = &unknown
+				}
 			}
 			out[i].FieldValues = &values
 		}

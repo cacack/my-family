@@ -143,6 +143,27 @@ type MergePlan struct {
 	// reported so a refusal can tell the caller the actual limit instead of
 	// leaving them to guess at "too large".
 	EventCap int
+
+	// diff is the loaded diff the verdict was computed from, kept so
+	// DescribeConflictValues can value the conflicts on demand (#828) without
+	// re-reading either side. The merge itself never needs the values, so
+	// PlanMerge does not compute them.
+	diff *branchDiffSources
+}
+
+// DescribeConflictValues fills FieldValues on the plan's conflicts: what each
+// side says, per contested field, in words (#828). The merge command calls it
+// only when it refuses over undecided conflicts and hands them back to the
+// reviewer; a merge that goes ahead never pays for the display-only reads. A
+// plan not built by PlanMerge (or without conflicts) is left as it is.
+func (s *BranchService) DescribeConflictValues(ctx context.Context, plan *MergePlan) error {
+	if plan == nil || plan.diff == nil || len(plan.Conflicts) == 0 {
+		return nil
+	}
+	if err := s.describeConflictValues(ctx, plan.diff, plan.Conflicts); err != nil {
+		return fmt.Errorf("describe conflicting values: %w", err)
+	}
+	return nil
 }
 
 // PlanMerge builds the merge plan for a branch: its replayable events and the
@@ -199,6 +220,7 @@ func (s *BranchService) PlanMerge(ctx context.Context, branchID uuid.UUID) (*Mer
 		BranchTruncated:    diff.branchTruncated,
 		MainTruncated:      diff.mainTruncated || tailTruncated,
 		EventCap:           maxComparisonEvents,
+		diff:               diff,
 	}, nil
 }
 
@@ -292,10 +314,6 @@ func (s *BranchService) detectConflicts(ctx context.Context, diff *branchDiffSou
 	if err := s.enrichConflictEntities(ctx, domain.BranchID(diff.branch.ID), diff.branchEvents, conflicts); err != nil {
 		return nil, false, fmt.Errorf("name conflicting entities: %w", err)
 	}
-	if err := s.describeConflictValues(ctx, diff, conflicts); err != nil {
-		return nil, false, fmt.Errorf("describe conflicting values: %w", err)
-	}
-
 	return conflicts, tailTruncated, nil
 }
 

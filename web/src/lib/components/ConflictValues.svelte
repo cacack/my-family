@@ -18,9 +18,16 @@
 
 	const values = $derived(conflict.field_values ?? []);
 
-	/** A null value in words: the deleting side's is "Deleted", any other "Not set". */
-	function missing(side: 'branch' | 'main' | 'base'): string {
-		return side !== 'base' && conflict.deleted_by === side ? 'Deleted' : 'Not set';
+	type FieldValue = NonNullable<MergeConflict['field_values']>[number];
+
+	/**
+	 * A null value in words: the deleting side's is "Deleted"; a fork value the
+	 * server could not read is "Unknown" (not "Not set", which would claim the
+	 * field was empty then); any other is "Not set".
+	 */
+	function missing(side: 'branch' | 'main' | 'base', value: FieldValue): string {
+		if (side === 'base') return value.base_unknown ? 'Unknown' : 'Not set';
+		return conflict.deleted_by === side ? 'Deleted' : 'Not set';
 	}
 </script>
 
@@ -46,21 +53,21 @@
 							{#if value.base_value != null}
 								{value.base_value}
 							{:else}
-								<span class="missing">{missing('base')}</span>
+								<span class="missing">{missing('base', value)}</span>
 							{/if}
 						</td>
 						<td class="branch" data-testid="branch-value">
 							{#if value.branch_value != null}
 								{value.branch_value}
 							{:else}
-								<span class="missing">{missing('branch')}</span>
+								<span class="missing">{missing('branch', value)}</span>
 							{/if}
 						</td>
 						<td class="main" data-testid="main-value">
 							{#if value.main_value != null}
 								{value.main_value}
 							{:else}
-								<span class="missing">{missing('main')}</span>
+								<span class="missing">{missing('main', value)}</span>
 							{/if}
 						</td>
 					</tr>

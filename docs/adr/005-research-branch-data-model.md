@@ -1010,10 +1010,16 @@ comparison.
 **A conflict says what each side says (#828).** Naming the contested fields is not enough to
 choose a side, so every `edit_edit` and `delete_edit` conflict carries `field_values`: per field,
 the value at the fork (`base_value`), the branch's and the mainline's, as display text with
-referenced people, families, sources and citations resolved to names and structural keys given
-readable labels (`children[<id>]` → "Child: <name>"). The work is set-based: one read of `main` for
-every conflicted stream rebuilds the fork state; each side is that state plus its own events,
-which the verdict already read; names come from one batched read-model lookup per type. A resolution
+referenced ids resolved to names — people, families, sources, citations, a GPS artifact's subject,
+a citation's fact owner, and id lists such as `citation_ids` or `analysis_ids` as joined names —
+and structural keys given readable labels (`children[<id>]` → "Child: <name>"). A fork state that
+could not be read in full is flagged `base_unknown` rather than reported as unset. The work is
+set-based: one read of `main` for every conflicted stream rebuilds the fork state; each side is
+that state plus its own events, which the verdict already read; names come from one batched
+read-model lookup per type, plus one set-based stream read for entities the read model does not
+name (evidence analyses, notes, media, or anything deleted since). Only the review pays for this:
+`CompareBranch` values the conflicts, and a merge values them only when it refuses and hands the
+conflicts back — planning a merge that goes ahead does no display work. A resolution
 may carry an optional `rationale` (the evidence weighed), recorded additively on `BranchMerged`
 (`resolution_rationales`) or `BranchMergeResumed` (`rationales`); older records omit it. A branch with
 no changes of its own is refused (`409 merge_empty`) rather than recorded as a merge that promoted

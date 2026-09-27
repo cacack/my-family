@@ -250,6 +250,29 @@ describe('MergeConflictResolver', () => {
 				Array.from(row.querySelectorAll('td')).map((td) => td.textContent?.trim())
 			).toEqual(['Old Chapel', 'Branch Chapel', 'Deleted']);
 		});
+
+		it("says 'Unknown', not 'Not set', for a fork value the server could not read", () => {
+			renderResolver([
+				{
+					...EDIT_EDIT,
+					field_values: [
+						{
+							field: 'surname',
+							label: 'Surname',
+							base_value: null,
+							base_unknown: true,
+							branch_value: 'Lovelace',
+							main_value: 'King'
+						}
+					]
+				}
+			]);
+
+			const row = screen.getByRole('rowheader', { name: 'Surname' }).closest('tr')!;
+			expect(
+				Array.from(row.querySelectorAll('td')).map((td) => td.textContent?.trim())
+			).toEqual(['Unknown', 'Lovelace', 'King']);
+		});
 	});
 
 	describe('bulk resolution', () => {
@@ -270,6 +293,9 @@ describe('MergeConflictResolver', () => {
 			renderResolver([EDIT_EDIT, CREATE_CREATE, DELETE_EDIT], { onresolveall });
 
 			const group = screen.getByRole('group', { name: 'Decide several at once' });
+			// The live region is rendered before its first message, so that
+			// message is announced.
+			expect(within(group).getByRole('status').textContent).toBe('');
 			await fireEvent.click(
 				within(group).getByRole('button', { name: "Take the branch's version for all" })
 			);

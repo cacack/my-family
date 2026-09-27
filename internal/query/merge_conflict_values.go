@@ -30,12 +30,17 @@ import (
 //     events are already in hand — they are the diff the verdict was computed
 //     from — so each side is the base plus its own events, folded in memory.
 //   - ONE batched read-model lookup per entity type for the referenced names
-//     (resolveEntityNamesOn), plus one more set-based read only when a
-//     referenced person has since been deleted (foldRelatedPeople).
+//     (resolveEntityNamesOn).
+//   - ONE more set-based event-store read, only when a value refers to an
+//     entity the read model does not name — a type it has no name for (an
+//     evidence analysis, a note, a media object) or an entity deleted since —
+//     which is then named from its folded stream (foldStreams).
 
 // MergeConflictField is one contested field of a conflict, valued on each side.
 // A nil value means the field is not set on that side (or, for delete_edit, the
-// side deleted the entity; see MergeConflict.DeletedBy).
+// side deleted the entity; see MergeConflict.DeletedBy). A nil BaseValue with
+// BaseUnknown set means the fork state could not be read, not that the field
+// was unset.
 type MergeConflictField struct {
 	// Field is the raw field key the conflict reports, e.g. "birth_place" or
 	// "children[<person-id>]".
@@ -46,6 +51,9 @@ type MergeConflictField struct {
 	BaseValue   *string `json:"base_value"`
 	BranchValue *string `json:"branch_value"`
 	MainValue   *string `json:"main_value"`
+	// BaseUnknown reports that the fork state could not be read in full (the
+	// read hit maxHistoryStateEvents), so BaseValue is unknown rather than unset.
+	BaseUnknown bool `json:"base_unknown,omitempty"`
 }
 
 // Display values of a child-of-family relationship.
@@ -137,10 +145,13 @@ func (s *BranchService) describeConflictValues(ctx context.Context, diff *branch
 
 	branchID := domain.BranchID(diff.branch.ID)
 	desc := &historyDescription{states: map[uuid.UUID]*streamState{}}
-	if desc.names, err = s.historyService.resolveEntityNamesOn(ctx, branchID, refs); err != nil {
+	if desc.names, err = s.historyService.resolveEntityNamesOn(ctx, branchID, refs.named); err != nil {
 		return fmt.Errorf("resolve referenced names: %w", err)
 	}
-	if err := s.historyService.foldRelatedPeople(ctx, branchID, desc, refs); err != nil {
+	// Entities the read model does not name — types it has no name for
+	// (evidence analyses, notes, media) and entities deleted since — are named
+	// from their folded streams: one set-based read for all of them.
+	if err := s.historyService.foldStreams(ctx, branchID, desc, refs.unnamedIDs(desc.names)); err != nil {
 		return err
 	}
 
@@ -159,14 +170,14 @@ func foldConflictSides(
 	conflicts []MergeConflict,
 	mainStreams map[uuid.UUID][]repository.StoredEvent,
 	baseKnown bool,
-) (map[uuid.UUID]*valuedConflict, entityRefs) {
+) (map[uuid.UUID]*valuedConflict, *conflictRefs) {
 	branchByStream := groupEventsByStreamID(diff.branchEvents)
 	mainByStream := groupEventsByStreamID(diff.mainEvents)
 	branchSides := summarizeStreams(diff.branchEvents)
 	mainSides := summarizeStreams(diff.mainEvents)
 
 	valued := make(map[uuid.UUID]*valuedConflict, len(conflicts))
-	refs := newEntityRefs()
+	refs := newConflictRefs()
 	for i := range conflicts {
 		c := &conflicts[i]
 		if !hasFieldValues(c.Kind) {
@@ -215,6 +226,7 @@ func (d *historyDescription) fillConflictValues(c *MergeConflict, v *valuedConfl
 			BaseValue:   d.conflictValue(v.base, field),
 			BranchValue: d.conflictValue(v.branch, field),
 			MainValue:   d.conflictValue(v.main, field),
+			BaseUnknown: v.base == nil,
 		}
 		switch c.DeletedBy {
 		case resolveBranchValue:
@@ -279,21 +291,133 @@ func bracketID(field, prefix string) (uuid.UUID, bool) {
 	return id, true
 }
 
-// referenceFieldTypes maps the fields whose value is another entity's id to
-// that entity's type, so the value can be shown as its name.
-var referenceFieldTypes = map[string]string{
-	"partner1_id":  entityTypePerson,
-	"partner2_id":  entityTypePerson,
-	"person_id":    entityTypePerson,
-	"associate_id": entityTypePerson,
-	"family_id":    entityTypeFamily,
-	"source_id":    entityTypeSource,
-	"citation_id":  entityTypeCitation,
+// referenceField describes a field whose value is another entity's id, or a
+// list of ids, so the value can be shown as names.
+type referenceField struct {
+	// types are the entity types the id may name. More than one means the
+	// field is polymorphic (a subject or fact owner is a person or a family);
+	// typeField, when set, is the sibling field that says which.
+	types     []string
+	typeField string
+	// list reports that the value is an array of ids.
+	list bool
+	// label overrides the humanized field name ("Citations", not "Citation
+	// ids").
+	label string
+}
+
+var (
+	personOrFamily = []string{entityTypePerson, entityTypeFamily}
+
+	// referenceFields covers every id-valued key a branch-aware Updated
+	// event's change map carries.
+	referenceFields = map[string]referenceField{
+		"partner1_id":   {types: []string{entityTypePerson}},
+		"partner2_id":   {types: []string{entityTypePerson}},
+		"person_id":     {types: []string{entityTypePerson}},
+		"associate_id":  {types: []string{entityTypePerson}},
+		"family_id":     {types: []string{entityTypeFamily}},
+		"source_id":     {types: []string{entityTypeSource}},
+		"citation_id":   {types: []string{entityTypeCitation}},
+		"media_id":      {types: []string{entityTypeMedia}},
+		"subject_id":    {types: personOrFamily, typeField: "subject_type"},
+		"fact_owner_id": {types: personOrFamily},
+		"citation_ids":  {types: []string{entityTypeCitation}, list: true, label: "Citations"},
+		"analysis_ids":  {types: []string{entityTypeEvidenceAnalysis}, list: true, label: "Evidence analyses"},
+		"note_ids":      {types: []string{entityTypeNote}, list: true, label: "Linked notes"},
+	}
+)
+
+// hasReadModelName reports whether the read model names an entity type; the
+// others are named from their folded streams (stateLabels).
+func hasReadModelName(entityType string) bool {
+	switch entityType {
+	case entityTypePerson, entityTypeFamily, entityTypeSource, entityTypeCitation:
+		return true
+	}
+	return false
+}
+
+// referenceIDs parses the ids a reference field's value holds: one id, or an
+// array of them. Anything unparseable is skipped.
+func referenceIDs(value any) []uuid.UUID {
+	parse := func(v any) (uuid.UUID, bool) {
+		text, ok := v.(string)
+		if !ok {
+			return uuid.Nil, false
+		}
+		id, err := uuid.Parse(text)
+		if err != nil || id == uuid.Nil {
+			return uuid.Nil, false
+		}
+		return id, true
+	}
+	if list, ok := value.([]any); ok {
+		ids := make([]uuid.UUID, 0, len(list))
+		for _, v := range list {
+			if id, ok := parse(v); ok {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	}
+	if id, ok := parse(value); ok {
+		return []uuid.UUID{id}
+	}
+	return nil
+}
+
+// conflictRefs is everything a batch of conflict values refers to: entities
+// the read model names (one batched lookup per type) and entities named from
+// their own streams (one set-based event-store read).
+type conflictRefs struct {
+	named   entityRefs
+	streams map[uuid.UUID]struct{}
+}
+
+func newConflictRefs() *conflictRefs {
+	return &conflictRefs{named: newEntityRefs(), streams: map[uuid.UUID]struct{}{}}
+}
+
+func (r *conflictRefs) add(entityType string, id uuid.UUID) {
+	if hasReadModelName(entityType) {
+		r.named.add(entityType, id)
+		return
+	}
+	r.streams[id] = struct{}{}
+}
+
+// unnamedIDs returns the ids the read model did not name: every stream-named
+// id, plus every read-model-named id the lookup did not find (an entity
+// deleted since). A polymorphic id is registered under several types; it is
+// unnamed only when no type found it. Sorted, so the read is deterministic.
+func (r *conflictRefs) unnamedIDs(names *entityNames) []uuid.UUID {
+	found := func(id uuid.UUID) bool {
+		return names.persons[id] != nil || names.families[id] != nil ||
+			names.sources[id] != nil || names.citations[id] != nil
+	}
+	set := make(map[uuid.UUID]struct{}, len(r.streams))
+	for id := range r.streams {
+		set[id] = struct{}{}
+	}
+	for _, ids := range r.named {
+		for id := range ids {
+			if !found(id) {
+				set[id] = struct{}{}
+			}
+		}
+	}
+	out := make([]uuid.UUID, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
+	return out
 }
 
 // registerConflictRefs registers every entity a state's contested values (and
-// their labels) refer to, so one batched lookup names them all.
-func registerConflictRefs(refs entityRefs, state *conflictState, fields []string) {
+// their labels) refer to, so the lookups that name them stay batched.
+func registerConflictRefs(refs *conflictRefs, state *conflictState, fields []string) {
 	for _, field := range fields {
 		if id, ok := bracketID(field, childFieldPrefix); ok {
 			refs.add(entityTypePerson, id)
@@ -302,12 +426,29 @@ func registerConflictRefs(refs entityRefs, state *conflictState, fields []string
 		if state == nil {
 			continue
 		}
-		if entityType, ok := referenceFieldTypes[field]; ok {
-			if id, ok := state.st.id(field); ok {
+		ref, ok := referenceFields[field]
+		if !ok {
+			continue
+		}
+		types := ref.types
+		if hint := state.st.str(ref.typeField); ref.typeField != "" && containsString(types, hint) {
+			types = []string{hint}
+		}
+		for _, id := range referenceIDs(state.st.fields[field]) {
+			for _, entityType := range types {
 				refs.add(entityType, id)
 			}
 		}
 	}
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // conflictFieldLabel renders a field key readably: "Birth place",
@@ -318,6 +459,9 @@ func (d *historyDescription) conflictFieldLabel(field string) string {
 	}
 	if _, ok := bracketID(field, nameFieldPrefix); ok {
 		return "Name"
+	}
+	if ref, ok := referenceFields[field]; ok && ref.label != "" {
+		return ref.label
 	}
 	return humanizeField(field)
 }
@@ -372,20 +516,54 @@ func (d *historyDescription) conflictValue(state *conflictState, field string) *
 	if !ok {
 		return nil
 	}
-	if entityType, isRef := referenceFieldTypes[field]; isRef {
-		if id, ok := state.st.id(field); ok {
-			return strPtr(d.referenceLabel(entityType, id))
+	if ref, isRef := referenceFields[field]; isRef {
+		if label, ok := d.referenceValue(ref, state, value); ok {
+			return label
 		}
 	}
 	return formatConflictScalar(value)
 }
 
-// referenceLabel names a referenced entity, falling back to its id.
-func (d *historyDescription) referenceLabel(entityType string, id uuid.UUID) string {
-	if entityType == entityTypePerson {
-		return d.personLabel(id)
+// referenceValue renders a reference field's value as names: one name, or a
+// list joined with "; ". ok is false when the value holds no id at all, so the
+// caller falls back to the plain rendering; an empty list is no value.
+func (d *historyDescription) referenceValue(ref referenceField, state *conflictState, value any) (*string, bool) {
+	ids := referenceIDs(value)
+	if ref.list {
+		if _, isList := value.([]any); !isList {
+			return nil, false
+		}
+		if len(ids) == 0 {
+			return nil, true
+		}
+	} else if len(ids) == 0 {
+		return nil, false
 	}
-	return d.names.name(entityType, id, nil)
+	hint := ""
+	if ref.typeField != "" {
+		hint = state.st.str(ref.typeField)
+	}
+	labels := make([]string, 0, len(ids))
+	for _, id := range ids {
+		labels = append(labels, d.referenceLabel(ref.types, hint, id))
+	}
+	return strPtr(strings.Join(labels, "; ")), true
+}
+
+// referenceLabel names a referenced entity of one of types, falling back to
+// its id. hint, when it is one of types, says which type the id names; a
+// polymorphic id without one is named by the first type that knows it.
+func (d *historyDescription) referenceLabel(types []string, hint string, id uuid.UUID) string {
+	if containsString(types, hint) {
+		types = []string{hint}
+	}
+	fallback := id.String()
+	for _, entityType := range types {
+		if label := d.name(entityType, id, nil); label != "" && label != fallback {
+			return label
+		}
+	}
+	return fallback
 }
 
 // formatConflictScalar renders a folded field value as text: strings as they

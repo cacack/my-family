@@ -278,6 +278,11 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, err
 	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
+		// The refusal hands the conflicts back for review, so they carry what
+		// each side says (#828); a merge that goes ahead never reads them.
+		if err := h.branchService.DescribeConflictValues(ctx, plan); err != nil {
+			return nil, err
+		}
 		return &MergeBranchResult{
 				Branch:    branch,
 				Conflicts: plan.Conflicts,
