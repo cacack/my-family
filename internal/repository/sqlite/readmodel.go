@@ -28,6 +28,12 @@ type ReadModelStore struct {
 	// are refused with repository.ErrBranchesUnsupported rather than failing later
 	// on an opaque constraint violation. See detectBranchCapable and issue #680.
 	branchCapable bool
+	// fts5 reports whether both full-text tables (persons_fts, person_names_fts)
+	// were created, i.e. the linked SQLite has the FTS5 module (mattn/go-sqlite3
+	// only compiles it in under the sqlite_fts5 build tag). SearchPersons uses it
+	// to pick the FTS5 or LIKE name-matching path up front, so an FTS5 error is
+	// never mistaken for "FTS5 unavailable". See tryCreateFTS5 and issue #762.
+	fts5 bool
 }
 
 // mainBranchID is the string form of domain.MainBranchID (the all-zeros UUID),
@@ -820,8 +826,9 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 	return nil
 }
 
-// tryCreateFTS5 attempts to create FTS5 virtual table for full-text search.
-// If FTS5 is not available, search will fall back to LIKE-based queries.
+// tryCreateFTS5 attempts to create FTS5 virtual table for full-text search and
+// records the outcome in s.fts5. If FTS5 is not available (mattn/go-sqlite3 built
+// without the sqlite_fts5 tag), search uses LIKE-based queries instead.
 func (s *ReadModelStore) tryCreateFTS5() {
 	// Try to create FTS5 virtual table for persons
 	_, err := s.db.Exec(`
@@ -876,7 +883,7 @@ func (s *ReadModelStore) tryCreateFTS5() {
 	`)
 
 	// Create FTS5 virtual table for person_names
-	_, _ = s.db.Exec(`
+	if _, err := s.db.Exec(`
 		CREATE VIRTUAL TABLE IF NOT EXISTS person_names_fts USING fts5(
 			given_name,
 			surname,
@@ -884,7 +891,25 @@ func (s *ReadModelStore) tryCreateFTS5() {
 			content='person_names',
 			content_rowid='rowid'
 		)
-	`)
+	`); err != nil {
+		// Without person_names_fts the FTS5 search query cannot run; leave
+		// s.fts5 false so SearchPersons takes the LIKE path.
+		return
+	}
+
+	// CREATE ... IF NOT EXISTS succeeds without loading the module when the
+	// tables already exist (a database written by an FTS5-enabled build and
+	// reopened by one without it), so probe that both tables are actually
+	// queryable before committing SearchPersons to the FTS5 path.
+	for _, probe := range []string{
+		`SELECT rowid FROM persons_fts LIMIT 0`,
+		`SELECT rowid FROM person_names_fts LIMIT 0`,
+	} {
+		if _, err := s.db.Exec(probe); err != nil {
+			return
+		}
+	}
+	s.fts5 = true
 
 	// Create triggers for person_names FTS
 	_, _ = s.db.Exec(`
@@ -1086,14 +1111,23 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return nil, nil
 }
 
-// searchPersonsFTS uses FTS5 (with LIKE fallback) combined with date/place SQL filters.
+// searchPersonsFTS matches names with FTS5 combined with date/place SQL filters.
+// It takes the LIKE path when the build has no FTS5 module, and when a fuzzy FTS5
+// search finds nothing; an FTS5 query error is returned, not masked (see
+// escapeFTS5Query for why the MATCH expression is always valid).
 func (s *ReadModelStore) searchPersonsFTS(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
 	// Build date/place filter conditions for the WHERE clause on p.*
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 
-	ftsQuery := escapeFTS5Query(opts.Query)
-	if opts.Fuzzy {
-		ftsQuery += "*"
+	if !s.fts5 {
+		return s.searchPersonsLike(ctx, opts, limit)
+	}
+
+	ftsQuery := escapeFTS5Query(opts.Query, opts.Fuzzy)
+	if ftsQuery == "" {
+		// Whitespace-only input has no token to match (FTS5 would reject an empty
+		// MATCH expression as a syntax error), so nothing can match.
+		return nil, nil
 	}
 
 	orderClause := searchOrderClause(opts, "", true)
@@ -1207,8 +1241,10 @@ func (s *ReadModelStore) searchPersonsFTS(ctx context.Context, opts repository.S
 
 	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
-		// Fallback to LIKE if FTS5 query fails (e.g., for special characters)
-		return s.searchPersonsLike(ctx, opts, limit)
+		// escapeFTS5Query always yields a syntactically valid MATCH expression, so
+		// an error here is a real failure; surface it instead of masking it as
+		// LIKE results (issue #762).
+		return nil, fmt.Errorf("search persons (fts5): %w", err)
 	}
 	defer rows.Close()
 
@@ -2921,15 +2957,49 @@ func scanFamilyRow(rows *sql.Rows) (*repository.FamilyReadModel, error) {
 	return scanFamily(rows)
 }
 
-// escapeFTS5Query escapes special characters for FTS5 queries.
-func escapeFTS5Query(query string) string {
-	// FTS5 special characters that need escaping
-	specialChars := []string{"*", "+", "-", "\"", "(", ")", ":", "^"}
-	result := query
-	for _, char := range specialChars {
-		result = strings.ReplaceAll(result, char, "\""+char+"\"")
+// escapeFTS5Query turns free-text user input into an FTS5 MATCH expression
+// that searches for the input literally (issue #762).
+//
+// The input is split on whitespace and every token is emitted as an FTS5 string
+// ("..."), with any embedded double quote doubled ("" is FTS5's only escape
+// inside a string). Inside a string no character is an operator, so *, +, -, (,
+// ), :, ^, apostrophes and bare words such as AND/OR/NOT/NEAR are all literal
+// text; the tokenizer then splits each string into terms, so O'Brien becomes the
+// phrase "o brien" and Smith-Jones the phrase "smith jones". Tokens are joined by
+// spaces, which FTS5 treats as implicit AND. A token that holds only punctuation
+// is an empty phrase and matches nothing.
+//
+// When prefix is true (fuzzy search) the FTS5 prefix operator is appended to the
+// last token, OUTSIDE its closing quote ("Zac"* rather than "Zac*"), which keeps
+// the historical fuzzy behavior of a trailing * on the query.
+//
+// It returns "" when the input has no tokens; the caller must not pass that to
+// MATCH (an empty expression is a syntax error).
+//
+// LIKE fallback decision: because every token is quoted, the result is always a
+// valid FTS5 expression, so searchPersonsFTS no longer falls back to LIKE when
+// the MATCH query errors — such an error is a real failure and is returned. The
+// LIKE path is used only when the SQLite build has no FTS5 module (decided once
+// at startup by tryCreateFTS5), and as the existing "fuzzy found nothing"
+// fallback.
+func escapeFTS5Query(query string, prefix bool) string {
+	tokens := strings.Fields(query)
+	if len(tokens) == 0 {
+		return ""
 	}
-	return result
+	var sb strings.Builder
+	for i, tok := range tokens {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteByte('"')
+		sb.WriteString(strings.ReplaceAll(tok, `"`, `""`))
+		sb.WriteByte('"')
+	}
+	if prefix {
+		sb.WriteByte('*')
+	}
+	return sb.String()
 }
 
 // soundex computes the American Soundex code for a string.

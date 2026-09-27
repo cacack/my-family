@@ -289,8 +289,14 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 		t.Fatalf("search persons: %v", err)
 	}
 
-	if len(results) != 3 { // John Doe, John Smith, Alice Johnson
-		t.Errorf("expected 3 results for 'John', got %d", len(results))
+	// FTS5 matches whole tokens (John Doe, John Smith); the LIKE path used when
+	// the build has no FTS5 is a substring match and also finds Alice Johnson.
+	wantJohn := 3
+	if store.FTS5Enabled() {
+		wantJohn = 2
+	}
+	if len(results) != wantJohn {
+		t.Errorf("expected %d results for 'John', got %d", wantJohn, len(results))
 	}
 
 	// Fuzzy search (prefix matching)
@@ -299,8 +305,8 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 		t.Fatalf("fuzzy search persons: %v", err)
 	}
 
-	if len(results) < 3 {
-		t.Errorf("expected at least 3 results for fuzzy 'Jo', got %d", len(results))
+	if len(results) != 3 { // John Doe, John Smith, Alice Johnson
+		t.Errorf("expected 3 results for fuzzy 'Jo', got %d", len(results))
 	}
 }
 
@@ -720,16 +726,16 @@ func TestReadModelStore_SearchPersons_FTS5Error(t *testing.T) {
 	}
 	store.SavePerson(ctx, domain.MainBranchID, person)
 
-	// Search with a complex FTS5 query that might fail
-	// Using quotes and special FTS5 operators can trigger errors
+	// FTS5 operator syntax in user input is searched literally (issue #762): on
+	// the FTS5 path every token is quoted, so AND is a term no name contains; on
+	// the LIKE path the whole string is a substring no name contains. Either way
+	// the query neither errors nor matches.
 	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: `"John" AND "Doe"`, Limit: 10})
 	if err != nil {
 		t.Fatalf("search persons: %v", err)
 	}
-
-	// Should still get results via fallback
-	if len(results) == 0 {
-		t.Log("No results found (fallback may have been triggered)")
+	if len(results) != 0 {
+		t.Errorf("expected 0 results for literal operator query, got %d", len(results))
 	}
 }
 
@@ -758,9 +764,8 @@ func TestReadModelStore_SearchPersons_NoFuzzyResults(t *testing.T) {
 		t.Fatalf("fuzzy search persons: %v", err)
 	}
 
-	// Shouldn't find anything
-	if len(results) > 0 {
-		t.Logf("Found %d unexpected results", len(results))
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
 	}
 }
 
@@ -789,9 +794,8 @@ func TestReadModelStore_SearchPersons_FuzzyFallback(t *testing.T) {
 		t.Fatalf("fuzzy search persons: %v", err)
 	}
 
-	// Should find the person via fuzzy matching
-	if len(results) == 0 {
-		t.Log("Fuzzy search found no results (this is okay, tests the fallback path)")
+	if len(results) != 1 || results[0].ID != personID {
+		t.Errorf("expected exactly Zachary Thompson for fuzzy 'Zac', got %d results", len(results))
 	}
 }
 
@@ -914,22 +918,33 @@ func TestReadModelStore_SearchPersons_SpecialCharacters(t *testing.T) {
 	}
 	store.SavePerson(ctx, domain.MainBranchID, person)
 
-	// Search with special FTS5 characters that might cause errors
-	// This should trigger FTS5 error and fallback to LIKE
-	testQueries := []string{
-		`Mary-Ann`,   // Hyphen
-		`O'Brien`,    // Apostrophe
-		`"Mary-Ann"`, // Quotes
-		`(Mary)`,     // Parentheses
+	// Special FTS5 characters are searched literally (issue #762). Hyphen and
+	// apostrophe names match on both paths; quote/paren-wrapped input matches on
+	// the FTS5 path (the tokenizer drops the punctuation) but not on the LIKE
+	// substring path. Full tables: search_fts5_test.go.
+	fts5 := store.FTS5Enabled()
+	wantWrapped := 0
+	if fts5 {
+		wantWrapped = 1
+	}
+	testQueries := []struct {
+		query string
+		want  int
+	}{
+		{`Mary-Ann`, 1},
+		{`O'Brien`, 1},
+		{`"Mary-Ann"`, wantWrapped},
+		{`(Mary)`, wantWrapped},
 	}
 
-	for _, query := range testQueries {
-		results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: query, Limit: 10})
+	for _, tc := range testQueries {
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: tc.query, Limit: 10})
 		if err != nil {
-			t.Fatalf("search with query %q failed: %v", query, err)
+			t.Fatalf("search with query %q failed: %v", tc.query, err)
 		}
-		// Results may or may not be found depending on FTS5/LIKE behavior
-		t.Logf("Query %q returned %d results", query, len(results))
+		if len(results) != tc.want {
+			t.Errorf("query %q (fts5=%v): expected %d results, got %d", tc.query, fts5, tc.want, len(results))
+		}
 	}
 }
 

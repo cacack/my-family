@@ -1,4 +1,4 @@
-.PHONY: help build test test-e2e fmt vet generate generate-api generate-types verify-generated clean run dev setup check-coverage lint security check check-full docker-smoke-test
+.PHONY: help build test test-fts5 test-e2e fmt vet generate generate-api generate-types verify-generated clean run dev setup check-coverage lint security check check-full docker-smoke-test
 
 # Default target
 .DEFAULT_GOAL := help
@@ -38,10 +38,19 @@ frontend: ## Build frontend only
 
 test: ## Run all tests (Go + frontend)
 	go test ./...
+	$(MAKE) test-fts5
 	cd web && npm test -- --run
 
 test-go: ## Run only Go tests
 	go test ./...
+	$(MAKE) test-fts5
+
+# mattn/go-sqlite3 compiles in FTS5 only under the sqlite_fts5 build tag, so the
+# default `go test` run exercises SearchPersons' LIKE path and skips the FTS5
+# assertions. This re-runs the SQLite store tests with FTS5 so both paths are
+# asserted (issue #762).
+test-fts5: ## Run SQLite store tests with the FTS5 search path compiled in
+	go test -tags sqlite_fts5 ./internal/repository/sqlite/...
 
 # Opt-in: not part of `make test`. Playwright boots the binary built here and
 # drives a real browser against it, so the browser must be installed first
