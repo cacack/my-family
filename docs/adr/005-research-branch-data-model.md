@@ -653,7 +653,12 @@ lands — `main` deleted it after the claim, this request resolves the stream th
 `main`, or a stream already on `main` deleted it (an owner-deleting stream counts as deleting
 *after* the upload only while it is itself still to be replayed). `main` rolls such a stream
 forward without it; `branch` is refused as a dangling reference, and a `main` resolution may not
-exclude an owner the replay creates while an upload already on `main` is attached to it. The reverse
+skip the stream of an owner `main` does not have while an upload already on `main` is attached to
+it — a stream that creates the owner, and equally one that creates *and* deletes it, whose delete
+the replay order (upload first) counts on to cascade the item away. The owner checked is the one
+`main`'s row names (a person merge on `main` moves the item to the survivor); an item `main` has
+since deleted, or cascaded away with an owner it had, leaves nothing to orphan, so deleting the
+item on `main` is the other way out. The reverse
 rule holds too: an auto-planned owner delete is pending while `main` has an item of that owner it
 wrote to after the branch's delete — typically one uploaded during the interruption — and `main`
 rolls it forward without the delete, keeping both. Landed

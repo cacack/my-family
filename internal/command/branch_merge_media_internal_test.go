@@ -7,6 +7,7 @@ package command
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -51,23 +52,32 @@ func (listMediaFailStore) ListMediaForEntity(context.Context, string, uuid.UUID,
 	return nil, 0, errors.New("listing failed")
 }
 
-// recordingEventStore records the stream set of each ReadStreamsForBranch and
-// returns the canned events, or fails when err is set.
+// recordingEventStore records the stream set, start position and limit of
+// each ReadStreamsForBranch and returns the canned events of those streams
+// after that position (capped at the limit), or fails when err is set.
 type recordingEventStore struct {
 	repository.EventStore
 	asked  [][]uuid.UUID
+	froms  []int64
+	limits []int
 	events []repository.StoredEvent
 	err    error
 }
 
-func (s *recordingEventStore) ReadStreamsForBranch(_ context.Context, ids []uuid.UUID, _ domain.BranchID, from int64, _ int) ([]repository.StoredEvent, error) {
+func (s *recordingEventStore) ReadStreamsForBranch(_ context.Context, ids []uuid.UUID, _ domain.BranchID, from int64, limit int) ([]repository.StoredEvent, error) {
 	s.asked = append(s.asked, ids)
+	s.froms = append(s.froms, from)
+	s.limits = append(s.limits, limit)
 	if s.err != nil {
 		return nil, s.err
 	}
+	asked := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		asked[id] = true
+	}
 	var out []repository.StoredEvent
 	for _, evt := range s.events {
-		if evt.Position > from {
+		if asked[evt.StreamID] && evt.Position > from && len(out) < limit {
 			out = append(out, evt)
 		}
 	}
@@ -75,8 +85,10 @@ func (s *recordingEventStore) ReadStreamsForBranch(_ context.Context, ids []uuid
 }
 
 // checkOwnerDeleteOrphansNoMedia lists the owner's main media page by page,
-// reads every candidate's main history in ONE set-based scan, and refuses only
-// an item main wrote to after the branch's delete. Failures to read either
+// asks in ONE set-based query for the first main event on any candidate after
+// the branch's delete — never the candidates' histories, whose MediaCreated
+// events carry the file bytes — and refuses only an item main wrote to after
+// that delete. Failures to read either
 // side are errors, not refusals.
 func TestCheckOwnerDeleteOrphansNoMedia(t *testing.T) {
 	ctx := context.Background()
@@ -105,14 +117,18 @@ func TestCheckOwnerDeleteOrphansNoMedia(t *testing.T) {
 	if len(events.asked) != 1 || len(events.asked[0]) != len(ids) {
 		t.Fatalf("scans = %d (first of %d streams), want one scan of all %d items", len(events.asked), len(events.asked[0]), len(ids))
 	}
+	if events.froms[0] != 100 || events.limits[0] != 1 {
+		t.Errorf("scan from %d limit %d, want only the first event after the delete (from 100, limit 1)", events.froms[0], events.limits[0])
+	}
 
 	late := ids[len(ids)-1]
 	events.events = []repository.StoredEvent{
 		{StreamID: ids[0], EventType: "MediaCreated", Position: 50},
 		{StreamID: late, EventType: "MediaCreated", Position: 150},
 	}
-	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, nil); !errors.Is(err, ErrMergeDanglingReference) {
-		t.Errorf("item uploaded after the branch's delete: err = %v, want ErrMergeDanglingReference", err)
+	err := h.checkOwnerDeleteOrphansNoMedia(ctx, deleting, nil)
+	if !errors.Is(err, ErrMergeDanglingReference) || !strings.Contains(err.Error(), late.String()) {
+		t.Errorf("item uploaded after the branch's delete: err = %v, want ErrMergeDanglingReference naming %s", err, late)
 	}
 	// The same item carried by the replay is the replay's business.
 	replayed := map[uuid.UUID]streamGroup{late: mediaUploadGroup(late, "person", owner)}

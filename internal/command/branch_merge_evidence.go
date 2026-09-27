@@ -335,14 +335,6 @@ var mediaOwnerDeleteEvents = map[string]string{
 	"source": "SourceDeleted",
 }
 
-// mediaOwnerCreateEvents maps a media owner's entity type to the event that
-// creates that owner.
-var mediaOwnerCreateEvents = map[string]string{
-	"person": "PersonCreated",
-	"family": "FamilyCreated",
-	"source": "SourceCreated",
-}
-
 // isMediaStream reports whether a stream type is a media item's ("Media" from
 // commands, "media" from GEDCOM import).
 func isMediaStream(streamType string) bool {
@@ -388,16 +380,6 @@ func groupDeletes(group streamGroup, eventType string) bool {
 		}
 	}
 	return false
-}
-
-// createsMediaOwner reports whether a replay group leaves the given media owner
-// in existence on main by itself: it creates the owner and does not delete it.
-func createsMediaOwner(group streamGroup, entityType string) bool {
-	createEvent, known := mediaOwnerCreateEvents[entityType]
-	if !known || groupDeletes(group, mediaOwnerDeleteEvents[entityType]) {
-		return false
-	}
-	return groupDeletes(group, createEvent)
 }
 
 // checkMediaOwnerSurvives refuses a replayed media upload whose owner will not
@@ -571,7 +553,9 @@ func ownerDeleteOf(group streamGroup) (entityType string, deletedAt int64, ok bo
 // staleness pin) already puts in front of the caller.
 //
 // The work is one media listing per owner-deleting stream and one set-based
-// scan of the listed items' main streams — never a read per item.
+// query for the first main event on the listed items' streams after the
+// branch's delete — never a read per item, and never the items' histories
+// (whose MediaCreated events carry the file bytes).
 func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup) error {
 	entityType, deletedAt, ok := ownerDeleteOf(group)
 	if !ok {
@@ -596,20 +580,21 @@ func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group stre
 	if len(candidates) == 0 {
 		return nil
 	}
-	events, err := h.readMainStreams(ctx, candidates)
+	// Any main event on a candidate's stream after the branch's delete refuses
+	// the merge, so one query for the first such event across all candidates
+	// answers the question. The limit of one keeps it from materializing the
+	// items' histories: a MediaCreated carries the file and thumbnail bytes,
+	// and only an offending event's position and type are needed.
+	later, err := h.eventStore.ReadStreamsForBranch(ctx, candidates, domain.MainBranchID, deletedAt, 1)
 	if err != nil {
-		return err
+		return fmt.Errorf("checking main changes to media of %s %s: %w", entityType, group.streamID, err)
 	}
-	for _, mediaID := range candidates {
-		for _, evt := range events[mediaID] {
-			if evt.Position <= deletedAt {
-				continue
-			}
-			return fmt.Errorf(
-				"%w: the branch deletes %s %s, but main's media %s attached to it changed after that delete "+
-					"(%s at position %d), so the branch never saw it; merging would delete it from main with no record",
-				ErrMergeDanglingReference, entityType, group.streamID, mediaID, evt.EventType, evt.Position)
-		}
+	if len(later) == 0 {
+		return nil
 	}
-	return nil
+	evt := later[0]
+	return fmt.Errorf(
+		"%w: the branch deletes %s %s, but main's media %s attached to it changed after that delete "+
+			"(%s at position %d), so the branch never saw it; merging would delete it from main with no record",
+		ErrMergeDanglingReference, entityType, group.streamID, evt.StreamID, evt.EventType, evt.Position)
 }

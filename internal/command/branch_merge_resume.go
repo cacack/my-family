@@ -857,7 +857,7 @@ func (h *Handler) validateResumeReferences(
 // streams about to be replayed must pass checkEvidence (the citation, source
 // and media-owner rules), and this call's own "main" resolution may not
 // exclude a source the replay creates while a citation already on main cites
-// it, nor a media owner the replay creates while a media upload already on
+// it, nor a media owner main does not have while a media upload already on
 // main is attached to it (checkLandedMediaOwners).
 func (h *Handler) validateResumeEvidence(
 	ctx context.Context,
@@ -911,7 +911,7 @@ func (h *Handler) validateResumeEvidence(
 				ErrMergeDanglingReference, group.streamID, outcome.sourceID)
 		}
 	}
-	return h.checkLandedMediaOwners(ctx, groups, byID, view, resolutions)
+	return h.checkLandedMediaOwners(ctx, groups, view, resolutions)
 }
 
 // personsCreatedByReplay returns the persons whose replay group creates them

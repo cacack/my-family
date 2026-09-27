@@ -254,26 +254,47 @@ func (h *Handler) mainMediaState(ctx context.Context, group streamGroup) (readMo
 }
 
 // checkLandedMediaOwners is the media half of validateResumeEvidence's
-// landed-stream check: a media upload already on main may not lose its owner
-// to this call's own "main" resolution of the stream that creates that owner.
-// Decisions recorded earlier were checked when they were made, and an owner
-// main itself removed later is main's change (its delete cascaded the item).
+// landed-stream check: a media upload already on main may not be left attached
+// to an owner main does not have because this call resolves that owner's
+// stream to "main" (skipping it). That covers a stream that creates the owner
+// and also one that creates AND deletes it: moveMediaBeforeOwnerDelete lands
+// the upload ahead of such a stream and counts on its delete to cascade the
+// item away, so skipping it leaves the item on main attached to an owner main
+// never had.
+//
+// The owner checked is the one main's row now names (a person merge on main
+// moves the item to the survivor); with no main row, it is the one the upload
+// attached the item to, since a resume's repair would re-project the item
+// there — unless main's log explains the row's absence (view.removed: main
+// deleted the item, or deleted an owner it had and cascaded it), which leaves
+// nothing to orphan. Decisions recorded earlier were checked when they were
+// made. A refused caller can resolve the owner's stream to branch, or delete
+// the item on main first.
 func (h *Handler) checkLandedMediaOwners(
 	ctx context.Context,
 	groups []streamGroup,
-	byID map[uuid.UUID]streamGroup,
 	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
 ) error {
 	for _, group := range groups {
-		if !view.landed[group.streamID] {
+		if !view.landed[group.streamID] || view.removed[group.streamID] {
 			continue
 		}
 		entityType, entityID, ok, err := mediaUploadOf(group)
 		if err != nil {
 			return err
 		}
-		if !ok || resolutions[entityID] != ResolveMain || !createsMediaOwner(byID[entityID], entityType) {
+		if !ok {
+			continue
+		}
+		row, err := h.readStore.GetMedia(ctx, domain.MainBranchID, group.streamID)
+		if err != nil {
+			return fmt.Errorf("reading main media %s: %w", group.streamID, err)
+		}
+		if row != nil {
+			entityType, entityID = row.EntityType, row.EntityID
+		}
+		if resolutions[entityID] != ResolveMain {
 			continue
 		}
 		exists, err := h.mediaOwnerOnMain(ctx, entityType, entityID)
@@ -283,7 +304,8 @@ func (h *Handler) checkLandedMediaOwners(
 		if !exists {
 			return fmt.Errorf(
 				"%w: media %s is already on main and is attached to %s %s, which main does not have; "+
-					"resolving that %s to main would leave the media orphaned — resolve it to branch instead",
+					"resolving that %s to main would leave the media orphaned — resolve it to branch instead, "+
+					"or delete the media on main first",
 				ErrMergeDanglingReference, group.streamID, entityType, entityID, entityType)
 		}
 	}
