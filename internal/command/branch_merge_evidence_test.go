@@ -308,3 +308,109 @@ func TestMergeBranch_SourceDeleteAfterDeletingMainCitationMerges(t *testing.T) {
 		t.Errorf("main GetSource = %+v, %v; want deleted", got, err)
 	}
 }
+
+// A branch cites main's source, then creates a second source and re-points the
+// citation at it. The citation stream is touched first, so a first-touch replay
+// would move the citation before the new source exists on main: the citation
+// would keep the old title and the new source's count would never be bumped.
+func TestMergeBranch_CitationRepointedAtLaterBranchSourceKeepsTitleAndCounts(t *testing.T) {
+	e := newEvidenceFixture(t)
+	ctx := context.Background()
+	scoped := e.f.handler.WithBranch(e.branch)
+
+	cit := e.cite(t, scoped, e.source)
+	later, err := scoped.CreateSource(ctx, command.CreateSourceInput{SourceType: "census", Title: "1900 Census"})
+	if err != nil {
+		t.Fatalf("branch CreateSource failed: %v", err)
+	}
+	if _, err := scoped.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID: cit.ID, SourceID: &later.ID, Version: cit.Version,
+	}); err != nil {
+		t.Fatalf("branch UpdateCitation failed: %v", err)
+	}
+
+	if _, err := e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: e.branch.ID}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	got, err := e.f.readStore.GetCitation(ctx, domain.MainBranchID, cit.ID)
+	if err != nil || got == nil {
+		t.Fatalf("main GetCitation = %v, %v", got, err)
+	}
+	if got.SourceID != later.ID || got.SourceTitle != "1900 Census" {
+		t.Errorf("main citation = source %s %q, want %s %q", got.SourceID, got.SourceTitle, later.ID, "1900 Census")
+	}
+	for id, want := range map[uuid.UUID]int{e.source: 0, later.ID: 1} {
+		src, err := e.f.readStore.GetSource(ctx, domain.MainBranchID, id)
+		if err != nil || src == nil {
+			t.Fatalf("main GetSource(%s) = %v, %v", id, src, err)
+		}
+		if src.CitationCount != want {
+			t.Errorf("main source %q citation_count = %d, want %d", src.Title, src.CitationCount, want)
+		}
+	}
+}
+
+// A branch edits a source first, then re-points main's only citation of it
+// elsewhere and deletes it. The source stream is touched first, so a
+// first-touch replay would delete the source — cascading onto main's citation —
+// before the re-point lands, losing the citation.
+func TestMergeBranch_SourceTouchedBeforeRepointIsDeletedAfterIt(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+	person, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	doomed, err := f.handler.CreateSource(ctx, command.CreateSourceInput{SourceType: "census", Title: "1880 Census"})
+	if err != nil {
+		t.Fatalf("CreateSource failed: %v", err)
+	}
+	keeper, err := f.handler.CreateSource(ctx, command.CreateSourceInput{SourceType: "book", Title: "Parish Register"})
+	if err != nil {
+		t.Fatalf("CreateSource failed: %v", err)
+	}
+	cit, err := f.handler.CreateCitation(ctx, command.CreateCitationInput{
+		SourceID: doomed.ID, FactType: string(domain.FactPersonBirth), FactOwnerID: person.ID,
+	})
+	if err != nil {
+		t.Fatalf("CreateCitation failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "consolidate-late", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	e := evidenceFixture{f: f, branch: branch, person: person.ID, source: doomed.ID}
+	scoped := f.handler.WithBranch(branch)
+
+	retitle := "1880 Census (dup)"
+	if _, err := scoped.UpdateSource(ctx, command.UpdateSourceInput{
+		ID: doomed.ID, Title: &retitle, Version: doomed.Version,
+	}); err != nil {
+		t.Fatalf("branch UpdateSource failed: %v", err)
+	}
+	if _, err := scoped.UpdateCitation(ctx, command.UpdateCitationInput{
+		ID: cit.ID, SourceID: &keeper.ID, Version: cit.Version,
+	}); err != nil {
+		t.Fatalf("branch UpdateCitation failed: %v", err)
+	}
+	e.deleteSource(t, scoped, domain.BranchID(branch.ID), doomed.ID)
+
+	if _, err := f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	got, err := f.readStore.GetCitation(ctx, domain.MainBranchID, cit.ID)
+	if err != nil || got == nil {
+		t.Fatalf("main GetCitation = %v, %v; want the re-pointed citation to survive", got, err)
+	}
+	if got.SourceID != keeper.ID || got.SourceTitle != "Parish Register" {
+		t.Errorf("main citation = source %s %q, want %s %q", got.SourceID, got.SourceTitle, keeper.ID, "Parish Register")
+	}
+	kept, err := f.readStore.GetSource(ctx, domain.MainBranchID, keeper.ID)
+	if err != nil || kept == nil || kept.CitationCount != 1 {
+		t.Fatalf("main keeper source = %+v, %v; want citation_count 1", kept, err)
+	}
+	gone, err := f.readStore.GetSource(ctx, domain.MainBranchID, doomed.ID)
+	if err != nil || gone != nil {
+		t.Errorf("main GetSource(doomed) = %+v, %v; want deleted", gone, err)
+	}
+}

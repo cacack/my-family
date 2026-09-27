@@ -811,6 +811,14 @@ count forks the source onto the branch rather than touching main's row. On merge
 re-derived: the replayed `CitationCreated` bumps main's count and denormalizes main's title at that
 point in the log.
 
+*Merge replays sources around citations, not in first-touch order.* The replay is one append per
+stream, so re-deriving only works if each citation stream lands while the sources it names are in
+the right state on main. `orderEvidenceForReplay` puts every surviving source stream first (a
+citation re-pointed at a source the branch created later still finds it, with its title and count)
+and every source stream that ends in `SourceDeleted` last (the store's source→citation cascade then
+runs only after every replayed citation has moved off or been deleted). All other streams keep
+their first-touch order. Sources reference no other replayed aggregate, so the move is safe.
+
 *Known consequence — a stale source view on the branch.* That fork is a side effect of creating,
 re-pointing or deleting a *citation*, not of editing the source, yet it writes a full copy-on-write
 row of the source (title, author, repository, …) on the branch, and a branch row always wins the

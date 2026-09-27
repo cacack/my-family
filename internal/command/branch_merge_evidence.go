@@ -57,6 +57,51 @@ func citationOutcomeOf(group streamGroup) (citationOutcome, error) {
 	return out, nil
 }
 
+// orderEvidenceForReplay reorders the replay's stream groups so that citation
+// replay never runs against a source in the wrong state (#758).
+//
+// The replay is one Append per stream, so a citation stream's events all land
+// before or all land after a source stream's. The projection resolves a
+// citation's source on main at the moment the citation event lands: to bump
+// that source's citation_count and denormalize its title. The branch's own
+// first-touch order gets both halves of that wrong:
+//
+//   - A citation re-pointed (or created) at a source the branch created after
+//     first touching the citation would replay before that source exists on
+//     main — the citation moves but keeps the old title, and the new source's
+//     count is never bumped.
+//
+//   - A source the branch deletes after re-pointing main's citation away from
+//     it, but touched before that citation, would replay first — and the
+//     store's source→citation cascade would delete main's citation before its
+//     re-point lands.
+//
+// So: every source stream that survives the replay goes first (the citations
+// can then find it), every source stream that ends deleted goes last (by then
+// every citation has left it, which checkSourceDeleteOrphansNothing and the
+// branch's ErrSourceHasCitations guard ensure), and all other streams keep
+// their relative first-touch order in between. Sources do not reference any
+// other replayed aggregate, so moving them cannot break another ordering.
+func orderEvidenceForReplay(groups []streamGroup) []streamGroup {
+	ordered := make([]streamGroup, 0, len(groups))
+	var middle, last []streamGroup
+	for _, group := range groups {
+		switch {
+		case group.streamType != sourceStreamType:
+			middle = append(middle, group)
+		case groupDeletesSource(group):
+			last = append(last, group)
+		default:
+			ordered = append(ordered, group)
+		}
+	}
+	ordered = append(ordered, middle...)
+	return append(ordered, last...)
+}
+
+// sourceStreamType is the stream type the command layer writes sources under.
+const sourceStreamType = "Source"
+
 // groupDeletesSource reports whether a stream's replay deletes its source.
 func groupDeletesSource(group streamGroup) bool {
 	for _, evt := range group.events {

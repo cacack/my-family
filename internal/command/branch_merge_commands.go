@@ -262,7 +262,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 			ErrMainTooFarAheadToMerge, plan.EventCap, branch.ID)
 	}
 
-	groups := groupEventsByStream(plan.ReplayEvents)
+	groups := orderEvidenceForReplay(groupEventsByStream(plan.ReplayEvents))
 	if err := validateResolutions(input.Resolutions, groups); err != nil {
 		return nil, err
 	}
