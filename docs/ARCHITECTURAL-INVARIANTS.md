@@ -157,9 +157,10 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > they do cover the command layer resolves its reads through the branch overlay too, so a branch is
 > fully editable rather than write-once — see the branch column of
 > [INTEGRATION-MATRIX.md](./INTEGRATION-MATRIX.md#entity-status-matrix). GEDCOM import/export,
-> rollback, and per-entity history stay main-only by design — `ReadByStream` is branch-filtered so
-> branch edits never leak into an entity's mainline audit trail, and the history endpoints expose no
-> `?branch=` parameter yet.
+> and rollback stay main-only by design. `ReadByStream` is branch-filtered so branch edits never leak
+> into an entity's mainline audit trail; person and family history take `?branch=` for the
+> branch's own view of the stream (#824, `HistoryService.GetEntityHistoryOn`), and rollback and
+> restore points refuse `?branch=` with 409 (`TestRollback_RefusedOnBranch`, `internal/api`).
 >
 > **Implementation status (#55):** BR-004 is realized and verified. `Handler.MergeBranch`
 > (`internal/command/branch_merge_commands.go`) replays a branch's mutation events onto `main`

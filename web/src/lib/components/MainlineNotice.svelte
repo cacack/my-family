@@ -60,10 +60,13 @@
 	 * media gallery on person detail pages follows the branch too (since #759),
 	 * and so does the evidence panel (since #760).
 	 *
-	 * Known gaps still open: `/descendancy/{id}`, `/relationship`, and the
-	 * panels on person and family detail pages that are not themselves scoped —
-	 * change history and restore points. All of them answer from the mainline
-	 * today; none of them says so.
+	 * Known gaps still open: `/descendancy/{id}` and `/relationship` (#829).
+	 * Both answer from the mainline today; neither says so.
+	 *
+	 * The history panels on person and family detail pages follow the branch
+	 * (#824), labelling each entry as the branch's own or inherited from the
+	 * mainline. Restore points and rollback are mainline-only (ADR-005), so those
+	 * pages withdraw them on a branch rather than labelling them.
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 

@@ -552,7 +552,20 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get change history for a person */
+        /**
+         * Get change history for a person
+         * @description Returns the person's change history, oldest first. Without `?branch=` it is
+         *     the mainline's history of the person's stream.
+         *
+         *     With `?branch=` it is the history of the person *as that branch sees it*
+         *     (ADR-005): the branch's own events for the stream plus the mainline
+         *     events its view inherits. The overlay is live, so until the branch first
+         *     writes the person every mainline event is inherited; from that write on,
+         *     the branch keeps its own copy and later mainline events are not part of
+         *     its view (they surface in the branch compare and at merge). Each entry
+         *     carries `origin` (`branch` or `main`). A person that exists only on the
+         *     branch has only branch entries; one the branch deleted is not found.
+         */
         get: operations["getPersonHistory"];
         put?: never;
         post?: never;
@@ -571,7 +584,20 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get change history for a family */
+        /**
+         * Get change history for a family
+         * @description Returns the family's change history, oldest first. Without `?branch=` it is
+         *     the mainline's history of the family's stream.
+         *
+         *     With `?branch=` it is the history of the family *as that branch sees it*
+         *     (ADR-005): the branch's own events for the stream plus the mainline
+         *     events its view inherits. The overlay is live, so until the branch first
+         *     writes the family every mainline event is inherited; from that write on,
+         *     the branch keeps its own copy and later mainline events are not part of
+         *     its view (they surface in the branch compare and at merge). Each entry
+         *     carries `origin` (`branch` or `main`). A family that exists only on the
+         *     branch has only branch entries; one the branch deleted is not found.
+         */
         get: operations["getFamilyHistory"];
         put?: never;
         post?: never;
@@ -611,7 +637,10 @@ export interface paths {
         };
         /**
          * Get restore points for a person
-         * @description Returns a list of versions to which the person can be rolled back
+         * @description Returns a list of versions to which the person can be rolled back.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         get: operations["getPersonRestorePoints"];
         put?: never;
@@ -635,7 +664,10 @@ export interface paths {
         put?: never;
         /**
          * Rollback a person to a previous version
-         * @description Restores the person's data to match the state at the specified version
+         * @description Restores the person's data to match the state at the specified version.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         post: operations["rollbackPerson"];
         delete?: never;
@@ -655,7 +687,10 @@ export interface paths {
         };
         /**
          * Get restore points for a family
-         * @description Returns a list of versions to which the family can be rolled back
+         * @description Returns a list of versions to which the family can be rolled back.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         get: operations["getFamilyRestorePoints"];
         put?: never;
@@ -679,7 +714,10 @@ export interface paths {
         put?: never;
         /**
          * Rollback a family to a previous version
-         * @description Restores the family's data to match the state at the specified version
+         * @description Restores the family's data to match the state at the specified version.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         post: operations["rollbackFamily"];
         delete?: never;
@@ -699,7 +737,10 @@ export interface paths {
         };
         /**
          * Get restore points for a source
-         * @description Returns a list of versions to which the source can be rolled back
+         * @description Returns a list of versions to which the source can be rolled back.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         get: operations["getSourceRestorePoints"];
         put?: never;
@@ -723,7 +764,10 @@ export interface paths {
         put?: never;
         /**
          * Rollback a source to a previous version
-         * @description Restores the source's data to match the state at the specified version
+         * @description Restores the source's data to match the state at the specified version.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         post: operations["rollbackSource"];
         delete?: never;
@@ -743,7 +787,10 @@ export interface paths {
         };
         /**
          * Get restore points for a citation
-         * @description Returns a list of versions to which the citation can be rolled back
+         * @description Returns a list of versions to which the citation can be rolled back.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         get: operations["getCitationRestorePoints"];
         put?: never;
@@ -767,7 +814,10 @@ export interface paths {
         put?: never;
         /**
          * Rollback a citation to a previous version
-         * @description Restores the citation's data to match the state at the specified version
+         * @description Restores the citation's data to match the state at the specified version.
+         *
+         *     Rollback is mainline-only (ADR-005): with `?branch=` the request is
+         *     refused with 409 `rollback_mainline_only` and nothing is read or written.
          */
         post: operations["rollbackCitation"];
         delete?: never;
@@ -3147,6 +3197,13 @@ export interface components {
             };
             /** @description ID of user who made the change (null if single-user) */
             user_id?: string;
+            /**
+             * @description Set only on branch-scoped entity history (`?branch=`): `branch` for
+             *     the branch's own events, `main` for the mainline events its view
+             *     inherits (ADR-005). Absent everywhere else.
+             * @enum {string}
+             */
+            origin?: "main" | "branch";
         };
         FieldChange: {
             /** @description Previous value (null for new fields) */
@@ -6088,6 +6145,15 @@ export interface operations {
             query?: {
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
             };
             header?: never;
             path: {
@@ -6114,6 +6180,15 @@ export interface operations {
             query?: {
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
             };
             header?: never;
             path: {
@@ -6166,6 +6241,15 @@ export interface operations {
             query?: {
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
             };
             header?: never;
             path: {
@@ -6211,11 +6295,33 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            /**
+             * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+             *     points are mainline-only
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     rollbackPerson: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -6256,7 +6362,10 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot rollback deleted entity */
+            /**
+             * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+             *     (`rollback_mainline_only`), or the branch is not active
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6272,6 +6381,15 @@ export interface operations {
             query?: {
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
             };
             header?: never;
             path: {
@@ -6291,11 +6409,33 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            /**
+             * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+             *     points are mainline-only
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     rollbackFamily: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["familyId"];
@@ -6319,7 +6459,10 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot rollback deleted entity */
+            /**
+             * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+             *     (`rollback_mainline_only`), or the branch is not active
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6335,6 +6478,15 @@ export interface operations {
             query?: {
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
             };
             header?: never;
             path: {
@@ -6354,11 +6506,33 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            /**
+             * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+             *     points are mainline-only
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     rollbackSource: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6382,7 +6556,10 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot rollback deleted entity */
+            /**
+             * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+             *     (`rollback_mainline_only`), or the branch is not active
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6398,6 +6575,15 @@ export interface operations {
             query?: {
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
             };
             header?: never;
             path: {
@@ -6417,11 +6603,33 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            /**
+             * @description A `?branch=` scope was supplied (`rollback_mainline_only`): restore
+             *     points are mainline-only
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     rollbackCitation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -6445,7 +6653,10 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot rollback deleted entity */
+            /**
+             * @description Cannot rollback a deleted entity; or a `?branch=` scope was supplied
+             *     (`rollback_mainline_only`), or the branch is not active
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -138,9 +138,10 @@ const TEXT_SEGMENT = '[^/]+';
  * sub-issue B (#757) — the cemetery index and the association endpoints — and
  * the evidence of sub-issue C (#758): sources (including search), citations
  * and notes, and the media of sub-issue D (#759): metadata CRUD, the person's
- * media list and upload, and the content and thumbnail reads. Source and
- * citation history, restore points and rollback stay mainline-only, as
- * rollback does for every entity. The
+ * media list and upload, and the content and thumbnail reads. Person and
+ * family history follow the branch (#824); source history stays mainline-only.
+ * Restore points and rollback carry the scope only to be refused: rollback is
+ * mainline-only for every entity (ADR-005). The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -217,7 +218,26 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{ methods: ['GET'], pattern: new RegExp(`^/research-logs/by-subject/${UUID_SEGMENT}$`) },
 	{ methods: ['GET', 'POST'], pattern: new RegExp('^/proof-summaries$') },
 	{ methods: ['GET'], pattern: new RegExp('^/proof-summaries/by-fact$') },
-	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/proof-summaries/${UUID_SEGMENT}$`) }
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/proof-summaries/${UUID_SEGMENT}$`) },
+	// Person and family history (#823, #824): the branch's view of the stream,
+	// each entry labelled with its `origin` (the branch's own, or inherited from
+	// the mainline).
+	{ methods: ['GET'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/history$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/families/${UUID_SEGMENT}/history$`) },
+	// Restore points and rollback declare the scope only so the server can
+	// REFUSE it (409 `rollback_mainline_only`, #824): rollback stays mainline-only
+	// (ADR-005). The pages hide these controls on a branch; forwarding the scope
+	// makes any call that slips through fail instead of rewriting the mainline.
+	{
+		methods: ['GET'],
+		pattern: new RegExp(
+			`^/(persons|families|sources|citations)/${UUID_SEGMENT}/restore-points$`
+		)
+	},
+	{
+		methods: ['POST'],
+		pattern: new RegExp(`^/(persons|families|sources|citations)/${UUID_SEGMENT}/rollback$`)
+	}
 ];
 
 /**
@@ -1040,6 +1060,11 @@ export interface ChangeEntry {
 	action: 'created' | 'updated' | 'deleted';
 	changes?: Record<string, FieldChange>;
 	user_id?: string;
+	/**
+	 * Set only on branch-scoped person/family history: `branch` for the branch's
+	 * own events, `main` for the mainline events its view inherits.
+	 */
+	origin?: 'main' | 'branch';
 }
 
 export interface ChangeHistoryResponse {
@@ -1055,7 +1080,7 @@ export interface ChangeHistoryResponse {
  *
  * ## Ambient branch scope
  *
- * Sixteen of the methods below are **branch-scoped**: they answer from, and
+ * Many of the methods below are **branch-scoped**: they answer from, and
  * write to, whichever research branch is currently active rather than the
  * mainline. That branch is module-level state, set by
  * `setClientBranch`/`getClientBranch` and driven in practice by `switchBranch`
@@ -1068,8 +1093,10 @@ export interface ChangeHistoryResponse {
  * `branchScope` parameter in `internal/api/openapi.yaml` and pinned to it by a
  * test in `client.test.ts`. Every other method here is mainline-only whatever
  * branch is active — including `mergePersons` and the brick-wall setters, whose
- * pages therefore withdraw their controls while a branch is active. Individual
- * scoped methods are marked below.
+ * pages therefore withdraw their controls while a branch is active. The
+ * restore-point and rollback methods forward the scope only for the server to
+ * refuse it (rollback is mainline-only, ADR-005), so their pages withdraw those
+ * controls too. Individual scoped methods are marked below.
  */
 class ApiClient {
 	private async request<T>(
@@ -1786,6 +1813,7 @@ class ApiClient {
 		return this.request<ChangeHistoryResponse>('GET', `/history${query ? `?${query}` : ''}`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getPersonHistory(
 		personId: string,
 		params?: { limit?: number; offset?: number }
@@ -1801,6 +1829,7 @@ class ApiClient {
 		);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getFamilyHistory(
 		familyId: string,
 		params?: { limit?: number; offset?: number }
@@ -1921,6 +1950,7 @@ class ApiClient {
 	}
 
 	// Rollback endpoints
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async getPersonRestorePoints(
 		personId: string,
 		params?: { limit?: number; offset?: number }
@@ -1936,12 +1966,14 @@ class ApiClient {
 		);
 	}
 
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async rollbackPerson(personId: string, targetVersion: number): Promise<RollbackResponse> {
 		return this.request<RollbackResponse>('POST', `/persons/${personId}/rollback`, {
 			target_version: targetVersion
 		});
 	}
 
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async getFamilyRestorePoints(
 		familyId: string,
 		params?: { limit?: number; offset?: number }
@@ -1957,12 +1989,14 @@ class ApiClient {
 		);
 	}
 
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async rollbackFamily(familyId: string, targetVersion: number): Promise<RollbackResponse> {
 		return this.request<RollbackResponse>('POST', `/families/${familyId}/rollback`, {
 			target_version: targetVersion
 		});
 	}
 
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async getSourceRestorePoints(
 		sourceId: string,
 		params?: { limit?: number; offset?: number }
@@ -1978,12 +2012,14 @@ class ApiClient {
 		);
 	}
 
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async rollbackSource(sourceId: string, targetVersion: number): Promise<RollbackResponse> {
 		return this.request<RollbackResponse>('POST', `/sources/${sourceId}/rollback`, {
 			target_version: targetVersion
 		});
 	}
 
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async getCitationRestorePoints(
 		citationId: string,
 		params?: { limit?: number; offset?: number }
@@ -1999,6 +2035,7 @@ class ApiClient {
 		);
 	}
 
+	/** Mainline-only: on an active branch the server refuses it (409 `rollback_mainline_only`). */
 	async rollbackCitation(citationId: string, targetVersion: number): Promise<RollbackResponse> {
 		return this.request<RollbackResponse>('POST', `/citations/${citationId}/rollback`, {
 			target_version: targetVersion

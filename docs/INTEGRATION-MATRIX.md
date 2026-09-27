@@ -336,10 +336,23 @@ artifacts:
 | `deleteProofSummary` | DELETE | `/proof-summaries/{id}` |
 | `getProofSummaryByFact` | GET | `/proof-summaries/by-fact` |
 
-That is **76 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+[#824](https://github.com/cacack/my-family/issues/824) added ten more. The two history reads return
+the branch's view of the entity's stream, each entry labelled `origin` (`branch` or `main`). The
+eight restore-point and rollback operations declare the scope **only to refuse it** with 409
+`rollback_mainline_only`, because rollback stays mainline-only
+([ADR-005, "Entity history and rollback on a branch"](./adr/005-research-branch-data-model.md#implementation-note--entity-history-and-rollback-on-a-branch-823-824-delivered)):
+
+| operationId | Method | Path |
+|---|---|---|
+| `getPersonHistory` | GET | `/persons/{id}/history` |
+| `getFamilyHistory` | GET | `/families/{id}/history` |
+| `getPersonRestorePoints`, `getFamilyRestorePoints`, `getSourceRestorePoints`, `getCitationRestorePoints` | GET | `/{persons,families,sources,citations}/{id}/restore-points` (refused) |
+| `rollbackPerson`, `rollbackFamily`, `rollbackSource`, `rollbackCitation` | POST | `/{persons,families,sources,citations}/{id}/rollback` (refused) |
+
+That is **86 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 76 in `isBranchScopedRequest()`
+The frontend mirrors exactly those 86 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
 `?branch=` while `listFamilies` does not. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
@@ -357,15 +370,18 @@ the place index and per-place list, the cemetery index and per-cemetery person l
 all follow the active branch, and so do the source list and source detail pages (#758), the
 person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). With every
 #676 sub-issue delivered, what still renders the notice is mainline by nature (aggregates such as
-analytics and quality, the change history) or by decision (brick walls, repositories, exports);
-grow the allowlist and the notice coverage together if that changes.
+analytics and quality, the global change history) or by decision (brick walls, repositories,
+exports); grow the allowlist and the notice coverage together if that changes. The person and
+family history panels follow the branch (#824); their Restore tab and rollback dialog are withdrawn
+on a branch instead of labelled.
 
 Mainline-only *writes* get a guard, not a notice. GEDCOM import always writes the mainline, so
 `/import` and the onboarding import step withdraw their upload controls while a branch is active
 (`BranchImportBlocked.svelte`, offering the switch back to the mainline), the onboarding wizard
 never opens on a branch, and the API refuses an import request carrying `?branch=` with a 400
 (#825). Repositories, main-only by decision, stay editable on a branch but say they are shared
-across all branches.
+across all branches. Rollback is refused the same way: the UI withdraws it and the API answers
+`?branch=` with a 409 (#824).
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
 `internal/api/branch_handlers_test.go`), and the command layer resolves its *reads* — existence
@@ -380,7 +396,8 @@ behaves like a normal working copy:
   the branch was created show through (the deliberate "live overlay" of ADR-005).
 
 Remaining gaps, both deliberate: GEDCOM import/export is main-only (a stated non-goal of #670), and
-rollback is main-only (`Handler.rollbackEntity`). [#676](https://github.com/cacack/my-family/issues/676)
+rollback is main-only (`Handler.rollbackEntity`; a `?branch=` rollback or restore-point request is
+refused with 409 `rollback_mainline_only`, #824). [#676](https://github.com/cacack/my-family/issues/676)
 widened branch writes to every entity type that is not main-only by decision; `MergePersons`
 (`PersonMerged`) is the one command still refused on a branch, because a branch merge cannot yet
 replay it safely (see `branchAwareEventTypes` in `internal/command/handler.go`).

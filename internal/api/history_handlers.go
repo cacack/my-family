@@ -19,6 +19,10 @@ func convertQueryChangeEntryToGenerated(entry query.ChangeEntry) ChangeEntry {
 		Action:     ChangeEntryAction(entry.Action),
 		UserId:     entry.UserID,
 	}
+	if entry.Origin != "" {
+		origin := ChangeEntryOrigin(entry.Origin)
+		resp.Origin = &origin
+	}
 
 	if len(entry.Changes) > 0 {
 		changes := make(map[string]FieldChange)
