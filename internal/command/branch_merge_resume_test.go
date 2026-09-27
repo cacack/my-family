@@ -85,7 +85,50 @@ type faultyReadStore struct {
 	failFamily      uuid.UUID
 	failAssociation uuid.UUID
 
+	// Evidence (#758): failCitation fails the citation's own save,
+	// failSourceCount only a save of the source that changes its citation
+	// count (the step a citation projection takes after saving the citation),
+	// and failNote the note's save.
+	failCitation    uuid.UUID
+	failSourceCount uuid.UUID
+	failNote        uuid.UUID
+
 	beforeMainSavePerson func()
+
+	// beforeMainSaveSource, when set, runs once just before the next mainline
+	// SaveSource reaches the store.
+	beforeMainSaveSource func()
+}
+
+func (s *faultyReadStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
+	if s.armed && branchID.IsMain() && citation.ID == s.failCitation {
+		return errInjectedProjectionFailure
+	}
+	return s.ReadModelStore.SaveCitation(ctx, branchID, citation)
+}
+
+func (s *faultyReadStore) SaveSource(ctx context.Context, branchID domain.BranchID, source *repository.SourceReadModel) error {
+	if hook := s.beforeMainSaveSource; hook != nil && branchID.IsMain() {
+		s.beforeMainSaveSource = nil
+		hook()
+	}
+	if s.armed && branchID.IsMain() && source.ID == s.failSourceCount {
+		current, err := s.GetSource(ctx, branchID, source.ID)
+		if err != nil {
+			return err
+		}
+		if current != nil && current.CitationCount != source.CitationCount {
+			return errInjectedProjectionFailure
+		}
+	}
+	return s.ReadModelStore.SaveSource(ctx, branchID, source)
+}
+
+func (s *faultyReadStore) SaveNote(ctx context.Context, branchID domain.BranchID, note *repository.NoteReadModel) error {
+	if s.armed && branchID.IsMain() && note.ID == s.failNote {
+		return errInjectedProjectionFailure
+	}
+	return s.ReadModelStore.SaveNote(ctx, branchID, note)
 }
 
 func (s *faultyReadStore) SaveAssociation(ctx context.Context, branchID domain.BranchID, association *repository.AssociationReadModel) error {

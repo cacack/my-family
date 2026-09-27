@@ -1854,7 +1854,10 @@ export interface paths {
          *     recorded no plan, or replaying it would leave `main` referencing a
          *     person it no longer has (for example a family linking a child `main`
          *     deleted or merged away after the interruption; replaying the branch's
-         *     edits to that child does not bring them back) — the resume is
+         *     edits to that child does not bring them back), or replaying it would
+         *     break the branch's evidence (a citation left citing a source `main`
+         *     no longer has, or a source delete that would take a citation `main`
+         *     still has down with it) — the resume is
          *     refused with `409 merge_resume_needs_resolution`, **nothing is
          *     written**, and `pending_stream_ids` lists those entities. Review them with
          *     `GET /branches/{id}/compare`, then resume again with one `resolutions`
@@ -1878,7 +1881,9 @@ export interface paths {
          *     log, and it is listed in `reprojected_stream_ids`. The repair never
          *     rolls a row back: events the row already reflects are skipped, and the
          *     row is checked against the log once more before the resume reports
-         *     success.
+         *     success. Once the replay is done, the citation count of every source
+         *     the branch's citations touch is recounted from `main`'s citations, and
+         *     a citation whose source needed correcting is listed there as well.
          *
          *     **Idempotent.** Resuming a merge that has already finished (whether by
          *     the original request or an earlier resume) writes nothing and returns
@@ -4188,7 +4193,8 @@ export interface components {
              *     log but whose mainline read model was behind it (an earlier
              *     attempt's projection failed after its append). This call
              *     re-projected them from the log; no events were appended for them.
-             *     `[]`, never `null`.
+             *     Also lists citations whose source's citation count this call had to
+             *     recount. `[]`, never `null`.
              */
             reprojected_stream_ids: string[];
         };

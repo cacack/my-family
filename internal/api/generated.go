@@ -2172,7 +2172,8 @@ type BranchMergeResumeResult struct {
 	// log but whose mainline read model was behind it (an earlier
 	// attempt's projection failed after its append). This call
 	// re-projected them from the log; no events were appended for them.
-	// `[]`, never `null`.
+	// Also lists citations whose source's citation count this call had to
+	// recount. `[]`, never `null`.
 	ReprojectedStreamIds []openapi_types.UUID `json:"reprojected_stream_ids"`
 
 	// SkippedStreamIds Entities resolved to `main` (by the merge, by an earlier resume, or

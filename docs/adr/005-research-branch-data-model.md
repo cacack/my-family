@@ -630,6 +630,21 @@ checked against landed streams; a person `main` itself removed later is `main`'s
 resume's to refuse. Every refusal — pending, dangling, concurrent — comes before the first write,
 including the read-model repair below, so a `409` has written nothing at all.
 
+**Evidence on resume (#758).** A resume applies the same two evidence rules `MergeBranch` checks
+before its claim (`validateNoDanglingEvidence`), on the same terms as the person references above.
+Its replay set is put in the merge's evidence order (`orderEvidenceForReplay`: sources that survive
+the replay first, sources it deletes last), so a resumed merge continues the original order — the
+remaining citations find their sources on `main`, and a doomed source's delete lands only after
+every citation has left it. A stream the plan would replay automatically is listed as pending when
+it is a citation whose *final* source `main` will not have (deleted on `main` after the claim, or
+excluded by this request's `main` resolution) or a source delete that would cascade onto a citation
+`main` still has (typically one `main` added after the claim). A source counts as one `main` will
+have if a stream already on `main` or still to be replayed carries it and does not delete it —
+unless `main` removed it since the claim — or otherwise if `main`'s read model has it. `main` rolls
+such a stream forward without it; `branch` is refused as a dangling reference. The final decision is
+checked again, and a `main` resolution may not exclude a source the replay creates while a citation
+already on `main` cites it (reachable only from a pre-#685 claim).
+
 A claim written before #685 has no plan, so its first resume must decide every stream not yet on
 `main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams
 the original request already declined. The log cannot distinguish those from unreplayed ones, so
@@ -661,15 +676,28 @@ projection would duplicate them — and `main`'s read model is behind the log fo
 repo has no read-model rebuild command yet (#680), so resume repairs it itself: for every
 already-replayed stream it compares `main`'s read-model version with `main`'s stream version. Every
 projection handler for the branch-aware event set a branch can carry (BR-006: person, family and —
-since #757 — association streams) writes the
+since #757 — association streams, and since #758 source, citation and note streams) writes the
 aggregate's version as its last step, so a row behind the log is re-projected from the first event
 past its version; re-running an event whose projection stopped midway is safe because its writes are
 upserts and deletes, and the counter it bumps is part of the final write that did not happen. A
 missing row is re-projected from the start unless the log explains its absence (the stream ends in a
 delete; `main` merged the person away with `PersonMerged`, which writes nothing to the merged
-person's stream; or an association's person is gone from `main`, whose delete cascade removes the
-row without writing to the association's stream). Repaired streams are reported in
+person's stream; an association's person is gone from `main`, whose delete cascade removes the
+row without writing to the association's stream; or a citation's source was deleted on `main`, whose
+cascade removes the citation the same way). Repaired streams are reported in
 `reprojected_stream_ids`; a resume after that finds nothing behind.
+
+The one evidence write outside that version rule is a source's `citation_count`, which the citation
+projections *step* in a save separate from the citation row: `CitationCreated` saves the citation
+(version included) and then bumps the count, so a failure between the two leaves a citation level with
+the log over a count one short; a re-point or delete steps counts before its own save, so re-running
+one that failed at the save would step them twice. Neither is repairable by re-running events, so once
+the replay is done the resume recounts, from `main`'s citations, the count of every source a citation
+stream of the replay set on `main` has ever cited (and of every such source stream), and sets it
+absolutely — correct whatever order the log's events landed in. A citation whose source needed it is
+reported in `reprojected_stream_ids` too. The recount re-checks after writing, like the repair: a
+racing citation projection shows up as a count that disagrees again, and a racing `SourceUpdated` its
+save overwrote as a row behind the log, which is re-projected forward.
 
 The repair takes no lock and appends nothing, so it can run alongside another resume's repair or a
 mainline write to the same entity. Most projections set the row's version outright, so re-running
@@ -685,10 +713,15 @@ already-replayed stream as present, since the creation is on `main` in the log, 
 shows `main` removed them since. The fault-injection
 coverage is `internal/command/branch_merge_resume_test.go` and
 `internal/command/branch_merge_resume_refs_test.go` (memory: dangling references, racing repairs,
-associations) and `internal/integration/branch_merge_resume_test.go`, which drives an interrupted
+associations), `internal/command/branch_merge_resume_evidence_test.go` (memory: evidence order,
+evidence rules, citation-count recount, cascaded citations) and
+`internal/integration/branch_merge_resume_test.go` plus `branch_merge_resume_evidence_test.go`,
+which drive an interrupted
 merge and its resume over HTTP against memory, SQLite and PostgreSQL — including a resume-time
 `main` decision that a later resume must neither re-ask nor reverse, a family whose child `main`
-deleted after the interruption, and a replay whose projection failed after its append committed.
+deleted after the interruption, a replay whose projection failed after its append committed, a
+merge carrying sources and citations (a re-pointed citation and a source delete included) interrupted
+mid-replay, and a cited source `main` deleted after the interruption.
 
 **The conflict verdict is pinned to the versions it was computed against (#698, delivered).**
 `PlanMerge` runs once, and a mainline write landing before the replay was never compared with the

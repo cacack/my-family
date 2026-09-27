@@ -30,8 +30,8 @@ type readModelState struct {
 // is to finish the projection from the log.
 //
 // Detection is by version. Every projection handler for the events a branch
-// may carry (BR-006's branch-aware set: the person, family and association
-// streams) writes the aggregate's read-model version as its LAST step, so the
+// may carry (BR-006's branch-aware set: the person, family, association,
+// source, citation and note streams) writes the aggregate's read-model version as its LAST step, so the
 // read-model version is the number of events on the stream whose projection
 // completed. A row behind main's stream version is re-projected from the first
 // event past it; re-running an event whose projection stopped midway is safe
@@ -53,9 +53,17 @@ type readModelState struct {
 // A missing row is re-projected from the start unless the entity is gone for a
 // reason the log explains: its stream ends in a delete; (for a person) main
 // merged it into another person with PersonMerged, which removes the row
-// without writing to the merged person's stream; or (for an association) one
+// without writing to the merged person's stream; (for an association) one
 // of its persons is gone from main, whose delete cascade removes the
-// association's row without writing to its stream either.
+// association's row without writing to its stream either; or (for a citation)
+// the source it cites was deleted on main, whose cascade removes the citation
+// the same way.
+//
+// Source, citation and note streams (#758) are covered by the same version
+// rule: each of their projections writes the row, version included, in one
+// save (or deletes it). The one write outside that rule is the source
+// citation count a citation projection steps, which reconcileCitationCounts
+// recounts after this repair.
 //
 // Only already-replayed streams are checked, and each check is one read-model
 // lookup; main's events are read, in one set-based paged scan, only for the
@@ -70,7 +78,7 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 	for _, group := range behind {
 		streamIDs = append(streamIDs, group.streamID)
 	}
-	mainEvents, err := h.readMainStreams(ctx, streamIDs, 0)
+	mainEvents, err := h.readMainStreams(ctx, streamIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -108,6 +116,9 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 func (h *Handler) goneForLoggedReason(ctx context.Context, group streamGroup, events []repository.StoredEvent, mergedAway bool) (bool, error) {
 	if endsInDelete(events) || mergedAway {
 		return true, nil
+	}
+	if isCitationStream(group.streamType) {
+		return h.citationCascadedAway(ctx, group.streamID, events)
 	}
 	if !isAssociationStream(group.streamType) {
 		return false, nil
@@ -156,7 +167,7 @@ var errReprojectRaced = errors.New("main's read model kept moving while the resu
 func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events []repository.StoredEvent) error {
 	for attempt := 0; attempt < reprojectAttempts; attempt++ {
 		if attempt > 0 {
-			reread, err := h.readMainStreams(ctx, []uuid.UUID{group.streamID}, 0)
+			reread, err := h.readMainStreams(ctx, []uuid.UUID{group.streamID})
 			if err != nil {
 				return err
 			}
@@ -276,10 +287,11 @@ func endsInDelete(events []repository.StoredEvent) bool {
 
 // mainReadModelState reads main's read-model row for a replayed aggregate. The
 // replay set holds only BR-006's branch-aware events. Those a branch can
-// actually carry live on person, family and association streams (#757 made
-// life events and attributes branch-aware too, but nothing writes one on a
-// branch yet); any other stream type means a branch write path grew without
-// this check, so it is refused rather than reported as in sync.
+// actually carry live on person, family, association, source, citation and
+// note streams (#757 made life events and attributes branch-aware too, but
+// nothing writes one on a branch yet); any other stream type means a branch
+// write path grew without this check, so it is refused rather than reported
+// as in sync.
 func (h *Handler) mainReadModelState(ctx context.Context, group streamGroup) (readModelState, error) {
 	switch {
 	case isPersonStream(group.streamType):
@@ -310,6 +322,40 @@ func (h *Handler) mainReadModelState(ctx context.Context, group streamGroup) (re
 		}
 		return readModelState{present: true, version: association.Version}, nil
 	}
+	return h.mainEvidenceState(ctx, group)
+}
+
+// mainEvidenceState is mainReadModelState for the evidence streams (#758).
+func (h *Handler) mainEvidenceState(ctx context.Context, group streamGroup) (readModelState, error) {
+	switch {
+	case isSourceStream(group.streamType):
+		source, err := h.readStore.GetSource(ctx, domain.MainBranchID, group.streamID)
+		if err != nil {
+			return readModelState{}, fmt.Errorf("reading main source %s: %w", group.streamID, err)
+		}
+		if source == nil {
+			return readModelState{}, nil
+		}
+		return readModelState{present: true, version: source.Version}, nil
+	case isCitationStream(group.streamType):
+		citation, err := h.readStore.GetCitation(ctx, domain.MainBranchID, group.streamID)
+		if err != nil {
+			return readModelState{}, fmt.Errorf("reading main citation %s: %w", group.streamID, err)
+		}
+		if citation == nil {
+			return readModelState{}, nil
+		}
+		return readModelState{present: true, version: citation.Version}, nil
+	case isNoteStream(group.streamType):
+		note, err := h.readStore.GetNote(ctx, domain.MainBranchID, group.streamID)
+		if err != nil {
+			return readModelState{}, fmt.Errorf("reading main note %s: %w", group.streamID, err)
+		}
+		if note == nil {
+			return readModelState{}, nil
+		}
+		return readModelState{present: true, version: note.Version}, nil
+	}
 	return readModelState{}, fmt.Errorf("cannot verify main's read model for stream %s of type %q after a merge replay", group.streamID, group.streamType)
 }
 
@@ -326,11 +372,11 @@ func isAssociationStream(streamType string) bool {
 	return strings.EqualFold(streamType, "association")
 }
 
-// readMainStreams reads main's events on a set of streams after a position, in
-// one paged set-based scan, grouped by stream in position order.
-func (h *Handler) readMainStreams(ctx context.Context, streamIDs []uuid.UUID, fromPosition int64) (map[uuid.UUID][]repository.StoredEvent, error) {
+// readMainStreams reads main's whole history of a set of streams, in one paged
+// set-based scan, grouped by stream in position order.
+func (h *Handler) readMainStreams(ctx context.Context, streamIDs []uuid.UUID) (map[uuid.UUID][]repository.StoredEvent, error) {
 	byStream := make(map[uuid.UUID][]repository.StoredEvent, len(streamIDs))
-	from := fromPosition
+	var from int64
 	for {
 		page, err := h.eventStore.ReadStreamsForBranch(ctx, streamIDs, domain.MainBranchID, from, resumeScanPage)
 		if err != nil {

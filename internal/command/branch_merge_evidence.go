@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // citationOutcome is what the replay of one stream leaves a citation citing.
@@ -24,37 +26,58 @@ type citationOutcome struct {
 // citation ends up citing. Events that are not citation events are ignored.
 func citationOutcomeOf(group streamGroup) (citationOutcome, error) {
 	var out citationOutcome
-	for _, evt := range group.events {
-		switch evt.EventType {
-		case "CitationCreated":
-			var payload struct {
-				SourceID uuid.UUID `json:"source_id"`
-			}
-			if err := json.Unmarshal(evt.Data, &payload); err != nil {
-				return out, fmt.Errorf("decoding citation create on stream %s: %w", group.streamID, err)
-			}
-			out = citationOutcome{repointed: true, sourceID: payload.SourceID}
-		case "CitationUpdated":
-			var payload struct {
-				Changes map[string]any `json:"changes"`
-			}
-			if err := json.Unmarshal(evt.Data, &payload); err != nil {
-				return out, fmt.Errorf("decoding citation update on stream %s: %w", group.streamID, err)
-			}
-			raw, ok := payload.Changes["source_id"].(string)
-			if !ok {
-				continue
-			}
-			id, err := uuid.Parse(raw)
-			if err != nil {
-				return out, fmt.Errorf("decoding citation update on stream %s: source_id %q: %w", group.streamID, raw, err)
-			}
-			out.repointed, out.sourceID = true, id
-		case "CitationDeleted":
+	for i := range group.events {
+		evt := group.events[i]
+		if evt.EventType == "CitationDeleted" {
 			out.deleted = true
+			continue
 		}
+		sourceID, sets, err := citedSource(evt)
+		if err != nil {
+			return out, err
+		}
+		if !sets {
+			continue
+		}
+		if evt.EventType == "CitationCreated" {
+			out = citationOutcome{}
+		}
+		out.repointed, out.sourceID = true, sourceID
 	}
 	return out, nil
+}
+
+// citedSource returns the source one citation event makes the citation cite:
+// a CitationCreated's source, or the source_id a CitationUpdated sets. sets is
+// false for any other event, and for an update that leaves the source alone.
+func citedSource(evt repository.StoredEvent) (sourceID uuid.UUID, sets bool, err error) {
+	switch evt.EventType {
+	case "CitationCreated":
+		var payload struct {
+			SourceID uuid.UUID `json:"source_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return uuid.Nil, false, fmt.Errorf("decoding citation create on stream %s: %w", evt.StreamID, err)
+		}
+		return payload.SourceID, true, nil
+	case "CitationUpdated":
+		var payload struct {
+			Changes map[string]any `json:"changes"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return uuid.Nil, false, fmt.Errorf("decoding citation update on stream %s: %w", evt.StreamID, err)
+		}
+		raw, ok := payload.Changes["source_id"].(string)
+		if !ok {
+			return uuid.Nil, false, nil
+		}
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return uuid.Nil, false, fmt.Errorf("decoding citation update on stream %s: source_id %q: %w", evt.StreamID, raw, err)
+		}
+		return id, true, nil
+	}
+	return uuid.Nil, false, nil
 }
 
 // orderEvidenceForReplay reorders the replay's stream groups so that citation
@@ -87,7 +110,7 @@ func orderEvidenceForReplay(groups []streamGroup) []streamGroup {
 	var middle, last []streamGroup
 	for _, group := range groups {
 		switch {
-		case group.streamType != sourceStreamType:
+		case !isSourceStream(group.streamType):
 			middle = append(middle, group)
 		case groupDeletesSource(group):
 			last = append(last, group)
@@ -99,8 +122,23 @@ func orderEvidenceForReplay(groups []streamGroup) []streamGroup {
 	return append(ordered, last...)
 }
 
-// sourceStreamType is the stream type the command layer writes sources under.
-const sourceStreamType = "Source"
+// isSourceStream reports whether a stream type is a source's. Source streams
+// are written as both "Source" (commands) and "source" (GEDCOM import).
+func isSourceStream(streamType string) bool {
+	return strings.EqualFold(streamType, "source")
+}
+
+// isCitationStream reports whether a stream type is a citation's ("Citation"
+// from commands, "citation" from GEDCOM import).
+func isCitationStream(streamType string) bool {
+	return strings.EqualFold(streamType, "citation")
+}
+
+// isNoteStream reports whether a stream type is a note's ("Note" from
+// commands, "note" from GEDCOM import).
+func isNoteStream(streamType string) bool {
+	return strings.EqualFold(streamType, "note")
+}
 
 // groupDeletesSource reports whether a stream's replay deletes its source.
 func groupDeletesSource(group streamGroup) bool {
@@ -110,6 +148,35 @@ func groupDeletesSource(group streamGroup) bool {
 		}
 	}
 	return false
+}
+
+// createsSource reports whether a replay group leaves its source in existence
+// on main by itself: a source stream that creates the source and does not end
+// by deleting it.
+func createsSource(group streamGroup) bool {
+	if !isSourceStream(group.streamType) || groupDeletesSource(group) {
+		return false
+	}
+	for i := range group.events {
+		if group.events[i].EventType == "SourceCreated" {
+			return true
+		}
+	}
+	return false
+}
+
+// evidencePlan is what the evidence checks need to know about a replay.
+type evidencePlan struct {
+	// replayed holds every stream whose branch events are, or will be, on
+	// main once the replay is done — for a merge, every stream not resolved
+	// to main; for a resume, also the streams already on main.
+	replayed map[uuid.UUID]streamGroup
+
+	// removed names the streams whose entity main has removed since the
+	// merge was claimed (resume only; see streamsRemovedOnMain). Replaying
+	// such a source stream restores nothing, so it does not count as a
+	// source main will have.
+	removed map[uuid.UUID]bool
 }
 
 // validateNoDanglingEvidence is the source/citation half of
@@ -129,34 +196,43 @@ func groupDeletesSource(group streamGroup) bool {
 //     delete those citations on main with no CitationDeleted event and no
 //     conflict shown.
 //
-// Both are refused before the claim, like the dangling child link.
+// Both are refused before the claim, like the dangling child link. ResumeMerge
+// applies the same two rules through checkEvidence (see
+// danglingAutoPlannedStreams and validateResumeReferences).
 func (h *Handler) validateNoDanglingEvidence(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
-	replayed := make(map[uuid.UUID]streamGroup, len(groups))
+	plan := evidencePlan{replayed: make(map[uuid.UUID]streamGroup, len(groups))}
 	for _, group := range groups {
 		if resolutions[group.streamID] != ResolveMain {
-			replayed[group.streamID] = group
+			plan.replayed[group.streamID] = group
 		}
 	}
 
 	for _, group := range groups {
-		if _, ok := replayed[group.streamID]; !ok {
+		if _, ok := plan.replayed[group.streamID]; !ok {
 			continue
 		}
-		if err := h.checkCitationSourceSurvives(ctx, group, replayed); err != nil {
-			return err
-		}
-		if err := h.checkSourceDeleteOrphansNothing(ctx, group, replayed); err != nil {
+		if err := h.checkEvidence(ctx, group, plan); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// checkEvidence applies both evidence rules to one stream the replay will
+// append. A refusal wraps ErrMergeDanglingReference; any other error is a
+// failure to check.
+func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evidencePlan) error {
+	if err := h.checkCitationSourceSurvives(ctx, group, plan); err != nil {
+		return err
+	}
+	return h.checkSourceDeleteOrphansNothing(ctx, group, plan.replayed)
+}
+
 // checkCitationSourceSurvives refuses a replayed citation stream whose final
 // source will not exist on main once the replay is done. Only the FINAL source
 // matters: a citation created on a source and later re-pointed lands on the
 // second one, and one the branch deleted cites nothing.
-func (h *Handler) checkCitationSourceSurvives(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup) error {
+func (h *Handler) checkCitationSourceSurvives(ctx context.Context, group streamGroup, plan evidencePlan) error {
 	outcome, err := citationOutcomeOf(group)
 	if err != nil {
 		return err
@@ -164,23 +240,29 @@ func (h *Handler) checkCitationSourceSurvives(ctx context.Context, group streamG
 	if outcome.deleted || !outcome.repointed {
 		return nil
 	}
-	if sourceGroup, ok := replayed[outcome.sourceID]; ok {
-		if !groupDeletesSource(sourceGroup) {
-			return nil
-		}
-	} else {
-		source, err := h.readStore.GetSource(ctx, domain.MainBranchID, outcome.sourceID)
-		if err != nil {
-			return fmt.Errorf("checking source %s on main: %w", outcome.sourceID, err)
-		}
-		if source != nil {
-			return nil
-		}
+	survives, err := h.sourceSurvivesReplay(ctx, outcome.sourceID, plan)
+	if err != nil || survives {
+		return err
 	}
 	return fmt.Errorf(
 		"%w: the branch's citation %s cites source %s, but that source will not exist on main "+
 			"(deleted there, or excluded by a \"main\" resolution)",
 		ErrMergeDanglingReference, group.streamID, outcome.sourceID)
+}
+
+// sourceSurvivesReplay reports whether main will have a source once the
+// replay is done. A replayed source stream decides it — unless it deletes the
+// source, or main has removed the source since the claim; any other source is
+// as main's read model has it.
+func (h *Handler) sourceSurvivesReplay(ctx context.Context, sourceID uuid.UUID, plan evidencePlan) (bool, error) {
+	if sourceGroup, ok := plan.replayed[sourceID]; ok {
+		return !groupDeletesSource(sourceGroup) && !plan.removed[sourceID], nil
+	}
+	source, err := h.readStore.GetSource(ctx, domain.MainBranchID, sourceID)
+	if err != nil {
+		return false, fmt.Errorf("checking source %s on main: %w", sourceID, err)
+	}
+	return source != nil, nil
 }
 
 // checkSourceDeleteOrphansNothing refuses a replayed SourceDeleted while main

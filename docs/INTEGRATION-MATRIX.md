@@ -325,7 +325,7 @@ delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI
 each conflict, or leave a whole entity behind as a `main` resolution. A merge interrupted mid-replay
 is finished with `POST /branches/{id}/merge/resume` ([#685](https://github.com/cacack/my-family/issues/685);
 API only, not yet surfaced in the UI; the merge dialog tells the user an administrator can finish
-it). The resume covers every stream a branch can write — persons, families and associations. What is still outstanding is partial merge
+it). The resume covers every stream a branch can write — persons, families, associations, and (#758) sources, citations and notes, replayed in the merge's evidence order under its evidence rules. What is still outstanding is partial merge
 ([#684](https://github.com/cacack/my-family/issues/684)): excluding an entity is not the same as
 promoting a subset of one entity's changes.
 

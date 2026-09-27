@@ -44,6 +44,11 @@ var (
 	//     dangling reference (ErrMergeDanglingReference), so without a decision
 	//     the merge could never finish; a "main" resolution rolls it forward
 	//     without that stream.
+	//   - the same for evidence (#758): the stream is a citation whose final
+	//     source main will not have (main deleted it after the claim, or this
+	//     call resolves it to main), or a source delete that would cascade onto
+	//     a citation of it main still has (typically one main added after the
+	//     claim).
 	//
 	// The streams are listed on ResumeMergeResult.PendingStreamIDs. Inspect them
 	// with GET /branches/{id}/compare, then resume again with a resolution for
@@ -220,7 +225,18 @@ type resumeDecision struct {
 // behind, re-projects the missing events from the log (reprojectLandedStreams),
 // reporting those streams in ReprojectedStreamIDs. The repair runs after every
 // refusal, so a refused resume writes nothing at all, and it never rolls a row
-// back past a version a concurrent write already projected.
+// back past a version a concurrent write already projected. Once the replay is
+// done, sources' citation counts — which citation projections step outside
+// the version rule — are recounted from main's citations
+// (reconcileCitationCounts), and the citation streams whose sources needed it
+// are reported there too.
+//
+// Evidence (#758): the replay runs in the evidence order MergeBranch uses
+// (orderEvidenceForReplay), and the evidence rules MergeBranch checks before
+// its claim (checkEvidence: a citation must end up citing a source main will
+// have; a source delete must not cascade onto a citation main keeps) are
+// applied exactly as the person-reference rules are — an auto-planned stream
+// that breaks one is pending, and the final decision is checked again.
 func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*ResumeMergeResult, error) {
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
@@ -292,7 +308,8 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		return result, fmt.Errorf(
 			"%w: %d stream(s) still to replay for branch %s cannot be replayed on the recorded plan "+
 				"(main moved on them since it was recorded, main removed the entity, the claim recorded no plan, "+
-				"or replaying them would leave main referencing a person it no longer has). Nothing has been written; "+
+				"or replaying them would leave main referencing a person or source it no longer has, or cascade onto "+
+				"a citation it still has). Nothing has been written; "+
 				"review them with GET /branches/{id}/compare and resume again with a resolution for each: %v",
 			ErrMergeResumeNeedsResolution, len(result.PendingStreamIDs), branch.ID, result.PendingStreamIDs)
 	}
@@ -323,15 +340,8 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 			ErrMergePartiallyApplied, branch.ID, err)
 	}
 
-	for i, step := range decision.steps {
-		appended, err := h.replayStream(ctx, step.group, step.planned)
-		result.ReplayedEventCount += appended
-		if err != nil {
-			return nil, fmt.Errorf(
-				"%w: resuming merge of branch %s: stream %s failed after %d of %d remaining stream(s) "+
-					"(%d event(s)) reached main in this attempt; resume again to finish: %w",
-				ErrMergePartiallyApplied, branch.ID, step.group.streamID, i, len(decision.steps), result.ReplayedEventCount, err)
-		}
+	if err := h.finishResumeReplay(ctx, branch.ID, groups, landed, decision.steps, result); err != nil {
+		return nil, err
 	}
 
 	merged, err := h.branchStore.Get(ctx, branch.ID)
@@ -340,6 +350,46 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	}
 	result.Branch = merged
 	return result, nil
+}
+
+// finishResumeReplay replays a resume's remaining streams onto main, then
+// recounts the citation counts of the sources they touch.
+func (h *Handler) finishResumeReplay(
+	ctx context.Context,
+	branchID uuid.UUID,
+	groups []streamGroup,
+	landed map[uuid.UUID]bool,
+	steps []resumeStep,
+	result *ResumeMergeResult,
+) error {
+	onMain := make(map[uuid.UUID]bool, len(groups))
+	for id, done := range landed {
+		onMain[id] = done
+	}
+	for i, step := range steps {
+		appended, err := h.replayStream(ctx, step.group, step.planned)
+		result.ReplayedEventCount += appended
+		if err != nil {
+			return fmt.Errorf(
+				"%w: resuming merge of branch %s: stream %s failed after %d of %d remaining stream(s) "+
+					"(%d event(s)) reached main in this attempt; resume again to finish: %w",
+				ErrMergePartiallyApplied, branchID, step.group.streamID, i, len(steps), result.ReplayedEventCount, err)
+		}
+		onMain[step.group.streamID] = true
+	}
+
+	// Source citation counts are stepped by citation projections outside the
+	// citation row's version, so the version check reprojectLandedStreams
+	// makes cannot see every half-projected citation. Recount them once
+	// everything is on main (reconcileCitationCounts): the count is absolute,
+	// so it is right whatever order the log's citations and sources landed in.
+	recounted, err := h.reconcileCitationCounts(ctx, groups, onMain)
+	if err != nil {
+		return fmt.Errorf("%w: resuming merge of branch %s: every stream is on main, but recounting source citations failed; "+
+			"resume again to finish: %w", ErrMergePartiallyApplied, branchID, err)
+	}
+	result.ReprojectedStreamIDs = appendUnique(result.ReprojectedStreamIDs, recounted...)
+	return nil
 }
 
 // resumeReplayGroups loads the branch's replay set, grouped by stream, and
@@ -372,7 +422,12 @@ func (h *Handler) resumeReplayGroups(ctx context.Context, branch *domain.Branch,
 		}
 	}
 
-	return groupEventsByStream(replaySet.ReplayEvents), nil
+	// The same order MergeBranch replays in (#758): sources that survive the
+	// replay first, sources it deletes last. A resume of an interrupted merge
+	// therefore continues the original order, and the remaining citations
+	// find their sources on main and leave a doomed source before its delete
+	// cascades.
+	return orderEvidenceForReplay(groupEventsByStream(replaySet.ReplayEvents)), nil
 }
 
 // resumableMerge reads the branch's own stream for its merge claim and any
@@ -634,6 +689,13 @@ func refuseUndecidableResolutions(resolutions map[uuid.UUID]MergeResolution, dec
 // Reporting it as pending lets the caller roll the merge forward without it
 // ("main"), and records that choice like any other.
 //
+// The evidence rules (checkEvidence, #758) are applied the same way: an
+// auto-planned citation whose final source main will not have, or an
+// auto-planned source delete that would cascade onto a citation main still
+// has, is flagged too. For them a stream counts as replayed on the same terms
+// — already on main, or planned and not resolved to main by this call — and a
+// source main removed since the claim does not count as one main will have.
+//
 // A person counts as present if main's read model has them, or if a group the
 // resume has replayed or may still replay (already on main, or planned and not
 // resolved to main by this call) creates them and main has not removed them
@@ -653,6 +715,7 @@ func (h *Handler) danglingAutoPlannedStreams(
 		return nil, nil // nothing replays automatically without a plan
 	}
 	present := make(map[uuid.UUID]bool, len(groups))
+	evidence := evidencePlan{replayed: make(map[uuid.UUID]streamGroup, len(groups)), removed: view.removed}
 	var auto []streamGroup
 	for _, group := range groups {
 		id := group.streamID
@@ -660,11 +723,13 @@ func (h *Handler) danglingAutoPlannedStreams(
 		switch {
 		case view.landed[id]:
 			present[id] = view.created[id]
+			evidence.replayed[id] = group
 		case !planned:
 			// skipped by the recorded plan
 		default:
 			if resolutions[id] != ResolveMain {
 				present[id] = view.created[id]
+				evidence.replayed[id] = group
 			}
 			if view.mainVersions[id] == pinned && !view.removed[id] {
 				auto = append(auto, group)
@@ -672,12 +737,24 @@ func (h *Handler) danglingAutoPlannedStreams(
 		}
 	}
 	dangling, err := h.findDanglingReferences(ctx, auto, func(personID uuid.UUID) bool { return present[personID] })
-	if err != nil || len(dangling) == 0 {
+	if err != nil {
 		return nil, err
 	}
 	flagged := make(map[uuid.UUID]bool, len(dangling))
 	for _, d := range dangling {
 		flagged[d.streamID] = true
+	}
+	for _, group := range auto {
+		err := h.checkEvidence(ctx, group, evidence)
+		switch {
+		case errors.Is(err, ErrMergeDanglingReference):
+			flagged[group.streamID] = true
+		case err != nil:
+			return nil, err
+		}
+	}
+	if len(flagged) == 0 {
+		return nil, nil
 	}
 	return flagged, nil
 }
@@ -700,6 +777,10 @@ func (h *Handler) danglingAutoPlannedStreams(
 //     own "main" resolutions of a person the replay creates are checked here — decisions recorded earlier
 //     were checked when they were made, and a person main itself removed
 //     later is main's own change, not the resume's to refuse.
+//   - The evidence rules (#758) hold on the same terms: every stream about to
+//     be replayed passes checkEvidence against the landed and replayed
+//     streams, and a landed citation may not lose its source to this call's
+//     "main" resolution of the stream that creates it.
 func (h *Handler) validateResumeReferences(
 	ctx context.Context,
 	groups []streamGroup,
@@ -744,6 +825,60 @@ func (h *Handler) validateResumeReferences(
 			"%w: stream %s is already on main and references person %s, whom main does not have; "+
 				"resolving that person to main would leave the reference dangling — resolve them to branch instead",
 			ErrMergeDanglingReference, d.streamID, d.personID)
+	}
+	return h.validateResumeEvidence(ctx, groups, steps, view, resolutions)
+}
+
+// validateResumeEvidence is validateResumeReferences' evidence half: the
+// streams about to be replayed must pass checkEvidence, and this call's own
+// "main" resolution may not exclude a source the replay creates while a
+// citation already on main cites it.
+func (h *Handler) validateResumeEvidence(
+	ctx context.Context,
+	groups []streamGroup,
+	steps []resumeStep,
+	view resumeView,
+	resolutions map[uuid.UUID]MergeResolution,
+) error {
+	evidence := evidencePlan{replayed: make(map[uuid.UUID]streamGroup, len(groups)), removed: view.removed}
+	byID := make(map[uuid.UUID]streamGroup, len(groups))
+	for _, group := range groups {
+		byID[group.streamID] = group
+		if view.landed[group.streamID] {
+			evidence.replayed[group.streamID] = group
+		}
+	}
+	for _, step := range steps {
+		evidence.replayed[step.group.streamID] = step.group
+	}
+	for _, step := range steps {
+		if err := h.checkEvidence(ctx, step.group, evidence); err != nil {
+			return err
+		}
+	}
+
+	for _, group := range groups {
+		if !view.landed[group.streamID] {
+			continue
+		}
+		outcome, err := citationOutcomeOf(group)
+		if err != nil {
+			return err
+		}
+		if outcome.deleted || !outcome.repointed || resolutions[outcome.sourceID] != ResolveMain ||
+			!createsSource(byID[outcome.sourceID]) {
+			continue
+		}
+		source, err := h.readStore.GetSource(ctx, domain.MainBranchID, outcome.sourceID)
+		if err != nil {
+			return fmt.Errorf("checking source %s on main: %w", outcome.sourceID, err)
+		}
+		if source == nil {
+			return fmt.Errorf(
+				"%w: citation %s is already on main and cites source %s, which main does not have; "+
+					"resolving that source to main would leave the citation orphaned — resolve it to branch instead",
+				ErrMergeDanglingReference, group.streamID, outcome.sourceID)
+		}
 	}
 	return nil
 }
@@ -797,7 +932,7 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 	for _, group := range missing {
 		streamIDs = append(streamIDs, group.streamID)
 	}
-	mainEvents, err := h.readMainStreams(ctx, streamIDs, 0)
+	mainEvents, err := h.readMainStreams(ctx, streamIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -821,7 +956,8 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 // isReadModelStream reports whether mainReadModelState can read a stream
 // type's main row.
 func isReadModelStream(streamType string) bool {
-	return isPersonStream(streamType) || strings.EqualFold(streamType, familyStreamType) || isAssociationStream(streamType)
+	return isPersonStream(streamType) || strings.EqualFold(streamType, familyStreamType) || isAssociationStream(streamType) ||
+		isSourceStream(streamType) || isCitationStream(streamType) || isNoteStream(streamType)
 }
 
 // streamsAlreadyOnMain reports, per stream of the replay set, whether its
