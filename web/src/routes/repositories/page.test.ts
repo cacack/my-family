@@ -15,6 +15,15 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
+// The real store exposes a read-only view, so the active branch is injected here.
+const { branchState } = vi.hoisted(() => ({
+	branchState: { id: null as string | null }
+}));
+
+vi.mock('$lib/stores/activeBranch.svelte', () => ({
+	activeBranch: branchState
+}));
+
 const mockList: apiModule.RepositoryList = {
 	repositories: [
 		{
@@ -35,12 +44,28 @@ const mockList: apiModule.RepositoryList = {
 describe('Repositories list page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		branchState.id = null;
 		vi.mocked(apiModule.api.listRepositories).mockResolvedValue(mockList);
 		vi.mocked(apiModule.api.createRepository).mockResolvedValue({
 			id: 'repo-3',
 			name: 'New Repo',
 			version: 1
 		});
+	});
+
+	it('has no shared-repository notice on the mainline', async () => {
+		render(RepositoriesPage);
+		await waitFor(() => expect(screen.getByText('National Archives')).toBeTruthy());
+		expect(screen.queryByText(/shared across all branches/)).toBeNull();
+	});
+
+	it('says repositories are shared across all branches while a branch is active (#825)', async () => {
+		branchState.id = 'b-1';
+		render(RepositoriesPage);
+		await waitFor(() => expect(screen.getByText('National Archives')).toBeTruthy());
+		expect(
+			screen.getByText(/Repositories are shared across all branches/).textContent
+		).toContain('changes the mainline');
 	});
 
 	it('loads and renders repositories in a table with an address summary', async () => {
