@@ -453,10 +453,6 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 	case errors.Is(err, command.ErrMergeResumeConcurrent):
 		return refuse(ResumeConcurrent)
 
-	// Permanent until main's read model is rebuilt; the message says so.
-	case errors.Is(err, command.ErrMergeResumeRepairUnsound):
-		return refuse(ResumeRepairUnsound)
-
 	case errors.Is(err, command.ErrUnknownResolution):
 		return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{
 			Code:    "invalid_resolution",

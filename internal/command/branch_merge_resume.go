@@ -157,6 +157,12 @@ type resumeView struct {
 	// for a reason main's log explains (see streamsRemovedOnMain).
 	removed map[uuid.UUID]bool
 
+	// relinked maps each landed media item (or GPS artifact) whose main row
+	// is missing and whose person owner (or subject) main has since merged
+	// into another person to the final survivor: the owner or subject the
+	// read-model repair attaches it to (see mergeRelink).
+	relinked map[uuid.UUID]uuid.UUID
+
 	// created names the persons a replay group creates and main has not
 	// removed since (see personsCreatedByReplay).
 	created map[uuid.UUID]bool
@@ -315,7 +321,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 
 	// What main removed since the claim, and so which persons the replay can
 	// still vouch for.
-	removed, err := h.streamsRemovedOnMain(ctx, groups, mainVersions, landed)
+	removed, relinked, err := h.streamsRemovedOnMain(ctx, groups, mainVersions)
 	if err != nil {
 		return nil, err
 	}
@@ -323,6 +329,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		landed:       landed,
 		mainVersions: mainVersions,
 		removed:      removed,
+		relinked:     relinked,
 		created:      personsCreatedByReplay(groups, removed),
 		basePosition: branch.BasePosition,
 	}
@@ -881,9 +888,9 @@ func (h *Handler) validateResumeReferences(
 // streams about to be replayed must pass checkEvidence (the citation, source,
 // media-owner and GPS rules), and this call's own "main" resolution may not
 // exclude a source the replay creates while a citation already on main cites
-// it, nor a media owner the replay creates while a media upload already on
-// main is attached to it (checkLandedMediaOwners), nor a GPS subject the
-// replay creates while a GPS artifact already on main is about it
+// it, nor a media owner main does not have while a media upload already on
+// main is attached to it (checkLandedMediaOwners), nor a GPS subject main does
+// not have while a GPS artifact already on main is about it
 // (checkLandedGPSSubjects).
 func (h *Handler) validateResumeEvidence(
 	ctx context.Context,
@@ -938,10 +945,10 @@ func (h *Handler) validateResumeEvidence(
 				ErrMergeDanglingReference, group.streamID, outcome.sourceID)
 		}
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, byID, view, resolutions); err != nil {
+	if err := h.checkLandedMediaOwners(ctx, groups, view, resolutions); err != nil {
 		return err
 	}
-	return h.checkLandedGPSSubjects(ctx, groups, byID, view, resolutions)
+	return h.checkLandedGPSSubjects(ctx, groups, view, resolutions)
 }
 
 // personsCreatedByReplay returns the persons whose replay group creates them
@@ -968,8 +975,11 @@ func personsCreatedByReplay(groups []streamGroup, removed map[uuid.UUID]bool) ma
 // A stream main never had (version 0: the branch created the entity and it
 // has not landed) cannot have been removed. A row missing for any other
 // reason — a failed projection of an already-replayed stream — is not a
-// removal; reprojectLandedStreams repairs it.
-func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup, mainVersions map[uuid.UUID]int64, landed map[uuid.UUID]bool) (map[uuid.UUID]bool, error) {
+// removal; reprojectLandedStreams repairs it. For a missing media row whose
+// person owner, or a missing GPS row whose subject person, main merged into
+// another person, it also reports the final survivor that repair re-links the
+// row to.
+func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup, mainVersions map[uuid.UUID]int64) (map[uuid.UUID]bool, map[uuid.UUID]uuid.UUID, error) {
 	var missing []streamGroup
 	states := make(map[uuid.UUID]readModelState)
 	for _, group := range groups {
@@ -978,7 +988,7 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 		}
 		state, err := h.mainReadModelState(ctx, group)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if state.present {
 			continue
@@ -987,7 +997,7 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 		missing = append(missing, group)
 	}
 	if len(missing) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	streamIDs := make([]uuid.UUID, 0, len(missing))
@@ -996,23 +1006,30 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 	}
 	mainEvents, err := h.readMainStreams(ctx, streamIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, missing, states, mainEvents, landed)
+	removedElsewhere, relink, err := h.missingRowsRemovedElsewhere(ctx, missing, states, mainEvents)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	removed := make(map[uuid.UUID]bool, len(missing))
 	for _, group := range missing {
 		gone, err := h.goneForLoggedReason(ctx, group, mainEvents[group.streamID], removedElsewhere[group.streamID])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if gone {
 			removed[group.streamID] = true
 		}
 	}
-	return removed, nil
+	var relinked map[uuid.UUID]uuid.UUID
+	for id, move := range relink {
+		if relinked == nil {
+			relinked = make(map[uuid.UUID]uuid.UUID, len(relink))
+		}
+		relinked[id] = move.target
+	}
+	return removed, relinked, nil
 }
 
 // isReadModelStream reports whether mainReadModelState can read a stream

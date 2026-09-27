@@ -304,51 +304,136 @@ func TestResumeMerge_CascadedGPSIsNotResurrected(t *testing.T) {
 	}
 }
 
-// TestResumeMerge_GPSOfMergedAwaySubjectIsRefused: the analysis lands in
+// TestResumeMerge_GPSOfMergedAwaySubjectIsRelinked: the analysis lands in
 // main's log but its projection fails, and main then merges its subject into
-// another person. The person merge would have re-pointed the analysis to the
-// survivor, which is not in the analysis's stream, so the repair is unsound
-// and the resume refuses before writing anything. Once the survivor is
-// deleted too the analysis is gone either way, and the resume finishes.
-func TestResumeMerge_GPSOfMergedAwaySubjectIsRefused(t *testing.T) {
+// another person — and that one into a third. The person merges would have
+// re-pointed the analysis to the final survivor, which is not in the
+// analysis's stream, so the resume re-projects the analysis from main's log
+// and then re-points it, exactly as the merges would have: version as the log
+// has it, nothing appended, and a second resume does nothing.
+func TestResumeMerge_GPSOfMergedAwaySubjectIsRelinked(t *testing.T) {
 	e := newEvidenceResume(t)
 	ctx := context.Background()
 	subject := e.mainPerson(t, "Owen")
+	final := e.mainPerson(t, "Fay")
 	branch, scoped := e.branch(t, "research-then-merge")
 	analysis := e.analysis(t, scoped, subject, "Born 1850")
 
 	e.failGPSProjection(t, branch, analysis)
-	survivor, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, e.person)
-	if err != nil || survivor == nil {
-		t.Fatalf("GetPerson survivor = %v, %v", survivor, err)
-	}
-	merged, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, subject)
-	if err != nil || merged == nil {
-		t.Fatalf("GetPerson merged = %v, %v", merged, err)
-	}
-	if _, err := e.f.handler.MergePersons(ctx, command.MergePersonsInput{
-		SurvivorID: e.person, MergedID: subject, SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
-	}); err != nil {
-		t.Fatalf("main MergePersons failed: %v", err)
-	}
+	e.mergeMainPersons(t, e.person, subject)
+	e.mergeMainPersons(t, final, e.person)
 	before := e.mainEventCount(t)
 
-	_, err = e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
-	if !errors.Is(err, command.ErrMergeResumeRepairUnsound) {
-		t.Fatalf("ResumeMerge error = %v, want the unsound-repair refusal", err)
+	res := e.resume(t, branch.ID, nil)
+	if res.ReplayedEventCount != 0 || !slices.Equal(res.ReprojectedStreamIDs, []uuid.UUID{analysis}) {
+		t.Errorf("resume replayed %d, re-projected %v; want 0 and [%s]", res.ReplayedEventCount, res.ReprojectedStreamIDs, analysis)
 	}
 	if got := e.mainEventCount(t); got != before {
-		t.Errorf("refused resume wrote %d event(s) to main", got-before)
+		t.Errorf("main event count = %d, want %d (a repair appends nothing)", got, before)
 	}
-	if e.mainAnalysis(t, analysis) != nil {
-		t.Errorf("refused resume re-projected the analysis")
+	row := e.mainAnalysis(t, analysis)
+	if row == nil {
+		t.Fatalf("main has no row for the repaired analysis")
 	}
+	if row.SubjectID != final {
+		t.Errorf("repaired analysis is about %s, want the final merge survivor %s", row.SubjectID, final)
+	}
+	head, err := e.f.eventStore.GetStreamVersion(ctx, analysis, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if row.Version != head {
+		t.Errorf("repaired analysis version = %d, want main's stream version %d", row.Version, head)
+	}
+	listed, err := e.f.readStore.GetAnalysesBySubject(ctx, domain.MainBranchID, final)
+	if err != nil || len(listed) != 1 || listed[0].ID != analysis {
+		t.Errorf("survivor's analyses = %v, %v; want the repaired one", listed, err)
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
+}
 
+// TestResumeMerge_GPSOfMergedThenDeletedSubjectStaysGone: as above, but main
+// deletes the survivor before the resume, so the analysis is gone either way
+// (the survivor's delete cascade) and nothing is re-projected.
+func TestResumeMerge_GPSOfMergedThenDeletedSubjectStaysGone(t *testing.T) {
+	e := newEvidenceResume(t)
+	subject := e.mainPerson(t, "Owen")
+	branch, scoped := e.branch(t, "research-merge-delete")
+	analysis := e.analysis(t, scoped, subject, "Born 1850")
+
+	e.failGPSProjection(t, branch, analysis)
+	e.mergeMainPersons(t, e.person, subject)
 	e.deleteMainPerson(t, e.person)
+
 	res := e.resume(t, branch.ID, nil)
 	if len(res.ReprojectedStreamIDs) != 0 || e.mainAnalysis(t, analysis) != nil {
 		t.Errorf("resume re-projected %v; want the cascaded analysis left gone", res.ReprojectedStreamIDs)
 	}
+}
+
+// TestResumeMerge_MergedAwaySubjectResolvedToMainKeepsRelinkedGPS: the branch
+// also edits the log's subject, and main merges that subject away during the
+// interruption, so the subject's edit is pending and can only be resolved to
+// main. That does not orphan the landed log: its repair re-points it to the
+// survivor main still has.
+func TestResumeMerge_MergedAwaySubjectResolvedToMainKeepsRelinkedGPS(t *testing.T) {
+	e := newEvidenceResume(t)
+	subject := e.mainPerson(t, "Owen")
+	branch, scoped := e.branch(t, "research-and-edit-then-merge")
+	logID := e.researchLog(t, scoped, subject, "Parish chest")
+	e.renameOnBranch(t, scoped, domain.BranchID(branch.ID), subject)
+
+	e.failGPSProjection(t, branch, logID)
+	e.mergeMainPersons(t, e.person, subject)
+
+	res := e.resume(t, branch.ID, map[uuid.UUID]command.MergeResolution{subject: command.ResolveMain})
+	if !slices.Contains(res.ReprojectedStreamIDs, logID) {
+		t.Errorf("resume re-projected %v; want the log %s", res.ReprojectedStreamIDs, logID)
+	}
+	if row := e.mainLog(t, logID); row == nil || row.SubjectID != e.person {
+		t.Fatalf("repaired log = %+v, want it about the survivor %s", row, e.person)
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
+}
+
+// TestResumeMerge_LegacyClaimRefusesSkippingSubjectCreateDeleteUnderLandedGPS:
+// the branch creates a person, logs research about them and deletes them (the
+// delete cascades the log on the branch). A pre-#685 claim lands the log and
+// leaves the person's create+delete stream to the caller. "main" would skip
+// the delete and leave main's log about a person main never had, so it is
+// refused; "branch" replays the delete, which cascades the log away.
+func TestResumeMerge_LegacyClaimRefusesSkippingSubjectCreateDeleteUnderLandedGPS(t *testing.T) {
+	e := newEvidenceResume(t)
+	ctx := context.Background()
+	branch, scoped := e.branch(t, "short-lived-lead")
+	created, err := scoped.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Brief", Surname: "Lead"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	logID := e.researchLog(t, scoped, created.ID, "Parish chest")
+	e.deletePersonOnBranch(t, scoped, branch, created.ID)
+	e.legacyClaimWithLanded(t, branch, logID)
+
+	res, err := e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	if !errors.Is(err, command.ErrMergeResumeNeedsResolution) {
+		t.Fatalf("bare ResumeMerge error = %v, want ErrMergeResumeNeedsResolution", err)
+	}
+	if res == nil || !slices.Equal(res.PendingStreamIDs, []uuid.UUID{created.ID}) {
+		t.Fatalf("PendingStreamIDs = %v, want [%s]", res, created.ID)
+	}
+	e.refuseMainResolution(t, branch, created.ID)
+
+	done := e.resume(t, branch.ID, map[uuid.UUID]command.MergeResolution{created.ID: command.ResolveBranch})
+	if done.ReplayedEventCount == 0 {
+		t.Errorf("ReplayedEventCount = 0, want the person's stream replayed")
+	}
+	if p, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, created.ID); err != nil || p != nil {
+		t.Errorf("main person = %v (err=%v), want absent after its delete replayed", p, err)
+	}
+	if e.mainLog(t, logID) != nil {
+		t.Errorf("main still has the log after its subject's delete replayed")
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
 }
 
 // TestResumeMerge_LegacyClaimRefusesExcludingALandedLogsSubject: a pre-#685

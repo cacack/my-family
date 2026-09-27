@@ -663,7 +663,12 @@ lands — `main` deleted it after the claim, this request resolves the stream th
 `main`, or a stream already on `main` deleted it (an owner-deleting stream counts as deleting
 *after* the upload only while it is itself still to be replayed). `main` rolls such a stream
 forward without it; `branch` is refused as a dangling reference, and a `main` resolution may not
-exclude an owner the replay creates while an upload already on `main` is attached to it. The reverse
+skip the stream of an owner `main` does not have while an upload already on `main` is attached to
+it — a stream that creates the owner, and equally one that creates *and* deletes it, whose delete
+the replay order (upload first) counts on to cascade the item away. The owner checked is the one
+`main`'s row names (a person merge on `main` moves the item to the survivor); an item `main` has
+since deleted, or cascaded away with an owner it had, leaves nothing to orphan, so deleting the
+item on `main` is the other way out. The reverse
 rule holds too: an auto-planned owner delete is pending while `main` has an item of that owner it
 wrote to after the branch's delete — typically one uploaded during the interruption — and `main`
 rolls it forward without the delete, keeping both. Landed
@@ -677,12 +682,14 @@ and no branch row is written beyond the byte release every mainline save of a me
 explains when its owner's `main` stream ends in a delete (the owner→media cascade writes nothing to
 the media stream), following a person owner through any person merges `main` recorded since; a
 pending edit of such an item resolves only to `main`, and a landed upload is not resurrected. One
-case is refused rather than repaired: a landed upload whose projection failed and whose owner
+case needs a step beyond re-projection: a landed upload whose projection failed and whose owner
 person `main` then merged into a person it still has. `PersonMerged` would have moved the item to
-the survivor, and that transfer is not in the media stream, so re-projecting it would attach it to
-the merged-away person; the resume says so (`409 merge_resume_repair_unsound`) and writes nothing,
-and repairing that item needs a read-model rebuild from the log (#680) — resuming again refuses the
-same way until then.
+the survivor, and that transfer is not in the media stream, so re-projecting the stream alone would
+attach it to the merged-away person. The transfer is fully determined by `main`'s log, though, so
+the repair re-projects the item and then re-links its row to the final survivor (following any
+later merges) — the same save `PersonMerged` makes, version and bytes untouched — and the landed-owner
+check treats the item as that survivor's. The scan for merges is repeated after the re-link, so a
+merge of the survivor recorded meanwhile is followed too. No rebuild (#680) is needed.
 
 A claim written before #685 has no plan, so its first resume must decide every stream not yet on
 `main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams
@@ -1323,8 +1330,13 @@ no longer has, and an auto-planned subject delete that would cascade onto resear
 or changed after the fork are pending; `main` rolls such a stream forward without it, and `branch`
 is refused as a dangling reference. A resume has no undecided conflicts (every conflict was
 resolved at claim time, and a main-side delete only ever accepts `main`), so the edit rule applies
-to every stream it would replay, exactly as it applied at claim time to decided conflicts. A `main` resolution may not exclude a subject the replay
-creates while an artifact already on `main` is about it (reachable only from a pre-#685 claim). A
+to every stream it would replay, exactly as it applied at claim time to decided conflicts. A `main` resolution may not skip the stream of a
+subject `main` does not have while an artifact already on `main` is about it — a stream that creates
+the subject, and equally one that creates *and* deletes it, whose delete would have cascaded the
+artifact away as it did on the branch (reachable only from a pre-#685 claim). As for media, the
+subject checked is the one `main`'s row names, or with no row the one the repair would re-point it
+to; an artifact `main` has since deleted, or cascaded away with a subject it had, leaves nothing to
+orphan, so deleting the artifact on `main` is the other way out. A
 landed artifact that the replay re-pointed away from a subject but that `main`'s read model still
 lists under it is judged from `main`'s log, not the row, since its projection may have failed and
 the repair runs after the checks: if the log leaves it about another subject (or deleted), the
@@ -1339,9 +1351,12 @@ writes the row, version included, in one save). A missing GPS row counts as remo
 the log explains when its subject's `main` stream ends in a delete, following a person subject
 through any person merges `main` recorded since, so a pending edit of it resolves only to `main`
 and a landed artifact is not resurrected. As for media, a landed artifact whose projection failed
-before `main` merged its subject into a person it still has is refused
-(`409 merge_resume_repair_unsound`): `PersonMerged` would have re-pointed it, and that is not in the
-artifact's stream.
+before `main` merged its subject into a person it still has is repaired rather than refused:
+`PersonMerged` would have re-pointed it, and that transfer is not in the artifact's stream, but it
+is fully determined by `main`'s log. So the repair re-projects the artifact and then re-points its
+row's subject to the final merge survivor — the one field `PersonMerged` changes on a GPS row,
+version untouched — repeating the merge scan after the save so a racing merge of the survivor is
+followed too. A row `main` re-pointed elsewhere in the meantime is left as it is.
 
 **API and UI.** Twenty-two operations gained `?branch=` — the CRUD, list and per-fact/per-subject
 reads of all four artifacts, and `resolveEvidenceConflict` — bringing the total to 76. The

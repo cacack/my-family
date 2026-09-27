@@ -4333,7 +4333,7 @@ export interface components {
              * @example merge_resume_needs_resolution
              * @enum {string}
              */
-            code: "merge_not_claimed" | "merge_resume_needs_resolution" | "merge_dangling_reference" | "branch_too_large" | "merge_resume_concurrent" | "merge_resume_repair_unsound";
+            code: "merge_not_claimed" | "merge_resume_needs_resolution" | "merge_dangling_reference" | "branch_too_large" | "merge_resume_concurrent";
             /** @description Human-readable explanation */
             message: string;
             /**
@@ -8320,14 +8320,6 @@ export interface operations {
              *     - `merge_resume_concurrent` — another resume of the same merge
              *       recorded its resolutions first. Resume again; the entities it
              *       decided are no longer pending.
-             *     - `merge_resume_repair_unsound` — a media item or GPS artifact
-             *       (evidence analysis, evidence conflict, research log, proof
-             *       summary) the merge already replayed is missing from the
-             *       mainline read model, and its owner or subject has since been
-             *       merged into another person, so repairing it from its own stream
-             *       would attach it to the merged-away person. This
-             *       is permanent: resuming again refuses the same way until the
-             *       mainline read model is rebuilt from the event log.
              */
             409: {
                 headers: {
