@@ -402,8 +402,9 @@ type ProofSummaryReadModel struct {
 // GetBrickWalls write and read the read model outside the event store, so there are no
 // branch-tagged events to project and no overlay to resolve; their backends only
 // constrain the query to main. Whether they should become event-sourced first is the
-// same open call #624 must make for snapshots; #624 is the live tracker, while #761
-// only recorded the question in the ADR section above.
+// same call #624 made for snapshots (it chose to emit events and project the registry).
+// That answer is the precedent, but it has not been applied to brick walls; the open
+// question is recorded in the ADR section above (#761).
 //
 // The branch SCOPE is the distinct domain.BranchID type (not a bare uuid) so
 // transposing it with an entity id is a compile error; the zero value equals
@@ -612,8 +613,8 @@ type ReadModelStore interface {
 	//
 	// MAIN-ONLY: brick-wall state is written straight to the read model rather than
 	// projected from events, so there is no overlay to resolve. Branch-scoping them
-	// waits on the #624 event-sourcing decision (ADR-005, "Entities that stay
-	// main-only"), not on a #676 sub-issue.
+	// waits on deciding whether they become event-sourced, as #624 did for snapshots
+	// (ADR-005, "Entities that stay main-only"), not on a #676 sub-issue.
 	SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error
 	ResolveBrickWall(ctx context.Context, personID uuid.UUID) error
 	GetBrickWalls(ctx context.Context, includeResolved bool) ([]BrickWallEntry, error)
