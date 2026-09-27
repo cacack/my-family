@@ -2856,9 +2856,18 @@ type FamilySummary struct {
 
 // FamilyUpdate defines model for FamilyUpdate.
 type FamilyUpdate struct {
-	MarriageDate     *string                       `json:"marriage_date,omitempty"`
-	MarriagePlace    *string                       `json:"marriage_place,omitempty"`
-	Partner1Id       *openapi_types.UUID           `json:"partner1_id,omitempty"`
+	// ClearPartner1 Remove partner 1 from the family. Cannot be combined with partner1_id.
+	ClearPartner1 *bool `json:"clear_partner1,omitempty"`
+
+	// ClearPartner2 Remove partner 2 from the family. Cannot be combined with partner2_id.
+	ClearPartner2 *bool   `json:"clear_partner2,omitempty"`
+	MarriageDate  *string `json:"marriage_date,omitempty"`
+	MarriagePlace *string `json:"marriage_place,omitempty"`
+
+	// Partner1Id Set partner 1 to this person. Omit to leave partner 1 unchanged.
+	Partner1Id *openapi_types.UUID `json:"partner1_id,omitempty"`
+
+	// Partner2Id Set partner 2 to this person. Omit to leave partner 2 unchanged.
 	Partner2Id       *openapi_types.UUID           `json:"partner2_id,omitempty"`
 	RelationshipType *FamilyUpdateRelationshipType `json:"relationship_type,omitempty"`
 	Version          int64                         `json:"version"`

@@ -5046,9 +5046,21 @@ components:
         partner1_id:
           type: string
           format: uuid
+          description: Set partner 1 to this person. Omit to leave partner 1 unchanged.
         partner2_id:
           type: string
           format: uuid
+          description: Set partner 2 to this person. Omit to leave partner 2 unchanged.
+        clear_partner1:
+          type: boolean
+          default: false
+          description: >-
+            Remove partner 1 from the family. Cannot be combined with partner1_id.
+        clear_partner2:
+          type: boolean
+          default: false
+          description: >-
+            Remove partner 2 from the family. Cannot be combined with partner2_id.
         relationship_type:
           type: string
           enum: [marriage, partnership, unknown]

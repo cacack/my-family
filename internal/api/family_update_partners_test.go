@@ -115,3 +115,30 @@ func TestUpdateFamily_PartnerValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestUpdateFamily_ClearPartner (#826): the PUT removes a partner with
+// clear_partner1/clear_partner2, and refuses setting and clearing the same one.
+func TestUpdateFamily_ClearPartner(t *testing.T) {
+	server := setupFamilyTestServer(t)
+	p1 := createTestPerson(t, server, "Avery", "Placeholder")["id"].(string)
+	p2 := createTestPerson(t, server, "Blake", "Sample")["id"].(string)
+	familyID := createFamilyOf(t, server, p1, p2)
+
+	rec := putFamily(t, server, familyID, map[string]any{"version": 1, "partner1_id": p2, "clear_partner1": true})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("set+clear partner1: %d %s, want 400", rec.Code, rec.Body.String())
+	}
+
+	rec = putFamily(t, server, familyID, map[string]any{"version": 1, "clear_partner2": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear partner2: %d %s", rec.Code, rec.Body.String())
+	}
+	var got map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if _, ok := got["partner2_id"]; ok {
+		t.Errorf("partner2_id = %v, want absent after clearing", got["partner2_id"])
+	}
+	if got["partner1_id"] != p1 {
+		t.Errorf("partner1_id = %v, want %s", got["partner1_id"], p1)
+	}
+}
