@@ -262,9 +262,8 @@ type GroupSheet struct {
 // GetGroupSheet returns a family group sheet with full details.
 //
 // branchID scopes the family and every person/child/pedigree lookup it fans out
-// to, including the negated life events it reads (#757); the zero value
-// (MainBranchID) reproduces the pre-branch behavior. Citation lookups remain
-// main-only until that read model becomes branch-aware (#758).
+// to, including the negated life events (#757) and the citations (#758) it
+// reads; the zero value (MainBranchID) reproduces the pre-branch behavior.
 func (s *FamilyService) GetGroupSheet(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) (*GroupSheet, error) {
 	// Get family details
 	family, err := s.readStore.GetFamily(ctx, branchID, familyID)
@@ -286,7 +285,7 @@ func (s *FamilyService) GetGroupSheet(ctx context.Context, branchID domain.Branc
 			Place: family.MarriagePlace,
 		}
 		// Get marriage citations
-		citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, familyID)
+		citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactFamilyMarriage, familyID)
 		if err == nil && len(citations) > 0 {
 			gs.Marriage.Citations = convertCitationsToGroupSheet(citations)
 		}
@@ -349,7 +348,7 @@ func (s *FamilyService) getGroupSheetPerson(ctx context.Context, branchID domain
 			Place: person.BirthPlace,
 		}
 		// Get birth citations
-		citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonBirth, personID)
+		citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactPersonBirth, personID)
 		if err == nil && len(citations) > 0 {
 			gsp.Birth.Citations = convertCitationsToGroupSheet(citations)
 		}
@@ -362,7 +361,7 @@ func (s *FamilyService) getGroupSheetPerson(ctx context.Context, branchID domain
 			Place: person.DeathPlace,
 		}
 		// Get death citations
-		citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonDeath, personID)
+		citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactPersonDeath, personID)
 		if err == nil && len(citations) > 0 {
 			gsp.Death.Citations = convertCitationsToGroupSheet(citations)
 		}
@@ -413,7 +412,7 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, branchID domain.
 			Place: person.BirthPlace,
 		}
 		// Get birth citations
-		citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonBirth, person.ID)
+		citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactPersonBirth, person.ID)
 		if err == nil && len(citations) > 0 {
 			gsc.Birth.Citations = convertCitationsToGroupSheet(citations)
 		}
@@ -426,7 +425,7 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, branchID domain.
 			Place: person.DeathPlace,
 		}
 		// Get death citations
-		citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonDeath, person.ID)
+		citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactPersonDeath, person.ID)
 		if err == nil && len(citations) > 0 {
 			gsc.Death.Citations = convertCitationsToGroupSheet(citations)
 		}
@@ -477,7 +476,7 @@ func (s *FamilyService) applyNegatedPersonEvents(ctx context.Context, branchID d
 				(*birth).IsNegated = true
 			}
 			// Load citations for the negated birth event
-			citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonBirth, personID)
+			citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactPersonBirth, personID)
 			if err == nil && len(citations) > 0 {
 				(*birth).Citations = convertCitationsToGroupSheet(citations)
 			}
@@ -488,7 +487,7 @@ func (s *FamilyService) applyNegatedPersonEvents(ctx context.Context, branchID d
 				(*death).IsNegated = true
 			}
 			// Load citations for the negated death event
-			citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactPersonDeath, personID)
+			citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactPersonDeath, personID)
 			if err == nil && len(citations) > 0 {
 				(*death).Citations = convertCitationsToGroupSheet(citations)
 			}
@@ -514,7 +513,7 @@ func (s *FamilyService) applyNegatedFamilyEvents(ctx context.Context, branchID d
 				(*marriage).IsNegated = true
 			}
 			// Load citations for the negated marriage event
-			citations, err := s.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, familyID)
+			citations, err := s.readStore.GetCitationsForFact(ctx, branchID, domain.FactFamilyMarriage, familyID)
 			if err == nil && len(citations) > 0 {
 				(*marriage).Citations = convertCitationsToGroupSheet(citations)
 			}

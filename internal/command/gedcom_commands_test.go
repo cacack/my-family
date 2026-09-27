@@ -884,7 +884,7 @@ func TestImportGedcom_WithCitations(t *testing.T) {
 		t.Fatalf("Expected 1 source")
 	}
 
-	citations, err := readStore.GetCitationsForSource(ctx, sources[0].ID)
+	citations, err := readStore.GetCitationsForSource(ctx, domain.MainBranchID, sources[0].ID)
 	if err != nil {
 		t.Fatalf("GetCitationsForSource failed: %v", err)
 	}

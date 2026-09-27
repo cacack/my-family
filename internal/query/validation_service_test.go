@@ -84,7 +84,7 @@ func addFamily(store *memory.ReadModelStore, partner1ID, partner2ID *uuid.UUID, 
 func addSource(store *memory.ReadModelStore, title, author string) uuid.UUID {
 	id := uuid.New()
 	ctx := context.Background()
-	_ = store.SaveSource(ctx, &repository.SourceReadModel{
+	_ = store.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{
 		ID:        id,
 		Title:     title,
 		Author:    author,

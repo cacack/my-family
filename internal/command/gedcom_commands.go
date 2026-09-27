@@ -451,7 +451,7 @@ func (h *Handler) importSource(ctx context.Context, s gedcom.SourceData) error {
 				Type:     ext.Type,
 			}
 		}
-		if err := h.readStore.ReplaceSourceExternalIDs(ctx, source.ID, ids); err != nil {
+		if err := h.readStore.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, source.ID, ids); err != nil {
 			return fmt.Errorf("failed to save source external identifiers: %w", err)
 		}
 	}

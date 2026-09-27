@@ -1393,7 +1393,7 @@ func TestHandler_Unscoped_WritesMain(t *testing.T) {
 	if p, err := readStore.GetPerson(ctx, domain.MainBranchID, person.ID); err != nil || p == nil {
 		t.Errorf("person missing from main read model: person=%v err=%v", p, err)
 	}
-	if s, err := readStore.GetSource(ctx, source.ID); err != nil || s == nil {
+	if s, err := readStore.GetSource(ctx, domain.MainBranchID, source.ID); err != nil || s == nil {
 		t.Errorf("source missing from read model: source=%v err=%v", s, err)
 	}
 }

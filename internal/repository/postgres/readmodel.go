@@ -189,9 +189,11 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_pedigree_mother ON pedigree_edges(mother_id);
 		CREATE INDEX IF NOT EXISTS idx_pedigree_edges_branch ON pedigree_edges(branch_id);
 
-		-- Sources table
+		-- Sources table. Branch-aware (#758): (id, branch_id) row identity + deleted
+		-- tombstone; the branch_id index is created by runBranchMigration.
 		CREATE TABLE IF NOT EXISTS sources (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			source_type VARCHAR(50) NOT NULL,
 			title VARCHAR(500) NOT NULL,
 			author VARCHAR(200),
@@ -207,16 +209,22 @@ func (s *ReadModelStore) createTables() error {
 			gedcom_xref VARCHAR(50),
 			citation_count INTEGER NOT NULL DEFAULT 0,
 			version BIGINT NOT NULL DEFAULT 1,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_sources_title ON sources(title);
 		CREATE INDEX IF NOT EXISTS idx_sources_type ON sources(source_type);
 
 		-- Citations table
+		-- Branch-aware (#758): (id, branch_id) row identity + deleted tombstone. The FK
+		-- to sources(id) is dropped (sources(id) is not unique under the overlay);
+		-- DeleteSource cascades citations in code.
 		CREATE TABLE IF NOT EXISTS citations (
-			id UUID PRIMARY KEY,
-			source_id UUID NOT NULL REFERENCES sources(id),
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+			source_id UUID NOT NULL,
 			source_title VARCHAR(500),
 			fact_type VARCHAR(100) NOT NULL,
 			fact_owner_id UUID NOT NULL,
@@ -231,7 +239,9 @@ func (s *ReadModelStore) createTables() error {
 			fields_data JSONB,
 			gedcom_xref VARCHAR(50),
 			version BIGINT NOT NULL DEFAULT 1,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_citations_source ON citations(source_id);
@@ -330,15 +340,19 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_person_external_ids_branch ON person_external_ids(branch_id);
 
 		-- Notes table (shared GEDCOM NOTE records)
+		-- Branch-aware (#758): (id, branch_id) row identity + deleted tombstone.
 		CREATE TABLE IF NOT EXISTS notes (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			text TEXT NOT NULL,
 			mime VARCHAR(100),
 			language VARCHAR(35),
 			translations JSONB,
 			gedcom_xref VARCHAR(50),
 			version BIGINT NOT NULL DEFAULT 1,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_notes_gedcom_xref ON notes(gedcom_xref);
@@ -389,15 +403,18 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_family_external_ids_branch ON family_external_ids(branch_id);
 
 		-- Source external identifiers (GEDCOM 7.0 EXID)
+		-- Branch-aware (#758): identity is (source_id, sequence, branch_id), the same
+		-- per-parent bucket + empty-marker tombstone model as person_external_ids.
+		-- The FK to sources(id) is dropped; DeleteSource cascades the bucket in code.
 		CREATE TABLE IF NOT EXISTS source_external_ids (
-			source_id UUID NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+			source_id UUID NOT NULL,
 			sequence INTEGER NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			value TEXT NOT NULL,
 			type TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (source_id, sequence)
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (source_id, sequence, branch_id)
 		);
-
-		CREATE INDEX IF NOT EXISTS idx_source_external_ids_source ON source_external_ids(source_id);
 
 		-- Repository external identifiers (GEDCOM 7.0 EXID)
 		CREATE TABLE IF NOT EXISTS repository_external_ids (
@@ -829,6 +846,10 @@ func (s *ReadModelStore) runBranchMigration() {
 		`ALTER TABLE associations DROP CONSTRAINT IF EXISTS associations_person_id_fkey`,
 		`ALTER TABLE associations DROP CONSTRAINT IF EXISTS associations_associate_id_fkey`,
 		`ALTER TABLE attributes DROP CONSTRAINT IF EXISTS attributes_person_id_fkey`,
+		// Evidence (#758): sources(id) stops being unique once it joins the overlay,
+		// so the FKs referencing it go before its primary key is swapped.
+		`ALTER TABLE citations DROP CONSTRAINT IF EXISTS citations_source_id_fkey`,
+		`ALTER TABLE source_external_ids DROP CONSTRAINT IF EXISTS source_external_ids_source_id_fkey`,
 	}
 	for _, stmt := range dropFKs {
 		_, _ = s.db.Exec(stmt)
@@ -852,6 +873,11 @@ func (s *ReadModelStore) runBranchMigration() {
 		{"life_events", "id"},
 		{"attributes", "id"},
 		{"associations", "id"},
+		// Evidence (#758).
+		{"sources", "id"},
+		{"source_external_ids", "source_id, sequence"},
+		{"citations", "id"},
+		{"notes", "id"},
 	}
 	for _, t := range tables {
 		// Column adds are idempotent and safe outside a transaction.
@@ -930,6 +956,8 @@ func (s *ReadModelStore) runBranchMigration() {
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_person_external_ids_person ON person_external_ids(person_id, branch_id)`)
 	_, _ = s.db.Exec(`DROP INDEX IF EXISTS idx_family_external_ids_family`)
 	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_family_external_ids_family ON family_external_ids(family_id, branch_id)`)
+	_, _ = s.db.Exec(`DROP INDEX IF EXISTS idx_source_external_ids_source`)
+	_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_source_external_ids_source ON source_external_ids(source_id, branch_id)`)
 
 	// Secondary indexes leading with branch_id so PurgeBranch's DELETE ... WHERE
 	// branch_id = ? (and the overlay's branch_id IN filter) is index-driven rather
@@ -943,13 +971,14 @@ func (s *ReadModelStore) runBranchMigration() {
 }
 
 // branchScopedTables are every read-model table carrying branch_id/deleted: the
-// seven #669 slice tables and the three person/family fact tables (#757).
-// PurgeBranch drops a branch's rows from each, and runBranchMigration gives each
-// its branch_id-leading index.
+// seven #669 slice tables, the three person/family fact tables (#757) and the
+// four evidence tables (#758). PurgeBranch drops a branch's rows from each, and
+// runBranchMigration gives each its branch_id-leading index.
 var branchScopedTables = []string{
 	"persons", "person_names", "person_external_ids",
 	"families", "family_external_ids", "family_children", "pedigree_edges",
 	"life_events", "attributes", "associations",
+	"sources", "source_external_ids", "citations", "notes",
 }
 
 // mainBranchDefault is the column default that backfills existing rows to the
@@ -1805,35 +1834,51 @@ func (s *ReadModelStore) GetFamilyExternalIDs(ctx context.Context, branchID doma
 }
 
 // ReplaceSourceExternalIDs replaces all external identifiers (GEDCOM 7.0 EXID)
-// for a source within a single transaction.
-func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
+// for a source on the given branch within a single transaction (ADR-005, #758).
+// Same bucket-scoped semantics as ReplacePersonExternalIDs.
+func (s *ReadModelStore) ReplaceSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID, ids []repository.SourceExternalIDReadModel) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM source_external_ids WHERE source_id = $1", sourceID); err != nil {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM source_external_ids WHERE source_id = $1 AND branch_id = $2", sourceID, branchID.UUID()); err != nil {
 		return fmt.Errorf("delete source external ids: %w", err)
+	}
+	if len(ids) == 0 {
+		if !branchID.IsMain() {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO source_external_ids (source_id, sequence, branch_id, value, type, deleted)
+				VALUES ($1, 0, $2, '', '', TRUE)
+			`, sourceID, branchID.UUID()); err != nil {
+				return fmt.Errorf("mark empty source external id bucket: %w", err)
+			}
+		}
+		return tx.Commit()
 	}
 	for i, id := range ids {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO source_external_ids (source_id, sequence, value, type)
-			VALUES ($1, $2, $3, $4)
-		`, sourceID, i, id.Value, id.Type); err != nil {
+			INSERT INTO source_external_ids (source_id, sequence, branch_id, value, type, deleted)
+			VALUES ($1, $2, $3, $4, $5, FALSE)
+		`, sourceID, i, branchID.UUID(), id.Value, id.Type); err != nil {
 			return fmt.Errorf("insert source external id: %w", err)
 		}
 	}
 	return tx.Commit()
 }
 
-// GetSourceExternalIDs retrieves all external identifiers for a source, ordered
-// by their original sequence.
-func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
+// GetSourceExternalIDs retrieves all external identifiers for a source within the
+// branch overlay, ordered by their original sequence (ADR-005, #758).
+// Bucket-scoped resolution, matching GetPersonExternalIDs.
+func (s *ReadModelStore) GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.SourceExternalIDReadModel, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT sequence, value, type FROM source_external_ids
-		WHERE source_id = $1 ORDER BY sequence
-	`, sourceID)
+		WHERE source_id = $1 AND NOT deleted AND branch_id = (
+			CASE WHEN EXISTS (SELECT 1 FROM source_external_ids WHERE source_id = $1 AND branch_id = $2)
+			     THEN $2 ELSE $3 END)
+		ORDER BY sequence
+	`, sourceID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {
 		return nil, fmt.Errorf("query source external ids: %w", err)
 	}
@@ -2632,67 +2677,38 @@ func nullableBytes(b []byte) any {
 	return b
 }
 
-// GetSource retrieves a source by ID.
-func (s *ReadModelStore) GetSource(ctx context.Context, id uuid.UUID) (*repository.SourceReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
-			   citation_count, version, updated_at
-		FROM sources WHERE id = $1
-	`, id)
+// Evidence tables (#758): sources, citations and notes are branch-scoped the
+// same way as the person/family facts (ADR-005) and reuse their overlay helpers
+// (overlayArgs, overlaySrc, overlayGetQuery, deleteOverlayRow,
+// cascadeOverlayRows).
 
-	return scanSourceRow(row)
-}
+const (
+	// sourceSelectCols is scanSourceRow's column order (unaliased).
+	sourceSelectCols = `id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
+		url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
+		citation_count, version, updated_at`
 
-// ListSources returns a paginated list of sources.
-func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
-	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sources").Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count sources: %w", err)
-	}
+	// citationSelectCols is scanCitationRow's column order (unaliased).
+	citationSelectCols = `id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+		source_quality, informant_type, evidence_type, quoted_text, analysis,
+		template_id, fields_data, gedcom_xref, version, created_at`
 
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
-			   citation_count, version, updated_at
-		FROM sources
-		ORDER BY title ASC
-		LIMIT $1 OFFSET $2
-	`, opts.Limit, opts.Offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query sources: %w", err)
-	}
+	// noteSelectCols is scanNoteRow's column order (unaliased).
+	noteSelectCols = `id, text, mime, language, translations, gedcom_xref, version, updated_at`
+
+	// citationOrder is the deterministic citation order every backend returns.
+	citationOrder = `source_title ASC, fact_type ASC, id ASC`
+
+	// Per-parent citation filters. %[1]d (and %[2]d) are the placeholder numbers
+	// of the values, which the caller binds after overlayArgs.
+	sourceCitationsFilter = `source_id = $%[1]d`
+	personCitationsFilter = `fact_owner_id = $%[1]d AND fact_type LIKE 'person_%%'`
+	factCitationsFilter   = `fact_type = $%[1]d AND fact_owner_id = $%[2]d`
+)
+
+// scanSources drains rows of sourceSelectCols.
+func scanSources(rows *sql.Rows) ([]repository.SourceReadModel, error) {
 	defer rows.Close()
-
-	var sources []repository.SourceReadModel
-	for rows.Next() {
-		src, err := scanSourceRows(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		sources = append(sources, *src)
-	}
-
-	return sources, total, rows.Err()
-}
-
-// SearchSources searches for sources by title or author.
-func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit int) ([]repository.SourceReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
-			   url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
-			   citation_count, version, updated_at
-		FROM sources
-		WHERE title ILIKE '%' || $1 || '%' OR author ILIKE '%' || $1 || '%'
-		ORDER BY title ASC
-		LIMIT $2
-	`, query, limit)
-	if err != nil {
-		return nil, fmt.Errorf("search sources: %w", err)
-	}
-	defer rows.Close()
-
 	var sources []repository.SourceReadModel
 	for rows.Next() {
 		src, err := scanSourceRows(rows)
@@ -2701,18 +2717,97 @@ func (s *ReadModelStore) SearchSources(ctx context.Context, query string, limit 
 		}
 		sources = append(sources, *src)
 	}
-
 	return sources, rows.Err()
 }
 
-// SaveSource saves or updates a source.
-func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.SourceReadModel) error {
+// scanCitations drains rows of citationSelectCols.
+func scanCitations(rows *sql.Rows) ([]repository.CitationReadModel, error) {
+	defer rows.Close()
+	var citations []repository.CitationReadModel
+	for rows.Next() {
+		cit, err := scanCitationRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		citations = append(citations, *cit)
+	}
+	return citations, rows.Err()
+}
+
+// GetSource retrieves a source by ID within the branch overlay (ADR-005, #758).
+func (s *ReadModelStore) GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.SourceReadModel, error) {
+	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, overlayGetQuery("sources", sourceSelectCols),
+		id, branchID.UUID(), domain.MainBranchID.UUID())
+	return scanSourceRow(row)
+}
+
+// ListSources returns a paginated list of the sources visible on opts.BranchID
+// (ADR-005, #758).
+func (s *ReadModelStore) ListSources(ctx context.Context, opts repository.ListOptions) ([]repository.SourceReadModel, int, error) {
+	args, n := overlayArgs(opts.BranchID)
+	src := overlaySrc("sources", sourceSelectCols, "", opts.BranchID)
+
+	var total int
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" s", args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count sources: %w", err)
+	}
+
+	// #nosec G201 G202 -- src and n are internal; limit/offset stay bound parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
+		SELECT `+sourceSelectCols+`
+		FROM %s s
+		ORDER BY title ASC, id ASC
+		LIMIT $%d OFFSET $%d
+	`, src, n, n+1)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query sources: %w", err)
+	}
+	sources, err := scanSources(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return sources, total, nil
+}
+
+// SearchSources searches the sources visible on branchID by title or author. The
+// overlay is resolved FIRST (the DISTINCT ON source) and the query is matched
+// against the winning rows only, so a branch retitle is found under its new
+// title alone and a branch-deleted source never matches (#758).
+func (s *ReadModelStore) SearchSources(ctx context.Context, branchID domain.BranchID, query string, limit int) ([]repository.SourceReadModel, error) {
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("sources", sourceSelectCols, "", branchID)
+
+	// #nosec G201 G202 -- src and n are internal; the query text and limit stay bound parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	q := fmt.Sprintf(`
+		SELECT `+sourceSelectCols+`
+		FROM %[1]s s
+		WHERE title ILIKE '%%' || $%[2]d || '%%' OR author ILIKE '%%' || $%[2]d || '%%'
+		ORDER BY title ASC, id ASC
+		LIMIT $%[3]d
+	`, src, n, n+1)
+	rows, err := s.db.QueryContext(ctx, q, append(args, query, limit)...)
+	if err != nil {
+		return nil, fmt.Errorf("search sources: %w", err)
+	}
+	return scanSources(rows)
+}
+
+// SaveSource saves or updates a source on the given branch (ADR-005, #758). The
+// row is keyed by (id, branch_id); a save always clears any prior tombstone.
+func (s *ReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchID, source *repository.SourceReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO sources (id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
+		INSERT INTO sources (id, branch_id, source_type, title, author, publisher, publish_date_raw, publish_date_sort,
 							 url, repository_id, repository_name, collection_name, call_number, notes, gedcom_xref,
-							 citation_count, version, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-		ON CONFLICT(id) DO UPDATE SET
+							 citation_count, version, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, FALSE)
+		ON CONFLICT(id, branch_id) DO UPDATE SET
 			source_type = EXCLUDED.source_type,
 			title = EXCLUDED.title,
 			author = EXCLUDED.author,
@@ -2728,159 +2823,145 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, source *repository.Sour
 			gedcom_xref = EXCLUDED.gedcom_xref,
 			citation_count = EXCLUDED.citation_count,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, source.ID, nullableString(string(source.SourceType)), source.Title,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, source.ID, branchID.UUID(), nullableString(string(source.SourceType)), source.Title,
 		nullableString(source.Author), nullableString(source.Publisher),
 		nullableString(source.PublishDateRaw), nullableTime(source.PublishDateSort),
 		nullableString(source.URL), nullableUUID(source.RepositoryID), nullableString(source.RepositoryName),
 		nullableString(source.CollectionName), nullableString(source.CallNumber),
 		nullableString(source.Notes), nullableString(source.GedcomXref),
 		source.CitationCount, source.Version, source.UpdatedAt)
-
-	return err
+	if err != nil {
+		return fmt.Errorf("save source: %w", err)
+	}
+	return nil
 }
 
-// DeleteSource removes a source.
-func (s *ReadModelStore) DeleteSource(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM sources WHERE id = $1", id)
-	return err
+// DeleteSource removes a source on the given branch (ADR-005, #758) together
+// with its external identifiers and its citations — the manual cascade that
+// replaces the dropped foreign keys. On main the rows are deleted; off main the
+// source and every citation of it the branch sees are tombstoned, and its
+// external-id bucket is replaced by an empty tombstone bucket. Only branchID's
+// rows are written; other branches are untouched.
+func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := cascadeOverlayRows(ctx, tx, "citations", citationSelectCols, sourceCitationsFilter, branchID, id); err != nil {
+		return err
+	}
+	if branchID.IsMain() {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM source_external_ids WHERE source_id = $1 AND branch_id = $2", id, domain.MainBranchID.UUID()); err != nil {
+			return fmt.Errorf("delete source external ids: %w", err)
+		}
+	} else if err := tombstoneExternalIDBucket(ctx, tx, "source_external_ids", "source_id", id, branchID.UUID()); err != nil {
+		return err
+	}
+	if err := deleteOverlayRow(ctx, tx, "sources", sourceSelectCols, branchID, id); err != nil {
+		return fmt.Errorf("delete source: %w", err)
+	}
+	return tx.Commit()
 }
 
-// GetCitation retrieves a citation by ID.
-func (s *ReadModelStore) GetCitation(ctx context.Context, id uuid.UUID) (*repository.CitationReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
-			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, fields_data, gedcom_xref, version, created_at
-		FROM citations WHERE id = $1
-	`, id)
-
+// GetCitation retrieves a citation by ID within the branch overlay (ADR-005, #758).
+func (s *ReadModelStore) GetCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.CitationReadModel, error) {
+	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, overlayGetQuery("citations", citationSelectCols),
+		id, branchID.UUID(), domain.MainBranchID.UUID())
 	return scanCitationRow(row)
 }
 
-// GetCitationsForSource returns all citations for a source.
-func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
-			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, fields_data, gedcom_xref, version, created_at
-		FROM citations
-		WHERE source_id = $1
-	`, sourceID)
+// listFilteredCitations returns the citations visible on branchID that filter
+// selects, decided on the winning row. filter is a package constant whose %[1]d
+// (and %[2]d) placeholders number the values, bound in order after overlayArgs.
+func (s *ReadModelStore) listFilteredCitations(ctx context.Context, branchID domain.BranchID, filter string, values ...any) ([]repository.CitationReadModel, error) {
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("citations", citationSelectCols, fmt.Sprintf(filter, n, n+1), branchID)
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, `SELECT `+citationSelectCols+` FROM `+src+` c ORDER BY `+citationOrder,
+		append(args, values...)...)
+	if err != nil {
+		return nil, err
+	}
+	return scanCitations(rows)
+}
+
+// GetCitationsForSource returns all citations of a source within the branch overlay.
+func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
+	citations, err := s.listFilteredCitations(ctx, branchID, sourceCitationsFilter, sourceID)
 	if err != nil {
 		return nil, fmt.Errorf("query citations for source: %w", err)
 	}
-	defer rows.Close()
-
-	var citations []repository.CitationReadModel
-	for rows.Next() {
-		cit, err := scanCitationRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		citations = append(citations, *cit)
-	}
-
-	return citations, rows.Err()
+	return citations, nil
 }
 
-// GetCitationsForPerson returns all citations for a person.
-func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.CitationReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
-			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, fields_data, gedcom_xref, version, created_at
-		FROM citations
-		WHERE fact_owner_id = $1 AND fact_type LIKE 'person_%'
-	`, personID)
+// GetCitationsForPerson returns all citations of a person's facts within the
+// branch overlay.
+func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.CitationReadModel, error) {
+	citations, err := s.listFilteredCitations(ctx, branchID, personCitationsFilter, personID)
 	if err != nil {
 		return nil, fmt.Errorf("query citations for person: %w", err)
 	}
-	defer rows.Close()
-
-	var citations []repository.CitationReadModel
-	for rows.Next() {
-		cit, err := scanCitationRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		citations = append(citations, *cit)
-	}
-
-	return citations, rows.Err()
+	return citations, nil
 }
 
-// GetCitationsForFact returns all citations for a specific fact.
-func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
-			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, fields_data, gedcom_xref, version, created_at
-		FROM citations
-		WHERE fact_type = $1 AND fact_owner_id = $2
-	`, string(factType), factOwnerID)
+// GetCitationsForFact returns all citations of a specific fact within the branch
+// overlay.
+func (s *ReadModelStore) GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]repository.CitationReadModel, error) {
+	citations, err := s.listFilteredCitations(ctx, branchID, factCitationsFilter, string(factType), factOwnerID)
 	if err != nil {
 		return nil, fmt.Errorf("query citations for fact: %w", err)
 	}
-	defer rows.Close()
-
-	var citations []repository.CitationReadModel
-	for rows.Next() {
-		cit, err := scanCitationRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		citations = append(citations, *cit)
-	}
-
-	return citations, rows.Err()
+	return citations, nil
 }
 
-// ListCitations returns a paginated list of citations.
+// ListCitations returns a paginated list of the citations visible on
+// opts.BranchID (ADR-005, #758).
 func (s *ReadModelStore) ListCitations(ctx context.Context, opts repository.ListOptions) ([]repository.CitationReadModel, int, error) {
-	// Count total
+	args, n := overlayArgs(opts.BranchID)
+	src := overlaySrc("citations", citationSelectCols, "", opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM citations").Scan(&total)
-	if err != nil {
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" c", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count citations: %w", err)
 	}
 
-	// Sort by source_title ASC, fact_type ASC, id ASC for deterministic ordering
-	query := `
-		SELECT id, source_id, source_title, fact_type, fact_owner_id, page, volume,
-			   source_quality, informant_type, evidence_type, quoted_text, analysis,
-			   template_id, fields_data, gedcom_xref, version, created_at
-		FROM citations
-		ORDER BY source_title ASC, fact_type ASC, id ASC
-		LIMIT $1 OFFSET $2
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	// #nosec G201 G202 -- src and n are internal; limit/offset stay bound parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
+		SELECT `+citationSelectCols+`
+		FROM %s c
+		ORDER BY `+citationOrder+`
+		LIMIT $%d OFFSET $%d
+	`, src, n, n+1)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query citations: %w", err)
 	}
-	defer rows.Close()
-
-	var citations []repository.CitationReadModel
-	for rows.Next() {
-		cit, err := scanCitationRows(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		citations = append(citations, *cit)
+	citations, err := scanCitations(rows)
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return citations, total, rows.Err()
+	return citations, total, nil
 }
 
-// SaveCitation saves or updates a citation.
-func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.CitationReadModel) error {
+// SaveCitation saves or updates a citation on the given branch (ADR-005, #758).
+// A save always clears any prior tombstone.
+func (s *ReadModelStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO citations (id, source_id, source_title, fact_type, fact_owner_id, page, volume,
+		INSERT INTO citations (id, branch_id, source_id, source_title, fact_type, fact_owner_id, page, volume,
 							   source_quality, informant_type, evidence_type, quoted_text, analysis,
-							   template_id, fields_data, gedcom_xref, version, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-		ON CONFLICT(id) DO UPDATE SET
+							   template_id, fields_data, gedcom_xref, version, created_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, FALSE)
+		ON CONFLICT(id, branch_id) DO UPDATE SET
 			source_id = EXCLUDED.source_id,
 			source_title = EXCLUDED.source_title,
 			fact_type = EXCLUDED.fact_type,
@@ -2895,8 +2976,9 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.
 			template_id = EXCLUDED.template_id,
 			fields_data = EXCLUDED.fields_data,
 			gedcom_xref = EXCLUDED.gedcom_xref,
-			version = EXCLUDED.version
-	`, citation.ID, citation.SourceID, nullableString(citation.SourceTitle),
+			version = EXCLUDED.version,
+			deleted = FALSE
+	`, citation.ID, branchID.UUID(), citation.SourceID, nullableString(citation.SourceTitle),
 		nullableString(string(citation.FactType)), citation.FactOwnerID,
 		nullableString(citation.Page), nullableString(citation.Volume),
 		nullableString(string(citation.SourceQuality)), nullableString(string(citation.InformantType)),
@@ -2904,14 +2986,19 @@ func (s *ReadModelStore) SaveCitation(ctx context.Context, citation *repository.
 		nullableString(citation.Analysis), nullableString(citation.TemplateID),
 		nullableString(citation.FieldsJSON), nullableString(citation.GedcomXref),
 		citation.Version, citation.CreatedAt)
-
-	return err
+	if err != nil {
+		return fmt.Errorf("save citation: %w", err)
+	}
+	return nil
 }
 
-// DeleteCitation removes a citation.
-func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM citations WHERE id = $1", id)
-	return err
+// DeleteCitation removes a citation (ADR-005, #758): a real removal on main, a
+// tombstone on a non-main branch. Other branches' rows are untouched.
+func (s *ReadModelStore) DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "citations", citationSelectCols, branchID, id); err != nil {
+		return fmt.Errorf("delete citation: %w", err)
+	}
+	return nil
 }
 
 // Person/family fact tables (#757): life_events, attributes and associations are
@@ -4463,13 +4550,9 @@ func (s *ReadModelStore) GetBrickWalls(ctx context.Context, includeResolved bool
 	return entries, rows.Err()
 }
 
-// GetNote retrieves a note by ID.
-func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository.NoteReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, text, mime, language, translations, gedcom_xref, version, updated_at
-		FROM notes WHERE id = $1
-	`, id)
-
+// scanNoteRow scans one noteSelectCols row. It returns (nil, nil) for
+// sql.ErrNoRows so single-row lookups report absence as nil.
+func scanNoteRow(row rowScanner) (*repository.NoteReadModel, error) {
 	var note repository.NoteReadModel
 	var mime, language, gedcomXref sql.NullString
 	var translations []byte
@@ -4483,7 +4566,7 @@ func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository
 		&note.Version,
 		&note.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -4492,37 +4575,48 @@ func (s *ReadModelStore) GetNote(ctx context.Context, id uuid.UUID) (*repository
 	note.MIME = mime.String
 	note.Language = language.String
 	note.Translations = repository.UnmarshalNoteTranslations(string(translations))
-	if gedcomXref.Valid {
-		note.GedcomXref = gedcomXref.String
-	}
+	note.GedcomXref = gedcomXref.String
 	return &note, nil
 }
 
-// ListNotes returns a paginated list of notes.
+// GetNote retrieves a note by ID within the branch overlay (ADR-005, #758).
+func (s *ReadModelStore) GetNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.NoteReadModel, error) {
+	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, overlayGetQuery("notes", noteSelectCols),
+		id, branchID.UUID(), domain.MainBranchID.UUID())
+	return scanNoteRow(row)
+}
+
+// ListNotes returns a paginated list of the notes visible on opts.BranchID
+// (ADR-005, #758).
 func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOptions) ([]repository.NoteReadModel, int, error) {
-	// Count total
+	args, n := overlayArgs(opts.BranchID)
+	src := overlaySrc("notes", noteSelectCols, "", opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM notes").Scan(&total)
-	if err != nil {
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" n", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count notes: %w", err)
 	}
 
 	// Build order clause
-	orderColumn := "updated_at"
 	orderDir := "DESC"
 	if opts.Order == "asc" {
 		orderDir = "ASC"
 	}
 
-	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	// #nosec G201 G202 -- orderDir is one of two literals chosen above; src and n are internal
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
-		SELECT id, text, mime, language, translations, gedcom_xref, version, updated_at
-		FROM notes
-		ORDER BY %s %s
-		LIMIT $1 OFFSET $2
-	`, orderColumn, orderDir)
+		SELECT `+noteSelectCols+`
+		FROM %s n
+		ORDER BY updated_at %s, id %s
+		LIMIT $%d OFFSET $%d
+	`, src, orderDir, orderDir, n, n+1)
 
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query notes: %w", err)
 	}
@@ -4530,62 +4624,47 @@ func (s *ReadModelStore) ListNotes(ctx context.Context, opts repository.ListOpti
 
 	var notes []repository.NoteReadModel
 	for rows.Next() {
-		var note repository.NoteReadModel
-		var mime, language, gedcomXref sql.NullString
-		var translations []byte
-		if err := rows.Scan(
-			&note.ID,
-			&note.Text,
-			&mime,
-			&language,
-			&translations,
-			&gedcomXref,
-			&note.Version,
-			&note.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan note: %w", err)
+		note, err := scanNoteRow(rows)
+		if err != nil {
+			return nil, 0, err
 		}
-		note.MIME = mime.String
-		note.Language = language.String
-		note.Translations = repository.UnmarshalNoteTranslations(string(translations))
-		if gedcomXref.Valid {
-			note.GedcomXref = gedcomXref.String
-		}
-		notes = append(notes, note)
+		notes = append(notes, *note)
 	}
 
 	return notes, total, rows.Err()
 }
 
-// SaveNote saves or updates a note.
-func (s *ReadModelStore) SaveNote(ctx context.Context, note *repository.NoteReadModel) error {
+// SaveNote saves or updates a note on the given branch (ADR-005, #758). A save
+// always clears any prior tombstone.
+func (s *ReadModelStore) SaveNote(ctx context.Context, branchID domain.BranchID, note *repository.NoteReadModel) error {
 	var translations any
 	if len(note.Translations) > 0 {
 		translations = repository.MarshalNoteTranslations(note.Translations)
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO notes (id, text, mime, language, translations, gedcom_xref, version, updated_at)
-		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, NULLIF($6, ''), $7, $8)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO notes (id, branch_id, text, mime, language, translations, gedcom_xref, version, updated_at, deleted)
+		VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), $8, $9, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			text = EXCLUDED.text,
 			mime = EXCLUDED.mime,
 			language = EXCLUDED.language,
 			translations = EXCLUDED.translations,
 			gedcom_xref = EXCLUDED.gedcom_xref,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, note.ID, note.Text, note.MIME, note.Language, translations, note.GedcomXref, note.Version, note.UpdatedAt)
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, note.ID, branchID.UUID(), note.Text, note.MIME, note.Language, translations, note.GedcomXref, note.Version, note.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save note: %w", err)
 	}
 	return nil
 }
 
-// DeleteNote deletes a note by ID.
-func (s *ReadModelStore) DeleteNote(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM notes WHERE id = $1", id)
-	if err != nil {
+// DeleteNote removes a note (ADR-005, #758): a real removal on main, a tombstone
+// on a non-main branch.
+func (s *ReadModelStore) DeleteNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "notes", noteSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete note: %w", err)
 	}
 	return nil

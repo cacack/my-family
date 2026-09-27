@@ -16,7 +16,8 @@ import (
 // read-model schema predates branch support and cannot represent a branch's
 // copy-on-write shadow row (ADR-005). SQLite cannot alter a table's PRIMARY KEY in
 // place, so a database created before #669 keeps its single-column `id` key (as
-// does one created before #757 for life_events, attributes and associations): a
+// does one created before #757 for life_events, attributes and associations, or
+// before #758 for sources, source_external_ids, citations and notes): a
 // shadow row (same id, different branch_id) would violate it. Rather than let such
 // a database look branch-capable and then fail with an opaque constraint error,
 // branch writes are refused up front with this error. Mainline (MainBranchID)
@@ -366,8 +367,9 @@ type ProofSummaryReadModel struct {
 // unfinished work, 4 is a decision.
 //
 // 1. BRANCH-SCOPED ENTITIES — the #669 slice (Person, PersonName, PersonExternalID,
-// Family, FamilyExternalID, FamilyChild, PedigreeEdge) and the person/family facts
-// (LifeEvent, Attribute, Association; #757, sub-issue B of #676). These own
+// Family, FamilyExternalID, FamilyChild, PedigreeEdge), the person/family facts
+// (LifeEvent, Attribute, Association; #757, sub-issue B of #676) and the evidence
+// (Source, SourceExternalID, Citation, Note; #758, sub-issue C). These own
 // branch_id-keyed tables. Their methods take an explicit domain.BranchID
 // (single-row) or carry it on ListOptions/SearchOptions (list/search); a
 // copy-on-write overlay resolves the branch's row for an entity else falls back to
@@ -385,7 +387,6 @@ type ProofSummaryReadModel struct {
 // 3. MAIN-ONLY, PENDING — no branchID yet, but destined for one. These are the
 // remaining sub-issues of #676, and each must replicate the category-1 pattern
 // (branch_id column + overlay + tombstone + cascade) on all three backends:
-//   - Source, SourceExternalID, Citation and Note are sub-issue C (#758).
 //   - Media metadata is sub-issue D (#759); blobs stay shared and are never copied
 //     into a branch shadow row.
 //   - EvidenceAnalysis, EvidenceConflict, ResearchLog and ProofSummary are
@@ -464,32 +465,44 @@ type ReadModelStore interface {
 	// PurgeBranch hard-deletes every overlay row for branchID across the
 	// branch-scoped tables: the seven slice tables (persons, person_names,
 	// person_external_ids, families, family_external_ids, family_children,
-	// pedigree_edges) and the person/family fact tables (life_events, attributes,
-	// associations; #757). It backs the
+	// pedigree_edges), the person/family fact tables (life_events, attributes,
+	// associations; #757) and the evidence tables (sources, source_external_ids,
+	// citations, notes; #758). It backs the
 	// branch-delete lifecycle (ADR-005): once a branch is archived its copy-on-write
 	// rows and tombstones are dropped. It is a no-op for domain.MainBranchID — the
 	// mainline is never purged.
 	PurgeBranch(ctx context.Context, branchID domain.BranchID) error
 
-	// Source operations
-	GetSource(ctx context.Context, id uuid.UUID) (*SourceReadModel, error)
+	// Source operations (branch-scoped, #758)
+	//
+	// Source is a branch-scoped entity (ADR-005): single-row methods take an
+	// explicit branchID; ListSources carries it on opts.BranchID. SearchSources
+	// resolves the branch's view of every source FIRST and only then matches the
+	// query against the winning rows, so a branch retitle is searchable under its
+	// new title only and a branch-deleted source is never found. DeleteSource
+	// cascades to the source's external identifiers and citations on the same
+	// branch (and only that branch).
+	GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*SourceReadModel, error)
 	ListSources(ctx context.Context, opts ListOptions) ([]SourceReadModel, int, error)
-	SearchSources(ctx context.Context, query string, limit int) ([]SourceReadModel, error)
-	SaveSource(ctx context.Context, source *SourceReadModel) error
-	DeleteSource(ctx context.Context, id uuid.UUID) error
+	SearchSources(ctx context.Context, branchID domain.BranchID, query string, limit int) ([]SourceReadModel, error)
+	SaveSource(ctx context.Context, branchID domain.BranchID, source *SourceReadModel) error
+	DeleteSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Source external identifier operations (GEDCOM 7.0 EXID)
-	ReplaceSourceExternalIDs(ctx context.Context, sourceID uuid.UUID, ids []SourceExternalIDReadModel) error
-	GetSourceExternalIDs(ctx context.Context, sourceID uuid.UUID) ([]SourceExternalIDReadModel, error)
+	// Source external identifier operations (GEDCOM 7.0 EXID; branch-scoped per
+	// source bucket, #758 — same model as ReplacePersonExternalIDs)
+	ReplaceSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID, ids []SourceExternalIDReadModel) error
+	GetSourceExternalIDs(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]SourceExternalIDReadModel, error)
 
-	// Citation operations
-	GetCitation(ctx context.Context, id uuid.UUID) (*CitationReadModel, error)
+	// Citation operations (branch-scoped, #758; same shape as life events). The
+	// per-source/per-person/per-fact lists resolve every citation through the
+	// per-id overlay and re-apply their filter to the winning row.
+	GetCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*CitationReadModel, error)
 	ListCitations(ctx context.Context, opts ListOptions) ([]CitationReadModel, int, error)
-	GetCitationsForSource(ctx context.Context, sourceID uuid.UUID) ([]CitationReadModel, error)
-	GetCitationsForPerson(ctx context.Context, personID uuid.UUID) ([]CitationReadModel, error)
-	GetCitationsForFact(ctx context.Context, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
-	SaveCitation(ctx context.Context, citation *CitationReadModel) error
-	DeleteCitation(ctx context.Context, id uuid.UUID) error
+	GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]CitationReadModel, error)
+	GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]CitationReadModel, error)
+	GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
+	SaveCitation(ctx context.Context, branchID domain.BranchID, citation *CitationReadModel) error
+	DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
 	// Media operations
 	GetMedia(ctx context.Context, id uuid.UUID) (*MediaReadModel, error)
@@ -519,11 +532,11 @@ type ReadModelStore interface {
 	SaveAttribute(ctx context.Context, branchID domain.BranchID, attribute *AttributeReadModel) error
 	DeleteAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Note operations
-	GetNote(ctx context.Context, id uuid.UUID) (*NoteReadModel, error)
+	// Note operations (branch-scoped, #758; same shape as life events)
+	GetNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*NoteReadModel, error)
 	ListNotes(ctx context.Context, opts ListOptions) ([]NoteReadModel, int, error)
-	SaveNote(ctx context.Context, note *NoteReadModel) error
-	DeleteNote(ctx context.Context, id uuid.UUID) error
+	SaveNote(ctx context.Context, branchID domain.BranchID, note *NoteReadModel) error
+	DeleteNote(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
 	// Submitter operations
 	GetSubmitter(ctx context.Context, id uuid.UUID) (*SubmitterReadModel, error)

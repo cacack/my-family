@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -177,7 +178,7 @@ func TestGetNote(t *testing.T) {
 	}
 
 	// Get note
-	result, err := queryService.GetNote(ctx, createResult.ID)
+	result, err := queryService.GetNote(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetNote failed: %v", err)
 	}
@@ -202,7 +203,7 @@ func TestGetNote_NotFound(t *testing.T) {
 	queryService := query.NewNoteService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetNote(ctx, uuid.New())
+	_, err := queryService.GetNote(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -225,7 +226,7 @@ func TestGetNote_NoGedcomXref(t *testing.T) {
 	}
 
 	// Get note
-	result, err := queryService.GetNote(ctx, createResult.ID)
+	result, err := queryService.GetNote(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetNote failed: %v", err)
 	}

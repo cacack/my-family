@@ -118,7 +118,7 @@ type UpdateSourceResult struct {
 // UpdateSource updates an existing source record.
 func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*UpdateSourceResult, error) {
 	// Get current source from read model
-	current, err := h.readStore.GetSource(ctx, input.ID)
+	current, err := h.readStore.GetSource(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting source: %w", err)
 	}
@@ -220,7 +220,7 @@ func (h *Handler) UpdateSource(ctx context.Context, input UpdateSourceInput) (*U
 // DeleteSource deletes a source record.
 func (h *Handler) DeleteSource(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	// Get current source from read model
-	current, err := h.readStore.GetSource(ctx, id)
+	current, err := h.readStore.GetSource(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting source: %w", err)
 	}
@@ -234,7 +234,7 @@ func (h *Handler) DeleteSource(ctx context.Context, id uuid.UUID, version int64,
 	}
 
 	// Check if source has citations (referential integrity)
-	citations, err := h.readStore.GetCitationsForSource(ctx, id)
+	citations, err := h.readStore.GetCitationsForSource(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting citations for source: %w", err)
 	}
@@ -287,7 +287,7 @@ func (h *Handler) CreateCitation(ctx context.Context, input CreateCitationInput)
 	}
 
 	// Verify source exists
-	source, err := h.readStore.GetSource(ctx, input.SourceID)
+	source, err := h.readStore.GetSource(ctx, h.branchID, input.SourceID)
 	if err != nil {
 		return nil, fmt.Errorf("getting source: %w", err)
 	}
@@ -379,7 +379,7 @@ type UpdateCitationResult struct {
 // UpdateCitation updates an existing citation record.
 func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput) (*UpdateCitationResult, error) { //nolint:gocyclo // field-by-field update is inherently branchy
 	// Get current citation from read model
-	current, err := h.readStore.GetCitation(ctx, input.ID)
+	current, err := h.readStore.GetCitation(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting citation: %w", err)
 	}
@@ -413,7 +413,7 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 
 	if input.SourceID != nil {
 		// Verify source exists
-		source, err := h.readStore.GetSource(ctx, *input.SourceID)
+		source, err := h.readStore.GetSource(ctx, h.branchID, *input.SourceID)
 		if err != nil {
 			return nil, fmt.Errorf("getting source: %w", err)
 		}
@@ -493,7 +493,7 @@ func (h *Handler) UpdateCitation(ctx context.Context, input UpdateCitationInput)
 // DeleteCitation deletes a citation record.
 func (h *Handler) DeleteCitation(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	// Get current citation from read model
-	current, err := h.readStore.GetCitation(ctx, id)
+	current, err := h.readStore.GetCitation(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting citation: %w", err)
 	}

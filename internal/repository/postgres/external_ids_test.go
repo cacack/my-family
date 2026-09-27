@@ -127,7 +127,7 @@ func TestReadModelStore_SourceExternalIDs(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	sourceID := uuid.New()
-	if err := store.SaveSource(ctx, &repository.SourceReadModel{ID: sourceID, SourceType: domain.SourceBook, Title: "Test Source", Version: 1}); err != nil {
+	if err := store.SaveSource(ctx, domain.MainBranchID, &repository.SourceReadModel{ID: sourceID, SourceType: domain.SourceBook, Title: "Test Source", Version: 1}); err != nil {
 		t.Fatalf("SaveSource: %v", err)
 	}
 
@@ -135,18 +135,18 @@ func TestReadModelStore_SourceExternalIDs(t *testing.T) {
 		{Value: "S-1", Type: "http://example.com/src"},
 		{Value: "S-2"},
 	}
-	if err := store.ReplaceSourceExternalIDs(ctx, sourceID, ids); err != nil {
+	if err := store.ReplaceSourceExternalIDs(ctx, domain.MainBranchID, sourceID, ids); err != nil {
 		t.Fatalf("ReplaceSourceExternalIDs: %v", err)
 	}
-	got, _ := store.GetSourceExternalIDs(ctx, sourceID)
+	got, _ := store.GetSourceExternalIDs(ctx, domain.MainBranchID, sourceID)
 	if len(got) != 2 || got[0].Value != "S-1" || got[0].Sequence != 0 || got[0].SourceID != sourceID || got[1].Value != "S-2" || got[1].Sequence != 1 {
 		t.Fatalf("unexpected external ids: %+v", got)
 	}
 
-	if err := store.DeleteSource(ctx, sourceID); err != nil {
+	if err := store.DeleteSource(ctx, domain.MainBranchID, sourceID); err != nil {
 		t.Fatalf("DeleteSource: %v", err)
 	}
-	got, _ = store.GetSourceExternalIDs(ctx, sourceID)
+	got, _ = store.GetSourceExternalIDs(ctx, domain.MainBranchID, sourceID)
 	if len(got) != 0 {
 		t.Fatalf("expected external ids cascade-deleted, got %d", len(got))
 	}

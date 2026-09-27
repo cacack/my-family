@@ -158,10 +158,10 @@ Current implementation status for tracking completeness.
 | Person | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | Complete |
 | PersonName | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | Complete |
 | Family | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | Complete |
-| Source | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
-| Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Source | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
+| Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
-| Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
 | Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
@@ -206,10 +206,11 @@ Notes on partial rows:
 - **Snapshot**: event-sourced since [#624](https://github.com/cacack/my-family/issues/624) — `Handler.CreateSnapshot` / `DeleteSnapshot` emit `SnapshotCreated` / `SnapshotDeleted` and the projection writes the registry, so snapshots created from that point on rebuild from the log. Rows predating #624 have no event and would not survive a rebuild (see ADR-005 "Still open"); rebuild tooling ([#680](https://github.com/cacack/my-family/issues/680)) must backfill them. GEDCOM is N/A (a research marker is not a genealogy record). The Branch column is ❌ rather than N/A (or ⛔, where it sat until #624 made snapshots event-sourced): a snapshot *taken on a branch* is meaningful (ADR-005) but the registry has no `branch_id` column yet, so both commands refuse on a branch-scoped handler.
 - **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
-### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts)
+### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts / #758 evidence)
 
-Ten read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
-overlay: the seven-type #669 slice and the three person/family fact types of #757. Branch
+Fourteen read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
+overlay: the seven-type #669 slice, the three person/family fact types of #757 and the four
+evidence types of #758. Branch
 **writes** cover a narrower set, because a write also needs a branch-scoped command path:
 
 | Read-model type | Branch reads (#669) | Branch writes (#670) | How it is written on a branch |
@@ -224,6 +225,10 @@ overlay: the seven-type #669 slice and the three person/family fact types of #75
 | LifeEvent (#757) | ✅ | ⚠️ | no command of its own; tombstoned by a branch `deletePerson` / `deleteFamily` |
 | Attribute (#757) | ✅ | ⚠️ | same as LifeEvent |
 | Association (#757) | ✅ | ✅ | `createAssociation` / `updateAssociation` / `deleteAssociation` |
+| Source (#758) | ✅ | ✅ | `createSource` / `updateSource` / `deleteSource` (the delete cascades to the source's external IDs and citations on the branch) |
+| SourceExternalID (#758) | ✅ | ⚠️ | written only by GEDCOM import (main-only); tombstoned by a branch `deleteSource` |
+| Citation (#758) | ✅ | ✅ | `createCitation` / `updateCitation` / `deleteCitation`; the denormalized source title and the source's citation count resolve on the branch. Known gap: bumping the count writes a branch copy of the source, which then hides later main edits to that source on the branch (stale view, tracked in [#815](https://github.com/cacack/my-family/issues/815)) |
+| Note (#758) | ✅ | ✅ | `createNote` / `updateNote` / `deleteNote` |
 
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
 `getPedigree`) were the original #669/#670 slice. Sub-issue A of #676
@@ -252,10 +257,35 @@ index, now that `life_events` carries a `branch_id`, and the six association ope
 | `deleteAssociation` | DELETE | `/associations/{id}` |
 | `listAssociationsForPerson` | GET | `/persons/{id}/associations` |
 
-That is **29 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+Sub-issue C ([#758](https://github.com/cacack/my-family/issues/758)) added eighteen for the
+evidence. Source and citation history, restore points and rollback stay mainline, as rollback does
+for every entity:
+
+| operationId | Method | Path |
+|---|---|---|
+| `listSources` | GET | `/sources` |
+| `createSource` | POST | `/sources` |
+| `searchSources` | GET | `/sources/search` |
+| `getSource` | GET | `/sources/{id}` |
+| `updateSource` | PUT | `/sources/{id}` |
+| `deleteSource` | DELETE | `/sources/{id}` |
+| `getCitationsForSource` | GET | `/sources/{id}/citations` |
+| `createCitation` | POST | `/citations` |
+| `getCitation` | GET | `/citations/{id}` |
+| `updateCitation` | PUT | `/citations/{id}` |
+| `deleteCitation` | DELETE | `/citations/{id}` |
+| `formatCitation` | GET | `/citations/{id}/format` |
+| `getCitationsForPerson` | GET | `/persons/{id}/citations` |
+| `listNotes` | GET | `/notes` |
+| `createNote` | POST | `/notes` |
+| `getNote` | GET | `/notes/{id}` |
+| `updateNote` | PUT | `/notes/{id}` |
+| `deleteNote` | DELETE | `/notes/{id}` |
+
+That is **47 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 29 in `isBranchScopedRequest()`
+The frontend mirrors exactly those 47 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
 `?branch=` while `listFamilies` does not. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
@@ -270,7 +300,7 @@ deciding whether they become event-sourced —
 [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
 [#761](https://github.com/cacack/my-family/issues/761)). The surname index and per-surname list,
 the place index and per-place list, the cemetery index and per-cemetery person list, and the map
-all follow the active branch. Grow the allowlist and the notice coverage together
+all follow the active branch, and so do the source list and source detail pages (#758). Grow the allowlist and the notice coverage together
 as the remaining #676 sub-issues land.
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in

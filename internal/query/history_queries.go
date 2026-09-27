@@ -372,7 +372,7 @@ func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, 
 // getSourceName retrieves or constructs a source's name.
 func (s *HistoryService) getSourceName(ctx context.Context, sourceID uuid.UUID, evt *repository.StoredEvent) string {
 	// Try to get from read model first
-	source, err := s.readStore.GetSource(ctx, sourceID)
+	source, err := s.readStore.GetSource(ctx, domain.MainBranchID, sourceID)
 	if err == nil && source != nil {
 		return source.Title
 	}
@@ -395,7 +395,7 @@ func (s *HistoryService) getSourceName(ctx context.Context, sourceID uuid.UUID, 
 // TODO: evt parameter reserved for extracting name from event data when read model unavailable
 func (s *HistoryService) getCitationName(ctx context.Context, citationID uuid.UUID, _ *repository.StoredEvent) string {
 	// Try to get from read model first
-	citation, err := s.readStore.GetCitation(ctx, citationID)
+	citation, err := s.readStore.GetCitation(ctx, domain.MainBranchID, citationID)
 	if err == nil && citation != nil {
 		return fmt.Sprintf("%s (%s)", citation.SourceTitle, citation.FactType)
 	}

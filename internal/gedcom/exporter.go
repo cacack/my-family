@@ -252,8 +252,8 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	for i, p := range persons {
 		xref := personXrefs[p.ID]
 		// Fetch citations for this person's events
-		birthCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactPersonBirth, p.ID)
-		deathCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactPersonDeath, p.ID)
+		birthCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonBirth, p.ID)
+		deathCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactPersonDeath, p.ID)
 		allCitations := append(birthCitations, deathCitations...)
 		result.CitationsExported += len(allCitations)
 
@@ -300,7 +300,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 	for i, f := range families {
 		xref := familyXrefs[f.ID]
 		children, _ := exp.readStore.GetFamilyChildren(ctx, domain.MainBranchID, f.ID)
-		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.FactFamilyMarriage, f.ID)
+		marriageCitations, _ := exp.readStore.GetCitationsForFact(ctx, domain.MainBranchID, domain.FactFamilyMarriage, f.ID)
 		result.CitationsExported += len(marriageCitations)
 
 		// Fetch events for this family
@@ -608,7 +608,7 @@ func toGedcomSource(s repository.SourceReadModel, repoIDToXref map[uuid.UUID]str
 	}
 
 	// External identifiers (GEDCOM 7.0 EXID), re-emitted from the read model.
-	if externalIDs, err := readStore.GetSourceExternalIDs(ctx, s.ID); err == nil {
+	if externalIDs, err := readStore.GetSourceExternalIDs(ctx, domain.MainBranchID, s.ID); err == nil {
 		for _, ext := range externalIDs {
 			src.ExternalIDs = append(src.ExternalIDs, &gedcom.ExternalID{
 				Value: ext.Value,
@@ -899,7 +899,7 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 
 	// Fetch and add citations for this event
 	if readStore != nil {
-		citations, _ := readStore.GetCitationsForFact(ctx, event.FactType, event.OwnerID)
+		citations, _ := readStore.GetCitationsForFact(ctx, domain.MainBranchID, event.FactType, event.OwnerID)
 		ge.SourceCitations = toGedcomSourceCitations(citations, sourceXrefs)
 	}
 

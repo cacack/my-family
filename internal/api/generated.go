@@ -4570,10 +4570,62 @@ type PreviewCitationTemplateJSONBody struct {
 	Fields map[string]string `json:"fields"`
 }
 
+// CreateCitationParams defines parameters for CreateCitation.
+type CreateCitationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // DeleteCitationParams defines parameters for DeleteCitation.
 type DeleteCitationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetCitationParams defines parameters for GetCitation.
+type GetCitationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateCitationParams defines parameters for UpdateCitation.
+type UpdateCitationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// FormatCitationParams defines parameters for FormatCitation.
+type FormatCitationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetCitationRestorePointsParams defines parameters for GetCitationRestorePoints.
@@ -4790,6 +4842,13 @@ type DeleteMediaParams struct {
 
 // ListNotesParams defines parameters for ListNotes.
 type ListNotesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope          `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam           `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam          `form:"offset,omitempty" json:"offset,omitempty"`
 	Order  *ListNotesParamsOrder `form:"order,omitempty" json:"order,omitempty"`
@@ -4798,10 +4857,51 @@ type ListNotesParams struct {
 // ListNotesParamsOrder defines parameters for ListNotes.
 type ListNotesParamsOrder string
 
+// CreateNoteParams defines parameters for CreateNote.
+type CreateNoteParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // DeleteNoteParams defines parameters for DeleteNote.
 type DeleteNoteParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetNoteParams defines parameters for GetNote.
+type GetNoteParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateNoteParams defines parameters for UpdateNote.
+type UpdateNoteParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetPedigreeParams defines parameters for GetPedigree.
@@ -4913,6 +5013,17 @@ type ListAssociationsForPersonParams struct {
 type SetPersonBrickWallJSONBody struct {
 	// Note Description of the research block
 	Note string `json:"note"`
+}
+
+// GetCitationsForPersonParams defines parameters for GetCitationsForPerson.
+type GetCitationsForPersonParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetPersonHistoryParams defines parameters for GetPersonHistory.
@@ -5121,6 +5232,13 @@ type SearchPersonsParamsOrder string
 
 // ListSourcesParams defines parameters for ListSources.
 type ListSourcesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope            `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam             `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam            `form:"offset,omitempty" json:"offset,omitempty"`
 	Sort   *ListSourcesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
@@ -5136,8 +5254,27 @@ type ListSourcesParamsSort string
 // ListSourcesParamsOrder defines parameters for ListSources.
 type ListSourcesParamsOrder string
 
+// CreateSourceParams defines parameters for CreateSource.
+type CreateSourceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // SearchSourcesParams defines parameters for SearchSources.
 type SearchSourcesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Q Search query
 	Q     string      `form:"q" json:"q"`
 	Limit *LimitParam `form:"limit,omitempty" json:"limit,omitempty"`
@@ -5145,8 +5282,49 @@ type SearchSourcesParams struct {
 
 // DeleteSourceParams defines parameters for DeleteSource.
 type DeleteSourceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetSourceParams defines parameters for GetSource.
+type GetSourceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateSourceParams defines parameters for UpdateSource.
+type UpdateSourceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetCitationsForSourceParams defines parameters for GetCitationsForSource.
+type GetCitationsForSourceParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetSourceHistoryParams defines parameters for GetSourceHistory.
@@ -5386,19 +5564,19 @@ type ServerInterface interface {
 	PreviewCitationTemplate(ctx echo.Context, id string) error
 	// Create a new citation
 	// (POST /citations)
-	CreateCitation(ctx echo.Context) error
+	CreateCitation(ctx echo.Context, params CreateCitationParams) error
 	// Delete a citation
 	// (DELETE /citations/{id})
 	DeleteCitation(ctx echo.Context, id openapi_types.UUID, params DeleteCitationParams) error
 	// Get a citation by ID
 	// (GET /citations/{id})
-	GetCitation(ctx echo.Context, id openapi_types.UUID) error
+	GetCitation(ctx echo.Context, id openapi_types.UUID, params GetCitationParams) error
 	// Update a citation
 	// (PUT /citations/{id})
-	UpdateCitation(ctx echo.Context, id openapi_types.UUID) error
+	UpdateCitation(ctx echo.Context, id openapi_types.UUID, params UpdateCitationParams) error
 	// Format a citation using its template
 	// (GET /citations/{id}/format)
-	FormatCitation(ctx echo.Context, id openapi_types.UUID) error
+	FormatCitation(ctx echo.Context, id openapi_types.UUID, params FormatCitationParams) error
 	// Get restore points for a citation
 	// (GET /citations/{id}/restore-points)
 	GetCitationRestorePoints(ctx echo.Context, id openapi_types.UUID, params GetCitationRestorePointsParams) error
@@ -5548,16 +5726,16 @@ type ServerInterface interface {
 	ListNotes(ctx echo.Context, params ListNotesParams) error
 	// Create a new note
 	// (POST /notes)
-	CreateNote(ctx echo.Context) error
+	CreateNote(ctx echo.Context, params CreateNoteParams) error
 	// Delete a note
 	// (DELETE /notes/{id})
 	DeleteNote(ctx echo.Context, id NoteId, params DeleteNoteParams) error
 	// Get a note by ID
 	// (GET /notes/{id})
-	GetNote(ctx echo.Context, id NoteId) error
+	GetNote(ctx echo.Context, id NoteId, params GetNoteParams) error
 	// Update a note
 	// (PUT /notes/{id})
-	UpdateNote(ctx echo.Context, id NoteId) error
+	UpdateNote(ctx echo.Context, id NoteId, params UpdateNoteParams) error
 	// Get ancestor pedigree for a person
 	// (GET /pedigree/{id})
 	GetPedigree(ctx echo.Context, id PersonId, params GetPedigreeParams) error
@@ -5602,7 +5780,7 @@ type ServerInterface interface {
 	SetPersonBrickWall(ctx echo.Context, id PersonId) error
 	// Get citations for a person
 	// (GET /persons/{id}/citations)
-	GetCitationsForPerson(ctx echo.Context, id PersonId) error
+	GetCitationsForPerson(ctx echo.Context, id PersonId, params GetCitationsForPersonParams) error
 	// Get change history for a person
 	// (GET /persons/{id}/history)
 	GetPersonHistory(ctx echo.Context, id PersonId, params GetPersonHistoryParams) error
@@ -5722,7 +5900,7 @@ type ServerInterface interface {
 	ListSources(ctx echo.Context, params ListSourcesParams) error
 	// Create a new source
 	// (POST /sources)
-	CreateSource(ctx echo.Context) error
+	CreateSource(ctx echo.Context, params CreateSourceParams) error
 	// Search sources
 	// (GET /sources/search)
 	SearchSources(ctx echo.Context, params SearchSourcesParams) error
@@ -5731,13 +5909,13 @@ type ServerInterface interface {
 	DeleteSource(ctx echo.Context, id openapi_types.UUID, params DeleteSourceParams) error
 	// Get a source by ID
 	// (GET /sources/{id})
-	GetSource(ctx echo.Context, id openapi_types.UUID) error
+	GetSource(ctx echo.Context, id openapi_types.UUID, params GetSourceParams) error
 	// Update a source
 	// (PUT /sources/{id})
-	UpdateSource(ctx echo.Context, id openapi_types.UUID) error
+	UpdateSource(ctx echo.Context, id openapi_types.UUID, params UpdateSourceParams) error
 	// Get citations for a source
 	// (GET /sources/{id}/citations)
-	GetCitationsForSource(ctx echo.Context, id openapi_types.UUID) error
+	GetCitationsForSource(ctx echo.Context, id openapi_types.UUID, params GetCitationsForSourceParams) error
 	// Get change history for a source
 	// (GET /sources/{id}/history)
 	GetSourceHistory(ctx echo.Context, id openapi_types.UUID, params GetSourceHistoryParams) error
@@ -6307,8 +6485,17 @@ func (w *ServerInterfaceWrapper) PreviewCitationTemplate(ctx echo.Context) error
 func (w *ServerInterfaceWrapper) CreateCitation(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateCitationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateCitation(ctx)
+	err = w.Handler.CreateCitation(ctx, params)
 	return err
 }
 
@@ -6325,6 +6512,13 @@ func (w *ServerInterfaceWrapper) DeleteCitation(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteCitationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -6348,8 +6542,17 @@ func (w *ServerInterfaceWrapper) GetCitation(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCitationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetCitation(ctx, id)
+	err = w.Handler.GetCitation(ctx, id, params)
 	return err
 }
 
@@ -6364,8 +6567,17 @@ func (w *ServerInterfaceWrapper) UpdateCitation(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateCitationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateCitation(ctx, id)
+	err = w.Handler.UpdateCitation(ctx, id, params)
 	return err
 }
 
@@ -6380,8 +6592,17 @@ func (w *ServerInterfaceWrapper) FormatCitation(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params FormatCitationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.FormatCitation(ctx, id)
+	err = w.Handler.FormatCitation(ctx, id, params)
 	return err
 }
 
@@ -7337,6 +7558,13 @@ func (w *ServerInterfaceWrapper) ListNotes(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListNotesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -7367,8 +7595,17 @@ func (w *ServerInterfaceWrapper) ListNotes(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateNote(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateNoteParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateNote(ctx)
+	err = w.Handler.CreateNote(ctx, params)
 	return err
 }
 
@@ -7385,6 +7622,13 @@ func (w *ServerInterfaceWrapper) DeleteNote(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteNoteParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -7408,8 +7652,17 @@ func (w *ServerInterfaceWrapper) GetNote(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetNoteParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetNote(ctx, id)
+	err = w.Handler.GetNote(ctx, id, params)
 	return err
 }
 
@@ -7424,8 +7677,17 @@ func (w *ServerInterfaceWrapper) UpdateNote(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateNoteParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateNote(ctx, id)
+	err = w.Handler.UpdateNote(ctx, id, params)
 	return err
 }
 
@@ -7751,8 +8013,17 @@ func (w *ServerInterfaceWrapper) GetCitationsForPerson(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCitationsForPersonParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetCitationsForPerson(ctx, id)
+	err = w.Handler.GetCitationsForPerson(ctx, id, params)
 	return err
 }
 
@@ -8637,6 +8908,13 @@ func (w *ServerInterfaceWrapper) ListSources(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSourcesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -8681,8 +8959,17 @@ func (w *ServerInterfaceWrapper) ListSources(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateSource(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSourceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateSource(ctx)
+	err = w.Handler.CreateSource(ctx, params)
 	return err
 }
 
@@ -8692,6 +8979,13 @@ func (w *ServerInterfaceWrapper) SearchSources(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params SearchSourcesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "q" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", ctx.QueryParams(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8724,6 +9018,13 @@ func (w *ServerInterfaceWrapper) DeleteSource(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteSourceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -8747,8 +9048,17 @@ func (w *ServerInterfaceWrapper) GetSource(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSourceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetSource(ctx, id)
+	err = w.Handler.GetSource(ctx, id, params)
 	return err
 }
 
@@ -8763,8 +9073,17 @@ func (w *ServerInterfaceWrapper) UpdateSource(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateSourceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateSource(ctx, id)
+	err = w.Handler.UpdateSource(ctx, id, params)
 	return err
 }
 
@@ -8779,8 +9098,17 @@ func (w *ServerInterfaceWrapper) GetCitationsForSource(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetCitationsForSourceParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetCitationsForSource(ctx, id)
+	err = w.Handler.GetCitationsForSource(ctx, id, params)
 	return err
 }
 
@@ -10120,7 +10448,8 @@ func (response PreviewCitationTemplate404JSONResponse) VisitPreviewCitationTempl
 }
 
 type CreateCitationRequestObject struct {
-	Body *CreateCitationJSONRequestBody
+	Params CreateCitationParams
+	Body   *CreateCitationJSONRequestBody
 }
 
 type CreateCitationResponseObject interface {
@@ -10229,7 +10558,8 @@ func (response DeleteCitation409JSONResponse) VisitDeleteCitationResponse(w http
 }
 
 type GetCitationRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params GetCitationParams
 }
 
 type GetCitationResponseObject interface {
@@ -10265,8 +10595,9 @@ func (response GetCitation404JSONResponse) VisitGetCitationResponse(w http.Respo
 }
 
 type UpdateCitationRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *UpdateCitationJSONRequestBody
+	Id     openapi_types.UUID `json:"id"`
+	Params UpdateCitationParams
+	Body   *UpdateCitationJSONRequestBody
 }
 
 type UpdateCitationResponseObject interface {
@@ -10330,7 +10661,8 @@ func (response UpdateCitation409JSONResponse) VisitUpdateCitationResponse(w http
 }
 
 type FormatCitationRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params FormatCitationParams
 }
 
 type FormatCitationResponseObject interface {
@@ -12445,7 +12777,8 @@ func (response ListNotes400JSONResponse) VisitListNotesResponse(w http.ResponseW
 }
 
 type CreateNoteRequestObject struct {
-	Body *CreateNoteJSONRequestBody
+	Params CreateNoteParams
+	Body   *CreateNoteJSONRequestBody
 }
 
 type CreateNoteResponseObject interface {
@@ -12540,7 +12873,8 @@ func (response DeleteNote409JSONResponse) VisitDeleteNoteResponse(w http.Respons
 }
 
 type GetNoteRequestObject struct {
-	Id NoteId `json:"id"`
+	Id     NoteId `json:"id"`
+	Params GetNoteParams
 }
 
 type GetNoteResponseObject interface {
@@ -12576,8 +12910,9 @@ func (response GetNote404JSONResponse) VisitGetNoteResponse(w http.ResponseWrite
 }
 
 type UpdateNoteRequestObject struct {
-	Id   NoteId `json:"id"`
-	Body *UpdateNoteJSONRequestBody
+	Id     NoteId `json:"id"`
+	Params UpdateNoteParams
+	Body   *UpdateNoteJSONRequestBody
 }
 
 type UpdateNoteResponseObject interface {
@@ -13243,7 +13578,8 @@ func (response SetPersonBrickWall404JSONResponse) VisitSetPersonBrickWallRespons
 }
 
 type GetCitationsForPersonRequestObject struct {
-	Id PersonId `json:"id"`
+	Id     PersonId `json:"id"`
+	Params GetCitationsForPersonParams
 }
 
 type GetCitationsForPersonResponseObject interface {
@@ -14909,7 +15245,8 @@ func (response ListSources400JSONResponse) VisitListSourcesResponse(w http.Respo
 }
 
 type CreateSourceRequestObject struct {
-	Body *CreateSourceJSONRequestBody
+	Params CreateSourceParams
+	Body   *CreateSourceJSONRequestBody
 }
 
 type CreateSourceResponseObject interface {
@@ -15040,7 +15377,8 @@ func (response DeleteSource409JSONResponse) VisitDeleteSourceResponse(w http.Res
 }
 
 type GetSourceRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params GetSourceParams
 }
 
 type GetSourceResponseObject interface {
@@ -15076,8 +15414,9 @@ func (response GetSource404JSONResponse) VisitGetSourceResponse(w http.ResponseW
 }
 
 type UpdateSourceRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *UpdateSourceJSONRequestBody
+	Id     openapi_types.UUID `json:"id"`
+	Params UpdateSourceParams
+	Body   *UpdateSourceJSONRequestBody
 }
 
 type UpdateSourceResponseObject interface {
@@ -15141,7 +15480,8 @@ func (response UpdateSource409JSONResponse) VisitUpdateSourceResponse(w http.Res
 }
 
 type GetCitationsForSourceRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params GetCitationsForSourceParams
 }
 
 type GetCitationsForSourceResponseObject interface {
@@ -16646,8 +16986,10 @@ func (sh *strictHandler) PreviewCitationTemplate(ctx echo.Context, id string) er
 }
 
 // CreateCitation operation middleware
-func (sh *strictHandler) CreateCitation(ctx echo.Context) error {
+func (sh *strictHandler) CreateCitation(ctx echo.Context, params CreateCitationParams) error {
 	var request CreateCitationRequestObject
+
+	request.Params = params
 
 	var body CreateCitationJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -16701,10 +17043,11 @@ func (sh *strictHandler) DeleteCitation(ctx echo.Context, id openapi_types.UUID,
 }
 
 // GetCitation operation middleware
-func (sh *strictHandler) GetCitation(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) GetCitation(ctx echo.Context, id openapi_types.UUID, params GetCitationParams) error {
 	var request GetCitationRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetCitation(ctx.Request().Context(), request.(GetCitationRequestObject))
@@ -16726,10 +17069,11 @@ func (sh *strictHandler) GetCitation(ctx echo.Context, id openapi_types.UUID) er
 }
 
 // UpdateCitation operation middleware
-func (sh *strictHandler) UpdateCitation(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) UpdateCitation(ctx echo.Context, id openapi_types.UUID, params UpdateCitationParams) error {
 	var request UpdateCitationRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateCitationJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -16757,10 +17101,11 @@ func (sh *strictHandler) UpdateCitation(ctx echo.Context, id openapi_types.UUID)
 }
 
 // FormatCitation operation middleware
-func (sh *strictHandler) FormatCitation(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) FormatCitation(ctx echo.Context, id openapi_types.UUID, params FormatCitationParams) error {
 	var request FormatCitationRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.FormatCitation(ctx.Request().Context(), request.(FormatCitationRequestObject))
@@ -18070,8 +18415,10 @@ func (sh *strictHandler) ListNotes(ctx echo.Context, params ListNotesParams) err
 }
 
 // CreateNote operation middleware
-func (sh *strictHandler) CreateNote(ctx echo.Context) error {
+func (sh *strictHandler) CreateNote(ctx echo.Context, params CreateNoteParams) error {
 	var request CreateNoteRequestObject
+
+	request.Params = params
 
 	var body CreateNoteJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -18125,10 +18472,11 @@ func (sh *strictHandler) DeleteNote(ctx echo.Context, id NoteId, params DeleteNo
 }
 
 // GetNote operation middleware
-func (sh *strictHandler) GetNote(ctx echo.Context, id NoteId) error {
+func (sh *strictHandler) GetNote(ctx echo.Context, id NoteId, params GetNoteParams) error {
 	var request GetNoteRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetNote(ctx.Request().Context(), request.(GetNoteRequestObject))
@@ -18150,10 +18498,11 @@ func (sh *strictHandler) GetNote(ctx echo.Context, id NoteId) error {
 }
 
 // UpdateNote operation middleware
-func (sh *strictHandler) UpdateNote(ctx echo.Context, id NoteId) error {
+func (sh *strictHandler) UpdateNote(ctx echo.Context, id NoteId, params UpdateNoteParams) error {
 	var request UpdateNoteRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateNoteJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -18576,10 +18925,11 @@ func (sh *strictHandler) SetPersonBrickWall(ctx echo.Context, id PersonId) error
 }
 
 // GetCitationsForPerson operation middleware
-func (sh *strictHandler) GetCitationsForPerson(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) GetCitationsForPerson(ctx echo.Context, id PersonId, params GetCitationsForPersonParams) error {
 	var request GetCitationsForPersonRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetCitationsForPerson(ctx.Request().Context(), request.(GetCitationsForPersonRequestObject))
@@ -19642,8 +19992,10 @@ func (sh *strictHandler) ListSources(ctx echo.Context, params ListSourcesParams)
 }
 
 // CreateSource operation middleware
-func (sh *strictHandler) CreateSource(ctx echo.Context) error {
+func (sh *strictHandler) CreateSource(ctx echo.Context, params CreateSourceParams) error {
 	var request CreateSourceRequestObject
+
+	request.Params = params
 
 	var body CreateSourceJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -19722,10 +20074,11 @@ func (sh *strictHandler) DeleteSource(ctx echo.Context, id openapi_types.UUID, p
 }
 
 // GetSource operation middleware
-func (sh *strictHandler) GetSource(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) GetSource(ctx echo.Context, id openapi_types.UUID, params GetSourceParams) error {
 	var request GetSourceRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetSource(ctx.Request().Context(), request.(GetSourceRequestObject))
@@ -19747,10 +20100,11 @@ func (sh *strictHandler) GetSource(ctx echo.Context, id openapi_types.UUID) erro
 }
 
 // UpdateSource operation middleware
-func (sh *strictHandler) UpdateSource(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) UpdateSource(ctx echo.Context, id openapi_types.UUID, params UpdateSourceParams) error {
 	var request UpdateSourceRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateSourceJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -19778,10 +20132,11 @@ func (sh *strictHandler) UpdateSource(ctx echo.Context, id openapi_types.UUID) e
 }
 
 // GetCitationsForSource operation middleware
-func (sh *strictHandler) GetCitationsForSource(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) GetCitationsForSource(ctx echo.Context, id openapi_types.UUID, params GetCitationsForSourceParams) error {
 	var request GetCitationsForSourceRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetCitationsForSource(ctx.Request().Context(), request.(GetCitationsForSourceRequestObject))
