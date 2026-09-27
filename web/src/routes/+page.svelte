@@ -81,7 +81,7 @@
 		<div class="loading">Loading...</div>
 	{:else}
 		<MainlineNotice
-			message="On a research branch, the people count and recent people follow your branch, but the family count, recent families and research suggestions still come from the mainline."
+			message="On a research branch, the people and family counts and the recent people and families follow your branch, but research suggestions still come from the mainline."
 		/>
 		<section class="stats">
 			<Card class="flex flex-col items-center px-12 py-6">

@@ -124,9 +124,7 @@ const TEXT_SEGMENT = '[^/]+';
  * `internal/api/openapi.yaml`.
  *
  * The parameter is declared **per operation, not per path**, so this table
- * matches on method as well: `POST /families` takes it while `GET /families`
- * (`listFamilies`) does not, which is why the families *list* page is a
- * mainline-only surface while family *detail* pages are branch-scoped.
+ * matches on method as well: two methods on one path need not agree.
  *
  * `{id}` segments are matched as UUIDs rather than as `[^/]+` so that the real
  * two-segment literal routes — `GET /persons/duplicates` and
@@ -141,7 +139,9 @@ const TEXT_SEGMENT = '[^/]+';
  * media list and upload, and the content and thumbnail reads. Person and
  * family history follow the branch (#824); source history stays mainline-only.
  * Restore points and rollback carry the scope only to be refused: rollback is
- * mainline-only for every entity (ADR-005). The
+ * mainline-only for every entity (ADR-005). Search, the families list, the
+ * group sheet, the Ahnentafel, descendancy and the relationship calculator
+ * follow the branch too (#829). The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -166,7 +166,8 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 		methods: ['PUT', 'DELETE'],
 		pattern: new RegExp(`^/persons/${UUID_SEGMENT}/names/${UUID_SEGMENT}$`)
 	},
-	{ methods: ['POST'], pattern: new RegExp('^/families$') },
+	// GET /families (the list) follows the branch since #829.
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/families$') },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/families/${UUID_SEGMENT}$`) },
 	{ methods: ['POST'], pattern: new RegExp(`^/families/${UUID_SEGMENT}/children$`) },
 	{
@@ -174,6 +175,14 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 		pattern: new RegExp(`^/families/${UUID_SEGMENT}/children/${UUID_SEGMENT}$`)
 	},
 	{ methods: ['GET'], pattern: new RegExp(`^/pedigree/${UUID_SEGMENT}$`) },
+	// Search and the kinship reads (#829): the header SearchBox, PersonSelector
+	// and /search, the group sheet, the Ahnentafel (JSON and text), descendancy
+	// and the relationship calculator.
+	{ methods: ['GET'], pattern: new RegExp('^/search$') },
+	{ methods: ['GET'], pattern: new RegExp(`^/families/${UUID_SEGMENT}/group-sheet$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/ahnentafel/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/descendancy/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/relationship/${UUID_SEGMENT}/${UUID_SEGMENT}$`) },
 	// Browse and map aggregates (#756), plus the cemetery index (#757).
 	{ methods: ['GET'], pattern: new RegExp('^/browse/surnames$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/surnames/${TEXT_SEGMENT}/persons$`) },
@@ -1211,6 +1220,7 @@ class ApiClient {
 	}
 
 	// Family endpoints
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async listFamilies(params?: { limit?: number; offset?: number }): Promise<FamilyList> {
 		const searchParams = new URLSearchParams();
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
@@ -1250,6 +1260,7 @@ class ApiClient {
 		return this.request<void>('DELETE', `/families/${familyId}/children/${personId}`);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getFamilyGroupSheet(id: string): Promise<FamilyGroupSheet> {
 		return this.request<FamilyGroupSheet>('GET', `/families/${id}/group-sheet`);
 	}
@@ -1262,17 +1273,24 @@ class ApiClient {
 	}
 
 	// Ahnentafel endpoint
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getAhnentafel(personId: string, generations?: number): Promise<AhnentafelResponse> {
 		const params = generations ? `?generations=${generations}` : '';
 		return this.request<AhnentafelResponse>('GET', `/ahnentafel/${personId}${params}`);
 	}
 
+	/**
+	 * Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`).
+	 * Fetched directly because the body is text, so the scope is added here.
+	 */
 	async getAhnentafelText(personId: string, generations?: number): Promise<string> {
 		const params = new URLSearchParams();
 		params.set('format', 'text');
 		if (generations) params.set('generations', generations.toString());
 
-		const response = await fetch(`${API_BASE}/ahnentafel/${personId}?${params.toString()}`);
+		const response = await fetch(
+			`${API_BASE}${withBranchScope('GET', `/ahnentafel/${personId}?${params.toString()}`)}`
+		);
 
 		if (!response.ok) {
 			const error: ApiError = await response.json().catch(() => ({
@@ -1287,12 +1305,14 @@ class ApiClient {
 	}
 
 	// Descendancy endpoint
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getDescendancy(personId: string, generations?: number): Promise<Descendancy> {
 		const params = generations ? `?generations=${generations}` : '';
 		return this.request<Descendancy>('GET', `/descendancy/${personId}${params}`);
 	}
 
 	// Search endpoint
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async searchPersons(params: {
 		q?: string;
 		fuzzy?: boolean;
@@ -1942,6 +1962,7 @@ class ApiClient {
 	}
 
 	// Relationship endpoint
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async getRelationship(personId1: string, personId2: string): Promise<RelationshipResult> {
 		return this.request<RelationshipResult>(
 			'GET',

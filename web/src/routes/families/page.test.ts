@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
-import AnalyticsPage from './+page.svelte';
+import FamiliesPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -8,7 +8,6 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	return {
 		...actual,
 		api: {
-			listPersons: vi.fn(),
 			listFamilies: vi.fn()
 		}
 	};
@@ -22,30 +21,24 @@ vi.mock('$lib/stores/activeBranch.svelte', () => ({
 	activeBranch: branchState
 }));
 
-describe('Data Quality (analytics) page', () => {
+describe('Families list page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		branchState.id = null;
-		vi.mocked(apiModule.api.listPersons).mockResolvedValue({
-			items: [],
-			total: 0
-		} as unknown as apiModule.PersonList);
 		vi.mocked(apiModule.api.listFamilies).mockResolvedValue({
 			items: [],
 			total: 0
 		} as unknown as Awaited<ReturnType<typeof apiModule.api.listFamilies>>);
 	});
 
-	it('shows no mainline notice on the mainline', async () => {
-		render(AnalyticsPage);
-		await waitFor(() => expect(screen.getByText('Total Persons')).toBeTruthy());
-		expect(screen.queryByRole('note')).toBeNull();
-	});
-
-	it('shows no mainline notice on a branch either: people and families both follow it (#829)', async () => {
+	it('labels nothing as mainline on a branch: the list follows the branch (#829)', async () => {
 		branchState.id = 'b-1';
-		render(AnalyticsPage);
-		await waitFor(() => expect(screen.getByText('Total Persons')).toBeTruthy());
+		render(FamiliesPage);
+		await waitFor(() => expect(screen.getByText('No families found.')).toBeTruthy());
+		expect(apiModule.api.listFamilies).toHaveBeenCalledWith({
+			limit: 20,
+			offset: 0
+		});
 		expect(screen.queryByRole('note')).toBeNull();
 	});
 });

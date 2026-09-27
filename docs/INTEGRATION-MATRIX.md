@@ -208,7 +208,7 @@ being entities of their own — see
 Notes on partial rows:
 
 - **EvidenceAnalysis / EvidenceConflict / ResearchLog / ProofSummary** (the GPS artifacts): GEDCOM is N/A — GEDCOM has no record for a research analysis, conflict, log or proof argument, so they are neither imported nor exported. Branch ✅ since [#760](https://github.com/cacack/my-family/issues/760). An *evidence* conflict is a genealogical finding (two analyses disagree about a fact); it is unrelated to a branch *merge* conflict.
-- **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`). Branch ⚠️: the read model, projections and BR-006 allowlist are branch-scoped ([#757](https://github.com/cacack/my-family/issues/757)) — a branch delete of their owner tombstones them, the cemetery index and group-sheet negations read them through the overlay, and a branch merge can carry their events — but with no command of their own there is no API path that writes one on a branch.
+- **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`). Branch ⚠️: the read model, projections and BR-006 allowlist are branch-scoped ([#757](https://github.com/cacack/my-family/issues/757)) — a branch delete of their owner tombstones them, the cemetery index and the group sheet's negated events read them through the overlay (the group-sheet endpoint takes `?branch=` since [#829](https://github.com/cacack/my-family/issues/829)), and a branch merge can carry their events — but with no command of their own there is no API path that writes one on a branch.
 - **Snapshot**: event-sourced since [#624](https://github.com/cacack/my-family/issues/624) — `Handler.CreateSnapshot` / `DeleteSnapshot` emit `SnapshotCreated` / `SnapshotDeleted` and the projection writes the registry, so snapshots created from that point on rebuild from the log. Rows predating #624 have no event and would not survive a rebuild (see ADR-005 "Still open"); rebuild tooling ([#680](https://github.com/cacack/my-family/issues/680)) must backfill them. GEDCOM is N/A (a research marker is not a genealogy record). The Branch column is ❌ rather than N/A (or ⛔, where it sat until #624 made snapshots event-sourced): a snapshot *taken on a branch* is meaningful (ADR-005) but the registry has no `branch_id` column yet, so both commands refuse on a branch-scoped handler.
 - **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. `BranchMergeResumed` ([#685](https://github.com/cacack/my-family/issues/685)) is emitted by `Handler.ResumeMerge` when a resume records its decisions; it is decoded (ES-007) and handled as a projection no-op (PR-004). The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
@@ -349,12 +349,27 @@ eight restore-point and rollback operations declare the scope **only to refuse i
 | `getPersonRestorePoints`, `getFamilyRestorePoints`, `getSourceRestorePoints`, `getCitationRestorePoints` | GET | `/{persons,families,sources,citations}/{id}/restore-points` (refused) |
 | `rollbackPerson`, `rollbackFamily`, `rollbackSource`, `rollbackCitation` | POST | `/{persons,families,sources,citations}/{id}/rollback` (refused) |
 
-That is **86 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+[#829](https://github.com/cacack/my-family/issues/829) added six reads that answered from the
+mainline while a branch was active: search, the families list and the kinship reports. Descendancy
+and the relationship calculator walk the tree through set-based overlay reads, one batch per
+generation (`GetFamiliesForPersons`, `GetFamilyChildrenByFamilyIDs`, `GetPedigreeEdgesByPersonIDs`,
+`GetPersonsByIDs`), rather than a chain of single-row reads per person:
+
+| operationId | Method | Path |
+|---|---|---|
+| `searchPersons` | GET | `/search` |
+| `listFamilies` | GET | `/families` |
+| `getFamilyGroupSheet` | GET | `/families/{id}/group-sheet` |
+| `getAhnentafel` | GET | `/ahnentafel/{id}` (JSON and text) |
+| `getDescendancy` | GET | `/descendancy/{id}` |
+| `getRelationship` | GET | `/relationship/{personId1}/{personId2}` |
+
+That is **92 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 86 in `isBranchScopedRequest()`
-(`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
-`?branch=` while `listFamilies` does not. The free-text `{surname}` and `{place}` segments are
+The frontend mirrors exactly those 92 in `isBranchScopedRequest()`
+(`web/src/lib/api/client.ts`), matching on method as well as path, since two methods on one path
+need not agree. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
 name still resolves. A drift test in `web/src/lib/api/client.test.ts` parses `openapi.yaml` and
 fails in **both** directions, so the allowlist cannot silently fall behind the spec.
@@ -368,10 +383,12 @@ deciding whether they become event-sourced —
 [#761](https://github.com/cacack/my-family/issues/761)). The surname index and per-surname list,
 the place index and per-place list, the cemetery index and per-cemetery person list, and the map
 all follow the active branch, and so do the source list and source detail pages (#758), the
-person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). With every
-#676 sub-issue delivered, what still renders the notice is mainline by nature (aggregates such as
-analytics and quality, the global change history) or by decision (brick walls, repositories,
-exports); grow the allowlist and the notice coverage together if that changes. The person and
+person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). Since #829
+so do every search surface (`/search`, the header search box and the person picker), the families
+list, the dashboard's family count and recent families, `/analytics`, the family group sheet,
+`/ahnentafel/{id}`, `/descendancy/{id}` and `/relationship`. With every #676 sub-issue delivered,
+what still renders the notice is mainline by nature (quality checks, research suggestions, the
+global change history, snapshots) or by decision (brick walls, repositories, exports); grow the allowlist and the notice coverage together if that changes. The person and
 family history panels follow the branch (#824); their Restore tab and rollback dialog are withdrawn
 on a branch instead of labelled.
 
