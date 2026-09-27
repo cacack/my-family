@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/google/uuid"
@@ -308,6 +309,19 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 		}
 	}
 
+	// Give every changes map the shape it will have once decoded from the log,
+	// so the synchronous projection below sees exactly what a replay or merge
+	// will see (issue #848). A copy, so the caller's slice is left untouched.
+	canonical := make([]domain.Event, len(events))
+	for i, event := range events {
+		c, err := repository.CanonicalizeChanges(event)
+		if err != nil {
+			return 0, err
+		}
+		canonical[i] = c
+	}
+	events = canonical
+
 	// Append events to the event store on the handler's branch scope.
 	if err := h.eventStore.Append(ctx, id, streamType, events, expectedVersion, h.appendScope()); err != nil {
 		return 0, err
@@ -321,8 +335,15 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 	for _, event := range events {
 		newVersion++
 		if err := h.projector.Project(ctx, event, newVersion, h.branchID); err != nil {
-			// Projection can be rebuilt; ignore non-critical errors
-			_ = err
+			// The event is already appended, so the command still succeeds, but
+			// the read model now lacks this event's effect. Log it so the drift
+			// is visible; there is no automatic projection rebuild yet.
+			slog.Error("projection failed after append; read model is out of sync with the event log",
+				"event_type", event.EventType(),
+				"stream_id", id.String(),
+				"version", newVersion,
+				"branch_id", h.branchID.String(),
+				"error", err)
 		}
 	}
 

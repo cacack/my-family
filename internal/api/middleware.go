@@ -109,6 +109,12 @@ func customErrorHandler(err error, c echo.Context) {
 			Code:    CodeNotFound,
 			Message: "Citation not found",
 		}
+	case errors.Is(err, command.ErrInvalidFamilyInput):
+		code = http.StatusBadRequest
+		apiErr = APIError{
+			Code:    CodeValidation,
+			Message: err.Error(),
+		}
 	case errors.Is(err, command.ErrInvalidInput):
 		code = http.StatusBadRequest
 		apiErr = APIError{

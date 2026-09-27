@@ -104,6 +104,11 @@ error. CI uses `--with-deps` for this reason.
 If a local run shows stale data (a branch you already merged, say), check for a leftover server on
 port 8181: Playwright reuses an existing one locally rather than booting a clean binary.
 
+`make run` persists to `./myfamily.db` (gitignored, along with its `-wal`/`-shm` sidecars): data
+survives restarts. Delete the file for a clean slate, set `SQLITE_PATH` to use another file, or run
+`DEMO_MODE=true make run` for a throwaway in-memory sample tree. The E2E suite never touches it — it
+boots the binary on a fresh temporary database each run.
+
 PostgreSQL integration tests need Docker. Without it they skip rather than fail, so `make test`
 still passes — but two backends get exercised instead of three. CI runs with Docker available.
 
