@@ -268,8 +268,9 @@ type resumeDecision struct {
 // Media (#759): landed detection and the read-model repair treat a media
 // stream like any other, and neither ever writes a branch row or copies file
 // bytes — see branch_merge_resume_media.go for why the repair cannot lose
-// shared bytes, and for the one case (an owner merged into a person main
-// still has) it refuses instead of repairing.
+// shared bytes, and for the owner-merged case (an owner merged into a person
+// main still has), which the repair handles by re-projecting the stream and
+// re-linking the item to the final merge survivor (relinkMergedMedia).
 //
 // GPS artifacts (#760): the three GPS rules MergeBranch checks (an artifact
 // must land on a subject main will have; an edit must land on an artifact main
@@ -277,7 +278,9 @@ type resumeDecision struct {
 // changed after the fork) are part of checkEvidence, so they are applied with
 // the same pending/decidable semantics. Landed detection and the read-model
 // repair cover GPS streams too — see branch_merge_resume_gps.go for the
-// subject-delete cascade it recognises and the subject-merged case it refuses.
+// subject-delete cascade it recognises and the subject-merged case, which the
+// repair handles by re-projecting the stream and re-linking the row to the
+// final merge survivor (relinkMergedGPS).
 func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*ResumeMergeResult, error) {
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
