@@ -20,12 +20,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -136,6 +138,19 @@ func setupPostgres(t *testing.T) stores {
 	if testing.Short() {
 		t.Skip("skipping PostgreSQL integration test in short mode")
 	}
+	if serverURL := os.Getenv(localPostgresEnv); serverURL != "" {
+		// A local server is shared across tests, so each gets a uniquely
+		// named database, dropped again when the test ends.
+		admin := openPostgres(t, serverURL)
+		name := "t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		db := createPostgresDatabase(t, admin, serverURL, name)
+		t.Cleanup(func() {
+			db.Close()
+			// #nosec G202 -- name is generated above from a UUID, never external input.
+			_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
+		})
+		return newPostgresStores(t, db)
+	}
 	if !isDockerAvailable() {
 		t.Skip("Docker is not available, skipping PostgreSQL integration test")
 	}
@@ -179,7 +194,17 @@ func setupPostgres(t *testing.T) stores {
 
 	// One database for all four stores, as on SQLite (DB-006).
 	db := createPostgresDatabase(t, admin, connStr, "myfamily")
+	return newPostgresStores(t, db)
+}
 
+// localPostgresEnv names an optional PostgreSQL server URL. When set, the
+// PostgreSQL subtests run against that server instead of a testcontainer, so
+// a machine without Docker can still exercise the PostgreSQL backend.
+const localPostgresEnv = "MYFAMILY_TEST_POSTGRES_URL"
+
+// newPostgresStores builds the four PostgreSQL stores over one database.
+func newPostgresStores(t *testing.T, db *sql.DB) stores {
+	t.Helper()
 	eventStore, err := pgstore.NewEventStore(db)
 	if err != nil {
 		t.Fatalf("create postgres event store: %v", err)
@@ -203,9 +228,10 @@ func setupPostgres(t *testing.T) stores {
 // createPostgresDatabase creates a database in the running container and
 // returns a connection to it. CREATE DATABASE cannot run inside a transaction
 // and needs a connection to some other database, which is what admin is.
+// name is either a literal from this file or generated from a UUID.
 func createPostgresDatabase(t *testing.T, admin *sql.DB, connStr, name string) *sql.DB {
 	t.Helper()
-	// #nosec G202 -- name is a literal from this file, never external input.
+	// #nosec G202 -- name is a literal or UUID-derived, never external input.
 	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
 		t.Fatalf("create database %s: %v", name, err)
 	}
