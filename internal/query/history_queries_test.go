@@ -236,6 +236,15 @@ func (m *mockReadModelStore) DeleteFamilyChild(ctx context.Context, _ domain.Bra
 func (m *mockReadModelStore) GetPedigreeEdge(ctx context.Context, _ domain.BranchID, personID uuid.UUID) (*repository.PedigreeEdge, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) GetPedigreeEdgesByPersonIDs(ctx context.Context, _ domain.BranchID, personIDs []uuid.UUID) ([]repository.PedigreeEdge, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) GetFamiliesForPersons(ctx context.Context, _ domain.BranchID, personIDs []uuid.UUID) ([]repository.FamilyReadModel, error) {
+	return nil, nil
+}
+func (m *mockReadModelStore) GetFamilyChildrenByFamilyIDs(ctx context.Context, _ domain.BranchID, familyIDs []uuid.UUID) ([]repository.FamilyChildReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) SavePedigreeEdge(ctx context.Context, _ domain.BranchID, edge *repository.PedigreeEdge) error {
 	return nil
 }

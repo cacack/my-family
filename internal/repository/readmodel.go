@@ -454,6 +454,13 @@ type ReadModelStore interface {
 	GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]FamilyReadModel, error)
 	ListFamilies(ctx context.Context, opts ListOptions) ([]FamilyReadModel, int, error)
 	GetFamiliesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]FamilyReadModel, error)
+	// GetFamiliesForPersons is GetFamiliesForPerson for many persons at once: ONE
+	// set-based read of every family visible on branchID in which any of
+	// personIDs is a partner, matched against the winning (branch-resolved) row
+	// so a branch that re-partners a family is answered by its own row (#829).
+	// Each family appears once, ordered by id. An empty personIDs slice returns
+	// nil without touching the store.
+	GetFamiliesForPersons(ctx context.Context, branchID domain.BranchID, personIDs []uuid.UUID) ([]FamilyReadModel, error)
 	SaveFamily(ctx context.Context, branchID domain.BranchID, family *FamilyReadModel) error
 	DeleteFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
@@ -463,6 +470,13 @@ type ReadModelStore interface {
 
 	// Family children operations (branch-scoped slice entity)
 	GetFamilyChildren(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]FamilyChildReadModel, error)
+	// GetFamilyChildrenByFamilyIDs is GetFamilyChildren for many families at
+	// once: ONE set-based read resolving the branch overlay of every family's
+	// child links (#829). Rows are ordered by family id, then by sequence
+	// (unsequenced children last), surname, given name and person id, the same
+	// order on every backend. Duplicated family ids are collapsed; an empty
+	// familyIDs slice returns nil without touching the store.
+	GetFamilyChildrenByFamilyIDs(ctx context.Context, branchID domain.BranchID, familyIDs []uuid.UUID) ([]FamilyChildReadModel, error)
 	GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]PersonReadModel, error)
 	GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*FamilyReadModel, error)
 	SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *FamilyChildReadModel) error
@@ -470,6 +484,10 @@ type ReadModelStore interface {
 
 	// Pedigree operations (branch-scoped slice entity)
 	GetPedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*PedigreeEdge, error)
+	// GetPedigreeEdgesByPersonIDs is the batched GetPedigreeEdge; see
+	// GetPersonsByIDs (#697, #829). Persons with no visible edge are absent;
+	// the result is ordered by person id.
+	GetPedigreeEdgesByPersonIDs(ctx context.Context, branchID domain.BranchID, personIDs []uuid.UUID) ([]PedigreeEdge, error)
 	SavePedigreeEdge(ctx context.Context, branchID domain.BranchID, edge *PedigreeEdge) error
 	DeletePedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error
 
