@@ -80,7 +80,9 @@ func lastMediaOwner(events []repository.StoredEvent) (owner mediaOwner, found bo
 // their owner's delete cascade: the owner the stream's main log attached the
 // item to — followed, for a person, through any person merges main recorded
 // since — ends in a delete on main. Only media streams whose row is missing and
-// whose stream does not itself end in a delete are candidates.
+// whose stream does not itself end in a delete are candidates; ownerOf holds
+// them with their owners (missingMediaOwners), and survivorOf the person merges
+// main recorded since the earliest of them (survivorsAfter).
 //
 // refuse names the candidates that are already on main by payload id: for
 // those, an owner merged into a person main still has is refused with
@@ -89,27 +91,19 @@ func lastMediaOwner(events []repository.StoredEvent) (owner mediaOwner, found bo
 // removed; a resume's replay of its (metadata-only) events onto a missing row
 // is a projection no-op.
 //
-// The work is set-based: one paged scan of main for person merges (only when
-// a candidate's owner is a person), then one paged scan of the final owners'
+// The work is set-based: the caller's one paged scan of main for person
+// merges (shared with the merged-away person check, and made only when a
+// candidate's owner is a person), then one paged scan of the final owners'
 // streams — never a scan per media item.
 func (h *Handler) missingMediaCascadedAway(
 	ctx context.Context,
 	missing []streamGroup,
-	states map[uuid.UUID]readModelState,
-	mainEvents map[uuid.UUID][]repository.StoredEvent,
+	ownerOf map[uuid.UUID]mediaOwner,
+	survivorOf map[uuid.UUID]uuid.UUID,
 	refuse map[uuid.UUID]bool,
 ) (map[uuid.UUID]bool, error) {
-	ownerOf, scanFrom, err := missingMediaOwners(missing, states, mainEvents)
-	if err != nil || len(ownerOf) == 0 {
-		return nil, err
-	}
-
-	survivorOf := map[uuid.UUID]uuid.UUID{}
-	if scanFrom >= 0 {
-		survivorOf, err = h.personMergeSurvivorsOnMain(ctx, scanFrom)
-		if err != nil {
-			return nil, err
-		}
+	if len(ownerOf) == 0 {
+		return nil, nil
 	}
 	finalOf := make(map[uuid.UUID]uuid.UUID, len(ownerOf))
 	var finals []uuid.UUID
@@ -191,11 +185,19 @@ func finalSurvivor(personID uuid.UUID, survivorOf map[uuid.UUID]uuid.UUID) uuid.
 	return personID
 }
 
-// personMergeSurvivorsOnMain maps every person main merged into another after
-// fromPosition to the survivor (PersonMerged.MergedID → SurvivorID), paging
-// through main's own events from that point.
-func (h *Handler) personMergeSurvivorsOnMain(ctx context.Context, fromPosition int64) (map[uuid.UUID]uuid.UUID, error) {
-	survivorOf := make(map[uuid.UUID]uuid.UUID)
+// personMerge is one PersonMerged main recorded: MergedID folded into
+// SurvivorID at a log position.
+type personMerge struct {
+	mergedID, survivorID uuid.UUID
+	position             int64
+}
+
+// personMergesOnMain lists every person merge main recorded after
+// fromPosition, in log order, paging through main's own events from that
+// point. It is the one scan of main for person merges a resume's read-model
+// repair makes; survivorsAfter narrows it for each consumer.
+func (h *Handler) personMergesOnMain(ctx context.Context, fromPosition int64) ([]personMerge, error) {
+	var merges []personMerge
 	from := fromPosition
 	for {
 		page, err := h.eventStore.ReadBranch(ctx, domain.MainBranchID, from, resumeScanPage)
@@ -213,13 +215,29 @@ func (h *Handler) personMergeSurvivorsOnMain(ctx context.Context, fromPosition i
 			if err := json.Unmarshal(page[i].Data, &payload); err != nil {
 				return nil, fmt.Errorf("decoding PersonMerged at position %d: %w", page[i].Position, err)
 			}
-			survivorOf[payload.MergedID] = payload.SurvivorID
+			merges = append(merges, personMerge{mergedID: payload.MergedID, survivorID: payload.SurvivorID, position: page[i].Position})
 		}
 		if len(page) < resumeScanPage {
-			return survivorOf, nil
+			return merges, nil
 		}
 		from = page[len(page)-1].Position
 	}
+}
+
+// survivorsAfter maps every person merged into another after fromPosition to
+// the survivor (MergedID → SurvivorID). A negative fromPosition means no
+// consumer asked, and yields an empty map.
+func survivorsAfter(merges []personMerge, fromPosition int64) map[uuid.UUID]uuid.UUID {
+	survivorOf := make(map[uuid.UUID]uuid.UUID)
+	if fromPosition < 0 {
+		return survivorOf
+	}
+	for _, m := range merges {
+		if m.position > fromPosition {
+			survivorOf[m.mergedID] = m.survivorID
+		}
+	}
+	return survivorOf
 }
 
 // mainMediaState is mainReadModelState for media streams (#759). It reads the

@@ -2,7 +2,6 @@ package command
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -283,19 +282,34 @@ func (h *Handler) missingRowsRemovedElsewhere(
 	mainEvents map[uuid.UUID][]repository.StoredEvent,
 	landed map[uuid.UUID]bool,
 ) (map[uuid.UUID]bool, error) {
-	mergedAway, err := h.missingPersonsMergedAway(ctx, missing, states, mainEvents)
+	personCandidates, personsFrom := missingPersonCandidates(missing, states, mainEvents)
+	ownerOf, ownersFrom, err := missingMediaOwners(missing, states, mainEvents)
 	if err != nil {
 		return nil, err
 	}
+	subjectOf, subjectsFrom, err := missingGPSSubjects(missing, states, mainEvents)
+	if err != nil {
+		return nil, err
+	}
+	// One scan of main for person merges serves all three consumers, starting
+	// at the earliest of their start points; each filters it to its own.
+	var merges []personMerge
+	if scanFrom := earliestScan(earliestScan(personsFrom, ownersFrom), subjectsFrom); scanFrom >= 0 {
+		merges, err = h.personMergesOnMain(ctx, scanFrom)
+		if err != nil {
+			return nil, err
+		}
+	}
+	mergedAway := mergedAwayAfter(personCandidates, personsFrom, merges)
 	cascaded, err := h.missingCitationsCascadedAway(ctx, missing, states, mainEvents)
 	if err != nil {
 		return nil, err
 	}
-	mediaCascaded, err := h.missingMediaCascadedAway(ctx, missing, states, mainEvents, landed)
+	mediaCascaded, err := h.missingMediaCascadedAway(ctx, missing, ownerOf, survivorsAfter(merges, ownersFrom), landed)
 	if err != nil {
 		return nil, err
 	}
-	gpsCascaded, err := h.missingGPSCascadedAway(ctx, missing, states, mainEvents, landed)
+	gpsCascaded, err := h.missingGPSCascadedAway(ctx, missing, subjectOf, survivorsAfter(merges, subjectsFrom), landed)
 	if err != nil {
 		return nil, err
 	}
@@ -308,16 +322,17 @@ func (h *Handler) missingRowsRemovedElsewhere(
 	return removed, nil
 }
 
-// missingPersonsMergedAway reports which missing person rows are missing
-// because main merged the person into another. Only persons whose stream does
-// not end in a delete are candidates, and the scan for PersonMerged starts at
-// the earliest point such a merge could sit: after the candidate's last event.
-func (h *Handler) missingPersonsMergedAway(
-	ctx context.Context,
+// missingPersonCandidates returns the missing person rows that may be
+// missing because main merged the person into another, and the position a
+// scan for PersonMerged must start from (-1 when there are none). Only
+// persons whose stream does not end in a delete are candidates, and the scan
+// starts at the earliest point such a merge could sit: after the candidate's
+// last event.
+func missingPersonCandidates(
 	behind []streamGroup,
 	states map[uuid.UUID]readModelState,
 	mainEvents map[uuid.UUID][]repository.StoredEvent,
-) (map[uuid.UUID]bool, error) {
+) ([]uuid.UUID, int64) {
 	var candidates []uuid.UUID
 	scanFrom := int64(-1)
 	for _, group := range behind {
@@ -330,10 +345,35 @@ func (h *Handler) missingPersonsMergedAway(
 			scanFrom = last
 		}
 	}
+	return candidates, scanFrom
+}
+
+// mergedAwayAfter reports which of the candidate persons main merged into
+// another person (PersonMerged.MergedID) after fromPosition.
+func mergedAwayAfter(candidates []uuid.UUID, fromPosition int64, merges []personMerge) map[uuid.UUID]bool {
 	if len(candidates) == 0 {
-		return nil, nil
+		return nil
 	}
-	return h.personsMergedAwayOnMain(ctx, candidates, scanFrom)
+	survivorOf := survivorsAfter(merges, fromPosition)
+	found := make(map[uuid.UUID]bool)
+	for _, id := range candidates {
+		if _, merged := survivorOf[id]; merged {
+			found[id] = true
+		}
+	}
+	return found
+}
+
+// earliestScan returns the earlier of two scan start positions, where -1
+// means "no scan needed".
+func earliestScan(a, b int64) int64 {
+	switch {
+	case a < 0:
+		return b
+	case b < 0 || a < b:
+		return a
+	}
+	return b
 }
 
 // endsInDelete reports whether a stream's last event deletes its aggregate.
@@ -449,42 +489,6 @@ func (h *Handler) readMainStreams(ctx context.Context, streamIDs []uuid.UUID) (m
 		}
 		if len(page) < resumeScanPage {
 			return byStream, nil
-		}
-		from = page[len(page)-1].Position
-	}
-}
-
-// personsMergedAwayOnMain reports which of the given persons main merged into
-// another person (PersonMerged.MergedID) after fromPosition. It pages through
-// main's own events from that point.
-func (h *Handler) personsMergedAwayOnMain(ctx context.Context, personIDs []uuid.UUID, fromPosition int64) (map[uuid.UUID]bool, error) {
-	wanted := make(map[uuid.UUID]bool, len(personIDs))
-	for _, id := range personIDs {
-		wanted[id] = true
-	}
-	found := make(map[uuid.UUID]bool)
-	from := fromPosition
-	for {
-		page, err := h.eventStore.ReadBranch(ctx, domain.MainBranchID, from, resumeScanPage)
-		if err != nil {
-			return nil, fmt.Errorf("reading main events for person merges: %w", err)
-		}
-		for i := range page {
-			if page[i].EventType != "PersonMerged" {
-				continue
-			}
-			var payload struct {
-				MergedID uuid.UUID `json:"merged_id"`
-			}
-			if err := json.Unmarshal(page[i].Data, &payload); err != nil {
-				return nil, fmt.Errorf("decoding PersonMerged at position %d: %w", page[i].Position, err)
-			}
-			if wanted[payload.MergedID] {
-				found[payload.MergedID] = true
-			}
-		}
-		if len(page) < resumeScanPage {
-			return found, nil
 		}
 		from = page[len(page)-1].Position
 	}

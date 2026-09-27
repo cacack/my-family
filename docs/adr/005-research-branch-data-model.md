@@ -663,7 +663,10 @@ lands — `main` deleted it after the claim, this request resolves the stream th
 `main`, or a stream already on `main` deleted it (an owner-deleting stream counts as deleting
 *after* the upload only while it is itself still to be replayed). `main` rolls such a stream
 forward without it; `branch` is refused as a dangling reference, and a `main` resolution may not
-exclude an owner the replay creates while an upload already on `main` is attached to it. Landed
+exclude an owner the replay creates while an upload already on `main` is attached to it. The reverse
+rule holds too: an auto-planned owner delete is pending while `main` has an item of that owner it
+wrote to after the branch's delete — typically one uploaded during the interruption — and `main`
+rolls it forward without the delete, keeping both. Landed
 detection is the usual payload-id scan, and a media stream's `main` row is read with `GetMedia`,
 never the bytes. The read-model repair follows the version rule — every media projection writes the
 row, version included, in one save — and cannot copy or lose file bytes: it projects `main`'s own
@@ -920,10 +923,29 @@ cascade, with no `CitationDeleted` event and no conflict shown.
 checking that owner. A replayed upload whose stream does not end deleted is refused unless its owner
 exists on `main` or is replayed — and a replayed owner that the replay itself deletes counts only
 when its stream replays *after* the upload, so the owner's delete cascades the item on `main` as it
-did on the branch. Otherwise `main` would gain a media item attached to nothing. A branch that
-uploads to a person it created and then deletes that person is therefore refused; deleting the
-media first makes it mergeable. `ResumeMerge` applies the same rule with its pending semantics
-(see *Media on resume* under the merge implementation note).
+did on the branch. Otherwise `main` would gain a media item attached to nothing. For a person or
+family owner the replay guarantees that order itself: `moveMediaBeforeOwnerDelete` moves the upload
+ahead of the owner's deleting stream, so a branch that uploads to a person it created (or edited)
+and then deletes that person merges — the upload lands and the delete cascades it. (A source
+owner's delete already replays after every upload, since the evidence order puts deleted sources
+last.) What is refused is an owner deleted by a stream that nonetheless lands first — on resume, a
+delete already on `main` — or one deleted on `main` or excluded by a `main` resolution.
+
+The owner→media cascade #759 added to `DeletePerson`, `DeleteFamily` and `DeleteSource` opened the
+reverse shape, the media counterpart of (2): a replayed owner delete cascading onto an item `main`
+has that the branch never saw (`checkOwnerDeleteOrphansNoMedia`). Media has no delete guard like
+`ErrSourceHasCitations` — the branch's delete cascades every item the branch sees, and the overlay
+shows it `main`'s items, including ones `main` added after the fork — so what the branch accounted
+for is decided by the log: an item `main` last wrote to (uploaded or edited) *before* the branch's
+delete event was in the branch's view and was cascaded there too, and replaying the delete
+reproduces the branch's result. An item `main` wrote to *after* it — typically an upload made after
+the branch deleted its owner — is refused, since the cascade would remove it from `main` with no
+`MediaDeleted` event and no conflict shown. Items whose media stream the replay itself carries are
+the replay's own business. A person `main` merged into the owner after the delete needs no rule of
+its own: `PersonMerged` writes the owner's stream, which the conflict detection already shows. The
+check is one owner-media listing and one set-based scan of the listed items' `main` histories per
+owner-deleting stream. `ResumeMerge` applies both media rules with its pending semantics (see *Media
+on resume* under the merge implementation note).
 
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that

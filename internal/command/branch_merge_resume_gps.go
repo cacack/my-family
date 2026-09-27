@@ -90,8 +90,11 @@ func (h *Handler) mainGPSState(ctx context.Context, group streamGroup) (readMode
 // missingGPSCascadedAway reports which missing GPS artifact rows were removed
 // by their subject's delete cascade: the subject the stream's main log last
 // set — followed through any person merges main recorded since — ends in a
-// delete on main. Only GPS streams whose row is missing and whose stream does
-// not itself end in a delete are candidates.
+// delete on main. subjectOf holds the candidates with their subjects
+// (missingGPSSubjects), and survivorOf the person merges main recorded since
+// the earliest of them (survivorsAfter). A subject may be a family, which no
+// merge moves; following a family id through the person merges leaves it
+// where it is.
 //
 // refuse names the candidates already on main by payload id: for those, a
 // subject merged into a person main still has is refused with
@@ -100,43 +103,18 @@ func (h *Handler) mainGPSState(ctx context.Context, group streamGroup) (readMode
 // replay is sound (checkGPSSubjectSurvives flags an edit of a missing
 // artifact).
 //
-// The work is set-based: one paged scan of main for person merges, then one
-// paged scan of the final subjects' streams — never a scan per artifact.
+// The work is set-based: the caller's one paged scan of main for person
+// merges (shared with the person and media checks), then one paged scan of
+// the final subjects' streams — never a scan per artifact.
 func (h *Handler) missingGPSCascadedAway(
 	ctx context.Context,
 	missing []streamGroup,
-	states map[uuid.UUID]readModelState,
-	mainEvents map[uuid.UUID][]repository.StoredEvent,
+	subjectOf map[uuid.UUID]uuid.UUID,
+	survivorOf map[uuid.UUID]uuid.UUID,
 	refuse map[uuid.UUID]bool,
 ) (map[uuid.UUID]bool, error) {
-	subjectOf := make(map[uuid.UUID]uuid.UUID)
-	scanFrom := int64(-1)
-	for _, group := range missing {
-		events := mainEvents[group.streamID]
-		if states[group.streamID].present || len(events) == 0 || !isGPSStream(group.streamType) || endsInDelete(events) {
-			continue
-		}
-		outcome, err := gpsOutcomeOf(streamGroup{streamID: group.streamID, streamType: group.streamType, events: events})
-		if err != nil {
-			return nil, err
-		}
-		if !outcome.subjectSet {
-			continue
-		}
-		subjectOf[group.streamID] = outcome.subjectID
-		if first := events[0].Position; scanFrom < 0 || first < scanFrom {
-			scanFrom = first
-		}
-	}
 	if len(subjectOf) == 0 {
 		return nil, nil
-	}
-
-	// A subject may be a family, which no merge moves; following a family id
-	// through the person merges leaves it where it is.
-	survivorOf, err := h.personMergeSurvivorsOnMain(ctx, scanFrom)
-	if err != nil {
-		return nil, err
 	}
 	finalOf := make(map[uuid.UUID]uuid.UUID, len(subjectOf))
 	var finals []uuid.UUID
@@ -169,6 +147,37 @@ func (h *Handler) missingGPSCascadedAway(
 		}
 	}
 	return cascaded, nil
+}
+
+// missingGPSSubjects returns the subject each missing GPS row's main log last
+// set, for the rows missingGPSCascadedAway considers — GPS streams whose row
+// is missing and whose stream does not itself end in a delete — and the
+// position a scan for person merges must start from (-1 when there are none).
+func missingGPSSubjects(
+	missing []streamGroup,
+	states map[uuid.UUID]readModelState,
+	mainEvents map[uuid.UUID][]repository.StoredEvent,
+) (map[uuid.UUID]uuid.UUID, int64, error) {
+	subjectOf := make(map[uuid.UUID]uuid.UUID)
+	scanFrom := int64(-1)
+	for _, group := range missing {
+		events := mainEvents[group.streamID]
+		if states[group.streamID].present || len(events) == 0 || !isGPSStream(group.streamType) || endsInDelete(events) {
+			continue
+		}
+		outcome, err := gpsOutcomeOf(streamGroup{streamID: group.streamID, streamType: group.streamType, events: events})
+		if err != nil {
+			return nil, 0, err
+		}
+		if !outcome.subjectSet {
+			continue
+		}
+		subjectOf[group.streamID] = outcome.subjectID
+		if first := events[0].Position; scanFrom < 0 || first < scanFrom {
+			scanFrom = first
+		}
+	}
+	return subjectOf, scanFrom, nil
 }
 
 // checkLandedGPSSubjects is the GPS half of validateResumeEvidence's
