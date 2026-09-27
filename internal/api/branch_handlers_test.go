@@ -1266,3 +1266,54 @@ func TestMergeBranch_PlanStale(t *testing.T) {
 		t.Errorf("branch status = %v, want active", status)
 	}
 }
+
+// A snapshot comparison reports the mainline's history between two milestones.
+// Snapshots mark positions in the shared log, which also carries every branch's
+// deltas, so a branch-only create between the two positions must not appear.
+func TestCompareSnapshots_ExcludesBranchEvents(t *testing.T) {
+	server := setupBranchTestServer()
+	branchID := createBranch(t, server, "Speculative")
+
+	snapshotID := func(name string) string {
+		t.Helper()
+		rec := do(t, server, http.MethodPost, "/api/v1/snapshots", fmt.Sprintf(`{"name":%q}`, name))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("CreateSnapshot status = %d, want 201. Body: %s", rec.Code, rec.Body.String())
+		}
+		id, _ := decodeJSON(t, rec)["id"].(string)
+		return id
+	}
+
+	before := snapshotID("Before")
+	rec := do(t, server, http.MethodPost, "/api/v1/persons?branch="+branchID,
+		`{"given_name":"Hypothetical","surname":"Ancestor"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Branch create: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	branchPersonID, _ := decodeJSON(t, rec)["id"].(string)
+	rec = do(t, server, http.MethodPost, "/api/v1/persons", `{"given_name":"Mainline","surname":"Ancestor"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Main create: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	mainID, _ := decodeJSON(t, rec)["id"].(string)
+	after := snapshotID("After")
+
+	rec = do(t, server, http.MethodGet, "/api/v1/snapshots/"+before+"/compare/"+after, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Compare status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+	}
+	changes, _ := decodeJSON(t, rec)["changes"].([]any)
+	sawMain := false
+	for _, c := range changes {
+		entry, _ := c.(map[string]any)
+		switch entry["entity_id"] {
+		case branchPersonID:
+			t.Errorf("branch-only person %s leaked into the snapshot comparison: %v", branchPersonID, entry)
+		case mainID:
+			sawMain = true
+		}
+	}
+	if !sawMain {
+		t.Errorf("changes = %v, want the mainline person %s", changes, mainID)
+	}
+}
