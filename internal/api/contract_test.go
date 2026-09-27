@@ -848,3 +848,33 @@ func TestOpenAPISpecValidity(t *testing.T) {
 		t.Error("OpenAPI spec has no paths")
 	}
 }
+
+// TestOpenAPIHistoryOperationsTagged guards the "history" tag grouping in the
+// generated API docs: every change-history operation (the global feed and each
+// entity's history) must carry it, so none drops out of the History group when
+// its description or parameters are edited.
+func TestOpenAPIHistoryOperationsTagged(t *testing.T) {
+	want := map[string]bool{
+		"listHistory":      false,
+		"getPersonHistory": false,
+		"getFamilyHistory": false,
+		"getSourceHistory": false,
+	}
+	for _, item := range apiSpec.Paths.Map() {
+		for _, op := range item.Operations() {
+			if _, ok := want[op.OperationID]; !ok {
+				continue
+			}
+			for _, tag := range op.Tags {
+				if tag == "history" {
+					want[op.OperationID] = true
+				}
+			}
+		}
+	}
+	for opID, tagged := range want {
+		if !tagged {
+			t.Errorf("operation %s is missing the %q tag", opID, "history")
+		}
+	}
+}

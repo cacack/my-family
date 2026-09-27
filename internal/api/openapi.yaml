@@ -970,6 +970,7 @@ paths:
     get:
       operationId: getPersonHistory
       summary: Get change history for a person
+      tags: [history]
       description: |
         Returns the person's change history, oldest first. Without `?branch=` it is
         the mainline's history of the person's stream.
@@ -1003,6 +1004,7 @@ paths:
     get:
       operationId: getFamilyHistory
       summary: Get change history for a family
+      tags: [history]
       description: |
         Returns the family's change history, oldest first. Without `?branch=` it is
         the mainline's history of the family's stream.
