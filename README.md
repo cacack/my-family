@@ -34,12 +34,15 @@ See [FEATURES.md](./FEATURES.md) for the complete list.
 ### Using Docker
 
 ```bash
-# Run with SQLite (default)
+# Run with SQLite (default) - data persists in the myfamily_data volume
 docker compose up -d
 
 # Access the application
 open http://localhost:8080
 ```
+
+To use PostgreSQL instead, uncomment the `postgres` service and the
+`DATABASE_URL` line in `docker-compose.yml`.
 
 ### Building from Source
 
@@ -47,7 +50,9 @@ Prerequisites:
 - Go 1.26+
 - Node.js 24 (`nvm use` reads the repo's `.nvmrc`). The app itself also runs on 22.22.2+ and 26+
   (see `web/package.json` `engines`), but the test suite is held at 24 — see below.
-- SQLite 3.x (for local development)
+- A C toolchain (gcc or clang) with cgo enabled, for the default SQLite storage — the SQLite
+  driver is a cgo package. A binary built with `CGO_ENABLED=0` can still use PostgreSQL
+  (`DATABASE_URL`) or demo mode, but refuses to start on SQLite.
 
 ```bash
 # Install dependencies
@@ -59,7 +64,7 @@ cd web && npm run build && cd ..
 
 # Build and run
 go build -o myfamily ./cmd/myfamily
-./myfamily serve
+./myfamily serve      # stores data in ./myfamily.db
 ```
 
 **Why Node is pinned to 24.** `.nvmrc`, CI and the Dockerfile all read the same version so they
@@ -76,11 +81,29 @@ Environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | (none) | PostgreSQL connection string (uses PostgreSQL if set) |
-| `SQLITE_PATH` | `./myfamily.db` | SQLite database path |
+| `DATABASE_URL` | (none) | PostgreSQL connection string, e.g. `postgres://user:pass@host:5432/myfamily?sslmode=disable`. When set, all data is stored in PostgreSQL |
+| `SQLITE_PATH` | `./myfamily.db` | SQLite database file, used when `DATABASE_URL` is unset. Created if missing; its directory must exist |
 | `PORT` | `8080` | HTTP server port |
 | `LOG_LEVEL` | `info` | Logging level (debug, info, warn, error) |
 | `LOG_FORMAT` | `text` | Log format (text, json) |
+| `DEMO_MODE` | `false` | Run in memory with a sample family tree and a reset button. Nothing is persisted; overrides `DATABASE_URL` and `SQLITE_PATH` |
+
+### Storage
+
+`serve` picks one storage backend at startup and logs it (`Database: ...`):
+
+1. `DEMO_MODE=true` → in memory (sample data, lost on restart)
+2. `DATABASE_URL` set → PostgreSQL
+3. otherwise → SQLite at `SQLITE_PATH`
+
+Everything — the event log, the read model, snapshots and research branches — lives in that one
+database, and the schema is created or migrated automatically at startup. If the chosen database
+cannot be opened, the server exits with an error instead of falling back to memory. Back up a
+SQLite deployment by copying the database file while the server is stopped (it also keeps
+`-wal`/`-shm` sidecar files while running). See
+[ADR-002](./docs/adr/002-dual-database-strategy.md) for the design, including which builds
+include SQLite support: the Docker image does; the prebuilt release archives are currently built
+without cgo and need `DATABASE_URL` (or `DEMO_MODE`).
 
 ## API Endpoints
 

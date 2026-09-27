@@ -156,8 +156,9 @@ stack answers every request. Seeding happens over the HTTP API in `web/e2e/globa
 
 E2E is **opt-in**: it is not part of `make test`. CI runs it in a dedicated `e2e` job.
 
-The binary wires in-memory stores unconditionally (`cmd/myfamily/main.go`), so every boot is a clean
-slate. The suite runs serially with no retries — it mutates real server state, and a merge is
+`serve` persists to SQLite by default, so `web/playwright.config.ts` points `SQLITE_PATH` at a
+database file in a fresh temporary directory for each run (removed when the run exits); every boot
+is a clean slate and a developer's `./myfamily.db` is never touched. The suite runs serially with no retries — it mutates real server state, and a merge is
 terminal, so a retry would report the retry's symptom rather than the original failure.
 
 **Automated paths**:
@@ -197,6 +198,7 @@ Quick reference for which tests verify which invariants.
 | DB-005 | `internal/repository/soundex_test.go` + per-backend `readmodel_test.go` | Automated |
 | DB-006 | `internal/integration/harness_test.go` - both stores on one database per backend | Automated |
 | DB-007 | `internal/repository/{sqlite,postgres}/` - legacy-migration and construction-order tests | Automated |
+| DB-008 | `internal/storage/storage_test.go` - backend selection, restart persistence, fail-fast refusals | Automated |
 | PR-001 | `internal/command/*_test.go` - transaction test | Automated |
 | PR-002 | `internal/repository/projection_test.go` - version check | Automated |
 | PR-003 | `internal/repository/projection_test.go` - deletion | Automated |

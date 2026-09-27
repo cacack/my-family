@@ -1,7 +1,7 @@
 # ADR-002: Dual Database Strategy (PostgreSQL + SQLite)
 
-**Status:** Accepted
-**Date:** 2025-12-07
+**Status:** Accepted — implemented (wired into `serve` in #735)
+**Date:** 2025-12-07 (implementation notes updated 2026-09 for #735)
 **Decision Makers:** Chris
 **Related Features:** 001-genealogy-mvp
 
@@ -113,18 +113,47 @@ The repository layer abstracts database differences behind interfaces (`EventSto
 
 ### Database Selection
 
-```go
-// internal/config/config.go
-type Config struct {
-    DatabaseURL string // PostgreSQL connection string (takes precedence)
-    SQLitePath  string // SQLite file path (fallback)
-}
+Implemented in `internal/storage` (`storage.Open`), which `serve` calls at startup:
 
-// Selection logic in main.go:
-// 1. If DATABASE_URL set -> PostgreSQL
-// 2. Else if SQLITE_PATH set -> SQLite at that path
-// 3. Else -> SQLite at ./myfamily.db (default)
+```go
+// internal/storage/storage.go
+// 1. DEMO_MODE=true     -> in-memory stores (sample data, resettable, no persistence)
+// 2. DATABASE_URL set   -> PostgreSQL at that URL
+// 3. otherwise          -> SQLite at SQLITE_PATH (default ./myfamily.db)
 ```
+
+- **One database per backend.** All four stores — event log, read model,
+  snapshots, branch registry — live in the single database the config names
+  (DB-006). Each store runs its own DDL and migrations when constructed, so
+  startup brings the schema up to date; the read model is constructed first
+  (DB-007).
+- **No silent fallback (DB-008).** If the selected backend cannot be opened —
+  PostgreSQL unreachable, the SQLite file's directory missing, or SQLite
+  selected in a binary built without cgo — `serve` exits non-zero with the
+  reason. It never quietly runs in memory and drops every write on restart.
+- **Memory is demo-only.** The in-memory stores are reachable only through
+  `DEMO_MODE` (which overrides `DATABASE_URL`/`SQLITE_PATH`). There is no other
+  opt-in: tests construct memory stores directly, and the E2E suite points
+  `SQLITE_PATH` at a fresh temporary file per run.
+- **The startup log names the store in use** — `Database: SQLite (<path>)`,
+  `Database: PostgreSQL (<url with password redacted>)` or
+  `Database: In-memory (no persistence)`.
+- **Stores are closed on shutdown**, after the HTTP server stops.
+
+### Build Implications (cgo)
+
+The SQLite driver, `github.com/mattn/go-sqlite3`, is a cgo package; built with
+`CGO_ENABLED=0` it is a stub that cannot open any database. The PostgreSQL
+driver (`github.com/lib/pq`) is pure Go.
+
+| Build | cgo | SQLite | PostgreSQL | Demo |
+|-------|-----|--------|------------|------|
+| Docker image (`Dockerfile`) | on | yes (default, `/data/myfamily.db`) | yes | yes |
+| `go build` / `make binary` on a machine with a C toolchain | on | yes | yes | yes |
+| Release archives (`.goreleaser.yaml`, `CGO_ENABLED=0`) | off | **no** — `serve` refuses to start and says why | yes | yes |
+
+Release binaries therefore need `DATABASE_URL` (or `DEMO_MODE`) until the
+SQLite/cgo build question is settled (#822, which also covers FTS5).
 
 ### Repository Interfaces
 
