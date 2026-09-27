@@ -60,10 +60,13 @@ type ancestorInfo struct {
 // maxGenerations is the limit for ancestor search to prevent excessive recursion.
 const maxRelationshipGenerations = 15
 
-// GetRelationship calculates the relationship between two people.
-func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, personID2 uuid.UUID) (*RelationshipResult, error) {
+// GetRelationship calculates the relationship between two people on branchID's
+// view of the tree (#829): both persons and every pedigree edge walked resolve
+// through the branch overlay, so a relationship the branch asserts (or removes)
+// is the one reported. The zero value (MainBranchID) reads the mainline.
+func (s *RelationshipService) GetRelationship(ctx context.Context, branchID domain.BranchID, personID1, personID2 uuid.UUID) (*RelationshipResult, error) {
 	// Get person A
-	personARM, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID1)
+	personARM, err := s.readStore.GetPerson(ctx, branchID, personID1)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +76,7 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 	personA := convertReadModelToPerson(*personARM)
 
 	// Get person B
-	personBRM, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID2)
+	personBRM, err := s.readStore.GetPerson(ctx, branchID, personID2)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +107,14 @@ func (s *RelationshipService) GetRelationship(ctx context.Context, personID1, pe
 	}
 
 	// Build ancestor maps for both persons with paths
-	ancestorsA := s.buildAncestorMap(ctx, personA)
-	ancestorsB := s.buildAncestorMap(ctx, personB)
+	ancestorsA, err := s.buildAncestorMap(ctx, branchID, personA)
+	if err != nil {
+		return nil, err
+	}
+	ancestorsB, err := s.buildAncestorMap(ctx, branchID, personB)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check if A is an ancestor of B (direct line down from A's perspective)
 	if info, ok := ancestorsB[personID1]; ok {
@@ -174,82 +183,88 @@ func personDisplayName(p Person) string {
 	return name
 }
 
-// buildAncestorMap builds a map of all ancestors with their generation distance and path.
-func (s *RelationshipService) buildAncestorMap(ctx context.Context, person Person) map[uuid.UUID]ancestorInfo {
+// buildAncestorMap builds a map of all ancestors with their generation distance
+// and path, walking branchID's pedigree one generation at a time.
+//
+// Each generation costs two set-based reads whatever its size — the frontier's
+// pedigree edges, then the parents not yet seen (#829) — rather than two reads
+// per ancestor. Breadth-first order also means every ancestor is recorded at its
+// shortest distance; within a generation the frontier keeps father-before-mother
+// order, so where two equally short paths reach one ancestor (pedigree collapse)
+// the paternal one is kept.
+func (s *RelationshipService) buildAncestorMap(ctx context.Context, branchID domain.BranchID, person Person) (map[uuid.UUID]ancestorInfo, error) {
 	ancestors := make(map[uuid.UUID]ancestorInfo)
-	visited := make(map[uuid.UUID]bool)
+	seen := map[uuid.UUID]bool{person.ID: true}
 
-	startNode := RelationshipPathNode{ID: person.ID, Name: personDisplayName(person)}
-	s.collectAncestorsWithPath(ctx, person.ID, 0, []RelationshipPathNode{startNode}, visited, ancestors)
-
-	return ancestors
-}
-
-// collectAncestorsWithPath recursively collects ancestors with their generation and path.
-func (s *RelationshipService) collectAncestorsWithPath(
-	ctx context.Context,
-	personID uuid.UUID,
-	generation int,
-	currentPath []RelationshipPathNode,
-	visited map[uuid.UUID]bool,
-	ancestors map[uuid.UUID]ancestorInfo,
-) {
-	if generation >= maxRelationshipGenerations {
-		return
+	type frontierNode struct {
+		id   uuid.UUID
+		path []RelationshipPathNode
 	}
-	if visited[personID] {
-		return
-	}
-	visited[personID] = true
+	frontier := []frontierNode{{id: person.ID, path: []RelationshipPathNode{{ID: person.ID, Name: personDisplayName(person)}}}}
 
-	edge, err := s.readStore.GetPedigreeEdge(ctx, domain.MainBranchID, personID)
-	if err != nil || edge == nil {
-		return
-	}
-
-	// Process father
-	if edge.FatherID != nil {
-		father, err := s.readStore.GetPerson(ctx, domain.MainBranchID, *edge.FatherID)
-		if err == nil && father != nil {
-			fatherPerson := convertReadModelToPerson(*father)
-			fatherNode := RelationshipPathNode{ID: *edge.FatherID, Name: personDisplayName(fatherPerson)}
-			fatherPath := make([]RelationshipPathNode, len(currentPath))
-			copy(fatherPath, currentPath)
-			fatherPath = append(fatherPath, fatherNode)
-
-			// Only add if not already present or if this path is shorter
-			if existing, ok := ancestors[*edge.FatherID]; !ok || generation+1 < existing.generation {
-				ancestors[*edge.FatherID] = ancestorInfo{
-					person:     fatherPerson,
-					generation: generation + 1,
-					path:       fatherPath,
-				}
-			}
-			s.collectAncestorsWithPath(ctx, *edge.FatherID, generation+1, fatherPath, visited, ancestors)
+	for generation := 0; generation < maxRelationshipGenerations && len(frontier) > 0; generation++ {
+		frontierIDs := make([]uuid.UUID, len(frontier))
+		for i, node := range frontier {
+			frontierIDs[i] = node.id
 		}
-	}
-
-	// Process mother
-	if edge.MotherID != nil {
-		mother, err := s.readStore.GetPerson(ctx, domain.MainBranchID, *edge.MotherID)
-		if err == nil && mother != nil {
-			motherPerson := convertReadModelToPerson(*mother)
-			motherNode := RelationshipPathNode{ID: *edge.MotherID, Name: personDisplayName(motherPerson)}
-			motherPath := make([]RelationshipPathNode, len(currentPath))
-			copy(motherPath, currentPath)
-			motherPath = append(motherPath, motherNode)
-
-			// Only add if not already present or if this path is shorter
-			if existing, ok := ancestors[*edge.MotherID]; !ok || generation+1 < existing.generation {
-				ancestors[*edge.MotherID] = ancestorInfo{
-					person:     motherPerson,
-					generation: generation + 1,
-					path:       motherPath,
-				}
-			}
-			s.collectAncestorsWithPath(ctx, *edge.MotherID, generation+1, motherPath, visited, ancestors)
+		edges, err := s.readStore.GetPedigreeEdgesByPersonIDs(ctx, branchID, frontierIDs)
+		if err != nil {
+			return nil, err
 		}
+		edgeOf := make(map[uuid.UUID]repository.PedigreeEdge, len(edges))
+		for _, edge := range edges {
+			edgeOf[edge.PersonID] = edge
+		}
+
+		// The parents this generation discovers, in frontier order (father first).
+		type discovery struct {
+			parentID uuid.UUID
+			child    frontierNode
+		}
+		var found []discovery
+		var parentIDs []uuid.UUID
+		for _, node := range frontier {
+			edge, ok := edgeOf[node.id]
+			if !ok {
+				continue
+			}
+			for _, parentID := range []*uuid.UUID{edge.FatherID, edge.MotherID} {
+				if parentID == nil || seen[*parentID] {
+					continue
+				}
+				seen[*parentID] = true
+				found = append(found, discovery{parentID: *parentID, child: node})
+				parentIDs = append(parentIDs, *parentID)
+			}
+		}
+
+		parents, err := s.readStore.GetPersonsByIDs(ctx, branchID, parentIDs)
+		if err != nil {
+			return nil, err
+		}
+		parentByID := make(map[uuid.UUID]Person, len(parents))
+		for _, p := range parents {
+			parentByID[p.ID] = convertReadModelToPerson(p)
+		}
+
+		next := make([]frontierNode, 0, len(found))
+		for _, d := range found {
+			parent, ok := parentByID[d.parentID]
+			if !ok {
+				// The edge names a person this view cannot see (deleted on the
+				// branch, say): the line stops here, as it does in the pedigree.
+				continue
+			}
+			path := make([]RelationshipPathNode, len(d.child.path), len(d.child.path)+1)
+			copy(path, d.child.path)
+			path = append(path, RelationshipPathNode{ID: parent.ID, Name: personDisplayName(parent)})
+			ancestors[parent.ID] = ancestorInfo{person: parent, generation: generation + 1, path: path}
+			next = append(next, frontierNode{id: parent.ID, path: path})
+		}
+		frontier = next
 	}
+
+	return ancestors, nil
 }
 
 // findCommonAncestors finds common ancestors between two ancestor maps.

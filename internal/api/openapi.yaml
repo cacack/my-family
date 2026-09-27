@@ -206,6 +206,7 @@ paths:
       summary: List all families
       tags: [families]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
       responses:
@@ -398,6 +399,8 @@ paths:
         and source citations. This is a standard format used by genealogists
         worldwide for documenting family units.
       tags: [families]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Family group sheet data
@@ -448,6 +451,7 @@ paths:
         and so on, along with spouse information for each generation.
       tags: [pedigree]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: generations
           in: query
           description: Number of descendant generations to include
@@ -479,6 +483,7 @@ paths:
         Each ancestor's number n has father at 2n and mother at 2n+1.
       tags: [reports]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: generations
           in: query
           description: Number of ancestor generations to include (1-10)
@@ -516,6 +521,7 @@ paths:
       summary: Search for persons
       tags: [search]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: q
           in: query
           description: Search query (name)
@@ -3159,6 +3165,7 @@ paths:
       tags:
         - relationships
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - name: personId1
           in: path
           required: true
