@@ -227,7 +227,7 @@ evidence types of #758. Branch
 | Association (#757) | ✅ | ✅ | `createAssociation` / `updateAssociation` / `deleteAssociation` |
 | Source (#758) | ✅ | ✅ | `createSource` / `updateSource` / `deleteSource` (the delete cascades to the source's external IDs and citations on the branch) |
 | SourceExternalID (#758) | ✅ | ⚠️ | written only by GEDCOM import (main-only); tombstoned by a branch `deleteSource` |
-| Citation (#758) | ✅ | ✅ | `createCitation` / `updateCitation` / `deleteCitation`; the denormalized source title and the source's citation count resolve on the branch |
+| Citation (#758) | ✅ | ✅ | `createCitation` / `updateCitation` / `deleteCitation`; the denormalized source title and the source's citation count resolve on the branch. Known gap: bumping the count writes a branch copy of the source, which then hides later main edits to that source on the branch (stale view, tracked under #676) |
 | Note (#758) | ✅ | ✅ | `createNote` / `updateNote` / `deleteNote` |
 
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,

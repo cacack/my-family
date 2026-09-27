@@ -7879,14 +7879,17 @@ export interface operations {
              *       stream id of the entity that moved (not a resolved name), the
              *       version the plan assumed and the version the mainline is actually
              *       at, as free text — there is no structured field for them.
-             *     - `merge_dangling_reference` — the replay would leave the mainline
-             *       holding a relationship pointing at a person the mainline will not
-             *       have, because that person was deleted there or was excluded by a
-             *       `main` resolution while the family event linking them would still
-             *       be replayed. Resolutions are per entity, but the branch's events
-             *       reference each other across entities, so excluding a person does
-             *       not exclude the links to them. The message names both the person
-             *       and the family. Refused rather than silently dropping the link.
+             *     - `merge_dangling_reference` — the replay would break a reference
+             *       between entities. Either the mainline would end up holding a
+             *       reference to an entity it will not have (a family child whose
+             *       person was deleted there or excluded by a `main` resolution, or a
+             *       citation whose source was), or a replayed source deletion would
+             *       also delete a mainline citation that still cites that source
+             *       (typically one added on the mainline after the fork). Resolutions
+             *       are per entity, but the branch's events reference each other
+             *       across entities, so excluding one entity does not exclude the
+             *       references to it. The message names both entities. Refused rather
+             *       than silently dropping or orphaning data.
              */
             409: {
                 headers: {

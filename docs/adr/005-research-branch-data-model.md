@@ -643,6 +643,17 @@ before the claim: a replayed link must name a person `main` already has or that 
 will create. Dropping the link silently was rejected as the same class of defect per-conflict
 review exists to prevent. Unlink events are not checked — removing a person `main` lacks is a no-op.
 
+#758 put sources and citations on the allowlist, which opened two more shapes of the same class,
+now refused by the same check (`validateNoDanglingEvidence`). A citation lives on its own stream
+and names a source on another. (1) A replayed citation whose *final* source — the last one a
+`CitationCreated` or a `source_id` change in `CitationUpdated` set, unless the stream ends deleted
+— must exist on `main` or be created and not deleted by the replay; otherwise `main` would gain a
+citation of a source it does not have, with a blank title. (2) A replayed `SourceDeleted` is refused
+while `main` has a citation of that source that the replay does not itself delete or re-point
+elsewhere. The branch's own delete guard (`ErrSourceHasCitations`) only sees the branch's view, so a
+citation `main` added after the fork would otherwise be deleted from `main` by the source→citation
+cascade, with no `CitationDeleted` event and no conflict shown.
+
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that
 is claimed in the log but still reads `active`. Because the CAS keys on the *stream version*, a
@@ -799,6 +810,17 @@ branch that retitled its source therefore carries the branch's title, not main's
 count forks the source onto the branch rather than touching main's row. On merge these are simply
 re-derived: the replayed `CitationCreated` bumps main's count and denormalizes main's title at that
 point in the log.
+
+*Known consequence — a stale source view on the branch.* That fork is a side effect of creating,
+re-pointing or deleting a *citation*, not of editing the source, yet it writes a full copy-on-write
+row of the source (title, author, repository, …) on the branch, and a branch row always wins the
+overlay. From then on the branch no longer sees main's later edits to that source: cite main's
+"1880 Census" on a branch, retitle it on main, and the branch still shows the old title. No
+`SourceUpdated` exists on the branch, so neither compare nor merge reports a divergence, and a merge
+is unaffected (it replays events, and the replayed citation re-derives main's count and title). Persons and families fork only on an explicit edit;
+sources can fork implicitly. The fix is to stop materialising `citation_count` and derive it at read
+time from the resolved citations overlay, so a citation write never touches the source row — left
+as follow-up under #676 because it changes the source read path on all three backends.
 
 **`SearchSources` resolves before it matches.** The title/author match runs over the resolved view
 of every source (the overlay subquery), never over raw rows filtered afterwards, so a source whose
