@@ -138,7 +138,20 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
 - **The startup log names the store in use** — `Database: SQLite (<path>)`,
   `Database: PostgreSQL (<url with password redacted>)` or
   `Database: In-memory (no persistence)`.
-- **Stores are closed on shutdown**, after the HTTP server stops.
+- **Stores are closed on shutdown, after in-flight requests drain.** On
+  SIGINT/SIGTERM the HTTP server stops accepting connections and waits (up to
+  30s) for running handlers to finish; only then is the database closed. A
+  server that fails to start (port in use) exits non-zero.
+- **`DATABASE_URL` secrets are never logged.** The startup line redacts the
+  password; a URL that does not parse is rejected with a fixed message, and
+  driver errors are scrubbed of the connection string and password before
+  they are reported.
+- **Known limitation: projection failures are not recoverable yet.** A
+  command appends its events and then projects them as a separate step, and a
+  projection error is ignored. With persistent storage such an event stays in
+  the log without its read-model row, and there is no projection rebuild yet,
+  so PR-001 (projection in the same transaction as append) is a target, not a
+  guarantee, for the SQL backends. Tracked as a follow-up.
 
 ### Build Implications (cgo)
 

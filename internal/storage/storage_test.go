@@ -237,6 +237,91 @@ func TestOpenPostgres_Unreachable(t *testing.T) {
 	}
 }
 
+func TestOpenPostgres_MalformedURLDoesNotLeakPassword(t *testing.T) {
+	tests := []struct{ name, dsn, secret string }{
+		// An unescaped % in the password: lib/pq's own error quotes the DSN.
+		{"percent in password", "postgres://app:50%off@db.example:5432/myfamily", "50%off"},
+		{"space in host", "postgres://u:secret@local host/db", "secret"},
+		{"bad escape in query password", "postgres://u@h/db?password=pa%zzss", "pa%zzss"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := OpenPostgres(tt.dsn)
+			if err == nil {
+				t.Fatal("OpenPostgres succeeded on a malformed URL, want an error")
+			}
+			msg := err.Error()
+			// "%of"/"%zz" are fragments of the passwords that url.Error
+			// would quote as the invalid escape.
+			for _, leak := range []string{tt.secret, tt.dsn, "%of", "%zz"} {
+				if strings.Contains(msg, leak) {
+					t.Errorf("error leaks %q: %q", leak, msg)
+				}
+			}
+			if !strings.Contains(msg, "DATABASE_URL is not a valid URL") {
+				t.Errorf("error %q does not explain the problem", msg)
+			}
+		})
+	}
+}
+
+func TestOpenPostgres_KeyValueUnreachableDoesNotLeakPassword(t *testing.T) {
+	_, err := OpenPostgres("host=127.0.0.1 port=1 user=u password='s3cret pw' dbname=db sslmode=disable connect_timeout=2")
+	if err == nil {
+		t.Fatal("OpenPostgres against a closed port succeeded, want an error")
+	}
+	if strings.Contains(err.Error(), "s3cret") {
+		t.Errorf("error leaks the password: %q", err)
+	}
+}
+
+func TestScrubError(t *testing.T) {
+	base := errors.New("base")
+	tests := []struct {
+		name, dsn string
+		errText   string
+		secrets   []string
+	}{
+		{
+			"url userinfo, raw and escaped",
+			"postgres://u:p%40ss@h/db",
+			`dial "postgres://u:p%40ss@h/db": auth failed for p@ss and p%40ss`,
+			[]string{"p@ss", "p%40ss", "postgres://u:"},
+		},
+		{
+			"query password",
+			"postgres://u@h/db?password=hunter2&sslmode=disable",
+			"bad password hunter2",
+			[]string{"hunter2"},
+		},
+		{
+			"key=value quoted",
+			"host=h password='top secret' dbname=d",
+			"conn host=h password='top secret' dbname=d failed; saw top secret",
+			[]string{"top secret"},
+		},
+		{
+			"key=value bare",
+			"host=h password=bare1 dbname=d",
+			"failed near bare1",
+			[]string{"bare1"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := scrubError(fmt.Errorf("%s: %w", tt.errText, base), tt.dsn)
+			for _, s := range tt.secrets {
+				if strings.Contains(err.Error(), s) {
+					t.Errorf("scrubbed error %q still contains %q", err, s)
+				}
+			}
+			if !errors.Is(err, base) {
+				t.Error("scrubbed error no longer unwraps to the original")
+			}
+		})
+	}
+}
+
 // ============================================================================
 // Helpers under test
 // ============================================================================
@@ -250,6 +335,7 @@ func TestRedactPostgres(t *testing.T) {
 		{"postgres://host/db?password=pw&sslmode=disable", "postgres://host/db?password=xxxxx&sslmode=disable"},
 		{"host=localhost password=pw dbname=db", "connection string not shown"},
 		{"://bad", "connection string not shown"},
+		{"postgres://u@h/db?password=pa%zzss", "connection string not shown"},
 	}
 	for _, tt := range tests {
 		if got := redactPostgres(tt.in); got != tt.want {
