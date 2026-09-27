@@ -469,6 +469,9 @@ type ReadModelStore interface {
 	GetFamilyExternalIDs(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]FamilyExternalIDReadModel, error)
 
 	// Family children operations (branch-scoped slice entity)
+	// GetFamilyChildren returns one family's child links in the same order
+	// GetFamilyChildrenByFamilyIDs documents, so every view of a family lists
+	// its siblings identically.
 	GetFamilyChildren(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]FamilyChildReadModel, error)
 	// GetFamilyChildrenByFamilyIDs is GetFamilyChildren for many families at
 	// once: ONE set-based read resolving the branch overlay of every family's

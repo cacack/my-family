@@ -156,10 +156,13 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 			PersonSurname: "Sample", RelationshipType: domain.ChildBiological, Sequence: seq}
 	}
 	unsequencedA, unsequencedB := child(famA, "Adam", nil), child(famA, "Bree", nil)
+	// A lowercase name sorts after the capitals bytewise but before them under
+	// a locale collation: it pins the name tie-break to bytewise order.
+	lowercaseA := child(famA, "abel", nil)
 	second, first := child(famA, "Zed", &two), child(famA, "Yan", &one)
 	keptB, doomedB := child(famB, "Kept", nil), child(famB, "Doomed", nil)
 	addedB, addedC := child(famB, "Added", nil), child(famC, "Only", nil)
-	for _, c := range []*repository.FamilyChildReadModel{unsequencedB, second, unsequencedA, first, keptB, doomedB} {
+	for _, c := range []*repository.FamilyChildReadModel{unsequencedB, lowercaseA, second, unsequencedA, first, keptB, doomedB} {
 		mustNoErr(t, "save main child", store.SaveFamilyChild(ctx, domain.MainBranchID, c))
 	}
 	mustNoErr(t, "delete branch child", store.DeleteFamilyChild(ctx, branch, famB, doomedB.PersonID))
@@ -179,7 +182,8 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 			for _, given := range want[familyID] {
 				wantOrder = append(wantOrder, familyID.String()+"/"+given)
 			}
-			// The same links as the single-family read, whatever its order.
+			// The same links, in the same order, as the single-family read that
+			// the family group sheet uses.
 			single, err := store.GetFamilyChildren(ctx, b, familyID)
 			mustNoErr(t, what+" single", err)
 			var batch []repository.FamilyChildReadModel
@@ -188,11 +192,6 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 					batch = append(batch, c)
 				}
 			}
-			sortChildren := func(cs []repository.FamilyChildReadModel) {
-				sort.Slice(cs, func(i, j int) bool { return cs[i].PersonID.String() < cs[j].PersonID.String() })
-			}
-			sortChildren(single)
-			sortChildren(batch)
 			if len(single) != len(batch) || (len(batch) > 0 && !reflect.DeepEqual(single, batch)) {
 				t.Fatalf("%s: family %s batch children %+v differ from single-family read %+v", what, familyID, batch, single)
 			}
@@ -202,11 +201,11 @@ func runKinshipLookupScenario(t *testing.T, store repository.ReadModelStore) {
 		}
 	}
 	checkChildren("children on main", domain.MainBranchID, map[uuid.UUID][]string{
-		famA: {"Yan", "Zed", "Adam", "Bree"},
+		famA: {"Yan", "Zed", "Adam", "Bree", "abel"},
 		famB: {"Doomed", "Kept"},
 	})
 	checkChildren("children on branch", branch, map[uuid.UUID][]string{
-		famA: {"Yan", "Zed", "Adam", "Bree"},
+		famA: {"Yan", "Zed", "Adam", "Bree", "abel"},
 		famB: {"Added", "Kept"},
 		famC: {"Only"},
 	})
