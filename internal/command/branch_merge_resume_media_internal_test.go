@@ -6,9 +6,11 @@ package command
 // that order.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -159,14 +161,146 @@ func TestCheckLandedMediaOwners(t *testing.T) {
 
 func TestFinalSurvivor(t *testing.T) {
 	a, b, c := uuid.New(), uuid.New(), uuid.New()
-	if got := finalSurvivor(a, map[uuid.UUID]uuid.UUID{a: b, b: c}); got != c {
-		t.Errorf("chain a→b→c ends at %s, want c", got)
+	early, late := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
+	chain := map[uuid.UUID]personMerge{
+		a: {mergedID: a, survivorID: b, at: late},
+		b: {mergedID: b, survivorID: c, at: early},
 	}
-	if got := finalSurvivor(c, map[uuid.UUID]uuid.UUID{a: b}); got != c {
-		t.Errorf("unmerged person ends at %s, want itself", got)
+	if got, at := finalSurvivor(a, chain); got != c || !at.Equal(late) {
+		t.Errorf("chain a→b→c ends at %s (%v), want c at the latest merge", got, at)
+	}
+	if got, at := finalSurvivor(c, map[uuid.UUID]personMerge{a: {mergedID: a, survivorID: b}}); got != c || !at.IsZero() {
+		t.Errorf("unmerged person ends at %s (%v), want itself and no merge time", got, at)
 	}
 	// A cycle cannot come from the command layer; it must still terminate.
-	_ = finalSurvivor(a, map[uuid.UUID]uuid.UUID{a: b, b: a})
+	_, _ = finalSurvivor(a, map[uuid.UUID]personMerge{a: {mergedID: a, survivorID: b}, b: {mergedID: b, survivorID: a}})
+}
+
+// With no main row, a landed upload whose owner main merged away counts as
+// attached to the final survivor the repair re-links it to: excluding the
+// merged-away owner is then harmless, and only the survivor's absence would
+// orphan it.
+func TestCheckLandedMediaOwners_RelinkedToSurvivor(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewReadModelStore()
+	h := &Handler{readStore: store}
+	mediaID, owner, survivor := uuid.New(), uuid.New(), uuid.New()
+	groups := []streamGroup{personGroup(owner, "PersonUpdated"), personGroup(survivor, "PersonUpdated"), mediaUploadGroup(mediaID, "person", owner)}
+	view := resumeView{landed: map[uuid.UUID]bool{mediaID: true}, relinked: map[uuid.UUID]uuid.UUID{mediaID: survivor}}
+
+	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}); err != nil {
+		t.Errorf("merged-away owner resolved to main: err = %v, want nil (the item moves to the survivor)", err)
+	}
+	err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain})
+	if !errors.Is(err, ErrMergeDanglingReference) {
+		t.Errorf("survivor main lacks, resolved to main: err = %v, want ErrMergeDanglingReference", err)
+	}
+	if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: survivor, GivenName: "Sam", Version: 1}); err != nil {
+		t.Fatalf("SavePerson failed: %v", err)
+	}
+	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain}); err != nil {
+		t.Errorf("survivor main has, resolved to main: err = %v, want nil", err)
+	}
+}
+
+// appendMainMerge records a PersonMerged of merged into survivor on main.
+func appendMainMerge(t *testing.T, events repository.EventStore, survivor, merged uuid.UUID) {
+	t.Helper()
+	merge := domain.NewPersonMerged(survivor, merged, nil, nil, nil, nil, nil, nil, nil)
+	if err := events.Append(context.Background(), survivor, "Person", []domain.Event{merge}, -1, repository.MainScope); err != nil {
+		t.Fatalf("Append PersonMerged failed: %v", err)
+	}
+}
+
+// relinkMergedMedia moves the re-projected row to the survivor with its
+// version and bytes untouched, follows a merge of that survivor recorded
+// after the resume's own scan, and leaves a vanished row alone.
+func TestRelinkMergedMedia(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewReadModelStore()
+	events := memory.NewEventStore()
+	h := &Handler{readStore: store, eventStore: events}
+	mediaID, owner, first, second := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	group := mediaUploadGroup(mediaID, "person", owner)
+	uploaded := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	bytesIn := []byte("scan bytes")
+	if err := store.SaveMedia(ctx, domain.MainBranchID, &repository.MediaReadModel{
+		ID: mediaID, EntityType: "person", EntityID: owner, Title: "Scan", FileData: bytesIn, Version: 3, UpdatedAt: uploaded,
+	}); err != nil {
+		t.Fatalf("SaveMedia failed: %v", err)
+	}
+
+	// The resume's scan saw owner→first; first→second lands after it.
+	appendMainMerge(t, events, first, owner)
+	appendMainMerge(t, events, second, first)
+	if err := h.relinkMergedMedia(ctx, group, mediaRelink{target: first, mergedAt: uploaded.Add(time.Hour), scanFrom: 0}); err != nil {
+		t.Fatalf("relinkMergedMedia failed: %v", err)
+	}
+	row, err := store.GetMediaWithData(ctx, domain.MainBranchID, mediaID)
+	if err != nil || row == nil {
+		t.Fatalf("GetMediaWithData = %v, %v", row, err)
+	}
+	if row.EntityID != second || row.Version != 3 || !bytes.Equal(row.FileData, bytesIn) {
+		t.Errorf("row = owner %s version %d bytes %q; want the final survivor, version 3 and the bytes kept", row.EntityID, row.Version, row.FileData)
+	}
+	if !row.UpdatedAt.After(uploaded) {
+		t.Errorf("updated_at = %v, want the merge's time", row.UpdatedAt)
+	}
+
+	if err := store.DeleteMedia(ctx, domain.MainBranchID, mediaID); err != nil {
+		t.Fatalf("DeleteMedia failed: %v", err)
+	}
+	if err := h.relinkMergedMedia(ctx, group, mediaRelink{target: second}); err != nil {
+		t.Errorf("vanished row: err = %v, want nil", err)
+	}
+	failing := &Handler{readStore: getMediaFailStore{store}, eventStore: events}
+	if err := failing.relinkMergedMedia(ctx, group, mediaRelink{target: second}); err == nil {
+		t.Errorf("failed media read: want an error")
+	}
+}
+
+// A survivor merged again on every scan cannot hold the repair forever: it
+// gives up with the retryable race error after reprojectAttempts passes.
+func TestRelinkMergedMedia_GivesUpOnEndlessMerges(t *testing.T) {
+	ctx := context.Background()
+	store := memory.NewReadModelStore()
+	events := memory.NewEventStore()
+	h := &Handler{readStore: store, eventStore: events}
+	mediaID := uuid.New()
+	chain := []uuid.UUID{uuid.New()}
+	for i := 0; i < reprojectAttempts+1; i++ {
+		next := uuid.New()
+		appendMainMerge(t, events, next, chain[len(chain)-1])
+		chain = append(chain, next)
+	}
+	if err := store.SaveMedia(ctx, domain.MainBranchID, &repository.MediaReadModel{
+		ID: mediaID, EntityType: "person", EntityID: chain[0], Title: "Scan", Version: 1,
+	}); err != nil {
+		t.Fatalf("SaveMedia failed: %v", err)
+	}
+	// Each pass sees only one more link: the scan below its start is stale.
+	calls := 0
+	h.eventStore = &steppingMergeStore{EventStore: events, calls: &calls}
+	err := h.relinkMergedMedia(ctx, mediaUploadGroup(mediaID, "person", chain[0]), mediaRelink{target: chain[0]})
+	if !errors.Is(err, errReprojectRaced) {
+		t.Errorf("endless merges: err = %v, want errReprojectRaced", err)
+	}
+}
+
+// steppingMergeStore reveals one more of main's events on each ReadBranch
+// call, so every merge scan finds exactly one new merge.
+type steppingMergeStore struct {
+	repository.EventStore
+	calls *int
+}
+
+func (s *steppingMergeStore) ReadBranch(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	*s.calls++
+	page, err := s.EventStore.ReadBranch(ctx, branchID, fromPosition, limit)
+	if err != nil || len(page) <= *s.calls {
+		return page, err
+	}
+	return page[:*s.calls], nil
 }
 
 func TestLastMediaOwner(t *testing.T) {
@@ -196,7 +330,7 @@ func TestPersonMergeScanSharing(t *testing.T) {
 
 	a, b, c := uuid.New(), uuid.New(), uuid.New()
 	merges := []personMerge{{mergedID: a, survivorID: b, position: 10}, {mergedID: b, survivorID: c, position: 20}}
-	if got := survivorsAfter(merges, 15); len(got) != 1 || got[b] != c {
+	if got := survivorsAfter(merges, 15); len(got) != 1 || got[b].survivorID != c {
 		t.Errorf("survivorsAfter(15) = %v, want only b→c", got)
 	}
 	if got := survivorsAfter(merges, -1); len(got) != 0 {

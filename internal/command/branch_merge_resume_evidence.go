@@ -212,7 +212,7 @@ func (h *Handler) levelSourceWithLog(ctx context.Context, sourceID uuid.UUID) er
 	if err != nil {
 		return err
 	}
-	return h.reprojectStream(ctx, group, events[sourceID])
+	return h.reprojectStream(ctx, group, events[sourceID], nil)
 }
 
 // appendUnique appends each id not already in ids, keeping order.

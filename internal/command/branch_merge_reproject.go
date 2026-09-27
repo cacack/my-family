@@ -62,8 +62,9 @@ type readModelState struct {
 // Media streams (#759) follow the same version rule: each media projection
 // writes the row, version included, in one save (or deletes it). The repair
 // projects onto main only and never copies bytes: see
-// branch_merge_resume_media.go, including the owner-merged case it refuses
-// (ErrMergeResumeRepairUnsound) rather than repair.
+// branch_merge_resume_media.go, including the owner-merged case, where the
+// re-projected row is then re-linked to the merge survivor as PersonMerged
+// would have done (relinkMergedMedia).
 //
 // Source, citation and note streams (#758) are covered by the same version
 // rule: each of their projections writes the row, version included, in one
@@ -88,7 +89,7 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 	if err != nil {
 		return nil, err
 	}
-	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, behind, states, mainEvents, landed)
+	removedElsewhere, relink, err := h.missingRowsRemovedElsewhere(ctx, behind, states, mainEvents)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +109,11 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 				continue // nothing to repair
 			}
 		}
-		if err := h.reprojectStream(ctx, group, events); err != nil {
+		var mediaMove *mediaRelink
+		if move, ok := relink[group.streamID]; ok {
+			mediaMove = &move
+		}
+		if err := h.reprojectStream(ctx, group, events, mediaMove); err != nil {
 			return nil, err
 		}
 		repaired = append(repaired, group.streamID)
@@ -169,7 +174,12 @@ var errReprojectRaced = errors.New("main's read model kept moving while the resu
 // by that save, and shows up here as a row behind the log, so the stream is
 // re-read and the pass repeated from the row's version. A row that vanished
 // during the pass is not re-created (see the comment at that check).
-func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events []repository.StoredEvent) error {
+//
+// relink, when set, is the owner transfer a media row needs after its
+// re-projection (see mediaRelink); it is made after every pass, before the
+// row is checked against the log, so a racing write the transfer's save
+// rolled back is re-projected by the next pass like any other.
+func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events []repository.StoredEvent, relink *mediaRelink) error {
 	for attempt := 0; attempt < reprojectAttempts; attempt++ {
 		if attempt > 0 {
 			reread, err := h.readMainStreams(ctx, []uuid.UUID{group.streamID})
@@ -180,6 +190,11 @@ func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events
 		}
 		if err := h.reprojectForward(ctx, group, events); err != nil {
 			return err
+		}
+		if relink != nil {
+			if err := h.relinkMergedMedia(ctx, group, *relink); err != nil {
+				return err
+			}
 		}
 
 		head, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
@@ -264,20 +279,19 @@ func (h *Handler) streamsBehindOnMain(ctx context.Context, groups []streamGroup,
 // owner→media cascade, #759). Each kind is detected with one set-based scan
 // across all the missing streams, never a scan per stream.
 //
-// landed names the streams already on main by payload id; a landed media
-// stream whose repair would be unsound is refused (ErrMergeResumeRepairUnsound, see
-// missingMediaCascadedAway).
+// It also returns, for each missing media row whose person owner main merged
+// into a person it still has, the owner transfer its re-projection must be
+// followed by (see missingMediaCascadedAway).
 func (h *Handler) missingRowsRemovedElsewhere(
 	ctx context.Context,
 	missing []streamGroup,
 	states map[uuid.UUID]readModelState,
 	mainEvents map[uuid.UUID][]repository.StoredEvent,
-	landed map[uuid.UUID]bool,
-) (map[uuid.UUID]bool, error) {
+) (map[uuid.UUID]bool, map[uuid.UUID]mediaRelink, error) {
 	personCandidates, personsFrom := missingPersonCandidates(missing, states, mainEvents)
 	ownerOf, ownersFrom, err := missingMediaOwners(missing, states, mainEvents)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// One scan of main for person merges serves both consumers, starting at
 	// the earlier of their start points; each filters it to its own.
@@ -285,17 +299,17 @@ func (h *Handler) missingRowsRemovedElsewhere(
 	if scanFrom := earliestScan(personsFrom, ownersFrom); scanFrom >= 0 {
 		merges, err = h.personMergesOnMain(ctx, scanFrom)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	mergedAway := mergedAwayAfter(personCandidates, personsFrom, merges)
 	cascaded, err := h.missingCitationsCascadedAway(ctx, missing, states, mainEvents)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	mediaCascaded, err := h.missingMediaCascadedAway(ctx, missing, ownerOf, survivorsAfter(merges, ownersFrom), landed)
+	mediaCascaded, relink, err := h.missingMediaCascadedAway(ctx, missing, ownerOf, survivorsAfter(merges, ownersFrom), ownersFrom)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	removed := make(map[uuid.UUID]bool, len(mergedAway)+len(cascaded)+len(mediaCascaded))
 	for _, set := range []map[uuid.UUID]bool{mergedAway, cascaded, mediaCascaded} {
@@ -303,7 +317,7 @@ func (h *Handler) missingRowsRemovedElsewhere(
 			removed[id] = true
 		}
 	}
-	return removed, nil
+	return removed, relink, nil
 }
 
 // missingPersonCandidates returns the missing person rows that may be

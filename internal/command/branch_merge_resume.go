@@ -149,6 +149,12 @@ type resumeView struct {
 	// for a reason main's log explains (see streamsRemovedOnMain).
 	removed map[uuid.UUID]bool
 
+	// relinked maps each landed media item whose main row is missing and
+	// whose person owner main has since merged into another person to the
+	// final survivor: the owner the read-model repair attaches it to (see
+	// mediaRelink).
+	relinked map[uuid.UUID]uuid.UUID
+
 	// created names the persons a replay group creates and main has not
 	// removed since (see personsCreatedByReplay).
 	created map[uuid.UUID]bool
@@ -295,7 +301,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 
 	// What main removed since the claim, and so which persons the replay can
 	// still vouch for.
-	removed, err := h.streamsRemovedOnMain(ctx, groups, mainVersions, landed)
+	removed, relinked, err := h.streamsRemovedOnMain(ctx, groups, mainVersions)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +309,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		landed:       landed,
 		mainVersions: mainVersions,
 		removed:      removed,
+		relinked:     relinked,
 		created:      personsCreatedByReplay(groups, removed),
 	}
 
@@ -938,8 +945,10 @@ func personsCreatedByReplay(groups []streamGroup, removed map[uuid.UUID]bool) ma
 // A stream main never had (version 0: the branch created the entity and it
 // has not landed) cannot have been removed. A row missing for any other
 // reason — a failed projection of an already-replayed stream — is not a
-// removal; reprojectLandedStreams repairs it.
-func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup, mainVersions map[uuid.UUID]int64, landed map[uuid.UUID]bool) (map[uuid.UUID]bool, error) {
+// removal; reprojectLandedStreams repairs it. For a missing media row whose
+// person owner main merged into another person, it also reports the final
+// survivor that repair re-links the item to.
+func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup, mainVersions map[uuid.UUID]int64) (map[uuid.UUID]bool, map[uuid.UUID]uuid.UUID, error) {
 	var missing []streamGroup
 	states := make(map[uuid.UUID]readModelState)
 	for _, group := range groups {
@@ -948,7 +957,7 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 		}
 		state, err := h.mainReadModelState(ctx, group)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if state.present {
 			continue
@@ -957,7 +966,7 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 		missing = append(missing, group)
 	}
 	if len(missing) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	streamIDs := make([]uuid.UUID, 0, len(missing))
@@ -966,23 +975,30 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 	}
 	mainEvents, err := h.readMainStreams(ctx, streamIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, missing, states, mainEvents, landed)
+	removedElsewhere, relink, err := h.missingRowsRemovedElsewhere(ctx, missing, states, mainEvents)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	removed := make(map[uuid.UUID]bool, len(missing))
 	for _, group := range missing {
 		gone, err := h.goneForLoggedReason(ctx, group, mainEvents[group.streamID], removedElsewhere[group.streamID])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if gone {
 			removed[group.streamID] = true
 		}
 	}
-	return removed, nil
+	var relinked map[uuid.UUID]uuid.UUID
+	for mediaID, move := range relink {
+		if relinked == nil {
+			relinked = make(map[uuid.UUID]uuid.UUID, len(relink))
+		}
+		relinked[mediaID] = move.target
+	}
+	return removed, relinked, nil
 }
 
 // isReadModelStream reports whether mainReadModelState can read a stream

@@ -672,12 +672,14 @@ and no branch row is written beyond the byte release every mainline save of a me
 explains when its owner's `main` stream ends in a delete (the owner→media cascade writes nothing to
 the media stream), following a person owner through any person merges `main` recorded since; a
 pending edit of such an item resolves only to `main`, and a landed upload is not resurrected. One
-case is refused rather than repaired: a landed upload whose projection failed and whose owner
+case needs a step beyond re-projection: a landed upload whose projection failed and whose owner
 person `main` then merged into a person it still has. `PersonMerged` would have moved the item to
-the survivor, and that transfer is not in the media stream, so re-projecting it would attach it to
-the merged-away person; the resume says so (`409 merge_resume_repair_unsound`) and writes nothing,
-and repairing that item needs a read-model rebuild from the log (#680) — resuming again refuses the
-same way until then.
+the survivor, and that transfer is not in the media stream, so re-projecting the stream alone would
+attach it to the merged-away person. The transfer is fully determined by `main`'s log, though, so
+the repair re-projects the item and then re-links its row to the final survivor (following any
+later merges) — the same save `PersonMerged` makes, version and bytes untouched — and the landed-owner
+check treats the item as that survivor's. The scan for merges is repeated after the re-link, so a
+merge of the survivor recorded meanwhile is followed too. No rebuild (#680) is needed.
 
 A claim written before #685 has no plan, so its first resume must decide every stream not yet on
 `main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams

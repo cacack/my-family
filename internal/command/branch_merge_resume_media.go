@@ -3,8 +3,8 @@ package command
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -32,25 +32,19 @@ import (
 // would resurrect an orphan, so it counts as removed for a reason main's log
 // explains.
 //
-// A person owner main merged into another is the case the repair cannot settle
-// on its own: PersonMerged moves the merged person's media to the survivor
-// when it is projected, so a media row still missing afterwards means its own
-// MediaCreated projection failed BEFORE that merge. Re-projecting it from the
-// media stream would attach it to the merged-away person — an orphan — and the
-// transfer the person merge would have made is not in the media stream to
-// replay. Unless the survivor (followed through any later merges) has itself
-// been deleted, which removes the item either way, the resume refuses such a
-// landed stream with ErrMergeResumeRepairUnsound before writing anything.
-
-// ErrMergeResumeRepairUnsound is returned when an already-replayed media
-// stream's main row is missing and its owner was merged into a person main
-// still has, so re-projecting the stream would attach the item to the
-// merged-away person (see the note above). Nothing has been written by the
-// refusing call. The refusal is permanent for this state: main's read model
-// needs a rebuild from the log (#680) to repair the item, and resuming again
-// will refuse the same way (the API reports it as 409
-// merge_resume_repair_unsound).
-var ErrMergeResumeRepairUnsound = errors.New("an already-replayed media item cannot be repaired from its own stream")
+// A person owner main merged into another needs one more step. PersonMerged
+// moves the merged person's media to the survivor when it is projected, so a
+// media row still missing afterwards means its own MediaCreated projection
+// failed BEFORE that merge, and re-projecting the stream alone would attach
+// the item to the merged-away person. The transfer the person merge would have
+// made is not in the media stream, but it is fully determined by main's log:
+// the merges main recorded since the upload (followed through any later
+// merges) name the survivor, and moving a media item is nothing more than
+// re-linking its row to that survivor — the same save PersonMerged makes, with
+// the item's version untouched. So the repair re-projects the stream and then
+// re-links the row (relinkMergedMedia). If the survivor has itself been
+// deleted since, the item is gone either way (the cascade), and nothing is
+// re-projected.
 
 // mediaOwner names the entity a media item is attached to.
 type mediaOwner struct {
@@ -75,20 +69,30 @@ func lastMediaOwner(events []repository.StoredEvent) (owner mediaOwner, found bo
 	return owner, found, nil
 }
 
+// mediaRelink is the owner transfer a missing media row needs after its
+// re-projection: main merged the person the upload attached it to into
+// target (followed through every later merge), and the last of those merges
+// was recorded at mergedAt. scanFrom is where the scan for those merges
+// started, so relinkMergedMedia can repeat it to catch a merge that raced it.
+type mediaRelink struct {
+	target   uuid.UUID
+	mergedAt time.Time
+	scanFrom int64
+}
+
 // missingMediaCascadedAway reports which missing media rows were removed by
 // their owner's delete cascade: the owner the stream's main log attached the
 // item to — followed, for a person, through any person merges main recorded
 // since — ends in a delete on main. Only media streams whose row is missing and
 // whose stream does not itself end in a delete are candidates; ownerOf holds
-// them with their owners (missingMediaOwners), and survivorOf the person merges
-// main recorded since the earliest of them (survivorsAfter).
+// them with their owners (missingMediaOwners), and mergeOf the person merges
+// main recorded since the earliest of them (survivorsAfter), scanned from
+// scanFrom.
 //
-// refuse names the candidates that are already on main by payload id: for
-// those, an owner merged into a person main still has is refused with
-// ErrMergeResumeRepairUnsound instead of being left to a re-projection that would
-// orphan the item. A candidate not in refuse is simply reported as not
-// removed; a resume's replay of its (metadata-only) events onto a missing row
-// is a projection no-op.
+// It also reports, for each candidate NOT cascaded away whose person owner
+// main merged into a person it still has, the transfer its re-projection must
+// be followed by (see the note at the top of this file): re-projecting the
+// stream alone would attach the item to the merged-away person.
 //
 // The work is set-based: the caller's one paged scan of main for person
 // merges (shared with the merged-away person check, and made only when a
@@ -98,28 +102,30 @@ func (h *Handler) missingMediaCascadedAway(
 	ctx context.Context,
 	missing []streamGroup,
 	ownerOf map[uuid.UUID]mediaOwner,
-	survivorOf map[uuid.UUID]uuid.UUID,
-	refuse map[uuid.UUID]bool,
-) (map[uuid.UUID]bool, error) {
+	mergeOf map[uuid.UUID]personMerge,
+	scanFrom int64,
+) (map[uuid.UUID]bool, map[uuid.UUID]mediaRelink, error) {
 	if len(ownerOf) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	finalOf := make(map[uuid.UUID]uuid.UUID, len(ownerOf))
+	mergedAtOf := make(map[uuid.UUID]time.Time, len(ownerOf))
 	var finals []uuid.UUID
 	for mediaID, owner := range ownerOf {
 		final := owner.id
 		if owner.entityType == "person" {
-			final = finalSurvivor(final, survivorOf)
+			final, mergedAtOf[mediaID] = finalSurvivor(final, mergeOf)
 		}
 		finalOf[mediaID] = final
 		finals = appendUnique(finals, final)
 	}
 	ownerEvents, err := h.readMainStreams(ctx, finals)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	cascaded := make(map[uuid.UUID]bool)
+	relink := make(map[uuid.UUID]mediaRelink)
 	for _, group := range missing {
 		owner, ok := ownerOf[group.streamID]
 		if !ok {
@@ -129,15 +135,59 @@ func (h *Handler) missingMediaCascadedAway(
 		switch {
 		case endsInDelete(ownerEvents[final]):
 			cascaded[group.streamID] = true
-		case final != owner.id && refuse[group.streamID]:
-			return nil, fmt.Errorf(
-				"%w: media %s is on main in the log but missing from main's read model, and its owner person %s "+
-					"was merged into person %s since; re-projecting it would attach it to the merged-away person. "+
-					"Nothing has been written; rebuild main's read model from the log to repair it",
-				ErrMergeResumeRepairUnsound, group.streamID, owner.id, final)
+		case final != owner.id:
+			relink[group.streamID] = mediaRelink{target: final, mergedAt: mergedAtOf[group.streamID], scanFrom: scanFrom}
 		}
 	}
-	return cascaded, nil
+	return cascaded, relink, nil
+}
+
+// relinkMergedMedia makes, on main's re-projected row of a media item, the
+// owner transfer the person merges main recorded since its upload would have
+// made (see mediaRelink): the row is re-linked to the final survivor, exactly
+// as PersonMerged re-links a merged person's media — entity id and updated-at
+// only, the version untouched, and no bytes (GetMedia reads none, and a save
+// with nil bytes keeps those stored).
+//
+// A merge of the survivor recorded while this ran would move the row only if
+// its projection saw it re-linked, so the scan for merges is repeated after
+// each save, and the row re-linked again to any new survivor, until a scan
+// finds nothing new. A row already gone (removed while the repair ran) is
+// left alone; reprojectStream reports that.
+func (h *Handler) relinkMergedMedia(ctx context.Context, group streamGroup, relink mediaRelink) error {
+	for attempt := 0; attempt < reprojectAttempts; attempt++ {
+		row, err := h.readStore.GetMedia(ctx, domain.MainBranchID, group.streamID)
+		if err != nil {
+			return fmt.Errorf("reading main media %s to re-link it: %w", group.streamID, err)
+		}
+		if row == nil {
+			return nil
+		}
+		if row.EntityType == "person" && row.EntityID != relink.target {
+			row.EntityID = relink.target
+			if relink.mergedAt.After(row.UpdatedAt) {
+				row.UpdatedAt = relink.mergedAt
+			}
+			if err := h.readStore.SaveMedia(ctx, domain.MainBranchID, row); err != nil {
+				return fmt.Errorf("re-linking main media %s to merge survivor %s: %w", group.streamID, relink.target, err)
+			}
+		}
+
+		merges, err := h.personMergesOnMain(ctx, relink.scanFrom)
+		if err != nil {
+			return err
+		}
+		target, mergedAt := finalSurvivor(relink.target, survivorsAfter(merges, relink.scanFrom))
+		if target == relink.target {
+			return nil
+		}
+		relink.target = target
+		if mergedAt.After(relink.mergedAt) {
+			relink.mergedAt = mergedAt
+		}
+	}
+	return fmt.Errorf("%w: media %s's owner kept being merged while the resume re-linked it; resume again to finish",
+		errReprojectRaced, group.streamID)
 }
 
 // missingMediaOwners returns the owner each candidate of missingMediaCascadedAway
@@ -171,24 +221,30 @@ func missingMediaOwners(
 }
 
 // finalSurvivor follows a person through main's recorded merges to the person
-// that finally holds their data. It stops after as many steps as there are
-// merges, so a malformed log with a cycle cannot loop it.
-func finalSurvivor(personID uuid.UUID, survivorOf map[uuid.UUID]uuid.UUID) uuid.UUID {
-	for steps := 0; steps < len(survivorOf); steps++ {
-		next, merged := survivorOf[personID]
+// that finally holds their data, and reports when the last merge it followed
+// was recorded (zero when it followed none). It stops after as many steps as
+// there are merges, so a malformed log with a cycle cannot loop it.
+func finalSurvivor(personID uuid.UUID, mergeOf map[uuid.UUID]personMerge) (uuid.UUID, time.Time) {
+	var mergedAt time.Time
+	for steps := 0; steps < len(mergeOf); steps++ {
+		merge, merged := mergeOf[personID]
 		if !merged {
 			break
 		}
-		personID = next
+		personID = merge.survivorID
+		if merge.at.After(mergedAt) {
+			mergedAt = merge.at
+		}
 	}
-	return personID
+	return personID, mergedAt
 }
 
 // personMerge is one PersonMerged main recorded: MergedID folded into
-// SurvivorID at a log position.
+// SurvivorID at a log position and time.
 type personMerge struct {
 	mergedID, survivorID uuid.UUID
 	position             int64
+	at                   time.Time
 }
 
 // personMergesOnMain lists every person merge main recorded after
@@ -214,7 +270,10 @@ func (h *Handler) personMergesOnMain(ctx context.Context, fromPosition int64) ([
 			if err := json.Unmarshal(page[i].Data, &payload); err != nil {
 				return nil, fmt.Errorf("decoding PersonMerged at position %d: %w", page[i].Position, err)
 			}
-			merges = append(merges, personMerge{mergedID: payload.MergedID, survivorID: payload.SurvivorID, position: page[i].Position})
+			merges = append(merges, personMerge{
+				mergedID: payload.MergedID, survivorID: payload.SurvivorID,
+				position: page[i].Position, at: page[i].Timestamp,
+			})
 		}
 		if len(page) < resumeScanPage {
 			return merges, nil
@@ -224,19 +283,19 @@ func (h *Handler) personMergesOnMain(ctx context.Context, fromPosition int64) ([
 }
 
 // survivorsAfter maps every person merged into another after fromPosition to
-// the survivor (MergedID → SurvivorID). A negative fromPosition means no
-// consumer asked, and yields an empty map.
-func survivorsAfter(merges []personMerge, fromPosition int64) map[uuid.UUID]uuid.UUID {
-	survivorOf := make(map[uuid.UUID]uuid.UUID)
+// that merge (MergedID → the merge, naming SurvivorID). A negative
+// fromPosition means no consumer asked, and yields an empty map.
+func survivorsAfter(merges []personMerge, fromPosition int64) map[uuid.UUID]personMerge {
+	mergeOf := make(map[uuid.UUID]personMerge)
 	if fromPosition < 0 {
-		return survivorOf
+		return mergeOf
 	}
 	for _, m := range merges {
 		if m.position > fromPosition {
-			survivorOf[m.mergedID] = m.survivorID
+			mergeOf[m.mergedID] = m
 		}
 	}
-	return survivorOf
+	return mergeOf
 }
 
 // mainMediaState is mainReadModelState for media streams (#759). It reads the
@@ -264,8 +323,9 @@ func (h *Handler) mainMediaState(ctx context.Context, group streamGroup) (readMo
 //
 // The owner checked is the one main's row now names (a person merge on main
 // moves the item to the survivor); with no main row, it is the one the upload
-// attached the item to, since a resume's repair would re-project the item
-// there — unless main's log explains the row's absence (view.removed: main
+// attached the item to — or, when main has merged that person away since, the
+// final survivor (view.relinked) — since a resume's repair would re-project
+// the item there — unless main's log explains the row's absence (view.removed: main
 // deleted the item, or deleted an owner it had and cascaded it), which leaves
 // nothing to orphan. Decisions recorded earlier were checked when they were
 // made. A refused caller can resolve the owner's stream to branch, or delete
@@ -291,8 +351,11 @@ func (h *Handler) checkLandedMediaOwners(
 		if err != nil {
 			return fmt.Errorf("reading main media %s: %w", group.streamID, err)
 		}
-		if row != nil {
+		switch survivor, relinked := view.relinked[group.streamID]; {
+		case row != nil:
 			entityType, entityID = row.EntityType, row.EntityID
+		case relinked:
+			entityType, entityID = "person", survivor
 		}
 		if resolutions[entityID] != ResolveMain {
 			continue

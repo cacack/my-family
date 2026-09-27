@@ -346,51 +346,118 @@ func TestResumeMerge_CascadedMediaIsNotResurrected(t *testing.T) {
 	}
 }
 
-// The upload lands in main's log but its projection fails, and main then
-// merges its owner into another person. The person merge would have moved the
-// item to the survivor, and that transfer is not in the media stream: the
-// repair is unsound, so the resume refuses before writing anything. Once the
-// survivor is deleted too the item is gone either way, and the resume
-// finishes.
-func TestResumeMerge_MediaOfMergedAwayOwnerIsRefused(t *testing.T) {
-	e := newEvidenceResume(t)
+// mergeMainPersons merges merged into survivor on main.
+func (e evidenceResume) mergeMainPersons(t *testing.T, survivor, merged uuid.UUID) {
+	t.Helper()
 	ctx := context.Background()
-	owner := e.mainPerson(t, "Owen")
-	branch, scoped := e.branch(t, "upload-then-merge")
-	scan := e.upload(t, scoped, owner, "Portrait of Owen")
-
-	e.failProjection(t, branch, scan)
-	survivor, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, e.person)
-	if err != nil || survivor == nil {
-		t.Fatalf("GetPerson survivor = %v, %v", survivor, err)
+	s, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, survivor)
+	if err != nil || s == nil {
+		t.Fatalf("GetPerson survivor = %v, %v", s, err)
 	}
-	merged, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, owner)
-	if err != nil || merged == nil {
-		t.Fatalf("GetPerson merged = %v, %v", merged, err)
+	m, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, merged)
+	if err != nil || m == nil {
+		t.Fatalf("GetPerson merged = %v, %v", m, err)
 	}
 	if _, err := e.f.handler.MergePersons(ctx, command.MergePersonsInput{
-		SurvivorID: e.person, MergedID: owner, SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+		SurvivorID: survivor, MergedID: merged, SurvivorVersion: s.Version, MergedVersion: m.Version,
 	}); err != nil {
 		t.Fatalf("main MergePersons failed: %v", err)
 	}
+}
+
+// The upload lands in main's log but its projection fails, and main then
+// merges its owner into another person — and that one into a third. The
+// person merges would have moved the item to the final survivor, and that
+// transfer is not in the media stream, so the resume re-projects the item
+// from main's log and then re-links it to the final survivor, exactly as the
+// merges would have: bytes and version as the log has them, nothing appended,
+// and a second resume does nothing.
+func TestResumeMerge_MediaOfMergedAwayOwnerIsRelinked(t *testing.T) {
+	e := newEvidenceResume(t)
+	owner := e.mainPerson(t, "Owen")
+	final := e.mainPerson(t, "Fay")
+	branch, scoped := e.branch(t, "upload-then-merge")
+	scope := domain.BranchID(branch.ID)
+	scan := e.upload(t, scoped, owner, "Portrait of Owen")
+	scanBytes := e.media(t, scope, scan).FileData
+
+	e.failProjection(t, branch, scan)
+	e.mergeMainPersons(t, e.person, owner)
+	e.mergeMainPersons(t, final, e.person)
 	before := e.mainEventCount(t)
 
-	_, err = e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
-	if !errors.Is(err, command.ErrMergeResumeRepairUnsound) {
-		t.Fatalf("ResumeMerge error = %v, want the unsound-repair refusal", err)
+	res := e.resume(t, branch.ID, nil)
+	if res.ReplayedEventCount != 0 || !slices.Equal(res.ReprojectedStreamIDs, []uuid.UUID{scan}) {
+		t.Errorf("resume replayed %d, re-projected %v; want 0 and [%s]", res.ReplayedEventCount, res.ReprojectedStreamIDs, scan)
 	}
 	if got := e.mainEventCount(t); got != before {
-		t.Errorf("refused resume wrote %d event(s) to main", got-before)
+		t.Errorf("main event count = %d, want %d (a repair appends nothing)", got, before)
 	}
-	if e.media(t, domain.MainBranchID, scan) != nil {
-		t.Errorf("refused resume re-projected the media")
+	row := e.media(t, domain.MainBranchID, scan)
+	if row == nil {
+		t.Fatalf("main has no row for the repaired media")
 	}
+	if row.EntityType != "person" || row.EntityID != final {
+		t.Errorf("repaired media is attached to %s %s, want the final merge survivor %s", row.EntityType, row.EntityID, final)
+	}
+	head, err := e.f.eventStore.GetStreamVersion(context.Background(), scan, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if row.Version != head {
+		t.Errorf("repaired media version = %d, want main's stream version %d", row.Version, head)
+	}
+	if !bytes.Equal(row.FileData, scanBytes) {
+		t.Errorf("repaired media bytes = %d byte(s), want the %d uploaded", len(row.FileData), len(scanBytes))
+	}
+	listed, _, err := e.f.readStore.ListMediaForEntity(context.Background(), "person", final, repository.ListOptions{Limit: 10, BranchID: domain.MainBranchID})
+	if err != nil || len(listed) != 1 || listed[0].ID != scan {
+		t.Errorf("survivor's media = %v, %v; want the repaired item", listed, err)
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
+}
 
+// As above, but main deletes the survivor before the resume: the item is gone
+// either way (the survivor's delete cascade), so nothing is re-projected.
+func TestResumeMerge_MediaOfMergedThenDeletedOwnerStaysGone(t *testing.T) {
+	e := newEvidenceResume(t)
+	owner := e.mainPerson(t, "Owen")
+	branch, scoped := e.branch(t, "upload-merge-delete")
+	scan := e.upload(t, scoped, owner, "Portrait of Owen")
+
+	e.failProjection(t, branch, scan)
+	e.mergeMainPersons(t, e.person, owner)
 	e.deleteMainPerson(t, e.person)
+
 	res := e.resume(t, branch.ID, nil)
 	if len(res.ReprojectedStreamIDs) != 0 || e.media(t, domain.MainBranchID, scan) != nil {
 		t.Errorf("resume re-projected %v; want the cascaded media left gone", res.ReprojectedStreamIDs)
 	}
+}
+
+// The branch also edits the upload's owner, and main merges that owner away
+// during the interruption, so the owner's edit is pending and can only be
+// resolved to main. That does not orphan the landed upload: its repair
+// re-links it to the survivor main still has.
+func TestResumeMerge_MergedAwayOwnerResolvedToMainKeepsRelinkedMedia(t *testing.T) {
+	e := newEvidenceResume(t)
+	owner := e.mainPerson(t, "Owen")
+	branch, scoped := e.branch(t, "upload-and-edit-then-merge")
+	scan := e.upload(t, scoped, owner, "Portrait of Owen")
+	e.renameOnBranch(t, scoped, domain.BranchID(branch.ID), owner)
+
+	e.failProjection(t, branch, scan)
+	e.mergeMainPersons(t, e.person, owner)
+
+	res := e.resume(t, branch.ID, map[uuid.UUID]command.MergeResolution{owner: command.ResolveMain})
+	if !slices.Contains(res.ReprojectedStreamIDs, scan) {
+		t.Errorf("resume re-projected %v; want the media %s", res.ReprojectedStreamIDs, scan)
+	}
+	row := e.media(t, domain.MainBranchID, scan)
+	if row == nil || row.EntityID != e.person {
+		t.Fatalf("repaired media = %+v, want it attached to the survivor %s", row, e.person)
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
 }
 
 // A branch creates a person, uploads a photo of them and deletes them. The

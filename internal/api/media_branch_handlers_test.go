@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/cacack/my-family/internal/api"
@@ -183,12 +182,12 @@ func (s *failingMainMediaStore) SaveMedia(ctx context.Context, branchID domain.B
 	return s.ReadModelStore.SaveMedia(ctx, branchID, media)
 }
 
-// TestResumeBranchMerge_MediaRepairUnsound: a branch upload lands in main's
+// TestResumeBranchMerge_MediaOfMergedAwayOwner: a branch upload lands in main's
 // log but not in main's read model, then main merges its owner into another
-// person. Repairing the item from its own stream would orphan it, so the
-// resume refuses with a 409 merge_resume_repair_unsound — a permanent refusal
-// the client can tell apart from a retryable 500 — and writes nothing.
-func TestResumeBranchMerge_MediaRepairUnsound(t *testing.T) {
+// person. The resume repairs the item from main's log and re-links it to the
+// survivor, as the person merge would have: the merge completes and the item
+// is served on main, attached to the survivor.
+func TestResumeBranchMerge_MediaOfMergedAwayOwner(t *testing.T) {
 	cfg := &config.Config{Port: 8080, LogFormat: "text"}
 	events := memory.NewEventStore()
 	reads := &failingMainMediaStore{ReadModelStore: memory.NewReadModelStore()}
@@ -219,20 +218,19 @@ func TestResumeBranchMerge_MediaRepairUnsound(t *testing.T) {
 		t.Fatalf("MergePersons: status = %d. Body: %s", rec.Code, rec.Body.String())
 	}
 
-	for attempt := 1; attempt <= 2; attempt++ {
-		rec = do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge/resume", "")
-		if rec.Code != http.StatusConflict {
-			t.Fatalf("Resume #%d: status = %d, want 409. Body: %s", attempt, rec.Code, rec.Body.String())
-		}
-		resp := decodeJSON(t, rec)
-		if resp["code"] != "merge_resume_repair_unsound" {
-			t.Errorf("Resume #%d: code = %v, want merge_resume_repair_unsound", attempt, resp["code"])
-		}
-		if msg, _ := resp["message"].(string); !strings.Contains(msg, "rebuild main's read model") {
-			t.Errorf("Resume #%d: message = %q, want the rebuild remedy", attempt, msg)
-		}
+	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge/resume", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Resume: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
 	}
-	if rec := do(t, server, http.MethodGet, "/api/v1/media/"+mediaID, ""); rec.Code != http.StatusNotFound {
-		t.Errorf("main GET media after refused resume: status = %d, want 404", rec.Code)
+	resp := decodeJSON(t, rec)
+	if ids, _ := resp["reprojected_stream_ids"].([]any); len(ids) != 1 || ids[0] != mediaID {
+		t.Errorf("Resume: reprojected_stream_ids = %v, want [%s]", resp["reprojected_stream_ids"], mediaID)
+	}
+	rec = do(t, server, http.MethodGet, "/api/v1/media/"+mediaID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("main GET media after resume: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+	}
+	if got := decodeJSON(t, rec)["entity_id"]; got != survivorID {
+		t.Errorf("main media entity_id = %v, want the survivor %s", got, survivorID)
 	}
 }
