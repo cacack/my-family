@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/google/uuid"
@@ -318,8 +319,15 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 	for _, event := range events {
 		newVersion++
 		if err := h.projector.Project(ctx, event, newVersion, h.branchID); err != nil {
-			// Projection can be rebuilt; ignore non-critical errors
-			_ = err
+			// The event is already appended, so the command still succeeds, but
+			// the read model now lacks this event's effect. Log it so the drift
+			// is visible; there is no automatic projection rebuild yet.
+			slog.Error("projection failed after append; read model is out of sync with the event log",
+				"event_type", event.EventType(),
+				"stream_id", id.String(),
+				"version", newVersion,
+				"branch_id", h.branchID.String(),
+				"error", err)
 		}
 	}
 

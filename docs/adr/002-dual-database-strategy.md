@@ -148,10 +148,13 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   they are reported.
 - **Known limitation: projection failures are not recoverable yet.** A
   command appends its events and then projects them as a separate step, and a
-  projection error is ignored. With persistent storage such an event stays in
-  the log without its read-model row, and there is no projection rebuild yet,
-  so PR-001 (projection in the same transaction as append) is a target, not a
-  guarantee, for the SQL backends. Tracked as a follow-up.
+  projection error does not fail the command: it is logged at error level
+  (`projection failed after append`) and otherwise dropped. With persistent
+  storage such an event stays in the log without its read-model row, and there
+  is no projection rebuild yet, so PR-001 (projection in the same transaction
+  as append) is a target, not a guarantee, for the SQL backends. Making
+  projection failures fail the command, or adding a rebuild, still needs a
+  tracking issue.
 
 ### Build Implications (cgo)
 
