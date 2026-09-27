@@ -74,6 +74,12 @@ export type MergeResolution = MergeResolutionEntry['resolution'];
  */
 export type BranchChangeEntry = components['schemas']['ChangeEntry'];
 
+// Re-export Research Snapshot types from generated file (single source of truth)
+export type Snapshot = components['schemas']['Snapshot'];
+export type SnapshotCreate = components['schemas']['SnapshotCreate'];
+export type SnapshotList = components['schemas']['SnapshotList'];
+export type SnapshotComparisonResult = components['schemas']['SnapshotComparisonResult'];
+
 const API_BASE = '/api/v1';
 
 // ---------------------------------------------------------------------------
@@ -2208,6 +2214,29 @@ class ApiClient {
 			'POST',
 			'/persons/duplicates/dismiss/batch',
 			req
+		);
+	}
+
+	// Research snapshot endpoints. A snapshot is a named marker of a mainline
+	// event-store position (a "tag"), so these are never branch-scoped —
+	// `/snapshots*` is absent from the allowlist above.
+	async listSnapshots(): Promise<SnapshotList> {
+		return this.request<SnapshotList>('GET', '/snapshots');
+	}
+
+	async createSnapshot(data: SnapshotCreate): Promise<Snapshot> {
+		return this.request<Snapshot>('POST', '/snapshots', data);
+	}
+
+	async deleteSnapshot(id: string): Promise<void> {
+		return this.request<void>('DELETE', `/snapshots/${encodeURIComponent(id)}`);
+	}
+
+	/** The mainline changes recorded between two snapshots, oldest first, whichever order they are passed in. */
+	async compareSnapshots(id1: string, id2: string): Promise<SnapshotComparisonResult> {
+		return this.request<SnapshotComparisonResult>(
+			'GET',
+			`/snapshots/${encodeURIComponent(id1)}/compare/${encodeURIComponent(id2)}`
 		);
 	}
 

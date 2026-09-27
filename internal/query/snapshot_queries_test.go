@@ -157,6 +157,7 @@ type mockEventStoreExt struct {
 	readByStreamFunc     func(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error)
 	readGlobalByTimeFunc func(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error)
 	readAllFunc          func(ctx context.Context, fromPosition int64, limit int) ([]repository.StoredEvent, error)
+	readBranchFunc       func(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error)
 }
 
 func (m *mockEventStoreExt) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
@@ -175,7 +176,27 @@ func (m *mockEventStoreExt) ReadAll(ctx context.Context, fromPosition int64, lim
 }
 
 func (m *mockEventStoreExt) ReadBranch(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	if m.readBranchFunc != nil {
+		return m.readBranchFunc(ctx, branchID, fromPosition, limit)
+	}
 	return nil, nil
+}
+
+// branchReader mimics EventStore.ReadBranch over a fixed log: the events tagged
+// with branchID, after fromPosition, in position order, capped at limit.
+func branchReader(log []repository.StoredEvent) func(ctx context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	return func(_ context.Context, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+		var result []repository.StoredEvent
+		for _, e := range log {
+			if e.BranchID == branchID && e.Position > fromPosition {
+				result = append(result, e)
+				if len(result) >= limit {
+					break
+				}
+			}
+		}
+		return result, nil
+	}
 }
 
 func (m *mockEventStoreExt) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
@@ -252,17 +273,34 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 		},
 	}
 
-	eventStore := &mockEventStoreExt{
-		readAllFunc: func(ctx context.Context, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
-			var result []repository.StoredEvent
-			for _, e := range events {
-				if e.Position > fromPosition {
-					result = append(result, e)
-				}
-			}
-			return result, nil
+	// A research branch's delta between the two positions, and a mainline
+	// event after the newer one: neither belongs in the comparison.
+	branchPersonID := uuid.New()
+	events = append(events,
+		repository.StoredEvent{
+			ID:         uuid.New(),
+			StreamID:   branchPersonID,
+			StreamType: "person",
+			BranchID:   domain.BranchID(uuid.New()),
+			EventType:  "PersonCreated",
+			Data:       mustMarshal(domain.NewPersonCreated(&domain.Person{ID: branchPersonID, GivenName: "Branch", Surname: "Only"})),
+			Version:    1,
+			Position:   16,
+			Timestamp:  now.Add(-20 * time.Minute),
 		},
-	}
+		repository.StoredEvent{
+			ID:         uuid.New(),
+			StreamID:   branchPersonID,
+			StreamType: "person",
+			EventType:  "PersonCreated",
+			Data:       mustMarshal(domain.NewPersonCreated(&domain.Person{ID: branchPersonID, GivenName: "Later", Surname: "Main"})),
+			Version:    1,
+			Position:   25,
+			Timestamp:  now.Add(10 * time.Minute),
+		},
+	)
+
+	eventStore := &mockEventStoreExt{readBranchFunc: branchReader(events)}
 
 	readStore := &mockReadModelStore{
 		getPersonFunc: func(ctx context.Context, id uuid.UUID) (*repository.PersonReadModel, error) {
@@ -301,6 +339,26 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 		assert.False(t, result.OlderFirst) // snapshot1 is actually the older one
 	})
 
+	t.Run("excludes research branch events and events past the newer snapshot", func(t *testing.T) {
+		result, err := service.CompareSnapshots(context.Background(), snapshot1ID, snapshot2ID)
+
+		require.NoError(t, err)
+		require.Len(t, result.Changes, 1)
+		assert.Equal(t, personID, result.Changes[0].EntityID)
+		assert.False(t, result.HasMore)
+	})
+
+	t.Run("read error is returned", func(t *testing.T) {
+		failing := &mockEventStoreExt{
+			readBranchFunc: func(context.Context, domain.BranchID, int64, int) ([]repository.StoredEvent, error) {
+				return nil, assert.AnError
+			},
+		}
+		svc := NewSnapshotService(snapshotStore, failing, historyService)
+		_, err := svc.CompareSnapshots(context.Background(), snapshot1ID, snapshot2ID)
+		assert.ErrorIs(t, err, assert.AnError)
+	})
+
 	t.Run("snapshot not found", func(t *testing.T) {
 		snapshotStoreNotFound := &mockSnapshotStore{
 			getFunc: func(ctx context.Context, id uuid.UUID) (*domain.Snapshot, error) {
@@ -310,5 +368,70 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 		svc := NewSnapshotService(snapshotStoreNotFound, eventStore, historyService)
 		_, err := svc.CompareSnapshots(context.Background(), uuid.New(), snapshot2ID)
 		assert.Error(t, err)
+	})
+}
+
+func TestSnapshotService_CompareSnapshots_HasMore(t *testing.T) {
+	older := &domain.Snapshot{ID: uuid.New(), Name: "Older", Position: 0}
+	newer := &domain.Snapshot{ID: uuid.New(), Name: "Newer", Position: int64(maxComparisonEvents) + 10}
+
+	snapshotStore := &mockSnapshotStore{
+		getFunc: func(_ context.Context, id uuid.UUID) (*domain.Snapshot, error) {
+			switch id {
+			case older.ID:
+				return older, nil
+			case newer.ID:
+				return newer, nil
+			}
+			return nil, repository.ErrSnapshotNotFound
+		},
+	}
+
+	// A mainline log of `n` events at positions 1..n. The event type is not one
+	// the history transform decodes, which keeps the fixture cheap: only the
+	// positions matter to HasMore.
+	logOf := func(n int) []repository.StoredEvent {
+		log := make([]repository.StoredEvent, n)
+		for i := range log {
+			log[i] = repository.StoredEvent{ID: uuid.New(), EventType: "Unmapped", Position: int64(i + 1)}
+		}
+		return log
+	}
+
+	compare := func(t *testing.T, log []repository.StoredEvent, from, to *domain.Snapshot) *SnapshotComparisonResult {
+		t.Helper()
+		eventStore := &mockEventStoreExt{readBranchFunc: branchReader(log)}
+		service := NewSnapshotService(snapshotStore, eventStore, NewHistoryService(eventStore, &mockReadModelStore{}))
+		result, err := service.CompareSnapshots(context.Background(), from.ID, to.ID)
+		require.NoError(t, err)
+		return result
+	}
+
+	t.Run("a capped read that stops short of the newer snapshot has more", func(t *testing.T) {
+		result := compare(t, logOf(maxComparisonEvents+20), older, newer)
+		assert.True(t, result.HasMore)
+	})
+
+	t.Run("a capped read that runs past the newer snapshot is complete", func(t *testing.T) {
+		mid := &domain.Snapshot{ID: uuid.New(), Name: "Mid", Position: 5}
+		snapshotStore.getFunc = func(_ context.Context, id uuid.UUID) (*domain.Snapshot, error) {
+			if id == mid.ID {
+				return mid, nil
+			}
+			return older, nil
+		}
+		result := compare(t, logOf(maxComparisonEvents+20), older, mid)
+		assert.False(t, result.HasMore)
+	})
+
+	t.Run("an uncapped read is complete", func(t *testing.T) {
+		snapshotStore.getFunc = func(_ context.Context, id uuid.UUID) (*domain.Snapshot, error) {
+			if id == newer.ID {
+				return newer, nil
+			}
+			return older, nil
+		}
+		result := compare(t, logOf(3), older, newer)
+		assert.False(t, result.HasMore)
 	})
 }

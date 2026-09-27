@@ -72,6 +72,13 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
 		context: 'global'
 	},
 	{
+		// "t" for tags: snapshots are the git-inspired workflow's tags.
+		keys: ['g', 't'],
+		action: 'go-snapshots',
+		description: 'Go to research snapshots',
+		context: 'global'
+	},
+	{
 		keys: ['g', '/'],
 		action: 'go-search',
 		description: 'Go to advanced search',

@@ -62,6 +62,18 @@ export interface SeedData {
 		familyName: string;
 		familyBranchMarriagePlace: string;
 	};
+	/**
+	 * Two snapshots bracketing the mainline seeding: `before` on the empty store,
+	 * `after` once every mainline write (and every branch write) has landed. Their
+	 * comparison therefore holds the merge person's mainline edit and must not
+	 * hold its branch edit.
+	 */
+	snapshots: {
+		beforeId: string;
+		beforeName: string;
+		afterId: string;
+		afterName: string;
+	};
 }
 
 /**
@@ -121,6 +133,12 @@ export function writeSeed(seed: SeedData): void {
 				seed.merge.familyBranchMarriagePlace,
 				'merge.familyBranchMarriagePlace'
 			)
+		},
+		snapshots: {
+			beforeId: asId(seed.snapshots.beforeId, 'snapshots.beforeId'),
+			beforeName: asText(seed.snapshots.beforeName, 'snapshots.beforeName'),
+			afterId: asId(seed.snapshots.afterId, 'snapshots.afterId'),
+			afterName: asText(seed.snapshots.afterName, 'snapshots.afterName')
 		}
 	};
 
