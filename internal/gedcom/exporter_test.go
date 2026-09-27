@@ -882,7 +882,7 @@ func TestExport_PersonBurialEvent(t *testing.T) {
 		DateRaw:   "23 MAR 1920",
 		Place:     "Springfield Cemetery, IL",
 	}
-	readStore.SaveEvent(ctx, event)
+	readStore.SaveEvent(ctx, domain.MainBranchID, event)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -932,7 +932,7 @@ func TestExport_PersonBaptismEvent(t *testing.T) {
 		DateRaw:   "15 JAN 1855",
 		Place:     "First Presbyterian Church",
 	}
-	readStore.SaveEvent(ctx, event)
+	readStore.SaveEvent(ctx, domain.MainBranchID, event)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -976,7 +976,7 @@ func TestExport_PersonCensusEvent(t *testing.T) {
 		DateRaw:   "1880",
 		Place:     "Springfield, IL",
 	}
-	readStore.SaveEvent(ctx, event)
+	readStore.SaveEvent(ctx, domain.MainBranchID, event)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -1016,7 +1016,7 @@ func TestExport_PersonImmigrationEvent(t *testing.T) {
 		DateRaw:   "1880",
 		Place:     "Ellis Island, NY",
 	}
-	readStore.SaveEvent(ctx, event)
+	readStore.SaveEvent(ctx, domain.MainBranchID, event)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -1058,7 +1058,7 @@ func TestExport_PersonOccupationAttribute(t *testing.T) {
 		DateRaw:  "1860",
 		Place:    "Springfield, IL",
 	}
-	readStore.SaveAttribute(ctx, attr)
+	readStore.SaveAttribute(ctx, domain.MainBranchID, attr)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -1105,7 +1105,7 @@ func TestExport_PersonResidenceAttribute(t *testing.T) {
 		DateRaw:  "1870",
 		Place:    "Springfield, IL",
 	}
-	readStore.SaveAttribute(ctx, attr)
+	readStore.SaveAttribute(ctx, domain.MainBranchID, attr)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -1161,7 +1161,7 @@ func TestExport_FamilyMarriageBann(t *testing.T) {
 		DateRaw:   "1 MAY 1875",
 		Place:     "First Church, Springfield, IL",
 	}
-	readStore.SaveEvent(ctx, event)
+	readStore.SaveEvent(ctx, domain.MainBranchID, event)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -1222,7 +1222,7 @@ func TestExport_FamilyAnnulment(t *testing.T) {
 		DateRaw:   "1 JAN 1876",
 		Place:     "County Court, Springfield, IL",
 	}
-	readStore.SaveEvent(ctx, event)
+	readStore.SaveEvent(ctx, domain.MainBranchID, event)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -1274,7 +1274,7 @@ func TestExport_MultipleEventsAndAttributes(t *testing.T) {
 		},
 	}
 	for _, e := range events {
-		readStore.SaveEvent(ctx, e)
+		readStore.SaveEvent(ctx, domain.MainBranchID, e)
 	}
 
 	// Add multiple attributes
@@ -1295,7 +1295,7 @@ func TestExport_MultipleEventsAndAttributes(t *testing.T) {
 		},
 	}
 	for _, a := range attributes {
-		readStore.SaveAttribute(ctx, a)
+		readStore.SaveAttribute(ctx, domain.MainBranchID, a)
 	}
 
 	exporter := gedcom.NewExporter(readStore)
@@ -1354,7 +1354,7 @@ func TestExport_EventWithCause(t *testing.T) {
 		Place:     "Springfield Cemetery",
 		Cause:     "Natural causes",
 	}
-	readStore.SaveEvent(ctx, event)
+	readStore.SaveEvent(ctx, domain.MainBranchID, event)
 
 	exporter := gedcom.NewExporter(readStore)
 	buf := &bytes.Buffer{}
@@ -1402,7 +1402,7 @@ func TestExport_AllEventTypes(t *testing.T) {
 			FactType:  factType,
 			DateRaw:   "1 JAN 18" + string(rune('5'+i%5)) + "0",
 		}
-		readStore.SaveEvent(ctx, event)
+		readStore.SaveEvent(ctx, domain.MainBranchID, event)
 	}
 
 	exporter := gedcom.NewExporter(readStore)
@@ -1458,7 +1458,7 @@ func TestExport_AllAttributeTypes(t *testing.T) {
 			FactType: cfg.factType,
 			Value:    cfg.value,
 		}
-		readStore.SaveAttribute(ctx, attr)
+		readStore.SaveAttribute(ctx, domain.MainBranchID, attr)
 	}
 
 	exporter := gedcom.NewExporter(readStore)
@@ -1536,7 +1536,7 @@ func TestExport_AllFamilyEventTypes(t *testing.T) {
 			FactType:  factType,
 			DateRaw:   "1 JUN 187" + string(rune('0'+i)),
 		}
-		readStore.SaveEvent(ctx, event)
+		readStore.SaveEvent(ctx, domain.MainBranchID, event)
 	}
 
 	exporter := gedcom.NewExporter(readStore)
@@ -2352,7 +2352,7 @@ func TestExport_NegatedEvents(t *testing.T) {
 
 	// Create a negated death event (NO DEAT)
 	negDeathID := uuid.New()
-	readStore.SaveEvent(ctx, &repository.EventReadModel{
+	readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        negDeathID,
 		OwnerType: "person",
 		OwnerID:   personID,
@@ -2390,7 +2390,7 @@ func TestExport_NegatedEvents(t *testing.T) {
 
 	// Create a negated marriage event (NO MARR)
 	negMarrID := uuid.New()
-	readStore.SaveEvent(ctx, &repository.EventReadModel{
+	readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        negMarrID,
 		OwnerType: "family",
 		OwnerID:   familyID,
@@ -2451,7 +2451,7 @@ func TestExport_NonNegated7xTriggerBumpsVersion(t *testing.T) {
 	})
 
 	// An association with a PHRASE — a 7.0-only structure, not a negated event.
-	readStore.SaveAssociation(ctx, &repository.AssociationReadModel{
+	readStore.SaveAssociation(ctx, domain.MainBranchID, &repository.AssociationReadModel{
 		ID:          uuid.New(),
 		PersonID:    personID,
 		AssociateID: associateID,
@@ -2556,7 +2556,7 @@ func TestExport_NegatedEventRoundTrip(t *testing.T) {
 			IsNegated:   e.IsNegated,
 			Version:     1,
 		}
-		readStore.SaveEvent(ctx, em)
+		readStore.SaveEvent(ctx, domain.MainBranchID, em)
 	}
 
 	// Step 3: Export
@@ -2928,7 +2928,7 @@ func TestExport_TargetVersionOverridesAutoUpgrade(t *testing.T) {
 		ID: associateID, GivenName: "Bob", Surname: "Jones", FullName: "Bob Jones", Gender: domain.GenderMale,
 	})
 	// A PHRASE is a 7.0-only structure that would normally auto-upgrade to 7.0.
-	readStore.SaveAssociation(ctx, &repository.AssociationReadModel{
+	readStore.SaveAssociation(ctx, domain.MainBranchID, &repository.AssociationReadModel{
 		ID: uuid.New(), PersonID: personID, AssociateID: associateID,
 		Role: domain.RoleGodparent, Phrase: "Lifelong family friend", Version: 1,
 	})

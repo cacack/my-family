@@ -136,6 +136,95 @@ func TestFreshSchemaAllowsBranchWrites(t *testing.T) {
 	}
 }
 
+// TestPreFactBranchSchemaRefusesBranchWrites covers a database built between
+// #669 and #757: persons already carry the composite (id, branch_id) key, but
+// life_events still has its lone-id key (SQLite cannot alter it in place). Such a
+// database must refuse EVERY branch write with repository.ErrBranchesUnsupported —
+// a branch DeletePerson would need to tombstone the person's life events, which
+// the old key cannot hold — while mainline fact writes, including upserts of an
+// existing row, keep working.
+func TestPreFactBranchSchemaRefusesBranchWrites(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-prefact-readmodel-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	// Post-#733, pre-#757 life_events: owner_type present (so it is not mistaken
+	// for a pre-#733 events table), lone-id PRIMARY KEY, no branch columns.
+	if _, err := db.Exec(`
+		CREATE TABLE life_events (
+			id TEXT PRIMARY KEY,
+			owner_type TEXT NOT NULL,
+			owner_id TEXT NOT NULL,
+			fact_type TEXT NOT NULL,
+			date_raw TEXT,
+			date_sort TEXT,
+			place TEXT,
+			place_lat TEXT,
+			place_long TEXT,
+			address TEXT,
+			description TEXT,
+			cause TEXT,
+			age TEXT,
+			research_status TEXT,
+			is_negated INTEGER NOT NULL DEFAULT 0,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`); err != nil {
+		t.Fatalf("create pre-#757 life_events: %v", err)
+	}
+
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	personID := uuid.New()
+	event := &repository.EventReadModel{
+		ID: uuid.New(), OwnerType: "person", OwnerID: personID,
+		FactType: domain.FactPersonBurial, Place: "Restland", Version: 1, CreatedAt: time.Now(),
+	}
+
+	// Branch writes are refused up front, fact and slice alike.
+	if err := store.SaveEvent(ctx, branch, event); !errors.Is(err, repository.ErrBranchesUnsupported) {
+		t.Errorf("branch SaveEvent: want ErrBranchesUnsupported, got %v", err)
+	}
+	if err := store.DeleteEvent(ctx, branch, event.ID); !errors.Is(err, repository.ErrBranchesUnsupported) {
+		t.Errorf("branch DeleteEvent: want ErrBranchesUnsupported, got %v", err)
+	}
+	if err := store.SavePerson(ctx, branch, branchPersonRM(personID, "Branch", "Row")); !errors.Is(err, repository.ErrBranchesUnsupported) {
+		t.Errorf("branch SavePerson: want ErrBranchesUnsupported, got %v", err)
+	}
+
+	// Mainline keeps working: insert, then upsert the same row, then delete it.
+	if err := store.SaveEvent(ctx, domain.MainBranchID, event); err != nil {
+		t.Fatalf("main SaveEvent: %v", err)
+	}
+	event.Place = "Oak Grove"
+	if err := store.SaveEvent(ctx, domain.MainBranchID, event); err != nil {
+		t.Fatalf("main SaveEvent upsert: %v", err)
+	}
+	got, err := store.GetEvent(ctx, domain.MainBranchID, event.ID)
+	if err != nil || got == nil || got.Place != "Oak Grove" {
+		t.Fatalf("main GetEvent = %+v (err=%v), want the upserted Oak Grove", got, err)
+	}
+	if err := store.DeleteEvent(ctx, domain.MainBranchID, event.ID); err != nil {
+		t.Fatalf("main DeleteEvent: %v", err)
+	}
+	if got, err := store.GetEvent(ctx, domain.MainBranchID, event.ID); err != nil || got != nil {
+		t.Errorf("main GetEvent after delete = %+v (err=%v), want absent", got, err)
+	}
+}
+
 // legacyEventFixture is one row of the pre-ADR-005 events table. Ids and
 // positions are asserted to survive the rebuild byte-for-byte.
 type legacyEventFixture struct {

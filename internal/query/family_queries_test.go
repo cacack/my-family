@@ -764,7 +764,7 @@ func TestGetGroupSheet_NegatedBirthWithCitations(t *testing.T) {
 	})
 
 	// Create a negated birth event directly in the read store
-	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+	_ = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        uuid.New(),
 		OwnerType: "person",
 		OwnerID:   husband.ID,
@@ -836,7 +836,7 @@ func TestGetGroupSheet_NegatedDeathWithCitations(t *testing.T) {
 	})
 
 	// Create a negated death event
-	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+	_ = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        uuid.New(),
 		OwnerType: "person",
 		OwnerID:   wife.ID,
@@ -910,7 +910,7 @@ func TestGetGroupSheet_NegatedMarriageWithCitations(t *testing.T) {
 	})
 
 	// Create a negated marriage event
-	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+	_ = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        uuid.New(),
 		OwnerType: "family",
 		OwnerID:   familyResult.ID,
@@ -981,7 +981,7 @@ func TestGetGroupSheet_ExistingEventMarkedNegatedWithCitations(t *testing.T) {
 	})
 
 	// Create a negated birth event (person already has birth data, so this is the non-nil path)
-	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+	_ = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        uuid.New(),
 		OwnerType: "person",
 		OwnerID:   husband.ID,

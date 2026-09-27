@@ -880,7 +880,7 @@ func createTestEvent(t *testing.T, store *memory.ReadModelStore, ownerType strin
 		Version:        1,
 		CreatedAt:      now,
 	}
-	err := store.SaveEvent(context.Background(), &event)
+	err := store.SaveEvent(context.Background(), domain.MainBranchID, &event)
 	require.NoError(t, err)
 	return event
 }
@@ -898,7 +898,7 @@ func createTestAttribute(t *testing.T, store *memory.ReadModelStore, personID uu
 		Version:   1,
 		CreatedAt: now,
 	}
-	err := store.SaveAttribute(context.Background(), &attr)
+	err := store.SaveAttribute(context.Background(), domain.MainBranchID, &attr)
 	require.NoError(t, err)
 	return attr
 }

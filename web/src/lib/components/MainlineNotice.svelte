@@ -5,9 +5,10 @@
 	 *
 	 * The `?branch=` parameter is declared on the #669 vertical slice — persons,
 	 * person names, families (detail, not list), family children and pedigree —
-	 * and, since #676 sub-issue A (#756), on the browse and map aggregates that
-	 * read that slice's overlay. The remaining read models still answer from the
-	 * mainline. Rendering one of them unlabelled beneath the branch banner would
+	 * on the browse and map aggregates that read that slice's overlay (#676
+	 * sub-issue A, #756), and on the person/family facts of sub-issue B (#757):
+	 * the cemetery index and the association endpoints. The remaining read
+	 * models still answer from the mainline. Rendering one of them unlabelled beneath the branch banner would
 	 * be the UI quietly lying about what the user is looking at.
 	 *
 	 * The rest of #676 fans the overlay out further; this notice retires with it.
@@ -28,16 +29,11 @@
 	 * - `/history` — the global change feed
 	 * - `/ahnentafel/{id}` — the ancestor report
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
-	 * - `/browse/cemeteries` — the *index* only; it aggregates `life_events`,
-	 *   which carries no `branch_id` yet (#757). The per-cemetery person list
-	 *   at `/browse/cemeteries/{place}` is branch-scoped and carries no notice.
-	 *   That split is a hazard, not a reassurance: on a branch the index counts
-	 *   people the click-through list drops, so this page's `detail` warns that
-	 *   the two numbers can contradict each other. Resolved by #757.
 	 *
 	 * Deliberately not placed, because these surfaces now follow the branch:
 	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
-	 * and per-place list) and `/map`.
+	 * and per-place list), `/browse/cemeteries` (index and per-cemetery list,
+	 * since #757) and `/map`.
 	 *
 	 * Known gap, to close with the rest of #676 rather than by sprinkling more
 	 * notices: `/` (dashboard and discovery feed), `/descendancy/{id}`,

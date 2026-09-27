@@ -327,7 +327,7 @@ func (h *Handler) collectTransferredNames(ctx context.Context, mergedID uuid.UUI
 
 // collectTransferredEvents returns IDs of life events from merged person.
 func (h *Handler) collectTransferredEvents(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	events, err := h.readStore.ListEventsForPerson(ctx, mergedID)
+	events, err := h.readStore.ListEventsForPerson(ctx, domain.MainBranchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("listing events for person: %w", err)
 	}

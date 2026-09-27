@@ -412,9 +412,12 @@ func (s *ReadModelStore) createTables() error {
 
 		-- Associations table (GEDCOM ASSO records for non-family relationships)
 		-- FK references to persons(id) dropped: persons(id) is not unique under the
-		-- branch overlay (ADR-005). This table is not branch-scoped.
+		-- branch overlay (ADR-005). Branch-aware (#757): (id, branch_id) row identity
+		-- + deleted tombstone. The branch_id index is created by runBranchMigration,
+		-- after the column is guaranteed to exist on an upgraded database.
 		CREATE TABLE IF NOT EXISTS associations (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			person_id UUID NOT NULL,
 			person_name VARCHAR(200),
 			associate_id UUID NOT NULL,
@@ -425,7 +428,9 @@ func (s *ReadModelStore) createTables() error {
 			note_ids JSONB,
 			gedcom_xref VARCHAR(50),
 			version BIGINT NOT NULL DEFAULT 1,
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_associations_person ON associations(person_id);
@@ -434,9 +439,11 @@ func (s *ReadModelStore) createTables() error {
 
 		-- Life events table (life events for persons and families).
 		-- Named life_events, not events: the event log owns the events table and both
-		-- stores can share one database (issue #733).
+		-- stores can share one database (issue #733). Branch-aware (#757): (id,
+		-- branch_id) row identity + deleted tombstone; see the associations note.
 		CREATE TABLE IF NOT EXISTS life_events (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			owner_type VARCHAR(10) NOT NULL,
 			owner_id UUID NOT NULL,
 			fact_type VARCHAR(100) NOT NULL,
@@ -452,16 +459,20 @@ func (s *ReadModelStore) createTables() error {
 			research_status VARCHAR(20),
 			is_negated BOOLEAN NOT NULL DEFAULT FALSE,
 			version BIGINT NOT NULL DEFAULT 1,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_life_events_owner ON life_events(owner_type, owner_id);
 		CREATE INDEX IF NOT EXISTS idx_life_events_fact_type ON life_events(fact_type);
 
 		-- Attributes table (person attributes)
-		-- FK reference to persons(id) dropped (see associations note). Not branch-scoped.
+		-- FK reference to persons(id) dropped (see associations note). Branch-aware
+		-- (#757): (id, branch_id) row identity + deleted tombstone.
 		CREATE TABLE IF NOT EXISTS attributes (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			person_id UUID NOT NULL,
 			fact_type VARCHAR(100) NOT NULL,
 			value TEXT NOT NULL DEFAULT '',
@@ -469,7 +480,9 @@ func (s *ReadModelStore) createTables() error {
 			date_sort DATE,
 			place VARCHAR(255),
 			version BIGINT NOT NULL DEFAULT 1,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_attributes_person ON attributes(person_id);
@@ -835,6 +848,10 @@ func (s *ReadModelStore) runBranchMigration() {
 		{"person_names", "id"},
 		{"person_external_ids", "person_id, sequence"},
 		{"family_external_ids", "family_id, sequence"},
+		// Person/family facts (#757).
+		{"life_events", "id"},
+		{"attributes", "id"},
+		{"associations", "id"},
 	}
 	for _, t := range tables {
 		// Column adds are idempotent and safe outside a transaction.
@@ -918,12 +935,21 @@ func (s *ReadModelStore) runBranchMigration() {
 	// branch_id = ? (and the overlay's branch_id IN filter) is index-driven rather
 	// than a full-table scan; the composite PK leads with id, so branch_id alone is
 	// otherwise unindexed (issue #669).
-	for _, tbl := range []string{
-		"persons", "families", "family_children", "pedigree_edges",
-		"person_names", "person_external_ids", "family_external_ids",
-	} {
+	for _, tbl := range branchScopedTables {
+		// #nosec G202 -- tbl comes from the fixed branchScopedTables list, not user input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_` + tbl + `_branch ON ` + tbl + `(branch_id)`)
 	}
+}
+
+// branchScopedTables are every read-model table carrying branch_id/deleted: the
+// seven #669 slice tables and the three person/family fact tables (#757).
+// PurgeBranch drops a branch's rows from each, and runBranchMigration gives each
+// its branch_id-leading index.
+var branchScopedTables = []string{
+	"persons", "person_names", "person_external_ids",
+	"families", "family_external_ids", "family_children", "pedigree_edges",
+	"life_events", "attributes", "associations",
 }
 
 // mainBranchDefault is the column default that backfills existing rows to the
@@ -1425,8 +1451,8 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 		// referenced persons(id) with NO ON DELETE (RESTRICT), which would have
 		// blocked the delete; blocking is not reproducible against an append-only
 		// event log (the event store is the source of truth), so we cascade-delete
-		// orphan attributes too rather than leave dangling read-model rows.
-		// associations/attributes are main-only (no branch_id column).
+		// orphan attributes too rather than leave dangling read-model rows. The
+		// person's own life events go with it as well (#757).
 		for _, stmt := range []struct {
 			sql  string
 			args []any
@@ -1438,19 +1464,23 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 			// family_children referenced persons(id) ON DELETE CASCADE on the child side,
 			// so drop the deleted person from every mainline family it was a child of.
 			{"DELETE FROM family_children WHERE person_id = $1 AND branch_id = $2", []any{id, main}},
-			{"DELETE FROM associations WHERE person_id = $1 OR associate_id = $1", []any{id}},
-			{"DELETE FROM attributes WHERE person_id = $1", []any{id}},
 		} {
 			if _, err := tx.ExecContext(ctx, stmt.sql, stmt.args...); err != nil {
 				return fmt.Errorf("delete person: %w", err)
 			}
 		}
+		if err := cascadePersonFacts(ctx, tx, branchID, id); err != nil {
+			return err
+		}
 		return tx.Commit()
 	}
 
 	// Branch (non-main) delete: tombstone the person and its branch-scoped
-	// dependents (names, external IDs, pedigree edge). associations/attributes are
-	// main-only (not branch-scoped), so a branch delete does not touch them.
+	// dependents (names, external IDs, pedigree edge, and the life events,
+	// attributes and associations it owns or appears in).
+	if err := cascadePersonFacts(ctx, tx, branchID, id); err != nil {
+		return err
+	}
 
 	// Tombstone the person on the branch (copy the resolved row, mark deleted).
 	if _, err := tx.ExecContext(ctx, `
@@ -1498,6 +1528,18 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 	}
 
 	return tx.Commit()
+}
+
+// cascadePersonFacts removes, on branchID, the person's life events and
+// attributes and every association naming the person on either side (#757).
+func cascadePersonFacts(ctx context.Context, tx *sql.Tx, branchID domain.BranchID, personID uuid.UUID) error {
+	if err := cascadeOverlayRows(ctx, tx, "life_events", eventSelectCols, personEventsFilter, branchID, personID); err != nil {
+		return err
+	}
+	if err := cascadeOverlayRows(ctx, tx, "attributes", attributeSelectCols, personAttributesFilter, branchID, personID); err != nil {
+		return err
+	}
+	return cascadeOverlayRows(ctx, tx, "associations", associationSelectCols, personAssociationFilter, branchID, personID)
 }
 
 // SavePersonName saves or updates a person name variant on the given branch
@@ -2073,6 +2115,11 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// The family's own life events cascade with it on either scope (#757).
+	if err := cascadeOverlayRows(ctx, tx, "life_events", eventSelectCols, familyEventsFilter, branchID, id); err != nil {
+		return err
+	}
+
 	if branchID.IsMain() {
 		for _, stmt := range []string{
 			"DELETE FROM families WHERE id = $1 AND branch_id = $2",
@@ -2357,8 +2404,8 @@ func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain
 	return err
 }
 
-// PurgeBranch hard-deletes every row for branchID.UUID() across the seven branch-scoped
-// slice tables. It is a no-op for the mainline (domain.MainBranchID), which is
+// PurgeBranch hard-deletes every row for branchID across the branch-scoped
+// tables (branchScopedTables). It is a no-op for the mainline (domain.MainBranchID), which is
 // never purged. See ADR-005 and the branch-delete projection handler.
 func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
 	if branchID.IsMain() {
@@ -2371,19 +2418,9 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// associations/attributes are intentionally excluded: they are main-scoped
-	// (no branch_id column), so a branch-only entity cannot own them and purging
-	// them here would delete mainline data.
-	for _, table := range []string{
-		"persons",
-		"person_names",
-		"person_external_ids",
-		"families",
-		"family_external_ids",
-		"family_children",
-		"pedigree_edges",
-	} {
-		// #nosec G202 -- table is from a hardcoded slice of slice-table names, not user input
+	for _, table := range branchScopedTables {
+		// #nosec G202 -- table is from the fixed branchScopedTables list, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE branch_id = $1", branchID.UUID()); err != nil {
 			return fmt.Errorf("purge branch %s: %w", table, err)
 		}
@@ -2877,38 +2914,190 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
-// GetEvent retrieves an event by ID.
-func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events WHERE id = $1
-	`, id)
+// Person/family fact tables (#757): life_events, attributes and associations are
+// branch-scoped the same way as the #669 slice (ADR-005). Each is keyed by
+// (id, branch_id) and resolves per id: the branch's row wins, else main's, and a
+// winning tombstone hides the id. The per-owner lists are resolved over every id
+// the owner has on either side, then re-filtered on the WINNING row, so a branch
+// row that re-owned an id (PersonMerged moves life events and attributes) is
+// listed under its new owner only.
 
+const (
+	// eventSelectCols is scanEventRow's column order (unaliased).
+	eventSelectCols = `id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		place, place_lat, place_long, address, description, cause,
+		age, research_status, is_negated, version, created_at`
+
+	// attributeSelectCols is scanAttributeRow's column order (unaliased).
+	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at`
+
+	// associationSelectCols is scanAssociationRow's column order (unaliased).
+	associationSelectCols = `id, person_id, person_name, associate_id, associate_name,
+		role, phrase, notes, note_ids, gedcom_xref, version, updated_at`
+
+	// Per-owner filters for the fact tables. %[1]d is the placeholder number of
+	// the owner id, which the caller binds after overlayArgs.
+	personEventsFilter      = `owner_type = 'person' AND owner_id = $%[1]d`
+	familyEventsFilter      = `owner_type = 'family' AND owner_id = $%[1]d`
+	personAttributesFilter  = `person_id = $%[1]d`
+	personAssociationFilter = `(person_id = $%[1]d OR associate_id = $%[1]d)`
+)
+
+// overlayArgs returns the leading query args bound by an overlaySrc source and
+// the first free $-placeholder after them. $1 is the requested scope; off main,
+// $2 is main. resolvedPersonsSrc binds the same leading args, so a statement can
+// join a persons source and a fact-table source on one set of placeholders.
+func overlayArgs(branchID domain.BranchID) ([]any, int) {
+	if branchID.IsMain() {
+		return []any{domain.MainBranchID.UUID()}, 2
+	}
+	return []any{branchID.UUID(), domain.MainBranchID.UUID()}, 3
+}
+
+// overlaySrc returns a parenthesized FROM source holding branchID's resolved view
+// of an id-keyed branch-scoped table, projected to cols. table, cols and filter
+// must be package constants (filter already formatted with the caller's
+// placeholder numbers): nothing here is user input.
+//
+// filter optionally narrows the rows, e.g. to one owner. Off main it is applied
+// twice: once to choose the candidate ids (any row of the id on either side
+// matches), so the DISTINCT ON sorts only those ids rather than the whole
+// table, and once to the winning row, so the answer is decided by the row the
+// branch actually sees. The NOT deleted filter stays outside the DISTINCT ON so
+// a branch tombstone suppresses the main fallback.
+//
+// Main takes the fast path (issue #669): main never shadows itself, so the plain
+// branch-filtered subquery is flattened by the planner and keeps the plan it had
+// before branches existed.
+func overlaySrc(table, cols, filter string, branchID domain.BranchID) string {
+	if branchID.IsMain() {
+		// #nosec G202 -- table, cols and filter are package constants, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		src := "(SELECT " + cols + " FROM " + table + " WHERE branch_id = $1 AND NOT deleted"
+		if filter != "" {
+			src += " AND " + filter
+		}
+		return src + ")"
+	}
+	candidates, outer := "", ""
+	if filter != "" {
+		// #nosec G202 -- table, cols and filter are package constants, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		candidates = " AND id IN (SELECT id FROM " + table + " WHERE branch_id IN ($1, $2) AND " + filter + ")"
+		outer = " AND " + filter
+	}
+	// #nosec G202 -- table, cols and filter are package constants, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	return "(SELECT " + cols + " FROM (SELECT DISTINCT ON (id) " + cols + ", deleted FROM " + table +
+		" WHERE branch_id IN ($1, $2)" + candidates +
+		" ORDER BY id, (branch_id = $1) DESC) o WHERE NOT deleted" + outer + ")"
+}
+
+// overlayGetQuery returns the single-row overlay lookup for an id-keyed
+// branch-scoped table: bind (id, branch, main). On main $2 = $3 and the query
+// degenerates to the main row. table and cols must be package constants.
+func overlayGetQuery(table, cols string) string {
+	// #nosec G202 -- table, cols and filter are package constants, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	return "SELECT " + cols + " FROM (SELECT DISTINCT ON (id) " + cols + ", deleted FROM " + table +
+		" WHERE id = $1 AND branch_id IN ($2, $3) ORDER BY id, (branch_id = $2) DESC) o WHERE NOT deleted"
+}
+
+// sqlExecer is the ExecContext subset shared by *sql.DB and *sql.Tx.
+type sqlExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// deleteOverlayRow removes one row of an id-keyed branch-scoped table (ADR-005).
+// On main it is a real removal. On a non-main branch it writes a tombstone that
+// copies the row the branch currently resolves (its NOT NULL columns need
+// values), so the main fallback cannot resurrect it; with no visible row there is
+// nothing to hide and nothing is written. table and cols must be package
+// constants; cols must name every column of the row except branch_id/deleted.
+func deleteOverlayRow(ctx context.Context, db sqlExecer, table, cols string, branchID domain.BranchID, id uuid.UUID) error {
+	if branchID.IsMain() {
+		// #nosec G202 -- table is a package constant, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		_, err := db.ExecContext(ctx, "DELETE FROM "+table+" WHERE id = $1 AND branch_id = $2", id, domain.MainBranchID.UUID())
+		return err
+	}
+	// #nosec G202 -- table and cols are package constants, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO `+table+` (`+cols+`, branch_id, deleted)
+		SELECT `+cols+`, $2, TRUE FROM (
+			SELECT DISTINCT ON (id) `+cols+`
+			FROM `+table+` WHERE id = $1 AND branch_id IN ($2, $3)
+			ORDER BY id, (branch_id = $2) DESC
+		) o
+		ON CONFLICT (id, branch_id) DO UPDATE SET deleted = TRUE
+	`, id, branchID.UUID(), domain.MainBranchID.UUID())
+	return err
+}
+
+// cascadeOverlayRows removes, on branchID, every row of an id-keyed
+// branch-scoped fact table that ownerFilter selects for ownerID — the manual
+// cascade DeletePerson/DeleteFamily run now that the read-model foreign keys are
+// gone (#669, #757). On main the rows are deleted; off main each row visible on
+// the branch is tombstoned in one set-based statement. table, cols and
+// ownerFilter must be package constants.
+func cascadeOverlayRows(ctx context.Context, tx *sql.Tx, table, cols, ownerFilter string, branchID domain.BranchID, ownerID uuid.UUID) error {
+	args, n := overlayArgs(branchID)
+	filter := fmt.Sprintf(ownerFilter, n)
+	args = append(args, ownerID)
+	if branchID.IsMain() {
+		// #nosec G201 G202 -- table and filter are package constants carrying only $-placeholders
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE branch_id = $1 AND "+filter, args...); err != nil {
+			return fmt.Errorf("cascade delete %s: %w", table, err)
+		}
+		return nil
+	}
+	// #nosec G201 G202 -- table, cols and filter are package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO `+table+` (`+cols+`, branch_id, deleted)
+		SELECT `+cols+`, $1, TRUE FROM `+overlaySrc(table, cols, filter, branchID)+` r
+		ON CONFLICT (id, branch_id) DO UPDATE SET deleted = TRUE
+	`, args...); err != nil {
+		return fmt.Errorf("cascade tombstone %s: %w", table, err)
+	}
+	return nil
+}
+
+// GetEvent retrieves a life event by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EventReadModel, error) {
+	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, overlayGetQuery("life_events", eventSelectCols),
+		id, branchID.UUID(), domain.MainBranchID.UUID())
 	return scanEventRow(row)
 }
 
-// ListEvents returns a paginated list of events.
+// ListEvents returns a paginated list of the life events visible on
+// opts.BranchID (ADR-005).
 func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
-	// Count total
+	args, n := overlayArgs(opts.BranchID)
+	src := overlaySrc("life_events", eventSelectCols, "", opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM life_events").Scan(&total)
-	if err != nil {
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" e", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count events: %w", err)
 	}
 
 	// Sort by fact_type ASC, date_sort ASC NULLS LAST, id ASC for deterministic ordering
-	query := `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events
+	// #nosec G201 G202 -- src and n are internal; limit/offset stay bound parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
+		SELECT `+eventSelectCols+`
+		FROM %s e
 		ORDER BY fact_type ASC, date_sort ASC NULLS LAST, id ASC
-		LIMIT $1 OFFSET $2
-	`
+		LIMIT $%d OFFSET $%d
+	`, src, n, n+1)
 
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query events: %w", err)
 	}
@@ -2926,76 +3115,70 @@ func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOpt
 	return events, total, rows.Err()
 }
 
-// ListEventsForPerson returns all events for a given person.
-func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
+// listOwnerEvents returns one owner's life events visible on branchID.
+func (s *ReadModelStore) listOwnerEvents(ctx context.Context, branchID domain.BranchID, ownerFilter string, ownerID uuid.UUID) ([]repository.EventReadModel, error) {
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("life_events", eventSelectCols, fmt.Sprintf(ownerFilter, n), branchID)
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events
-		WHERE owner_type = 'person' AND owner_id = $1
+		SELECT `+eventSelectCols+` FROM `+src+` e
 		ORDER BY fact_type ASC, date_sort ASC NULLS LAST, id ASC
-	`, personID)
+	`, append(args, ownerID)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []repository.EventReadModel
+	for rows.Next() {
+		event, err := scanEventRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, *event)
+	}
+
+	return events, rows.Err()
+}
+
+// ListEventsForPerson returns all life events of a person within the branch overlay.
+func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.EventReadModel, error) {
+	events, err := s.listOwnerEvents(ctx, branchID, personEventsFilter, personID)
 	if err != nil {
 		return nil, fmt.Errorf("query events for person: %w", err)
 	}
-	defer rows.Close()
-
-	var events []repository.EventReadModel
-	for rows.Next() {
-		event, err := scanEventRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, *event)
-	}
-
-	return events, rows.Err()
+	return events, nil
 }
 
-// ListEventsForFamily returns all events for a given family.
-func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.EventReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events
-		WHERE owner_type = 'family' AND owner_id = $1
-		ORDER BY fact_type ASC, date_sort ASC NULLS LAST, id ASC
-	`, familyID)
+// ListEventsForFamily returns all life events of a family within the branch overlay.
+func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+	events, err := s.listOwnerEvents(ctx, branchID, familyEventsFilter, familyID)
 	if err != nil {
 		return nil, fmt.Errorf("query events for family: %w", err)
 	}
-	defer rows.Close()
-
-	var events []repository.EventReadModel
-	for rows.Next() {
-		event, err := scanEventRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, *event)
-	}
-
-	return events, rows.Err()
+	return events, nil
 }
 
-// SaveEvent saves or updates an event.
-func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
+// SaveEvent saves or updates a life event on the given branch (ADR-005). The row
+// is keyed by (id, branch_id); a save always clears any prior tombstone.
+func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID, event *repository.EventReadModel) error {
 	var addressJSON interface{}
 	if event.Address != nil {
-		if data, err := json.Marshal(event.Address); err == nil {
-			addressJSON = string(data)
+		data, err := json.Marshal(event.Address)
+		if err != nil {
+			return fmt.Errorf("marshal event address: %w", err)
 		}
+		addressJSON = string(data)
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO life_events (id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		INSERT INTO life_events (id, branch_id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, is_negated, version, created_at)
-		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''),
-		        $10, NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), $15, $16, $17)
-		ON CONFLICT (id) DO UPDATE SET
+		                    age, research_status, is_negated, version, created_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''),
+		        $11, NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), NULLIF($15, ''), $16, $17, $18, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			owner_type = EXCLUDED.owner_type,
 			owner_id = EXCLUDED.owner_id,
 			fact_type = EXCLUDED.fact_type,
@@ -3010,8 +3193,9 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 			age = EXCLUDED.age,
 			research_status = EXCLUDED.research_status,
 			is_negated = EXCLUDED.is_negated,
-			version = EXCLUDED.version
-	`, event.ID, event.OwnerType, event.OwnerID, string(event.FactType),
+			version = EXCLUDED.version,
+			deleted = FALSE
+	`, event.ID, branchID.UUID(), event.OwnerType, event.OwnerID, string(event.FactType),
 		event.DateRaw, nullableTime(event.DateSort), event.Place,
 		nullableStringPtr(event.PlaceLat), nullableStringPtr(event.PlaceLong),
 		addressJSON, event.Description, event.Cause, event.Age,
@@ -3022,43 +3206,48 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 	return nil
 }
 
-// DeleteEvent deletes an event by ID.
-func (s *ReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM life_events WHERE id = $1", id)
-	if err != nil {
+// DeleteEvent removes a life event (ADR-005): a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "life_events", eventSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete event: %w", err)
 	}
 	return nil
 }
 
-// GetAttribute retrieves an attribute by ID.
-func (s *ReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
-		FROM attributes WHERE id = $1
-	`, id)
-
+// GetAttribute retrieves an attribute by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.AttributeReadModel, error) {
+	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, overlayGetQuery("attributes", attributeSelectCols),
+		id, branchID.UUID(), domain.MainBranchID.UUID())
 	return scanAttributeRow(row)
 }
 
-// ListAttributes returns a paginated list of attributes.
+// ListAttributes returns a paginated list of the attributes visible on
+// opts.BranchID (ADR-005).
 func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
-	// Count total
+	args, n := overlayArgs(opts.BranchID)
+	src := overlaySrc("attributes", attributeSelectCols, "", opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM attributes").Scan(&total)
-	if err != nil {
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" a", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count attributes: %w", err)
 	}
 
 	// Sort by fact_type ASC, value ASC, id ASC for deterministic ordering
-	query := `
-		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
-		FROM attributes
+	// #nosec G201 G202 -- src and n are internal; limit/offset stay bound parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf(`
+		SELECT `+attributeSelectCols+`
+		FROM %s a
 		ORDER BY fact_type ASC, value ASC, id ASC
-		LIMIT $1 OFFSET $2
-	`
+		LIMIT $%d OFFSET $%d
+	`, src, n, n+1)
 
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query attributes: %w", err)
 	}
@@ -3076,14 +3265,16 @@ func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.Lis
 	return attributes, total, rows.Err()
 }
 
-// ListAttributesForPerson returns all attributes for a given person.
-func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+// ListAttributesForPerson returns all attributes of a person within the branch overlay.
+func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("attributes", attributeSelectCols, fmt.Sprintf(personAttributesFilter, n), branchID)
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
-		FROM attributes
-		WHERE person_id = $1
+		SELECT `+attributeSelectCols+` FROM `+src+` a
 		ORDER BY fact_type ASC, value ASC, id ASC
-	`, personID)
+	`, append(args, personID)...)
 	if err != nil {
 		return nil, fmt.Errorf("query attributes for person: %w", err)
 	}
@@ -3101,20 +3292,22 @@ func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID u
 	return attributes, rows.Err()
 }
 
-// SaveAttribute saves or updates an attribute.
-func (s *ReadModelStore) SaveAttribute(ctx context.Context, attribute *repository.AttributeReadModel) error {
+// SaveAttribute saves or updates an attribute on the given branch (ADR-005). A
+// save always clears any prior tombstone.
+func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.BranchID, attribute *repository.AttributeReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO attributes (id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at)
-		VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, NULLIF($7, ''), $8, $9)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO attributes (id, branch_id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, NULLIF($8, ''), $9, $10, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			person_id = EXCLUDED.person_id,
 			fact_type = EXCLUDED.fact_type,
 			value = EXCLUDED.value,
 			date_raw = EXCLUDED.date_raw,
 			date_sort = EXCLUDED.date_sort,
 			place = EXCLUDED.place,
-			version = EXCLUDED.version
-	`, attribute.ID, attribute.PersonID, string(attribute.FactType),
+			version = EXCLUDED.version,
+			deleted = FALSE
+	`, attribute.ID, branchID.UUID(), attribute.PersonID, string(attribute.FactType),
 		attribute.Value, attribute.DateRaw, nullableTime(attribute.DateSort),
 		attribute.Place, attribute.Version, attribute.CreatedAt)
 	if err != nil {
@@ -3123,10 +3316,10 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, attribute *repositor
 	return nil
 }
 
-// DeleteAttribute deletes an attribute by ID.
-func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM attributes WHERE id = $1", id)
-	if err != nil {
+// DeleteAttribute removes an attribute (ADR-005): a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "attributes", attributeSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete attribute: %w", err)
 	}
 	return nil
@@ -3999,26 +4192,27 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return persons, total, rows.Err()
 }
 
-// GetCemeteryIndex returns unique burial/cremation places with person counts.
-//
-// Exempt from the branch overlay: it reads life_events only and never touches
-// persons, and life_events is not branch-scoped yet (sub-issue B of #676, #757).
-//
-// KNOWN DIVERGENCE: these counts can disagree with GetPersonsByCemetery under a
-// branch scope. The count here is DISTINCT owner_id over life_events with no join to
-// persons, so it still counts a person the branch tombstoned and still counts by
-// main's identity; GetPersonsByCemetery resolves the person side through the overlay
-// and drops tombstones. A branch that deleted a buried person therefore sees
-// "Oak Grove - 1 person" in the index and an empty list on click-through. Closing the
-// gap needs the join to be branch-aware on both sides, which waits on #757.
-func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
+// cemeteryEventCols are the life_events columns the cemetery pair reads.
+const cemeteryEventCols = `owner_id, fact_type, place`
+
+// GetCemeteryIndex returns unique burial/cremation places with person counts,
+// counted over branchID's overlay of life events (ADR-005, #757). A branch that
+// tombstoned a person also tombstoned that person's life events (DeletePerson's
+// cascade), so the counts agree with GetPersonsByCemetery on the same scope.
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("life_events", cemeteryEventCols, fmt.Sprintf("fact_type IN ($%d, $%d)", n, n+1), branchID)
+	args = append(args, string(domain.FactPersonBurial), string(domain.FactPersonCremation))
+
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT place, COUNT(DISTINCT owner_id) as count
-		FROM life_events
-		WHERE fact_type IN ($1, $2) AND place != '' AND place IS NOT NULL
+		FROM `+src+` e
+		WHERE place != '' AND place IS NOT NULL
 		GROUP BY place
 		ORDER BY place ASC
-	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation))
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query cemetery index: %w", err)
 	}
@@ -4036,43 +4230,41 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.Cem
 	return entries, rows.Err()
 }
 
-// GetPersonsByCemetery returns persons with burial/cremation events at the given place.
-//
-// Only the persons side is branch-scoped (opts.BranchID): life_events carries no
-// branch_id yet, so the burial/cremation filter is always main data (sub-issue B of
-// #676, #757). Once life_events is branch-aware the join gains its own predicate.
+// GetPersonsByCemetery returns persons with burial/cremation events at the given
+// place. Both sides of the join resolve through opts.BranchID's overlay
+// (ADR-005): the branch-visible life events select the owners, and the persons
+// returned are the branch's view of them. resolvedPersonsSrc and overlaySrc bind
+// the same leading args, so both sources share $1 (and $2 off main).
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
-	factArgs := []any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), place}
+	args, n := overlayArgs(opts.BranchID)
+	eventsSrc := overlaySrc("life_events", cemeteryEventCols,
+		fmt.Sprintf("fact_type IN ($%d, $%d) AND LOWER(place) = LOWER($%d)", n, n+1, n+2), opts.BranchID)
+	args = append(args, string(domain.FactPersonBurial), string(domain.FactPersonCremation), place)
 
 	// Count total distinct persons
-	countSrc, countArgs, cn := resolvedPersonsSrc("id", opts.BranchID)
+	countSrc, _, _ := resolvedPersonsSrc("id", opts.BranchID)
 	var total int
-	// #nosec G201 -- countSrc/cn are internal SQL fragments; fact types and place stay bound parameters
+	// #nosec G202 -- countSrc/eventsSrc are internal SQL fragments; fact types and place stay bound parameters
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	countQuery := fmt.Sprintf(`
+	countQuery := `
 		SELECT COUNT(DISTINCT p.id)
-		FROM %s p
-		INNER JOIN life_events e ON e.owner_id = p.id
-		WHERE e.fact_type IN ($%d, $%d) AND LOWER(e.place) = LOWER($%d)
-	`, countSrc, cn, cn+1, cn+2)
-	err := s.db.QueryRowContext(ctx, countQuery, append(countArgs, factArgs...)...).Scan(&total)
-	if err != nil {
+		FROM ` + countSrc + ` p
+		INNER JOIN ` + eventsSrc + ` e ON e.owner_id = p.id`
+	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count persons by cemetery: %w", err)
 	}
 
-	src, args, n := resolvedPersonsSrc(personSelectCols, opts.BranchID)
-	// #nosec G201 -- src/n/personCols are internal SQL fragments, not user input
+	src, _, _ := resolvedPersonsSrc(personSelectCols, opts.BranchID)
+	// #nosec G201 -- src/eventsSrc/personCols are internal SQL fragments, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
 		SELECT DISTINCT `+personCols+`
 		FROM %s p
-		INNER JOIN life_events e ON e.owner_id = p.id
-		WHERE e.fact_type IN ($%d, $%d) AND LOWER(e.place) = LOWER($%d)
+		INNER JOIN %s e ON e.owner_id = p.id
 		ORDER BY p.surname ASC, p.given_name ASC
 		LIMIT $%d OFFSET $%d
-	`, src, n, n+1, n+2, n+3, n+4)
-	queryArgs := append(append(args, factArgs...), opts.Limit, opts.Offset)
-	rows, err := s.db.QueryContext(ctx, query, queryArgs...)
+	`, src, eventsSrc, n+3, n+4)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by cemetery: %w", err)
 	}
@@ -4742,14 +4934,9 @@ func (s *ReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID) err
 	return nil
 }
 
-// GetAssociation retrieves an association by ID.
-func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, person_id, person_name, associate_id, associate_name,
-		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
-		FROM associations WHERE id = $1
-	`, id)
-
+// scanAssociationRow scans one associationSelectCols row. It returns (nil, nil)
+// for sql.ErrNoRows so single-row lookups report absence as nil.
+func scanAssociationRow(row rowScanner) (*repository.AssociationReadModel, error) {
 	var assoc repository.AssociationReadModel
 	var personName, associateName, phrase, notes sql.NullString
 	var noteIDsJSON []byte
@@ -4768,39 +4955,58 @@ func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*rep
 		&assoc.Version,
 		&assoc.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan association: %w", err)
 	}
-	if personName.Valid {
-		assoc.PersonName = personName.String
-	}
-	if associateName.Valid {
-		assoc.AssociateName = associateName.String
-	}
-	if phrase.Valid {
-		assoc.Phrase = phrase.String
-	}
-	if notes.Valid {
-		assoc.Notes = notes.String
-	}
-	if gedcomXref.Valid {
-		assoc.GedcomXref = gedcomXref.String
-	}
+	assoc.PersonName = personName.String
+	assoc.AssociateName = associateName.String
+	assoc.Phrase = phrase.String
+	assoc.Notes = notes.String
+	assoc.GedcomXref = gedcomXref.String
 	if len(noteIDsJSON) > 0 {
-		_ = json.Unmarshal(noteIDsJSON, &assoc.NoteIDs)
+		if err := json.Unmarshal(noteIDsJSON, &assoc.NoteIDs); err != nil {
+			return nil, fmt.Errorf("decode association note_ids: %w", err)
+		}
 	}
 	return &assoc, nil
 }
 
-// ListAssociations returns a paginated list of associations.
+// scanAssociations drains rows of associationSelectCols.
+func scanAssociations(rows *sql.Rows) ([]repository.AssociationReadModel, error) {
+	defer rows.Close()
+	var associations []repository.AssociationReadModel
+	for rows.Next() {
+		assoc, err := scanAssociationRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		associations = append(associations, *assoc)
+	}
+	return associations, rows.Err()
+}
+
+// GetAssociation retrieves an association by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.AssociationReadModel, error) {
+	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, overlayGetQuery("associations", associationSelectCols),
+		id, branchID.UUID(), domain.MainBranchID.UUID())
+	return scanAssociationRow(row)
+}
+
+// ListAssociations returns a paginated list of the associations visible on
+// opts.BranchID (ADR-005).
 func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
-	// Count total
+	args, n := overlayArgs(opts.BranchID)
+	src := overlaySrc("associations", associationSelectCols, "", opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM associations").Scan(&total)
-	if err != nil {
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" a", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count associations: %w", err)
 	}
 
@@ -4814,129 +5020,46 @@ func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.L
 		orderDir = "ASC"
 	}
 
-	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	// #nosec G201 G202 -- orderColumn and orderDir are validated via switch/if above; src is internal
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
-		SELECT id, person_id, person_name, associate_id, associate_name,
-		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
-		FROM associations
-		ORDER BY %s %s
-		LIMIT $1 OFFSET $2
-	`, orderColumn, orderDir)
+		SELECT `+associationSelectCols+`
+		FROM %s a
+		ORDER BY %s %s, id ASC
+		LIMIT $%d OFFSET $%d
+	`, src, orderColumn, orderDir, n, n+1)
 
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query associations: %w", err)
 	}
-	defer rows.Close()
-
-	var associations []repository.AssociationReadModel
-	for rows.Next() {
-		var assoc repository.AssociationReadModel
-		var personName, associateName, phrase, notes sql.NullString
-		var noteIDsJSON []byte
-		var gedcomXref sql.NullString
-		if err := rows.Scan(
-			&assoc.ID,
-			&assoc.PersonID,
-			&personName,
-			&assoc.AssociateID,
-			&associateName,
-			&assoc.Role,
-			&phrase,
-			&notes,
-			&noteIDsJSON,
-			&gedcomXref,
-			&assoc.Version,
-			&assoc.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan association: %w", err)
-		}
-		if personName.Valid {
-			assoc.PersonName = personName.String
-		}
-		if associateName.Valid {
-			assoc.AssociateName = associateName.String
-		}
-		if phrase.Valid {
-			assoc.Phrase = phrase.String
-		}
-		if notes.Valid {
-			assoc.Notes = notes.String
-		}
-		if gedcomXref.Valid {
-			assoc.GedcomXref = gedcomXref.String
-		}
-		if len(noteIDsJSON) > 0 {
-			_ = json.Unmarshal(noteIDsJSON, &assoc.NoteIDs)
-		}
-		associations = append(associations, assoc)
+	associations, err := scanAssociations(rows)
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return associations, total, rows.Err()
+	return associations, total, nil
 }
 
-// ListAssociationsForPerson returns all associations for a given person.
-func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+// ListAssociationsForPerson returns all associations visible on branchID in
+// which the person is either the subject or the associate.
+func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("associations", associationSelectCols, fmt.Sprintf(personAssociationFilter, n), branchID)
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, person_id, person_name, associate_id, associate_name,
-		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
-		FROM associations
-		WHERE person_id = $1 OR associate_id = $1
+		SELECT `+associationSelectCols+` FROM `+src+` a
 		ORDER BY role, updated_at DESC
-	`, personID)
+	`, append(args, personID)...)
 	if err != nil {
 		return nil, fmt.Errorf("query associations for person: %w", err)
 	}
-	defer rows.Close()
-
-	var associations []repository.AssociationReadModel
-	for rows.Next() {
-		var assoc repository.AssociationReadModel
-		var personName, associateName, phrase, notes sql.NullString
-		var noteIDsJSON []byte
-		var gedcomXref sql.NullString
-		if err := rows.Scan(
-			&assoc.ID,
-			&assoc.PersonID,
-			&personName,
-			&assoc.AssociateID,
-			&associateName,
-			&assoc.Role,
-			&phrase,
-			&notes,
-			&noteIDsJSON,
-			&gedcomXref,
-			&assoc.Version,
-			&assoc.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan association: %w", err)
-		}
-		if personName.Valid {
-			assoc.PersonName = personName.String
-		}
-		if associateName.Valid {
-			assoc.AssociateName = associateName.String
-		}
-		if phrase.Valid {
-			assoc.Phrase = phrase.String
-		}
-		if notes.Valid {
-			assoc.Notes = notes.String
-		}
-		if gedcomXref.Valid {
-			assoc.GedcomXref = gedcomXref.String
-		}
-		if len(noteIDsJSON) > 0 {
-			_ = json.Unmarshal(noteIDsJSON, &assoc.NoteIDs)
-		}
-		associations = append(associations, assoc)
-	}
-
-	return associations, rows.Err()
+	return scanAssociations(rows)
 }
 
-// SaveAssociation saves or updates an association.
-func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.AssociationReadModel) error {
+// SaveAssociation saves or updates an association on the given branch
+// (ADR-005). A save always clears any prior tombstone.
+func (s *ReadModelStore) SaveAssociation(ctx context.Context, branchID domain.BranchID, assoc *repository.AssociationReadModel) error {
 	var noteIDsJSON []byte
 	var err error
 
@@ -4948,10 +5071,10 @@ func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.
 	}
 
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO associations (id, person_id, person_name, associate_id, associate_name,
-		                         role, phrase, notes, note_ids, gedcom_xref, version, updated_at)
-		VALUES ($1, $2, NULLIF($3, ''), $4, NULLIF($5, ''), $6, NULLIF($7, ''), NULLIF($8, ''), $9, NULLIF($10, ''), $11, $12)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO associations (id, branch_id, person_id, person_name, associate_id, associate_name,
+		                         role, phrase, notes, note_ids, gedcom_xref, version, updated_at, deleted)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, NULLIF($6, ''), $7, NULLIF($8, ''), NULLIF($9, ''), $10, NULLIF($11, ''), $12, $13, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			person_id = EXCLUDED.person_id,
 			person_name = EXCLUDED.person_name,
 			associate_id = EXCLUDED.associate_id,
@@ -4962,8 +5085,9 @@ func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.
 			note_ids = EXCLUDED.note_ids,
 			gedcom_xref = EXCLUDED.gedcom_xref,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, assoc.ID, assoc.PersonID, assoc.PersonName, assoc.AssociateID, assoc.AssociateName,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, assoc.ID, branchID.UUID(), assoc.PersonID, assoc.PersonName, assoc.AssociateID, assoc.AssociateName,
 		assoc.Role, assoc.Phrase, assoc.Notes, noteIDsJSON, assoc.GedcomXref, assoc.Version, assoc.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save association: %w", err)
@@ -4971,10 +5095,10 @@ func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.
 	return nil
 }
 
-// DeleteAssociation deletes an association by ID.
-func (s *ReadModelStore) DeleteAssociation(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM associations WHERE id = $1", id)
-	if err != nil {
+// DeleteAssociation removes an association (ADR-005): a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "associations", associationSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete association: %w", err)
 	}
 	return nil

@@ -351,14 +351,11 @@ export interface paths {
         };
         /**
          * Get cemetery/burial place index with counts
-         * @description Returns unique burial and cremation places with person counts. `?branch=`
-         *     is NOT accepted here and is silently ignored if supplied: the index is
-         *     aggregated from the burial and cremation life events alone, and those
-         *     carry no branch yet
-         *     ([#757](https://github.com/cacack/my-family/issues/757)), so the response
-         *     is always the mainline. The counts can therefore disagree with
-         *     `getPersonsByCemetery` on a branch, whose person side does follow the
-         *     branch.
+         * @description Returns unique burial and cremation places with person counts. With
+         *     `?branch=` the counts are aggregated from that branch's isolated view of
+         *     the burial and cremation life events (a person the branch deleted takes
+         *     their life events with them), so they agree with `getPersonsByCemetery`
+         *     on the same branch; omit it for the mainline.
          */
         get: operations["browseCemeteries"];
         put?: never;
@@ -381,10 +378,10 @@ export interface paths {
         };
         /**
          * Get persons buried or cremated at a place
-         * @description Returns the people buried or cremated at the place. With `?branch=` the
-         *     person side follows that branch's isolated view, while the burial and
-         *     cremation life events matched against it are still read from the
-         *     mainline; omit the parameter for the mainline throughout.
+         * @description Returns the people buried or cremated at the place. With `?branch=` both
+         *     the burial and cremation life events and the persons they belong to are
+         *     read from that branch's isolated view; omit the parameter for the
+         *     mainline.
          */
         get: operations["getPersonsByCemetery"];
         put?: never;
@@ -1948,13 +1945,17 @@ export interface paths {
         };
         /**
          * List all associations
-         * @description Returns paginated list of GEDCOM ASSO (association) records
+         * @description Returns paginated list of GEDCOM ASSO (association) records. With
+         *     `?branch=` the list is that branch's isolated view; omit it for the
+         *     mainline.
          */
         get: operations["listAssociations"];
         put?: never;
         /**
          * Create a new association
-         * @description Create a GEDCOM ASSO association between two persons
+         * @description Create a GEDCOM ASSO association between two persons. With `?branch=`
+         *     both persons must exist on that branch and the association is created
+         *     on the branch only.
          */
         post: operations["createAssociation"];
         delete?: never;
@@ -1996,7 +1997,9 @@ export interface paths {
         };
         /**
          * List associations for a person
-         * @description Returns all associations where the person is either the subject or associate
+         * @description Returns all associations where the person is either the subject or
+         *     associate. With `?branch=` both the person and the associations are read
+         *     from that branch's isolated view.
          */
         get: operations["listAssociationsForPerson"];
         put?: never;
@@ -5500,7 +5503,17 @@ export interface operations {
     };
     browseCemeteries: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8185,6 +8198,15 @@ export interface operations {
     listAssociations: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
                 sort?: "role" | "updated_at";
@@ -8210,7 +8232,17 @@ export interface operations {
     };
     createAssociation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8235,7 +8267,17 @@ export interface operations {
     };
     getAssociation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Association UUID */
@@ -8259,7 +8301,17 @@ export interface operations {
     };
     updateAssociation: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Association UUID */
@@ -8290,6 +8342,15 @@ export interface operations {
     deleteAssociation: {
         parameters: {
             query: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
                 version: components["parameters"]["versionParam"];
             };
@@ -8316,7 +8377,17 @@ export interface operations {
     };
     listAssociationsForPerson: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];

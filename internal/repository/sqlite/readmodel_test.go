@@ -1052,13 +1052,13 @@ func TestReadModelStore_EventCRUD(t *testing.T) {
 	}
 
 	// Save
-	err := store.SaveEvent(ctx, event)
+	err := store.SaveEvent(ctx, domain.MainBranchID, event)
 	if err != nil {
 		t.Fatalf("save event: %v", err)
 	}
 
 	// Get
-	got, err := store.GetEvent(ctx, eventID)
+	got, err := store.GetEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("get event: %v", err)
 	}
@@ -1105,12 +1105,12 @@ func TestReadModelStore_EventCRUD(t *testing.T) {
 	// Update
 	event.Description = "Updated description"
 	event.Version = 2
-	err = store.SaveEvent(ctx, event)
+	err = store.SaveEvent(ctx, domain.MainBranchID, event)
 	if err != nil {
 		t.Fatalf("update event: %v", err)
 	}
 
-	got, err = store.GetEvent(ctx, eventID)
+	got, err = store.GetEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("get updated event: %v", err)
 	}
@@ -1122,12 +1122,12 @@ func TestReadModelStore_EventCRUD(t *testing.T) {
 	}
 
 	// Delete
-	err = store.DeleteEvent(ctx, eventID)
+	err = store.DeleteEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("delete event: %v", err)
 	}
 
-	got, err = store.GetEvent(ctx, eventID)
+	got, err = store.GetEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("get deleted event: %v", err)
 	}
@@ -1169,7 +1169,7 @@ func TestReadModelStore_ListEvents(t *testing.T) {
 			Version:   1,
 			CreatedAt: time.Now(),
 		}
-		if err := store.SaveEvent(ctx, event); err != nil {
+		if err := store.SaveEvent(ctx, domain.MainBranchID, event); err != nil {
 			t.Fatalf("save event: %v", err)
 		}
 	}
@@ -1204,7 +1204,7 @@ func TestReadModelStore_ListEvents(t *testing.T) {
 	}
 
 	// ListEventsForPerson
-	personEvents, err := store.ListEventsForPerson(ctx, personID)
+	personEvents, err := store.ListEventsForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("list events for person: %v", err)
 	}
@@ -1213,7 +1213,7 @@ func TestReadModelStore_ListEvents(t *testing.T) {
 	}
 
 	// ListEventsForFamily
-	familyEvents, err := store.ListEventsForFamily(ctx, familyID)
+	familyEvents, err := store.ListEventsForFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("list events for family: %v", err)
 	}
@@ -1261,13 +1261,13 @@ func TestReadModelStore_AttributeCRUD(t *testing.T) {
 	}
 
 	// Save
-	err := store.SaveAttribute(ctx, attr)
+	err := store.SaveAttribute(ctx, domain.MainBranchID, attr)
 	if err != nil {
 		t.Fatalf("save attribute: %v", err)
 	}
 
 	// Get
-	got, err := store.GetAttribute(ctx, attrID)
+	got, err := store.GetAttribute(ctx, domain.MainBranchID, attrID)
 	if err != nil {
 		t.Fatalf("get attribute: %v", err)
 	}
@@ -1299,12 +1299,12 @@ func TestReadModelStore_AttributeCRUD(t *testing.T) {
 	// Update
 	attr.Value = "Senior Engineer"
 	attr.Version = 2
-	err = store.SaveAttribute(ctx, attr)
+	err = store.SaveAttribute(ctx, domain.MainBranchID, attr)
 	if err != nil {
 		t.Fatalf("update attribute: %v", err)
 	}
 
-	got, err = store.GetAttribute(ctx, attrID)
+	got, err = store.GetAttribute(ctx, domain.MainBranchID, attrID)
 	if err != nil {
 		t.Fatalf("get updated attribute: %v", err)
 	}
@@ -1316,12 +1316,12 @@ func TestReadModelStore_AttributeCRUD(t *testing.T) {
 	}
 
 	// Delete
-	err = store.DeleteAttribute(ctx, attrID)
+	err = store.DeleteAttribute(ctx, domain.MainBranchID, attrID)
 	if err != nil {
 		t.Fatalf("delete attribute: %v", err)
 	}
 
-	got, err = store.GetAttribute(ctx, attrID)
+	got, err = store.GetAttribute(ctx, domain.MainBranchID, attrID)
 	if err != nil {
 		t.Fatalf("get deleted attribute: %v", err)
 	}
@@ -1384,7 +1384,7 @@ func TestReadModelStore_ListAttributes(t *testing.T) {
 			Version:   1,
 			CreatedAt: time.Now(),
 		}
-		if err := store.SaveAttribute(ctx, attr); err != nil {
+		if err := store.SaveAttribute(ctx, domain.MainBranchID, attr); err != nil {
 			t.Fatalf("save attribute: %v", err)
 		}
 	}
@@ -1430,7 +1430,7 @@ func TestReadModelStore_ListAttributes(t *testing.T) {
 	}
 
 	// ListAttributesForPerson
-	person1Attrs, err := store.ListAttributesForPerson(ctx, personID1)
+	person1Attrs, err := store.ListAttributesForPerson(ctx, domain.MainBranchID, personID1)
 	if err != nil {
 		t.Fatalf("list attributes for person: %v", err)
 	}
@@ -1438,7 +1438,7 @@ func TestReadModelStore_ListAttributes(t *testing.T) {
 		t.Errorf("expected 3 attributes for person1, got %d", len(person1Attrs))
 	}
 
-	person2Attrs, err := store.ListAttributesForPerson(ctx, personID2)
+	person2Attrs, err := store.ListAttributesForPerson(ctx, domain.MainBranchID, personID2)
 	if err != nil {
 		t.Fatalf("list attributes for person2: %v", err)
 	}

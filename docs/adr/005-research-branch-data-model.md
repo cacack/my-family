@@ -311,8 +311,7 @@ Branch scoping is a bounded set, not a migration in progress. Three different re
 read-model entity on `main`, and they must not be confused:
 
 - **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
-  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676):
-  person/family facts ([#757](https://github.com/cacack/my-family/issues/757)), evidence
+  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676): evidence
   ([#758](https://github.com/cacack/my-family/issues/758)), media metadata
   ([#759](https://github.com/cacack/my-family/issues/759)) and GPS artifacts
   ([#760](https://github.com/cacack/my-family/issues/760)).
@@ -712,12 +711,12 @@ The API surface is six `GET` operations carrying `?branch=` (`browseSurnames`,
 `getMapLocations`), bringing the total to 22. Omitting the parameter is byte-identical to the
 previous mainline behaviour.
 
-Two browse surfaces stayed main-only in this pass, and say so in the UI via
+Two browse surfaces stayed main-only in this pass, and said so in the UI via
 `MainlineNotice.svelte`:
 
-- **The cemetery *index*** (`browseCemeteries`) aggregates the `life_events` table, which has no
-  `branch_id` yet. Giving it one is sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)).
-  The per-cemetery *person list* is scoped, because it resolves persons through the overlay.
+- **The cemetery *index*** (`browseCemeteries`) aggregates the `life_events` table, which had no
+  `branch_id` yet. Sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)) has since
+  given it one — see the next note.
 - **Brick walls** (`getBrickWalls`, `setPersonBrickWall`, `resolvePersonBrickWall`) are not
   event-sourced, so there is no branch-tagged event for BR-006 to allow and nothing for a merge to
   replay. This pass fixed only the mainline leak; the scoping question is recorded in
@@ -732,6 +731,51 @@ differently on SQLite and PostgreSQL — a pre-existing divergence, tracked as
 [#763](https://github.com/cacack/my-family/issues/763) and untouched here. Branch overlay resolution
 for the place views has cross-backend parity (`TestBranchScenario_AggregateIsolation` runs the same
 scenario on all three backends); the *place parsing underneath it* does not yet.
+
+## Implementation Note — person/family facts (#676 sub-issue B, #757, delivered)
+
+**Life events, attributes and associations own their own `branch_id`.** Unlike the aggregates they
+store rows, so each of `life_events`, `attributes` and `associations` gained the full §The model
+treatment on all three backends: a `branch_id` column, a composite `(id, branch_id)` primary key, a
+`branch_id`-leading index, a `deleted` tombstone, one set-based overlay query per read with a
+main-scope fast path, and a place in `PurgeBranch`. Their `ReadModelStore` methods take the scope the
+slice's do (an explicit `domain.BranchID`, or `ListOptions.BranchID` for the paged lists), the nine
+projection handlers write only branch-keyed rows, and the nine event types are on the BR-006
+allowlist. Each `*Created` is conflict-blind for the same reason `PersonCreated` is — a fact is its
+own aggregate, so its create opens a stream main cannot have touched — while `*Updated` and
+`*Deleted` fold into the merge conflict scan like any other entity.
+
+**Per-id overlay, including for the per-owner lists.** `ListEventsForPerson`, `ListEventsForFamily`,
+`ListAttributesForPerson` and `ListAssociationsForPerson` resolve every id the owner has on either
+side through the same per-id overlay as the single-row reads, rather than copying the owner's whole
+bucket forward the way external identifiers do. The facts have stable ids of their own, so a branch
+that edits one fact still sees main's later additions to the same person, exactly as it sees main's
+later persons. The owner filter is applied twice: once to pick the candidate ids and once to the
+*winning* row, so a branch row that re-owned a fact (the shape `PersonMerged` writes) lists under
+its new owner only.
+
+**The manual cascade grew.** `DeletePerson` removes (on main) or tombstones (on a branch) the
+person's life events and attributes and every association naming the person on either side;
+`DeleteFamily` does the same for the family's life events. On main this closes a pre-existing gap:
+a deleted person's life events used to survive as orphans, so the cemetery index kept counting
+them. Cross-backend parity is pinned by `TestReadModelStore_*Cascade*` and
+`TestBranchScenario_FactOverlay`.
+
+**The cemetery pair is now fully scoped.** `browseCemeteries` carries `?branch=` and
+`GetPersonsByCemetery` joins the `life_events` overlay to the `persons` overlay, so the index and
+its click-through list agree on every scope and the UI dropped the cemetery `MainlineNotice`. The
+association endpoints (`listAssociations`, `createAssociation`, `getAssociation`,
+`updateAssociation`, `deleteAssociation`, `listAssociationsForPerson`) carry `?branch=` too,
+bringing the total to 29. Life events and attributes have no endpoints of their own beyond the
+mainline bulk exports, which stay mainline.
+
+**Upgrading an existing database.** PostgreSQL migrates the three tables in place (the same
+per-table primary-key swap #669 used). SQLite cannot alter a primary key, so a database created
+before #757 keeps lone-id keys on these tables; `detectBranchCapable` now requires the composite key
+on `life_events`, `attributes` and `associations` as well as `persons`, and such a database refuses
+*every* branch write with `ErrBranchesUnsupported` until the read model is rebuilt (#680). Refusing
+only fact writes would be worse: a branch `DeletePerson` has to tombstone the person's facts, so a
+half-capable schema would accept branches it could not delete cleanly.
 
 ## References
 

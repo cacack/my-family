@@ -121,7 +121,7 @@ func TestLegacyEventsTableRenamedToLifeEvents(t *testing.T) {
 	}
 
 	// The seeded row survived the rename and reads back through the store.
-	got, err := store.GetEvent(ctx, eventID)
+	got, err := store.GetEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("GetEvent after migration: %v", err)
 	}
@@ -166,14 +166,14 @@ func TestLegacyEventsTableRenamedToLifeEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewReadModelStore second pass: %v", err)
 	}
-	again, err := reopened.GetEvent(ctx, eventID)
+	again, err := reopened.GetEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil || again == nil {
 		t.Fatalf("GetEvent after re-open = %+v (err %v), want the migrated row", again, err)
 	}
 
 	// And the migrated table is writable through the current schema, including the
 	// is_negated column the legacy fixture never had.
-	if err := reopened.SaveEvent(ctx, &repository.EventReadModel{
+	if err := reopened.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID: uuid.New(), OwnerType: "person", OwnerID: ownerID,
 		FactType: domain.FactPersonBurial, IsNegated: true, Version: 1, CreatedAt: time.Now(),
 	}); err != nil {
@@ -419,7 +419,7 @@ func TestEventStoreAfterReadModelMigrationOnLegacyDB(t *testing.T) {
 	}
 
 	// And the read model's pre-existing life event is still readable from life_events.
-	got, err := readModel.GetEvent(ctx, lifeEventID)
+	got, err := readModel.GetEvent(ctx, domain.MainBranchID, lifeEventID)
 	if err != nil || got == nil {
 		t.Fatalf("GetEvent after both stores opened = %+v (err %v), want the migrated row", got, err)
 	}
@@ -478,7 +478,7 @@ func TestEventStoreAndReadModelShareOneDatabase(t *testing.T) {
 			}
 
 			lifeEventID := uuid.New()
-			if err := readModel.SaveEvent(ctx, &repository.EventReadModel{
+			if err := readModel.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 				ID: lifeEventID, OwnerType: "person", OwnerID: streamID,
 				FactType: domain.FactPersonBirth, DateRaw: "1888", Place: "Athens, Ohio",
 				Version: 1, CreatedAt: time.Now(),
@@ -495,7 +495,7 @@ func TestEventStoreAndReadModelShareOneDatabase(t *testing.T) {
 				t.Fatalf("event log holds %d events, want 1", len(stored))
 			}
 
-			got, err := readModel.GetEvent(ctx, lifeEventID)
+			got, err := readModel.GetEvent(ctx, domain.MainBranchID, lifeEventID)
 			if err != nil || got == nil {
 				t.Fatalf("GetEvent on the shared database = %+v (err %v), want the saved life event", got, err)
 			}

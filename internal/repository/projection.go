@@ -34,9 +34,10 @@ func (p *Projector) Apply(ctx context.Context, event domain.Event) error {
 
 // Project applies a domain event to the read model on the given branch. A zero
 // branchID (domain.MainBranchID) reproduces pre-branch, main-only behavior.
-// Only the slice entities (Person, PersonName, Person EXID, Family, Family EXID,
-// FamilyChild, PedigreeEdge) are branch-scoped; all other handlers ignore
-// branchID and write main-only.
+// Only the branch-scoped entities — the #669 slice (Person, PersonName, Person
+// EXID, Family, Family EXID, FamilyChild, PedigreeEdge) and the person/family
+// facts (LifeEvent, Attribute, Association; #757) — honor branchID; all other
+// handlers ignore it and write main-only.
 func (p *Projector) Project(ctx context.Context, event domain.Event, version int64, branchID domain.BranchID) error {
 	switch e := event.(type) {
 	case domain.PersonCreated:
@@ -74,17 +75,17 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.MediaDeleted:
 		return p.projectMediaDeleted(ctx, e)
 	case domain.LifeEventCreated:
-		return p.projectLifeEventCreated(ctx, e, version)
+		return p.projectLifeEventCreated(ctx, e, version, branchID)
 	case domain.LifeEventUpdated:
-		return p.projectLifeEventUpdated(ctx, e, version)
+		return p.projectLifeEventUpdated(ctx, e, version, branchID)
 	case domain.LifeEventDeleted:
-		return p.projectLifeEventDeleted(ctx, e)
+		return p.projectLifeEventDeleted(ctx, e, branchID)
 	case domain.AttributeCreated:
-		return p.projectAttributeCreated(ctx, e, version)
+		return p.projectAttributeCreated(ctx, e, version, branchID)
 	case domain.AttributeUpdated:
-		return p.projectAttributeUpdated(ctx, e, version)
+		return p.projectAttributeUpdated(ctx, e, version, branchID)
 	case domain.AttributeDeleted:
-		return p.projectAttributeDeleted(ctx, e)
+		return p.projectAttributeDeleted(ctx, e, branchID)
 	case domain.RepositoryCreated:
 		return p.projectRepositoryCreated(ctx, e, version)
 	case domain.RepositoryUpdated:
@@ -114,9 +115,9 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.AssociationCreated:
 		return p.projectAssociationCreated(ctx, e, version, branchID)
 	case domain.AssociationUpdated:
-		return p.projectAssociationUpdated(ctx, e, version)
+		return p.projectAssociationUpdated(ctx, e, version, branchID)
 	case domain.AssociationDeleted:
-		return p.projectAssociationDeleted(ctx, e)
+		return p.projectAssociationDeleted(ctx, e, branchID)
 	case domain.LDSOrdinanceCreated:
 		return p.projectLDSOrdinanceCreated(ctx, e, version, branchID)
 	case domain.LDSOrdinanceUpdated:
@@ -973,7 +974,7 @@ func (p *Projector) projectMediaDeleted(ctx context.Context, e domain.MediaDelet
 	return p.readStore.DeleteMedia(ctx, e.MediaID)
 }
 
-func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEventCreated, version int64) error {
+func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEventCreated, version int64, branchID domain.BranchID) error {
 	var dateSort *time.Time
 	var dateRaw string
 
@@ -1013,14 +1014,14 @@ func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEv
 		CreatedAt:   e.OccurredAt(),
 	}
 
-	return p.readStore.SaveEvent(ctx, event)
+	return p.readStore.SaveEvent(ctx, branchID, event)
 }
 
-func (p *Projector) projectLifeEventDeleted(ctx context.Context, e domain.LifeEventDeleted) error {
-	return p.readStore.DeleteEvent(ctx, e.EventID)
+func (p *Projector) projectLifeEventDeleted(ctx context.Context, e domain.LifeEventDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteEvent(ctx, branchID, e.EventID)
 }
 
-func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.AttributeCreated, version int64) error {
+func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.AttributeCreated, version int64, branchID domain.BranchID) error {
 	var dateSort *time.Time
 	var dateRaw string
 
@@ -1044,15 +1045,15 @@ func (p *Projector) projectAttributeCreated(ctx context.Context, e domain.Attrib
 		CreatedAt: e.OccurredAt(),
 	}
 
-	return p.readStore.SaveAttribute(ctx, attribute)
+	return p.readStore.SaveAttribute(ctx, branchID, attribute)
 }
 
-func (p *Projector) projectAttributeDeleted(ctx context.Context, e domain.AttributeDeleted) error {
-	return p.readStore.DeleteAttribute(ctx, e.AttributeID)
+func (p *Projector) projectAttributeDeleted(ctx context.Context, e domain.AttributeDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteAttribute(ctx, branchID, e.AttributeID)
 }
 
-func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEventUpdated, version int64) error {
-	event, err := p.readStore.GetEvent(ctx, e.EventID)
+func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEventUpdated, version int64, branchID domain.BranchID) error {
+	event, err := p.readStore.GetEvent(ctx, branchID, e.EventID)
 	if err != nil {
 		return err
 	}
@@ -1119,11 +1120,11 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 
 	event.Version = version
 
-	return p.readStore.SaveEvent(ctx, event)
+	return p.readStore.SaveEvent(ctx, branchID, event)
 }
 
-func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.AttributeUpdated, version int64) error {
-	attribute, err := p.readStore.GetAttribute(ctx, e.AttributeID)
+func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.AttributeUpdated, version int64, branchID domain.BranchID) error {
+	attribute, err := p.readStore.GetAttribute(ctx, branchID, e.AttributeID)
 	if err != nil {
 		return err
 	}
@@ -1163,7 +1164,7 @@ func (p *Projector) projectAttributeUpdated(ctx context.Context, e domain.Attrib
 
 	attribute.Version = version
 
-	return p.readStore.SaveAttribute(ctx, attribute)
+	return p.readStore.SaveAttribute(ctx, branchID, attribute)
 }
 
 func (p *Projector) projectRepositoryCreated(ctx context.Context, e domain.RepositoryCreated, version int64) error {
@@ -1559,13 +1560,13 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 6. Transfer life events from merged person to survivor
-	events, err := p.readStore.ListEventsForPerson(ctx, e.MergedID)
+	events, err := p.readStore.ListEventsForPerson(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch events for merged person %s: %w", e.MergedID, err)
 	}
 	for _, event := range events {
 		event.OwnerID = e.SurvivorID
-		if err := p.readStore.SaveEvent(ctx, &event); err != nil {
+		if err := p.readStore.SaveEvent(ctx, branchID, &event); err != nil {
 			return fmt.Errorf("migrate event %s for merged person %s: %w", event.ID, e.MergedID, err)
 		}
 	}
@@ -1584,13 +1585,13 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 8. Transfer attributes from merged person to survivor
-	attributes, err := p.readStore.ListAttributesForPerson(ctx, e.MergedID)
+	attributes, err := p.readStore.ListAttributesForPerson(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch attributes for merged person %s: %w", e.MergedID, err)
 	}
 	for _, attr := range attributes {
 		attr.PersonID = e.SurvivorID
-		if err := p.readStore.SaveAttribute(ctx, &attr); err != nil {
+		if err := p.readStore.SaveAttribute(ctx, branchID, &attr); err != nil {
 			return fmt.Errorf("migrate attribute %s for merged person %s: %w", attr.ID, e.MergedID, err)
 		}
 	}
@@ -1792,11 +1793,11 @@ func (p *Projector) projectAssociationCreated(ctx context.Context, e domain.Asso
 		UpdatedAt:     e.OccurredAt(),
 	}
 
-	return p.readStore.SaveAssociation(ctx, association)
+	return p.readStore.SaveAssociation(ctx, branchID, association)
 }
 
-func (p *Projector) projectAssociationUpdated(ctx context.Context, e domain.AssociationUpdated, version int64) error {
-	association, err := p.readStore.GetAssociation(ctx, e.AssociationID)
+func (p *Projector) projectAssociationUpdated(ctx context.Context, e domain.AssociationUpdated, version int64, branchID domain.BranchID) error {
+	association, err := p.readStore.GetAssociation(ctx, branchID, e.AssociationID)
 	if err != nil {
 		return err
 	}
@@ -1820,8 +1821,8 @@ func (p *Projector) projectAssociationUpdated(ctx context.Context, e domain.Asso
 				association.Notes = v
 			}
 		case "note_ids":
-			if v, ok := value.([]uuid.UUID); ok {
-				association.NoteIDs = v
+			if ids, ok := decodeUUIDList(value); ok {
+				association.NoteIDs = ids
 			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "AssociationUpdated", "key", key)
@@ -1831,11 +1832,42 @@ func (p *Projector) projectAssociationUpdated(ctx context.Context, e domain.Asso
 	association.Version = version
 	association.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveAssociation(ctx, association)
+	return p.readStore.SaveAssociation(ctx, branchID, association)
 }
 
-func (p *Projector) projectAssociationDeleted(ctx context.Context, e domain.AssociationDeleted) error {
-	return p.readStore.DeleteAssociation(ctx, e.AssociationID)
+func (p *Projector) projectAssociationDeleted(ctx context.Context, e domain.AssociationDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteAssociation(ctx, branchID, e.AssociationID)
+}
+
+// decodeUUIDList reads a list-of-UUIDs change value in either of the shapes it
+// reaches a projection in: []uuid.UUID when the command projects its own event,
+// or []any of strings when the event was decoded from the event store (a
+// rebuild, or a branch merge replaying the branch's events onto main). ok is
+// false when the value is neither, or any element is not a UUID, so a malformed
+// change is skipped rather than half-applied.
+func decodeUUIDList(value any) ([]uuid.UUID, bool) {
+	switch v := value.(type) {
+	case []uuid.UUID:
+		return v, true
+	case []any:
+		ids := make([]uuid.UUID, 0, len(v))
+		for _, item := range v {
+			str, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			id, err := uuid.Parse(str)
+			if err != nil {
+				return nil, false
+			}
+			ids = append(ids, id)
+		}
+		return ids, true
+	case nil:
+		return nil, true
+	default:
+		return nil, false
+	}
 }
 
 // LDS Ordinance projections
