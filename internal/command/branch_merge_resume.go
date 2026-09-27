@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -25,11 +26,15 @@ var (
 	// ErrMergeResumeNeedsResolution is returned when at least one stream still to
 	// be replayed cannot be replayed on the strength of the claim alone, and the
 	// caller has not said what to do with it. NOTHING HAS BEEN WRITTEN by the
-	// refusing call. Two shapes get here:
+	// refusing call. These shapes get here:
 	//
 	//   - main moved on the stream after the claim pinned it. The claim's
 	//     conflict verdict no longer describes main there, so replaying over it
 	//     would be the silent override #698 closed for the first attempt.
+	//   - main removed the stream's entity after the claim — deleted it, or
+	//     merged the person into another, which leaves the merged person's
+	//     stream at its pin. Replaying the branch's edits restores nothing, so
+	//     only "main" is accepted for it.
 	//   - the claim predates #685 and recorded no replay plan, so neither the
 	//     stream's resolution nor its pin is known.
 	//   - the recorded plan would replay the stream, but one of its events
@@ -111,6 +116,28 @@ type ResumeMergeResult struct {
 type resumeStep struct {
 	group   streamGroup
 	planned int64 // the main version the append asserts
+}
+
+// resumeView is what a resume found on main, per stream of the replay set,
+// before deciding anything.
+type resumeView struct {
+	// landed names the streams whose branch events are already on main.
+	landed map[uuid.UUID]bool
+
+	// mainVersions is main's current version of every stream.
+	mainVersions map[uuid.UUID]int64
+
+	// removed names the streams whose entity main had and has since removed,
+	// for a reason main's log explains (see streamsRemovedOnMain).
+	removed map[uuid.UUID]bool
+
+	// created names the persons a replay group creates and main has not
+	// removed since (see personsCreatedByReplay).
+	created map[uuid.UUID]bool
+
+	// danglingAuto names the streams the plan would replay automatically but
+	// which need a decision anyway (see danglingAutoPlannedStreams).
+	danglingAuto map[uuid.UUID]bool
 }
 
 // mergeRecord is what a branch's own stream says about its merge: the claim,
@@ -229,15 +256,28 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		return nil, err
 	}
 
+	// What main removed since the claim, and so which persons the replay can
+	// still vouch for.
+	removed, err := h.streamsRemovedOnMain(ctx, groups, mainVersions)
+	if err != nil {
+		return nil, err
+	}
+	view := resumeView{
+		landed:       landed,
+		mainVersions: mainVersions,
+		removed:      removed,
+		created:      personsCreatedByReplay(groups, removed),
+	}
+
 	// A stream the plan would replay automatically still needs a decision when
 	// replaying it would leave main pointing at a person it no longer has.
-	danglingAuto, err := h.danglingAutoPlannedStreams(ctx, record.plan, groups, landed, mainVersions, input.Resolutions)
+	view.danglingAuto, err = h.danglingAutoPlannedStreams(ctx, record.plan, groups, view, input.Resolutions)
 	if err != nil {
 		return nil, err
 	}
 
 	result := &ResumeMergeResult{MergedAtPosition: claim.MergedAtPosition}
-	decision, err := planResume(claim.BranchID, record.plan, groups, landed, mainVersions, danglingAuto, input.Resolutions, result)
+	decision, err := planResume(claim.BranchID, record.plan, groups, view, input.Resolutions, result)
 	if err != nil {
 		return nil, err
 	}
@@ -245,8 +285,8 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		result.Branch = branch
 		return result, fmt.Errorf(
 			"%w: %d stream(s) still to replay for branch %s cannot be replayed on the recorded plan "+
-				"(main moved on them since it was recorded, the claim recorded no plan, or replaying them would leave main "+
-				"referencing a person it no longer has). Nothing has been written; "+
+				"(main moved on them since it was recorded, main removed the entity, the claim recorded no plan, "+
+				"or replaying them would leave main referencing a person it no longer has). Nothing has been written; "+
 				"review them with GET /branches/{id}/compare and resume again with a resolution for each: %v",
 			ErrMergeResumeNeedsResolution, len(result.PendingStreamIDs), branch.ID, result.PendingStreamIDs)
 	}
@@ -255,7 +295,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	// resolution made here can replay a reference to a person main no longer
 	// has, and a "main" one can exclude a person a stream already on main
 	// references.
-	if err := h.validateResumeReferences(ctx, groups, decision.steps, landed, input.Resolutions); err != nil {
+	if err := h.validateResumeReferences(ctx, groups, decision.steps, view, input.Resolutions); err != nil {
 		return nil, err
 	}
 
@@ -458,19 +498,22 @@ func (h *Handler) mainStreamVersions(ctx context.Context, groups []streamGroup) 
 // it can produce happens before the first append.
 //
 // plan is the recorded plan (claim, or latest resume record); nil means a
-// pre-#685 claim nothing has been decided for yet. danglingAuto names streams
-// the plan would replay automatically but which need a decision anyway (see
-// danglingAutoPlannedStreams).
+// pre-#685 claim nothing has been decided for yet.
+//
+// A stream whose entity main has removed since the claim (view.removed) is
+// never replayed on the strength of the plan, and cannot be resolved to
+// "branch": replaying edits onto an entity main deleted or merged away writes
+// them after its removal and restores nothing — the same reason MergeBranch
+// offers only "main" for a main-side delete.
 func planResume(
 	branchID uuid.UUID,
 	plan map[uuid.UUID]int64,
 	groups []streamGroup,
-	landed map[uuid.UUID]bool,
-	mainVersions map[uuid.UUID]int64,
-	danglingAuto map[uuid.UUID]bool,
+	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
 	result *ResumeMergeResult,
 ) (resumeDecision, error) {
+	landed, mainVersions := view.landed, view.mainVersions
 	if err := validatePlanCoversReplaySet(branchID, plan, groups); err != nil {
 		return resumeDecision{}, err
 	}
@@ -507,7 +550,7 @@ func planResume(
 		}
 
 		current := mainVersions[group.streamID]
-		if planned && current == pinned && !danglingAuto[group.streamID] {
+		if planned && current == pinned && !view.danglingAuto[group.streamID] && !view.removed[group.streamID] {
 			decision.steps = append(decision.steps, resumeStep{group: group, planned: pinned})
 			continue
 		}
@@ -516,6 +559,12 @@ func planResume(
 		decidable[group.streamID] = true
 		switch resolutions[group.streamID] {
 		case ResolveBranch:
+			if view.removed[group.streamID] {
+				return resumeDecision{}, fmt.Errorf(
+					"%w: main has removed %s (deleted, or merged into another person) since the merge was claimed; "+
+						"replaying the branch's changes onto it would restore nothing, so only \"main\" can resolve it",
+					ErrUnknownResolution, group.streamID)
+			}
 			decision.steps = append(decision.steps, resumeStep{group: group, planned: current})
 			nextPlan[group.streamID] = current
 		case ResolveMain:
@@ -572,24 +621,26 @@ func refuseUndecidableResolutions(resolutions map[uuid.UUID]MergeResolution, dec
 
 // danglingAutoPlannedStreams returns the streams the recorded plan would
 // replay automatically — planned, not yet on main, main still at the pinned
-// version — whose events reference a person main will not have once the
-// resume is done. Without this, such a stream could never finish: the
-// dangling-reference check refuses its replay, and because main never wrote to
-// the stream itself nothing else would ever make it decidable. Reporting it as
-// pending lets the caller roll the merge forward without it ("main"), and
-// records that choice like any other.
+// version, entity not removed — whose events reference a person main will not
+// have once the resume is done. Without this, such a stream could never
+// finish: the dangling-reference check refuses its replay, and because main
+// never wrote to the stream itself nothing else would ever make it decidable.
+// Reporting it as pending lets the caller roll the merge forward without it
+// ("main"), and records that choice like any other.
 //
-// A person counts as present if their stream is already on main, or the
-// resume may still replay it: not skipped by the plan and not resolved to
-// main by this call. Pending streams count as present, so a stream is not
-// flagged merely because a person's own decision is outstanding; if that
-// decision turns out to be "main", the next call flags it.
+// A person counts as present if main's read model has them, or if a group the
+// resume has replayed or may still replay (already on main, or planned and not
+// resolved to main by this call) creates them and main has not removed them
+// since (view.created). Replaying a person's stream of EDITS does not count:
+// it does not bring back a person main deleted or merged away. Pending streams
+// count as replayable, so a stream is not flagged merely because a creating
+// person's own decision is outstanding; if that decision turns out to be
+// "main", the next call flags it.
 func (h *Handler) danglingAutoPlannedStreams(
 	ctx context.Context,
 	plan map[uuid.UUID]int64,
 	groups []streamGroup,
-	landed map[uuid.UUID]bool,
-	mainVersions map[uuid.UUID]int64,
+	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
 ) (map[uuid.UUID]bool, error) {
 	if plan == nil {
@@ -601,15 +652,15 @@ func (h *Handler) danglingAutoPlannedStreams(
 		id := group.streamID
 		pinned, planned := plan[id]
 		switch {
-		case landed[id]:
-			present[id] = true
+		case view.landed[id]:
+			present[id] = view.created[id]
 		case !planned:
 			// skipped by the recorded plan
 		default:
 			if resolutions[id] != ResolveMain {
-				present[id] = true
+				present[id] = view.created[id]
 			}
-			if mainVersions[id] == pinned {
+			if view.mainVersions[id] == pinned && !view.removed[id] {
 				auto = append(auto, group)
 			}
 		}
@@ -628,38 +679,55 @@ func (h *Handler) danglingAutoPlannedStreams(
 // validateResumeReferences is the resume's dangling-reference check, run once
 // every stream is decided and before anything is written.
 //
-//   - A stream about to be replayed may reference only a person main has, or
-//     one already on main or about to be replayed. Every auto-planned stream
-//     that fails this was made decidable (danglingAutoPlannedStreams), so a
-//     refusal here always has a way out: resolve that stream to main.
+//   - A stream about to be replayed may reference only a person main's read
+//     model has, or one a group already on main or about to be replayed
+//     creates and main has not removed since (view.created). Every
+//     auto-planned stream that fails this was made decidable
+//     (danglingAutoPlannedStreams), so a refusal here always has a way out:
+//     resolve that stream to main.
 //   - A stream ALREADY on main can no longer be excluded, so a person it
 //     references may not be excluded by this call: a "main" resolution for a
 //     person main does not have, while a landed stream still references them,
 //     would leave main with the phantom row the check exists to prevent (a
 //     pre-#685 claim can reach this: the branch created the person, and the
 //     family linking them landed before the interruption). Only this call's
-//     own "main" resolutions are checked here — decisions recorded earlier
+//     own "main" resolutions of a person the replay creates are checked here — decisions recorded earlier
 //     were checked when they were made, and a person main itself removed
 //     later is main's own change, not the resume's to refuse.
 func (h *Handler) validateResumeReferences(
 	ctx context.Context,
 	groups []streamGroup,
 	steps []resumeStep,
-	landed map[uuid.UUID]bool,
+	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
 ) error {
-	if err := h.validateNoDanglingReferences(ctx, stepGroups(steps), nil, landed); err != nil {
+	replayed := make(map[uuid.UUID]bool, len(groups))
+	for id, onMain := range view.landed {
+		replayed[id] = onMain
+	}
+	for _, step := range steps {
+		replayed[step.group.streamID] = true
+	}
+	dangling, err := h.findDanglingReferences(ctx, stepGroups(steps), func(personID uuid.UUID) bool {
+		return replayed[personID] && view.created[personID]
+	})
+	if err != nil {
 		return err
+	}
+	if len(dangling) > 0 {
+		return dangling[0].err()
 	}
 
 	var landedGroups []streamGroup
 	for _, group := range groups {
-		if landed[group.streamID] {
+		if view.landed[group.streamID] {
 			landedGroups = append(landedGroups, group)
 		}
 	}
-	dangling, err := h.findDanglingReferences(ctx, landedGroups, func(personID uuid.UUID) bool {
-		return resolutions[personID] != ResolveMain
+	dangling, err = h.findDanglingReferences(ctx, landedGroups, func(personID uuid.UUID) bool {
+		// Only excluding a person the replay would CREATE takes them away;
+		// excluding a stream of edits leaves the person as main has them.
+		return resolutions[personID] != ResolveMain || !view.created[personID]
 	})
 	if err != nil {
 		return err
@@ -672,6 +740,82 @@ func (h *Handler) validateResumeReferences(
 			ErrMergeDanglingReference, d.streamID, d.personID)
 	}
 	return nil
+}
+
+// personsCreatedByReplay returns the persons whose replay group creates them
+// (createsPerson) and whose entity main has not removed since.
+func personsCreatedByReplay(groups []streamGroup, removed map[uuid.UUID]bool) map[uuid.UUID]bool {
+	created := make(map[uuid.UUID]bool)
+	for _, group := range groups {
+		if createsPerson(group) && !removed[group.streamID] {
+			created[group.streamID] = true
+		}
+	}
+	return created
+}
+
+// streamsRemovedOnMain returns the streams of the replay set whose entity main
+// had and no longer has, for a reason main's log explains: the stream ends in
+// a delete; a person was merged into another (PersonMerged, which does not
+// write to the merged person's stream); or an association lost one of its
+// persons to a delete cascade (which does not write to the association's
+// stream either). Such a stream's replay restores nothing, whatever the plan
+// pinned, and the person it names is not present for reference checks.
+//
+// A stream main never had (version 0: the branch created the entity and it
+// has not landed) cannot have been removed. A row missing for any other
+// reason — a failed projection of an already-replayed stream — is not a
+// removal; reprojectLandedStreams repairs it.
+func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup, mainVersions map[uuid.UUID]int64) (map[uuid.UUID]bool, error) {
+	var missing []streamGroup
+	states := make(map[uuid.UUID]readModelState)
+	for _, group := range groups {
+		if mainVersions[group.streamID] == 0 || !isReadModelStream(group.streamType) {
+			continue
+		}
+		state, err := h.mainReadModelState(ctx, group)
+		if err != nil {
+			return nil, err
+		}
+		if state.present {
+			continue
+		}
+		states[group.streamID] = state
+		missing = append(missing, group)
+	}
+	if len(missing) == 0 {
+		return nil, nil
+	}
+
+	streamIDs := make([]uuid.UUID, 0, len(missing))
+	for _, group := range missing {
+		streamIDs = append(streamIDs, group.streamID)
+	}
+	mainEvents, err := h.readMainStreams(ctx, streamIDs, 0)
+	if err != nil {
+		return nil, err
+	}
+	mergedAway, err := h.missingPersonsMergedAway(ctx, missing, states, mainEvents)
+	if err != nil {
+		return nil, err
+	}
+	removed := make(map[uuid.UUID]bool, len(missing))
+	for _, group := range missing {
+		gone, err := h.goneForLoggedReason(ctx, group, mainEvents[group.streamID], mergedAway[group.streamID])
+		if err != nil {
+			return nil, err
+		}
+		if gone {
+			removed[group.streamID] = true
+		}
+	}
+	return removed, nil
+}
+
+// isReadModelStream reports whether mainReadModelState can read a stream
+// type's main row.
+func isReadModelStream(streamType string) bool {
+	return isPersonStream(streamType) || strings.EqualFold(streamType, familyStreamType) || isAssociationStream(streamType)
 }
 
 // streamsAlreadyOnMain reports, per stream of the replay set, whether its

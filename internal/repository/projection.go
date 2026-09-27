@@ -42,11 +42,6 @@ func NewProjectorWithSnapshots(readStore ReadModelStore, branchStore BranchStore
 	return &Projector{readStore: readStore, branchStore: branchStore, snapshotStore: snapshotStore}
 }
 
-// Apply is a convenience method for applying a single event (version is auto-incremented).
-func (p *Projector) Apply(ctx context.Context, event domain.Event) error {
-	return p.Project(ctx, event, 1, domain.MainBranchID) // Version will be updated properly by the caller
-}
-
 // Project applies a domain event to the read model on the given branch. A zero
 // branchID (domain.MainBranchID) reproduces pre-branch, main-only behavior.
 // Only the branch-scoped entities — the #669 slice (Person, PersonName, Person

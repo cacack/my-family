@@ -587,13 +587,19 @@ both halves of what it must know are durable in the log:
 A remaining stream is replayed automatically only when `main` still sits at its pinned version —
 the same guarantee the original attempt ran under, re-asserted at append time by the shared
 `replayStream`. Otherwise (a mainline write landed on it after the claim, which is exactly the
-residual staleness window below; a pre-#685 claim with no plan; or a replay that would now leave
-`main` referencing a person it no longer has) resume refuses with
+residual staleness window below; `main` deleted the entity or merged it away since the claim; a
+pre-#685 claim with no plan; or a replay that would now leave `main` referencing a person it no
+longer has) resume refuses with
 `ErrMergeResumeNeedsResolution` (`409 merge_resume_needs_resolution`), **writing nothing**, and
 lists the streams. The caller reviews them with `compare` and resumes again with a resolution per
 listed stream: `branch` replays over `main` as it now stands (asserting *that* version, so a
 further write still trips the guard), `main` leaves the entity as `main` has it — the deliberate
-roll-forward. A resolution for any stream the claim or an earlier resume already decided is a
+roll-forward. `branch` is a `400` for an entity `main` has removed since the claim — its stream
+ends in a delete, `main` merged the person into another (`PersonMerged` writes only to the
+survivor's stream, so the merged person's stream still sits at its pin), or an association lost a
+person to the delete cascade — for the reason `MergeBranch` offers only `main` on a main-side
+delete: replaying edits onto an absent row appends them after its removal and restores nothing. A
+resolution for any stream the claim or an earlier resume already decided is a
 `400`: a second request must not quietly re-decide what the first one reviewed. That rule needs the
 decision itself in the log, not just its effect: a `main` decision's effect is the *absence* of
 replayed events, which a later resume cannot tell apart from "not yet replayed", so without
@@ -608,12 +614,17 @@ window. F is not stale — `main` never wrote to it — so the plan would replay
 and the dangling-reference check (below) would refuse that replay on every attempt, with no
 resolution accepted for F because it was "already decided". Resume therefore runs the
 dangling-reference check over the streams the plan would replay *before* deciding which need the
-caller, counting as present every stream already on `main` or still to be replayed — minus
-persons this very request resolves to `main` — and lists any stream that fails it as pending. A
+caller and lists any stream that fails it as pending. A person counts as present if `main`'s read
+model has them, or if a stream already on `main` or still to be replayed (not resolved to `main` by
+this very request) *creates* them and `main` has not removed them since. Merely replaying a
+person's stream does not count: when the branch both edited and linked P, P's stream of edits
+replays onto a person `main` merged away without bringing them back, so without this rule the
+resume would report success over a phantom child. Such a P is itself pending (removed on `main`),
+and so is F. A
 `main` resolution rolls the merge forward without it, recorded like any other decision; `branch`
 is refused as a dangling reference. The check then runs once more over the final decision, and
-also over the streams *already* on `main`: a `main` resolution may not exclude a person a landed
-stream references and `main` lacks (reachable only from a pre-#685 claim, where the branch created
+also over the streams *already* on `main`: a `main` resolution may not exclude a person the branch
+created whom a landed stream references and `main` lacks (reachable only from a pre-#685 claim, where the branch created
 both the family and the child and only the family landed). Only this request's own resolutions are
 checked against landed streams; a person `main` itself removed later is `main`'s change, not the
 resume's to refuse. Every refusal — pending, dangling, concurrent — comes before the first write,
@@ -661,8 +672,9 @@ and the projection's own save, so before reporting a stream repaired it reads th
 stream version once more and, if a racing write slipped into that instant and was rolled back,
 re-projects the missing tail from the log (a bounded number of times, then `500
 merge_partially_applied`: resume again). A row that disappears during the repair is not re-created;
-the next resume classifies it. The dangling-reference check also counts already-replayed streams as present,
-since their events are on `main` in the log. The fault-injection
+the next resume classifies it. The dangling-reference check also counts a person created by an
+already-replayed stream as present, since the creation is on `main` in the log, unless the log
+shows `main` removed them since. The fault-injection
 coverage is `internal/command/branch_merge_resume_test.go` and
 `internal/command/branch_merge_resume_refs_test.go` (memory: dangling references, racing repairs,
 associations) and `internal/integration/branch_merge_resume_test.go`, which drives an interrupted
@@ -801,7 +813,9 @@ not exclude the family event that links them, and the projection writes that row
 returns a successful merge while `main` gains a family child pointing at a person it does not have.
 The merge refuses instead (`ErrMergeDanglingReference`, `409 merge_dangling_reference`), checked
 before the claim: a replayed link or association must name a person `main` already has or that the
-replay itself will create. Dropping the link silently was rejected as the same class of defect per-conflict
+replay itself will create — a stream that only edits the person does not count, since `main` can
+merge a person away without writing to their stream, which leaves the branch's edits conflict-free
+but the person gone. Dropping the link silently was rejected as the same class of defect per-conflict
 review exists to prevent. Unlink events are not checked — removing a person `main` lacks is a no-op.
 
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable

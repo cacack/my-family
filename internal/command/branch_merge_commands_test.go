@@ -1060,7 +1060,7 @@ func TestMergeBranch_InterruptedClaimIsNotReplayedTwice(t *testing.T) {
 // It is NOT the only collaborator call MergeBranch makes in that span, and a
 // test extending this harness must not assume so: validateNoDanglingReferences
 // runs first and reads readStore.GetPerson for every ChildLinkedToFamily event
-// naming a person outside the replay set. The seedMerge fixture has no family
+// naming a person the replay does not create. The seedMerge fixture has no family
 // events, so for THESE tests GetMaxPosition is the only such call; a
 // family-link scenario would need to account for that read as well.
 //

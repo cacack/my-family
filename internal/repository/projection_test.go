@@ -258,34 +258,6 @@ func TestProjector_ChildUnlinked(t *testing.T) {
 	}
 }
 
-func TestProjector_Apply(t *testing.T) {
-	readStore := memory.NewReadModelStore()
-	projector := repository.NewProjector(readStore, nil)
-	ctx := context.Background()
-
-	// Create a person
-	person := domain.NewPerson("John", "Doe")
-	event := domain.NewPersonCreated(person)
-
-	// Use Apply instead of Project
-	err := projector.Apply(ctx, event)
-	if err != nil {
-		t.Fatalf("Apply failed: %v", err)
-	}
-
-	// Verify person was created
-	rm, err := readStore.GetPerson(ctx, domain.MainBranchID, person.ID)
-	if err != nil {
-		t.Fatalf("GetPerson failed: %v", err)
-	}
-	if rm == nil {
-		t.Fatal("Person not found in read model")
-	}
-	if rm.GivenName != "John" {
-		t.Errorf("GivenName = %s, want John", rm.GivenName)
-	}
-}
-
 func TestProjector_UnknownEventIgnored(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	projector := repository.NewProjector(readStore, nil)

@@ -1819,16 +1819,20 @@ export interface paths {
          *     recorded which entities it would replay and the `main` version its
          *     conflict verdict was computed against for each. A remaining entity is
          *     replayed automatically only if `main` is still at that version. If
-         *     `main` moved on it since — or the claim predates this endpoint and
+         *     `main` moved on it since — or `main` has since deleted the entity or
+         *     merged it into another person, or the claim predates this endpoint and
          *     recorded no plan, or replaying it would leave `main` referencing a
          *     person it no longer has (for example a family linking a child `main`
-         *     deleted or merged away after the interruption) — the resume is
+         *     deleted or merged away after the interruption; replaying the branch's
+         *     edits to that child does not bring them back) — the resume is
          *     refused with `409 merge_resume_needs_resolution`, **nothing is
          *     written**, and `pending_stream_ids` lists those entities. Review them with
          *     `GET /branches/{id}/compare`, then resume again with one `resolutions`
          *     entry for each: `branch` replays the branch's changes over `main` as it
          *     now stands, `main` leaves the entity as `main` has it. Only pending
-         *     entities may be resolved; naming any other is a `400`. The resolutions
+         *     entities may be resolved; naming any other is a `400`, and so is
+         *     `branch` for an entity `main` has deleted or merged away, since
+         *     replaying edits onto it would restore nothing. The resolutions
          *     are recorded in the branch's event log before anything is replayed, so
          *     they are final: a later resume carries them out and never asks for, or
          *     accepts, a different decision on those entities.
@@ -7942,8 +7946,9 @@ export interface operations {
              *       the mainline holding a relationship to a person it will not
              *       have: a `branch` resolution replaying a reference to a person
              *       the mainline no longer has (resolve that entity to `main`
-             *       instead), or a `main` resolution excluding a person an entity
-             *       already on the mainline references (resolve it to `branch`).
+             *       instead), or a `main` resolution excluding a person the branch
+             *       created whom an entity already on the mainline references
+             *       (resolve that person to `branch`).
              *     - `branch_too_large` — the branch's replay set exceeds the read cap
              *       and cannot be resumed in full.
              *     - `merge_resume_concurrent` — another resume of the same merge

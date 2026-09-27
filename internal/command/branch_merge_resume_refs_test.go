@@ -190,9 +190,10 @@ func TestResumeMerge_DanglingAutoPlannedStreamCanBeRolledForward(t *testing.T) {
 
 // TestResumeMerge_DanglingCheckFollowsThisCallsMainResolution: the branch
 // edits P as well as linking them, and main then deletes P, so P's own stream
-// is stale and pending while F is auto-planned. Resolving only P to main
-// excludes the person F links, so F turns pending too — nothing is recorded
-// until both are decided.
+// is stale and pending. Replaying P's edits would not bring P back, so F —
+// whose link names P — is pending too, and "branch" is refused for P: it
+// would append P's edits after main's delete and restore nothing. Nothing is
+// recorded until both are decided.
 func TestResumeMerge_DanglingCheckFollowsThisCallsMainResolution(t *testing.T) {
 	var faulty *faultyReplayStore
 	f := newBranchFixtureWith(branchFixtureDeps{
@@ -246,8 +247,17 @@ func TestResumeMerge_DanglingCheckFollowsThisCallsMainResolution(t *testing.T) {
 	if !errors.Is(err, command.ErrMergeResumeNeedsResolution) {
 		t.Fatalf("bare ResumeMerge error = %v, want ErrMergeResumeNeedsResolution", err)
 	}
-	if !slices.Equal(result.PendingStreamIDs, []uuid.UUID{p.ID}) {
-		t.Errorf("PendingStreamIDs = %v, want only the stale person [%s]", result.PendingStreamIDs, p.ID)
+	if !slices.Equal(result.PendingStreamIDs, []uuid.UUID{p.ID, family.ID}) {
+		t.Errorf("PendingStreamIDs = %v, want the deleted person and the family linking them [%s %s]",
+			result.PendingStreamIDs, p.ID, family.ID)
+	}
+
+	_, err = f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{p.ID: command.ResolveBranch},
+	})
+	if !errors.Is(err, command.ErrUnknownResolution) {
+		t.Fatalf("branch resolution over main's delete: error = %v, want ErrUnknownResolution", err)
 	}
 
 	result, err = f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
@@ -278,6 +288,302 @@ func TestResumeMerge_DanglingCheckFollowsThisCallsMainResolution(t *testing.T) {
 	}
 	if len(children) != 0 {
 		t.Errorf("main family children = %v, want no phantom child", children)
+	}
+	assertNoMainEventsAfter(t, f, p.ID, "PersonDeleted")
+}
+
+// seedEditedAndLinked is a branch that edits main's person P and links P into
+// main's family F (partner A), merged with the replay failing at its first
+// append, so none of the branch's streams reached main.
+func seedEditedAndLinked(t *testing.T) (f *branchFixture, branch *domain.Branch, p, family uuid.UUID) {
+	t.Helper()
+	var faulty *faultyReplayStore
+	f = newBranchFixtureWith(branchFixtureDeps{
+		wrapEvents: func(inner repository.EventStore) repository.EventStore {
+			faulty = &faultyReplayStore{EventStore: inner}
+			return faulty
+		},
+	})
+	ctx := context.Background()
+
+	a, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson A failed: %v", err)
+	}
+	person, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Byron", Surname: "King"})
+	if err != nil {
+		t.Fatalf("CreatePerson P failed: %v", err)
+	}
+	fam, err := f.handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &a.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	branch, err = f.handler.CreateBranch(ctx, "edited-and-linked", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	onBranch := f.handler.WithBranch(branch)
+	surname := "Noel"
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: person.ID, Surname: &surname, Version: person.Version}); err != nil {
+		t.Fatalf("branch UpdatePerson P failed: %v", err)
+	}
+	if _, err := onBranch.LinkChild(ctx, command.LinkChildInput{FamilyID: fam.ID, ChildID: person.ID}); err != nil {
+		t.Fatalf("branch LinkChild failed: %v", err)
+	}
+
+	faulty.armed, faulty.failAt = true, 1
+	_, err = f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	faulty.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePartiallyApplied", err)
+	}
+	return f, branch, person.ID, fam.ID
+}
+
+// mergeAwayOnMain merges person p into a new person on main. PersonMerged is
+// written to the survivor's stream, so p's own stream keeps its version.
+func mergeAwayOnMain(t *testing.T, f *branchFixture, p uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	survivor, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Byron", Surname: "Survivor"})
+	if err != nil {
+		t.Fatalf("CreatePerson survivor failed: %v", err)
+	}
+	row, err := f.readStore.GetPerson(ctx, domain.MainBranchID, p)
+	if err != nil || row == nil {
+		t.Fatalf("main GetPerson P = %v (err %v)", row, err)
+	}
+	if _, err := f.handler.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: p,
+		SurvivorVersion: survivor.Version, MergedVersion: row.Version,
+	}); err != nil {
+		t.Fatalf("MergePersons failed: %v", err)
+	}
+}
+
+// TestResumeMerge_PersonMergedAwayWhileEditedAndLinked is the regression test
+// for a phantom child a resume reported as success. The branch edits P and
+// links P into F; main merges P away after the interruption. P's stream stays
+// at its pinned version (PersonMerged lands on the survivor's), so the plan
+// would replay P's edit and F's link automatically — and the edit restores
+// nothing, leaving F linking a person main does not have. Both must be
+// pending, and "branch" is refused for P.
+func TestResumeMerge_PersonMergedAwayWhileEditedAndLinked(t *testing.T) {
+	ctx := context.Background()
+	f, branch, p, family := seedEditedAndLinked(t)
+	pinned, err := f.eventStore.GetStreamVersion(ctx, p, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	mergeAwayOnMain(t, f, p)
+	if after, err := f.eventStore.GetStreamVersion(ctx, p, domain.MainBranchID); err != nil || after != pinned {
+		t.Fatalf("P's main stream version = %d (err %v), want it unchanged at %d by the merge-away", after, err, pinned)
+	}
+
+	result, err := f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	if !errors.Is(err, command.ErrMergeResumeNeedsResolution) {
+		t.Fatalf("bare ResumeMerge error = %v, want ErrMergeResumeNeedsResolution", err)
+	}
+	if !slices.Equal(result.PendingStreamIDs, []uuid.UUID{p, family}) {
+		t.Errorf("PendingStreamIDs = %v, want [%s %s]", result.PendingStreamIDs, p, family)
+	}
+
+	for name, resolutions := range map[string]map[uuid.UUID]command.MergeResolution{
+		"P to branch": {p: command.ResolveBranch, family: command.ResolveMain},
+		"both branch": {p: command.ResolveBranch, family: command.ResolveBranch},
+	} {
+		_, err = f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID, Resolutions: resolutions})
+		if !errors.Is(err, command.ErrUnknownResolution) {
+			t.Errorf("%s: error = %v, want ErrUnknownResolution", name, err)
+		}
+	}
+	_, err = f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{p: command.ResolveMain, family: command.ResolveBranch},
+	})
+	if !errors.Is(err, command.ErrMergeDanglingReference) {
+		t.Errorf("F to branch: error = %v, want ErrMergeDanglingReference", err)
+	}
+	if records := branchResumeRecords(t, f, branch); len(records) != 0 {
+		t.Fatalf("refused resumes recorded %d decision(s), want none", len(records))
+	}
+
+	result, err = f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{p: command.ResolveMain, family: command.ResolveMain},
+	})
+	if err != nil {
+		t.Fatalf("main-resolved ResumeMerge failed: %v", err)
+	}
+	if result.ReplayedEventCount != 0 {
+		t.Errorf("ReplayedEventCount = %d, want 0", result.ReplayedEventCount)
+	}
+	assertNoPhantomChild(t, f, family)
+	if after, err := f.eventStore.GetStreamVersion(ctx, p, domain.MainBranchID); err != nil || after != pinned {
+		t.Errorf("P's main stream version = %d (err %v), want no edit appended after the merge-away", after, err)
+	}
+}
+
+// TestResumeMerge_LandedCreatedPersonRemovedOnMain: the branch creates P and
+// links P into main's family F. P's stream reaches main before the
+// interruption; main then deletes P. P's replay is on main, but it no longer
+// vouches for P, so F's link — which the plan would replay automatically —
+// must be pending rather than written.
+func TestResumeMerge_LandedCreatedPersonRemovedOnMain(t *testing.T) {
+	var faulty *faultyReplayStore
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapEvents: func(inner repository.EventStore) repository.EventStore {
+			faulty = &faultyReplayStore{EventStore: inner}
+			return faulty
+		},
+	})
+	ctx := context.Background()
+
+	a, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	family, err := f.handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &a.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "created-then-deleted", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	onBranch := f.handler.WithBranch(branch)
+	child, err := onBranch.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Byron", Surname: "King"})
+	if err != nil {
+		t.Fatalf("branch CreatePerson failed: %v", err)
+	}
+	if _, err := onBranch.LinkChild(ctx, command.LinkChildInput{FamilyID: family.ID, ChildID: child.ID}); err != nil {
+		t.Fatalf("branch LinkChild failed: %v", err)
+	}
+
+	faulty.armed, faulty.failAt = true, 2
+	_, err = f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	faulty.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePartiallyApplied", err)
+	}
+	row, err := f.readStore.GetPerson(ctx, domain.MainBranchID, child.ID)
+	if err != nil || row == nil {
+		t.Fatalf("main GetPerson = %v (err %v), want the child's stream landed", row, err)
+	}
+	if err := f.handler.DeletePerson(ctx, command.DeletePersonInput{ID: child.ID, Version: row.Version}); err != nil {
+		t.Fatalf("main DeletePerson failed: %v", err)
+	}
+
+	result, err := f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	if !errors.Is(err, command.ErrMergeResumeNeedsResolution) {
+		t.Fatalf("bare ResumeMerge error = %v, want ErrMergeResumeNeedsResolution", err)
+	}
+	if !slices.Equal(result.PendingStreamIDs, []uuid.UUID{family.ID}) {
+		t.Errorf("PendingStreamIDs = %v, want [%s]", result.PendingStreamIDs, family.ID)
+	}
+	if _, err := f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{family.ID: command.ResolveMain},
+	}); err != nil {
+		t.Fatalf("main-resolved ResumeMerge failed: %v", err)
+	}
+	assertNoPhantomChild(t, f, family.ID)
+}
+
+// TestMergeBranch_RefusesALinkToAPersonMergedAwayOnMain: main merged P away,
+// which does not write to P's stream, so the branch's edit to P is no
+// conflict — but replaying it restores nothing, so F's link to P would dangle.
+// The merge refuses before claiming; resolving F (and P) to main merges.
+func TestMergeBranch_RefusesALinkToAPersonMergedAwayOnMain(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+
+	a, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson A failed: %v", err)
+	}
+	p, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Byron", Surname: "King"})
+	if err != nil {
+		t.Fatalf("CreatePerson P failed: %v", err)
+	}
+	family, err := f.handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &a.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "merged-away", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	onBranch := f.handler.WithBranch(branch)
+	surname := "Noel"
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: p.ID, Surname: &surname, Version: p.Version}); err != nil {
+		t.Fatalf("branch UpdatePerson failed: %v", err)
+	}
+	if _, err := onBranch.LinkChild(ctx, command.LinkChildInput{FamilyID: family.ID, ChildID: p.ID}); err != nil {
+		t.Fatalf("branch LinkChild failed: %v", err)
+	}
+	mergeAwayOnMain(t, f, p.ID)
+
+	_, err = f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	if !errors.Is(err, command.ErrMergeDanglingReference) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergeDanglingReference", err)
+	}
+	if got, err := f.branchStore.Get(ctx, branch.ID); err != nil || got.Status != domain.BranchStatusActive {
+		t.Fatalf("branch = %v (err %v), want it still active (refused before the claim)", got, err)
+	}
+
+	if _, err := f.handler.MergeBranch(ctx, command.MergeBranchInput{
+		BranchID:    branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{p.ID: command.ResolveMain, family.ID: command.ResolveMain},
+	}); err != nil {
+		t.Fatalf("main-resolved MergeBranch failed: %v", err)
+	}
+	assertNoPhantomChild(t, f, family.ID)
+}
+
+// assertNoPhantomChild checks every child main's family has is a person main
+// has, and that the family's child count agrees.
+func assertNoPhantomChild(t *testing.T, f *branchFixture, familyID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	children, err := f.readStore.GetFamilyChildren(ctx, domain.MainBranchID, familyID)
+	if err != nil {
+		t.Fatalf("GetFamilyChildren failed: %v", err)
+	}
+	for _, child := range children {
+		person, err := f.readStore.GetPerson(ctx, domain.MainBranchID, child.PersonID)
+		if err != nil {
+			t.Fatalf("GetPerson failed: %v", err)
+		}
+		if person == nil {
+			t.Errorf("main family %s links child %s, whom main does not have", familyID, child.PersonID)
+		}
+	}
+	row, err := f.readStore.GetFamily(ctx, domain.MainBranchID, familyID)
+	if err != nil || row == nil {
+		t.Fatalf("main GetFamily = %v (err %v)", row, err)
+	}
+	if row.ChildCount != len(children) {
+		t.Errorf("family child count = %d, want %d", row.ChildCount, len(children))
+	}
+}
+
+// assertNoMainEventsAfter checks nothing was appended to a stream on main
+// after its last event of the given type.
+func assertNoMainEventsAfter(t *testing.T, f *branchFixture, streamID uuid.UUID, eventType string) {
+	t.Helper()
+	stored, err := f.eventStore.ReadStream(context.Background(), streamID)
+	if err != nil {
+		t.Fatalf("ReadStream failed: %v", err)
+	}
+	var mainEvents []repository.StoredEvent
+	for i := range stored {
+		if stored[i].BranchID == domain.MainBranchID {
+			mainEvents = append(mainEvents, stored[i])
+		}
+	}
+	if len(mainEvents) == 0 || mainEvents[len(mainEvents)-1].EventType != eventType {
+		t.Errorf("main's events on %s = %d, want the last to be %s", streamID, len(mainEvents), eventType)
 	}
 }
 

@@ -224,6 +224,13 @@ func TestBranchMergeResume_DecisionsAndProjection(t *testing.T) {
 				wrapped.events = faulty
 				runResumeRollsForwardDanglingFamily(t, newServer(t, wrapped), faulty)
 			})
+			t.Run("merged-away edited child is pending", func(t *testing.T) {
+				st := backend.setup(t)
+				faulty := &faultyReplayStore{EventStore: st.events}
+				wrapped := st
+				wrapped.events = faulty
+				runResumeMergedAwayEditedChild(t, newServer(t, wrapped), faulty)
+			})
 			t.Run("failed projection is repaired", func(t *testing.T) {
 				st := backend.setup(t)
 				reads := &faultyReadStore{ReadModelStore: st.read}
@@ -301,6 +308,55 @@ func runResumeRollsForwardDanglingFamily(t *testing.T, server *api.Server, fault
 	}
 	if got := mustString(t, getEntity(t, server, partnerPath, ""), "surname"); got != "Revised" {
 		t.Errorf("partner surname on main = %q, want the landed rename", got)
+	}
+	if children, _ := getEntity(t, server, "/api/v1/families/"+family, "")["children"].([]any); len(children) != 0 {
+		t.Errorf("main family children = %v, want no phantom child", children)
+	}
+}
+
+// runResumeMergedAwayEditedChild: the branch edits main's person P and links
+// P into main's family F; the replay fails before anything lands, and main then
+// merges P into another person. That does not write to P's stream, so the plan
+// still pins it — but replaying P's edit restores nothing, so both P and F are
+// pending, "branch" is refused for P, and rolling forward leaves no phantom
+// child.
+func runResumeMergedAwayEditedChild(t *testing.T, server *api.Server, faulty *faultyReplayStore) {
+	t.Helper()
+	partner := createPerson(t, server, "Alex", "Original")
+	other := createPerson(t, server, "Robin", "Other")
+	child := createPerson(t, server, "Casey", "Child")
+	survivor := createPerson(t, server, "Casey", "Survivor")
+	family := createFamily(t, server, partner, other)
+	branchID := createBranch(t, server, "merged-away-child")
+	branchPath := "/api/v1/branches/" + branchID
+	childPath := "/api/v1/persons/" + child
+	mustDo(t, server, http.MethodPut, scoped(childPath, branchID),
+		fmt.Sprintf(`{"surname":"Revised","version":%d}`, entityVersion(t, server, childPath, branchID)), http.StatusOK)
+	mustDo(t, server, http.MethodPost, scoped("/api/v1/families/"+family+"/children", branchID),
+		fmt.Sprintf(`{"person_id":%q}`, child), http.StatusCreated)
+
+	faulty.arm(1)
+	mustDo(t, server, http.MethodPost, branchPath+"/merge", `{}`, http.StatusInternalServerError)
+	faulty.disarm()
+	mustDo(t, server, http.MethodPost, "/api/v1/persons/merge",
+		fmt.Sprintf(`{"survivor_id":%q,"merged_id":%q,"survivor_version":%d,"merged_version":%d}`,
+			survivor, child,
+			entityVersion(t, server, "/api/v1/persons/"+survivor, ""), entityVersion(t, server, childPath, "")),
+		http.StatusOK)
+
+	refused := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusConflict)
+	pending := entryStrings(t, refused["pending_stream_ids"].([]any))
+	if len(pending) != 2 || pending[0] != child || pending[1] != family {
+		t.Fatalf("pending_stream_ids = %v, want [%s %s]", pending, child, family)
+	}
+	mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"},{"stream_id":%q,"resolution":"main"}]}`, child, family),
+		http.StatusBadRequest)
+	done := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"},{"stream_id":%q,"resolution":"main"}]}`, child, family),
+		http.StatusOK)
+	if got := done["replayed_event_count"]; got != float64(0) {
+		t.Errorf("replayed_event_count = %v, want 0", got)
 	}
 	if children, _ := getEntity(t, server, "/api/v1/families/"+family, "")["children"].([]any); len(children) != 0 {
 		t.Errorf("main family children = %v, want no phantom child", children)

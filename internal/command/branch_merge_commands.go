@@ -270,7 +270,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err := validateConflictResolutions(plan.Conflicts, input.Resolutions); err != nil {
 		return nil, err
 	}
-	if err := h.validateNoDanglingReferences(ctx, groups, input.Resolutions, nil); err != nil {
+	if err := h.validateNoDanglingReferences(ctx, groups, input.Resolutions); err != nil {
 		return nil, err
 	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
@@ -686,34 +686,31 @@ func groupEventsByStream(events []repository.StoredEvent) []streamGroup {
 // skipped_stream_ids names the person, never the stream still pointing at them.
 //
 // A person is fine if main already has them or the replay is about to create
-// them. Anything else is refused, rather than silently dropping the reference:
-// dropping is the same silent-discard class of bug that per-conflict resolution
-// exists to prevent.
+// them — the replay carries a group that creates the person (see
+// createsPerson). Merely replaying the person's stream is not enough: a
+// stream of edits does not bring back a person main no longer has. main can
+// remove a person without writing to their stream (PersonMerged lands on the
+// survivor's), so an edit-only stream for a merged-away person is not even a
+// conflict, yet replaying it restores nothing. Anything else is refused,
+// rather than silently dropping the reference: dropping is the same
+// silent-discard class of bug that per-conflict resolution exists to prevent.
 //
 // Only events that ADD a reference are checked. Unlinking a person main does
 // not have removes nothing and is harmless.
-//
-// alreadyOnMain names streams whose branch events a resume (#685) found already
-// replayed. They count as present exactly like the streams about to be
-// replayed: their events are on main in the LOG, which is the authority, even
-// if an interrupted attempt's projection never wrote their read-model rows.
-// MergeBranch passes nil.
-func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution, alreadyOnMain map[uuid.UUID]bool) error {
-	replayed := make(map[uuid.UUID]bool, len(groups)+len(alreadyOnMain))
-	for streamID, onMain := range alreadyOnMain {
-		if onMain {
-			replayed[streamID] = true
-		}
-	}
+func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
+	created := make(map[uuid.UUID]bool, len(groups))
 	checkedGroups := make([]streamGroup, 0, len(groups))
 	for _, group := range groups {
-		if resolutions[group.streamID] != ResolveMain {
-			replayed[group.streamID] = true
-			checkedGroups = append(checkedGroups, group)
+		if resolutions[group.streamID] == ResolveMain {
+			continue
+		}
+		checkedGroups = append(checkedGroups, group)
+		if createsPerson(group) {
+			created[group.streamID] = true
 		}
 	}
 
-	dangling, err := h.findDanglingReferences(ctx, checkedGroups, func(personID uuid.UUID) bool { return replayed[personID] })
+	dangling, err := h.findDanglingReferences(ctx, checkedGroups, func(personID uuid.UUID) bool { return created[personID] })
 	if err != nil {
 		return err
 	}
@@ -721,6 +718,21 @@ func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []str
 		return dangling[0].err()
 	}
 	return nil
+}
+
+// createsPerson reports whether a replay group leaves its person in existence
+// on main by itself: it is a person stream that creates the person and does
+// not end by deleting them.
+func createsPerson(group streamGroup) bool {
+	if !isPersonStream(group.streamType) || endsInDelete(group.events) {
+		return false
+	}
+	for i := range group.events {
+		if group.events[i].EventType == "PersonCreated" {
+			return true
+		}
+	}
+	return false
 }
 
 // danglingReference is one branch stream whose replay would point main at a
