@@ -673,24 +673,25 @@ func groupEventsByStream(events []repository.StoredEvent) []streamGroup {
 //
 // Resolutions are per-aggregate, but the branch's events reference each other
 // ACROSS aggregates: ChildLinkedToFamily lives on the family's stream and names
-// a person on another. So excluding a person — by resolving their stream to
-// main, which is the ONLY resolution offered when main is the deleter — does
-// not exclude the family event that links them. Replayed on its own, that event
-// writes a family_children row for a person main does not have: the projection
-// saves the row unconditionally (internal/repository/projection.go,
-// projectChildLinked reads the person only to denormalize a name), and the
-// branch-scoping work dropped the FK cascade that would once have caught it.
-// The result is a "successful" 200 leaving main with a blank-named phantom
-// child, reported nowhere — skipped_stream_ids names the person, never the
-// family still pointing at them.
+// a person on another, and AssociationCreated (#757) lives on the
+// association's stream and names two. So excluding a person — by resolving
+// their stream to main, which is the ONLY resolution offered when main is the
+// deleter — does not exclude the event that references them. Replayed on its
+// own, that event writes a row for a person main does not have: the
+// projections save the row unconditionally (internal/repository/projection.go,
+// projectChildLinked and projectAssociationCreated read the person only to
+// denormalize a name), and the branch-scoping work dropped the FK cascade that
+// would once have caught it. The result is a "successful" 200 leaving main
+// with a blank-named phantom child or association, reported nowhere —
+// skipped_stream_ids names the person, never the stream still pointing at them.
 //
 // A person is fine if main already has them or the replay is about to create
-// them. Anything else is refused, rather than silently dropping the link:
+// them. Anything else is refused, rather than silently dropping the reference:
 // dropping is the same silent-discard class of bug that per-conflict resolution
 // exists to prevent.
 //
-// Only link events are checked. Unlinking a person main does not have removes
-// nothing and is harmless.
+// Only events that ADD a reference are checked. Unlinking a person main does
+// not have removes nothing and is harmless.
 //
 // alreadyOnMain names streams whose branch events a resume (#685) found already
 // replayed. They count as present exactly like the streams about to be
@@ -704,46 +705,100 @@ func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []str
 			replayed[streamID] = true
 		}
 	}
+	checkedGroups := make([]streamGroup, 0, len(groups))
 	for _, group := range groups {
 		if resolutions[group.streamID] != ResolveMain {
 			replayed[group.streamID] = true
+			checkedGroups = append(checkedGroups, group)
 		}
 	}
 
-	checked := make(map[uuid.UUID]bool)
-	for _, group := range groups {
-		if resolutions[group.streamID] == ResolveMain {
-			continue
-		}
-		for _, evt := range group.events {
-			if evt.EventType != "ChildLinkedToFamily" {
-				continue
-			}
-			var payload struct {
-				PersonID uuid.UUID `json:"person_id"`
-			}
-			if err := json.Unmarshal(evt.Data, &payload); err != nil {
-				return fmt.Errorf("decoding child link on stream %s: %w", group.streamID, err)
-			}
-			// The replay will create or update this person, so the link lands
-			// on something real.
-			if replayed[payload.PersonID] || checked[payload.PersonID] {
-				continue
-			}
-			person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, payload.PersonID)
-			if err != nil {
-				return fmt.Errorf("checking person %s on main: %w", payload.PersonID, err)
-			}
-			if person == nil {
-				return fmt.Errorf(
-					"%w: the branch links person %s into family %s, but that person will not exist on main "+
-						"(deleted there, or excluded by a \"main\" resolution)",
-					ErrMergeDanglingReference, payload.PersonID, group.streamID)
-			}
-			checked[payload.PersonID] = true
-		}
+	dangling, err := h.findDanglingReferences(ctx, checkedGroups, func(personID uuid.UUID) bool { return replayed[personID] })
+	if err != nil {
+		return err
+	}
+	if len(dangling) > 0 {
+		return dangling[0].err()
 	}
 	return nil
+}
+
+// danglingReference is one branch stream whose replay would point main at a
+// person main will not have.
+type danglingReference struct {
+	streamID uuid.UUID
+	personID uuid.UUID
+}
+
+func (d danglingReference) err() error {
+	return fmt.Errorf(
+		"%w: the branch's stream %s (a family child link or an association) references person %s, "+
+			"but that person will not exist on main (deleted or merged away there, or excluded by a \"main\" resolution)",
+		ErrMergeDanglingReference, d.streamID, d.personID)
+}
+
+// findDanglingReferences reports, for each group, the first person one of its
+// events references (see personReferences) who is neither vouched for by
+// present nor on main's read model. Groups are reported in order, at most once
+// each. Each person is looked up on main at most once.
+func (h *Handler) findDanglingReferences(ctx context.Context, groups []streamGroup, present func(uuid.UUID) bool) ([]danglingReference, error) {
+	onMain := make(map[uuid.UUID]bool)
+	var dangling []danglingReference
+	for _, group := range groups {
+	events:
+		for i := range group.events {
+			personIDs, err := personReferences(group.events[i])
+			if err != nil {
+				return nil, err
+			}
+			for _, personID := range personIDs {
+				if present(personID) {
+					continue
+				}
+				found, looked := onMain[personID]
+				if !looked {
+					person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, personID)
+					if err != nil {
+						return nil, fmt.Errorf("checking person %s on main: %w", personID, err)
+					}
+					found = person != nil
+					onMain[personID] = found
+				}
+				if !found {
+					dangling = append(dangling, danglingReference{streamID: group.streamID, personID: personID})
+					break events
+				}
+			}
+		}
+	}
+	return dangling, nil
+}
+
+// personReferences returns the persons a branch event makes main point at: the
+// child of a ChildLinkedToFamily, and both sides of an AssociationCreated (an
+// association's persons are fixed at creation; AssociationUpdated cannot
+// change them).
+func personReferences(evt repository.StoredEvent) ([]uuid.UUID, error) {
+	switch evt.EventType {
+	case "ChildLinkedToFamily":
+		var payload struct {
+			PersonID uuid.UUID `json:"person_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding child link on stream %s: %w", evt.StreamID, err)
+		}
+		return []uuid.UUID{payload.PersonID}, nil
+	case "AssociationCreated":
+		var payload struct {
+			PersonID    uuid.UUID `json:"person_id"`
+			AssociateID uuid.UUID `json:"associate_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding association on stream %s: %w", evt.StreamID, err)
+		}
+		return []uuid.UUID{payload.PersonID, payload.AssociateID}, nil
+	}
+	return nil, nil
 }
 
 // validateResolutions rejects resolutions the merge cannot honor: one naming a

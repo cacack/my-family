@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,25 +30,32 @@ type readModelState struct {
 // is to finish the projection from the log.
 //
 // Detection is by version. Every projection handler for the events a branch
-// may carry (BR-006's branch-aware set: the person and family streams) writes
-// the aggregate's read-model version as its LAST step, so the read-model
-// version is the number of events on the stream whose projection completed. A
-// row behind main's stream version is re-projected from the first event past
-// it; re-running an event whose projection stopped midway is safe because each
-// of its writes is an upsert or a delete, and the family's child count and
-// version are set absolutely (the number of child rows; the event's version,
-// never lowered) rather than stepped.
+// may carry (BR-006's branch-aware set: the person, family and association
+// streams) writes the aggregate's read-model version as its LAST step, so the
+// read-model version is the number of events on the stream whose projection
+// completed. A row behind main's stream version is re-projected from the first
+// event past it; re-running an event whose projection stopped midway is safe
+// because each of its writes is an upsert or a delete, and the family's child
+// count and version are set absolutely (the number of child rows; the event's
+// version, never lowered) rather than stepped.
 //
-// That is also what makes the repair safe to run concurrently. Nothing here
-// appends, so no optimistic check serializes two resumes repairing the same
-// stream, or a resume and a mainline write to it: both may project the same
-// events. Every projection they can run is idempotent in that sense, so the
-// row converges on the log whichever finishes last.
+// Nothing here appends, so no optimistic check serializes two resumes
+// repairing the same stream, or a resume and a mainline write to it. Most
+// projections set the row's version outright, so re-running an OLD event after
+// a newer one was projected would roll the row back (fields and version). The
+// repair therefore never lowers a row: see reprojectStream, which skips every
+// event the row has already reached, re-checked immediately before each one,
+// and does not report a stream repaired until a final read finds the row level
+// with main's log — re-projecting again if a racing write slipped in between
+// its check and its save. So a resume that returns success has left each
+// stream it repaired level with the log as that final read saw it.
 //
 // A missing row is re-projected from the start unless the entity is gone for a
-// reason the log explains: its stream ends in a delete, or (for a person) main
+// reason the log explains: its stream ends in a delete; (for a person) main
 // merged it into another person with PersonMerged, which removes the row
-// without writing to the merged person's stream.
+// without writing to the merged person's stream; or (for an association) one
+// of its persons is gone from main, whose delete cascade removes the
+// association's row without writing to its stream either.
 //
 // Only already-replayed streams are checked, and each check is one read-model
 // lookup; main's events are read, in one set-based paged scan, only for the
@@ -77,16 +85,137 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 		if len(events) == 0 {
 			return nil, fmt.Errorf("stream %s is on main by payload id but main has no events for it", group.streamID)
 		}
-		state := states[group.streamID]
-		if !state.present && (endsInDelete(events) || mergedAway[group.streamID]) {
-			continue // gone for a reason the log records: nothing to repair
+		if !states[group.streamID].present {
+			gone, err := h.goneForLoggedReason(ctx, group, events, mergedAway[group.streamID])
+			if err != nil {
+				return nil, err
+			}
+			if gone {
+				continue // nothing to repair
+			}
 		}
-		if err := h.reprojectFrom(ctx, group.streamID, events, state.version); err != nil {
+		if err := h.reprojectStream(ctx, group, events); err != nil {
 			return nil, err
 		}
 		repaired = append(repaired, group.streamID)
 	}
 	return repaired, nil
+}
+
+// goneForLoggedReason reports whether a stream's missing main read-model row is
+// missing for a reason the log explains (see reprojectLandedStreams), so
+// re-projecting it would resurrect something main removed.
+func (h *Handler) goneForLoggedReason(ctx context.Context, group streamGroup, events []repository.StoredEvent, mergedAway bool) (bool, error) {
+	if endsInDelete(events) || mergedAway {
+		return true, nil
+	}
+	if !isAssociationStream(group.streamType) {
+		return false, nil
+	}
+	for i := range events {
+		if events[i].EventType != "AssociationCreated" {
+			continue
+		}
+		personIDs, err := personReferences(events[i])
+		if err != nil {
+			return false, err
+		}
+		for _, personID := range personIDs {
+			person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, personID)
+			if err != nil {
+				return false, fmt.Errorf("reading main person %s for association %s: %w", personID, group.streamID, err)
+			}
+			if person == nil {
+				return true, nil // removed by the person's delete cascade
+			}
+		}
+		return false, nil
+	}
+	return false, nil
+}
+
+// reprojectAttempts bounds how often reprojectStream re-runs a stream that a
+// racing mainline write keeps pushing ahead. Each attempt only replays events
+// the row has not reached, so two are enough unless writes land continuously.
+const reprojectAttempts = 3
+
+// errReprojectRaced is returned when a stream's row is still behind main's log
+// after every attempt. Nothing was lost — the log holds every event — and a
+// further resume repairs it.
+var errReprojectRaced = errors.New("main's read model kept moving while the resume repaired it")
+
+// reprojectStream brings one stream's main read-model row level with main's
+// log without ever lowering it. Before each event it re-reads the row and
+// skips the event if the row already reached that version — a concurrent
+// resume or a mainline write projected it, or something newer. After the pass
+// it re-reads the row and main's stream version: a racing write that
+// committed between a check and the save after it could have been rolled back
+// by that save, and shows up here as a row behind the log, so the stream is
+// re-read and the pass repeated from the row's version. A row that vanished
+// during the pass is not re-created (see the comment at that check).
+func (h *Handler) reprojectStream(ctx context.Context, group streamGroup, events []repository.StoredEvent) error {
+	for attempt := 0; attempt < reprojectAttempts; attempt++ {
+		if attempt > 0 {
+			reread, err := h.readMainStreams(ctx, []uuid.UUID{group.streamID}, 0)
+			if err != nil {
+				return err
+			}
+			events = reread[group.streamID]
+		}
+		if err := h.reprojectForward(ctx, group, events); err != nil {
+			return err
+		}
+
+		head, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
+		if err != nil {
+			return fmt.Errorf("getting main stream version for %s: %w", group.streamID, err)
+		}
+		state, err := h.mainReadModelState(ctx, group)
+		if err != nil {
+			return err
+		}
+		if state.present && state.version >= head {
+			return nil
+		}
+		if !state.present {
+			if len(events) > 0 && events[len(events)-1].Version >= head && endsInDelete(events) {
+				return nil // deleted by the last event this pass saw
+			}
+			// Removed while this pass ran by something that does not write to
+			// the stream (a person merge or a delete cascade). Re-projecting
+			// from the start would resurrect it; the next resume sees it
+			// missing up front and classifies it.
+			return fmt.Errorf("%w: stream %s's row was removed from main during the repair; resume again to finish",
+				errReprojectRaced, group.streamID)
+		}
+	}
+	return fmt.Errorf("%w: stream %s is still behind main's log after %d attempts; resume again to finish the repair",
+		errReprojectRaced, group.streamID, reprojectAttempts)
+}
+
+// reprojectForward projects a stream's main events onto main's read model in
+// version order, skipping each event the row has already reached. The row is
+// re-read before every event, not once, so an event projected concurrently —
+// or a newer one — is never re-applied over it.
+func (h *Handler) reprojectForward(ctx context.Context, group streamGroup, events []repository.StoredEvent) error {
+	for i := range events {
+		state, err := h.mainReadModelState(ctx, group)
+		if err != nil {
+			return err
+		}
+		if state.present && state.version >= events[i].Version {
+			continue
+		}
+		decoded, err := events[i].DecodeEvent()
+		if err != nil {
+			return fmt.Errorf("decoding main %s event on stream %s for re-projection: %w", events[i].EventType, group.streamID, err)
+		}
+		if err := h.projector.Project(ctx, decoded, events[i].Version, domain.MainBranchID); err != nil {
+			return fmt.Errorf("re-projecting main %s (version %d) on stream %s: %w",
+				events[i].EventType, events[i].Version, group.streamID, err)
+		}
+	}
+	return nil
 }
 
 // streamsBehindOnMain returns the already-replayed streams whose main read
@@ -140,34 +269,17 @@ func (h *Handler) missingPersonsMergedAway(
 	return h.personsMergedAwayOnMain(ctx, candidates, scanFrom)
 }
 
-// reprojectFrom projects a stream's main events past fromVersion onto main's
-// read model, in version order.
-func (h *Handler) reprojectFrom(ctx context.Context, streamID uuid.UUID, events []repository.StoredEvent, fromVersion int64) error {
-	for i := range events {
-		if events[i].Version <= fromVersion {
-			continue
-		}
-		decoded, err := events[i].DecodeEvent()
-		if err != nil {
-			return fmt.Errorf("decoding main %s event on stream %s for re-projection: %w", events[i].EventType, streamID, err)
-		}
-		if err := h.projector.Project(ctx, decoded, events[i].Version, domain.MainBranchID); err != nil {
-			return fmt.Errorf("re-projecting main %s (version %d) on stream %s: %w",
-				events[i].EventType, events[i].Version, streamID, err)
-		}
-	}
-	return nil
-}
-
 // endsInDelete reports whether a stream's last event deletes its aggregate.
 func endsInDelete(events []repository.StoredEvent) bool {
 	return len(events) > 0 && strings.HasSuffix(events[len(events)-1].EventType, "Deleted")
 }
 
 // mainReadModelState reads main's read-model row for a replayed aggregate. The
-// replay set holds only BR-006's branch-aware events, which live on person and
-// family streams; any other stream type means that allowlist grew without this
-// check, so it is refused rather than reported as in sync.
+// replay set holds only BR-006's branch-aware events. Those a branch can
+// actually carry live on person, family and association streams (#757 made
+// life events and attributes branch-aware too, but nothing writes one on a
+// branch yet); any other stream type means a branch write path grew without
+// this check, so it is refused rather than reported as in sync.
 func (h *Handler) mainReadModelState(ctx context.Context, group streamGroup) (readModelState, error) {
 	switch {
 	case isPersonStream(group.streamType):
@@ -188,6 +300,15 @@ func (h *Handler) mainReadModelState(ctx context.Context, group streamGroup) (re
 			return readModelState{}, nil
 		}
 		return readModelState{present: true, version: family.Version}, nil
+	case isAssociationStream(group.streamType):
+		association, err := h.readStore.GetAssociation(ctx, domain.MainBranchID, group.streamID)
+		if err != nil {
+			return readModelState{}, fmt.Errorf("reading main association %s: %w", group.streamID, err)
+		}
+		if association == nil {
+			return readModelState{}, nil
+		}
+		return readModelState{present: true, version: association.Version}, nil
 	}
 	return readModelState{}, fmt.Errorf("cannot verify main's read model for stream %s of type %q after a merge replay", group.streamID, group.streamType)
 }
@@ -196,6 +317,13 @@ func (h *Handler) mainReadModelState(ctx context.Context, group streamGroup) (re
 // are written as both "Person" (commands) and "person" (GEDCOM import).
 func isPersonStream(streamType string) bool {
 	return strings.EqualFold(streamType, "person")
+}
+
+// isAssociationStream reports whether a stream type is an association's.
+// Association streams are written as both "Association" (commands) and
+// "association" (GEDCOM import).
+func isAssociationStream(streamType string) bool {
+	return strings.EqualFold(streamType, "association")
 }
 
 // readMainStreams reads main's events on a set of streams after a position, in

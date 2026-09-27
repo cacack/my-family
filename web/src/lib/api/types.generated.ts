@@ -1820,9 +1820,11 @@ export interface paths {
          *     conflict verdict was computed against for each. A remaining entity is
          *     replayed automatically only if `main` is still at that version. If
          *     `main` moved on it since — or the claim predates this endpoint and
-         *     recorded no plan — the resume is refused with
-         *     `409 merge_resume_needs_resolution`, **nothing is written**, and
-         *     `pending_stream_ids` lists those entities. Review them with
+         *     recorded no plan, or replaying it would leave `main` referencing a
+         *     person it no longer has (for example a family linking a child `main`
+         *     deleted or merged away after the interruption) — the resume is
+         *     refused with `409 merge_resume_needs_resolution`, **nothing is
+         *     written**, and `pending_stream_ids` lists those entities. Review them with
          *     `GET /branches/{id}/compare`, then resume again with one `resolutions`
          *     entry for each: `branch` replays the branch's changes over `main` as it
          *     now stands, `main` leaves the entity as `main` has it. Only pending
@@ -1834,7 +1836,10 @@ export interface paths {
          *     **The mainline read model is repaired too.** If an earlier attempt's
          *     append reached the log but its projection then failed, that entity is
          *     not replayed again; instead its missing projection is re-run from the
-         *     log, and it is listed in `reprojected_stream_ids`.
+         *     log, and it is listed in `reprojected_stream_ids`. The repair never
+         *     rolls a row back: events the row already reflects are skipped, and the
+         *     row is checked against the log once more before the resume reports
+         *     success.
          *
          *     **Idempotent.** Resuming a merge that has already finished (whether by
          *     the original request or an earlier resume) writes nothing and returns
@@ -7847,11 +7852,12 @@ export interface operations {
              *     - `merge_dangling_reference` — the replay would leave the mainline
              *       holding a relationship pointing at a person the mainline will not
              *       have, because that person was deleted there or was excluded by a
-             *       `main` resolution while the family event linking them would still
-             *       be replayed. Resolutions are per entity, but the branch's events
-             *       reference each other across entities, so excluding a person does
-             *       not exclude the links to them. The message names both the person
-             *       and the family. Refused rather than silently dropping the link.
+             *       `main` resolution while a family child link or an association
+             *       naming them would still be replayed. Resolutions are per entity,
+             *       but the branch's events reference each other across entities, so
+             *       excluding a person does not exclude the references to them. The
+             *       message names both the person and the referencing entity.
+             *       Refused rather than silently dropping the reference.
              */
             409: {
                 headers: {
@@ -7922,7 +7928,9 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
             /**
-             * @description The resume was refused and nothing was written. `code` says why:
+             * @description The resume was refused before writing anything — nothing was
+             *     appended to the event log and no mainline read-model row was
+             *     touched. `code` says why:
              *
              *     - `merge_not_claimed` — the branch was never claimed for a merge
              *       (merge it with `POST /branches/{id}/merge` instead), or it is
@@ -7930,8 +7938,12 @@ export interface operations {
              *     - `merge_resume_needs_resolution` — at least one entity still to
              *       replay needs a decision; see `pending_stream_ids` and the
              *       operation description.
-             *     - `merge_dangling_reference` — a `main` resolution would leave the
-             *       mainline holding a relationship to a person it will not have.
+             *     - `merge_dangling_reference` — the resolutions given would leave
+             *       the mainline holding a relationship to a person it will not
+             *       have: a `branch` resolution replaying a reference to a person
+             *       the mainline no longer has (resolve that entity to `main`
+             *       instead), or a `main` resolution excluding a person an entity
+             *       already on the mainline references (resolve it to `branch`).
              *     - `branch_too_large` — the branch's replay set exceeds the read cap
              *       and cannot be resumed in full.
              *     - `merge_resume_concurrent` — another resume of the same merge
@@ -7948,8 +7960,8 @@ export interface operations {
             };
             /**
              * @description `merge_partially_applied` — the resume itself was interrupted
-             *     partway. Whatever it replayed stays on `main`; resume again to
-             *     finish. Any other `500` is an unexpected error and carries the
+             *     partway (during the read-model repair or the replay). Whatever it
+             *     recorded or replayed stays; resume again to finish. Any other `500` is an unexpected error and carries the
              *     generic `internal_error` code.
              */
             500: {

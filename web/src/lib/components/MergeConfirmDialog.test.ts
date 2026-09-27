@@ -340,10 +340,12 @@ describe('MergeConfirmDialog', () => {
 			await screen.findByText(MERGE_REFUSAL_COPY.merge_partially_applied.title);
 			expect(screen.queryByRole('button', { name: /try merging again/i })).toBeNull();
 			// Resuming is supported now, so there is no tracking issue to send
-			// the user to - the copy names the resume instead.
+			// the user to - the copy names the resume instead, in user terms
+			// (the resume is API-only, so no raw endpoint is shown).
 			expect(screen.queryByRole('link', { name: '#685' })).toBeNull();
 			expect(MERGE_REFUSAL_COPY.merge_partially_applied.issue).toBeUndefined();
-			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).toMatch(/merge\/resume/);
+			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).toMatch(/administrator can finish this merge by resuming it/);
+			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).not.toMatch(/POST|\/branches\//);
 			// The only valid recovery: verify by comparing again.
 			expect(screen.getByRole('button', { name: /compare again/i })).toBeDefined();
 		});

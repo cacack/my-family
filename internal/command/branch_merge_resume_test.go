@@ -71,14 +71,28 @@ func (s *faultyReplayStore) Append(ctx context.Context, streamID uuid.UUID, stre
 // injects.
 var errInjectedProjectionFailure = errors.New("injected read-model failure during projection")
 
-// faultyReadStore fails mainline SavePerson for one person, or SaveFamily for
-// one family, while armed, so a replay's Append lands in the log but its
-// projection does not.
+// faultyReadStore fails mainline SavePerson for one person, SaveFamily for
+// one family, or SaveAssociation for one association, while armed, so a
+// replay's Append lands in the log but its projection does not.
+//
+// beforeMainSavePerson, when set, runs once just before the next mainline
+// SavePerson reaches the store — between a projection reading a person row
+// and writing it back, where a racing write can slip in.
 type faultyReadStore struct {
 	repository.ReadModelStore
-	armed      bool
-	failPerson uuid.UUID
-	failFamily uuid.UUID
+	armed           bool
+	failPerson      uuid.UUID
+	failFamily      uuid.UUID
+	failAssociation uuid.UUID
+
+	beforeMainSavePerson func()
+}
+
+func (s *faultyReadStore) SaveAssociation(ctx context.Context, branchID domain.BranchID, association *repository.AssociationReadModel) error {
+	if s.armed && branchID.IsMain() && association.ID == s.failAssociation {
+		return errInjectedProjectionFailure
+	}
+	return s.ReadModelStore.SaveAssociation(ctx, branchID, association)
 }
 
 func (s *faultyReadStore) SaveFamily(ctx context.Context, branchID domain.BranchID, family *repository.FamilyReadModel) error {
@@ -89,6 +103,10 @@ func (s *faultyReadStore) SaveFamily(ctx context.Context, branchID domain.Branch
 }
 
 func (s *faultyReadStore) SavePerson(ctx context.Context, branchID domain.BranchID, person *repository.PersonReadModel) error {
+	if hook := s.beforeMainSavePerson; hook != nil && branchID.IsMain() {
+		s.beforeMainSavePerson = nil
+		hook()
+	}
 	if s.armed && branchID.IsMain() && person.ID == s.failPerson {
 		return errInjectedProjectionFailure
 	}

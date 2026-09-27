@@ -203,8 +203,9 @@ func (s *faultyReadStore) SavePerson(ctx context.Context, branchID domain.Branch
 }
 
 // TestBranchMergeResume_DecisionsAndProjection covers, on every backend, the
-// two ways a resume used to leave a merge unfinished: a "main" decision that a
-// later resume could reverse, and a replay whose projection failed after its
+// ways a resume used to leave a merge unfinished: a "main" decision that a
+// later resume could reverse, a family that could never replay because main
+// deleted the child it links, and a replay whose projection failed after its
 // Append committed.
 func TestBranchMergeResume_DecisionsAndProjection(t *testing.T) {
 	for _, backend := range backends {
@@ -215,6 +216,13 @@ func TestBranchMergeResume_DecisionsAndProjection(t *testing.T) {
 				wrapped := st
 				wrapped.events = faulty
 				runResumeMainDecisionIsFinal(t, newServer(t, wrapped), faulty)
+			})
+			t.Run("dangling family is rolled forward", func(t *testing.T) {
+				st := backend.setup(t)
+				faulty := &faultyReplayStore{EventStore: st.events}
+				wrapped := st
+				wrapped.events = faulty
+				runResumeRollsForwardDanglingFamily(t, newServer(t, wrapped), faulty)
 			})
 			t.Run("failed projection is repaired", func(t *testing.T) {
 				st := backend.setup(t)
@@ -253,6 +261,49 @@ func runResumeMainDecisionIsFinal(t *testing.T, server *api.Server, faulty *faul
 		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"}]}`, person), http.StatusBadRequest)
 	if got := mustString(t, getEntity(t, server, path, ""), "surname"); got != "Original" {
 		t.Errorf("surname on main = %q, want main's decision to stand", got)
+	}
+}
+
+// runResumeRollsForwardDanglingFamily: the branch renames a partner and links
+// main's person P into main's family F; the replay stops after the partner
+// lands, and main then deletes P (allowed: P is not linked on main). F is
+// reported pending, and a "main" resolution finishes the merge without a
+// phantom child.
+func runResumeRollsForwardDanglingFamily(t *testing.T, server *api.Server, faulty *faultyReplayStore) {
+	t.Helper()
+	partner := createPerson(t, server, "Alex", "Original")
+	other := createPerson(t, server, "Robin", "Other")
+	child := createPerson(t, server, "Casey", "Child")
+	family := createFamily(t, server, partner, other)
+	branchID := createBranch(t, server, "dangling-child")
+	branchPath := "/api/v1/branches/" + branchID
+	partnerPath := "/api/v1/persons/" + partner
+	mustDo(t, server, http.MethodPut, scoped(partnerPath, branchID),
+		fmt.Sprintf(`{"surname":"Revised","version":%d}`, entityVersion(t, server, partnerPath, branchID)), http.StatusOK)
+	mustDo(t, server, http.MethodPost, scoped("/api/v1/families/"+family+"/children", branchID),
+		fmt.Sprintf(`{"person_id":%q}`, child), http.StatusCreated)
+
+	faulty.arm(2)
+	mustDo(t, server, http.MethodPost, branchPath+"/merge", `{}`, http.StatusInternalServerError)
+	faulty.disarm()
+	childPath := "/api/v1/persons/" + child
+	mustDo(t, server, http.MethodDelete,
+		fmt.Sprintf("%s?version=%d", childPath, entityVersion(t, server, childPath, "")), "", http.StatusNoContent)
+
+	refused := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusConflict)
+	if pending := entryStrings(t, refused["pending_stream_ids"].([]any)); len(pending) != 1 || pending[0] != family {
+		t.Fatalf("pending_stream_ids = %v, want [%s]", pending, family)
+	}
+	done := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, family), http.StatusOK)
+	if skipped := entryStrings(t, done["skipped_stream_ids"].([]any)); len(skipped) != 1 || skipped[0] != family {
+		t.Errorf("skipped_stream_ids = %v, want [%s]", skipped, family)
+	}
+	if got := mustString(t, getEntity(t, server, partnerPath, ""), "surname"); got != "Revised" {
+		t.Errorf("partner surname on main = %q, want the landed rename", got)
+	}
+	if children, _ := getEntity(t, server, "/api/v1/families/"+family, "")["children"].([]any); len(children) != 0 {
+		t.Errorf("main family children = %v, want no phantom child", children)
 	}
 }
 

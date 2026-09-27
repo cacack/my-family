@@ -115,7 +115,7 @@
 		merge_partially_applied: {
 			title: 'The merge was claimed but did not finish',
 			body:
-				"The branch is already marked merged while the replay onto the mainline stopped partway. Do not merge again: the branch is terminal, so a second attempt would only report that, which is no evidence the work completed. The merge can be finished by resuming it (POST /branches/{id}/merge/resume), which replays only what has not yet reached the mainline and asks before replaying over anything the mainline changed since. Compare again to see exactly what did and did not land - the server's message below says how far the replay got, and whether the mainline was modified at all.",
+				"The branch is already marked merged while the replay onto the mainline stopped partway. Do not merge again: the branch is terminal, so a second attempt would only report that, which is no evidence the work completed. An administrator can finish this merge by resuming it, which replays only what has not yet reached the mainline and asks before replaying over anything the mainline changed since. Compare again to see exactly what did and did not land - the server's message below says how far the replay got, and whether the mainline was modified at all.",
 			recovery: 'recompare'
 		},
 		invalid_resolution: {

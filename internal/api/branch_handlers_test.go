@@ -1439,6 +1439,74 @@ func TestResumeBranchMerge_Concurrent(t *testing.T) {
 	}
 }
 
+// TestResumeBranchMerge_DanglingRollForward: the branch links main's person P
+// into main's family F, the merge is interrupted, and main then deletes P. F
+// was never touched on main, so its recorded plan would replay it — onto a
+// person main no longer has. The resume must report F pending rather than
+// refuse forever, and a "main" resolution must finish the merge.
+func TestResumeBranchMerge_DanglingRollForward(t *testing.T) {
+	server, store := setupSwitchableReplayServer()
+	partner := createPerson(t, server, "Ada", "Lovelace")
+	child := createPerson(t, server, "Byron", "King")
+	other := createPerson(t, server, "Annabella", "Milbanke")
+	familyID := createFamily(t, server, partner, other)
+	branchID := createBranch(t, server, "link the child")
+	if rec := do(t, server, http.MethodPost,
+		fmt.Sprintf("/api/v1/families/%s/children?branch=%s", familyID, branchID),
+		fmt.Sprintf(`{"person_id":%q}`, child)); rec.Code != http.StatusCreated {
+		t.Fatalf("Branch link: status = %d, want 201. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	store.failing = true
+	if rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("Merge: status = %d, want 500. Body: %s", rec.Code, rec.Body.String())
+	}
+	store.failing = false
+
+	rec := do(t, server, http.MethodGet, "/api/v1/persons/"+child, "")
+	version, _ := decodeJSON(t, rec)["version"].(float64)
+	if rec := do(t, server, http.MethodDelete,
+		fmt.Sprintf("/api/v1/persons/%s?version=%d", child, int64(version)), ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("main DeletePerson: status = %d, want 204. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	resumePath := "/api/v1/branches/" + branchID + "/merge/resume"
+	rec = do(t, server, http.MethodPost, resumePath, "")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Resume: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+	resp := decodeJSON(t, rec)
+	if resp["code"] != "merge_resume_needs_resolution" {
+		t.Errorf("code = %v, want merge_resume_needs_resolution", resp["code"])
+	}
+	if pending, _ := resp["pending_stream_ids"].([]any); len(pending) != 1 || pending[0] != familyID {
+		t.Fatalf("pending_stream_ids = %v, want [%s]", resp["pending_stream_ids"], familyID)
+	}
+
+	rec = do(t, server, http.MethodPost, resumePath,
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"}]}`, familyID))
+	if rec.Code != http.StatusConflict || decodeJSON(t, rec)["code"] != "merge_dangling_reference" {
+		t.Fatalf("branch-resolved Resume: status = %d, want 409 merge_dangling_reference. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, server, http.MethodPost, resumePath,
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, familyID))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("main-resolved Resume: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+	}
+	if skipped, _ := decodeJSON(t, rec)["skipped_stream_ids"].([]any); len(skipped) != 1 || skipped[0] != familyID {
+		t.Errorf("skipped_stream_ids = %v, want [%s]", skipped, familyID)
+	}
+
+	rec = do(t, server, http.MethodGet, "/api/v1/families/"+familyID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GetFamily: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	if children, _ := decodeJSON(t, rec)["children"].([]any); len(children) != 0 {
+		t.Errorf("main family children = %v, want no phantom child", children)
+	}
+}
+
 // interruptThenMoveMain interrupts a merge before its only replay and then
 // lands a mainline write on that entity, so a resume needs a resolution.
 func interruptThenMoveMain(t *testing.T, server *api.Server, store *switchableReplayEventStore) (personID, branchID string) {
