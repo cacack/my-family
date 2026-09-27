@@ -655,6 +655,15 @@ elsewhere. The branch's own delete guard (`ErrSourceHasCitations`) only sees the
 citation `main` added after the fork would otherwise be deleted from `main` by the source→citation
 cascade, with no `CitationDeleted` event and no conflict shown.
 
+#759 put `MediaCreated` on the allowlist, which opened a third shape: a branch upload names its owner
+(a person, family or source) on another stream, and the projection saves the media row without
+checking that owner. A replayed upload whose stream does not end deleted is refused unless its owner
+exists on `main` or is replayed — and a replayed owner that the replay itself deletes counts only
+when its stream replays *after* the upload, so the owner's delete cascades the item on `main` as it
+did on the branch. Otherwise `main` would gain a media item attached to nothing. A branch that
+uploads to a person it created and then deletes that person is therefore refused; deleting the
+media first makes it mergeable.
+
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that
 is claimed in the log but still reads `active`. Because the CAS keys on the *stream version*, a

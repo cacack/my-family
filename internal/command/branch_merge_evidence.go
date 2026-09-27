@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // citationOutcome is what the replay of one stream leaves a citation citing.
@@ -104,12 +105,7 @@ const sourceStreamType = "Source"
 
 // groupDeletesSource reports whether a stream's replay deletes its source.
 func groupDeletesSource(group streamGroup) bool {
-	for _, evt := range group.events {
-		if evt.EventType == "SourceDeleted" {
-			return true
-		}
-	}
-	return false
+	return groupDeletes(group, "SourceDeleted")
 }
 
 // validateNoDanglingEvidence is the source/citation half of
@@ -129,12 +125,20 @@ func groupDeletesSource(group streamGroup) bool {
 //     delete those citations on main with no CitationDeleted event and no
 //     conflict shown.
 //
-// Both are refused before the claim, like the dangling child link.
+//   - A replayed media upload whose owner (person, family or source) will not
+//     exist on main when the upload lands (#759) — deleted on main after the
+//     fork, excluded by a "main" resolution, or deleted by the branch itself in
+//     a stream that replays first. The projection saves the media row without
+//     checking its owner, so main would gain an orphaned media item.
+//
+// All are refused before the claim, like the dangling child link.
 func (h *Handler) validateNoDanglingEvidence(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
 	replayed := make(map[uuid.UUID]streamGroup, len(groups))
-	for _, group := range groups {
+	order := make(map[uuid.UUID]int, len(groups))
+	for i, group := range groups {
 		if resolutions[group.streamID] != ResolveMain {
 			replayed[group.streamID] = group
+			order[group.streamID] = i
 		}
 	}
 
@@ -148,8 +152,109 @@ func (h *Handler) validateNoDanglingEvidence(ctx context.Context, groups []strea
 		if err := h.checkSourceDeleteOrphansNothing(ctx, group, replayed); err != nil {
 			return err
 		}
+		if err := h.checkMediaOwnerSurvives(ctx, group, replayed, order); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// mediaOwnerDeleteEvents maps a media owner's entity type to the event that
+// deletes that owner (and, through the store's cascade, its media).
+var mediaOwnerDeleteEvents = map[string]string{
+	"person": "PersonDeleted",
+	"family": "FamilyDeleted",
+	"source": "SourceDeleted",
+}
+
+// mediaUploadOf reports the owner a media stream's replay uploads the item to.
+// ok is false when the stream creates nothing (a metadata edit of an existing
+// item, whose owner is main's business) or ends by deleting the item.
+func mediaUploadOf(group streamGroup) (entityType string, entityID uuid.UUID, ok bool, err error) {
+	for _, evt := range group.events {
+		switch evt.EventType {
+		case "MediaCreated":
+			var payload struct {
+				EntityType string    `json:"entity_type"`
+				EntityID   uuid.UUID `json:"entity_id"`
+			}
+			if err := json.Unmarshal(evt.Data, &payload); err != nil {
+				return "", uuid.Nil, false, fmt.Errorf("decoding media create on stream %s: %w", group.streamID, err)
+			}
+			entityType, entityID, ok = payload.EntityType, payload.EntityID, true
+		case "MediaDeleted":
+			ok = false
+		}
+	}
+	return entityType, entityID, ok, nil
+}
+
+// groupDeletes reports whether a stream's replay contains the given event type.
+func groupDeletes(group streamGroup, eventType string) bool {
+	for _, evt := range group.events {
+		if evt.EventType == eventType {
+			return true
+		}
+	}
+	return false
+}
+
+// checkMediaOwnerSurvives refuses a replayed media upload whose owner will not
+// exist on main when the upload lands. An owner the replay itself deletes is
+// fine only when its stream replays AFTER the media stream: the owner's delete
+// then cascades the item on main exactly as it did on the branch. Replayed the
+// other way round, the upload would land on an owner that is already gone.
+func (h *Handler) checkMediaOwnerSurvives(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup, order map[uuid.UUID]int) error {
+	entityType, entityID, ok, err := mediaUploadOf(group)
+	if err != nil || !ok {
+		return err
+	}
+	deleteEvent, known := mediaOwnerDeleteEvents[entityType]
+	if !known {
+		return fmt.Errorf("%w: the branch's media %s is attached to an unknown entity type %q",
+			ErrMergeDanglingReference, group.streamID, entityType)
+	}
+	if ownerGroup, replaysOwner := replayed[entityID]; replaysOwner {
+		if !groupDeletes(ownerGroup, deleteEvent) || order[entityID] > order[group.streamID] {
+			return nil
+		}
+	} else {
+		exists, err := h.mediaOwnerOnMain(ctx, entityType, entityID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"%w: the branch's media %s is attached to %s %s, but that %s will not exist on main when the media lands "+
+			"(deleted there, excluded by a \"main\" resolution, or deleted earlier in the replay)",
+		ErrMergeDanglingReference, group.streamID, entityType, entityID, entityType)
+}
+
+// mediaOwnerOnMain reports whether main currently has the given media owner.
+func (h *Handler) mediaOwnerOnMain(ctx context.Context, entityType string, entityID uuid.UUID) (bool, error) {
+	var found bool
+	var err error
+	switch entityType {
+	case "person":
+		var p *repository.PersonReadModel
+		p, err = h.readStore.GetPerson(ctx, domain.MainBranchID, entityID)
+		found = p != nil
+	case "family":
+		var f *repository.FamilyReadModel
+		f, err = h.readStore.GetFamily(ctx, domain.MainBranchID, entityID)
+		found = f != nil
+	case "source":
+		var s *repository.SourceReadModel
+		s, err = h.readStore.GetSource(ctx, domain.MainBranchID, entityID)
+		found = s != nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("checking %s %s on main: %w", entityType, entityID, err)
+	}
+	return found, nil
 }
 
 // checkCitationSourceSurvives refuses a replayed citation stream whose final

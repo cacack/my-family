@@ -1417,12 +1417,31 @@ func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, b
 	project("create fresh branch", main, domain.NewBranchCreated(fresh))
 	wantGone("fresh branch letter after main delete", domain.BranchID(fresh.ID), letter.ID)
 
+	// A metadata edit the fresh branch read before main's delete but saves after
+	// it (two concurrent requests) carries no bytes.
+	freshID := domain.BranchID(fresh.ID)
+	staleDeed, err := readStore.GetMedia(ctx, freshID, deed.ID)
+	if err != nil || staleDeed == nil {
+		t.Fatalf("fresh branch GetMedia(deed) = %+v (err=%v), want main's row", staleDeed, err)
+	}
+	staleDeed.Title = "deed (stale edit)"
+
 	// Main deletes an item no branch shows live (the first branch only holds a
 	// tombstone of the deed): a real removal.
 	project("main delete deed", main, domain.NewMediaDeleted(deed.ID, "mainline cleanup"))
 	if _, _, present := stored(t, main, deed.ID); present {
 		t.Errorf("main deed row survived a delete no live shadow needed")
 	}
+
+	// The late save lands on an id with no row anywhere: it must store nothing,
+	// never a shadow with no bytes to show.
+	if err := readStore.SaveMedia(ctx, freshID, staleDeed); err != nil {
+		t.Fatalf("stale byte-less SaveMedia: %v", err)
+	}
+	if file, _, present := stored(t, freshID, deed.ID); present {
+		t.Errorf("stale byte-less branch save stored a row (%d file bytes) for an item main deleted", len(file))
+	}
+	wantGone("fresh branch deed after stale save", freshID, deed.ID)
 
 	// Purging the second branch releases the letter's main row and its bytes.
 	project("delete second branch", main, domain.NewBranchDeleted(other.ID))

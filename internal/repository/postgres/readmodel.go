@@ -3821,7 +3821,11 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 // A save always clears any prior tombstone. It enforces the blob rule in the
 // statement itself: on a non-main branch, an id that has a main row gets NULL
 // bytes whatever the caller passes (the shadow borrows main's), and nil bytes
-// never overwrite stored ones.
+// never overwrite stored ones. A byte-less save on a non-main branch of an id
+// that has no row there and none on main (a metadata edit of an item main
+// deleted meanwhile) is a no-op, so it can never leave a shadow with no bytes.
+// It runs under lockMediaBlobs, so those checks cannot interleave with a
+// concurrent mainline delete.
 func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
 	// Serialize JSONB fields
 	filesJSON, err := domain.MarshalFilesToJSON(media.Files)
@@ -3833,7 +3837,27 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 		return fmt.Errorf("marshal translations: %w", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
+	if !branchID.IsMain() && len(media.FileData) == 0 {
+		var known bool
+		if err := tx.QueryRowContext(ctx,
+			`SELECT EXISTS (SELECT 1 FROM media WHERE id = $1 AND branch_id IN ($2, $3))`,
+			media.ID, branchID.UUID(), domain.MainBranchID.UUID()).Scan(&known); err != nil {
+			return fmt.Errorf("check media rows: %w", err)
+		}
+		if !known {
+			return nil
+		}
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO media (id, branch_id, entity_type, entity_id, title, description, mime_type, media_type,
 						  filename, file_size, file_data, thumbnail_data,
 						  crop_left, crop_top, crop_width, crop_height,
@@ -3877,7 +3901,7 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 	if err != nil {
 		return fmt.Errorf("save media: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // DeleteMedia removes a media item on the given branch (ADR-005, #759). On a
@@ -3891,6 +3915,9 @@ func (s *ReadModelStore) DeleteMedia(ctx context.Context, branchID domain.Branch
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
 
 	if branchID.IsMain() {
 		if err := deleteMainMedia(ctx, tx, mediaIDFilter, id); err != nil {
@@ -3913,6 +3940,9 @@ func (s *ReadModelStore) DeleteMedia(ctx context.Context, branchID domain.Branch
 // the branch sees is tombstoned (metadata only); on main the rows go through
 // deleteMainMedia so a live branch shadow keeps its bytes.
 func cascadeMedia(ctx context.Context, tx *sql.Tx, ownerFilter string, branchID domain.BranchID, ownerID uuid.UUID) error {
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
 	if branchID.IsMain() {
 		return deleteMainMedia(ctx, tx, ownerFilter, ownerID)
 	}
@@ -3928,6 +3958,9 @@ func cascadeMedia(ctx context.Context, tx *sql.Tx, ownerFilter string, branchID 
 // borrows (#759). filter must be a package constant whose %[1]d is the value's
 // placeholder.
 func deleteMainMedia(ctx context.Context, tx *sql.Tx, filter string, value any) error {
+	if err := lockMediaBlobs(ctx, tx); err != nil {
+		return err
+	}
 	f := fmt.Sprintf(filter, 2)
 	const liveShadow = `EXISTS (SELECT 1 FROM media b WHERE b.id = m.id AND b.branch_id <> $1 AND NOT b.deleted)`
 	main := domain.MainBranchID.UUID()
@@ -3949,8 +3982,32 @@ func deleteMainMedia(ctx context.Context, tx *sql.Tx, filter string, value any) 
 // gcMainMedia drops the main media tombstones that no live branch shadow needs
 // any more; stmt is gcMainMediaAfterDelete or gcMainMediaBeforePurge.
 func gcMainMedia(ctx context.Context, db sqlExecer, stmt string, branchID domain.BranchID) error {
+	if err := lockMediaBlobs(ctx, db); err != nil {
+		return err
+	}
 	if _, err := db.ExecContext(ctx, stmt, branchID.UUID(), domain.MainBranchID.UUID()); err != nil {
 		return fmt.Errorf("collect main media tombstones: %w", err)
+	}
+	return nil
+}
+
+// mediaBlobLockKey is the transaction-scoped advisory lock (pg_advisory_xact_lock)
+// every media write that reads OTHER branches' rows takes first: SaveMedia's
+// "does main have this id" and "is this id known at all" checks, and the
+// mainline delete and tombstone collection's "does a live branch shadow exist"
+// checks. Under READ COMMITTED those checks and the writes that depend on them
+// would otherwise interleave across concurrent requests on different branches —
+// a branch shadow committing between a main delete's check and its commit would
+// be left with no bytes, or the delete would be skipped. One key for all ids
+// keeps it simple and deadlock-free; media writes are infrequent, and SQLite
+// already serializes every writer. The value is arbitrary ("media" in ASCII).
+const mediaBlobLockKey int64 = 0x6d65646961
+
+// lockMediaBlobs takes mediaBlobLockKey for the rest of db's transaction. It
+// is re-entrant within a transaction, so nested callers may each take it.
+func lockMediaBlobs(ctx context.Context, db sqlExecer) error {
+	if _, err := db.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, mediaBlobLockKey); err != nil {
+		return fmt.Errorf("lock media blobs: %w", err)
 	}
 	return nil
 }

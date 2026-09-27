@@ -1485,10 +1485,18 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 
 	key := branchKey{branchID, media.ID}
 	row := &mediaRow{m: *media}
-	if _, hasMain := s.media[branchKey{domain.MainBranchID, media.ID}]; branchID != domain.MainBranchID && hasMain {
+	_, hasMain := s.media[branchKey{domain.MainBranchID, media.ID}]
+	prev, hasOwn := s.media[key]
+	// A byte-less branch save of an id with no row anywhere is a metadata edit
+	// of an item main has since deleted: store nothing rather than a shadow
+	// with no bytes (parity with the SQL backends).
+	if branchID != domain.MainBranchID && len(media.FileData) == 0 && !hasMain && !hasOwn {
+		return nil
+	}
+	if branchID != domain.MainBranchID && hasMain {
 		row.m.FileData, row.m.ThumbnailData = nil, nil
 	}
-	if prev, ok := s.media[key]; ok {
+	if hasOwn {
 		if row.m.FileData == nil {
 			row.m.FileData = prev.m.FileData
 		}

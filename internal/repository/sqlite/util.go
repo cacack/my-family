@@ -121,3 +121,14 @@ func nullableBytes(b []byte) any {
 	}
 	return string(b) // SQLite stores JSON as TEXT
 }
+
+// nullableBlob converts empty bytes to nil (NULL) and otherwise binds the bytes
+// as a BLOB. Use it for binary columns (file and thumbnail bytes): unlike
+// nullableBytes, which is for JSON stored as TEXT, it never converts to string,
+// so arbitrary binary data (NUL bytes, invalid UTF-8) keeps BLOB storage class.
+func nullableBlob(b []byte) any {
+	if len(b) == 0 {
+		return nil
+	}
+	return b
+}

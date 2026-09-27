@@ -4215,9 +4215,13 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 // A save always clears any prior tombstone. It enforces the blob rule in the
 // statement itself: on a non-main branch, an id that has a main row gets NULL
 // bytes whatever the caller passes (the shadow borrows main's), and nil bytes
-// never overwrite stored ones. (The COALESCE with the row's own stored bytes
-// keeps a pre-#759 database, whose file_data is still NOT NULL, writable for a
-// mainline metadata edit.)
+// never overwrite stored ones. A byte-less save on a non-main branch of an id
+// that has no row there and none on main (a metadata edit of an item main
+// deleted meanwhile) inserts nothing, so it can never leave a shadow with no
+// bytes; being one statement, and SQLite serializing writers, that check cannot
+// interleave with a concurrent delete. (The COALESCE with the row's own stored
+// bytes keeps a pre-#759 database, whose file_data is still NOT NULL, writable
+// for a mainline metadata edit.)
 func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
 	if err := s.guardBranchWrite(branchID); err != nil {
 		return err
@@ -4241,12 +4245,14 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 						  crop_left, crop_top, crop_width, crop_height,
 						  gedcom_xref, version, created_at, updated_at,
 						  files, format, translations, deleted)
-		VALUES (?1, ?2,
+		SELECT ?1, ?2,
 			CASE WHEN ?2 <> ?3 AND EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id = ?3) THEN NULL
 				ELSE COALESCE(?4, (SELECT file_data FROM media WHERE id = ?1 AND branch_id = ?2)) END,
 			CASE WHEN ?2 <> ?3 AND EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id = ?3) THEN NULL
 				ELSE ?5 END,
-			?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, 0)
+			?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, 0
+		WHERE NOT (?2 <> ?3 AND ?4 IS NULL
+			AND NOT EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id IN (?2, ?3)))
 		ON CONFLICT(id, branch_id) DO UPDATE SET
 			entity_type = excluded.entity_type,
 			entity_id = excluded.entity_id,
@@ -4270,7 +4276,7 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 			translations = excluded.translations,
 			deleted = 0
 	`, media.ID.String(), branchID.String(), mainBranchID,
-		nullableBytes(media.FileData), nullableBytes(media.ThumbnailData),
+		nullableBlob(media.FileData), nullableBlob(media.ThumbnailData),
 		media.EntityType, media.EntityID.String(), media.Title,
 		nullableString(media.Description), media.MimeType, string(media.MediaType),
 		media.Filename, media.FileSize,

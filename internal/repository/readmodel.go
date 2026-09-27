@@ -538,6 +538,15 @@ type ReadModelStore interface {
 	//     tombstone is dropped once no live shadow remains (the branch deletes the
 	//     item or is purged).
 	//
+	//   - A byte-less SaveMedia on a non-main branch of an id that has no row on
+	//     that branch or on main stores nothing: it is a metadata edit of an item
+	//     main deleted after the edit was read, and a shadow saved then would have
+	//     no bytes to show.
+	//   - The checks above read other branches' rows, so each backend makes them
+	//     atomic with the write they guard: memory under its mutex, SQLite by
+	//     serializing writers, PostgreSQL under a transaction-scoped advisory lock
+	//     every media write takes first.
+	//
 	// DeletePerson, DeleteFamily and DeleteSource cascade to the media attached to
 	// the deleted entity on the same branch, under the same rule.
 	GetMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*MediaReadModel, error)
