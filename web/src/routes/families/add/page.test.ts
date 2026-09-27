@@ -123,10 +123,32 @@ describe('Add Family page (#826)', () => {
 		expect(screen.getByRole('button', { name: 'Create Family' }).hasAttribute('disabled')).toBe(true);
 	});
 
-	it('reports a prefill person that cannot be loaded', async () => {
+	it('reports a prefill person that cannot be loaded, and will not create a childless family', async () => {
 		pageState.search = '?child=missing';
 		getPerson.mockRejectedValue({ message: 'Person not found' });
 		render(AddFamilyPage);
 		expect((await screen.findByRole('alert')).textContent).toContain('Person not found');
+
+		const submit = screen.getByRole('button', { name: 'Create Family' });
+		expect(submit.hasAttribute('disabled')).toBe(true);
+		await fireEvent.submit(submit.closest('form')!);
+		expect(createFamily).not.toHaveBeenCalled();
+	});
+
+	it('cannot be submitted while the ?child= prefill is still loading', async () => {
+		pageState.search = '?child=mary-id';
+		let release: (value: typeof mary) => void = () => {};
+		getPerson.mockImplementation(() => new Promise((resolve) => (release = resolve)));
+		render(AddFamilyPage);
+
+		const submit = await screen.findByRole('button', { name: 'Loading...' });
+		expect(submit.hasAttribute('disabled')).toBe(true);
+		await fireEvent.submit(submit.closest('form')!);
+		expect(createFamily).not.toHaveBeenCalled();
+
+		release(mary);
+		await screen.findByTestId('child-note');
+		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
+		await waitFor(() => expect(addChildToFamily).toHaveBeenCalledWith('new-fam', { person_id: 'mary-id' }));
 	});
 });

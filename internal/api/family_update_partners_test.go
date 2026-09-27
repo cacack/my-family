@@ -27,9 +27,22 @@ func putFamily(t *testing.T, server *api.Server, id string, body map[string]any)
 	return rec
 }
 
+// decodeBody parses a JSON object response, failing the test on a bad body.
+func decodeBody(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response %q: %v", rec.Body.String(), err)
+	}
+	return out
+}
+
 func createFamilyOf(t *testing.T, server *api.Server, partner1, partner2 string) string {
 	t.Helper()
-	raw, _ := json.Marshal(map[string]any{"partner1_id": partner1, "partner2_id": partner2, "relationship_type": "marriage"})
+	raw, err := json.Marshal(map[string]any{"partner1_id": partner1, "partner2_id": partner2, "relationship_type": "marriage"})
+	if err != nil {
+		t.Fatalf("marshal family: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -37,9 +50,12 @@ func createFamilyOf(t *testing.T, server *api.Server, partner1, partner2 string)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create family: %d %s", rec.Code, rec.Body.String())
 	}
-	var created map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	return created["id"].(string)
+	created := decodeBody(t, rec)
+	id, ok := created["id"].(string)
+	if !ok {
+		t.Fatalf("create family: no id in %s", rec.Body.String())
+	}
+	return id
 }
 
 // TestUpdateFamily_PartnersTypeAndDate is the API face of issue #848: the PUT
@@ -59,8 +75,7 @@ func TestUpdateFamily_PartnersTypeAndDate(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT family: %d %s", rec.Code, rec.Body.String())
 	}
-	var got map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	got := decodeBody(t, rec)
 	if got["partner1_id"] != p3 || got["partner2_id"] != p1 {
 		t.Errorf("partners = %v / %v, want %s / %s", got["partner1_id"], got["partner2_id"], p3, p1)
 	}
@@ -68,8 +83,7 @@ func TestUpdateFamily_PartnersTypeAndDate(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID, http.NoBody)
 	detailRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(detailRec, req)
-	var detail map[string]any
-	_ = json.Unmarshal(detailRec.Body.Bytes(), &detail)
+	detail := decodeBody(t, detailRec)
 	if partner1, _ := detail["partner1"].(map[string]any); partner1 == nil || partner1["given_name"] != "Cameron" {
 		t.Errorf("partner1 = %v, want Cameron", detail["partner1"])
 	}
@@ -88,7 +102,10 @@ func TestUpdateFamily_PartnerValidation(t *testing.T) {
 	child := createTestPerson(t, server, "Casey", "Placeholder")["id"].(string)
 	familyID := createFamilyOf(t, server, p1, p2)
 
-	link, _ := json.Marshal(map[string]any{"person_id": child})
+	link, err := json.Marshal(map[string]any{"person_id": child})
+	if err != nil {
+		t.Fatalf("marshal link: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/families/%s/children", familyID), bytes.NewReader(link))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -133,8 +150,7 @@ func TestUpdateFamily_ClearPartner(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("clear partner2: %d %s", rec.Code, rec.Body.String())
 	}
-	var got map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	got := decodeBody(t, rec)
 	if _, ok := got["partner2_id"]; ok {
 		t.Errorf("partner2_id = %v, want absent after clearing", got["partner2_id"])
 	}

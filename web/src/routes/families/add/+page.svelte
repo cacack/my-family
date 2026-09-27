@@ -32,18 +32,34 @@
 	let child: PersonSummary | null = $state(null);
 	let prefillError: string | null = $state(null);
 	let prefilledFor = '';
+	// True while the prefilled people are loading. Submitting then would create
+	// the family without the child the "Add parents" shortcut was opened for.
+	let prefilling = $state(false);
+	// The `?child=` id asked for; while it is set but not loaded the form
+	// cannot be submitted (a failed load must not create a childless family).
+	let requestedChildId: string | null = $state(null);
+	let prefillToken = 0;
+	const childPending = $derived.by(() => !!requestedChildId && child?.id !== requestedChildId);
+	const formLocked = $derived(saving || !!createdFamilyId || prefilling);
 
 	async function prefill(partner1Id: string | null, childId: string | null) {
+		const token = ++prefillToken;
 		prefillError = null;
+		prefilling = true;
 		try {
 			const [p1, c] = await Promise.all([
 				partner1Id ? api.getPerson(partner1Id) : Promise.resolve(null),
 				childId ? api.getPerson(childId) : Promise.resolve(null)
 			]);
+			if (token !== prefillToken) return;
 			if (p1) partner1 = p1;
-			child = c;
+			child = c ?? null;
+			if (childId && !c) prefillError = 'The person to add as a child could not be found.';
 		} catch (e) {
+			if (token !== prefillToken) return;
 			prefillError = (e as { message?: string }).message || 'Failed to load the person';
+		} finally {
+			if (token === prefillToken) prefilling = false;
 		}
 	}
 
@@ -54,10 +70,13 @@
 		const key = `${partner1Id}|${childId}`;
 		if (key === prefilledFor) return;
 		prefilledFor = key;
+		requestedChildId = childId;
+		if (!childId) child = null;
 		if (partner1Id || childId) prefill(partner1Id, childId);
 	});
 
 	async function handleSubmit() {
+		if (formLocked || childPending) return;
 		saving = true;
 		error = null;
 		try {
@@ -113,7 +132,12 @@
 		</div>
 	{/if}
 	{#if prefillError}
-		<div class="error" role="alert">{prefillError}</div>
+		<div class="error" role="alert">
+			{prefillError}
+			{#if childPending}
+				The family cannot be created until the child loads; reload the page to try again.
+			{/if}
+		</div>
 	{/if}
 
 	<form class="edit-form" onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
@@ -127,7 +151,7 @@
 			bind:partner1
 			bind:partner2
 			excludeIds={child ? [child.id] : []}
-			disabled={saving || !!createdFamilyId}
+			disabled={formLocked}
 		/>
 
 		<div class="form-row">
@@ -152,7 +176,7 @@
 			</label>
 		</div>
 
-		{#if !child}
+		{#if !requestedChildId}
 			<p class="helper-text">
 				Children are added from the family's page once it is created.
 			</p>
@@ -160,8 +184,8 @@
 
 		<div class="form-actions">
 			<Button type="button" variant="outline" onclick={handleCancel} disabled={saving}>Cancel</Button>
-			<Button type="submit" disabled={saving || !!createdFamilyId}>
-				{saving ? 'Creating...' : 'Create Family'}
+			<Button type="submit" disabled={formLocked || childPending}>
+				{saving ? 'Creating...' : prefilling ? 'Loading...' : 'Create Family'}
 			</Button>
 		</div>
 	</form>

@@ -461,8 +461,15 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 		return nil // Family doesn't exist in read model, skip
 	}
 
+	oldPartner1, oldPartner2 := family.Partner1ID, family.Partner2ID
+	partnersChanged := false
+
 	// Apply changes
 	for key, value := range e.Changes {
+		switch key {
+		case "partner1_id", "partner2_id":
+			partnersChanged = true
+		}
 		switch key {
 		case "partner1_id":
 			newID, given, surname := p.resolvePartnerChange(ctx, branchID, value)
@@ -506,7 +513,13 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 	family.Version = version
 	family.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveFamily(ctx, branchID, family)
+	if err := p.readStore.SaveFamily(ctx, branchID, family); err != nil {
+		return err
+	}
+	if partnersChanged {
+		return p.refreshChildPedigreeEdges(ctx, branchID, family, oldPartner1, oldPartner2)
+	}
+	return nil
 }
 
 // parseOptionalUUID coerces a change-map value into an optional UUID. Values may
@@ -610,43 +623,70 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 		return err
 	}
 	if family != nil {
-		edge := &PedigreeEdge{
-			PersonID: e.PersonID,
-		}
-		if family.Partner1ID != nil {
-			// Determine father/mother based on gender (simplified)
-			p1, _ := p.readStore.GetPerson(ctx, branchID, *family.Partner1ID)
-			if p1 != nil {
-				if p1.Gender == domain.GenderMale {
-					edge.FatherID = family.Partner1ID
-					edge.FatherName = p1.FullName
-				} else {
-					edge.MotherID = family.Partner1ID
-					edge.MotherName = p1.FullName
-				}
-			}
-		}
-		if family.Partner2ID != nil {
-			p2, _ := p.readStore.GetPerson(ctx, branchID, *family.Partner2ID)
-			if p2 != nil {
-				if p2.Gender == domain.GenderMale {
-					edge.FatherID = family.Partner2ID
-					edge.FatherName = p2.FullName
-				} else {
-					edge.MotherID = family.Partner2ID
-					edge.MotherName = p2.FullName
-				}
-			}
-		}
-		if err := p.readStore.SavePedigreeEdge(ctx, branchID, edge); err != nil {
+		if err := p.savePedigreeEdgeFromFamily(ctx, branchID, e.PersonID, family); err != nil {
 			return err
 		}
-	}
-
-	if family != nil {
 		return p.saveFamilyAfterChildChange(ctx, branchID, family, version, e.OccurredAt())
 	}
 
+	return nil
+}
+
+// savePedigreeEdgeFromFamily writes the child's pedigree edge (father/mother)
+// from the family's current partners. Father/mother is decided by the
+// partner's gender (simplified: anyone not male is recorded as the mother).
+func (p *Projector) savePedigreeEdgeFromFamily(ctx context.Context, branchID domain.BranchID, childID uuid.UUID, family *FamilyReadModel) error {
+	edge := &PedigreeEdge{PersonID: childID}
+	for _, partnerID := range []*uuid.UUID{family.Partner1ID, family.Partner2ID} {
+		if partnerID == nil {
+			continue
+		}
+		partner, err := p.readStore.GetPerson(ctx, branchID, *partnerID)
+		if err != nil {
+			return err
+		}
+		if partner == nil {
+			continue
+		}
+		if partner.Gender == domain.GenderMale {
+			edge.FatherID = partnerID
+			edge.FatherName = partner.FullName
+		} else {
+			edge.MotherID = partnerID
+			edge.MotherName = partner.FullName
+		}
+	}
+	return p.readStore.SavePedigreeEdge(ctx, branchID, edge)
+}
+
+// refreshChildPedigreeEdges re-derives the pedigree edge of every child of a
+// family whose partners changed, so the pedigree, Ahnentafel and group sheet
+// stop naming a removed or swapped partner as the child's parent. A child can
+// belong to several families but has one edge; an edge that names a parent
+// outside this family's previous partners came from another family and is
+// left alone.
+func (p *Projector) refreshChildPedigreeEdges(ctx context.Context, branchID domain.BranchID, family *FamilyReadModel, oldPartner1, oldPartner2 *uuid.UUID) error {
+	children, err := p.readStore.GetFamilyChildren(ctx, branchID, family.ID)
+	if err != nil {
+		return err
+	}
+	wasPartner := func(id *uuid.UUID) bool {
+		return id == nil ||
+			(oldPartner1 != nil && *id == *oldPartner1) ||
+			(oldPartner2 != nil && *id == *oldPartner2)
+	}
+	for _, child := range children {
+		edge, err := p.readStore.GetPedigreeEdge(ctx, branchID, child.PersonID)
+		if err != nil {
+			return err
+		}
+		if edge != nil && (!wasPartner(edge.FatherID) || !wasPartner(edge.MotherID)) {
+			continue
+		}
+		if err := p.savePedigreeEdgeFromFamily(ctx, branchID, child.PersonID, family); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

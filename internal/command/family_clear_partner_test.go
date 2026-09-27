@@ -54,7 +54,10 @@ func TestUpdateFamily_ClearsPartner(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("second clear: %v", err)
 	}
-	after, _ := f.events.ReadStream(f.ctx, f.familyID)
+	after, err := f.events.ReadStream(f.ctx, f.familyID)
+	if err != nil {
+		t.Fatalf("ReadStream after no-op clear: %v", err)
+	}
 	if len(after) != len(stream) {
 		t.Errorf("stream has %d events after a no-op clear, want %d", len(after), len(stream))
 	}
@@ -70,7 +73,10 @@ func TestUpdateFamily_ClearAndSwapPartners(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpdateFamily: %v", err)
 	}
-	fam, _ := f.read.GetFamily(f.ctx, domain.MainBranchID, f.familyID)
+	fam, err := f.read.GetFamily(f.ctx, domain.MainBranchID, f.familyID)
+	if err != nil || fam == nil {
+		t.Fatalf("GetFamily: %v (family %v)", err, fam)
+	}
 	if fam.Partner1ID != nil {
 		t.Errorf("partner1 = %v, want cleared", fam.Partner1ID)
 	}
@@ -100,7 +106,10 @@ func TestUpdateFamily_SetAndClearSamePartnerRefused(t *testing.T) {
 			if _, err := f.handler.UpdateFamily(f.ctx, input); !errors.Is(err, command.ErrInvalidFamilyInput) {
 				t.Fatalf("UpdateFamily error = %v, want ErrInvalidFamilyInput", err)
 			}
-			stream, _ := f.events.ReadStream(f.ctx, f.familyID)
+			stream, err := f.events.ReadStream(f.ctx, f.familyID)
+			if err != nil {
+				t.Fatalf("ReadStream: %v", err)
+			}
 			if len(stream) != 1 {
 				t.Errorf("stream has %d events, want only the create", len(stream))
 			}
