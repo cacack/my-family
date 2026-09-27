@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -1363,6 +1364,11 @@ type driftSeed struct {
 	citation    uuid.UUID
 	note        uuid.UUID
 	media       uuid.UUID
+	// GPS artifacts (#760), all about seed.person.
+	analysis     uuid.UUID
+	conflict     uuid.UUID
+	researchLog  uuid.UUID
+	proofSummary uuid.UUID
 }
 
 func seedDriftFixture(t *testing.T) driftSeed {
@@ -1461,6 +1467,43 @@ func seedDriftFixture(t *testing.T) driftSeed {
 		t.Fatalf("UploadMedia failed: %v", err)
 	}
 	seed.media = photo.ID
+
+	// GPS artifacts (#760): two disagreeing analyses of the person's birth (the
+	// second records an open evidence conflict), a research log and a proof.
+	analysis, err := f.handler.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{
+		FactType: string(domain.FactPersonBirth), SubjectID: seed.person, Conclusion: "Born 1815",
+	})
+	if err != nil {
+		t.Fatalf("CreateEvidenceAnalysis failed: %v", err)
+	}
+	seed.analysis = analysis.ID
+	rival, err := f.handler.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{
+		FactType: string(domain.FactPersonBirth), SubjectID: seed.person, Conclusion: "Born 1816",
+	})
+	if err != nil {
+		t.Fatalf("CreateEvidenceAnalysis (rival) failed: %v", err)
+	}
+	if rival.ConflictID == nil {
+		t.Fatal("rival analysis recorded no evidence conflict")
+	}
+	seed.conflict = *rival.ConflictID
+	researchLog, err := f.handler.CreateResearchLog(ctx, command.CreateResearchLogInput{
+		SubjectID: seed.person, SubjectType: "person", Repository: "County Archive",
+		SearchDescription: "Baptisms 1810-1820", Outcome: string(domain.ResearchOutcomeNotFound),
+		SearchDate: time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateResearchLog failed: %v", err)
+	}
+	seed.researchLog = researchLog.ID
+	proof, err := f.handler.CreateProofSummary(ctx, command.CreateProofSummaryInput{
+		FactType: string(domain.FactPersonBirth), SubjectID: seed.person,
+		Conclusion: "Born 1815", Argument: "The census and the register agree",
+	})
+	if err != nil {
+		t.Fatalf("CreateProofSummary failed: %v", err)
+	}
+	seed.proofSummary = proof.ID
 
 	branch, err := f.handler.CreateBranch(ctx, "drift-probe", "")
 	if err != nil {
@@ -1579,6 +1622,42 @@ var branchAwareProbes = map[string]func(s driftSeed) domain.Event{
 	"MediaDeleted": func(s driftSeed) domain.Event {
 		return domain.NewMediaDeleted(s.media, "branch hypothesis")
 	},
+	// GPS artifacts (#760).
+	"EvidenceAnalysisCreated": func(s driftSeed) domain.Event {
+		return domain.NewEvidenceAnalysisCreated(domain.NewEvidenceAnalysis(domain.FactPersonDeath, s.person, "Died 1852"))
+	},
+	"EvidenceAnalysisUpdated": func(s driftSeed) domain.Event {
+		return domain.NewEvidenceAnalysisUpdated(s.analysis, map[string]any{"conclusion": "Born 1814"})
+	},
+	"EvidenceAnalysisDeleted": func(s driftSeed) domain.Event {
+		return domain.NewEvidenceAnalysisDeleted(s.analysis, "branch hypothesis")
+	},
+	"EvidenceConflictDetected": func(s driftSeed) domain.Event {
+		return domain.NewEvidenceConflictDetected(domain.NewEvidenceConflict(
+			domain.FactPersonDeath, s.person, []uuid.UUID{s.analysis}, "branch-only disagreement"))
+	},
+	"EvidenceConflictResolved": func(s driftSeed) domain.Event {
+		return domain.NewEvidenceConflictResolved(s.conflict, "The register wins", domain.ConflictStatusResolved)
+	},
+	"ResearchLogCreated": func(s driftSeed) domain.Event {
+		return domain.NewResearchLogCreated(domain.NewResearchLog(s.person, "person", "Parish Chest",
+			"Burials 1850-1855", domain.ResearchOutcomeFound, time.Date(2024, 4, 1, 0, 0, 0, 0, time.UTC)))
+	},
+	"ResearchLogUpdated": func(s driftSeed) domain.Event {
+		return domain.NewResearchLogUpdated(s.researchLog, map[string]any{"outcome": string(domain.ResearchOutcomeFound)})
+	},
+	"ResearchLogDeleted": func(s driftSeed) domain.Event {
+		return domain.NewResearchLogDeleted(s.researchLog, "branch hypothesis")
+	},
+	"ProofSummaryCreated": func(s driftSeed) domain.Event {
+		return domain.NewProofSummaryCreated(domain.NewProofSummary(domain.FactPersonDeath, s.person, "Died 1852", "The burial register"))
+	},
+	"ProofSummaryUpdated": func(s driftSeed) domain.Event {
+		return domain.NewProofSummaryUpdated(s.proofSummary, map[string]any{"argument": "Revised on the branch"})
+	},
+	"ProofSummaryDeleted": func(s driftSeed) domain.Event {
+		return domain.NewProofSummaryDeleted(s.proofSummary, "branch hypothesis")
+	},
 }
 
 // mainRows is the mainline read-model state a branch-scoped projection must
@@ -1597,6 +1676,13 @@ type mainRows struct {
 	SourceCites  []repository.CitationReadModel
 	Note         *repository.NoteReadModel
 	Media        *repository.MediaReadModel
+	// GPS artifacts (#760).
+	Analysis      *repository.EvidenceAnalysisReadModel
+	Conflict      *repository.EvidenceConflictReadModel
+	ResearchLog   *repository.ResearchLogReadModel
+	ProofSummary  *repository.ProofSummaryReadModel
+	OpenConflicts []repository.EvidenceConflictReadModel
+	Analyses      []repository.EvidenceAnalysisReadModel
 }
 
 func readMainRows(t *testing.T, s driftSeed) mainRows {
@@ -1664,6 +1750,26 @@ func readMainRows(t *testing.T, s driftSeed) mainRows {
 		t.Fatalf("GetMediaWithData(main) failed: %v", err)
 	}
 	rows.Media = media
+
+	// GPS artifacts (#760).
+	if rows.Analysis, err = rs.GetEvidenceAnalysis(ctx, domain.MainBranchID, s.analysis); err != nil {
+		t.Fatalf("GetEvidenceAnalysis(main) failed: %v", err)
+	}
+	if rows.Conflict, err = rs.GetEvidenceConflict(ctx, domain.MainBranchID, s.conflict); err != nil {
+		t.Fatalf("GetEvidenceConflict(main) failed: %v", err)
+	}
+	if rows.ResearchLog, err = rs.GetResearchLog(ctx, domain.MainBranchID, s.researchLog); err != nil {
+		t.Fatalf("GetResearchLog(main) failed: %v", err)
+	}
+	if rows.ProofSummary, err = rs.GetProofSummary(ctx, domain.MainBranchID, s.proofSummary); err != nil {
+		t.Fatalf("GetProofSummary(main) failed: %v", err)
+	}
+	if rows.OpenConflicts, err = rs.ListUnresolvedConflicts(ctx, domain.MainBranchID); err != nil {
+		t.Fatalf("ListUnresolvedConflicts(main) failed: %v", err)
+	}
+	if rows.Analyses, err = rs.GetAnalysesBySubject(ctx, domain.MainBranchID, s.person); err != nil {
+		t.Fatalf("GetAnalysesBySubject(main) failed: %v", err)
+	}
 
 	family, err := rs.GetFamily(ctx, domain.MainBranchID, s.family)
 	if err != nil {
@@ -1807,6 +1913,14 @@ var conflictBlindEventTypes = map[string]string{
 	// Media (#759): each media item is its own aggregate, so MediaCreated opens a
 	// stream nothing on main can have touched.
 	"MediaCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
+	// GPS artifacts (#760): each analysis, evidence conflict, research log and
+	// proof summary is its own aggregate, so its create opens a stream nothing on
+	// main can have touched. (EvidenceConflictDetected is the evidence conflict's
+	// create; EvidenceConflictResolved is compared, see applyEvidenceConflictResolved.)
+	"EvidenceAnalysisCreated":  "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"EvidenceConflictDetected": "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"ResearchLogCreated":       "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"ProofSummaryCreated":      "opens a branch-only stream; identity collisions are the create_create scan's job",
 }
 
 // TestBranchAwareEventTypes_AreConflictComparable is the drift guard between the

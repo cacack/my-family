@@ -364,15 +364,17 @@ type ProofSummaryReadModel struct {
 // ReadModelStore provides access to denormalized read models.
 //
 // Branch scoping (ADR-005) divides the methods below into four categories. Note that
-// categories 3 and 4 both mean "main-only today" for very different reasons — 3 is
+// categories 3 and 4 both mean "main-only" for very different reasons — 3 is
 // unfinished work, 4 is a decision.
 //
 // 1. BRANCH-SCOPED ENTITIES — the #669 slice (Person, PersonName, PersonExternalID,
 // Family, FamilyExternalID, FamilyChild, PedigreeEdge), the person/family facts
 // (LifeEvent, Attribute, Association; #757, sub-issue B of #676), the evidence
-// (Source, SourceExternalID, Citation, Note; #758, sub-issue C) and media
+// (Source, SourceExternalID, Citation, Note; #758, sub-issue C), media
 // metadata (Media; #759, sub-issue D — see the blob rule on the media methods
-// below: only metadata forks, the file bytes stay shared). These own
+// below: only metadata forks, the file bytes stay shared) and the GPS artifacts
+// (EvidenceAnalysis, EvidenceConflict, ResearchLog, ProofSummary; #760,
+// sub-issue E). These own
 // branch_id-keyed tables. Their methods take an explicit domain.BranchID
 // (single-row) or carry it on ListOptions/SearchOptions (list/search); a
 // copy-on-write overlay resolves the branch's row for an entity else falls back to
@@ -387,11 +389,9 @@ type ProofSummaryReadModel struct {
 // does — an explicit branchID, or opts.BranchID for the list methods — and so
 // report the branch's view of the tree, not main's.
 //
-// 3. MAIN-ONLY, PENDING — no branchID yet, but destined for one. These are the
-// remaining sub-issues of #676, and each must replicate the category-1 pattern
-// (branch_id column + overlay + tombstone + cascade) on all three backends:
-//   - EvidenceAnalysis, EvidenceConflict, ResearchLog and ProofSummary are
-//     sub-issue E (#760).
+// 3. MAIN-ONLY, PENDING — empty since #760 closed the last #676 sub-issue. Kept as
+// a category so a future read model that is not yet branch-scoped has a named place
+// to sit (and a reason to be listed here rather than silently main-only).
 //
 // 4. MAIN-ONLY BY DECISION — Submitter, Repository, RepositoryExternalID and
 // LDSOrdinance will NOT gain a branch_id. They are file- and archive-level metadata
@@ -468,7 +468,9 @@ type ReadModelStore interface {
 	// person_external_ids, families, family_external_ids, family_children,
 	// pedigree_edges), the person/family fact tables (life_events, attributes,
 	// associations; #757), the evidence tables (sources, source_external_ids,
-	// citations, notes; #758) and media (#759). It backs the
+	// citations, notes; #758), media (#759) and the GPS artifact tables
+	// (evidence_analyses, evidence_conflicts, research_logs, proof_summaries;
+	// #760). It backs the
 	// branch-delete lifecycle (ADR-005): once a branch is archived its copy-on-write
 	// rows and tombstones are dropped. It is a no-op for domain.MainBranchID — the
 	// mainline is never purged. It also drops any mainline media tombstone that was
@@ -613,36 +615,54 @@ type ReadModelStore interface {
 	SaveLDSOrdinance(ctx context.Context, ordinance *LDSOrdinanceReadModel) error
 	DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) error
 
-	// Evidence analysis operations
-	GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*EvidenceAnalysisReadModel, error)
+	// GPS artifacts (branch-scoped, #760): evidence analyses, evidence conflicts,
+	// research logs and proof summaries.
+	//
+	// Each is a branch-scoped entity (ADR-005) with the same shape as the life
+	// events: single-row methods take an explicit branchID; the paged lists carry
+	// it on opts.BranchID; and every filtered list (per fact, per subject, and
+	// ListUnresolvedConflicts) resolves each id through the per-id overlay FIRST
+	// and applies its predicate to the WINNING row. So a branch that resolves a
+	// conflict no longer sees main's open row for it, and a branch that re-points
+	// an artifact at another subject lists it under the new subject only.
+	//
+	// An EVIDENCE conflict is a genealogical finding (two analyses disagree about a
+	// fact). It is unrelated to a MERGE conflict (ADR-005, §Conflict definition),
+	// which is computed from the event log alone; nothing here feeds merge
+	// conflict detection.
+	//
+	// DeletePerson and DeleteFamily cascade to every GPS artifact whose subject is
+	// the deleted entity, on the same branch only (deleted on main, tombstoned on a
+	// branch): the tables have no foreign key to their subject.
+	GetEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*EvidenceAnalysisReadModel, error)
 	ListEvidenceAnalyses(ctx context.Context, opts ListOptions) ([]EvidenceAnalysisReadModel, int, error)
-	GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
-	GetAnalysesBySubject(ctx context.Context, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
-	SaveEvidenceAnalysis(ctx context.Context, analysis *EvidenceAnalysisReadModel) error
-	DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error
+	GetAnalysesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
+	GetAnalysesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]EvidenceAnalysisReadModel, error)
+	SaveEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, analysis *EvidenceAnalysisReadModel) error
+	DeleteEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Evidence conflict operations
-	GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*EvidenceConflictReadModel, error)
+	// Evidence conflict operations (branch-scoped, #760; see above)
+	GetEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*EvidenceConflictReadModel, error)
 	ListEvidenceConflicts(ctx context.Context, opts ListOptions) ([]EvidenceConflictReadModel, int, error)
-	GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]EvidenceConflictReadModel, error)
-	ListUnresolvedConflicts(ctx context.Context) ([]EvidenceConflictReadModel, error)
-	SaveEvidenceConflict(ctx context.Context, conflict *EvidenceConflictReadModel) error
-	DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error
+	GetConflictsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]EvidenceConflictReadModel, error)
+	ListUnresolvedConflicts(ctx context.Context, branchID domain.BranchID) ([]EvidenceConflictReadModel, error)
+	SaveEvidenceConflict(ctx context.Context, branchID domain.BranchID, conflict *EvidenceConflictReadModel) error
+	DeleteEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Research log operations
-	GetResearchLog(ctx context.Context, id uuid.UUID) (*ResearchLogReadModel, error)
+	// Research log operations (branch-scoped, #760; see above)
+	GetResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*ResearchLogReadModel, error)
 	ListResearchLogs(ctx context.Context, opts ListOptions) ([]ResearchLogReadModel, int, error)
-	GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]ResearchLogReadModel, error)
-	SaveResearchLog(ctx context.Context, log *ResearchLogReadModel) error
-	DeleteResearchLog(ctx context.Context, id uuid.UUID) error
+	GetResearchLogsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]ResearchLogReadModel, error)
+	SaveResearchLog(ctx context.Context, branchID domain.BranchID, log *ResearchLogReadModel) error
+	DeleteResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Proof summary operations
-	GetProofSummary(ctx context.Context, id uuid.UUID) (*ProofSummaryReadModel, error)
+	// Proof summary operations (branch-scoped, #760; see above)
+	GetProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*ProofSummaryReadModel, error)
 	ListProofSummaries(ctx context.Context, opts ListOptions) ([]ProofSummaryReadModel, int, error)
-	GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
-	GetProofSummariesBySubject(ctx context.Context, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
-	SaveProofSummary(ctx context.Context, summary *ProofSummaryReadModel) error
-	DeleteProofSummary(ctx context.Context, id uuid.UUID) error
+	GetProofSummariesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
+	GetProofSummariesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]ProofSummaryReadModel, error)
+	SaveProofSummary(ctx context.Context, branchID domain.BranchID, summary *ProofSummaryReadModel) error
+	DeleteProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
 	// Browse operations
 	//

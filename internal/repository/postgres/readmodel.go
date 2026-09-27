@@ -535,8 +535,12 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_lds_ordinances_type ON lds_ordinances(type);
 
 		-- Evidence analyses table
+		-- Branch-aware (#760): (id, branch_id) row identity + deleted tombstone, like
+		-- every GPS artifact table below. subject_id has no foreign key; DeletePerson
+		-- and DeleteFamily cascade in code.
 		CREATE TABLE IF NOT EXISTS evidence_analyses (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			fact_type VARCHAR(50) NOT NULL,
 			subject_id UUID NOT NULL,
 			citation_ids JSONB,
@@ -545,15 +549,18 @@ func (s *ReadModelStore) createTables() error {
 			notes TEXT,
 			version BIGINT NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_evidence_analyses_subject ON evidence_analyses(subject_id);
 		CREATE INDEX IF NOT EXISTS idx_evidence_analyses_fact_type ON evidence_analyses(fact_type);
 
-		-- Evidence conflicts table
+		-- Evidence conflicts table (branch-aware, #760)
 		CREATE TABLE IF NOT EXISTS evidence_conflicts (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			fact_type VARCHAR(50) NOT NULL,
 			subject_id UUID NOT NULL,
 			analysis_ids JSONB,
@@ -562,15 +569,18 @@ func (s *ReadModelStore) createTables() error {
 			status VARCHAR(20) NOT NULL,
 			version BIGINT NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_evidence_conflicts_subject ON evidence_conflicts(subject_id);
 		CREATE INDEX IF NOT EXISTS idx_evidence_conflicts_status ON evidence_conflicts(status);
 
-		-- Research logs table
+		-- Research logs table (branch-aware, #760)
 		CREATE TABLE IF NOT EXISTS research_logs (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			subject_id UUID NOT NULL,
 			subject_type VARCHAR(20) NOT NULL,
 			repository VARCHAR(255) NOT NULL,
@@ -580,15 +590,18 @@ func (s *ReadModelStore) createTables() error {
 			search_date TIMESTAMPTZ NOT NULL,
 			version BIGINT NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_research_logs_subject ON research_logs(subject_id);
 		CREATE INDEX IF NOT EXISTS idx_research_logs_outcome ON research_logs(outcome);
 
-		-- Proof summaries table
+		-- Proof summaries table (branch-aware, #760)
 		CREATE TABLE IF NOT EXISTS proof_summaries (
-			id UUID PRIMARY KEY,
+			id UUID NOT NULL,
+			branch_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			fact_type VARCHAR(50) NOT NULL,
 			subject_id UUID NOT NULL,
 			conclusion TEXT NOT NULL,
@@ -597,7 +610,9 @@ func (s *ReadModelStore) createTables() error {
 			research_status VARCHAR(20),
 			version BIGINT NOT NULL DEFAULT 1,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			deleted BOOLEAN NOT NULL DEFAULT FALSE,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_proof_summaries_subject ON proof_summaries(subject_id);
@@ -888,6 +903,11 @@ func (s *ReadModelStore) runBranchMigration() {
 		{"notes", "id"},
 		// Media metadata (#759).
 		{"media", "id"},
+		// GPS artifacts (#760).
+		{"evidence_analyses", "id"},
+		{"evidence_conflicts", "id"},
+		{"research_logs", "id"},
+		{"proof_summaries", "id"},
 	}
 	for _, t := range tables {
 		// Column adds are idempotent and safe outside a transaction.
@@ -990,14 +1010,16 @@ func (s *ReadModelStore) runBranchMigration() {
 
 // branchScopedTables are every read-model table carrying branch_id/deleted: the
 // seven #669 slice tables, the three person/family fact tables (#757), the
-// four evidence tables (#758) and media (#759). PurgeBranch drops a branch's rows
-// from each, and runBranchMigration gives each its branch_id-leading index.
+// four evidence tables (#758), media (#759) and the four GPS artifact tables
+// (#760). PurgeBranch drops a branch's rows from each, and runBranchMigration
+// gives each its branch_id-leading index.
 var branchScopedTables = []string{
 	"persons", "person_names", "person_external_ids",
 	"families", "family_external_ids", "family_children", "pedigree_edges",
 	"life_events", "attributes", "associations",
 	"sources", "source_external_ids", "citations", "notes",
 	"media",
+	"evidence_analyses", "evidence_conflicts", "research_logs", "proof_summaries",
 }
 
 // mainBranchDefault is the column default that backfills existing rows to the
@@ -1528,16 +1550,23 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 		if err := cascadeMedia(ctx, tx, personMediaFilter, branchID, id); err != nil {
 			return err
 		}
+		if err := cascadeGPS(ctx, tx, branchID, id); err != nil {
+			return err
+		}
 		return tx.Commit()
 	}
 
 	// Branch (non-main) delete: tombstone the person and its branch-scoped
 	// dependents (names, external IDs, pedigree edge, and the life events,
-	// attributes and associations it owns or appears in) and its media (#759).
+	// attributes and associations it owns or appears in), its media (#759) and
+	// the GPS artifacts about it (#760).
 	if err := cascadePersonFacts(ctx, tx, branchID, id); err != nil {
 		return err
 	}
 	if err := cascadeMedia(ctx, tx, personMediaFilter, branchID, id); err != nil {
+		return err
+	}
+	if err := cascadeGPS(ctx, tx, branchID, id); err != nil {
 		return err
 	}
 
@@ -2195,11 +2224,14 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 	}
 
 	// The family's own life events cascade with it on either scope (#757), and
-	// so does its media (#759).
+	// so do its media (#759) and the GPS artifacts about it (#760).
 	if err := cascadeOverlayRows(ctx, tx, "life_events", eventSelectCols, familyEventsFilter, branchID, id); err != nil {
 		return err
 	}
 	if err := cascadeMedia(ctx, tx, familyMediaFilter, branchID, id); err != nil {
+		return err
+	}
+	if err := cascadeGPS(ctx, tx, branchID, id); err != nil {
 		return err
 	}
 
@@ -5691,178 +5723,263 @@ func (s *ReadModelStore) DeleteLDSOrdinance(ctx context.Context, id uuid.UUID) e
 	return nil
 }
 
-// GetEvidenceAnalysis retrieves an evidence analysis by ID.
-func (s *ReadModelStore) GetEvidenceAnalysis(ctx context.Context, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
-		FROM evidence_analyses WHERE id = $1
-	`, id)
+// GPS artifacts (#760): evidence_analyses, evidence_conflicts, research_logs and
+// proof_summaries are id-keyed branch-scoped tables with the life-event shape:
+// every read goes through overlaySrc / overlayGetQuery (one set-based DISTINCT ON
+// query with the main-scope fast path) and every filtered list applies its
+// predicate to the winning row, so a branch-side resolution or re-pointed
+// subject decides what the branch lists.
+const (
+	// analysisSelectCols is scanAnalysisRow's column order (unaliased).
+	analysisSelectCols = `id, fact_type, subject_id, citation_ids, conclusion, research_status, notes,
+		version, created_at, updated_at`
 
+	// conflictSelectCols is scanConflictRow's column order (unaliased).
+	conflictSelectCols = `id, fact_type, subject_id, analysis_ids, description, resolution, status,
+		version, created_at, updated_at`
+
+	// researchLogSelectCols is scanResearchLogRow's column order (unaliased).
+	researchLogSelectCols = `id, subject_id, subject_type, repository, search_description, outcome, notes,
+		search_date, version, created_at, updated_at`
+
+	// proofSummarySelectCols is scanProofSummaryRow's column order (unaliased).
+	proofSummarySelectCols = `id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status,
+		version, created_at, updated_at`
+
+	// GPS artifact filters. %[1]d (and %[2]d) are the placeholder numbers the
+	// caller binds after overlayArgs.
+	gpsSubjectFilter      = `subject_id = $%[1]d`
+	gpsFactFilter         = `fact_type = $%[1]d AND subject_id = $%[2]d`
+	gpsConflictOpenFilter = `status = $%[1]d`
+
+	// gpsSubjectOrder is the deterministic order of every per-subject and
+	// per-fact GPS list, on every backend.
+	gpsSubjectOrder = `created_at ASC, id ASC`
+)
+
+// gpsTable names one GPS artifact table and the column list its rows carry.
+type gpsTable struct {
+	name, cols string
+}
+
+// gpsTables are the four GPS artifact tables DeletePerson/DeleteFamily cascade.
+var gpsTables = []gpsTable{
+	{"evidence_analyses", analysisSelectCols},
+	{"evidence_conflicts", conflictSelectCols},
+	{"research_logs", researchLogSelectCols},
+	{"proof_summaries", proofSummarySelectCols},
+}
+
+// cascadeGPS removes, on branchID, every GPS artifact whose subject is
+// subjectID (#760): deleted on main, tombstoned on a branch. The tables have no
+// foreign key to their subject, so DeletePerson and DeleteFamily run this.
+func cascadeGPS(ctx context.Context, tx *sql.Tx, branchID domain.BranchID, subjectID uuid.UUID) error {
+	for _, t := range gpsTables {
+		if err := cascadeOverlayRows(ctx, tx, t.name, t.cols, gpsSubjectFilter, branchID, subjectID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// gpsListOrder returns the ORDER BY of a paged GPS list. Both parts are chosen
+// from constants here, never copied from the request.
+func gpsListOrder(opts repository.ListOptions) string {
+	dir := "DESC"
+	if opts.Order == "asc" {
+		dir = "ASC"
+	}
+	col := "updated_at"
+	if opts.Sort == "created_at" {
+		col = "created_at"
+	}
+	return col + " " + dir + ", id " + dir
+}
+
+// queryGPSPage runs the COUNT and the paged SELECT of a GPS list over
+// opts.BranchID's resolved view of table, calling scan once per row.
+func (s *ReadModelStore) queryGPSPage(ctx context.Context, table, cols string, opts repository.ListOptions, scan func(*sql.Rows) error) (int, error) {
+	args, n := overlayArgs(opts.BranchID)
+	src := overlaySrc(table, cols, "", opts.BranchID)
+
+	var total int
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+src+" g", args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count %s: %w", table, err)
+	}
+
+	// #nosec G201 G202 -- src, cols and the ORDER BY are internal constants; limit/offset stay bound parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	query := fmt.Sprintf("SELECT %s FROM %s g ORDER BY %s LIMIT $%d OFFSET $%d", cols, src, gpsListOrder(opts), n, n+1)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
+	if err != nil {
+		return 0, fmt.Errorf("query %s: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := scan(rows); err != nil {
+			return 0, err
+		}
+	}
+	return total, rows.Err()
+}
+
+// queryGPSFiltered returns branchID's resolved rows of table that filter (a
+// package constant with %[n]d placeholders) selects, binding values in order,
+// calling scan once per row in gpsSubjectOrder.
+func (s *ReadModelStore) queryGPSFiltered(ctx context.Context, table, cols, filter string, branchID domain.BranchID, scan func(*sql.Rows) error, values ...any) error {
+	args, n := overlayArgs(branchID)
+	placeholders := make([]any, len(values))
+	for i := range values {
+		placeholders[i] = n + i
+	}
+	src := overlaySrc(table, cols, fmt.Sprintf(filter, placeholders...), branchID)
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, "SELECT "+cols+" FROM "+src+" g ORDER BY "+gpsSubjectOrder, append(args, values...)...)
+	if err != nil {
+		return fmt.Errorf("query %s: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := scan(rows); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
+// getGPSRow runs the single-row overlay lookup of an id-keyed GPS table.
+func (s *ReadModelStore) getGPSRow(ctx context.Context, table, cols string, branchID domain.BranchID, id uuid.UUID) *sql.Row {
+	// #nosec G202 -- the query is built by overlayGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	return s.db.QueryRowContext(ctx, overlayGetQuery(table, cols), id, branchID.UUID(), domain.MainBranchID.UUID())
+}
+
+func scanAnalysisRow(row rowScanner) (*repository.EvidenceAnalysisReadModel, error) {
 	var a repository.EvidenceAnalysisReadModel
 	var citationIDs, researchStatus, notes sql.NullString
-	err := row.Scan(
-		&a.ID, &a.FactType, &a.SubjectID, &citationIDs,
-		&a.Conclusion, &researchStatus, &notes,
-		&a.Version, &a.CreatedAt, &a.UpdatedAt,
-	)
-	if err == sql.ErrNoRows {
+	err := row.Scan(&a.ID, &a.FactType, &a.SubjectID, &citationIDs, &a.Conclusion, &researchStatus, &notes,
+		&a.Version, &a.CreatedAt, &a.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan evidence_analysis: %w", err)
 	}
-	if citationIDs.Valid {
-		a.CitationIDsJSON = citationIDs.String
-	}
-	if researchStatus.Valid {
-		a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-	}
-	if notes.Valid {
-		a.Notes = notes.String
-	}
+	a.CitationIDsJSON = citationIDs.String
+	a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+	a.Notes = notes.String
 	return &a, nil
 }
 
-// ListEvidenceAnalyses returns a paginated list of evidence analyses.
+func scanConflictRow(row rowScanner) (*repository.EvidenceConflictReadModel, error) {
+	var c repository.EvidenceConflictReadModel
+	var analysisIDs, resolution sql.NullString
+	err := row.Scan(&c.ID, &c.FactType, &c.SubjectID, &analysisIDs, &c.Description, &resolution, &c.Status,
+		&c.Version, &c.CreatedAt, &c.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan evidence_conflict: %w", err)
+	}
+	c.AnalysisIDsJSON = analysisIDs.String
+	c.Resolution = resolution.String
+	return &c, nil
+}
+
+func scanResearchLogRow(row rowScanner) (*repository.ResearchLogReadModel, error) {
+	var l repository.ResearchLogReadModel
+	var notes sql.NullString
+	err := row.Scan(&l.ID, &l.SubjectID, &l.SubjectType, &l.Repository, &l.SearchDescription, &l.Outcome, &notes,
+		&l.SearchDate, &l.Version, &l.CreatedAt, &l.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan research_log: %w", err)
+	}
+	l.Notes = notes.String
+	return &l, nil
+}
+
+func scanProofSummaryRow(row rowScanner) (*repository.ProofSummaryReadModel, error) {
+	var ps repository.ProofSummaryReadModel
+	var analysisIDs, researchStatus sql.NullString
+	err := row.Scan(&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion, &ps.Argument, &analysisIDs, &researchStatus,
+		&ps.Version, &ps.CreatedAt, &ps.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("scan proof_summary: %w", err)
+	}
+	ps.AnalysisIDsJSON = analysisIDs.String
+	ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
+	return &ps, nil
+}
+
+// collectRows adapts a row scanner into a queryGPS* callback appending to out.
+func collectRows[T any](out *[]T, scan func(rowScanner) (*T, error)) func(*sql.Rows) error {
+	return func(rows *sql.Rows) error {
+		row, err := scan(rows)
+		if err != nil {
+			return err
+		}
+		*out = append(*out, *row)
+		return nil
+	}
+}
+
+// GetEvidenceAnalysis retrieves an evidence analysis by ID within the branch
+// overlay (ADR-005, #760).
+func (s *ReadModelStore) GetEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EvidenceAnalysisReadModel, error) {
+	return scanAnalysisRow(s.getGPSRow(ctx, "evidence_analyses", analysisSelectCols, branchID, id))
+}
+
+// ListEvidenceAnalyses returns a paginated list of the evidence analyses visible
+// on opts.BranchID.
 func (s *ReadModelStore) ListEvidenceAnalyses(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceAnalysisReadModel, int, error) {
-	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM evidence_analyses").Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count evidence_analyses: %w", err)
-	}
-
-	orderDir := "DESC"
-	if opts.Order == "asc" {
-		orderDir = "ASC"
-	}
-
-	sortCol := "updated_at"
-	if opts.Sort == "created_at" {
-		sortCol = "created_at"
-	}
-
-	// #nosec G201 -- orderDir and sortCol are validated above, not user input
-	query := fmt.Sprintf(`
-		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
-		FROM evidence_analyses
-		ORDER BY %s %s, id %s
-		LIMIT $1 OFFSET $2
-	`, sortCol, orderDir, orderDir)
-
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query evidence_analyses: %w", err)
-	}
-	defer rows.Close()
-
 	var results []repository.EvidenceAnalysisReadModel
-	for rows.Next() {
-		var a repository.EvidenceAnalysisReadModel
-		var citationIDs, researchStatus, notes sql.NullString
-		if err := rows.Scan(
-			&a.ID, &a.FactType, &a.SubjectID, &citationIDs,
-			&a.Conclusion, &researchStatus, &notes,
-			&a.Version, &a.CreatedAt, &a.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan evidence_analysis: %w", err)
-		}
-		if citationIDs.Valid {
-			a.CitationIDsJSON = citationIDs.String
-		}
-		if researchStatus.Valid {
-			a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-		}
-		if notes.Valid {
-			a.Notes = notes.String
-		}
-		results = append(results, a)
+	total, err := s.queryGPSPage(ctx, "evidence_analyses", analysisSelectCols, opts, collectRows(&results, scanAnalysisRow))
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return results, total, rows.Err()
+	return results, total, nil
 }
 
-// GetAnalysesForFact returns all evidence analyses for a given fact type and subject.
-func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
-		FROM evidence_analyses
-		WHERE fact_type = $1 AND subject_id = $2
-	`, string(factType), subjectID)
-	if err != nil {
-		return nil, fmt.Errorf("query analyses for fact: %w", err)
-	}
-	defer rows.Close()
-
+// GetAnalysesForFact returns the evidence analyses of a fact type and subject
+// visible on branchID, matched on each id's winning row.
+func (s *ReadModelStore) GetAnalysesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
 	var results []repository.EvidenceAnalysisReadModel
-	for rows.Next() {
-		var a repository.EvidenceAnalysisReadModel
-		var citationIDs, researchStatus, notes sql.NullString
-		if err := rows.Scan(
-			&a.ID, &a.FactType, &a.SubjectID, &citationIDs,
-			&a.Conclusion, &researchStatus, &notes,
-			&a.Version, &a.CreatedAt, &a.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan evidence_analysis: %w", err)
-		}
-		if citationIDs.Valid {
-			a.CitationIDsJSON = citationIDs.String
-		}
-		if researchStatus.Valid {
-			a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-		}
-		if notes.Valid {
-			a.Notes = notes.String
-		}
-		results = append(results, a)
+	if err := s.queryGPSFiltered(ctx, "evidence_analyses", analysisSelectCols, gpsFactFilter, branchID,
+		collectRows(&results, scanAnalysisRow), string(factType), subjectID); err != nil {
+		return nil, fmt.Errorf("analyses for fact: %w", err)
 	}
-
-	return results, rows.Err()
+	return results, nil
 }
 
-// GetAnalysesBySubject returns all evidence analyses for a given subject, regardless of fact type.
-func (s *ReadModelStore) GetAnalysesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at
-		FROM evidence_analyses
-		WHERE subject_id = $1
-	`, subjectID)
-	if err != nil {
-		return nil, fmt.Errorf("query analyses by subject: %w", err)
-	}
-	defer rows.Close()
-
+// GetAnalysesBySubject returns the evidence analyses of a subject visible on
+// branchID, regardless of fact type.
+func (s *ReadModelStore) GetAnalysesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.EvidenceAnalysisReadModel, error) {
 	var results []repository.EvidenceAnalysisReadModel
-	for rows.Next() {
-		var a repository.EvidenceAnalysisReadModel
-		var citationIDs, researchStatus, notes sql.NullString
-		if err := rows.Scan(
-			&a.ID, &a.FactType, &a.SubjectID, &citationIDs,
-			&a.Conclusion, &researchStatus, &notes,
-			&a.Version, &a.CreatedAt, &a.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan evidence_analysis: %w", err)
-		}
-		if citationIDs.Valid {
-			a.CitationIDsJSON = citationIDs.String
-		}
-		if researchStatus.Valid {
-			a.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-		}
-		if notes.Valid {
-			a.Notes = notes.String
-		}
-		results = append(results, a)
+	if err := s.queryGPSFiltered(ctx, "evidence_analyses", analysisSelectCols, gpsSubjectFilter, branchID,
+		collectRows(&results, scanAnalysisRow), subjectID); err != nil {
+		return nil, fmt.Errorf("analyses by subject: %w", err)
 	}
-
-	return results, rows.Err()
+	return results, nil
 }
 
-// SaveEvidenceAnalysis saves or updates an evidence analysis.
-func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *repository.EvidenceAnalysisReadModel) error {
+// SaveEvidenceAnalysis saves or updates an evidence analysis on the given
+// branch (ADR-005); a save always clears any prior tombstone.
+func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, analysis *repository.EvidenceAnalysisReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO evidence_analyses (id, fact_type, subject_id, citation_ids, conclusion, research_status, notes, version, created_at, updated_at)
-		VALUES ($1, $2, $3, NULLIF($4, '')::JSONB, $5, NULLIF($6, ''), NULLIF($7, ''), $8, $9, $10)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO evidence_analyses (id, branch_id, fact_type, subject_id, citation_ids, conclusion, research_status,
+		                               notes, version, created_at, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, NULLIF($5, '')::JSONB, $6, NULLIF($7, ''), NULLIF($8, ''), $9, $10, $11, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			fact_type = EXCLUDED.fact_type,
 			subject_id = EXCLUDED.subject_id,
 			citation_ids = EXCLUDED.citation_ids,
@@ -5870,8 +5987,9 @@ func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *rep
 			research_status = EXCLUDED.research_status,
 			notes = EXCLUDED.notes,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, analysis.ID, analysis.FactType, analysis.SubjectID, analysis.CitationIDsJSON,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, analysis.ID, branchID.UUID(), string(analysis.FactType), analysis.SubjectID, analysis.CitationIDsJSON,
 		analysis.Conclusion, string(analysis.ResearchStatus), analysis.Notes,
 		analysis.Version, analysis.CreatedAt, analysis.UpdatedAt)
 	if err != nil {
@@ -5880,175 +5998,64 @@ func (s *ReadModelStore) SaveEvidenceAnalysis(ctx context.Context, analysis *rep
 	return nil
 }
 
-// DeleteEvidenceAnalysis deletes an evidence analysis by ID.
-func (s *ReadModelStore) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM evidence_analyses WHERE id = $1", id)
-	if err != nil {
+// DeleteEvidenceAnalysis removes an evidence analysis (ADR-005): a real removal
+// on main, a tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteEvidenceAnalysis(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "evidence_analyses", analysisSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete evidence_analysis: %w", err)
 	}
 	return nil
 }
 
-// GetEvidenceConflict retrieves an evidence conflict by ID.
-func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
-		FROM evidence_conflicts WHERE id = $1
-	`, id)
-
-	var c repository.EvidenceConflictReadModel
-	var analysisIDs, resolution sql.NullString
-	err := row.Scan(
-		&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
-		&c.Description, &resolution, &c.Status,
-		&c.Version, &c.CreatedAt, &c.UpdatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan evidence_conflict: %w", err)
-	}
-	if analysisIDs.Valid {
-		c.AnalysisIDsJSON = analysisIDs.String
-	}
-	if resolution.Valid {
-		c.Resolution = resolution.String
-	}
-	return &c, nil
+// GetEvidenceConflict retrieves an evidence conflict by ID within the branch
+// overlay (ADR-005, #760).
+func (s *ReadModelStore) GetEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EvidenceConflictReadModel, error) {
+	return scanConflictRow(s.getGPSRow(ctx, "evidence_conflicts", conflictSelectCols, branchID, id))
 }
 
-// ListEvidenceConflicts returns a paginated list of evidence conflicts.
+// ListEvidenceConflicts returns a paginated list of the evidence conflicts
+// visible on opts.BranchID.
 func (s *ReadModelStore) ListEvidenceConflicts(ctx context.Context, opts repository.ListOptions) ([]repository.EvidenceConflictReadModel, int, error) {
-	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM evidence_conflicts").Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count evidence_conflicts: %w", err)
-	}
-
-	orderDir := "DESC"
-	if opts.Order == "asc" {
-		orderDir = "ASC"
-	}
-
-	sortCol := "updated_at"
-	if opts.Sort == "created_at" {
-		sortCol = "created_at"
-	}
-
-	// #nosec G201 -- orderDir and sortCol are validated above, not user input
-	query := fmt.Sprintf(`
-		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
-		FROM evidence_conflicts
-		ORDER BY %s %s, id %s
-		LIMIT $1 OFFSET $2
-	`, sortCol, orderDir, orderDir)
-
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query evidence_conflicts: %w", err)
-	}
-	defer rows.Close()
-
 	var results []repository.EvidenceConflictReadModel
-	for rows.Next() {
-		var c repository.EvidenceConflictReadModel
-		var analysisIDs, resolution sql.NullString
-		if err := rows.Scan(
-			&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
-			&c.Description, &resolution, &c.Status,
-			&c.Version, &c.CreatedAt, &c.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan evidence_conflict: %w", err)
-		}
-		if analysisIDs.Valid {
-			c.AnalysisIDsJSON = analysisIDs.String
-		}
-		if resolution.Valid {
-			c.Resolution = resolution.String
-		}
-		results = append(results, c)
+	total, err := s.queryGPSPage(ctx, "evidence_conflicts", conflictSelectCols, opts, collectRows(&results, scanConflictRow))
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return results, total, rows.Err()
+	return results, total, nil
 }
 
-// GetConflictsForSubject returns all evidence conflicts for a given subject.
-func (s *ReadModelStore) GetConflictsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
-		FROM evidence_conflicts
-		WHERE subject_id = $1
-	`, subjectID)
-	if err != nil {
-		return nil, fmt.Errorf("query conflicts for subject: %w", err)
-	}
-	defer rows.Close()
-
+// GetConflictsForSubject returns the evidence conflicts of a subject visible on
+// branchID.
+func (s *ReadModelStore) GetConflictsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.EvidenceConflictReadModel, error) {
 	var results []repository.EvidenceConflictReadModel
-	for rows.Next() {
-		var c repository.EvidenceConflictReadModel
-		var analysisIDs, resolution sql.NullString
-		if err := rows.Scan(
-			&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
-			&c.Description, &resolution, &c.Status,
-			&c.Version, &c.CreatedAt, &c.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan evidence_conflict: %w", err)
-		}
-		if analysisIDs.Valid {
-			c.AnalysisIDsJSON = analysisIDs.String
-		}
-		if resolution.Valid {
-			c.Resolution = resolution.String
-		}
-		results = append(results, c)
+	if err := s.queryGPSFiltered(ctx, "evidence_conflicts", conflictSelectCols, gpsSubjectFilter, branchID,
+		collectRows(&results, scanConflictRow), subjectID); err != nil {
+		return nil, fmt.Errorf("conflicts for subject: %w", err)
 	}
-
-	return results, rows.Err()
+	return results, nil
 }
 
-// ListUnresolvedConflicts returns all unresolved (open) evidence conflicts.
-func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context) ([]repository.EvidenceConflictReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at
-		FROM evidence_conflicts
-		WHERE status = $1
-	`, string(domain.ConflictStatusOpen))
-	if err != nil {
-		return nil, fmt.Errorf("query unresolved conflicts: %w", err)
-	}
-	defer rows.Close()
-
+// ListUnresolvedConflicts returns the open evidence conflicts visible on
+// branchID. overlaySrc resolves each conflict first and applies the status
+// predicate to the winning row, so a conflict a branch resolved is not listed on
+// that branch even though main's row for it is still open.
+func (s *ReadModelStore) ListUnresolvedConflicts(ctx context.Context, branchID domain.BranchID) ([]repository.EvidenceConflictReadModel, error) {
 	var results []repository.EvidenceConflictReadModel
-	for rows.Next() {
-		var c repository.EvidenceConflictReadModel
-		var analysisIDs, resolution sql.NullString
-		if err := rows.Scan(
-			&c.ID, &c.FactType, &c.SubjectID, &analysisIDs,
-			&c.Description, &resolution, &c.Status,
-			&c.Version, &c.CreatedAt, &c.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan evidence_conflict: %w", err)
-		}
-		if analysisIDs.Valid {
-			c.AnalysisIDsJSON = analysisIDs.String
-		}
-		if resolution.Valid {
-			c.Resolution = resolution.String
-		}
-		results = append(results, c)
+	if err := s.queryGPSFiltered(ctx, "evidence_conflicts", conflictSelectCols, gpsConflictOpenFilter, branchID,
+		collectRows(&results, scanConflictRow), string(domain.ConflictStatusOpen)); err != nil {
+		return nil, fmt.Errorf("unresolved conflicts: %w", err)
 	}
-
-	return results, rows.Err()
+	return results, nil
 }
 
-// SaveEvidenceConflict saves or updates an evidence conflict.
-func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *repository.EvidenceConflictReadModel) error {
+// SaveEvidenceConflict saves or updates an evidence conflict on the given branch
+// (ADR-005); a save always clears any prior tombstone.
+func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, branchID domain.BranchID, conflict *repository.EvidenceConflictReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO evidence_conflicts (id, fact_type, subject_id, analysis_ids, description, resolution, status, version, created_at, updated_at)
-		VALUES ($1, $2, $3, NULLIF($4, '')::JSONB, $5, NULLIF($6, ''), $7, $8, $9, $10)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO evidence_conflicts (id, branch_id, fact_type, subject_id, analysis_ids, description, resolution,
+		                                status, version, created_at, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, NULLIF($5, '')::JSONB, $6, NULLIF($7, ''), $8, $9, $10, $11, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			fact_type = EXCLUDED.fact_type,
 			subject_id = EXCLUDED.subject_id,
 			analysis_ids = EXCLUDED.analysis_ids,
@@ -6056,9 +6063,10 @@ func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *rep
 			resolution = EXCLUDED.resolution,
 			status = EXCLUDED.status,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, conflict.ID, conflict.FactType, conflict.SubjectID, conflict.AnalysisIDsJSON,
-		conflict.Description, conflict.Resolution, conflict.Status,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, conflict.ID, branchID.UUID(), string(conflict.FactType), conflict.SubjectID, conflict.AnalysisIDsJSON,
+		conflict.Description, conflict.Resolution, string(conflict.Status),
 		conflict.Version, conflict.CreatedAt, conflict.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save evidence_conflict: %w", err)
@@ -6066,131 +6074,51 @@ func (s *ReadModelStore) SaveEvidenceConflict(ctx context.Context, conflict *rep
 	return nil
 }
 
-// DeleteEvidenceConflict deletes an evidence conflict by ID.
-func (s *ReadModelStore) DeleteEvidenceConflict(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM evidence_conflicts WHERE id = $1", id)
-	if err != nil {
+// DeleteEvidenceConflict removes an evidence conflict (ADR-005): a real removal
+// on main, a tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteEvidenceConflict(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "evidence_conflicts", conflictSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete evidence_conflict: %w", err)
 	}
 	return nil
 }
 
-// GetResearchLog retrieves a research log by ID.
-func (s *ReadModelStore) GetResearchLog(ctx context.Context, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
-		FROM research_logs WHERE id = $1
-	`, id)
-
-	var l repository.ResearchLogReadModel
-	var notes sql.NullString
-	err := row.Scan(
-		&l.ID, &l.SubjectID, &l.SubjectType, &l.Repository,
-		&l.SearchDescription, &l.Outcome, &notes,
-		&l.SearchDate, &l.Version, &l.CreatedAt, &l.UpdatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan research_log: %w", err)
-	}
-	if notes.Valid {
-		l.Notes = notes.String
-	}
-	return &l, nil
+// GetResearchLog retrieves a research log by ID within the branch overlay
+// (ADR-005, #760).
+func (s *ReadModelStore) GetResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.ResearchLogReadModel, error) {
+	return scanResearchLogRow(s.getGPSRow(ctx, "research_logs", researchLogSelectCols, branchID, id))
 }
 
-// ListResearchLogs returns a paginated list of research logs.
+// ListResearchLogs returns a paginated list of the research logs visible on
+// opts.BranchID.
 func (s *ReadModelStore) ListResearchLogs(ctx context.Context, opts repository.ListOptions) ([]repository.ResearchLogReadModel, int, error) {
-	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM research_logs").Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count research_logs: %w", err)
-	}
-
-	orderDir := "DESC"
-	if opts.Order == "asc" {
-		orderDir = "ASC"
-	}
-
-	sortCol := "updated_at"
-	if opts.Sort == "created_at" {
-		sortCol = "created_at"
-	}
-
-	// #nosec G201 -- orderDir and sortCol are validated above, not user input
-	query := fmt.Sprintf(`
-		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
-		FROM research_logs
-		ORDER BY %s %s, id %s
-		LIMIT $1 OFFSET $2
-	`, sortCol, orderDir, orderDir)
-
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query research_logs: %w", err)
-	}
-	defer rows.Close()
-
 	var results []repository.ResearchLogReadModel
-	for rows.Next() {
-		var l repository.ResearchLogReadModel
-		var notes sql.NullString
-		if err := rows.Scan(
-			&l.ID, &l.SubjectID, &l.SubjectType, &l.Repository,
-			&l.SearchDescription, &l.Outcome, &notes,
-			&l.SearchDate, &l.Version, &l.CreatedAt, &l.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan research_log: %w", err)
-		}
-		if notes.Valid {
-			l.Notes = notes.String
-		}
-		results = append(results, l)
+	total, err := s.queryGPSPage(ctx, "research_logs", researchLogSelectCols, opts, collectRows(&results, scanResearchLogRow))
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return results, total, rows.Err()
+	return results, total, nil
 }
 
-// GetResearchLogsForSubject returns all research logs for a given subject.
-func (s *ReadModelStore) GetResearchLogsForSubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at
-		FROM research_logs
-		WHERE subject_id = $1
-	`, subjectID)
-	if err != nil {
-		return nil, fmt.Errorf("query research logs for subject: %w", err)
-	}
-	defer rows.Close()
-
+// GetResearchLogsForSubject returns the research logs of a subject visible on
+// branchID.
+func (s *ReadModelStore) GetResearchLogsForSubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.ResearchLogReadModel, error) {
 	var results []repository.ResearchLogReadModel
-	for rows.Next() {
-		var l repository.ResearchLogReadModel
-		var notes sql.NullString
-		if err := rows.Scan(
-			&l.ID, &l.SubjectID, &l.SubjectType, &l.Repository,
-			&l.SearchDescription, &l.Outcome, &notes,
-			&l.SearchDate, &l.Version, &l.CreatedAt, &l.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan research_log: %w", err)
-		}
-		if notes.Valid {
-			l.Notes = notes.String
-		}
-		results = append(results, l)
+	if err := s.queryGPSFiltered(ctx, "research_logs", researchLogSelectCols, gpsSubjectFilter, branchID,
+		collectRows(&results, scanResearchLogRow), subjectID); err != nil {
+		return nil, fmt.Errorf("research logs for subject: %w", err)
 	}
-
-	return results, rows.Err()
+	return results, nil
 }
 
-// SaveResearchLog saves or updates a research log.
-func (s *ReadModelStore) SaveResearchLog(ctx context.Context, log *repository.ResearchLogReadModel) error {
+// SaveResearchLog saves or updates a research log on the given branch
+// (ADR-005); a save always clears any prior tombstone.
+func (s *ReadModelStore) SaveResearchLog(ctx context.Context, branchID domain.BranchID, log *repository.ResearchLogReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO research_logs (id, subject_id, subject_type, repository, search_description, outcome, notes, search_date, version, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, $9, $10, $11)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO research_logs (id, branch_id, subject_id, subject_type, repository, search_description, outcome,
+		                           notes, search_date, version, created_at, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), $9, $10, $11, $12, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			subject_id = EXCLUDED.subject_id,
 			subject_type = EXCLUDED.subject_type,
 			repository = EXCLUDED.repository,
@@ -6199,185 +6127,72 @@ func (s *ReadModelStore) SaveResearchLog(ctx context.Context, log *repository.Re
 			notes = EXCLUDED.notes,
 			search_date = EXCLUDED.search_date,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, log.ID, log.SubjectID, log.SubjectType, log.Repository,
-		log.SearchDescription, log.Outcome, log.Notes,
-		log.SearchDate, log.Version, log.CreatedAt, log.UpdatedAt)
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, log.ID, branchID.UUID(), log.SubjectID, log.SubjectType, log.Repository, log.SearchDescription,
+		string(log.Outcome), log.Notes, log.SearchDate, log.Version, log.CreatedAt, log.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("save research_log: %w", err)
 	}
 	return nil
 }
 
-// DeleteResearchLog deletes a research log by ID.
-func (s *ReadModelStore) DeleteResearchLog(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM research_logs WHERE id = $1", id)
-	if err != nil {
+// DeleteResearchLog removes a research log (ADR-005): a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteResearchLog(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "research_logs", researchLogSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete research_log: %w", err)
 	}
 	return nil
 }
 
-// GetProofSummary retrieves a proof summary by ID.
-func (s *ReadModelStore) GetProofSummary(ctx context.Context, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
-		FROM proof_summaries WHERE id = $1
-	`, id)
-
-	var ps repository.ProofSummaryReadModel
-	var analysisIDs, researchStatus sql.NullString
-	err := row.Scan(
-		&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion,
-		&ps.Argument, &analysisIDs, &researchStatus,
-		&ps.Version, &ps.CreatedAt, &ps.UpdatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("scan proof_summary: %w", err)
-	}
-	if analysisIDs.Valid {
-		ps.AnalysisIDsJSON = analysisIDs.String
-	}
-	if researchStatus.Valid {
-		ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-	}
-	return &ps, nil
+// GetProofSummary retrieves a proof summary by ID within the branch overlay
+// (ADR-005, #760).
+func (s *ReadModelStore) GetProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.ProofSummaryReadModel, error) {
+	return scanProofSummaryRow(s.getGPSRow(ctx, "proof_summaries", proofSummarySelectCols, branchID, id))
 }
 
-// ListProofSummaries returns a paginated list of proof summaries.
+// ListProofSummaries returns a paginated list of the proof summaries visible on
+// opts.BranchID.
 func (s *ReadModelStore) ListProofSummaries(ctx context.Context, opts repository.ListOptions) ([]repository.ProofSummaryReadModel, int, error) {
-	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM proof_summaries").Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count proof_summaries: %w", err)
-	}
-
-	orderDir := "DESC"
-	if opts.Order == "asc" {
-		orderDir = "ASC"
-	}
-
-	sortCol := "updated_at"
-	if opts.Sort == "created_at" {
-		sortCol = "created_at"
-	}
-
-	// #nosec G201 -- orderDir and sortCol are validated above, not user input
-	query := fmt.Sprintf(`
-		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
-		FROM proof_summaries
-		ORDER BY %s %s, id %s
-		LIMIT $1 OFFSET $2
-	`, sortCol, orderDir, orderDir)
-
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query proof_summaries: %w", err)
-	}
-	defer rows.Close()
-
 	var results []repository.ProofSummaryReadModel
-	for rows.Next() {
-		var ps repository.ProofSummaryReadModel
-		var analysisIDs, researchStatus sql.NullString
-		if err := rows.Scan(
-			&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion,
-			&ps.Argument, &analysisIDs, &researchStatus,
-			&ps.Version, &ps.CreatedAt, &ps.UpdatedAt,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan proof_summary: %w", err)
-		}
-		if analysisIDs.Valid {
-			ps.AnalysisIDsJSON = analysisIDs.String
-		}
-		if researchStatus.Valid {
-			ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-		}
-		results = append(results, ps)
+	total, err := s.queryGPSPage(ctx, "proof_summaries", proofSummarySelectCols, opts, collectRows(&results, scanProofSummaryRow))
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return results, total, rows.Err()
+	return results, total, nil
 }
 
-// GetProofSummariesForFact returns all proof summaries for a given fact type and subject.
-func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
-		FROM proof_summaries
-		WHERE fact_type = $1 AND subject_id = $2
-	`, string(factType), subjectID)
-	if err != nil {
-		return nil, fmt.Errorf("query proof summaries for fact: %w", err)
-	}
-	defer rows.Close()
-
+// GetProofSummariesForFact returns the proof summaries of a fact type and
+// subject visible on branchID.
+func (s *ReadModelStore) GetProofSummariesForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
 	var results []repository.ProofSummaryReadModel
-	for rows.Next() {
-		var ps repository.ProofSummaryReadModel
-		var analysisIDs, researchStatus sql.NullString
-		if err := rows.Scan(
-			&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion,
-			&ps.Argument, &analysisIDs, &researchStatus,
-			&ps.Version, &ps.CreatedAt, &ps.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan proof_summary: %w", err)
-		}
-		if analysisIDs.Valid {
-			ps.AnalysisIDsJSON = analysisIDs.String
-		}
-		if researchStatus.Valid {
-			ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-		}
-		results = append(results, ps)
+	if err := s.queryGPSFiltered(ctx, "proof_summaries", proofSummarySelectCols, gpsFactFilter, branchID,
+		collectRows(&results, scanProofSummaryRow), string(factType), subjectID); err != nil {
+		return nil, fmt.Errorf("proof summaries for fact: %w", err)
 	}
-
-	return results, rows.Err()
+	return results, nil
 }
 
-// GetProofSummariesBySubject returns all proof summaries for a given subject, regardless of fact type.
-func (s *ReadModelStore) GetProofSummariesBySubject(ctx context.Context, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at
-		FROM proof_summaries
-		WHERE subject_id = $1
-	`, subjectID)
-	if err != nil {
-		return nil, fmt.Errorf("query proof summaries by subject: %w", err)
-	}
-	defer rows.Close()
-
+// GetProofSummariesBySubject returns the proof summaries of a subject visible on
+// branchID, regardless of fact type.
+func (s *ReadModelStore) GetProofSummariesBySubject(ctx context.Context, branchID domain.BranchID, subjectID uuid.UUID) ([]repository.ProofSummaryReadModel, error) {
 	var results []repository.ProofSummaryReadModel
-	for rows.Next() {
-		var ps repository.ProofSummaryReadModel
-		var analysisIDs, researchStatus sql.NullString
-		if err := rows.Scan(
-			&ps.ID, &ps.FactType, &ps.SubjectID, &ps.Conclusion,
-			&ps.Argument, &analysisIDs, &researchStatus,
-			&ps.Version, &ps.CreatedAt, &ps.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan proof_summary: %w", err)
-		}
-		if analysisIDs.Valid {
-			ps.AnalysisIDsJSON = analysisIDs.String
-		}
-		if researchStatus.Valid {
-			ps.ResearchStatus = domain.ResearchStatus(researchStatus.String)
-		}
-		results = append(results, ps)
+	if err := s.queryGPSFiltered(ctx, "proof_summaries", proofSummarySelectCols, gpsSubjectFilter, branchID,
+		collectRows(&results, scanProofSummaryRow), subjectID); err != nil {
+		return nil, fmt.Errorf("proof summaries by subject: %w", err)
 	}
-
-	return results, rows.Err()
+	return results, nil
 }
 
-// SaveProofSummary saves or updates a proof summary.
-func (s *ReadModelStore) SaveProofSummary(ctx context.Context, summary *repository.ProofSummaryReadModel) error {
+// SaveProofSummary saves or updates a proof summary on the given branch
+// (ADR-005); a save always clears any prior tombstone.
+func (s *ReadModelStore) SaveProofSummary(ctx context.Context, branchID domain.BranchID, summary *repository.ProofSummaryReadModel) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO proof_summaries (id, fact_type, subject_id, conclusion, argument, analysis_ids, research_status, version, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::JSONB, NULLIF($7, ''), $8, $9, $10)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO proof_summaries (id, branch_id, fact_type, subject_id, conclusion, argument, analysis_ids,
+		                             research_status, version, created_at, updated_at, deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, '')::JSONB, NULLIF($8, ''), $9, $10, $11, FALSE)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			fact_type = EXCLUDED.fact_type,
 			subject_id = EXCLUDED.subject_id,
 			conclusion = EXCLUDED.conclusion,
@@ -6385,8 +6200,9 @@ func (s *ReadModelStore) SaveProofSummary(ctx context.Context, summary *reposito
 			analysis_ids = EXCLUDED.analysis_ids,
 			research_status = EXCLUDED.research_status,
 			version = EXCLUDED.version,
-			updated_at = EXCLUDED.updated_at
-	`, summary.ID, summary.FactType, summary.SubjectID, summary.Conclusion,
+			updated_at = EXCLUDED.updated_at,
+			deleted = FALSE
+	`, summary.ID, branchID.UUID(), string(summary.FactType), summary.SubjectID, summary.Conclusion,
 		summary.Argument, summary.AnalysisIDsJSON, string(summary.ResearchStatus),
 		summary.Version, summary.CreatedAt, summary.UpdatedAt)
 	if err != nil {
@@ -6395,10 +6211,10 @@ func (s *ReadModelStore) SaveProofSummary(ctx context.Context, summary *reposito
 	return nil
 }
 
-// DeleteProofSummary deletes a proof summary by ID.
-func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM proof_summaries WHERE id = $1", id)
-	if err != nil {
+// DeleteProofSummary removes a proof summary (ADR-005): a real removal on main,
+// a tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteProofSummary(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := deleteOverlayRow(ctx, s.db, "proof_summaries", proofSummarySelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete proof_summary: %w", err)
 	}
 	return nil

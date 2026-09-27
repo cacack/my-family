@@ -601,3 +601,135 @@ func newMediaCascadeStore(t *testing.T) (repository.ReadModelStore, func()) {
 	}
 	return setupReadModelStore(t)
 }
+
+// TestReadModelStore_DeleteCascadesGPS verifies that DeletePerson and
+// DeleteFamily cascade to every GPS artifact about the deleted subject (#760):
+// on a branch each artifact the branch sees (main's and its own) is tombstoned
+// on that branch only, and on main main's artifacts are deleted. Another
+// subject's artifacts and a sibling branch's own rows are never touched. The
+// body is identical across the memory/sqlite/postgres backends (DB-001).
+func TestReadModelStore_DeleteCascadesGPS(t *testing.T) {
+	store, cleanup := newGPSCascadeStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	main := domain.MainBranchID
+	now := time.Now().UTC().Truncate(time.Second)
+
+	for _, tc := range []struct {
+		name string
+		del  func(branchID domain.BranchID, id uuid.UUID) error
+	}{
+		{"person", func(b domain.BranchID, id uuid.UUID) error { return store.DeletePerson(ctx, b, id) }},
+		{"family", func(b domain.BranchID, id uuid.UUID) error { return store.DeleteFamily(ctx, b, id) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			branch := domain.BranchID(uuid.New())
+			sibling := domain.BranchID(uuid.New())
+			subject, other := uuid.New(), uuid.New()
+
+			analysis := &repository.EvidenceAnalysisReadModel{ID: uuid.New(), FactType: domain.FactPersonBirth, SubjectID: subject,
+				Conclusion: "Born 1815", Version: 1, CreatedAt: now, UpdatedAt: now}
+			otherAnalysis := &repository.EvidenceAnalysisReadModel{ID: uuid.New(), FactType: domain.FactPersonBirth, SubjectID: other,
+				Conclusion: "Born 1820", Version: 1, CreatedAt: now, UpdatedAt: now}
+			conflict := &repository.EvidenceConflictReadModel{ID: uuid.New(), FactType: domain.FactPersonBirth, SubjectID: subject,
+				Description: "Disagreement", Status: domain.ConflictStatusOpen, Version: 1, CreatedAt: now, UpdatedAt: now}
+			log := &repository.ResearchLogReadModel{ID: uuid.New(), SubjectID: subject, SubjectType: tc.name, Repository: "Archive",
+				SearchDescription: "Baptisms", Outcome: domain.ResearchOutcomeNotFound, SearchDate: now, Version: 1, CreatedAt: now, UpdatedAt: now}
+			proof := &repository.ProofSummaryReadModel{ID: uuid.New(), FactType: domain.FactPersonBirth, SubjectID: subject,
+				Conclusion: "Born 1815", Argument: "Census", Version: 1, CreatedAt: now, UpdatedAt: now}
+			branchProof := &repository.ProofSummaryReadModel{ID: uuid.New(), FactType: domain.FactPersonDeath, SubjectID: subject,
+				Conclusion: "Died 1852", Argument: "Burial register", Version: 1, CreatedAt: now, UpdatedAt: now}
+
+			for _, save := range []error{
+				store.SaveEvidenceAnalysis(ctx, main, analysis),
+				store.SaveEvidenceAnalysis(ctx, main, otherAnalysis),
+				store.SaveEvidenceConflict(ctx, main, conflict),
+				store.SaveResearchLog(ctx, main, log),
+				store.SaveProofSummary(ctx, main, proof),
+				store.SaveProofSummary(ctx, branch, branchProof),
+			} {
+				if save != nil {
+					t.Fatalf("seed: %v", save)
+				}
+			}
+			// The sibling keeps its own edit of the subject's research log.
+			siblingLog := *log
+			siblingLog.Notes = "sibling reading"
+			if err := store.SaveResearchLog(ctx, sibling, &siblingLog); err != nil {
+				t.Fatalf("SaveResearchLog sibling: %v", err)
+			}
+
+			visible := func(b domain.BranchID) (analyses, conflicts, logs, proofs int) {
+				t.Helper()
+				a, err := store.GetAnalysesBySubject(ctx, b, subject)
+				if err != nil {
+					t.Fatalf("GetAnalysesBySubject: %v", err)
+				}
+				c, err := store.GetConflictsForSubject(ctx, b, subject)
+				if err != nil {
+					t.Fatalf("GetConflictsForSubject: %v", err)
+				}
+				l, err := store.GetResearchLogsForSubject(ctx, b, subject)
+				if err != nil {
+					t.Fatalf("GetResearchLogsForSubject: %v", err)
+				}
+				p, err := store.GetProofSummariesBySubject(ctx, b, subject)
+				if err != nil {
+					t.Fatalf("GetProofSummariesBySubject: %v", err)
+				}
+				return len(a), len(c), len(l), len(p)
+			}
+			otherKept := func(label string, b domain.BranchID) {
+				t.Helper()
+				if got, err := store.GetEvidenceAnalysis(ctx, b, otherAnalysis.ID); err != nil || got == nil {
+					t.Errorf("%s: cascade removed another subject's analysis: %+v (err=%v)", label, got, err)
+				}
+			}
+
+			// --- Branch delete: every artifact the branch sees about the subject
+			// is tombstoned on the branch only. ---
+			if err := tc.del(branch, subject); err != nil {
+				t.Fatalf("branch delete: %v", err)
+			}
+			if a, c, l, p := visible(branch); a+c+l+p != 0 {
+				t.Errorf("branch artifacts after cascade = %d/%d/%d/%d, want none", a, c, l, p)
+			}
+			if got, err := store.GetProofSummary(ctx, branch, branchProof.ID); err != nil || got != nil {
+				t.Errorf("branch GetProofSummary(branch-only) after cascade = %+v (err=%v), want tombstoned", got, err)
+			}
+			if got, err := store.ListUnresolvedConflicts(ctx, branch); err != nil || len(got) != 0 {
+				t.Errorf("branch ListUnresolvedConflicts after cascade = %d (err=%v), want 0", len(got), err)
+			}
+			otherKept("branch", branch)
+			if a, c, l, p := visible(main); a != 1 || c != 1 || l != 1 || p != 1 {
+				t.Errorf("main artifacts after branch cascade = %d/%d/%d/%d, want 1/1/1/1", a, c, l, p)
+			}
+			if got, err := store.GetResearchLog(ctx, sibling, log.ID); err != nil || got == nil || got.Notes != "sibling reading" {
+				t.Errorf("sibling GetResearchLog after branch cascade = %+v (err=%v), want its own edit", got, err)
+			}
+
+			// --- Main delete: main's artifacts about the subject go; another
+			// subject's stay, and the sibling's own row is not touched. ---
+			if err := tc.del(main, subject); err != nil {
+				t.Fatalf("main delete: %v", err)
+			}
+			if a, c, l, p := visible(main); a+c+l+p != 0 {
+				t.Errorf("main artifacts after cascade = %d/%d/%d/%d, want none", a, c, l, p)
+			}
+			if got, err := store.ListUnresolvedConflicts(ctx, main); err != nil || len(got) != 0 {
+				t.Errorf("main ListUnresolvedConflicts after cascade = %d (err=%v), want 0", len(got), err)
+			}
+			otherKept("main", main)
+			if got, err := store.GetResearchLog(ctx, sibling, log.ID); err != nil || got == nil || got.Notes != "sibling reading" {
+				t.Errorf("sibling GetResearchLog after main cascade = %+v (err=%v), want its own edit", got, err)
+			}
+		})
+	}
+}
+
+// newGPSCascadeStore returns this backend's store for the GPS cascade test.
+func newGPSCascadeStore(t *testing.T) (repository.ReadModelStore, func()) {
+	t.Helper()
+	return newMediaCascadeStore(t)
+}

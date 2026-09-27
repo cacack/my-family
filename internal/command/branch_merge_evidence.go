@@ -131,6 +131,12 @@ func groupDeletesSource(group streamGroup) bool {
 //     a stream that replays first. The projection saves the media row without
 //     checking its owner, so main would gain an orphaned media item.
 //
+//   - A replayed GPS artifact (evidence analysis, evidence conflict, research
+//     log or proof summary; #760) whose final subject — the person or family it
+//     is about — will not exist on main when it lands, by the same rule as the
+//     media owner. The projection saves the artifact without checking its
+//     subject, so main would gain research about nothing.
+//
 // All are refused before the claim, like the dangling child link.
 func (h *Handler) validateNoDanglingEvidence(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
 	replayed := make(map[uuid.UUID]streamGroup, len(groups))
@@ -153,6 +159,9 @@ func (h *Handler) validateNoDanglingEvidence(ctx context.Context, groups []strea
 			return err
 		}
 		if err := h.checkMediaOwnerSurvives(ctx, group, replayed, order); err != nil {
+			return err
+		}
+		if err := h.checkGPSSubjectSurvives(ctx, group, replayed, order); err != nil {
 			return err
 		}
 	}
@@ -315,4 +324,115 @@ func (h *Handler) checkSourceDeleteOrphansNothing(ctx context.Context, group str
 			ErrMergeDanglingReference, group.streamID, citation.ID)
 	}
 	return nil
+}
+
+// gpsSubjectEvents are the GPS artifact events that name a subject: the creates
+// (and EvidenceConflictDetected, the conflict's create) carry subject_id at the
+// top level, the updates carry it in their Changes map when they re-point the
+// artifact (#760).
+var (
+	gpsCreateEvents = map[string]bool{
+		"EvidenceAnalysisCreated":  true,
+		"EvidenceConflictDetected": true,
+		"ResearchLogCreated":       true,
+		"ProofSummaryCreated":      true,
+	}
+	gpsUpdateEvents = map[string]bool{
+		"EvidenceAnalysisUpdated": true,
+		"ResearchLogUpdated":      true,
+		"ProofSummaryUpdated":     true,
+	}
+	gpsDeleteEvents = map[string]bool{
+		"EvidenceAnalysisDeleted": true,
+		"ResearchLogDeleted":      true,
+		"ProofSummaryDeleted":     true,
+	}
+)
+
+// gpsSubjectOf folds a stream's GPS artifact events into the subject its replay
+// leaves the artifact about. ok is false when the stream sets no subject (an
+// edit of an artifact main already has, whose subject is main's business) or
+// ends by deleting the artifact. Events of other entity types are ignored.
+func gpsSubjectOf(group streamGroup) (subjectID uuid.UUID, ok bool, err error) {
+	for _, evt := range group.events {
+		switch {
+		case gpsCreateEvents[evt.EventType]:
+			var payload struct {
+				SubjectID uuid.UUID `json:"subject_id"`
+			}
+			if err := json.Unmarshal(evt.Data, &payload); err != nil {
+				return uuid.Nil, false, fmt.Errorf("decoding %s on stream %s: %w", evt.EventType, group.streamID, err)
+			}
+			subjectID, ok = payload.SubjectID, true
+		case gpsUpdateEvents[evt.EventType]:
+			var payload struct {
+				Changes map[string]any `json:"changes"`
+			}
+			if err := json.Unmarshal(evt.Data, &payload); err != nil {
+				return uuid.Nil, false, fmt.Errorf("decoding %s on stream %s: %w", evt.EventType, group.streamID, err)
+			}
+			raw, present := payload.Changes["subject_id"].(string)
+			if !present {
+				continue
+			}
+			id, err := uuid.Parse(raw)
+			if err != nil {
+				return uuid.Nil, false, fmt.Errorf("decoding %s on stream %s: subject_id %q: %w", evt.EventType, group.streamID, raw, err)
+			}
+			subjectID, ok = id, true
+		case gpsDeleteEvents[evt.EventType]:
+			ok = false
+		}
+	}
+	return subjectID, ok, nil
+}
+
+// gpsSubjectDeleteEvents are the events whose store cascade removes a GPS
+// artifact with that subject (DeletePerson / DeleteFamily, #760).
+var gpsSubjectDeleteEvents = []string{"PersonDeleted", "FamilyDeleted"}
+
+// checkGPSSubjectSurvives refuses a replayed GPS artifact whose final subject
+// will not exist on main when it lands (#760). The rule is checkMediaOwnerSurvives':
+// a subject the replay itself deletes is fine only when its stream replays AFTER
+// the artifact's, so the subject's delete cascades the artifact on main exactly as
+// it did on the branch.
+func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup, order map[uuid.UUID]int) error {
+	subjectID, ok, err := gpsSubjectOf(group)
+	if err != nil || !ok {
+		return err
+	}
+	if subjectGroup, replaysSubject := replayed[subjectID]; replaysSubject {
+		deletes := false
+		for _, eventType := range gpsSubjectDeleteEvents {
+			deletes = deletes || groupDeletes(subjectGroup, eventType)
+		}
+		if !deletes || order[subjectID] > order[group.streamID] {
+			return nil
+		}
+	} else {
+		exists, err := h.gpsSubjectOnMain(ctx, subjectID)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"%w: the branch's %s %s is about subject %s, but no person or family with that id will exist on main "+
+			"when it lands (deleted there, excluded by a \"main\" resolution, or deleted earlier in the replay)",
+		ErrMergeDanglingReference, group.streamType, group.streamID, subjectID)
+}
+
+// gpsSubjectOnMain reports whether main has a person or a family with the id. A
+// GPS artifact's subject is one or the other (a research log also records which,
+// the other artifacts leave it to the fact type), and the ids never collide.
+func (h *Handler) gpsSubjectOnMain(ctx context.Context, subjectID uuid.UUID) (bool, error) {
+	for _, entityType := range []string{"person", "family"} {
+		exists, err := h.mediaOwnerOnMain(ctx, entityType, subjectID)
+		if err != nil || exists {
+			return exists, err
+		}
+	}
+	return false, nil
 }

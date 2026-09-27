@@ -310,11 +310,11 @@ implements this decision.
 Branch scoping is a bounded set, not a migration in progress. Three different reasons keep a
 read-model entity on `main`, and they must not be confused:
 
-- **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
-  the remaining sub-issue of [#676](https://github.com/cacack/my-family/issues/676): GPS artifacts
-  ([#760](https://github.com/cacack/my-family/issues/760)). (Media metadata,
-  [#759](https://github.com/cacack/my-family/issues/759), is delivered; its file bytes are shared
-  by design, not pending — see the implementation note below.)
+- **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. This set
+  is empty: the last sub-issue of [#676](https://github.com/cacack/my-family/issues/676), the GPS
+  artifacts ([#760](https://github.com/cacack/my-family/issues/760)), is delivered. (Media
+  metadata, [#759](https://github.com/cacack/my-family/issues/759), is delivered too; its file
+  bytes are shared by design, not pending — see the implementation note below.)
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
   be answered first. This is snapshots and brick walls, both waiting on
   [#624](https://github.com/cacack/my-family/issues/624) (below).
@@ -923,7 +923,8 @@ each item's *winning* row, like the life-event lists, so a branch that re-links 
 **BR-006 and merge.** `MediaCreated`, `MediaUpdated` and `MediaDeleted` join the allowlist;
 `MediaCreated` is conflict-blind like the other per-entity creates. `PersonMerged` stays off the
 allowlist: its media transfer is now branch-scoped, but it still rewrites evidence-analysis and
-research rows that are main-only until #760.
+research rows that are main-only until #760. (Since #760 every write it makes is branch-keyed; it
+stays off for a merge-replay reason instead — see the GPS note below.)
 
 **API and UI.** Seven operations gained `?branch=` — `getMedia`, `updateMedia`, `deleteMedia`,
 `listPersonMedia`, `uploadPersonMedia`, `downloadMedia` and `getMediaThumbnail` — bringing the total
@@ -937,6 +938,84 @@ rollback stay mainline, as rollback does for every entity.
 primary key of `media`; a database created before #759 refuses every branch write with
 `ErrBranchesUnsupported` until the read model is rebuilt (#680). Its mainline media keeps working —
 a metadata-only save supplies the row's own stored bytes, so the legacy `NOT NULL` never trips.
+
+## Implementation Note — GPS artifacts (#676 sub-issue E, #760, delivered)
+
+**Evidence analyses, evidence conflicts, research logs and proof summaries own their own
+`branch_id`.** `evidence_analyses`, `evidence_conflicts`, `research_logs` and `proof_summaries` get
+the life-event treatment on all three backends: a composite `(id, branch_id)` key, a
+`branch_id`-leading index, a `deleted` tombstone, one set-based overlay read with a main-scope fast
+path, and a place in `PurgeBranch`. This is the group that most wants branch scoping — a research
+hypothesis is exactly where a competing analysis, a log of negative searches or a draft proof
+argument should live in isolation until merged.
+
+**Resolve first, then filter.** Every filtered read — `GetAnalysesForFact`, `GetAnalysesBySubject`,
+`GetConflictsForSubject`, `GetResearchLogsForSubject`, `GetProofSummariesForFact`,
+`GetProofSummariesBySubject` and `ListUnresolvedConflicts` — resolves each id through the per-id
+overlay and applies its predicate to the *winning* row (the same twice-applied filter the life-event
+lists use). Filtering raw rows first would be wrong in the way that matters most here: a branch that
+resolves an evidence conflict writes a `resolved` shadow row, and a `status = 'open'` filter on raw
+rows would still find main's open row for the same id and list the conflict as unresolved on the
+branch. Likewise a branch that re-points a proof summary at another subject lists it under the new
+subject only. The per-subject and per-fact lists now return a deterministic order (`created_at`,
+then id) on every backend; they had none.
+
+**Evidence conflicts are not merge conflicts.** An `EvidenceConflictReadModel` is a genealogical
+finding — two analyses disagree about a fact — recorded by `CreateEvidenceAnalysis` and
+`UpdateEvidenceAnalysis`. It is unrelated to §Conflict definition, and branch-scoping it feeds
+nothing into merge conflict detection, which is computed from the event log alone. The detection
+itself now runs on the handler's branch: it compares the analyses the branch sees, reuses an open
+conflict the branch sees, and records a new one on the branch. Its failure is logged rather than
+swallowed, but still does not fail the analysis write that triggered it (the write is already
+committed).
+
+**BR-006 and merge.** The eleven GPS event types join the allowlist. The four creates
+(`EvidenceAnalysisCreated`, `EvidenceConflictDetected`, `ResearchLogCreated`,
+`ProofSummaryCreated`) are conflict-blind like the other per-entity creates. The merge conflict scan
+needed one addition: `EvidenceConflictResolved` carries its resolution and status flat, with no
+`Changes` map, so it is folded as those two fields — otherwise a branch and main resolving the same
+evidence conflict differently would merge with no review (the `NameUpdated` trap again). A GPS
+artifact also names its subject (a person or family) on another stream, the shape #759 met for
+media, so the pre-claim dangling-reference check refuses a replayed artifact whose *final* subject —
+the last `subject_id` a create or an update set, unless the stream ends deleted — will not exist on
+main when it lands, by the media rule (a subject the replay deletes counts only when its stream
+replays after the artifact's).
+
+Two consequences are accepted and recorded rather than refused:
+
+- A replayed `PersonDeleted` / `FamilyDeleted` cascades onto GPS artifacts main added about that
+  subject after the fork, with no `*Deleted` event for them — exactly what the same delete does on
+  main, and the same shape as the person's life events (#757). Unlike a source with citations
+  (#758), deleting a subject that has research is not refused by any command, so the cascade is the
+  intended behaviour rather than an integrity backstop.
+- Two independent `EvidenceConflictDetected` for the same fact (one on the branch, one on main
+  after the fork) both survive a merge as open conflicts; they are different aggregates. The
+  analysis-id lists inside conflicts and proofs are soft references, as citation ids inside an
+  analysis always were.
+
+`PersonMerged` still stays off the allowlist. #760 removed the reason the #759 note gave — every
+read-model write its projection makes (steps 9–12 now pass the branch through) is branch-keyed —
+but a branch merge could not replay it safely: it rewrites rows of the merged person's aggregates
+and deletes that person without an event on any of their streams, so a concurrent main edit to them
+is invisible to the conflict scan and to the dangling-reference checks. Admitting it needs that
+merge design first.
+
+**The cascade is new on main too.** `DeletePerson` and `DeleteFamily` now delete (main) or tombstone
+(branch) every GPS artifact whose subject is the deleted entity, on that branch only (there was never
+a foreign key, so a deleted person's research used to survive as orphans on main).
+`TestReadModelStore_DeleteCascadesGPS` and the scenario pin it on all three backends.
+
+**API and UI.** Twenty-two operations gained `?branch=` — the CRUD, list and per-fact/per-subject
+reads of all four artifacts, and `resolveEvidenceConflict` — bringing the total to 76. The
+`/evidence` page dropped its `MainlineNotice`, and the person evidence panel follows the branch. The
+quality and analytics aggregates, which read these tables in bulk, stay mainline and keep their
+notice. The status-filtered conflict list now matches the status on the resolved rows before it
+paginates, so `total` counts every matching conflict.
+
+**Upgrading an existing database.** PostgreSQL migrates the four tables in place. SQLite cannot alter
+a primary key, so `detectBranchCapable` also requires `branch_id` in their primary keys; a database
+created before #760 refuses every branch write with `ErrBranchesUnsupported` until the read model is
+rebuilt (#680), while its mainline GPS artifacts keep working.
 
 ## References
 

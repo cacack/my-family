@@ -412,6 +412,8 @@ func summarizeStreams(events []repository.StoredEvent) map[uuid.UUID]*streamSide
 			for field, value := range updatedChanges(evt) {
 				side.fields[field] = value
 			}
+		case foldEvidenceConflictResolved:
+			applyEvidenceConflictResolved(side, evt)
 		case foldIgnored:
 			// Nothing to compare — see conflictFoldFor.
 		}
@@ -434,6 +436,7 @@ const (
 	foldChildUnlinked
 	foldPersonName
 	foldChangesMap
+	foldEvidenceConflictResolved
 )
 
 // conflictFoldFor classifies an event type for conflict comparison.
@@ -452,6 +455,8 @@ func conflictFoldFor(eventType string) conflictFold {
 		return foldChildUnlinked
 	case isPersonNameEvent(eventType):
 		return foldPersonName
+	case eventType == "EvidenceConflictResolved":
+		return foldEvidenceConflictResolved
 	case strings.HasSuffix(eventType, "Updated"):
 		return foldChangesMap
 	default:
@@ -571,6 +576,24 @@ func applyNameEvent(side *streamSide, evt repository.StoredEvent) {
 		delete(payload, key)
 	}
 	side.fields[nameFieldKey(envelope.NameID)] = payload
+}
+
+// applyEvidenceConflictResolved records an evidence-conflict resolution (#760) as
+// the two fields it asserts. The event carries them flat, with no Changes map,
+// so the *Updated fold would read nothing from it: a branch and main resolving
+// the same evidence conflict differently would then merge with no review. (The
+// evidence conflict is a genealogical finding on its own stream; this only
+// compares its events like any other aggregate's.)
+func applyEvidenceConflictResolved(side *streamSide, evt repository.StoredEvent) {
+	var payload struct {
+		Resolution string `json:"resolution"`
+		Status     string `json:"status"`
+	}
+	if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		return
+	}
+	side.fields["resolution"] = payload.Resolution
+	side.fields["status"] = payload.Status
 }
 
 // updatedChanges pulls the Changes map out of a *Updated event that carries one.

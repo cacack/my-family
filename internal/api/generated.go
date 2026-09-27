@@ -4642,6 +4642,13 @@ type GetDescendancyParams struct {
 
 // ListEvidenceAnalysesParams defines parameters for ListEvidenceAnalyses.
 type ListEvidenceAnalysesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope                     `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                      `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                     `form:"offset,omitempty" json:"offset,omitempty"`
 	Sort   *ListEvidenceAnalysesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
@@ -4654,20 +4661,75 @@ type ListEvidenceAnalysesParamsSort string
 // ListEvidenceAnalysesParamsOrder defines parameters for ListEvidenceAnalyses.
 type ListEvidenceAnalysesParamsOrder string
 
+// CreateEvidenceAnalysisParams defines parameters for CreateEvidenceAnalysis.
+type CreateEvidenceAnalysisParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetAnalysesByFactParams defines parameters for GetAnalysesByFact.
 type GetAnalysesByFactParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
 	FactType  string             `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
 }
 
 // DeleteEvidenceAnalysisParams defines parameters for DeleteEvidenceAnalysis.
 type DeleteEvidenceAnalysisParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
 }
 
+// GetEvidenceAnalysisParams defines parameters for GetEvidenceAnalysis.
+type GetEvidenceAnalysisParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateEvidenceAnalysisParams defines parameters for UpdateEvidenceAnalysis.
+type UpdateEvidenceAnalysisParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // ListEvidenceConflictsParams defines parameters for ListEvidenceConflicts.
 type ListEvidenceConflictsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 
@@ -4677,6 +4739,39 @@ type ListEvidenceConflictsParams struct {
 
 // ListEvidenceConflictsParamsStatus defines parameters for ListEvidenceConflicts.
 type ListEvidenceConflictsParamsStatus string
+
+// GetConflictsBySubjectParams defines parameters for GetConflictsBySubject.
+type GetConflictsBySubjectParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetEvidenceConflictParams defines parameters for GetEvidenceConflict.
+type GetEvidenceConflictParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// ResolveEvidenceConflictParams defines parameters for ResolveEvidenceConflict.
+type ResolveEvidenceConflictParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
 
 // ListFamiliesParams defines parameters for ListFamilies.
 type ListFamiliesParams struct {
@@ -5178,6 +5273,13 @@ type GetPersonRestorePointsParams struct {
 
 // ListProofSummariesParams defines parameters for ListProofSummaries.
 type ListProofSummariesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope                   `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                    `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                   `form:"offset,omitempty" json:"offset,omitempty"`
 	Sort   *ListProofSummariesParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
@@ -5190,16 +5292,64 @@ type ListProofSummariesParamsSort string
 // ListProofSummariesParamsOrder defines parameters for ListProofSummaries.
 type ListProofSummariesParamsOrder string
 
+// CreateProofSummaryParams defines parameters for CreateProofSummary.
+type CreateProofSummaryParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // GetProofSummaryByFactParams defines parameters for GetProofSummaryByFact.
 type GetProofSummaryByFactParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch    *BranchScope       `form:"branch,omitempty" json:"branch,omitempty"`
 	FactType  string             `form:"factType" json:"factType"`
 	SubjectId openapi_types.UUID `form:"subjectId" json:"subjectId"`
 }
 
 // DeleteProofSummaryParams defines parameters for DeleteProofSummary.
 type DeleteProofSummaryParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetProofSummaryParams defines parameters for GetProofSummary.
+type GetProofSummaryParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateProofSummaryParams defines parameters for UpdateProofSummary.
+type UpdateProofSummaryParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetValidationIssuesParams defines parameters for GetValidationIssues.
@@ -5239,6 +5389,13 @@ type DeleteRepositoryParams struct {
 
 // ListResearchLogsParams defines parameters for ListResearchLogs.
 type ListResearchLogsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope                 `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                 `form:"offset,omitempty" json:"offset,omitempty"`
 	Sort   *ListResearchLogsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
@@ -5251,10 +5408,62 @@ type ListResearchLogsParamsSort string
 // ListResearchLogsParamsOrder defines parameters for ListResearchLogs.
 type ListResearchLogsParamsOrder string
 
+// CreateResearchLogParams defines parameters for CreateResearchLog.
+type CreateResearchLogParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetResearchLogsBySubjectParams defines parameters for GetResearchLogsBySubject.
+type GetResearchLogsBySubjectParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // DeleteResearchLogParams defines parameters for DeleteResearchLog.
 type DeleteResearchLogParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetResearchLogParams defines parameters for GetResearchLog.
+type GetResearchLogParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateResearchLogParams defines parameters for UpdateResearchLog.
+type UpdateResearchLogParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // SearchPersonsParams defines parameters for SearchPersons.
@@ -5661,7 +5870,7 @@ type ServerInterface interface {
 	ListEvidenceAnalyses(ctx echo.Context, params ListEvidenceAnalysesParams) error
 	// Create a new evidence analysis
 	// (POST /evidence-analyses)
-	CreateEvidenceAnalysis(ctx echo.Context) error
+	CreateEvidenceAnalysis(ctx echo.Context, params CreateEvidenceAnalysisParams) error
 	// Get evidence analyses by fact type and subject
 	// (GET /evidence-analyses/by-fact)
 	GetAnalysesByFact(ctx echo.Context, params GetAnalysesByFactParams) error
@@ -5670,22 +5879,22 @@ type ServerInterface interface {
 	DeleteEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId, params DeleteEvidenceAnalysisParams) error
 	// Get an evidence analysis by ID
 	// (GET /evidence-analyses/{id})
-	GetEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error
+	GetEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId, params GetEvidenceAnalysisParams) error
 	// Update an evidence analysis
 	// (PUT /evidence-analyses/{id})
-	UpdateEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error
+	UpdateEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId, params UpdateEvidenceAnalysisParams) error
 	// List all evidence conflicts
 	// (GET /evidence-conflicts)
 	ListEvidenceConflicts(ctx echo.Context, params ListEvidenceConflictsParams) error
 	// Get evidence conflicts for a subject
 	// (GET /evidence-conflicts/by-subject/{subjectId})
-	GetConflictsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error
+	GetConflictsBySubject(ctx echo.Context, subjectId openapi_types.UUID, params GetConflictsBySubjectParams) error
 	// Get an evidence conflict by ID
 	// (GET /evidence-conflicts/{id})
-	GetEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error
+	GetEvidenceConflict(ctx echo.Context, id EvidenceConflictId, params GetEvidenceConflictParams) error
 	// Resolve an evidence conflict
 	// (POST /evidence-conflicts/{id}/resolve)
-	ResolveEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error
+	ResolveEvidenceConflict(ctx echo.Context, id EvidenceConflictId, params ResolveEvidenceConflictParams) error
 	// Export attributes data
 	// (GET /export/attributes)
 	ExportAttributes(ctx echo.Context) error
@@ -5886,7 +6095,7 @@ type ServerInterface interface {
 	ListProofSummaries(ctx echo.Context, params ListProofSummariesParams) error
 	// Create a new proof summary
 	// (POST /proof-summaries)
-	CreateProofSummary(ctx echo.Context) error
+	CreateProofSummary(ctx echo.Context, params CreateProofSummaryParams) error
 	// Get proof summaries by fact type and subject
 	// (GET /proof-summaries/by-fact)
 	GetProofSummaryByFact(ctx echo.Context, params GetProofSummaryByFactParams) error
@@ -5895,10 +6104,10 @@ type ServerInterface interface {
 	DeleteProofSummary(ctx echo.Context, id ProofSummaryId, params DeleteProofSummaryParams) error
 	// Get a proof summary by ID
 	// (GET /proof-summaries/{id})
-	GetProofSummary(ctx echo.Context, id ProofSummaryId) error
+	GetProofSummary(ctx echo.Context, id ProofSummaryId, params GetProofSummaryParams) error
 	// Update a proof summary
 	// (PUT /proof-summaries/{id})
-	UpdateProofSummary(ctx echo.Context, id ProofSummaryId) error
+	UpdateProofSummary(ctx echo.Context, id ProofSummaryId, params UpdateProofSummaryParams) error
 	// Get aggregate quality metrics
 	// (GET /quality/overview)
 	GetQualityOverview(ctx echo.Context) error
@@ -5934,19 +6143,19 @@ type ServerInterface interface {
 	ListResearchLogs(ctx echo.Context, params ListResearchLogsParams) error
 	// Create a new research log entry
 	// (POST /research-logs)
-	CreateResearchLog(ctx echo.Context) error
+	CreateResearchLog(ctx echo.Context, params CreateResearchLogParams) error
 	// Get research log entries for a subject
 	// (GET /research-logs/by-subject/{subjectId})
-	GetResearchLogsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error
+	GetResearchLogsBySubject(ctx echo.Context, subjectId openapi_types.UUID, params GetResearchLogsBySubjectParams) error
 	// Delete a research log entry
 	// (DELETE /research-logs/{id})
 	DeleteResearchLog(ctx echo.Context, id ResearchLogId, params DeleteResearchLogParams) error
 	// Get a research log entry by ID
 	// (GET /research-logs/{id})
-	GetResearchLog(ctx echo.Context, id ResearchLogId) error
+	GetResearchLog(ctx echo.Context, id ResearchLogId, params GetResearchLogParams) error
 	// Update a research log entry
 	// (PUT /research-logs/{id})
-	UpdateResearchLog(ctx echo.Context, id ResearchLogId) error
+	UpdateResearchLog(ctx echo.Context, id ResearchLogId, params UpdateResearchLogParams) error
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx echo.Context, params SearchPersonsParams) error
@@ -6755,6 +6964,13 @@ func (w *ServerInterfaceWrapper) ListEvidenceAnalyses(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListEvidenceAnalysesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -6792,8 +7008,17 @@ func (w *ServerInterfaceWrapper) ListEvidenceAnalyses(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateEvidenceAnalysis(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateEvidenceAnalysisParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateEvidenceAnalysis(ctx)
+	err = w.Handler.CreateEvidenceAnalysis(ctx, params)
 	return err
 }
 
@@ -6803,6 +7028,13 @@ func (w *ServerInterfaceWrapper) GetAnalysesByFact(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetAnalysesByFactParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "factType" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "factType", ctx.QueryParams(), &params.FactType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -6835,6 +7067,13 @@ func (w *ServerInterfaceWrapper) DeleteEvidenceAnalysis(ctx echo.Context) error 
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteEvidenceAnalysisParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -6858,8 +7097,17 @@ func (w *ServerInterfaceWrapper) GetEvidenceAnalysis(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEvidenceAnalysisParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetEvidenceAnalysis(ctx, id)
+	err = w.Handler.GetEvidenceAnalysis(ctx, id, params)
 	return err
 }
 
@@ -6874,8 +7122,17 @@ func (w *ServerInterfaceWrapper) UpdateEvidenceAnalysis(ctx echo.Context) error 
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateEvidenceAnalysisParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateEvidenceAnalysis(ctx, id)
+	err = w.Handler.UpdateEvidenceAnalysis(ctx, id, params)
 	return err
 }
 
@@ -6885,6 +7142,13 @@ func (w *ServerInterfaceWrapper) ListEvidenceConflicts(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListEvidenceConflictsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -6922,8 +7186,17 @@ func (w *ServerInterfaceWrapper) GetConflictsBySubject(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetConflictsBySubjectParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetConflictsBySubject(ctx, subjectId)
+	err = w.Handler.GetConflictsBySubject(ctx, subjectId, params)
 	return err
 }
 
@@ -6938,8 +7211,17 @@ func (w *ServerInterfaceWrapper) GetEvidenceConflict(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetEvidenceConflictParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetEvidenceConflict(ctx, id)
+	err = w.Handler.GetEvidenceConflict(ctx, id, params)
 	return err
 }
 
@@ -6954,8 +7236,17 @@ func (w *ServerInterfaceWrapper) ResolveEvidenceConflict(ctx echo.Context) error
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ResolveEvidenceConflictParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ResolveEvidenceConflict(ctx, id)
+	err = w.Handler.ResolveEvidenceConflict(ctx, id, params)
 	return err
 }
 
@@ -8422,6 +8713,13 @@ func (w *ServerInterfaceWrapper) ListProofSummaries(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListProofSummariesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -8459,8 +8757,17 @@ func (w *ServerInterfaceWrapper) ListProofSummaries(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateProofSummary(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateProofSummaryParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateProofSummary(ctx)
+	err = w.Handler.CreateProofSummary(ctx, params)
 	return err
 }
 
@@ -8470,6 +8777,13 @@ func (w *ServerInterfaceWrapper) GetProofSummaryByFact(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetProofSummaryByFactParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "factType" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "factType", ctx.QueryParams(), &params.FactType, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -8502,6 +8816,13 @@ func (w *ServerInterfaceWrapper) DeleteProofSummary(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteProofSummaryParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -8525,8 +8846,17 @@ func (w *ServerInterfaceWrapper) GetProofSummary(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProofSummaryParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetProofSummary(ctx, id)
+	err = w.Handler.GetProofSummary(ctx, id, params)
 	return err
 }
 
@@ -8541,8 +8871,17 @@ func (w *ServerInterfaceWrapper) UpdateProofSummary(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateProofSummaryParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateProofSummary(ctx, id)
+	err = w.Handler.UpdateProofSummary(ctx, id, params)
 	return err
 }
 
@@ -8747,6 +9086,13 @@ func (w *ServerInterfaceWrapper) ListResearchLogs(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListResearchLogsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -8784,8 +9130,17 @@ func (w *ServerInterfaceWrapper) ListResearchLogs(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateResearchLog(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateResearchLogParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateResearchLog(ctx)
+	err = w.Handler.CreateResearchLog(ctx, params)
 	return err
 }
 
@@ -8800,8 +9155,17 @@ func (w *ServerInterfaceWrapper) GetResearchLogsBySubject(ctx echo.Context) erro
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter subjectId: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetResearchLogsBySubjectParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetResearchLogsBySubject(ctx, subjectId)
+	err = w.Handler.GetResearchLogsBySubject(ctx, subjectId, params)
 	return err
 }
 
@@ -8818,6 +9182,13 @@ func (w *ServerInterfaceWrapper) DeleteResearchLog(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteResearchLogParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -8841,8 +9212,17 @@ func (w *ServerInterfaceWrapper) GetResearchLog(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetResearchLogParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetResearchLog(ctx, id)
+	err = w.Handler.GetResearchLog(ctx, id, params)
 	return err
 }
 
@@ -8857,8 +9237,17 @@ func (w *ServerInterfaceWrapper) UpdateResearchLog(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateResearchLogParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateResearchLog(ctx, id)
+	err = w.Handler.UpdateResearchLog(ctx, id, params)
 	return err
 }
 
@@ -11002,7 +11391,8 @@ func (response ListEvidenceAnalyses400JSONResponse) VisitListEvidenceAnalysesRes
 }
 
 type CreateEvidenceAnalysisRequestObject struct {
-	Body *CreateEvidenceAnalysisJSONRequestBody
+	Params CreateEvidenceAnalysisParams
+	Body   *CreateEvidenceAnalysisJSONRequestBody
 }
 
 type CreateEvidenceAnalysisResponseObject interface {
@@ -11133,7 +11523,8 @@ func (response DeleteEvidenceAnalysis409JSONResponse) VisitDeleteEvidenceAnalysi
 }
 
 type GetEvidenceAnalysisRequestObject struct {
-	Id EvidenceAnalysisId `json:"id"`
+	Id     EvidenceAnalysisId `json:"id"`
+	Params GetEvidenceAnalysisParams
 }
 
 type GetEvidenceAnalysisResponseObject interface {
@@ -11169,8 +11560,9 @@ func (response GetEvidenceAnalysis404JSONResponse) VisitGetEvidenceAnalysisRespo
 }
 
 type UpdateEvidenceAnalysisRequestObject struct {
-	Id   EvidenceAnalysisId `json:"id"`
-	Body *UpdateEvidenceAnalysisJSONRequestBody
+	Id     EvidenceAnalysisId `json:"id"`
+	Params UpdateEvidenceAnalysisParams
+	Body   *UpdateEvidenceAnalysisJSONRequestBody
 }
 
 type UpdateEvidenceAnalysisResponseObject interface {
@@ -11271,6 +11663,7 @@ func (response ListEvidenceConflicts400JSONResponse) VisitListEvidenceConflictsR
 
 type GetConflictsBySubjectRequestObject struct {
 	SubjectId openapi_types.UUID `json:"subjectId"`
+	Params    GetConflictsBySubjectParams
 }
 
 type GetConflictsBySubjectResponseObject interface {
@@ -11292,7 +11685,8 @@ func (response GetConflictsBySubject200JSONResponse) VisitGetConflictsBySubjectR
 }
 
 type GetEvidenceConflictRequestObject struct {
-	Id EvidenceConflictId `json:"id"`
+	Id     EvidenceConflictId `json:"id"`
+	Params GetEvidenceConflictParams
 }
 
 type GetEvidenceConflictResponseObject interface {
@@ -11328,8 +11722,9 @@ func (response GetEvidenceConflict404JSONResponse) VisitGetEvidenceConflictRespo
 }
 
 type ResolveEvidenceConflictRequestObject struct {
-	Id   EvidenceConflictId `json:"id"`
-	Body *ResolveEvidenceConflictJSONRequestBody
+	Id     EvidenceConflictId `json:"id"`
+	Params ResolveEvidenceConflictParams
+	Body   *ResolveEvidenceConflictJSONRequestBody
 }
 
 type ResolveEvidenceConflictResponseObject interface {
@@ -14292,7 +14687,8 @@ func (response ListProofSummaries400JSONResponse) VisitListProofSummariesRespons
 }
 
 type CreateProofSummaryRequestObject struct {
-	Body *CreateProofSummaryJSONRequestBody
+	Params CreateProofSummaryParams
+	Body   *CreateProofSummaryJSONRequestBody
 }
 
 type CreateProofSummaryResponseObject interface {
@@ -14423,7 +14819,8 @@ func (response DeleteProofSummary409JSONResponse) VisitDeleteProofSummaryRespons
 }
 
 type GetProofSummaryRequestObject struct {
-	Id ProofSummaryId `json:"id"`
+	Id     ProofSummaryId `json:"id"`
+	Params GetProofSummaryParams
 }
 
 type GetProofSummaryResponseObject interface {
@@ -14459,8 +14856,9 @@ func (response GetProofSummary404JSONResponse) VisitGetProofSummaryResponse(w ht
 }
 
 type UpdateProofSummaryRequestObject struct {
-	Id   ProofSummaryId `json:"id"`
-	Body *UpdateProofSummaryJSONRequestBody
+	Id     ProofSummaryId `json:"id"`
+	Params UpdateProofSummaryParams
+	Body   *UpdateProofSummaryJSONRequestBody
 }
 
 type UpdateProofSummaryResponseObject interface {
@@ -14929,7 +15327,8 @@ func (response ListResearchLogs400JSONResponse) VisitListResearchLogsResponse(w 
 }
 
 type CreateResearchLogRequestObject struct {
-	Body *CreateResearchLogJSONRequestBody
+	Params CreateResearchLogParams
+	Body   *CreateResearchLogJSONRequestBody
 }
 
 type CreateResearchLogResponseObject interface {
@@ -14966,6 +15365,7 @@ func (response CreateResearchLog400JSONResponse) VisitCreateResearchLogResponse(
 
 type GetResearchLogsBySubjectRequestObject struct {
 	SubjectId openapi_types.UUID `json:"subjectId"`
+	Params    GetResearchLogsBySubjectParams
 }
 
 type GetResearchLogsBySubjectResponseObject interface {
@@ -15046,7 +15446,8 @@ func (response DeleteResearchLog409JSONResponse) VisitDeleteResearchLogResponse(
 }
 
 type GetResearchLogRequestObject struct {
-	Id ResearchLogId `json:"id"`
+	Id     ResearchLogId `json:"id"`
+	Params GetResearchLogParams
 }
 
 type GetResearchLogResponseObject interface {
@@ -15082,8 +15483,9 @@ func (response GetResearchLog404JSONResponse) VisitGetResearchLogResponse(w http
 }
 
 type UpdateResearchLogRequestObject struct {
-	Id   ResearchLogId `json:"id"`
-	Body *UpdateResearchLogJSONRequestBody
+	Id     ResearchLogId `json:"id"`
+	Params UpdateResearchLogParams
+	Body   *UpdateResearchLogJSONRequestBody
 }
 
 type UpdateResearchLogResponseObject interface {
@@ -17369,8 +17771,10 @@ func (sh *strictHandler) ListEvidenceAnalyses(ctx echo.Context, params ListEvide
 }
 
 // CreateEvidenceAnalysis operation middleware
-func (sh *strictHandler) CreateEvidenceAnalysis(ctx echo.Context) error {
+func (sh *strictHandler) CreateEvidenceAnalysis(ctx echo.Context, params CreateEvidenceAnalysisParams) error {
 	var request CreateEvidenceAnalysisRequestObject
+
+	request.Params = params
 
 	var body CreateEvidenceAnalysisJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -17449,10 +17853,11 @@ func (sh *strictHandler) DeleteEvidenceAnalysis(ctx echo.Context, id EvidenceAna
 }
 
 // GetEvidenceAnalysis operation middleware
-func (sh *strictHandler) GetEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error {
+func (sh *strictHandler) GetEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId, params GetEvidenceAnalysisParams) error {
 	var request GetEvidenceAnalysisRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetEvidenceAnalysis(ctx.Request().Context(), request.(GetEvidenceAnalysisRequestObject))
@@ -17474,10 +17879,11 @@ func (sh *strictHandler) GetEvidenceAnalysis(ctx echo.Context, id EvidenceAnalys
 }
 
 // UpdateEvidenceAnalysis operation middleware
-func (sh *strictHandler) UpdateEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId) error {
+func (sh *strictHandler) UpdateEvidenceAnalysis(ctx echo.Context, id EvidenceAnalysisId, params UpdateEvidenceAnalysisParams) error {
 	var request UpdateEvidenceAnalysisRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateEvidenceAnalysisJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -17530,10 +17936,11 @@ func (sh *strictHandler) ListEvidenceConflicts(ctx echo.Context, params ListEvid
 }
 
 // GetConflictsBySubject operation middleware
-func (sh *strictHandler) GetConflictsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error {
+func (sh *strictHandler) GetConflictsBySubject(ctx echo.Context, subjectId openapi_types.UUID, params GetConflictsBySubjectParams) error {
 	var request GetConflictsBySubjectRequestObject
 
 	request.SubjectId = subjectId
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetConflictsBySubject(ctx.Request().Context(), request.(GetConflictsBySubjectRequestObject))
@@ -17555,10 +17962,11 @@ func (sh *strictHandler) GetConflictsBySubject(ctx echo.Context, subjectId opena
 }
 
 // GetEvidenceConflict operation middleware
-func (sh *strictHandler) GetEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error {
+func (sh *strictHandler) GetEvidenceConflict(ctx echo.Context, id EvidenceConflictId, params GetEvidenceConflictParams) error {
 	var request GetEvidenceConflictRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetEvidenceConflict(ctx.Request().Context(), request.(GetEvidenceConflictRequestObject))
@@ -17580,10 +17988,11 @@ func (sh *strictHandler) GetEvidenceConflict(ctx echo.Context, id EvidenceConfli
 }
 
 // ResolveEvidenceConflict operation middleware
-func (sh *strictHandler) ResolveEvidenceConflict(ctx echo.Context, id EvidenceConflictId) error {
+func (sh *strictHandler) ResolveEvidenceConflict(ctx echo.Context, id EvidenceConflictId, params ResolveEvidenceConflictParams) error {
 	var request ResolveEvidenceConflictRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body ResolveEvidenceConflictJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -19398,8 +19807,10 @@ func (sh *strictHandler) ListProofSummaries(ctx echo.Context, params ListProofSu
 }
 
 // CreateProofSummary operation middleware
-func (sh *strictHandler) CreateProofSummary(ctx echo.Context) error {
+func (sh *strictHandler) CreateProofSummary(ctx echo.Context, params CreateProofSummaryParams) error {
 	var request CreateProofSummaryRequestObject
+
+	request.Params = params
 
 	var body CreateProofSummaryJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -19478,10 +19889,11 @@ func (sh *strictHandler) DeleteProofSummary(ctx echo.Context, id ProofSummaryId,
 }
 
 // GetProofSummary operation middleware
-func (sh *strictHandler) GetProofSummary(ctx echo.Context, id ProofSummaryId) error {
+func (sh *strictHandler) GetProofSummary(ctx echo.Context, id ProofSummaryId, params GetProofSummaryParams) error {
 	var request GetProofSummaryRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetProofSummary(ctx.Request().Context(), request.(GetProofSummaryRequestObject))
@@ -19503,10 +19915,11 @@ func (sh *strictHandler) GetProofSummary(ctx echo.Context, id ProofSummaryId) er
 }
 
 // UpdateProofSummary operation middleware
-func (sh *strictHandler) UpdateProofSummary(ctx echo.Context, id ProofSummaryId) error {
+func (sh *strictHandler) UpdateProofSummary(ctx echo.Context, id ProofSummaryId, params UpdateProofSummaryParams) error {
 	var request UpdateProofSummaryRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateProofSummaryJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -19817,8 +20230,10 @@ func (sh *strictHandler) ListResearchLogs(ctx echo.Context, params ListResearchL
 }
 
 // CreateResearchLog operation middleware
-func (sh *strictHandler) CreateResearchLog(ctx echo.Context) error {
+func (sh *strictHandler) CreateResearchLog(ctx echo.Context, params CreateResearchLogParams) error {
 	var request CreateResearchLogRequestObject
+
+	request.Params = params
 
 	var body CreateResearchLogJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -19846,10 +20261,11 @@ func (sh *strictHandler) CreateResearchLog(ctx echo.Context) error {
 }
 
 // GetResearchLogsBySubject operation middleware
-func (sh *strictHandler) GetResearchLogsBySubject(ctx echo.Context, subjectId openapi_types.UUID) error {
+func (sh *strictHandler) GetResearchLogsBySubject(ctx echo.Context, subjectId openapi_types.UUID, params GetResearchLogsBySubjectParams) error {
 	var request GetResearchLogsBySubjectRequestObject
 
 	request.SubjectId = subjectId
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetResearchLogsBySubject(ctx.Request().Context(), request.(GetResearchLogsBySubjectRequestObject))
@@ -19897,10 +20313,11 @@ func (sh *strictHandler) DeleteResearchLog(ctx echo.Context, id ResearchLogId, p
 }
 
 // GetResearchLog operation middleware
-func (sh *strictHandler) GetResearchLog(ctx echo.Context, id ResearchLogId) error {
+func (sh *strictHandler) GetResearchLog(ctx echo.Context, id ResearchLogId, params GetResearchLogParams) error {
 	var request GetResearchLogRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetResearchLog(ctx.Request().Context(), request.(GetResearchLogRequestObject))
@@ -19922,10 +20339,11 @@ func (sh *strictHandler) GetResearchLog(ctx echo.Context, id ResearchLogId) erro
 }
 
 // UpdateResearchLog operation middleware
-func (sh *strictHandler) UpdateResearchLog(ctx echo.Context, id ResearchLogId) error {
+func (sh *strictHandler) UpdateResearchLog(ctx echo.Context, id ResearchLogId, params UpdateResearchLogParams) error {
 	var request UpdateResearchLogRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateResearchLogJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {

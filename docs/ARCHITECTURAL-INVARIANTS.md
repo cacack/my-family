@@ -126,8 +126,25 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > `TestBranchAwareEventTypes_LeaveMainUntouched` (`internal/command`), and the `?branch=` handler
 > tests in `internal/api/media_branch_handlers_test.go`.
 >
+> **Implementation status (#676 sub-issue E, [#760](https://github.com/cacack/my-family/issues/760)):**
+> BR-003 now also covers the GPS artifacts — EvidenceAnalysis, EvidenceConflict, ResearchLog and
+> ProofSummary — on all three backends. Every filtered read (per fact, per subject and
+> `ListUnresolvedConflicts`) resolves the overlay before it applies its predicate, so a branch that
+> resolves an evidence conflict no longer lists it as unresolved while main still does.
+> `DeletePerson` and `DeleteFamily` cascade to the GPS artifacts about the deleted subject on the
+> same branch only. The eleven GPS event types are on the BR-006 allowlist; a merge refuses a
+> replayed artifact whose subject will not exist on main (`ErrMergeDanglingReference`), and the
+> merge conflict scan compares `EvidenceConflictResolved`. (An *evidence* conflict is a genealogical
+> finding and has nothing to do with BR-004's *merge* conflicts.) Verified by
+> `TestBranchScenario_GPSOverlay` and `TestReadModelStore_DeleteCascadesGPS` (identical copies per
+> backend), `TestReadModelStore_MigratesGPSArtifactsToBranchKeys` (PostgreSQL) and
+> `TestPreGPSBranchSchemaRefusesBranchWrites` (SQLite), `TestBranchGPS_*`,
+> `TestMergeBranch_GPS*` and `TestBranchAwareEventTypes_LeaveMainUntouched` (`internal/command`),
+> and the `?branch=` handler tests in `internal/api/gps_branch_handlers_test.go`. With it every
+> #676 sub-issue is delivered.
+>
 > **BR-003's scope is bounded by decision, not only by progress.** Extending branch-scoping to the
-> pending entity types is the rest of #676, but four entities — Submitter, Repository,
+> pending entity types was #676 (complete with #760), but four entities — Submitter, Repository,
 > RepositoryExternalID and LDSOrdinance — will never carry a `branch_id`: they are file-/archive-level
 > metadata and transcribed sacramental records, not claims a research hypothesis forks. Recorded in
 > [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only)

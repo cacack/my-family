@@ -15,6 +15,11 @@ import (
 
 // ListEvidenceAnalyses implements StrictServerInterface.
 func (ss *StrictServer) ListEvidenceAnalyses(ctx context.Context, request ListEvidenceAnalysesRequestObject) (ListEvidenceAnalysesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
 		return ListEvidenceAnalyses400JSONResponse{BadRequestJSONResponse{
 			Code:    "invalid_parameter",
@@ -44,6 +49,7 @@ func (ss *StrictServer) ListEvidenceAnalyses(ctx context.Context, request ListEv
 		Offset:    offset,
 		SortBy:    sort,
 		SortOrder: order,
+		BranchID:  branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -66,6 +72,11 @@ func (ss *StrictServer) ListEvidenceAnalyses(ctx context.Context, request ListEv
 
 // CreateEvidenceAnalysis implements StrictServerInterface.
 func (ss *StrictServer) CreateEvidenceAnalysis(ctx context.Context, request CreateEvidenceAnalysisRequestObject) (CreateEvidenceAnalysisResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateEvidenceAnalysisInput{
 		FactType:   request.Body.FactType,
 		SubjectID:  request.Body.SubjectId,
@@ -81,7 +92,7 @@ func (ss *StrictServer) CreateEvidenceAnalysis(ctx context.Context, request Crea
 		input.Notes = *request.Body.Notes
 	}
 
-	result, err := ss.server.commandHandler.CreateEvidenceAnalysis(ctx, input)
+	result, err := ss.branchWriter(branch).CreateEvidenceAnalysis(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrInvalidInput) {
 			return CreateEvidenceAnalysis400JSONResponse{BadRequestJSONResponse{
@@ -93,7 +104,7 @@ func (ss *StrictServer) CreateEvidenceAnalysis(ctx context.Context, request Crea
 	}
 
 	// Fetch the created analysis
-	analysis, err := ss.server.evidenceService.GetEvidenceAnalysis(ctx, result.ID)
+	analysis, err := ss.server.evidenceService.GetEvidenceAnalysis(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +119,12 @@ func (ss *StrictServer) CreateEvidenceAnalysis(ctx context.Context, request Crea
 
 // GetEvidenceAnalysis implements StrictServerInterface.
 func (ss *StrictServer) GetEvidenceAnalysis(ctx context.Context, request GetEvidenceAnalysisRequestObject) (GetEvidenceAnalysisResponseObject, error) {
-	analysis, err := ss.server.evidenceService.GetEvidenceAnalysis(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	analysis, err := ss.server.evidenceService.GetEvidenceAnalysis(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetEvidenceAnalysis404JSONResponse{NotFoundJSONResponse{
@@ -124,6 +140,11 @@ func (ss *StrictServer) GetEvidenceAnalysis(ctx context.Context, request GetEvid
 
 // UpdateEvidenceAnalysis implements StrictServerInterface.
 func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request UpdateEvidenceAnalysisRequestObject) (UpdateEvidenceAnalysisResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateEvidenceAnalysisInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -149,7 +170,7 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 		input.Notes = request.Body.Notes
 	}
 
-	result, err := ss.server.commandHandler.UpdateEvidenceAnalysis(ctx, input)
+	result, err := ss.branchWriter(branch).UpdateEvidenceAnalysis(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrEvidenceAnalysisNotFound) {
 			return UpdateEvidenceAnalysis404JSONResponse{NotFoundJSONResponse{
@@ -173,7 +194,7 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 	}
 
 	// Fetch the updated analysis
-	analysis, err := ss.server.evidenceService.GetEvidenceAnalysis(ctx, request.Id)
+	analysis, err := ss.server.evidenceService.GetEvidenceAnalysis(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +209,12 @@ func (ss *StrictServer) UpdateEvidenceAnalysis(ctx context.Context, request Upda
 
 // DeleteEvidenceAnalysis implements StrictServerInterface.
 func (ss *StrictServer) DeleteEvidenceAnalysis(ctx context.Context, request DeleteEvidenceAnalysisRequestObject) (DeleteEvidenceAnalysisResponseObject, error) {
-	err := ss.server.commandHandler.DeleteEvidenceAnalysis(ctx, request.Id, request.Params.Version, "")
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteEvidenceAnalysis(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrEvidenceAnalysisNotFound) {
 			return DeleteEvidenceAnalysis404JSONResponse{NotFoundJSONResponse{
@@ -210,7 +236,12 @@ func (ss *StrictServer) DeleteEvidenceAnalysis(ctx context.Context, request Dele
 
 // GetAnalysesByFact implements StrictServerInterface.
 func (ss *StrictServer) GetAnalysesByFact(ctx context.Context, request GetAnalysesByFactRequestObject) (GetAnalysesByFactResponseObject, error) {
-	analyses, err := ss.server.evidenceService.GetAnalysesForFact(ctx, request.Params.FactType, request.Params.SubjectId)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	analyses, err := ss.server.evidenceService.GetAnalysesForFact(ctx, branchScopeID(branch), request.Params.FactType, request.Params.SubjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -229,6 +260,11 @@ func (ss *StrictServer) GetAnalysesByFact(ctx context.Context, request GetAnalys
 
 // ListEvidenceConflicts implements StrictServerInterface.
 func (ss *StrictServer) ListEvidenceConflicts(ctx context.Context, request ListEvidenceConflictsRequestObject) (ListEvidenceConflictsResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	limit := 20
 	offset := 0
 	var status string
@@ -244,9 +280,10 @@ func (ss *StrictServer) ListEvidenceConflicts(ctx context.Context, request ListE
 	}
 
 	result, err := ss.server.evidenceService.ListEvidenceConflicts(ctx, query.ListInput{
-		Limit:  limit,
-		Offset: offset,
-		Status: status,
+		Limit:    limit,
+		Offset:   offset,
+		Status:   status,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -269,7 +306,12 @@ func (ss *StrictServer) ListEvidenceConflicts(ctx context.Context, request ListE
 
 // GetEvidenceConflict implements StrictServerInterface.
 func (ss *StrictServer) GetEvidenceConflict(ctx context.Context, request GetEvidenceConflictRequestObject) (GetEvidenceConflictResponseObject, error) {
-	conflict, err := ss.server.evidenceService.GetEvidenceConflict(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	conflict, err := ss.server.evidenceService.GetEvidenceConflict(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetEvidenceConflict404JSONResponse{NotFoundJSONResponse{
@@ -285,7 +327,12 @@ func (ss *StrictServer) GetEvidenceConflict(ctx context.Context, request GetEvid
 
 // ResolveEvidenceConflict implements StrictServerInterface.
 func (ss *StrictServer) ResolveEvidenceConflict(ctx context.Context, request ResolveEvidenceConflictRequestObject) (ResolveEvidenceConflictResponseObject, error) {
-	_, err := ss.server.commandHandler.ResolveEvidenceConflict(ctx, request.Id, request.Body.Resolution, request.Body.Version)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = ss.branchWriter(branch).ResolveEvidenceConflict(ctx, request.Id, request.Body.Resolution, request.Body.Version)
 	if err != nil {
 		if errors.Is(err, command.ErrEvidenceConflictNotFound) {
 			return ResolveEvidenceConflict404JSONResponse{NotFoundJSONResponse{
@@ -309,7 +356,7 @@ func (ss *StrictServer) ResolveEvidenceConflict(ctx context.Context, request Res
 	}
 
 	// Fetch the resolved conflict
-	conflict, err := ss.server.evidenceService.GetEvidenceConflict(ctx, request.Id)
+	conflict, err := ss.server.evidenceService.GetEvidenceConflict(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +366,12 @@ func (ss *StrictServer) ResolveEvidenceConflict(ctx context.Context, request Res
 
 // GetConflictsBySubject implements StrictServerInterface.
 func (ss *StrictServer) GetConflictsBySubject(ctx context.Context, request GetConflictsBySubjectRequestObject) (GetConflictsBySubjectResponseObject, error) {
-	conflicts, err := ss.server.evidenceService.GetConflictsForSubject(ctx, request.SubjectId)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	conflicts, err := ss.server.evidenceService.GetConflictsForSubject(ctx, branchScopeID(branch), request.SubjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -338,6 +390,11 @@ func (ss *StrictServer) GetConflictsBySubject(ctx context.Context, request GetCo
 
 // ListResearchLogs implements StrictServerInterface.
 func (ss *StrictServer) ListResearchLogs(ctx context.Context, request ListResearchLogsRequestObject) (ListResearchLogsResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
 		return ListResearchLogs400JSONResponse{BadRequestJSONResponse{
 			Code:    "invalid_parameter",
@@ -367,6 +424,7 @@ func (ss *StrictServer) ListResearchLogs(ctx context.Context, request ListResear
 		Offset:    offset,
 		SortBy:    sort,
 		SortOrder: order,
+		BranchID:  branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -389,6 +447,11 @@ func (ss *StrictServer) ListResearchLogs(ctx context.Context, request ListResear
 
 // CreateResearchLog implements StrictServerInterface.
 func (ss *StrictServer) CreateResearchLog(ctx context.Context, request CreateResearchLogRequestObject) (CreateResearchLogResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateResearchLogInput{
 		SubjectID:         request.Body.SubjectId,
 		SubjectType:       request.Body.SubjectType,
@@ -401,7 +464,7 @@ func (ss *StrictServer) CreateResearchLog(ctx context.Context, request CreateRes
 		input.Notes = *request.Body.Notes
 	}
 
-	result, err := ss.server.commandHandler.CreateResearchLog(ctx, input)
+	result, err := ss.branchWriter(branch).CreateResearchLog(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrInvalidInput) {
 			return CreateResearchLog400JSONResponse{BadRequestJSONResponse{
@@ -413,7 +476,7 @@ func (ss *StrictServer) CreateResearchLog(ctx context.Context, request CreateRes
 	}
 
 	// Fetch the created log
-	log, err := ss.server.evidenceService.GetResearchLog(ctx, result.ID)
+	log, err := ss.server.evidenceService.GetResearchLog(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +486,12 @@ func (ss *StrictServer) CreateResearchLog(ctx context.Context, request CreateRes
 
 // GetResearchLog implements StrictServerInterface.
 func (ss *StrictServer) GetResearchLog(ctx context.Context, request GetResearchLogRequestObject) (GetResearchLogResponseObject, error) {
-	log, err := ss.server.evidenceService.GetResearchLog(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	log, err := ss.server.evidenceService.GetResearchLog(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetResearchLog404JSONResponse{NotFoundJSONResponse{
@@ -439,6 +507,11 @@ func (ss *StrictServer) GetResearchLog(ctx context.Context, request GetResearchL
 
 // UpdateResearchLog implements StrictServerInterface.
 func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateResearchLogRequestObject) (UpdateResearchLogResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateResearchLogInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -467,7 +540,7 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 		input.SearchDate = request.Body.SearchDate
 	}
 
-	_, err := ss.server.commandHandler.UpdateResearchLog(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateResearchLog(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrResearchLogNotFound) {
 			return UpdateResearchLog404JSONResponse{NotFoundJSONResponse{
@@ -491,7 +564,7 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 	}
 
 	// Fetch the updated log
-	log, err := ss.server.evidenceService.GetResearchLog(ctx, request.Id)
+	log, err := ss.server.evidenceService.GetResearchLog(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +574,12 @@ func (ss *StrictServer) UpdateResearchLog(ctx context.Context, request UpdateRes
 
 // DeleteResearchLog implements StrictServerInterface.
 func (ss *StrictServer) DeleteResearchLog(ctx context.Context, request DeleteResearchLogRequestObject) (DeleteResearchLogResponseObject, error) {
-	err := ss.server.commandHandler.DeleteResearchLog(ctx, request.Id, request.Params.Version, "")
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteResearchLog(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrResearchLogNotFound) {
 			return DeleteResearchLog404JSONResponse{NotFoundJSONResponse{
@@ -523,7 +601,12 @@ func (ss *StrictServer) DeleteResearchLog(ctx context.Context, request DeleteRes
 
 // GetResearchLogsBySubject implements StrictServerInterface.
 func (ss *StrictServer) GetResearchLogsBySubject(ctx context.Context, request GetResearchLogsBySubjectRequestObject) (GetResearchLogsBySubjectResponseObject, error) {
-	logs, err := ss.server.evidenceService.GetResearchLogsForSubject(ctx, request.SubjectId)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	logs, err := ss.server.evidenceService.GetResearchLogsForSubject(ctx, branchScopeID(branch), request.SubjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -542,6 +625,11 @@ func (ss *StrictServer) GetResearchLogsBySubject(ctx context.Context, request Ge
 
 // ListProofSummaries implements StrictServerInterface.
 func (ss *StrictServer) ListProofSummaries(ctx context.Context, request ListProofSummariesRequestObject) (ListProofSummariesResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
 		return ListProofSummaries400JSONResponse{BadRequestJSONResponse{
 			Code:    "invalid_parameter",
@@ -571,6 +659,7 @@ func (ss *StrictServer) ListProofSummaries(ctx context.Context, request ListProo
 		Offset:    offset,
 		SortBy:    sort,
 		SortOrder: order,
+		BranchID:  branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -593,6 +682,11 @@ func (ss *StrictServer) ListProofSummaries(ctx context.Context, request ListProo
 
 // CreateProofSummary implements StrictServerInterface.
 func (ss *StrictServer) CreateProofSummary(ctx context.Context, request CreateProofSummaryRequestObject) (CreateProofSummaryResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateProofSummaryInput{
 		FactType:   request.Body.FactType,
 		SubjectID:  request.Body.SubjectId,
@@ -606,7 +700,7 @@ func (ss *StrictServer) CreateProofSummary(ctx context.Context, request CreatePr
 		input.ResearchStatus = string(*request.Body.ResearchStatus)
 	}
 
-	result, err := ss.server.commandHandler.CreateProofSummary(ctx, input)
+	result, err := ss.branchWriter(branch).CreateProofSummary(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrInvalidInput) {
 			return CreateProofSummary400JSONResponse{BadRequestJSONResponse{
@@ -618,7 +712,7 @@ func (ss *StrictServer) CreateProofSummary(ctx context.Context, request CreatePr
 	}
 
 	// Fetch the created summary
-	summary, err := ss.server.evidenceService.GetProofSummary(ctx, result.ID)
+	summary, err := ss.server.evidenceService.GetProofSummary(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -628,7 +722,12 @@ func (ss *StrictServer) CreateProofSummary(ctx context.Context, request CreatePr
 
 // GetProofSummary implements StrictServerInterface.
 func (ss *StrictServer) GetProofSummary(ctx context.Context, request GetProofSummaryRequestObject) (GetProofSummaryResponseObject, error) {
-	summary, err := ss.server.evidenceService.GetProofSummary(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	summary, err := ss.server.evidenceService.GetProofSummary(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetProofSummary404JSONResponse{NotFoundJSONResponse{
@@ -644,6 +743,11 @@ func (ss *StrictServer) GetProofSummary(ctx context.Context, request GetProofSum
 
 // UpdateProofSummary implements StrictServerInterface.
 func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdateProofSummaryRequestObject) (UpdateProofSummaryResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateProofSummaryInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -669,7 +773,7 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 		input.ResearchStatus = &rs
 	}
 
-	_, err := ss.server.commandHandler.UpdateProofSummary(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateProofSummary(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrProofSummaryNotFound) {
 			return UpdateProofSummary404JSONResponse{NotFoundJSONResponse{
@@ -693,7 +797,7 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 	}
 
 	// Fetch the updated summary
-	summary, err := ss.server.evidenceService.GetProofSummary(ctx, request.Id)
+	summary, err := ss.server.evidenceService.GetProofSummary(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -703,7 +807,12 @@ func (ss *StrictServer) UpdateProofSummary(ctx context.Context, request UpdatePr
 
 // DeleteProofSummary implements StrictServerInterface.
 func (ss *StrictServer) DeleteProofSummary(ctx context.Context, request DeleteProofSummaryRequestObject) (DeleteProofSummaryResponseObject, error) {
-	err := ss.server.commandHandler.DeleteProofSummary(ctx, request.Id, request.Params.Version, "")
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteProofSummary(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrProofSummaryNotFound) {
 			return DeleteProofSummary404JSONResponse{NotFoundJSONResponse{
@@ -725,7 +834,12 @@ func (ss *StrictServer) DeleteProofSummary(ctx context.Context, request DeletePr
 
 // GetProofSummaryByFact implements StrictServerInterface.
 func (ss *StrictServer) GetProofSummaryByFact(ctx context.Context, request GetProofSummaryByFactRequestObject) (GetProofSummaryByFactResponseObject, error) {
-	summaries, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, request.Params.FactType, request.Params.SubjectId)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	summaries, err := ss.server.evidenceService.GetProofSummaryForFact(ctx, branchScopeID(branch), request.Params.FactType, request.Params.SubjectId)
 	if err != nil {
 		return nil, err
 	}

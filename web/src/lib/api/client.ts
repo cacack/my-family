@@ -193,7 +193,22 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/media$`) },
 	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/media/${UUID_SEGMENT}$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/content$`) },
-	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/thumbnail$`) }
+	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/thumbnail$`) },
+	// GPS artifacts (#760): evidence analyses, evidence conflicts, research logs
+	// and proof summaries.
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/evidence-analyses$') },
+	{ methods: ['GET'], pattern: new RegExp('^/evidence-analyses/by-fact$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/evidence-analyses/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp('^/evidence-conflicts$') },
+	{ methods: ['GET'], pattern: new RegExp(`^/evidence-conflicts/${UUID_SEGMENT}$`) },
+	{ methods: ['POST'], pattern: new RegExp(`^/evidence-conflicts/${UUID_SEGMENT}/resolve$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/evidence-conflicts/by-subject/${UUID_SEGMENT}$`) },
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/research-logs$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/research-logs/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/research-logs/by-subject/${UUID_SEGMENT}$`) },
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/proof-summaries$') },
+	{ methods: ['GET'], pattern: new RegExp('^/proof-summaries/by-fact$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/proof-summaries/${UUID_SEGMENT}$`) }
 ];
 
 /**
