@@ -256,27 +256,8 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err != nil {
 		return nil, fmt.Errorf("planning merge: %w", err)
 	}
-	// The two truncation sides are different problems and get different
-	// answers. A branch bigger than the cap is permanently unmergeable as-is;
-	// a main tail bigger than the cap says nothing about the branch, grows with
-	// unrelated mainline activity, and is not the branch's fault.
-	if plan.BranchTruncated {
-		return nil, fmt.Errorf(
-			"%w: branch %s has more than %d events of its own, so its replay set is incomplete. "+
-				"Retrying will not help — the cap is fixed and the branch does not shrink; "+
-				"promoting a subset needs partial merge (#684)",
-			ErrBranchTooLargeToMerge, branch.ID, plan.EventCap)
-	}
-	if plan.MainTruncated {
-		return nil, fmt.Errorf(
-			"%w: more than %d events have landed on main for the streams branch %s touches since it forked, "+
-				"so the conflict list is not known to be complete. The branch itself may be small — this is a "+
-				"limit on how far back the comparison scans, not on the branch",
-			ErrMainTooFarAheadToMerge, plan.EventCap, branch.ID)
-	}
-
-	if len(plan.ReplayEvents) == 0 {
-		return nil, fmt.Errorf("%w: branch %s has made no changes since it forked, so there is nothing to promote", ErrMergeEmpty, branch.ID)
+	if err := refuseUnmergeablePlan(branch, plan); err != nil {
+		return nil, err
 	}
 
 	groups, err := orderEvidenceForReplay(groupEventsByStream(plan.ReplayEvents))
@@ -341,6 +322,34 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		ReplayedEventCount: replayed,
 		SkippedStreamIDs:   skipped,
 	}, nil
+}
+
+// refuseUnmergeablePlan refuses a plan no resolution can make mergeable: one
+// whose branch or main scan was truncated, or one with nothing to replay.
+func refuseUnmergeablePlan(branch *domain.Branch, plan *query.MergePlan) error {
+	// The two truncation sides are different problems and get different
+	// answers. A branch bigger than the cap is permanently unmergeable as-is;
+	// a main tail bigger than the cap says nothing about the branch, grows with
+	// unrelated mainline activity, and is not the branch's fault.
+	if plan.BranchTruncated {
+		return fmt.Errorf(
+			"%w: branch %s has more than %d events of its own, so its replay set is incomplete. "+
+				"Retrying will not help — the cap is fixed and the branch does not shrink; "+
+				"promoting a subset needs partial merge (#684)",
+			ErrBranchTooLargeToMerge, branch.ID, plan.EventCap)
+	}
+	if plan.MainTruncated {
+		return fmt.Errorf(
+			"%w: more than %d events have landed on main for the streams branch %s touches since it forked, "+
+				"so the conflict list is not known to be complete. The branch itself may be small — this is a "+
+				"limit on how far back the comparison scans, not on the branch",
+			ErrMainTooFarAheadToMerge, plan.EventCap, branch.ID)
+	}
+
+	if len(plan.ReplayEvents) == 0 {
+		return fmt.Errorf("%w: branch %s has made no changes since it forked, so there is nothing to promote", ErrMergeEmpty, branch.ID)
+	}
+	return nil
 }
 
 // validatePlanNotStale refuses a merge whose conflict verdict was computed

@@ -101,12 +101,23 @@ func (c *conflictState) apply(evt *repository.StoredEvent) {
 	c.st.apply(evt)
 }
 
+// valuedConflict is one conflict's three states and the fields to value.
+type valuedConflict struct {
+	base, branch, main *conflictState
+	fields             []string
+}
+
+// hasFieldValues reports whether a conflict kind is valued field by field.
+func hasFieldValues(kind MergeConflictKind) bool {
+	return kind == ConflictEditEdit || kind == ConflictDeleteEdit
+}
+
 // describeConflictValues fills MergeConflict.FieldValues for every edit_edit
 // and delete_edit conflict. See the comment at the top of this file.
 func (s *BranchService) describeConflictValues(ctx context.Context, diff *branchDiffSources, conflicts []MergeConflict) error {
 	var streamIDs []uuid.UUID
 	for i := range conflicts {
-		if conflicts[i].Kind == ConflictEditEdit || conflicts[i].Kind == ConflictDeleteEdit {
+		if hasFieldValues(conflicts[i].Kind) {
 			streamIDs = append(streamIDs, conflicts[i].StreamID)
 		}
 	}
@@ -122,47 +133,7 @@ func (s *BranchService) describeConflictValues(ctx context.Context, diff *branch
 	// the base is unknown and is reported as absent rather than guessed.
 	baseKnown := reliableUpTo >= diff.branch.BasePosition
 
-	branchByStream := groupEventsByStreamID(diff.branchEvents)
-	mainByStream := groupEventsByStreamID(diff.mainEvents)
-	branchSides := summarizeStreams(diff.branchEvents)
-	mainSides := summarizeStreams(diff.mainEvents)
-
-	type sides struct {
-		base, branch, main *conflictState
-		fields             []string
-	}
-	valued := make(map[uuid.UUID]*sides, len(streamIDs))
-	refs := newEntityRefs()
-	for i := range conflicts {
-		c := &conflicts[i]
-		if c.Kind != ConflictEditEdit && c.Kind != ConflictDeleteEdit {
-			continue
-		}
-		base := newConflictState()
-		for j := range mainStreams[c.StreamID] {
-			evt := &mainStreams[c.StreamID][j]
-			if evt.Position <= diff.branch.BasePosition {
-				base.apply(evt)
-			}
-		}
-		v := &sides{base: base, branch: foldOnto(base, branchByStream[c.StreamID]), main: foldOnto(base, mainByStream[c.StreamID])}
-		if !baseKnown {
-			v.base = nil
-		}
-		if c.Kind == ConflictEditEdit {
-			v.fields = c.Fields
-		} else {
-			editor := branchSides[c.StreamID]
-			if c.DeletedBy == resolveBranchValue {
-				editor = mainSides[c.StreamID]
-			}
-			v.fields = editedFields(editor)
-		}
-		for _, state := range []*conflictState{v.base, v.branch, v.main} {
-			registerConflictRefs(refs, state, v.fields)
-		}
-		valued[c.StreamID] = v
-	}
+	valued, refs := foldConflictSides(diff, conflicts, mainStreams, baseKnown)
 
 	branchID := domain.BranchID(diff.branch.ID)
 	desc := &historyDescription{states: map[uuid.UUID]*streamState{}}
@@ -174,35 +145,89 @@ func (s *BranchService) describeConflictValues(ctx context.Context, diff *branch
 	}
 
 	for i := range conflicts {
-		c := &conflicts[i]
-		v := valued[c.StreamID]
-		if v == nil {
-			continue
-		}
-		c.FieldValues = make([]MergeConflictField, 0, len(v.fields))
-		labels := make([]string, 0, len(v.fields))
-		for _, field := range v.fields {
-			entry := MergeConflictField{
-				Field:       field,
-				Label:       desc.conflictFieldLabel(field),
-				BaseValue:   desc.conflictValue(v.base, field),
-				BranchValue: desc.conflictValue(v.branch, field),
-				MainValue:   desc.conflictValue(v.main, field),
-			}
-			switch c.DeletedBy {
-			case resolveBranchValue:
-				entry.BranchValue = nil
-			case resolveMainValue:
-				entry.MainValue = nil
-			}
-			c.FieldValues = append(c.FieldValues, entry)
-			labels = append(labels, entry.Label)
-		}
-		if c.Kind == ConflictEditEdit && len(labels) > 0 {
-			c.Detail = "The branch and main disagree on " + strings.Join(labels, "; ")
+		if v := valued[conflicts[i].StreamID]; v != nil {
+			desc.fillConflictValues(&conflicts[i], v)
 		}
 	}
 	return nil
+}
+
+// foldConflictSides builds, in memory, the fork state and each side's state for
+// every valued conflict, and registers every entity their values refer to.
+func foldConflictSides(
+	diff *branchDiffSources,
+	conflicts []MergeConflict,
+	mainStreams map[uuid.UUID][]repository.StoredEvent,
+	baseKnown bool,
+) (map[uuid.UUID]*valuedConflict, entityRefs) {
+	branchByStream := groupEventsByStreamID(diff.branchEvents)
+	mainByStream := groupEventsByStreamID(diff.mainEvents)
+	branchSides := summarizeStreams(diff.branchEvents)
+	mainSides := summarizeStreams(diff.mainEvents)
+
+	valued := make(map[uuid.UUID]*valuedConflict, len(conflicts))
+	refs := newEntityRefs()
+	for i := range conflicts {
+		c := &conflicts[i]
+		if !hasFieldValues(c.Kind) {
+			continue
+		}
+		base := newConflictState()
+		for j := range mainStreams[c.StreamID] {
+			if evt := &mainStreams[c.StreamID][j]; evt.Position <= diff.branch.BasePosition {
+				base.apply(evt)
+			}
+		}
+		v := &valuedConflict{
+			base:   base,
+			branch: foldOnto(base, branchByStream[c.StreamID]),
+			main:   foldOnto(base, mainByStream[c.StreamID]),
+			fields: c.Fields,
+		}
+		if !baseKnown {
+			v.base = nil
+		}
+		if c.Kind == ConflictDeleteEdit {
+			// The editing side's changes are what the delete would discard.
+			editor := branchSides[c.StreamID]
+			if c.DeletedBy == resolveBranchValue {
+				editor = mainSides[c.StreamID]
+			}
+			v.fields = editedFields(editor)
+		}
+		for _, state := range []*conflictState{v.base, v.branch, v.main} {
+			registerConflictRefs(refs, state, v.fields)
+		}
+		valued[c.StreamID] = v
+	}
+	return valued, refs
+}
+
+// fillConflictValues sets one conflict's FieldValues, and rewrites an
+// edit_edit's detail in the readable labels.
+func (d *historyDescription) fillConflictValues(c *MergeConflict, v *valuedConflict) {
+	c.FieldValues = make([]MergeConflictField, 0, len(v.fields))
+	labels := make([]string, 0, len(v.fields))
+	for _, field := range v.fields {
+		entry := MergeConflictField{
+			Field:       field,
+			Label:       d.conflictFieldLabel(field),
+			BaseValue:   d.conflictValue(v.base, field),
+			BranchValue: d.conflictValue(v.branch, field),
+			MainValue:   d.conflictValue(v.main, field),
+		}
+		switch c.DeletedBy {
+		case resolveBranchValue:
+			entry.BranchValue = nil
+		case resolveMainValue:
+			entry.MainValue = nil
+		}
+		c.FieldValues = append(c.FieldValues, entry)
+		labels = append(labels, entry.Label)
+	}
+	if c.Kind == ConflictEditEdit && len(labels) > 0 {
+		c.Detail = "The branch and main disagree on " + strings.Join(labels, "; ")
+	}
 }
 
 // foldOnto returns base with events folded on top, leaving base untouched.
