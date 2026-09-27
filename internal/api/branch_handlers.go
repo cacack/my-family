@@ -259,7 +259,7 @@ func (ss *StrictServer) MergeBranch(ctx context.Context, request MergeBranchRequ
 		if request.Body.Note != nil {
 			input.Note = *request.Body.Note
 		}
-		resolutions, err := convertGeneratedResolutionsToCommand(request.Body.Resolutions)
+		resolutions, rationales, err := convertGeneratedResolutionsToCommand(request.Body.Resolutions)
 		if err != nil {
 			return MergeBranch400JSONResponse{BadRequestJSONResponse{
 				Code:    "invalid_resolution",
@@ -267,6 +267,7 @@ func (ss *StrictServer) MergeBranch(ctx context.Context, request MergeBranchRequ
 			}}, nil
 		}
 		input.Resolutions = resolutions
+		input.Rationales = rationales
 	}
 
 	// result is non-nil alongside ErrMergeConflicts and carries the conflicts;
@@ -364,7 +365,13 @@ func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (Mer
 	case errors.Is(err, command.ErrMergePlanStale):
 		return refuse(MergePlanStale)
 
-	case errors.Is(err, domain.ErrBranchMergeNoteTooLong):
+	case errors.Is(err, command.ErrMergeEmpty):
+		// A refusal like the others: nothing was written and the branch is
+		// still active, so it shares their 409 family.
+		return refuse(MergeEmpty)
+
+	case errors.Is(err, domain.ErrBranchMergeNoteTooLong),
+		errors.Is(err, domain.ErrResolutionRationaleTooLong):
 		return MergeBranch400JSONResponse{BadRequestJSONResponse{
 			Code:    "validation_error",
 			Message: err.Error(),
@@ -393,7 +400,7 @@ func (ss *StrictServer) ResumeBranchMerge(ctx context.Context, request ResumeBra
 
 	input := command.ResumeMergeInput{BranchID: request.Id}
 	if request.Body != nil {
-		resolutions, err := convertGeneratedResolutionsToCommand(request.Body.Resolutions)
+		resolutions, rationales, err := convertGeneratedResolutionsToCommand(request.Body.Resolutions)
 		if err != nil {
 			return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{
 				Code:    "invalid_resolution",
@@ -401,6 +408,7 @@ func (ss *StrictServer) ResumeBranchMerge(ctx context.Context, request ResumeBra
 			}}, nil
 		}
 		input.Resolutions = resolutions
+		input.Rationales = rationales
 	}
 
 	// result is non-nil alongside ErrMergeResumeNeedsResolution and carries the
@@ -459,6 +467,12 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 			Message: err.Error(),
 		}}, nil
 
+	case errors.Is(err, domain.ErrResolutionRationaleTooLong):
+		return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{
+			Code:    "validation_error",
+			Message: err.Error(),
+		}}, nil
+
 	// Checked before any stale-plan sentinel it may wrap, for the same reason
 	// as in mergeBranchErrorResponse: the resume wrote something and must say
 	// so. Retrying the resume IS the remedy here.
@@ -498,19 +512,29 @@ func nonNilUUIDs(ids []uuid.UUID) []openapi_types.UUID {
 // Unrecognized resolution values are NOT rejected here: the command owns that
 // check (ErrUnknownResolution), which also catches a stream the branch never
 // touched, so both misuses report through one path.
-func convertGeneratedResolutionsToCommand(entries *[]MergeResolutionEntry) (map[uuid.UUID]command.MergeResolution, error) {
+//
+// The optional per-entry rationales (#828) come back as their own map, keyed
+// the same way; the command validates and records them.
+func convertGeneratedResolutionsToCommand(entries *[]MergeResolutionEntry) (map[uuid.UUID]command.MergeResolution, map[uuid.UUID]string, error) {
 	if entries == nil || len(*entries) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	out := make(map[uuid.UUID]command.MergeResolution, len(*entries))
+	var rationales map[uuid.UUID]string
 	for _, entry := range *entries {
 		if _, duplicate := out[entry.StreamId]; duplicate {
-			return nil, fmt.Errorf("resolutions contains stream %s more than once", entry.StreamId)
+			return nil, nil, fmt.Errorf("resolutions contains stream %s more than once", entry.StreamId)
 		}
 		out[entry.StreamId] = command.MergeResolution(entry.Resolution)
+		if entry.Rationale != nil {
+			if rationales == nil {
+				rationales = make(map[uuid.UUID]string)
+			}
+			rationales[entry.StreamId] = *entry.Rationale
+		}
 	}
-	return out, nil
+	return out, rationales, nil
 }
 
 // convertQueryMergeConflictsToGenerated converts the query layer's conflicts,
@@ -539,6 +563,23 @@ func convertQueryMergeConflictsToGenerated(conflicts []query.MergeConflict) []Me
 		if len(c.Fields) > 0 {
 			fields := c.Fields
 			out[i].Fields = &fields
+		}
+		if c.DeletedBy != "" {
+			deletedBy := MergeConflictDeletedBy(c.DeletedBy)
+			out[i].DeletedBy = &deletedBy
+		}
+		if len(c.FieldValues) > 0 {
+			values := make([]MergeConflictField, len(c.FieldValues))
+			for j, v := range c.FieldValues {
+				values[j] = MergeConflictField{
+					Field:       v.Field,
+					Label:       v.Label,
+					BaseValue:   v.BaseValue,
+					BranchValue: v.BranchValue,
+					MainValue:   v.MainValue,
+				}
+			}
+			out[i].FieldValues = &values
 		}
 	}
 	return out

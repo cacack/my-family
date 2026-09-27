@@ -54,6 +54,16 @@ type MergeConflict struct {
 	Fields     []string          `json:"fields,omitempty"` // edit_edit only
 	Detail     string            `json:"detail"`
 
+	// DeletedBy names the side that deleted the entity ("branch" or "main").
+	// Set for delete_edit only.
+	DeletedBy string `json:"deleted_by,omitempty"`
+
+	// FieldValues says, per contested field, what the entity held at the fork
+	// and what each side now asserts, in words (#828). For edit_edit it covers
+	// Fields; for delete_edit it covers the fields the editing side changed,
+	// with the deleting side's value absent. Empty for create_create.
+	FieldValues []MergeConflictField `json:"field_values,omitempty"`
+
 	// SupportedResolutions lists the resolutions that would actually produce
 	// the outcome they name, sorted. Most conflicts accept both sides, but two
 	// shapes do not, and offering a resolution that silently does nothing is
@@ -282,6 +292,9 @@ func (s *BranchService) detectConflicts(ctx context.Context, diff *branchDiffSou
 	if err := s.enrichConflictEntities(ctx, domain.BranchID(diff.branch.ID), diff.branchEvents, conflicts); err != nil {
 		return nil, false, fmt.Errorf("name conflicting entities: %w", err)
 	}
+	if err := s.describeConflictValues(ctx, diff, conflicts); err != nil {
+		return nil, false, fmt.Errorf("describe conflicting values: %w", err)
+	}
 
 	return conflicts, tailTruncated, nil
 }
@@ -356,6 +369,7 @@ func classifyStream(streamID uuid.UUID, branchSide, mainSide *streamSide) (Merge
 
 	if branchSide.deleted != mainSide.deleted {
 		deleter, editor := "The branch", "main"
+		deletedBy := resolveBranchValue
 		// When the BRANCH is the deleter, replaying its delete onto main works
 		// normally, so both sides remain choosable. When MAIN is the deleter,
 		// replaying the branch's edits onto a row that no longer exists is a
@@ -364,6 +378,7 @@ func classifyStream(streamID uuid.UUID, branchSide, mainSide *streamSide) (Merge
 		detail := "%s deleted this entity while %s changed it"
 		if mainSide.deleted {
 			deleter, editor = "Main", "the branch"
+			deletedBy = resolveMainValue
 			supported = []string{resolveMainValue}
 			detail += "; the branch's changes cannot be replayed onto a deleted entity, so only \"main\" is available"
 		}
@@ -371,6 +386,7 @@ func classifyStream(streamID uuid.UUID, branchSide, mainSide *streamSide) (Merge
 			StreamID:             streamID,
 			Kind:                 ConflictDeleteEdit,
 			Detail:               fmt.Sprintf(detail, deleter, editor),
+			DeletedBy:            deletedBy,
 			SupportedResolutions: supported,
 		}, true
 	}

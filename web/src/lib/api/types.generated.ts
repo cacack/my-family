@@ -4359,10 +4359,60 @@ export interface components {
              */
             fields?: string[];
             /**
+             * @description For `delete_edit` only: which side deleted the entity. The other
+             *     side is the one whose edits `field_values` lists.
+             * @enum {string}
+             */
+            deleted_by?: "branch" | "main";
+            /**
+             * @description What each side says, per contested field, in words: the value at
+             *     the fork (`base_value`), the branch's (`branch_value`) and the
+             *     mainline's (`main_value`). Ids of referenced people, families,
+             *     sources and citations are resolved to their names.
+             *
+             *     - `edit_edit` - one entry per entry of `fields`, in the same order.
+             *     - `delete_edit` - one entry per field the editing side changed; the
+             *       deleting side's value is `null` (see `deleted_by`).
+             *     - `create_create` - absent.
+             */
+            field_values?: components["schemas"]["MergeConflictField"][];
+            /**
              * @description Human-readable explanation of the conflict, ready to display
-             * @example Both sides changed surname to different values
+             * @example The branch and main disagree on Surname
              */
             detail: string;
+        };
+        /** @description One contested field of a conflict, valued on each side. */
+        MergeConflictField: {
+            /**
+             * @description The raw field key, as `MergeConflict.fields` reports it - for
+             *     example `surname`, `children[<person-id>]` or `names[<name-id>]`.
+             * @example surname
+             */
+            field: string;
+            /**
+             * @description The field's readable name, ready to display. A structural key is
+             *     named by what it refers to, e.g. `Child: Ada Lovelace`.
+             * @example Surname
+             */
+            label: string;
+            /**
+             * @description The value when the branch forked (its `base_position`). `null` when
+             *     the field was not set then, or when the fork state could not be
+             *     read in full.
+             * @example Byron
+             */
+            base_value: string | null;
+            /**
+             * @description The branch's value. `null` when it is not set, or the branch deleted the entity.
+             * @example Lovelace
+             */
+            branch_value: string | null;
+            /**
+             * @description The mainline's value. `null` when it is not set, or the mainline deleted the entity.
+             * @example King
+             */
+            main_value: string | null;
         };
         /**
          * @description What to do with the merge. Both properties are optional; an empty object
@@ -4405,6 +4455,13 @@ export interface components {
              * @enum {string}
              */
             resolution: "branch" | "main";
+            /**
+             * @description Optional: why this side won - the evidence weighed (GPS: resolve
+             *     conflicts by reasoning, not by fiat). Recorded with the merge
+             *     (`BranchMerged`, or `BranchMergeResumed` for a resume). Blank is
+             *     the same as absent.
+             */
+            rationale?: string;
         };
         /** @description What the merge actually did. */
         BranchMergeResult: {
@@ -4444,7 +4501,7 @@ export interface components {
              * @example merge_conflicts
              * @enum {string}
              */
-            code: "merge_conflicts" | "branch_not_active" | "merge_already_claimed" | "branch_too_large" | "main_too_far_ahead" | "merge_plan_stale" | "merge_dangling_reference";
+            code: "merge_conflicts" | "branch_not_active" | "merge_already_claimed" | "branch_too_large" | "main_too_far_ahead" | "merge_plan_stale" | "merge_dangling_reference" | "merge_empty";
             /**
              * @description Human-readable explanation
              * @example branch has unresolved merge conflicts: 1 of 1 conflicts have no resolution
@@ -8716,6 +8773,10 @@ export interface operations {
              *       across entities, so excluding one entity does not exclude the
              *       references to it. The message names both entities. Refused rather
              *       than silently dropping or orphaning data.
+             *     - `merge_empty` — the branch has no changes of its own since it
+             *       forked, so there is nothing to promote. Refused rather than
+             *       recording a "merged" that promoted nothing (#828); the branch
+             *       stays `active`.
              */
             409: {
                 headers: {

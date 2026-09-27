@@ -2,7 +2,10 @@ package domain
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -37,7 +40,35 @@ var (
 	ErrBranchDescTooLong      = errors.New("branch description must be 500 characters or less")
 	ErrBranchInvalidStatus    = errors.New("branch status is invalid")
 	ErrBranchMergeNoteTooLong = errors.New("branch merge note must be 1000 characters or less")
+	// ErrResolutionRationaleTooLong is returned for a merge resolution whose
+	// rationale exceeds MaxResolutionRationaleLength characters.
+	ErrResolutionRationaleTooLong = errors.New("merge resolution rationale must be 1000 characters or less")
 )
+
+// MaxResolutionRationaleLength bounds the optional rationale a merge records
+// for one conflict resolution (#828), in characters.
+const MaxResolutionRationaleLength = 1000
+
+// NormalizeResolutionRationales trims every rationale, drops the blank ones and
+// rejects one longer than MaxResolutionRationaleLength characters. It returns
+// nil when nothing is left, so an event carrying the result omits the field.
+func NormalizeResolutionRationales(rationales map[uuid.UUID]string) (map[uuid.UUID]string, error) {
+	var out map[uuid.UUID]string
+	for streamID, rationale := range rationales {
+		rationale = strings.TrimSpace(rationale)
+		if rationale == "" {
+			continue
+		}
+		if utf8.RuneCountInString(rationale) > MaxResolutionRationaleLength {
+			return nil, fmt.Errorf("%w: stream %s", ErrResolutionRationaleTooLong, streamID)
+		}
+		if out == nil {
+			out = make(map[uuid.UUID]string)
+		}
+		out[streamID] = rationale
+	}
+	return out, nil
+}
 
 // BranchStatus represents the lifecycle state of a branch.
 type BranchStatus string

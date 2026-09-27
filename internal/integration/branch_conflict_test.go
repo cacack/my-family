@@ -89,6 +89,9 @@ func runEditEditConflict(t *testing.T, server *api.Server) {
 	if !contains(supported, "branch") || !contains(supported, "main") {
 		t.Errorf("supported_resolutions = %v, want both sides for an edit_edit", supported)
 	}
+	// What each side says, read back off this backend (#828): the fork value
+	// comes from main's pre-fork events, each side's from its own.
+	assertFieldValues(t, conflict, "surname", "Surname", str("Original"), str("Branchside"), str("Mainside"))
 
 	// --- Refusal: an undecided conflict blocks the merge and writes nothing. ---
 	rec := do(t, server, http.MethodPost, mergePath(branchWins), `{"note":"no decision made"}`)
@@ -176,6 +179,11 @@ func runDeleteEditConflict(t *testing.T, server *api.Server) {
 	if len(supported) != 1 || supported[0] != "main" {
 		t.Errorf("supported_resolutions = %v, want exactly [main] - the branch side cannot be honored", supported)
 	}
+	// The deleter is named, and the editor's change is valued against the fork.
+	if deletedBy := conflict["deleted_by"]; deletedBy != "main" {
+		t.Errorf("deleted_by = %v, want main", deletedBy)
+	}
+	assertFieldValues(t, conflict, "surname", "Surname", str("Doomed"), str("Revised"), nil)
 
 	// --- The unsupported side is rejected before anything is written. ---
 	rec := do(t, server, http.MethodPost, mergePath(branchID),
@@ -262,6 +270,9 @@ func runRelationshipConflict(t *testing.T, server *api.Server) {
 	if fields := stringValues(t, conflict, "fields"); !contains(fields, wantField) {
 		t.Errorf("conflict fields = %v, want the relationship key %s", fields, wantField)
 	}
+	// Readable, not children[<uuid>]: the label names the child.
+	assertFieldValues(t, conflict, wantField, "Child: Quinn Household",
+		str("Not linked"), str("Linked as a child"), str("Not linked"))
 
 	// --- Undecided, it blocks the merge like any other conflict. ---
 	rec := do(t, server, http.MethodPost, mergePath(branchID), `{"note":"no decision made"}`)
@@ -340,6 +351,39 @@ func conflictFor(t *testing.T, resp map[string]any, streamID string) map[string]
 	return nil
 }
 
+func str(s string) *string { return &s }
+
+// assertFieldValues checks one entry of a conflict's field_values (#828): its
+// label and the three values, nil meaning an explicit JSON null.
+func assertFieldValues(t *testing.T, conflict map[string]any, field, label string, base, branch, main *string) {
+	t.Helper()
+	for _, raw := range jsonArray(t, conflict, "field_values") {
+		entry, _ := raw.(map[string]any)
+		if entry["field"] != field {
+			continue
+		}
+		if entry["label"] != label {
+			t.Errorf("field_values[%s].label = %v, want %q", field, entry["label"], label)
+		}
+		for key, want := range map[string]*string{"base_value": base, "branch_value": branch, "main_value": main} {
+			got, present := entry[key]
+			if !present {
+				t.Errorf("field_values[%s].%s is missing; the schema requires it", field, key)
+				continue
+			}
+			if want == nil {
+				if got != nil {
+					t.Errorf("field_values[%s].%s = %v, want null", field, key, got)
+				}
+			} else if got != *want {
+				t.Errorf("field_values[%s].%s = %v, want %q", field, key, got, *want)
+			}
+		}
+		return
+	}
+	t.Errorf("no field_values entry for %s; conflict = %v", field, conflict)
+}
+
 // stringValues reads a required array of strings out of a decoded response.
 func stringValues(t *testing.T, resp map[string]any, field string) []string {
 	t.Helper()
@@ -353,4 +397,26 @@ func stringValues(t *testing.T, resp map[string]any, field string) []string {
 		values = append(values, value)
 	}
 	return values
+}
+
+// ============================================================================
+// empty branch
+// ============================================================================
+
+// TestBranchMerge_EmptyBranchRefused: a branch with no changes cannot be
+// merged (#828) - it would record a "merged" that promoted nothing.
+func TestBranchMerge_EmptyBranchRefused(t *testing.T) {
+	forEachBackend(t, func(t *testing.T, server *api.Server) {
+		branchID := createBranch(t, server, "nothing-yet")
+		rec := do(t, server, http.MethodPost, mergePath(branchID), `{"note":"premature"}`)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("merge of an empty branch: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+		}
+		if code := decodeJSON(t, rec)["code"]; code != "merge_empty" {
+			t.Errorf("refusal code = %v, want merge_empty", code)
+		}
+		if status := getEntity(t, server, "/api/v1/branches/"+branchID, "")["status"]; status != "active" {
+			t.Errorf("branch status = %v after a refused merge, want active", status)
+		}
+	})
 }

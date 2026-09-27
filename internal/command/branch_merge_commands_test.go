@@ -633,6 +633,11 @@ func TestMergeBranch_PositionSourceError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateBranch failed: %v", err)
 	}
+	// A change on the branch, so the merge gets past the empty-branch refusal
+	// to the position read this test fails.
+	if _, err := handler.WithBranch(branch).CreatePerson(ctx, command.CreatePersonInput{GivenName: "Pat", Surname: "Branchonly"}); err != nil {
+		t.Fatalf("branch CreatePerson failed: %v", err)
+	}
 
 	failing := command.NewHandlerWithBranches(eventStore, readStore, branchStore, failingPositions{err: sentinel})
 	if _, err := failing.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID}); !errors.Is(err, sentinel) {
@@ -1502,5 +1507,128 @@ func TestMergeBranch_ReplayFailureAfterProgressReportsPartialApplication(t *test
 	}
 	if landed.Surname != "Byron" {
 		t.Errorf("main surname for the first stream = %q, want the branch's %q", landed.Surname, "Byron")
+	}
+}
+
+// A branch with no changes of its own is refused (#828): merging it would
+// record a "merged" that promoted nothing. Nothing is written and the branch
+// stays active.
+func TestMergeBranch_EmptyBranchRefused(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+
+	branch, err := f.handler.CreateBranch(ctx, "nothing-yet", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	before := logHead(t, f)
+
+	if _, err := f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID, Note: "empty"}); !errors.Is(err, command.ErrMergeEmpty) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergeEmpty", err)
+	}
+	if after := logHead(t, f); after != before {
+		t.Errorf("log head moved from %d to %d - the refusal wrote something", before, after)
+	}
+	stored, err := f.branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("branchStore.Get failed: %v", err)
+	}
+	if stored.Status != domain.BranchStatusActive {
+		t.Errorf("branch status = %q, want it still active", stored.Status)
+	}
+}
+
+// branchMergedEvent returns the BranchMerged claim on a branch's own stream.
+func branchMergedEvent(t *testing.T, f *branchFixture, branch *domain.Branch) domain.BranchMerged {
+	t.Helper()
+	for _, evt := range branchEventsFor(t, f, branch.ID, domain.BranchID(branch.ID)) {
+		if evt.EventType != "BranchMerged" {
+			continue
+		}
+		decoded, err := evt.DecodeEvent()
+		if err != nil {
+			t.Fatalf("DecodeEvent failed: %v", err)
+		}
+		return decoded.(domain.BranchMerged)
+	}
+	t.Fatalf("no BranchMerged event on branch %s", branch.ID)
+	return domain.BranchMerged{}
+}
+
+// A resolution's rationale (#828) is recorded, trimmed, on the BranchMerged
+// claim, so why a side won survives the request.
+func TestMergeBranch_RecordsResolutionRationale(t *testing.T) {
+	s := seedMerge(t, "Byron")
+	ctx := context.Background()
+
+	if _, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.person: command.ResolveBranch},
+		Rationales:  map[uuid.UUID]string{s.person: "  baptism register, 1815  "},
+	}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+
+	claim := branchMergedEvent(t, s.f, s.branch)
+	if got := claim.ResolutionRationales[s.person]; got != "baptism register, 1815" {
+		t.Errorf("recorded rationale = %q, want the trimmed text", got)
+	}
+}
+
+// Without a rationale the claim carries none, exactly as before #828.
+func TestMergeBranch_NoRationaleRecordsNone(t *testing.T) {
+	s := seedMerge(t, "Byron")
+	ctx := context.Background()
+
+	if _, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{
+		BranchID:   s.branch.ID,
+		Rationales: map[uuid.UUID]string{},
+	}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	if claim := branchMergedEvent(t, s.f, s.branch); claim.ResolutionRationales != nil {
+		t.Errorf("ResolutionRationales = %v, want nil", claim.ResolutionRationales)
+	}
+}
+
+// A rationale must accompany a resolution for its stream, and fit the length
+// rule. Both refusals write nothing.
+func TestMergeBranch_RationaleValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		rationales func(person uuid.UUID) map[uuid.UUID]string
+		resolve    bool
+		wantErr    error
+	}{
+		{
+			name:       "without a resolution",
+			rationales: func(person uuid.UUID) map[uuid.UUID]string { return map[uuid.UUID]string{person: "why"} },
+			wantErr:    command.ErrUnknownResolution,
+		},
+		{
+			name: "too long",
+			rationales: func(person uuid.UUID) map[uuid.UUID]string {
+				return map[uuid.UUID]string{person: strings.Repeat("é", domain.MaxResolutionRationaleLength+1)}
+			},
+			resolve: true,
+			wantErr: domain.ErrResolutionRationaleTooLong,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := seedMerge(t, "Byron")
+			ctx := context.Background()
+			input := command.MergeBranchInput{BranchID: s.branch.ID, Rationales: tt.rationales(s.person)}
+			if tt.resolve {
+				input.Resolutions = map[uuid.UUID]command.MergeResolution{s.person: command.ResolveBranch}
+			}
+			before := logHead(t, s.f)
+			if _, err := s.f.handler.MergeBranch(ctx, input); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("MergeBranch error = %v, want %v", err, tt.wantErr)
+			}
+			if after := logHead(t, s.f); after != before {
+				t.Errorf("log head moved from %d to %d - the refusal wrote something", before, after)
+			}
+		})
 	}
 }

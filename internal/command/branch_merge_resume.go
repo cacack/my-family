@@ -102,6 +102,11 @@ type ResumeMergeInput struct {
 	// references) before its replay lands was never reviewed, and makes the
 	// stream pending — and decidable — again.
 	Resolutions map[uuid.UUID]MergeResolution
+
+	// Rationales optionally says, per resolved stream, why that side won
+	// (#828). Each key must also be in Resolutions. Recorded on the
+	// BranchMergeResumed event with the decisions.
+	Rationales map[uuid.UUID]string
 }
 
 // ResumeMergeResult reports what a resume did — or, alongside
@@ -303,6 +308,10 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	if err := validateResolutions(input.Resolutions, groups); err != nil {
 		return nil, err
 	}
+	rationales, err := validateRationales(input.Rationales, input.Resolutions)
+	if err != nil {
+		return nil, err
+	}
 
 	// Main's versions are read BEFORE the landed scan, and the order is what
 	// keeps a concurrent resume from landing a stream twice. A stream another
@@ -369,7 +378,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	}
 
 	if len(input.Resolutions) > 0 {
-		if err := h.recordResumeDecisions(ctx, branch, record, decision.nextPlan, input.Resolutions); err != nil {
+		if err := h.recordResumeDecisions(ctx, branch, record, decision.nextPlan, input.Resolutions, rationales); err != nil {
 			return nil, err
 		}
 	}
@@ -567,12 +576,14 @@ func (h *Handler) recordResumeDecisions(
 	record mergeRecord,
 	nextPlan map[uuid.UUID]int64,
 	resolutions map[uuid.UUID]MergeResolution,
+	rationales map[uuid.UUID]string,
 ) error {
 	decided := make(map[uuid.UUID]string, len(resolutions))
 	for streamID, side := range resolutions {
 		decided[streamID] = string(side)
 	}
 	event := domain.NewBranchMergeResumed(branch.ID, record.claim.MergedAtPosition, nextPlan, decided)
+	event.Rationales = rationales
 	scope := branchScope(branch)
 	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, record.branchVersion, scope); err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {

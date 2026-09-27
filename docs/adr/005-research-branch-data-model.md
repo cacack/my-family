@@ -1007,6 +1007,18 @@ without review), the coupling is enforced by a test rather than by convention: e
 `command.BranchAwareEventTypes` must be comparable, or be listed with a reason why it needs no
 comparison.
 
+**A conflict says what each side says (#828).** Naming the contested fields is not enough to
+choose a side, so every `edit_edit` and `delete_edit` conflict carries `field_values`: per field,
+the value at the fork (`base_value`), the branch's and the mainline's, as display text with
+referenced people, families, sources and citations resolved to names and structural keys given
+readable labels (`children[<id>]` → "Child: <name>"). The work is set-based: one read of `main` for
+every conflicted stream rebuilds the fork state; each side is that state plus its own events,
+which the verdict already read; names come from one batched read-model lookup per type. A resolution
+may carry an optional `rationale` (the evidence weighed), recorded additively on `BranchMerged`
+(`resolution_rationales`) or `BranchMergeResumed` (`rationales`); older records omit it. A branch with
+no changes of its own is refused (`409 merge_empty`) rather than recorded as a merge that promoted
+nothing.
+
 **Partial merge stays deferred**, consistent with §Merge. The delivered API takes per-aggregate
 *resolutions* (`branch` or `main`), which lets a caller settle a conflict or exclude a whole
 entity, but there is no way to promote a subset of one aggregate's changes and there is no status

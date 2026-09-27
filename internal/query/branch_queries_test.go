@@ -464,9 +464,11 @@ func TestBranchService_CompareBranch_MainSideIsOneSetRead(t *testing.T) {
 	assert.Equal(t, maxComparisonEvents, counting.lastCap, "the cap must be pushed into the store")
 	// Describing the entries is set-based too, never one read per entity:
 	// the branch side and the conflict names each read main's and the
-	// branch's streams once, the main side main's once — 5 reads for 25
-	// streams.
-	assert.LessOrEqual(t, counting.stateReads, 5, "describing entries must not read per stream")
+	// branch's streams once, the main side main's once, and the conflicts'
+	// base/branch/main values (#828) main's once more — 6 reads for 25
+	// streams and 25 conflicts.
+	assert.Len(t, result.Conflicts, len(streamIDs))
+	assert.LessOrEqual(t, counting.stateReads, 6, "describing entries must not read per stream")
 	assert.Len(t, result.MainChanges, len(streamIDs))
 	assert.Len(t, result.OverlappingStreamIDs, len(streamIDs))
 }
