@@ -1502,3 +1502,396 @@ func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, b
 		t.Errorf("main merged tombstone survived the purge of the branch that needed it")
 	}
 }
+
+// TestBranchScenario_GPSOverlay runs the #760 GPS artifact scenario against the
+// in-memory backend; the scenario body is identical across all three backends.
+func TestBranchScenario_GPSOverlay(t *testing.T) {
+	runBranchGPSScenario(t, memory.NewReadModelStore(), memory.NewBranchStore())
+}
+
+// runBranchGPSScenario is the backend-agnostic GPS artifact scenario for
+// sub-issue E of #676 (#760): evidence analyses, evidence conflicts, research
+// logs and proof summaries. Each backend package carries an identical copy
+// (there is no shared test harness in this repo); keeping the assertions
+// byte-identical is the DB-001 parity guarantee.
+//
+// Shape: a person and a family on main with two disagreeing birth analyses, the
+// open evidence conflict between them, a research log and a proof summary, all
+// seeded through the projector. A branch then edits an analysis, adds one,
+// RESOLVES main's conflict (ListUnresolvedConflicts must resolve the overlay
+// before it filters on status, so the branch no longer lists the conflict while
+// main still does), edits and adds research logs, and re-points the proof
+// summary at the family (the per-subject and per-fact lists match the winning
+// row). Deletes follow: branch tombstones of a main analysis and of main's
+// conflict, then the person itself, which cascades every GPS artifact about the
+// person on the branch only, then the family's proof and a branch-only log.
+// Every step asserts main is untouched. Last, deleting the branch purges its GPS
+// rows so the branch id resolves to main again.
+func runBranchGPSScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
+	t.Helper()
+	ctx := context.Background()
+	projector := repository.NewProjector(readStore, branchStore)
+	main := domain.MainBranchID
+
+	project := func(label string, branchID domain.BranchID, events ...domain.Event) {
+		t.Helper()
+		for i, ev := range events {
+			if err := projector.Project(ctx, ev, int64(i+2), branchID); err != nil {
+				t.Fatalf("%s: project %s: %v", label, ev.EventType(), err)
+			}
+		}
+	}
+	type lister func(repository.ListOptions) (int, error)
+	totals := func(branchID domain.BranchID) [4]int {
+		t.Helper()
+		opts := repository.ListOptions{Limit: 100, BranchID: branchID}
+		var out [4]int
+		for i, list := range []lister{
+			func(o repository.ListOptions) (int, error) {
+				_, n, err := readStore.ListEvidenceAnalyses(ctx, o)
+				return n, err
+			},
+			func(o repository.ListOptions) (int, error) {
+				_, n, err := readStore.ListEvidenceConflicts(ctx, o)
+				return n, err
+			},
+			func(o repository.ListOptions) (int, error) {
+				_, n, err := readStore.ListResearchLogs(ctx, o)
+				return n, err
+			},
+			func(o repository.ListOptions) (int, error) {
+				_, n, err := readStore.ListProofSummaries(ctx, o)
+				return n, err
+			},
+		} {
+			n, err := list(opts)
+			if err != nil {
+				t.Fatalf("list GPS artifacts: %v", err)
+			}
+			out[i] = n
+		}
+		return out
+	}
+	unresolved := func(branchID domain.BranchID) []uuid.UUID {
+		t.Helper()
+		got, err := readStore.ListUnresolvedConflicts(ctx, branchID)
+		if err != nil {
+			t.Fatalf("ListUnresolvedConflicts: %v", err)
+		}
+		ids := make([]uuid.UUID, 0, len(got))
+		for _, c := range got {
+			ids = append(ids, c.ID)
+		}
+		return ids
+	}
+	analysesForFact := func(branchID domain.BranchID, factType domain.FactType, subject uuid.UUID) int {
+		t.Helper()
+		got, err := readStore.GetAnalysesForFact(ctx, branchID, factType, subject)
+		if err != nil {
+			t.Fatalf("GetAnalysesForFact: %v", err)
+		}
+		return len(got)
+	}
+	analysesBySubject := func(branchID domain.BranchID, subject uuid.UUID) int {
+		t.Helper()
+		got, err := readStore.GetAnalysesBySubject(ctx, branchID, subject)
+		if err != nil {
+			t.Fatalf("GetAnalysesBySubject: %v", err)
+		}
+		return len(got)
+	}
+	conflictsFor := func(branchID domain.BranchID, subject uuid.UUID) []repository.EvidenceConflictReadModel {
+		t.Helper()
+		got, err := readStore.GetConflictsForSubject(ctx, branchID, subject)
+		if err != nil {
+			t.Fatalf("GetConflictsForSubject: %v", err)
+		}
+		return got
+	}
+	logsFor := func(branchID domain.BranchID, subject uuid.UUID) int {
+		t.Helper()
+		got, err := readStore.GetResearchLogsForSubject(ctx, branchID, subject)
+		if err != nil {
+			t.Fatalf("GetResearchLogsForSubject: %v", err)
+		}
+		return len(got)
+	}
+	proofsBySubject := func(branchID domain.BranchID, subject uuid.UUID) int {
+		t.Helper()
+		got, err := readStore.GetProofSummariesBySubject(ctx, branchID, subject)
+		if err != nil {
+			t.Fatalf("GetProofSummariesBySubject: %v", err)
+		}
+		return len(got)
+	}
+	proofsForFact := func(branchID domain.BranchID, factType domain.FactType, subject uuid.UUID) int {
+		t.Helper()
+		got, err := readStore.GetProofSummariesForFact(ctx, branchID, factType, subject)
+		if err != nil {
+			t.Fatalf("GetProofSummariesForFact: %v", err)
+		}
+		return len(got)
+	}
+
+	// --- Step 1: seed main. ---
+	subject := domain.NewPerson("Alex", "Original")
+	partner := domain.NewPerson("Sam", "Partner")
+	family := domain.NewFamilyWithPartners(&subject.ID, &partner.ID)
+	early := domain.NewEvidenceAnalysis(domain.FactPersonBirth, subject.ID, "Born 1815")
+	late := domain.NewEvidenceAnalysis(domain.FactPersonBirth, subject.ID, "Born 1816")
+	conflict := domain.NewEvidenceConflict(domain.FactPersonBirth, subject.ID, []uuid.UUID{early.ID, late.ID}, "Birth year disagrees")
+	searchDate := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	log := domain.NewResearchLog(subject.ID, "person", "County Archive", "Baptisms 1810-1820", domain.ResearchOutcomeNotFound, searchDate)
+	proof := domain.NewProofSummary(domain.FactPersonBirth, subject.ID, "Born 1815", "The census and the register agree")
+	project("seed main", main,
+		domain.NewPersonCreated(subject),
+		domain.NewPersonCreated(partner),
+		domain.NewFamilyCreated(family),
+		domain.NewEvidenceAnalysisCreated(early),
+		domain.NewEvidenceAnalysisCreated(late),
+		domain.NewEvidenceConflictDetected(conflict),
+		domain.NewResearchLogCreated(log),
+		domain.NewProofSummaryCreated(proof),
+	)
+
+	branch, err := domain.NewBranch("gps-scope", "gps artifacts must fork", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create branch", main, domain.NewBranchCreated(branch))
+	branchID := domain.BranchID(branch.ID)
+
+	// mainView asserts main's GPS artifacts are exactly what step 1 seeded.
+	mainView := func(label string) {
+		t.Helper()
+		if got := totals(main); got != [4]int{2, 1, 1, 1} {
+			t.Errorf("%s: main GPS totals = %v, want [2 1 1 1]", label, got)
+		}
+		if got, err := readStore.GetEvidenceAnalysis(ctx, main, early.ID); err != nil || got == nil || got.Conclusion != "Born 1815" {
+			t.Errorf("%s: main GetEvidenceAnalysis(early) = %+v (err=%v), want Born 1815", label, got, err)
+		}
+		if got := analysesForFact(main, domain.FactPersonBirth, subject.ID); got != 2 {
+			t.Errorf("%s: main GetAnalysesForFact(birth) = %d, want 2", label, got)
+		}
+		if got := analysesBySubject(main, subject.ID); got != 2 {
+			t.Errorf("%s: main GetAnalysesBySubject = %d, want 2", label, got)
+		}
+		if got := unresolved(main); !reflect.DeepEqual(got, []uuid.UUID{conflict.ID}) {
+			t.Errorf("%s: main ListUnresolvedConflicts = %v, want [conflict]", label, got)
+		}
+		if got := conflictsFor(main, subject.ID); len(got) != 1 || got[0].Status != domain.ConflictStatusOpen {
+			t.Errorf("%s: main GetConflictsForSubject = %+v, want the open conflict", label, got)
+		}
+		if got, err := readStore.GetResearchLog(ctx, main, log.ID); err != nil || got == nil || got.Notes != "" || !got.SearchDate.Equal(searchDate) {
+			t.Errorf("%s: main GetResearchLog = %+v (err=%v), want the seeded log", label, got, err)
+		}
+		if got := logsFor(main, subject.ID); got != 1 {
+			t.Errorf("%s: main GetResearchLogsForSubject(person) = %d, want 1", label, got)
+		}
+		if got := logsFor(main, family.ID); got != 0 {
+			t.Errorf("%s: main GetResearchLogsForSubject(family) = %d, want 0", label, got)
+		}
+		if got := proofsBySubject(main, subject.ID); got != 1 {
+			t.Errorf("%s: main GetProofSummariesBySubject(person) = %d, want 1", label, got)
+		}
+		if got := proofsForFact(main, domain.FactPersonBirth, subject.ID); got != 1 {
+			t.Errorf("%s: main GetProofSummariesForFact(birth) = %d, want 1", label, got)
+		}
+	}
+	mainView("baseline")
+
+	// Before the branch writes anything it resolves entirely to main.
+	if got := totals(branchID); got != [4]int{2, 1, 1, 1} {
+		t.Fatalf("fresh branch GPS totals = %v, want main's [2 1 1 1]", got)
+	}
+	if got := unresolved(branchID); !reflect.DeepEqual(got, []uuid.UUID{conflict.ID}) {
+		t.Fatalf("fresh branch ListUnresolvedConflicts = %v, want main's conflict", got)
+	}
+
+	// --- Step 2: the branch edits, adds, resolves and re-points. ---
+	death := domain.NewEvidenceAnalysis(domain.FactPersonDeath, subject.ID, "Died 1852")
+	familyLog := domain.NewResearchLog(family.ID, "family", "Parish Chest", "Marriage banns", domain.ResearchOutcomeFound, searchDate)
+	project("branch edits", branchID,
+		domain.NewEvidenceAnalysisUpdated(early.ID, map[string]any{"conclusion": "Born 1814"}),
+		domain.NewEvidenceAnalysisCreated(death),
+		domain.NewEvidenceConflictResolved(conflict.ID, "The register wins", domain.ConflictStatusResolved),
+		domain.NewResearchLogUpdated(log.ID, map[string]any{"notes": "Checked twice on the branch"}),
+		domain.NewResearchLogCreated(familyLog),
+		domain.NewProofSummaryUpdated(proof.ID, map[string]any{
+			"subject_id": family.ID.String(), "fact_type": string(domain.FactFamilyMarriage),
+		}),
+	)
+	mainView("after branch edits")
+
+	if got := totals(branchID); got != [4]int{3, 1, 2, 1} {
+		t.Errorf("branch GPS totals = %v, want [3 1 2 1]", got)
+	}
+	if got, err := readStore.GetEvidenceAnalysis(ctx, branchID, early.ID); err != nil || got == nil || got.Conclusion != "Born 1814" {
+		t.Errorf("branch GetEvidenceAnalysis(early) = %+v (err=%v), want the shadow's Born 1814", got, err)
+	}
+	if got, err := readStore.GetEvidenceAnalysis(ctx, main, death.ID); err != nil || got != nil {
+		t.Errorf("main GetEvidenceAnalysis(branch-only death) = %+v (err=%v), want absent", got, err)
+	}
+	if got := analysesForFact(branchID, domain.FactPersonBirth, subject.ID); got != 2 {
+		t.Errorf("branch GetAnalysesForFact(birth) = %d, want 2", got)
+	}
+	if got := analysesForFact(branchID, domain.FactPersonDeath, subject.ID); got != 1 {
+		t.Errorf("branch GetAnalysesForFact(death) = %d, want 1", got)
+	}
+	if got := analysesForFact(main, domain.FactPersonDeath, subject.ID); got != 0 {
+		t.Errorf("main GetAnalysesForFact(death) = %d, want 0", got)
+	}
+	// The branch resolved main's conflict: resolve-then-filter, so it is not
+	// listed as unresolved on the branch while main still lists it.
+	if got := unresolved(branchID); len(got) != 0 {
+		t.Errorf("branch ListUnresolvedConflicts = %v, want none (the branch resolved it)", got)
+	}
+	// ListEvidenceConflicts' status filter is resolve-then-filter too, and pages
+	// and counts in the store: the branch lists main's conflict as resolved
+	// only, main as open only.
+	for _, tc := range []struct {
+		label     string
+		branchID  domain.BranchID
+		status    domain.ConflictStatus
+		offset    int
+		wantRows  int
+		wantTotal int
+	}{
+		{"branch open", branchID, domain.ConflictStatusOpen, 0, 0, 0},
+		{"branch resolved", branchID, domain.ConflictStatusResolved, 0, 1, 1},
+		{"branch resolved past the end", branchID, domain.ConflictStatusResolved, 1, 0, 1},
+		{"main open", main, domain.ConflictStatusOpen, 0, 1, 1},
+		{"main resolved", main, domain.ConflictStatusResolved, 0, 0, 0},
+	} {
+		status := tc.status
+		rows, total, err := readStore.ListEvidenceConflicts(ctx, repository.ListOptions{
+			Limit: 1, Offset: tc.offset, BranchID: tc.branchID, ConflictStatus: &status,
+		})
+		if err != nil {
+			t.Fatalf("%s: ListEvidenceConflicts: %v", tc.label, err)
+		}
+		if len(rows) != tc.wantRows || total != tc.wantTotal {
+			t.Errorf("%s: ListEvidenceConflicts = %d rows of %d, want %d of %d", tc.label, len(rows), total, tc.wantRows, tc.wantTotal)
+		}
+		for _, c := range rows {
+			if c.Status != tc.status {
+				t.Errorf("%s: listed conflict %s with status %s", tc.label, c.ID, c.Status)
+			}
+		}
+	}
+	if got := conflictsFor(branchID, subject.ID); len(got) != 1 || got[0].Status != domain.ConflictStatusResolved || got[0].Resolution != "The register wins" {
+		t.Errorf("branch GetConflictsForSubject = %+v, want the resolved shadow", got)
+	}
+	if got, err := readStore.GetResearchLog(ctx, branchID, log.ID); err != nil || got == nil || got.Notes != "Checked twice on the branch" {
+		t.Errorf("branch GetResearchLog = %+v (err=%v), want the shadow's notes", got, err)
+	}
+	if got := logsFor(branchID, family.ID); got != 1 {
+		t.Errorf("branch GetResearchLogsForSubject(family) = %d, want 1", got)
+	}
+	// The re-pointed proof lists under its new subject and fact only.
+	if got := proofsBySubject(branchID, subject.ID); got != 0 {
+		t.Errorf("branch GetProofSummariesBySubject(person) = %d, want 0 (re-pointed)", got)
+	}
+	if got := proofsBySubject(branchID, family.ID); got != 1 {
+		t.Errorf("branch GetProofSummariesBySubject(family) = %d, want 1", got)
+	}
+	if got := proofsForFact(branchID, domain.FactFamilyMarriage, family.ID); got != 1 {
+		t.Errorf("branch GetProofSummariesForFact(marriage) = %d, want 1", got)
+	}
+	if got := proofsForFact(branchID, domain.FactPersonBirth, subject.ID); got != 0 {
+		t.Errorf("branch GetProofSummariesForFact(birth) = %d, want 0 (re-pointed)", got)
+	}
+
+	// --- Step 3: branch deletes. A tombstone hides main's analysis on the branch
+	// only; then deleting the person cascades every GPS artifact about the person
+	// on the branch, leaving the family's artifacts and main alone. ---
+	project("branch delete analysis", branchID, domain.NewEvidenceAnalysisDeleted(late.ID, "branch hypothesis"))
+	mainView("after branch analysis delete")
+	if got, err := readStore.GetEvidenceAnalysis(ctx, branchID, late.ID); err != nil || got != nil {
+		t.Errorf("branch GetEvidenceAnalysis(late) after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got := analysesForFact(branchID, domain.FactPersonBirth, subject.ID); got != 1 {
+		t.Errorf("branch GetAnalysesForFact(birth) after delete = %d, want 1", got)
+	}
+	if got := totals(branchID); got != [4]int{2, 1, 2, 1} {
+		t.Errorf("branch GPS totals after analysis delete = %v, want [2 1 2 1]", got)
+	}
+	// Evidence conflicts have no delete event; the store method tombstones too.
+	if err := readStore.DeleteEvidenceConflict(ctx, branchID, conflict.ID); err != nil {
+		t.Fatalf("branch DeleteEvidenceConflict: %v", err)
+	}
+	mainView("after branch conflict delete")
+	if got, err := readStore.GetEvidenceConflict(ctx, branchID, conflict.ID); err != nil || got != nil {
+		t.Errorf("branch GetEvidenceConflict after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got := conflictsFor(branchID, subject.ID); len(got) != 0 {
+		t.Errorf("branch GetConflictsForSubject after delete = %+v, want none", got)
+	}
+
+	project("branch delete person", branchID, domain.NewPersonDeleted(subject.ID, "branch hypothesis"))
+	mainView("after branch person delete")
+	if got := totals(branchID); got != [4]int{0, 0, 1, 1} {
+		t.Errorf("branch GPS totals after person delete = %v, want [0 0 1 1] (only the family's artifacts)", got)
+	}
+	if got := analysesBySubject(branchID, subject.ID); got != 0 {
+		t.Errorf("branch GetAnalysesBySubject after person delete = %d, want 0", got)
+	}
+	if got := conflictsFor(branchID, subject.ID); len(got) != 0 {
+		t.Errorf("branch GetConflictsForSubject after person delete = %+v, want none", got)
+	}
+	if got := logsFor(branchID, subject.ID); got != 0 {
+		t.Errorf("branch GetResearchLogsForSubject(person) after person delete = %d, want 0", got)
+	}
+	if got := logsFor(branchID, family.ID); got != 1 {
+		t.Errorf("branch GetResearchLogsForSubject(family) after person delete = %d, want 1", got)
+	}
+	if got := proofsBySubject(branchID, family.ID); got != 1 {
+		t.Errorf("branch GetProofSummariesBySubject(family) after person delete = %d, want 1", got)
+	}
+
+	// Explicit deletes of the family's artifacts: a tombstone over main's
+	// (re-pointed) proof summary and the removal of a branch-only research log.
+	project("branch delete proof and log", branchID,
+		domain.NewProofSummaryDeleted(proof.ID, "branch hypothesis"),
+		domain.NewResearchLogDeleted(familyLog.ID, "branch hypothesis"),
+	)
+	mainView("after branch proof and log delete")
+	if got := totals(branchID); got != [4]int{0, 0, 0, 0} {
+		t.Errorf("branch GPS totals after every delete = %v, want [0 0 0 0]", got)
+	}
+	if got, err := readStore.GetProofSummary(ctx, branchID, proof.ID); err != nil || got != nil {
+		t.Errorf("branch GetProofSummary after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := readStore.GetResearchLog(ctx, branchID, familyLog.ID); err != nil || got != nil {
+		t.Errorf("branch GetResearchLog(branch-only) after delete = %+v (err=%v), want gone", got, err)
+	}
+
+	// A save after a delete clears the tombstone.
+	mainEarly, err := readStore.GetEvidenceAnalysis(ctx, main, early.ID)
+	if err != nil || mainEarly == nil {
+		t.Fatalf("main GetEvidenceAnalysis(early): %+v (err=%v)", mainEarly, err)
+	}
+	if err := readStore.SaveEvidenceAnalysis(ctx, branchID, mainEarly); err != nil {
+		t.Fatalf("branch SaveEvidenceAnalysis over tombstone: %v", err)
+	}
+	if got, err := readStore.GetEvidenceAnalysis(ctx, branchID, early.ID); err != nil || got == nil || got.Conclusion != "Born 1815" {
+		t.Errorf("branch GetEvidenceAnalysis after re-save = %+v (err=%v), want it back", got, err)
+	}
+
+	// --- Step 4: deleting the branch purges its GPS rows; the branch id then
+	// resolves to main exactly. ---
+	project("delete branch", main, domain.NewBranchDeleted(branch.ID))
+	mainView("after purge")
+	if got := totals(branchID); got != [4]int{2, 1, 1, 1} {
+		t.Errorf("purged branch GPS totals = %v, want main's [2 1 1 1]", got)
+	}
+	if got := unresolved(branchID); !reflect.DeepEqual(got, []uuid.UUID{conflict.ID}) {
+		t.Errorf("purged branch ListUnresolvedConflicts = %v, want main's conflict", got)
+	}
+	if got, err := readStore.GetEvidenceAnalysis(ctx, branchID, death.ID); err != nil || got != nil {
+		t.Errorf("purged branch GetEvidenceAnalysis(death) = %+v (err=%v), want absent", got, err)
+	}
+	if got := proofsBySubject(branchID, subject.ID); got != 1 {
+		t.Errorf("purged branch GetProofSummariesBySubject(person) = %d, want main's 1", got)
+	}
+}

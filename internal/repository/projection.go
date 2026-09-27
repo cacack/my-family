@@ -48,8 +48,9 @@ func NewProjectorWithSnapshots(readStore ReadModelStore, branchStore BranchStore
 // Only the branch-scoped entities — the #669 slice (Person, PersonName, Person
 // EXID, Family, Family EXID, FamilyChild, PedigreeEdge), the person/family
 // facts (LifeEvent, Attribute, Association; #757), the evidence (Source,
-// SourceExternalID, Citation, Note; #758) and media metadata (#759) — honor
-// branchID; all other handlers ignore it and write main-only.
+// SourceExternalID, Citation, Note; #758), media metadata (#759) and the GPS
+// artifacts (EvidenceAnalysis, EvidenceConflict, ResearchLog, ProofSummary;
+// #760) — honor branchID; all other handlers ignore it and write main-only.
 func (p *Projector) Project(ctx context.Context, event domain.Event, version int64, branchID domain.BranchID) error {
 	switch e := event.(type) {
 	case domain.PersonCreated:
@@ -137,27 +138,27 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.LDSOrdinanceDeleted:
 		return p.projectLDSOrdinanceDeleted(ctx, e)
 	case domain.EvidenceAnalysisCreated:
-		return p.projectEvidenceAnalysisCreated(ctx, e, version)
+		return p.projectEvidenceAnalysisCreated(ctx, e, version, branchID)
 	case domain.EvidenceAnalysisUpdated:
-		return p.projectEvidenceAnalysisUpdated(ctx, e, version)
+		return p.projectEvidenceAnalysisUpdated(ctx, e, version, branchID)
 	case domain.EvidenceAnalysisDeleted:
-		return p.projectEvidenceAnalysisDeleted(ctx, e)
+		return p.projectEvidenceAnalysisDeleted(ctx, e, branchID)
 	case domain.EvidenceConflictDetected:
-		return p.projectEvidenceConflictDetected(ctx, e, version)
+		return p.projectEvidenceConflictDetected(ctx, e, version, branchID)
 	case domain.EvidenceConflictResolved:
-		return p.projectEvidenceConflictResolved(ctx, e, version)
+		return p.projectEvidenceConflictResolved(ctx, e, version, branchID)
 	case domain.ResearchLogCreated:
-		return p.projectResearchLogCreated(ctx, e, version)
+		return p.projectResearchLogCreated(ctx, e, version, branchID)
 	case domain.ResearchLogUpdated:
-		return p.projectResearchLogUpdated(ctx, e, version)
+		return p.projectResearchLogUpdated(ctx, e, version, branchID)
 	case domain.ResearchLogDeleted:
-		return p.projectResearchLogDeleted(ctx, e)
+		return p.projectResearchLogDeleted(ctx, e, branchID)
 	case domain.ProofSummaryCreated:
-		return p.projectProofSummaryCreated(ctx, e, version)
+		return p.projectProofSummaryCreated(ctx, e, version, branchID)
 	case domain.ProofSummaryUpdated:
-		return p.projectProofSummaryUpdated(ctx, e, version)
+		return p.projectProofSummaryUpdated(ctx, e, version, branchID)
 	case domain.ProofSummaryDeleted:
-		return p.projectProofSummaryDeleted(ctx, e)
+		return p.projectProofSummaryDeleted(ctx, e, branchID)
 	case domain.BranchCreated:
 		return p.projectBranchCreated(ctx, e)
 	case domain.BranchDeleted:
@@ -1762,49 +1763,49 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 9. Transfer evidence analyses from merged person to survivor
-	analyses, err := p.readStore.GetAnalysesBySubject(ctx, e.MergedID)
+	analyses, err := p.readStore.GetAnalysesBySubject(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch evidence analyses for merged person %s: %w", e.MergedID, err)
 	}
 	for _, analysis := range analyses {
 		analysis.SubjectID = e.SurvivorID
-		if err := p.readStore.SaveEvidenceAnalysis(ctx, &analysis); err != nil {
+		if err := p.readStore.SaveEvidenceAnalysis(ctx, branchID, &analysis); err != nil {
 			return fmt.Errorf("migrate evidence analysis %s for merged person %s: %w", analysis.ID, e.MergedID, err)
 		}
 	}
 
 	// 10. Transfer evidence conflicts from merged person to survivor
-	conflicts, err := p.readStore.GetConflictsForSubject(ctx, e.MergedID)
+	conflicts, err := p.readStore.GetConflictsForSubject(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch evidence conflicts for merged person %s: %w", e.MergedID, err)
 	}
 	for _, conflict := range conflicts {
 		conflict.SubjectID = e.SurvivorID
-		if err := p.readStore.SaveEvidenceConflict(ctx, &conflict); err != nil {
+		if err := p.readStore.SaveEvidenceConflict(ctx, branchID, &conflict); err != nil {
 			return fmt.Errorf("migrate evidence conflict %s for merged person %s: %w", conflict.ID, e.MergedID, err)
 		}
 	}
 
 	// 11. Transfer research logs from merged person to survivor
-	researchLogs, err := p.readStore.GetResearchLogsForSubject(ctx, e.MergedID)
+	researchLogs, err := p.readStore.GetResearchLogsForSubject(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch research logs for merged person %s: %w", e.MergedID, err)
 	}
 	for _, log := range researchLogs {
 		log.SubjectID = e.SurvivorID
-		if err := p.readStore.SaveResearchLog(ctx, &log); err != nil {
+		if err := p.readStore.SaveResearchLog(ctx, branchID, &log); err != nil {
 			return fmt.Errorf("migrate research log %s for merged person %s: %w", log.ID, e.MergedID, err)
 		}
 	}
 
 	// 12. Transfer proof summaries from merged person to survivor
-	summaries, err := p.readStore.GetProofSummariesBySubject(ctx, e.MergedID)
+	summaries, err := p.readStore.GetProofSummariesBySubject(ctx, branchID, e.MergedID)
 	if err != nil {
 		return fmt.Errorf("fetch proof summaries for merged person %s: %w", e.MergedID, err)
 	}
 	for _, summary := range summaries {
 		summary.SubjectID = e.SurvivorID
-		if err := p.readStore.SaveProofSummary(ctx, &summary); err != nil {
+		if err := p.readStore.SaveProofSummary(ctx, branchID, &summary); err != nil {
 			return fmt.Errorf("migrate proof summary %s for merged person %s: %w", summary.ID, e.MergedID, err)
 		}
 	}
@@ -2127,12 +2128,10 @@ func (p *Projector) projectLDSOrdinanceDeleted(ctx context.Context, e domain.LDS
 	return p.readStore.DeleteLDSOrdinance(ctx, e.OrdinanceID)
 }
 
-func (p *Projector) projectEvidenceAnalysisCreated(ctx context.Context, e domain.EvidenceAnalysisCreated, version int64) error {
-	var citationIDsJSON string
-	if len(e.CitationIDs) > 0 {
-		if b, err := json.Marshal(e.CitationIDs); err == nil {
-			citationIDsJSON = string(b)
-		}
+func (p *Projector) projectEvidenceAnalysisCreated(ctx context.Context, e domain.EvidenceAnalysisCreated, version int64, branchID domain.BranchID) error {
+	citationIDsJSON, err := marshalIDList(e.CitationIDs)
+	if err != nil {
+		return fmt.Errorf("encode citation ids of evidence analysis %s: %w", e.AnalysisID, err)
 	}
 
 	analysis := &EvidenceAnalysisReadModel{
@@ -2148,11 +2147,11 @@ func (p *Projector) projectEvidenceAnalysisCreated(ctx context.Context, e domain
 		UpdatedAt:       e.OccurredAt(),
 	}
 
-	return p.readStore.SaveEvidenceAnalysis(ctx, analysis)
+	return p.readStore.SaveEvidenceAnalysis(ctx, branchID, analysis)
 }
 
-func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain.EvidenceAnalysisUpdated, version int64) error {
-	analysis, err := p.readStore.GetEvidenceAnalysis(ctx, e.AnalysisID)
+func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain.EvidenceAnalysisUpdated, version int64, branchID domain.BranchID) error {
+	analysis, err := p.readStore.GetEvidenceAnalysis(ctx, branchID, e.AnalysisID)
 	if err != nil {
 		return err
 	}
@@ -2185,9 +2184,11 @@ func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain
 				analysis.ResearchStatus = domain.ResearchStatus(v)
 			}
 		case "citation_ids":
-			if b, err := json.Marshal(value); err == nil {
-				analysis.CitationIDsJSON = string(b)
+			b, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("encode citation ids of evidence analysis %s: %w", e.AnalysisID, err)
 			}
+			analysis.CitationIDsJSON = string(b)
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "EvidenceAnalysisUpdated", "key", key)
 		}
@@ -2196,19 +2197,17 @@ func (p *Projector) projectEvidenceAnalysisUpdated(ctx context.Context, e domain
 	analysis.Version = version
 	analysis.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveEvidenceAnalysis(ctx, analysis)
+	return p.readStore.SaveEvidenceAnalysis(ctx, branchID, analysis)
 }
 
-func (p *Projector) projectEvidenceAnalysisDeleted(ctx context.Context, e domain.EvidenceAnalysisDeleted) error {
-	return p.readStore.DeleteEvidenceAnalysis(ctx, e.AnalysisID)
+func (p *Projector) projectEvidenceAnalysisDeleted(ctx context.Context, e domain.EvidenceAnalysisDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteEvidenceAnalysis(ctx, branchID, e.AnalysisID)
 }
 
-func (p *Projector) projectEvidenceConflictDetected(ctx context.Context, e domain.EvidenceConflictDetected, version int64) error {
-	var analysisIDsJSON string
-	if len(e.AnalysisIDs) > 0 {
-		if b, err := json.Marshal(e.AnalysisIDs); err == nil {
-			analysisIDsJSON = string(b)
-		}
+func (p *Projector) projectEvidenceConflictDetected(ctx context.Context, e domain.EvidenceConflictDetected, version int64, branchID domain.BranchID) error {
+	analysisIDsJSON, err := marshalIDList(e.AnalysisIDs)
+	if err != nil {
+		return fmt.Errorf("encode analysis ids of evidence conflict %s: %w", e.ConflictID, err)
 	}
 
 	conflict := &EvidenceConflictReadModel{
@@ -2223,11 +2222,11 @@ func (p *Projector) projectEvidenceConflictDetected(ctx context.Context, e domai
 		UpdatedAt:       e.OccurredAt(),
 	}
 
-	return p.readStore.SaveEvidenceConflict(ctx, conflict)
+	return p.readStore.SaveEvidenceConflict(ctx, branchID, conflict)
 }
 
-func (p *Projector) projectEvidenceConflictResolved(ctx context.Context, e domain.EvidenceConflictResolved, version int64) error {
-	conflict, err := p.readStore.GetEvidenceConflict(ctx, e.ConflictID)
+func (p *Projector) projectEvidenceConflictResolved(ctx context.Context, e domain.EvidenceConflictResolved, version int64, branchID domain.BranchID) error {
+	conflict, err := p.readStore.GetEvidenceConflict(ctx, branchID, e.ConflictID)
 	if err != nil {
 		return err
 	}
@@ -2240,10 +2239,10 @@ func (p *Projector) projectEvidenceConflictResolved(ctx context.Context, e domai
 	conflict.Version = version
 	conflict.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveEvidenceConflict(ctx, conflict)
+	return p.readStore.SaveEvidenceConflict(ctx, branchID, conflict)
 }
 
-func (p *Projector) projectResearchLogCreated(ctx context.Context, e domain.ResearchLogCreated, version int64) error {
+func (p *Projector) projectResearchLogCreated(ctx context.Context, e domain.ResearchLogCreated, version int64, branchID domain.BranchID) error {
 	log := &ResearchLogReadModel{
 		ID:                e.LogID,
 		SubjectID:         e.SubjectID,
@@ -2258,11 +2257,11 @@ func (p *Projector) projectResearchLogCreated(ctx context.Context, e domain.Rese
 		UpdatedAt:         e.OccurredAt(),
 	}
 
-	return p.readStore.SaveResearchLog(ctx, log)
+	return p.readStore.SaveResearchLog(ctx, branchID, log)
 }
 
-func (p *Projector) projectResearchLogUpdated(ctx context.Context, e domain.ResearchLogUpdated, version int64) error {
-	log, err := p.readStore.GetResearchLog(ctx, e.LogID)
+func (p *Projector) projectResearchLogUpdated(ctx context.Context, e domain.ResearchLogUpdated, version int64, branchID domain.BranchID) error {
+	log, err := p.readStore.GetResearchLog(ctx, branchID, e.LogID)
 	if err != nil {
 		return err
 	}
@@ -2312,19 +2311,17 @@ func (p *Projector) projectResearchLogUpdated(ctx context.Context, e domain.Rese
 	log.Version = version
 	log.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveResearchLog(ctx, log)
+	return p.readStore.SaveResearchLog(ctx, branchID, log)
 }
 
-func (p *Projector) projectResearchLogDeleted(ctx context.Context, e domain.ResearchLogDeleted) error {
-	return p.readStore.DeleteResearchLog(ctx, e.LogID)
+func (p *Projector) projectResearchLogDeleted(ctx context.Context, e domain.ResearchLogDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteResearchLog(ctx, branchID, e.LogID)
 }
 
-func (p *Projector) projectProofSummaryCreated(ctx context.Context, e domain.ProofSummaryCreated, version int64) error {
-	var analysisIDsJSON string
-	if len(e.AnalysisIDs) > 0 {
-		if b, err := json.Marshal(e.AnalysisIDs); err == nil {
-			analysisIDsJSON = string(b)
-		}
+func (p *Projector) projectProofSummaryCreated(ctx context.Context, e domain.ProofSummaryCreated, version int64, branchID domain.BranchID) error {
+	analysisIDsJSON, err := marshalIDList(e.AnalysisIDs)
+	if err != nil {
+		return fmt.Errorf("encode analysis ids of proof summary %s: %w", e.SummaryID, err)
 	}
 
 	summary := &ProofSummaryReadModel{
@@ -2340,11 +2337,11 @@ func (p *Projector) projectProofSummaryCreated(ctx context.Context, e domain.Pro
 		UpdatedAt:       e.OccurredAt(),
 	}
 
-	return p.readStore.SaveProofSummary(ctx, summary)
+	return p.readStore.SaveProofSummary(ctx, branchID, summary)
 }
 
-func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.ProofSummaryUpdated, version int64) error {
-	summary, err := p.readStore.GetProofSummary(ctx, e.SummaryID)
+func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.ProofSummaryUpdated, version int64, branchID domain.BranchID) error {
+	summary, err := p.readStore.GetProofSummary(ctx, branchID, e.SummaryID)
 	if err != nil {
 		return err
 	}
@@ -2377,9 +2374,11 @@ func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.Pro
 				summary.ResearchStatus = domain.ResearchStatus(v)
 			}
 		case "analysis_ids":
-			if b, err := json.Marshal(value); err == nil {
-				summary.AnalysisIDsJSON = string(b)
+			b, err := json.Marshal(value)
+			if err != nil {
+				return fmt.Errorf("encode analysis ids of proof summary %s: %w", e.SummaryID, err)
 			}
+			summary.AnalysisIDsJSON = string(b)
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "ProofSummaryUpdated", "key", key)
 		}
@@ -2388,9 +2387,22 @@ func (p *Projector) projectProofSummaryUpdated(ctx context.Context, e domain.Pro
 	summary.Version = version
 	summary.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveProofSummary(ctx, summary)
+	return p.readStore.SaveProofSummary(ctx, branchID, summary)
 }
 
-func (p *Projector) projectProofSummaryDeleted(ctx context.Context, e domain.ProofSummaryDeleted) error {
-	return p.readStore.DeleteProofSummary(ctx, e.SummaryID)
+func (p *Projector) projectProofSummaryDeleted(ctx context.Context, e domain.ProofSummaryDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteProofSummary(ctx, branchID, e.SummaryID)
+}
+
+// marshalIDList encodes a GPS artifact's id list as the JSON array its read
+// model stores; an empty list is stored as "" (SQL NULL), as before #760.
+func marshalIDList(ids []uuid.UUID) (string, error) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(ids)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

@@ -944,3 +944,150 @@ func TestLegacyBranchesGainMergeColumns(t *testing.T) {
 		t.Errorf("MergeNote = %q, want the note", got.MergeNote)
 	}
 }
+
+// preGPSSQLiteDDL is the four GPS artifact tables as they stood before #760:
+// keyed by a lone id. SQLite cannot re-key them in place.
+const preGPSSQLiteDDL = `
+	CREATE TABLE evidence_analyses (
+		id TEXT PRIMARY KEY,
+		fact_type TEXT NOT NULL,
+		subject_id TEXT NOT NULL,
+		citation_ids TEXT,
+		conclusion TEXT NOT NULL,
+		research_status TEXT,
+		notes TEXT,
+		version INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE TABLE evidence_conflicts (
+		id TEXT PRIMARY KEY,
+		fact_type TEXT NOT NULL,
+		subject_id TEXT NOT NULL,
+		analysis_ids TEXT,
+		description TEXT NOT NULL,
+		resolution TEXT,
+		status TEXT NOT NULL,
+		version INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE TABLE research_logs (
+		id TEXT PRIMARY KEY,
+		subject_id TEXT NOT NULL,
+		subject_type TEXT NOT NULL,
+		repository TEXT NOT NULL,
+		search_description TEXT NOT NULL,
+		outcome TEXT NOT NULL,
+		notes TEXT,
+		search_date TEXT NOT NULL,
+		version INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+	CREATE TABLE proof_summaries (
+		id TEXT PRIMARY KEY,
+		fact_type TEXT NOT NULL,
+		subject_id TEXT NOT NULL,
+		conclusion TEXT NOT NULL,
+		argument TEXT NOT NULL,
+		analysis_ids TEXT,
+		research_status TEXT,
+		version INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	);
+`
+
+// TestPreGPSBranchSchemaRefusesBranchWrites covers a database built between
+// #759 and #760: every other branch-scoped table carries its branch key, but the
+// four GPS artifact tables keep their lone-id keys. Such a database must refuse
+// GPS branch writes (and, like any partially branch-keyed schema, every other
+// branch write) with repository.ErrBranchesUnsupported, while mainline GPS
+// artifacts keep working — insert, update, the filtered lists and the
+// DeletePerson cascade — and PurgeBranch still runs.
+func TestPreGPSBranchSchemaRefusesBranchWrites(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-pregps-readmodel-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(preGPSSQLiteDDL); err != nil {
+		t.Fatalf("create pre-#760 GPS tables: %v", err)
+	}
+
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	ctx := context.Background()
+	main := domain.MainBranchID
+	branch := domain.BranchID(uuid.New())
+	now := time.Now().UTC().Truncate(time.Second)
+	subject := uuid.New()
+	analysis := &repository.EvidenceAnalysisReadModel{ID: uuid.New(), FactType: domain.FactPersonBirth, SubjectID: subject,
+		Conclusion: "Born 1815", Version: 1, CreatedAt: now, UpdatedAt: now}
+	conflict := &repository.EvidenceConflictReadModel{ID: uuid.New(), FactType: domain.FactPersonBirth, SubjectID: subject,
+		Description: "Disagreement", Status: domain.ConflictStatusOpen, Version: 1, CreatedAt: now, UpdatedAt: now}
+	log := &repository.ResearchLogReadModel{ID: uuid.New(), SubjectID: subject, SubjectType: "person", Repository: "Archive",
+		SearchDescription: "Baptisms", Outcome: domain.ResearchOutcomeFound, SearchDate: now, Version: 1, CreatedAt: now, UpdatedAt: now}
+	proof := &repository.ProofSummaryReadModel{ID: uuid.New(), FactType: domain.FactPersonBirth, SubjectID: subject,
+		Conclusion: "Born 1815", Argument: "Census", Version: 1, CreatedAt: now, UpdatedAt: now}
+
+	for name, err := range map[string]error{
+		"SaveEvidenceAnalysis":   store.SaveEvidenceAnalysis(ctx, branch, analysis),
+		"DeleteEvidenceAnalysis": store.DeleteEvidenceAnalysis(ctx, branch, analysis.ID),
+		"SaveEvidenceConflict":   store.SaveEvidenceConflict(ctx, branch, conflict),
+		"SaveResearchLog":        store.SaveResearchLog(ctx, branch, log),
+		"SaveProofSummary":       store.SaveProofSummary(ctx, branch, proof),
+		"SavePerson":             store.SavePerson(ctx, branch, branchPersonRM(uuid.New(), "Branch", "Row")),
+	} {
+		if !errors.Is(err, repository.ErrBranchesUnsupported) {
+			t.Errorf("branch %s on pre-#760 schema: want ErrBranchesUnsupported, got %v", name, err)
+		}
+	}
+
+	// Mainline keeps working: inserts, an update (an upsert on the legacy key),
+	// the filtered lists and the subject cascade.
+	for name, err := range map[string]error{
+		"SaveEvidenceAnalysis": store.SaveEvidenceAnalysis(ctx, main, analysis),
+		"SaveEvidenceConflict": store.SaveEvidenceConflict(ctx, main, conflict),
+		"SaveResearchLog":      store.SaveResearchLog(ctx, main, log),
+		"SaveProofSummary":     store.SaveProofSummary(ctx, main, proof),
+	} {
+		if err != nil {
+			t.Fatalf("main %s on pre-#760 schema: %v", name, err)
+		}
+	}
+	resolved := *conflict
+	resolved.Status, resolved.Resolution = domain.ConflictStatusResolved, "Register wins"
+	if err := store.SaveEvidenceConflict(ctx, main, &resolved); err != nil {
+		t.Fatalf("main update of a conflict on pre-#760 schema: %v", err)
+	}
+	if got, err := store.ListUnresolvedConflicts(ctx, main); err != nil || len(got) != 0 {
+		t.Errorf("main ListUnresolvedConflicts after resolving = %d (err=%v), want 0", len(got), err)
+	}
+	if got, err := store.GetAnalysesForFact(ctx, main, domain.FactPersonBirth, subject); err != nil || len(got) != 1 {
+		t.Errorf("main GetAnalysesForFact = %d (err=%v), want 1", len(got), err)
+	}
+	if err := store.PurgeBranch(ctx, branch); err != nil {
+		t.Errorf("PurgeBranch on pre-#760 schema: %v", err)
+	}
+	if err := store.DeletePerson(ctx, main, subject); err != nil {
+		t.Fatalf("main DeletePerson on pre-#760 schema: %v", err)
+	}
+	if got, err := store.GetResearchLogsForSubject(ctx, main, subject); err != nil || len(got) != 0 {
+		t.Errorf("main research logs after the subject cascade = %d (err=%v), want 0", len(got), err)
+	}
+	if got, err := store.GetProofSummary(ctx, main, proof.ID); err != nil || got != nil {
+		t.Errorf("main proof after the subject cascade = %+v (err=%v), want absent", got, err)
+	}
+}

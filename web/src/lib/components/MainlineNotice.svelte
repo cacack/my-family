@@ -8,13 +8,15 @@
 	 * on the browse and map aggregates that read that slice's overlay (#676
 	 * sub-issue A, #756), on the person/family facts of sub-issue B (#757):
 	 * the cemetery index and the association endpoints, on the evidence of
-	 * sub-issue C (#758): sources, citations and notes, and on the media of
+	 * sub-issue C (#758): sources, citations and notes, on the media of
 	 * sub-issue D (#759): metadata, person media lists, content and thumbnails
-	 * (the file bytes themselves are shared with the mainline). The remaining read
-	 * models still answer from the mainline. Rendering one of them unlabelled beneath the branch banner would
-	 * be the UI quietly lying about what the user is looking at.
-	 *
-	 * The rest of #676 fans the overlay out further; this notice retires with it.
+	 * (the file bytes themselves are shared with the mainline), and on the GPS
+	 * artifacts of sub-issue E (#760): evidence analyses, evidence conflicts,
+	 * research logs and proof summaries. The remaining surfaces — aggregates
+	 * computed over the mainline, history, and the entities that stay main-only
+	 * by decision (ADR-005) — still answer from the mainline. Rendering one of
+	 * them unlabelled beneath the branch banner would be the UI quietly lying
+	 * about what the user is looking at.
 	 *
 	 * ## Where it is placed, and where it deliberately is not
 	 *
@@ -24,7 +26,6 @@
 	 *
 	 * Placed:
 	 * - `/analytics` — quality scores computed over mainline persons
-	 * - `/evidence` — evidence analyses, conflicts, research logs, proofs
 	 * - `/families` (list only; family *detail* is branch-scoped)
 	 * - `/quality` — validation issues and duplicate pairs
 	 * - `/search` — advanced search
@@ -37,15 +38,16 @@
 	 * Deliberately not placed, because these surfaces now follow the branch:
 	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
 	 * and per-place list), `/browse/cemeteries` (index and per-cemetery list,
-	 * since #757), `/map` and `/sources` (list and detail, since #758). The media
-	 * gallery on person detail pages follows the branch too (since #759).
+	 * since #757), `/map`, `/sources` (list and detail, since #758) and
+	 * `/evidence` with its research-log and proof-summary pages (since #760). The
+	 * media gallery on person detail pages follows the branch too (since #759),
+	 * and so does the evidence panel (since #760).
 	 *
-	 * Known gap, to close with the rest of #676 rather than by sprinkling more
-	 * notices: `/` (dashboard and discovery feed), `/descendancy/{id}`,
-	 * `/relationship`, `/repositories`, `/import`, and the panels on person and
-	 * family detail pages that are not themselves scoped — change history,
-	 * restore points and evidence. All of them answer from
-	 * the mainline today; none of them says so.
+	 * Known gap, not closed by #676 (whose sub-issues are all delivered): `/`
+	 * (dashboard and discovery feed), `/descendancy/{id}`, `/relationship`,
+	 * `/repositories`, `/import`, and the panels on person and family detail
+	 * pages that are not themselves scoped — change history and restore points.
+	 * All of them answer from the mainline today; none of them says so.
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 

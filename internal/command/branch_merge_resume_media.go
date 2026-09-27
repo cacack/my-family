@@ -45,12 +45,13 @@ import (
 // ErrMergeResumeRepairUnsound is returned when an already-replayed media
 // stream's main row is missing and its owner was merged into a person main
 // still has, so re-projecting the stream would attach the item to the
-// merged-away person (see the note above). Nothing has been written by the
+// merged-away person (see the note above). The same holds for a GPS artifact
+// whose subject was merged away (#760; see branch_merge_resume_gps.go). Nothing has been written by the
 // refusing call. The refusal is permanent for this state: main's read model
 // needs a rebuild from the log (#680) to repair the item, and resuming again
 // will refuse the same way (the API reports it as 409
 // merge_resume_repair_unsound).
-var ErrMergeResumeRepairUnsound = errors.New("an already-replayed media item cannot be repaired from its own stream")
+var ErrMergeResumeRepairUnsound = errors.New("an already-replayed media item or GPS artifact cannot be repaired from its own stream")
 
 // mediaOwner names the entity a media item is attached to.
 type mediaOwner struct {

@@ -183,7 +183,8 @@ func entryStrings(t *testing.T, values []any) []string {
 // fail one citation's own save (failCitation), or only a save of one source
 // that changes its citation count (failSourceCount) — the count bump a
 // citation projection makes after saving the citation. For media (#759) it can
-// fail one media item's mainline save (failMedia).
+// fail one media item's mainline save (failMedia), and for the GPS artifacts
+// (#760) one research log's (failGPS).
 type faultyReadStore struct {
 	repository.ReadModelStore
 	mu              sync.Mutex
@@ -191,6 +192,7 @@ type faultyReadStore struct {
 	failCitation    uuid.UUID
 	failSourceCount uuid.UUID
 	failMedia       uuid.UUID
+	failGPS         uuid.UUID
 }
 
 func (s *faultyReadStore) failFor(id uuid.UUID) {

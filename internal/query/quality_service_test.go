@@ -1282,7 +1282,7 @@ func TestPersonQuality_UnresolvedConflicts(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	_ = readStore.SaveEvidenceConflict(ctx, &conflict1)
+	_ = readStore.SaveEvidenceConflict(ctx, domain.MainBranchID, &conflict1)
 
 	conflict2 := repository.EvidenceConflictReadModel{
 		ID:          uuid.New(),
@@ -1294,7 +1294,7 @@ func TestPersonQuality_UnresolvedConflicts(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	_ = readStore.SaveEvidenceConflict(ctx, &conflict2)
+	_ = readStore.SaveEvidenceConflict(ctx, domain.MainBranchID, &conflict2)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -1359,7 +1359,7 @@ func TestPersonQuality_ResolvedConflicts(t *testing.T) {
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
-	_ = readStore.SaveEvidenceConflict(ctx, &conflict)
+	_ = readStore.SaveEvidenceConflict(ctx, domain.MainBranchID, &conflict)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -1401,7 +1401,7 @@ func TestPersonQuality_ConflictScoreFloor(t *testing.T) {
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
-		_ = readStore.SaveEvidenceConflict(ctx, &conflict)
+		_ = readStore.SaveEvidenceConflict(ctx, domain.MainBranchID, &conflict)
 	}
 
 	result, err := service.GetPersonQuality(ctx, personID)
@@ -1440,7 +1440,7 @@ func TestDiscoveryFeed_AnalysisWithoutProofSummary(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	_ = readStore.SaveEvidenceAnalysis(ctx, &analysis)
+	_ = readStore.SaveEvidenceAnalysis(ctx, domain.MainBranchID, &analysis)
 
 	result, err := service.GetDiscoveryFeed(ctx, 50)
 	if err != nil {
@@ -1490,7 +1490,7 @@ func TestDiscoveryFeed_AnalysisWithProofSummary(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	_ = readStore.SaveEvidenceAnalysis(ctx, &analysis)
+	_ = readStore.SaveEvidenceAnalysis(ctx, domain.MainBranchID, &analysis)
 
 	proofSummary := repository.ProofSummaryReadModel{
 		ID:         uuid.New(),
@@ -1502,7 +1502,7 @@ func TestDiscoveryFeed_AnalysisWithProofSummary(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	_ = readStore.SaveProofSummary(ctx, &proofSummary)
+	_ = readStore.SaveProofSummary(ctx, domain.MainBranchID, &proofSummary)
 
 	result, err := service.GetDiscoveryFeed(ctx, 50)
 	if err != nil {
@@ -1587,7 +1587,7 @@ func TestDiscoveryFeed_WithResearchLogs(t *testing.T) {
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
-	_ = readStore.SaveResearchLog(ctx, &log)
+	_ = readStore.SaveResearchLog(ctx, domain.MainBranchID, &log)
 
 	result, err := service.GetDiscoveryFeed(ctx, 50)
 	if err != nil {
@@ -1632,7 +1632,7 @@ func TestPersonQuality_NegativeResearchOutcome(t *testing.T) {
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
-	_ = readStore.SaveResearchLog(ctx, &log)
+	_ = readStore.SaveResearchLog(ctx, domain.MainBranchID, &log)
 
 	result, err := service.GetPersonQuality(ctx, personID)
 	if err != nil {
@@ -1707,7 +1707,7 @@ func TestGetQualityOverview_WithConflicts(t *testing.T) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-	_ = readStore.SaveEvidenceConflict(ctx, &conflict)
+	_ = readStore.SaveEvidenceConflict(ctx, domain.MainBranchID, &conflict)
 
 	overview, err := service.GetQualityOverview(ctx)
 	if err != nil {

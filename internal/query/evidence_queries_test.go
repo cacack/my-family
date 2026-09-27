@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -100,7 +101,7 @@ func TestGetEvidenceAnalysis(t *testing.T) {
 		t.Fatalf("CreateEvidenceAnalysis failed: %v", err)
 	}
 
-	result, err := queryService.GetEvidenceAnalysis(ctx, createResult.ID)
+	result, err := queryService.GetEvidenceAnalysis(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetEvidenceAnalysis failed: %v", err)
 	}
@@ -127,7 +128,7 @@ func TestGetEvidenceAnalysis_NotFound(t *testing.T) {
 	queryService := query.NewEvidenceQueryService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetEvidenceAnalysis(ctx, uuid.New())
+	_, err := queryService.GetEvidenceAnalysis(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -168,7 +169,7 @@ func TestGetAnalysesForFact(t *testing.T) {
 		Conclusion: "Born in 1860",
 	})
 
-	results, err := queryService.GetAnalysesForFact(ctx, "person_birth", subjectID)
+	results, err := queryService.GetAnalysesForFact(ctx, domain.MainBranchID, "person_birth", subjectID)
 	if err != nil {
 		t.Fatalf("GetAnalysesForFact failed: %v", err)
 	}
@@ -214,7 +215,7 @@ func TestGetEvidenceConflict(t *testing.T) {
 		t.Fatal("Expected conflict to be auto-detected")
 	}
 
-	conflict, err := queryService.GetEvidenceConflict(ctx, *result2.ConflictID)
+	conflict, err := queryService.GetEvidenceConflict(ctx, domain.MainBranchID, *result2.ConflictID)
 	if err != nil {
 		t.Fatalf("GetEvidenceConflict failed: %v", err)
 	}
@@ -235,7 +236,7 @@ func TestGetEvidenceConflict_NotFound(t *testing.T) {
 	queryService := query.NewEvidenceQueryService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetEvidenceConflict(ctx, uuid.New())
+	_, err := queryService.GetEvidenceConflict(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -300,7 +301,7 @@ func TestGetConflictsForSubject(t *testing.T) {
 		FactType: "person_birth", SubjectID: otherSubject, Conclusion: "Born 1862",
 	})
 
-	conflicts, err := queryService.GetConflictsForSubject(ctx, subjectID)
+	conflicts, err := queryService.GetConflictsForSubject(ctx, domain.MainBranchID, subjectID)
 	if err != nil {
 		t.Fatalf("GetConflictsForSubject failed: %v", err)
 	}
@@ -338,11 +339,11 @@ func TestListUnresolvedConflicts(t *testing.T) {
 
 	// Resolve the first conflict
 	if result1.ConflictID != nil {
-		conflict, _ := readStore.GetEvidenceConflict(ctx, *result1.ConflictID)
+		conflict, _ := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, *result1.ConflictID)
 		_, _ = cmdHandler.ResolveEvidenceConflict(ctx, *result1.ConflictID, "Resolved", conflict.Version)
 	}
 
-	unresolved, err := queryService.ListUnresolvedConflicts(ctx)
+	unresolved, err := queryService.ListUnresolvedConflicts(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("ListUnresolvedConflicts failed: %v", err)
 	}
@@ -408,7 +409,7 @@ func TestGetResearchLog(t *testing.T) {
 		t.Fatalf("CreateResearchLog failed: %v", err)
 	}
 
-	result, err := queryService.GetResearchLog(ctx, createResult.ID)
+	result, err := queryService.GetResearchLog(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetResearchLog failed: %v", err)
 	}
@@ -432,7 +433,7 @@ func TestGetResearchLog_NotFound(t *testing.T) {
 	queryService := query.NewEvidenceQueryService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetResearchLog(ctx, uuid.New())
+	_, err := queryService.GetResearchLog(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -466,7 +467,7 @@ func TestGetResearchLogsForSubject(t *testing.T) {
 		Outcome: "found", SearchDate: time.Now(),
 	})
 
-	results, err := queryService.GetResearchLogsForSubject(ctx, subjectID)
+	results, err := queryService.GetResearchLogsForSubject(ctx, domain.MainBranchID, subjectID)
 	if err != nil {
 		t.Fatalf("GetResearchLogsForSubject failed: %v", err)
 	}
@@ -528,7 +529,7 @@ func TestGetProofSummary(t *testing.T) {
 		t.Fatalf("CreateProofSummary failed: %v", err)
 	}
 
-	result, err := queryService.GetProofSummary(ctx, createResult.ID)
+	result, err := queryService.GetProofSummary(ctx, domain.MainBranchID, createResult.ID)
 	if err != nil {
 		t.Fatalf("GetProofSummary failed: %v", err)
 	}
@@ -552,7 +553,7 @@ func TestGetProofSummary_NotFound(t *testing.T) {
 	queryService := query.NewEvidenceQueryService(readStore)
 	ctx := context.Background()
 
-	_, err := queryService.GetProofSummary(ctx, uuid.New())
+	_, err := queryService.GetProofSummary(ctx, domain.MainBranchID, uuid.New())
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound, got %v", err)
 	}
@@ -585,7 +586,7 @@ func TestGetProofSummaryForFact(t *testing.T) {
 		Argument:   "Death cert confirms",
 	})
 
-	results, err := queryService.GetProofSummaryForFact(ctx, "person_birth", subjectID)
+	results, err := queryService.GetProofSummaryForFact(ctx, domain.MainBranchID, "person_birth", subjectID)
 	if err != nil {
 		t.Fatalf("GetProofSummaryForFact failed: %v", err)
 	}
@@ -606,7 +607,7 @@ func TestGetProofSummaryForFact_NotFound(t *testing.T) {
 	queryService := query.NewEvidenceQueryService(readStore)
 	ctx := context.Background()
 
-	results, err := queryService.GetProofSummaryForFact(ctx, "person_birth", uuid.New())
+	results, err := queryService.GetProofSummaryForFact(ctx, domain.MainBranchID, "person_birth", uuid.New())
 	if err != nil {
 		t.Fatalf("GetProofSummaryForFact failed: %v", err)
 	}
@@ -653,5 +654,94 @@ func TestListResearchLogs_Pagination(t *testing.T) {
 
 	if len(result2.Logs) != 2 {
 		t.Errorf("Got %d logs on page 2, want 2", len(result2.Logs))
+	}
+}
+
+// TestListEvidenceConflicts_StatusFilterPagesAfterMatching pins that a status
+// filter is matched before paging: the total counts every matching conflict and
+// a page is never short because non-matching rows took its slots. The filter
+// reads the branch's resolved rows, so a branch resolution moves a conflict from
+// open to resolved on that branch only.
+func TestListEvidenceConflicts_StatusFilterPagesAfterMatching(t *testing.T) {
+	eventStore := memory.NewEventStore()
+	readStore := memory.NewReadModelStore()
+	cmdHandler := command.NewHandlerWithBranches(eventStore, readStore, memory.NewBranchStore(), memory.NewSnapshotStore(eventStore))
+	queryService := query.NewEvidenceQueryService(readStore)
+	ctx := context.Background()
+
+	var conflicts []uuid.UUID
+	for i := 0; i < 3; i++ {
+		subject := uuid.New()
+		if _, err := cmdHandler.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{
+			FactType: "person_birth", SubjectID: subject, Conclusion: "Born 1850",
+		}); err != nil {
+			t.Fatalf("CreateEvidenceAnalysis: %v", err)
+		}
+		res, err := cmdHandler.CreateEvidenceAnalysis(ctx, command.CreateEvidenceAnalysisInput{
+			FactType: "person_birth", SubjectID: subject, Conclusion: "Born 1852",
+		})
+		if err != nil || res.ConflictID == nil {
+			t.Fatalf("rival CreateEvidenceAnalysis = %+v, %v", res, err)
+		}
+		conflicts = append(conflicts, *res.ConflictID)
+	}
+	resolve := func(h *command.Handler, scope domain.BranchID, id uuid.UUID) {
+		t.Helper()
+		c, err := readStore.GetEvidenceConflict(ctx, scope, id)
+		if err != nil || c == nil {
+			t.Fatalf("GetEvidenceConflict = %+v, %v", c, err)
+		}
+		if _, err := h.ResolveEvidenceConflict(ctx, id, "settled", c.Version); err != nil {
+			t.Fatalf("ResolveEvidenceConflict: %v", err)
+		}
+	}
+	resolve(cmdHandler, domain.MainBranchID, conflicts[0])
+
+	for _, tc := range []struct {
+		name              string
+		input             query.ListInput
+		wantCount, wantTo int
+	}{
+		{"open, first page of one", query.ListInput{Limit: 1, Status: "open"}, 1, 2},
+		{"open, second page of one", query.ListInput{Limit: 1, Offset: 1, Status: "open"}, 1, 2},
+		{"open, past the end", query.ListInput{Limit: 1, Offset: 2, Status: "open"}, 0, 2},
+		{"resolved", query.ListInput{Limit: 10, Status: "resolved"}, 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := queryService.ListEvidenceConflicts(ctx, tc.input)
+			if err != nil {
+				t.Fatalf("ListEvidenceConflicts: %v", err)
+			}
+			if len(result.Conflicts) != tc.wantCount || result.Total != tc.wantTo {
+				t.Errorf("got %d conflicts of %d, want %d of %d", len(result.Conflicts), result.Total, tc.wantCount, tc.wantTo)
+			}
+			for _, c := range result.Conflicts {
+				if c.Status != tc.input.Status {
+					t.Errorf("listed conflict %s with status %s, want %s", c.ID, c.Status, tc.input.Status)
+				}
+			}
+		})
+	}
+
+	// On a branch that resolves a second conflict, only the third is open there.
+	branch, err := cmdHandler.CreateBranch(ctx, "resolve-more", "")
+	if err != nil {
+		t.Fatalf("CreateBranch: %v", err)
+	}
+	branchID := domain.BranchID(branch.ID)
+	resolve(cmdHandler.WithBranch(branch), branchID, conflicts[1])
+	open, err := queryService.ListEvidenceConflicts(ctx, query.ListInput{Limit: 10, Status: "open", BranchID: branchID})
+	if err != nil {
+		t.Fatalf("branch ListEvidenceConflicts: %v", err)
+	}
+	if open.Total != 1 || len(open.Conflicts) != 1 || open.Conflicts[0].ID != conflicts[2] {
+		t.Errorf("branch open conflicts = %+v, want only the third", open)
+	}
+	unresolved, err := queryService.ListUnresolvedConflicts(ctx, branchID)
+	if err != nil || len(unresolved) != 1 {
+		t.Errorf("branch ListUnresolvedConflicts = %d (err=%v), want 1", len(unresolved), err)
+	}
+	if mainOpen, err := queryService.ListEvidenceConflicts(ctx, query.ListInput{Limit: 10, Status: "open"}); err != nil || mainOpen.Total != 2 {
+		t.Errorf("main open conflicts after the branch resolution = %+v (err=%v), want 2", mainOpen, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -101,7 +102,7 @@ func TestCreateEvidenceAnalysis(t *testing.T) {
 				}
 
 				// Verify in read model
-				analysis, _ := readStore.GetEvidenceAnalysis(ctx, result.ID)
+				analysis, _ := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, result.ID)
 				if analysis == nil {
 					t.Fatal("Analysis not found in read model")
 				}
@@ -162,7 +163,7 @@ func TestCreateEvidenceAnalysis_ConflictAutoDetection(t *testing.T) {
 
 	// Verify conflict exists in read model
 	if result3.ConflictID != nil {
-		conflict, _ := readStore.GetEvidenceConflict(ctx, *result3.ConflictID)
+		conflict, _ := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, *result3.ConflictID)
 		if conflict == nil {
 			t.Fatal("Conflict not found in read model")
 		}
@@ -331,7 +332,7 @@ func TestDeleteEvidenceAnalysis(t *testing.T) {
 		t.Errorf("DeleteEvidenceAnalysis failed: %v", err)
 	}
 
-	analysis, _ := readStore.GetEvidenceAnalysis(ctx, createResult.ID)
+	analysis, _ := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, createResult.ID)
 	if analysis != nil {
 		t.Error("Analysis should be deleted from read model")
 	}
@@ -395,7 +396,7 @@ func TestResolveEvidenceConflict(t *testing.T) {
 	}
 
 	// Resolve the conflict
-	conflict, _ := readStore.GetEvidenceConflict(ctx, *result2.ConflictID)
+	conflict, _ := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, *result2.ConflictID)
 	resolveResult, err := handler.ResolveEvidenceConflict(ctx, *result2.ConflictID, "1850 is correct based on birth certificate", conflict.Version)
 	if err != nil {
 		t.Fatalf("ResolveEvidenceConflict failed: %v", err)
@@ -406,7 +407,7 @@ func TestResolveEvidenceConflict(t *testing.T) {
 	}
 
 	// Verify resolved in read model
-	resolved, _ := readStore.GetEvidenceConflict(ctx, *result2.ConflictID)
+	resolved, _ := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, *result2.ConflictID)
 	if resolved == nil {
 		t.Fatal("Conflict not found after resolution")
 	}
@@ -453,7 +454,7 @@ func TestResolveEvidenceConflict_EmptyResolution(t *testing.T) {
 		t.Fatal("Expected conflict")
 	}
 
-	conflict, _ := readStore.GetEvidenceConflict(ctx, *result2.ConflictID)
+	conflict, _ := readStore.GetEvidenceConflict(ctx, domain.MainBranchID, *result2.ConflictID)
 	_, err := handler.ResolveEvidenceConflict(ctx, *result2.ConflictID, "", conflict.Version)
 	if err == nil {
 		t.Error("Expected error for empty resolution")
@@ -581,7 +582,7 @@ func TestCreateResearchLog(t *testing.T) {
 					t.Errorf("Version = %d, want 1", result.Version)
 				}
 
-				log, _ := readStore.GetResearchLog(ctx, result.ID)
+				log, _ := readStore.GetResearchLog(ctx, domain.MainBranchID, result.ID)
 				if log == nil {
 					t.Fatal("Research log not found in read model")
 				}
@@ -723,7 +724,7 @@ func TestDeleteResearchLog(t *testing.T) {
 		t.Errorf("DeleteResearchLog failed: %v", err)
 	}
 
-	log, _ := readStore.GetResearchLog(ctx, createResult.ID)
+	log, _ := readStore.GetResearchLog(ctx, domain.MainBranchID, createResult.ID)
 	if log != nil {
 		t.Error("Research log should be deleted from read model")
 	}
@@ -843,7 +844,7 @@ func TestCreateProofSummary(t *testing.T) {
 					t.Errorf("Version = %d, want 1", result.Version)
 				}
 
-				summary, _ := readStore.GetProofSummary(ctx, result.ID)
+				summary, _ := readStore.GetProofSummary(ctx, domain.MainBranchID, result.ID)
 				if summary == nil {
 					t.Fatal("Proof summary not found in read model")
 				}
@@ -979,7 +980,7 @@ func TestDeleteProofSummary(t *testing.T) {
 		t.Errorf("DeleteProofSummary failed: %v", err)
 	}
 
-	summary, _ := readStore.GetProofSummary(ctx, createResult.ID)
+	summary, _ := readStore.GetProofSummary(ctx, domain.MainBranchID, createResult.ID)
 	if summary != nil {
 		t.Error("Proof summary should be deleted from read model")
 	}
@@ -1053,7 +1054,7 @@ func TestUpdateEvidenceAnalysis_AllFields(t *testing.T) {
 	}
 
 	// Verify in read model
-	analysis, _ := readStore.GetEvidenceAnalysis(ctx, createResult.ID)
+	analysis, _ := readStore.GetEvidenceAnalysis(ctx, domain.MainBranchID, createResult.ID)
 	if analysis.Conclusion != "Died in 1920" {
 		t.Errorf("Conclusion = %s, want 'Died in 1920'", analysis.Conclusion)
 	}
@@ -1098,7 +1099,7 @@ func TestUpdateResearchLog_AllFields(t *testing.T) {
 		t.Errorf("Version not incremented")
 	}
 
-	log, _ := readStore.GetResearchLog(ctx, createResult.ID)
+	log, _ := readStore.GetResearchLog(ctx, domain.MainBranchID, createResult.ID)
 	if log.Repository != "County Clerk" {
 		t.Errorf("Repository = %s, want 'County Clerk'", log.Repository)
 	}
@@ -1140,7 +1141,7 @@ func TestUpdateProofSummary_AllFields(t *testing.T) {
 		t.Errorf("Version not incremented")
 	}
 
-	summary, _ := readStore.GetProofSummary(ctx, createResult.ID)
+	summary, _ := readStore.GetProofSummary(ctx, domain.MainBranchID, createResult.ID)
 	if summary.Conclusion != "Died in 1920" {
 		t.Errorf("Conclusion = %s, want 'Died in 1920'", summary.Conclusion)
 	}

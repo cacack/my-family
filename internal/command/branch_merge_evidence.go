@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 )
 
@@ -242,9 +243,20 @@ type evidencePlan struct {
 	order map[uuid.UUID]int
 
 	// landed names the streams already on main (resume only). A landed
-	// stream that deletes a media owner has already deleted it, whatever its
-	// place in the order.
+	// stream that deletes a media owner or a GPS subject has already deleted
+	// it, whatever its place in the order.
 	landed map[uuid.UUID]bool
+
+	// basePosition is the branch's fork point. The GPS subject-delete rule
+	// (checkSubjectDeleteOrphansNoGPS) asks whether main wrote an artifact's
+	// stream after it.
+	basePosition int64
+
+	// conflicted names the streams the merge plan reports a conflict on
+	// (merge only). The GPS edit rule leaves them to the conflict machinery
+	// (checkGPSSubjectSurvives). A resume has no conflict verdict to defer
+	// to: a stream it cannot vouch for is made pending instead.
+	conflicted map[uuid.UUID]bool
 }
 
 // validateNoDanglingEvidence is the evidence and media half of
@@ -273,15 +285,46 @@ type evidencePlan struct {
 //     projection saves the media row without
 //     checking its owner, so main would gain an orphaned media item.
 //
+//   - A replayed GPS artifact (evidence analysis, evidence conflict, research
+//     log or proof summary; #760) whose final subject — the person or family it
+//     is about — will not exist on main when it lands, by the same rule as the
+//     media owner. The projection saves the artifact without checking its
+//     subject, so main would gain research about nothing.
+//
+//   - A replayed edit of a GPS artifact main no longer has. Main's
+//     DeletePerson/DeleteFamily cascade removes a subject's artifacts with no
+//     event on their streams, so per-stream conflict detection sees nothing,
+//     and the replayed update lands on a missing row as a silent no-op: the
+//     branch's research would be dropped with no conflict shown.
+//
+//   - A replayed PersonDeleted/FamilyDeleted while main has GPS artifacts about
+//     that subject the branch never saw — added or changed on main after the
+//     fork — and the replay does not itself delete or re-point first. The
+//     store's cascade would delete them from main with no event and no
+//     conflict shown (the GPS counterpart of checkSourceDeleteOrphansNothing).
+//
 // All are refused before the claim, like the dangling child link. ResumeMerge
 // applies the same rules through checkEvidence (see
 // danglingAutoPlannedStreams and validateResumeReferences).
-func (h *Handler) validateNoDanglingEvidence(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
-	plan := evidencePlan{replayed: make(map[uuid.UUID]streamGroup, len(groups)), order: replayOrder(groups)}
+func (h *Handler) validateNoDanglingEvidence(ctx context.Context, mergePlan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
+	plan := evidencePlan{
+		replayed:     make(map[uuid.UUID]streamGroup, len(groups)),
+		order:        replayOrder(groups),
+		basePosition: mergePlan.Branch.BasePosition,
+		conflicted:   make(map[uuid.UUID]bool, len(mergePlan.Conflicts)),
+	}
 	for _, group := range groups {
 		if resolutions[group.streamID] != ResolveMain {
 			plan.replayed[group.streamID] = group
 		}
+	}
+
+	// A stream with a merge conflict is the conflict machinery's to report: a
+	// main-side delete of a GPS artifact is an edit-vs-delete conflict whose
+	// only honourable resolution skips the branch's stream, so it must not be
+	// pre-empted here by a dangling-reference refusal.
+	for _, conflict := range mergePlan.Conflicts {
+		plan.conflicted[conflict.StreamID] = true
 	}
 
 	for _, group := range groups {
@@ -305,9 +348,9 @@ func replayOrder(groups []streamGroup) map[uuid.UUID]int {
 }
 
 // checkEvidence applies the evidence rules — the two citation/source rules
-// (#758) and the media-owner rule (#759) — to one stream the replay will
-// append. A refusal wraps ErrMergeDanglingReference; any other error is a
-// failure to check.
+// (#758), the media-owner rule (#759) and the three GPS artifact rules (#760)
+// — to one stream the replay will append. A refusal wraps
+// ErrMergeDanglingReference; any other error is a failure to check.
 func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evidencePlan) error {
 	if err := h.checkCitationSourceSurvives(ctx, group, plan); err != nil {
 		return err
@@ -315,7 +358,13 @@ func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evi
 	if err := h.checkSourceDeleteOrphansNothing(ctx, group, plan.replayed); err != nil {
 		return err
 	}
-	return h.checkMediaOwnerSurvives(ctx, group, plan)
+	if err := h.checkMediaOwnerSurvives(ctx, group, plan); err != nil {
+		return err
+	}
+	if err := h.checkGPSSubjectSurvives(ctx, group, plan); err != nil {
+		return err
+	}
+	return h.checkSubjectDeleteOrphansNoGPS(ctx, group, plan)
 }
 
 // mediaOwnerDeleteEvents maps a media owner's entity type to the event that

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -78,11 +79,13 @@ func (h *Handler) CreateEvidenceAnalysis(ctx context.Context, input CreateEviden
 		Version: version,
 	}
 
-	// Auto-detect conflicts: query existing analyses for same FactType + SubjectID
+	// Auto-detect conflicts: query existing analyses for same FactType + SubjectID.
+	// Non-critical: the analysis is already committed, so a detection failure is
+	// logged rather than failing the create.
 	conflictID, err := h.detectEvidenceConflicts(ctx, analysis.ID, analysis.FactType, analysis.SubjectID, analysis.Conclusion)
 	if err != nil {
-		// Non-critical: conflict detection failure should not fail the create
-		_ = err
+		slog.Warn("evidence conflict detection failed after creating an analysis",
+			"analysis_id", analysis.ID, "branch_id", h.branchID, "error", err)
 	} else if conflictID != nil {
 		result.ConflictID = conflictID
 	}
@@ -111,7 +114,7 @@ type UpdateEvidenceAnalysisResult struct {
 // UpdateEvidenceAnalysis updates an existing evidence analysis record.
 func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEvidenceAnalysisInput) (*UpdateEvidenceAnalysisResult, error) {
 	// Get current from read model
-	current, err := h.readStore.GetEvidenceAnalysis(ctx, input.ID)
+	current, err := h.readStore.GetEvidenceAnalysis(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting evidence analysis: %w", err)
 	}
@@ -191,10 +194,11 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 
 	result := &UpdateEvidenceAnalysisResult{Version: version}
 
-	// Auto-detect conflicts after update
+	// Auto-detect conflicts after update (non-critical, as on create).
 	conflictID, err := h.detectEvidenceConflicts(ctx, testAnalysis.ID, testAnalysis.FactType, testAnalysis.SubjectID, testAnalysis.Conclusion)
 	if err != nil {
-		_ = err
+		slog.Warn("evidence conflict detection failed after updating an analysis",
+			"analysis_id", testAnalysis.ID, "branch_id", h.branchID, "error", err)
 	} else if conflictID != nil {
 		result.ConflictID = conflictID
 	}
@@ -204,7 +208,7 @@ func (h *Handler) UpdateEvidenceAnalysis(ctx context.Context, input UpdateEviden
 
 // DeleteEvidenceAnalysis deletes an evidence analysis record.
 func (h *Handler) DeleteEvidenceAnalysis(ctx context.Context, id uuid.UUID, version int64, reason string) error {
-	current, err := h.readStore.GetEvidenceAnalysis(ctx, id)
+	current, err := h.readStore.GetEvidenceAnalysis(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting evidence analysis: %w", err)
 	}
@@ -232,7 +236,7 @@ type ResolveEvidenceConflictResult struct {
 
 // ResolveEvidenceConflict resolves an evidence conflict.
 func (h *Handler) ResolveEvidenceConflict(ctx context.Context, id uuid.UUID, resolution string, version int64) (*ResolveEvidenceConflictResult, error) {
-	current, err := h.readStore.GetEvidenceConflict(ctx, id)
+	current, err := h.readStore.GetEvidenceConflict(ctx, h.branchID, id)
 	if err != nil {
 		return nil, fmt.Errorf("getting evidence conflict: %w", err)
 	}
@@ -324,7 +328,7 @@ type UpdateResearchLogResult struct {
 
 // UpdateResearchLog updates an existing research log entry.
 func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLogInput) (*UpdateResearchLogResult, error) {
-	current, err := h.readStore.GetResearchLog(ctx, input.ID)
+	current, err := h.readStore.GetResearchLog(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting research log: %w", err)
 	}
@@ -374,7 +378,10 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 	}
 	if input.SearchDate != nil {
 		testLog.SearchDate = *input.SearchDate
-		changes["search_date"] = *input.SearchDate
+		// Stored as the RFC 3339 string the projection parses: a time.Time value
+		// would only survive a JSON round trip, so the synchronous projection of
+		// the live event would silently drop the change.
+		changes["search_date"] = input.SearchDate.Format(time.RFC3339Nano)
 	}
 
 	if len(changes) == 0 {
@@ -396,7 +403,7 @@ func (h *Handler) UpdateResearchLog(ctx context.Context, input UpdateResearchLog
 
 // DeleteResearchLog deletes a research log entry.
 func (h *Handler) DeleteResearchLog(ctx context.Context, id uuid.UUID, version int64, reason string) error {
-	current, err := h.readStore.GetResearchLog(ctx, id)
+	current, err := h.readStore.GetResearchLog(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting research log: %w", err)
 	}
@@ -481,7 +488,7 @@ type UpdateProofSummaryResult struct {
 
 // UpdateProofSummary updates an existing proof summary.
 func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSummaryInput) (*UpdateProofSummaryResult, error) {
-	current, err := h.readStore.GetProofSummary(ctx, input.ID)
+	current, err := h.readStore.GetProofSummary(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting proof summary: %w", err)
 	}
@@ -555,7 +562,7 @@ func (h *Handler) UpdateProofSummary(ctx context.Context, input UpdateProofSumma
 
 // DeleteProofSummary deletes a proof summary.
 func (h *Handler) DeleteProofSummary(ctx context.Context, id uuid.UUID, version int64, reason string) error {
-	current, err := h.readStore.GetProofSummary(ctx, id)
+	current, err := h.readStore.GetProofSummary(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting proof summary: %w", err)
 	}
@@ -578,9 +585,14 @@ func (h *Handler) DeleteProofSummary(ctx context.Context, id uuid.UUID, version 
 
 // detectEvidenceConflicts checks for conflicting conclusions among analyses
 // sharing the same FactType and SubjectID. Returns the conflict ID if one was created.
+//
+// It reads and writes on the handler's branch (#760): on a branch it compares the
+// analyses the branch sees, and a conflict it records lives on that branch until
+// merged. This is the genealogical evidence conflict (two analyses disagree), not
+// an ADR-005 merge conflict.
 func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.UUID, factType domain.FactType, subjectID uuid.UUID, conclusion string) (*uuid.UUID, error) {
 	// Get analyses for the same fact type and subject
-	analyses, err := h.readStore.GetAnalysesForFact(ctx, factType, subjectID)
+	analyses, err := h.readStore.GetAnalysesForFact(ctx, h.branchID, factType, subjectID)
 	if err != nil {
 		return nil, fmt.Errorf("getting analyses for fact: %w", err)
 	}
@@ -597,7 +609,7 @@ func (h *Handler) detectEvidenceConflicts(ctx context.Context, analysisID uuid.U
 	}
 
 	// Check for existing open conflict to avoid duplicates
-	existingConflicts, err := h.readStore.GetConflictsForSubject(ctx, subjectID)
+	existingConflicts, err := h.readStore.GetConflictsForSubject(ctx, h.branchID, subjectID)
 	if err != nil {
 		return nil, fmt.Errorf("getting conflicts for subject: %w", err)
 	}

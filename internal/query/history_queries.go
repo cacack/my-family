@@ -141,10 +141,27 @@ func (s *HistoryService) GetGlobalHistory(ctx context.Context, input GetGlobalHi
 }
 
 // transformStoredEvents converts raw StoredEvents to user-friendly ChangeEntries.
+//
+// Entity names are resolved in two passes (#697): the first registers every
+// entity the entries will name, one batched read-model lookup per entity type
+// resolves them all, and the second builds the entries from that result — so
+// the read-model query count does not grow with the number of events.
 func (s *HistoryService) transformStoredEvents(ctx context.Context, events []repository.StoredEvent) ([]ChangeEntry, error) {
+	refs := newEntityRefs()
+	for i := range events {
+		entityType, _ := s.mapEventTypeToEntityAndAction(events[i].EventType)
+		refs.addEvent(entityType, events[i].StreamID, &events[i])
+	}
+	names, err := s.resolveEntityNames(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+
 	entries := make([]ChangeEntry, 0, len(events))
 
-	for _, evt := range events {
+	for i := range events {
+		evt := &events[i]
+
 		// Map event type to entity type and action
 		entityType, action := s.mapEventTypeToEntityAndAction(evt.EventType)
 
@@ -164,7 +181,7 @@ func (s *HistoryService) transformStoredEvents(ctx context.Context, events []rep
 
 		// Extract changes for update events
 		if action == "updated" {
-			changes, err := s.extractChanges(ctx, evt)
+			changes, err := s.extractChanges(*evt, names)
 			if err == nil && len(changes) > 0 {
 				entry.Changes = changes
 			}
@@ -178,9 +195,8 @@ func (s *HistoryService) transformStoredEvents(ctx context.Context, events []rep
 			}
 		}
 
-		// Enrich with entity name from read model
-		entityName := s.getEntityName(ctx, entityType, evt.StreamID, &evt)
-		entry.EntityName = entityName
+		// Enrich with the entity name resolved above
+		entry.EntityName = names.name(entityType, evt.StreamID, evt)
 
 		entries = append(entries, entry)
 	}
@@ -242,8 +258,9 @@ func (s *HistoryService) mapEventTypeToEntityAndAction(eventType string) (entity
 	}
 }
 
-// extractChanges extracts field-level changes from update events.
-func (s *HistoryService) extractChanges(ctx context.Context, evt repository.StoredEvent) (map[string]FieldChange, error) {
+// extractChanges extracts field-level changes from update events. names must
+// hold the entities evt references (entityRefs.addEvent registers them).
+func (s *HistoryService) extractChanges(evt repository.StoredEvent, names *entityNames) (map[string]FieldChange, error) {
 	// Decode the event to access its Changes field
 	domainEvent, err := evt.DecodeEvent()
 	if err != nil {
@@ -261,12 +278,12 @@ func (s *HistoryService) extractChanges(ctx context.Context, evt repository.Stor
 	case domain.CitationUpdated:
 		return s.convertChangesMap(e.Changes), nil
 	case domain.ChildLinkedToFamily:
-		childName := s.getPersonName(ctx, e.PersonID, nil)
+		childName := names.personName(e.PersonID, nil)
 		return map[string]FieldChange{
 			"children": {NewValue: fmt.Sprintf("Child linked: %s", childName)},
 		}, nil
 	case domain.ChildUnlinkedFromFamily:
-		childName := s.getPersonName(ctx, e.PersonID, nil)
+		childName := names.personName(e.PersonID, nil)
 		return map[string]FieldChange{
 			"children": {NewValue: fmt.Sprintf("Child unlinked: %s", childName)},
 		}, nil
@@ -287,119 +304,4 @@ func (s *HistoryService) convertChangesMap(changes map[string]any) map[string]Fi
 		}
 	}
 	return result
-}
-
-// getEntityName looks up the display name for an entity from the read model.
-func (s *HistoryService) getEntityName(ctx context.Context, entityType string, entityID uuid.UUID, evt *repository.StoredEvent) string {
-	switch entityType {
-	case "person":
-		return s.getPersonName(ctx, entityID, evt)
-	case "family":
-		return s.getFamilyName(ctx, entityID, evt)
-	case "source":
-		return s.getSourceName(ctx, entityID, evt)
-	case "citation":
-		return s.getCitationName(ctx, entityID, evt)
-	default:
-		return entityID.String()
-	}
-}
-
-// getPersonName retrieves or constructs a person's name.
-func (s *HistoryService) getPersonName(ctx context.Context, personID uuid.UUID, evt *repository.StoredEvent) string {
-	// Try to get from read model first
-	person, err := s.readStore.GetPerson(ctx, domain.MainBranchID, personID)
-	if err == nil && person != nil {
-		return person.FullName
-	}
-
-	// Fallback: extract name from creation event
-	if evt != nil && evt.EventType == "PersonCreated" {
-		var created domain.PersonCreated
-		if err := json.Unmarshal(evt.Data, &created); err == nil {
-			if created.GivenName != "" || created.Surname != "" {
-				return fmt.Sprintf("%s %s", created.GivenName, created.Surname)
-			}
-		}
-	}
-
-	// Last resort: use ID
-	return personID.String()
-}
-
-// getFamilyName retrieves or constructs a family's name.
-func (s *HistoryService) getFamilyName(ctx context.Context, familyID uuid.UUID, evt *repository.StoredEvent) string {
-	// Try to get from read model first
-	family, err := s.readStore.GetFamily(ctx, domain.MainBranchID, familyID)
-	if err == nil && family != nil {
-		p1Name := fullName(family.Partner1GivenName, family.Partner1Surname)
-		p2Name := fullName(family.Partner2GivenName, family.Partner2Surname)
-		if p1Name != "" && p2Name != "" {
-			return fmt.Sprintf("%s & %s", p1Name, p2Name)
-		}
-		if p1Name != "" {
-			return p1Name
-		}
-		if p2Name != "" {
-			return p2Name
-		}
-	}
-
-	// Fallback: extract partner names from creation event
-	if evt != nil && evt.EventType == "FamilyCreated" {
-		var created domain.FamilyCreated
-		if err := json.Unmarshal(evt.Data, &created); err == nil {
-			names := make([]string, 0, 2)
-			if created.Partner1ID != nil {
-				names = append(names, s.getPersonName(ctx, *created.Partner1ID, nil))
-			}
-			if created.Partner2ID != nil {
-				names = append(names, s.getPersonName(ctx, *created.Partner2ID, nil))
-			}
-			if len(names) == 2 {
-				return fmt.Sprintf("%s & %s", names[0], names[1])
-			}
-			if len(names) == 1 {
-				return names[0]
-			}
-		}
-	}
-
-	// Last resort: use ID
-	return familyID.String()
-}
-
-// getSourceName retrieves or constructs a source's name.
-func (s *HistoryService) getSourceName(ctx context.Context, sourceID uuid.UUID, evt *repository.StoredEvent) string {
-	// Try to get from read model first
-	source, err := s.readStore.GetSource(ctx, domain.MainBranchID, sourceID)
-	if err == nil && source != nil {
-		return source.Title
-	}
-
-	// Fallback: extract title from creation event
-	if evt.EventType == "SourceCreated" {
-		var created domain.SourceCreated
-		if err := json.Unmarshal(evt.Data, &created); err == nil {
-			if created.Title != "" {
-				return created.Title
-			}
-		}
-	}
-
-	// Last resort: use ID
-	return sourceID.String()
-}
-
-// getCitationName retrieves or constructs a citation's name.
-// TODO: evt parameter reserved for extracting name from event data when read model unavailable
-func (s *HistoryService) getCitationName(ctx context.Context, citationID uuid.UUID, _ *repository.StoredEvent) string {
-	// Try to get from read model first
-	citation, err := s.readStore.GetCitation(ctx, domain.MainBranchID, citationID)
-	if err == nil && citation != nil {
-		return fmt.Sprintf("%s (%s)", citation.SourceTitle, citation.FactType)
-	}
-
-	// Fallback: use ID
-	return citationID.String()
 }
