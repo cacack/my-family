@@ -6,6 +6,19 @@
 	import { onboardingState } from '$lib/stores/onboardingSettings.svelte';
 	import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+
+	/**
+	 * The onboarding wizard is for an empty *database*. On a research branch the
+	 * people count is the branch's view, which can be empty while the mainline is
+	 * not, and the wizard's import step writes the mainline anyway — so it never
+	 * appears while a branch is active (#825).
+	 */
+	function shouldOnboard(personCount: number | null): boolean {
+		if (activeBranch.id !== null || onboardingState.completed) return false;
+		return personCount === null || personCount === 0;
+	}
 
 	let recentPersons: Person[] = $state([]);
 	let recentFamilies: FamilyDetail[] = $state([]);
@@ -27,7 +40,7 @@
 				persons: personsRes.total,
 				families: familiesRes.total
 			};
-			showOnboarding = stats.persons === 0 && !onboardingState.completed;
+			showOnboarding = shouldOnboard(stats.persons);
 
 			// Check if there are discovery suggestions (only if we have data)
 			if (stats.persons > 0) {
@@ -40,7 +53,7 @@
 			}
 		} catch (e) {
 			console.error('Failed to load dashboard:', e);
-			showOnboarding = !onboardingState.completed;
+			showOnboarding = shouldOnboard(null);
 		} finally {
 			loading = false;
 		}
@@ -67,6 +80,9 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else}
+		<MainlineNotice
+			message="On a research branch, the people count and recent people follow your branch, but the family count, recent families and research suggestions still come from the mainline."
+		/>
 		<section class="stats">
 			<Card class="flex flex-col items-center px-12 py-6">
 				<span class="text-3xl font-bold text-foreground">{stats.persons}</span>

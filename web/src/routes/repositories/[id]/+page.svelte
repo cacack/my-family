@@ -1,4 +1,5 @@
 <script lang="ts">
+	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, type RepositoryDetail, type Address } from '$lib/api/client';
@@ -171,6 +172,10 @@
 			</div>
 		{/if}
 	</header>
+
+	<MainlineNotice
+		message="Repositories are shared across all branches. Creating, editing or deleting a repository here changes the mainline, and every research branch sees the change."
+	/>
 
 	{#if loading}
 		<div class="loading">Loading...</div>
