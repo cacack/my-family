@@ -4836,8 +4836,60 @@ type GetMapLocationsParams struct {
 
 // DeleteMediaParams defines parameters for DeleteMedia.
 type DeleteMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetMediaParams defines parameters for GetMedia.
+type GetMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateMediaParams defines parameters for UpdateMedia.
+type UpdateMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// DownloadMediaParams defines parameters for DownloadMedia.
+type DownloadMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetMediaThumbnailParams defines parameters for GetMediaThumbnail.
+type GetMediaThumbnailParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // ListNotesParams defines parameters for ListNotes.
@@ -5034,6 +5086,13 @@ type GetPersonHistoryParams struct {
 
 // ListPersonMediaParams defines parameters for ListPersonMedia.
 type ListPersonMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
@@ -5051,6 +5110,17 @@ type UploadPersonMediaMultipartBody struct {
 
 	// Title Display title for the media
 	Title string `json:"title"`
+}
+
+// UploadPersonMediaParams defines parameters for UploadPersonMedia.
+type UploadPersonMediaParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // UploadPersonMediaMultipartBodyMediaType defines parameters for UploadPersonMedia.
@@ -5711,16 +5781,16 @@ type ServerInterface interface {
 	DeleteMedia(ctx echo.Context, id openapi_types.UUID, params DeleteMediaParams) error
 	// Get media metadata
 	// (GET /media/{id})
-	GetMedia(ctx echo.Context, id openapi_types.UUID) error
+	GetMedia(ctx echo.Context, id openapi_types.UUID, params GetMediaParams) error
 	// Update media metadata
 	// (PUT /media/{id})
-	UpdateMedia(ctx echo.Context, id openapi_types.UUID) error
+	UpdateMedia(ctx echo.Context, id openapi_types.UUID, params UpdateMediaParams) error
 	// Download media file
 	// (GET /media/{id}/content)
-	DownloadMedia(ctx echo.Context, id openapi_types.UUID) error
+	DownloadMedia(ctx echo.Context, id openapi_types.UUID, params DownloadMediaParams) error
 	// Get media thumbnail
 	// (GET /media/{id}/thumbnail)
-	GetMediaThumbnail(ctx echo.Context, id openapi_types.UUID) error
+	GetMediaThumbnail(ctx echo.Context, id openapi_types.UUID, params GetMediaThumbnailParams) error
 	// List all notes
 	// (GET /notes)
 	ListNotes(ctx echo.Context, params ListNotesParams) error
@@ -5792,7 +5862,7 @@ type ServerInterface interface {
 	ListPersonMedia(ctx echo.Context, id PersonId, params ListPersonMediaParams) error
 	// Upload media to a person
 	// (POST /persons/{id}/media)
-	UploadPersonMedia(ctx echo.Context, id PersonId) error
+	UploadPersonMedia(ctx echo.Context, id PersonId, params UploadPersonMediaParams) error
 	// Get all names for a person
 	// (GET /persons/{id}/names)
 	GetPersonNames(ctx echo.Context, id PersonId, params GetPersonNamesParams) error
@@ -7476,6 +7546,13 @@ func (w *ServerInterfaceWrapper) DeleteMedia(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -7499,8 +7576,17 @@ func (w *ServerInterfaceWrapper) GetMedia(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetMedia(ctx, id)
+	err = w.Handler.GetMedia(ctx, id, params)
 	return err
 }
 
@@ -7515,8 +7601,17 @@ func (w *ServerInterfaceWrapper) UpdateMedia(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateMedia(ctx, id)
+	err = w.Handler.UpdateMedia(ctx, id, params)
 	return err
 }
 
@@ -7531,8 +7626,17 @@ func (w *ServerInterfaceWrapper) DownloadMedia(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DownloadMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.DownloadMedia(ctx, id)
+	err = w.Handler.DownloadMedia(ctx, id, params)
 	return err
 }
 
@@ -7547,8 +7651,17 @@ func (w *ServerInterfaceWrapper) GetMediaThumbnail(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMediaThumbnailParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetMediaThumbnail(ctx, id)
+	err = w.Handler.GetMediaThumbnail(ctx, id, params)
 	return err
 }
 
@@ -8088,6 +8201,13 @@ func (w *ServerInterfaceWrapper) ListPersonMedia(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListPersonMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -8118,8 +8238,17 @@ func (w *ServerInterfaceWrapper) UploadPersonMedia(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UploadPersonMediaParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UploadPersonMedia(ctx, id)
+	err = w.Handler.UploadPersonMedia(ctx, id, params)
 	return err
 }
 
@@ -12476,7 +12605,8 @@ func (response DeleteMedia409JSONResponse) VisitDeleteMediaResponse(w http.Respo
 }
 
 type GetMediaRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params GetMediaParams
 }
 
 type GetMediaResponseObject interface {
@@ -12512,8 +12642,9 @@ func (response GetMedia404JSONResponse) VisitGetMediaResponse(w http.ResponseWri
 }
 
 type UpdateMediaRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *UpdateMediaJSONRequestBody
+	Id     openapi_types.UUID `json:"id"`
+	Params UpdateMediaParams
+	Body   *UpdateMediaJSONRequestBody
 }
 
 type UpdateMediaResponseObject interface {
@@ -12577,7 +12708,8 @@ func (response UpdateMedia409JSONResponse) VisitUpdateMediaResponse(w http.Respo
 }
 
 type DownloadMediaRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params DownloadMediaParams
 }
 
 type DownloadMediaResponseObject interface {
@@ -12699,7 +12831,8 @@ func (response DownloadMedia404JSONResponse) VisitDownloadMediaResponse(w http.R
 }
 
 type GetMediaThumbnailRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params GetMediaThumbnailParams
 }
 
 type GetMediaThumbnailResponseObject interface {
@@ -13725,8 +13858,9 @@ func (response ListPersonMedia404JSONResponse) VisitListPersonMediaResponse(w ht
 }
 
 type UploadPersonMediaRequestObject struct {
-	Id   PersonId `json:"id"`
-	Body *multipart.Reader
+	Id     PersonId `json:"id"`
+	Params UploadPersonMediaParams
+	Body   *multipart.Reader
 }
 
 type UploadPersonMediaResponseObject interface {
@@ -18284,10 +18418,11 @@ func (sh *strictHandler) DeleteMedia(ctx echo.Context, id openapi_types.UUID, pa
 }
 
 // GetMedia operation middleware
-func (sh *strictHandler) GetMedia(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) GetMedia(ctx echo.Context, id openapi_types.UUID, params GetMediaParams) error {
 	var request GetMediaRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMedia(ctx.Request().Context(), request.(GetMediaRequestObject))
@@ -18309,10 +18444,11 @@ func (sh *strictHandler) GetMedia(ctx echo.Context, id openapi_types.UUID) error
 }
 
 // UpdateMedia operation middleware
-func (sh *strictHandler) UpdateMedia(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) UpdateMedia(ctx echo.Context, id openapi_types.UUID, params UpdateMediaParams) error {
 	var request UpdateMediaRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateMediaJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -18340,10 +18476,11 @@ func (sh *strictHandler) UpdateMedia(ctx echo.Context, id openapi_types.UUID) er
 }
 
 // DownloadMedia operation middleware
-func (sh *strictHandler) DownloadMedia(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) DownloadMedia(ctx echo.Context, id openapi_types.UUID, params DownloadMediaParams) error {
 	var request DownloadMediaRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.DownloadMedia(ctx.Request().Context(), request.(DownloadMediaRequestObject))
@@ -18365,10 +18502,11 @@ func (sh *strictHandler) DownloadMedia(ctx echo.Context, id openapi_types.UUID) 
 }
 
 // GetMediaThumbnail operation middleware
-func (sh *strictHandler) GetMediaThumbnail(ctx echo.Context, id openapi_types.UUID) error {
+func (sh *strictHandler) GetMediaThumbnail(ctx echo.Context, id openapi_types.UUID, params GetMediaThumbnailParams) error {
 	var request GetMediaThumbnailRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMediaThumbnail(ctx.Request().Context(), request.(GetMediaThumbnailRequestObject))
@@ -19028,10 +19166,11 @@ func (sh *strictHandler) ListPersonMedia(ctx echo.Context, id PersonId, params L
 }
 
 // UploadPersonMedia operation middleware
-func (sh *strictHandler) UploadPersonMedia(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) UploadPersonMedia(ctx echo.Context, id PersonId, params UploadPersonMediaParams) error {
 	var request UploadPersonMediaRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	if reader, err := ctx.Request().MultipartReader(); err != nil {
 		return err

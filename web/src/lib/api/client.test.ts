@@ -95,7 +95,14 @@ describe('isBranchScopedRequest', () => {
 		['POST', '/notes'],
 		['GET', `/notes/${PERSON_ID}`],
 		['PUT', `/notes/${PERSON_ID}`],
-		['DELETE', `/notes/${PERSON_ID}`]
+		['DELETE', `/notes/${PERSON_ID}`],
+		['GET', `/persons/${PERSON_ID}/media`],
+		['POST', `/persons/${PERSON_ID}/media`],
+		['GET', `/media/${NAME_ID}`],
+		['PUT', `/media/${NAME_ID}`],
+		['DELETE', `/media/${NAME_ID}`],
+		['GET', `/media/${NAME_ID}/content`],
+		['GET', `/media/${NAME_ID}/thumbnail`]
 	])('allows %s %s', (method, path) => {
 		expect(isBranchScopedRequest(method, path)).toBe(true);
 	});
@@ -158,6 +165,11 @@ describe('isBranchScopedRequest', () => {
 		expect(isBranchScopedRequest('POST', '/sources/search')).toBe(false);
 		expect(isBranchScopedRequest('GET', `/persons/${PERSON_ID}/history`)).toBe(false);
 		expect(isBranchScopedRequest('GET', `/families/${FAMILY_ID}/group-sheet`)).toBe(false);
+		// Media history and rollback stay mainline (#759 scopes the metadata, not
+		// its audit trail), and the content/thumbnail reads take no writes.
+		expect(isBranchScopedRequest('GET', `/media/${NAME_ID}/history`)).toBe(false);
+		expect(isBranchScopedRequest('POST', `/media/${NAME_ID}/rollback`)).toBe(false);
+		expect(isBranchScopedRequest('PUT', `/media/${NAME_ID}/content`)).toBe(false);
 	});
 
 	it('ignores an existing query string when matching', () => {
@@ -209,6 +221,17 @@ describe('branch scope threading', () => {
 		setClientBranch(BRANCH_ID);
 		await api.listFamilies({ limit: 20 });
 		expect(requestedUrl()).toBe('/api/v1/families?limit=20');
+	});
+
+	it('scopes the media URL builders and the multipart upload, which bypass request()', async () => {
+		expect(api.getMediaThumbnailUrl(NAME_ID)).toBe(`/api/v1/media/${NAME_ID}/thumbnail`);
+		setClientBranch(BRANCH_ID);
+		expect(api.getMediaContentUrl(NAME_ID)).toBe(`/api/v1/media/${NAME_ID}/content?branch=${BRANCH_ID}`);
+		expect(api.getMediaThumbnailUrl(NAME_ID)).toBe(
+			`/api/v1/media/${NAME_ID}/thumbnail?branch=${BRANCH_ID}`
+		);
+		await api.uploadPersonMedia(PERSON_ID, new File(['x'], 'x.jpg'), 'x');
+		expect(requestedUrl()).toBe(`/api/v1/persons/${PERSON_ID}/media?branch=${BRANCH_ID}`);
 	});
 
 	it('never scopes the branch lifecycle endpoints themselves', async () => {

@@ -7,8 +7,10 @@
 	 * person names, families (detail, not list), family children and pedigree —
 	 * on the browse and map aggregates that read that slice's overlay (#676
 	 * sub-issue A, #756), on the person/family facts of sub-issue B (#757):
-	 * the cemetery index and the association endpoints, and on the evidence of
-	 * sub-issue C (#758): sources, citations and notes. The remaining read
+	 * the cemetery index and the association endpoints, on the evidence of
+	 * sub-issue C (#758): sources, citations and notes, and on the media of
+	 * sub-issue D (#759): metadata, person media lists, content and thumbnails
+	 * (the file bytes themselves are shared with the mainline). The remaining read
 	 * models still answer from the mainline. Rendering one of them unlabelled beneath the branch banner would
 	 * be the UI quietly lying about what the user is looking at.
 	 *
@@ -33,13 +35,14 @@
 	 * Deliberately not placed, because these surfaces now follow the branch:
 	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
 	 * and per-place list), `/browse/cemeteries` (index and per-cemetery list,
-	 * since #757), `/map` and `/sources` (list and detail, since #758).
+	 * since #757), `/map` and `/sources` (list and detail, since #758). The media
+	 * gallery on person detail pages follows the branch too (since #759).
 	 *
 	 * Known gap, to close with the rest of #676 rather than by sprinkling more
 	 * notices: `/` (dashboard and discovery feed), `/descendancy/{id}`,
 	 * `/relationship`, `/repositories`, `/import`, and the panels on person and
 	 * family detail pages that are not themselves scoped — change history,
-	 * restore points, media and evidence. All of them answer from
+	 * restore points and evidence. All of them answer from
 	 * the mainline today; none of them says so.
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
@@ -56,7 +59,7 @@
 
 	let {
 		surface,
-		detail = 'Branch scoping currently covers people, families, pedigrees, sources, citations, notes and the browse and map views.'
+		detail = 'Branch scoping currently covers people, families, pedigrees, sources, citations, notes, media and the browse and map views.'
 	}: Props = $props();
 </script>
 

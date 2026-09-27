@@ -112,6 +112,20 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > `TestBranchAwareEventTypes_LeaveMainUntouched` (`internal/command`), and the `?branch=` handler
 > tests in `internal/api/evidence_branch_handlers_test.go`.
 >
+> **Implementation status (#676 sub-issue D, [#759](https://github.com/cacack/my-family/issues/759)):**
+> BR-003 now also covers media **metadata** on all three backends. The file bytes are shared, never
+> copied per branch: they live on the item's origin row, a branch shadow row stores NULL bytes, and
+> `GetMediaWithData` / `GetMediaThumbnail` read them from the winning row else main's; a mainline
+> delete keeps main's row as a tombstone while a branch still shows the item through a live shadow
+> (ADR-005, "Implementation Note — media metadata"). `DeletePerson`, `DeleteFamily` and
+> `DeleteSource` cascade to the owner's media on the same branch only, and the three `Media*`
+> event types are on the BR-006 allowlist. Verified by `TestBranchScenario_MediaOverlay` and
+> `TestReadModelStore_DeleteCascadesMedia` (identical copies per backend),
+> `TestReadModelStore_MigratesMediaToBranchKeys` (PostgreSQL) and
+> `TestPreMediaBranchSchemaRefusesBranchWrites` (SQLite), `TestBranchMediaLifecycle` and
+> `TestBranchAwareEventTypes_LeaveMainUntouched` (`internal/command`), and the `?branch=` handler
+> tests in `internal/api/media_branch_handlers_test.go`.
+>
 > **BR-003's scope is bounded by decision, not only by progress.** Extending branch-scoping to the
 > pending entity types is the rest of #676, but four entities — Submitter, Repository,
 > RepositoryExternalID and LDSOrdinance — will never carry a `branch_id`: they are file-/archive-level

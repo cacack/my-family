@@ -2,6 +2,8 @@ package sqlite_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"os"
 	"reflect"
 	"testing"
@@ -1190,5 +1192,332 @@ func runBranchEvidenceScenario(t *testing.T, readStore repository.ReadModelStore
 	}
 	if got := searchIDs(branchID, "parish"); !reflect.DeepEqual(got, []uuid.UUID{register.ID}) {
 		t.Errorf("purged branch SearchSources(parish) = %v, want [register]", got)
+	}
+}
+
+// TestBranchScenario_MediaOverlay runs the #759 media scenario against the
+// SQLite backend; the scenario body is identical across all three backends.
+func TestBranchScenario_MediaOverlay(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-media-scenario-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	readStore, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	branchStore, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("create branch store: %v", err)
+	}
+	stored := func(t *testing.T, branch domain.BranchID, id uuid.UUID) ([]byte, []byte, bool) {
+		t.Helper()
+		var file, thumb []byte
+		err := db.QueryRow(`SELECT file_data, thumbnail_data FROM media WHERE id = ? AND branch_id = ?`,
+			id.String(), branch.String()).Scan(&file, &thumb)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, false
+		}
+		if err != nil {
+			t.Fatalf("read stored media bytes: %v", err)
+		}
+		return file, thumb, true
+	}
+	runBranchMediaScenario(t, readStore, branchStore, stored)
+}
+
+// storedMediaBytes reports the bytes physically stored on the (id, branch) media
+// row, and whether that row exists at all (tombstones included). It reads the
+// backend's storage directly, which is what lets the scenario prove the blob
+// rule rather than infer it from the resolved reads.
+type storedMediaBytes func(t *testing.T, branch domain.BranchID, id uuid.UUID) (file, thumb []byte, present bool)
+
+// runBranchMediaScenario is the backend-agnostic media scenario for sub-issue D
+// of #676 (#759). Each backend package carries an identical copy (there is no
+// shared test harness in this repo); keeping the assertions byte-identical is
+// the DB-001 parity guarantee.
+//
+// Shape: two people and three media items on main, seeded through the
+// projector. A branch retitles one item and must store NO copy of its bytes
+// while still reading main's through GetMediaWithData and GetMediaThumbnail;
+// uploads its own item (which owns its bytes); re-links, deletes and
+// cascade-deletes items on the branch only. A second branch then keeps a live
+// shadow of an item main deletes, which must keep that shadow's bytes until the
+// branch is purged. Last, purging the first branch resolves it back to main.
+func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore, stored storedMediaBytes) {
+	t.Helper()
+	ctx := context.Background()
+	projector := repository.NewProjector(readStore, branchStore)
+	main := domain.MainBranchID
+
+	project := func(label string, branchID domain.BranchID, events ...domain.Event) {
+		t.Helper()
+		for i, ev := range events {
+			if err := projector.Project(ctx, ev, int64(i+2), branchID); err != nil {
+				t.Fatalf("%s: project %s: %v", label, ev.EventType(), err)
+			}
+		}
+	}
+	newMedia := func(title string, owner uuid.UUID, file, thumb string) *domain.Media {
+		m := domain.NewMedia(title, "person", owner)
+		m.MimeType = "image/jpeg"
+		m.MediaType = domain.MediaPhoto
+		m.Filename = title + ".jpg"
+		m.FileData = []byte(file)
+		m.ThumbnailData = []byte(thumb)
+		m.FileSize = int64(len(file))
+		return m
+	}
+	listIDs := func(branchID domain.BranchID, owner uuid.UUID) map[uuid.UUID]bool {
+		t.Helper()
+		got, total, err := readStore.ListMediaForEntity(ctx, "person", owner, repository.ListOptions{Limit: 100, BranchID: branchID})
+		if err != nil {
+			t.Fatalf("ListMediaForEntity: %v", err)
+		}
+		if total != len(got) {
+			t.Errorf("ListMediaForEntity total = %d, want %d (the page size)", total, len(got))
+		}
+		ids := make(map[uuid.UUID]bool, len(got))
+		for _, m := range got {
+			if m.FileData != nil || m.ThumbnailData != nil {
+				t.Errorf("ListMediaForEntity returned bytes for %s; it must read metadata only", m.ID)
+			}
+			ids[m.ID] = true
+		}
+		return ids
+	}
+	wantBytes := func(label string, branchID domain.BranchID, id uuid.UUID, file, thumb string) {
+		t.Helper()
+		got, err := readStore.GetMediaWithData(ctx, branchID, id)
+		if err != nil || got == nil {
+			t.Fatalf("%s: GetMediaWithData = %+v (err=%v), want the item", label, got, err)
+		}
+		if string(got.FileData) != file || string(got.ThumbnailData) != thumb {
+			t.Errorf("%s: GetMediaWithData bytes = %q/%q, want %q/%q", label, got.FileData, got.ThumbnailData, file, thumb)
+		}
+		th, err := readStore.GetMediaThumbnail(ctx, branchID, id)
+		if err != nil || string(th) != thumb {
+			t.Errorf("%s: GetMediaThumbnail = %q (err=%v), want %q", label, th, err, thumb)
+		}
+	}
+	wantGone := func(label string, branchID domain.BranchID, id uuid.UUID) {
+		t.Helper()
+		if got, err := readStore.GetMedia(ctx, branchID, id); err != nil || got != nil {
+			t.Errorf("%s: GetMedia = %+v (err=%v), want absent", label, got, err)
+		}
+		if got, err := readStore.GetMediaWithData(ctx, branchID, id); err != nil || got != nil {
+			t.Errorf("%s: GetMediaWithData = %+v (err=%v), want absent", label, got, err)
+		}
+		if th, err := readStore.GetMediaThumbnail(ctx, branchID, id); err != nil || th != nil {
+			t.Errorf("%s: GetMediaThumbnail = %q (err=%v), want nil", label, th, err)
+		}
+	}
+	wantNoCopy := func(label string, branchID domain.BranchID, id uuid.UUID) {
+		t.Helper()
+		file, thumb, present := stored(t, branchID, id)
+		if !present {
+			t.Fatalf("%s: no stored row for the branch; expected a metadata shadow", label)
+		}
+		if file != nil || thumb != nil {
+			t.Errorf("%s: branch row stores %d file / %d thumbnail bytes, want none (blobs are shared, never copied)",
+				label, len(file), len(thumb))
+		}
+	}
+
+	// --- Step 1: seed main. ---
+	alex := domain.NewPerson("Alex", "Original")
+	blair := domain.NewPerson("Blair", "Original")
+	portrait := newMedia("portrait", alex.ID, "PORTRAIT-FILE", "PORTRAIT-THUMB")
+	letter := newMedia("letter", alex.ID, "LETTER-FILE", "LETTER-THUMB")
+	deed := newMedia("deed", blair.ID, "DEED-FILE", "DEED-THUMB")
+	project("seed main", main,
+		domain.NewPersonCreated(alex),
+		domain.NewPersonCreated(blair),
+		domain.NewMediaCreated(portrait),
+		domain.NewMediaCreated(letter),
+		domain.NewMediaCreated(deed),
+	)
+
+	branch, err := domain.NewBranch("media-scope", "media metadata must fork", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create branch", main, domain.NewBranchCreated(branch))
+	branchID := domain.BranchID(branch.ID)
+
+	mainView := func(label string) {
+		t.Helper()
+		if got, err := readStore.GetMedia(ctx, main, portrait.ID); err != nil || got == nil || got.Title != "portrait" || got.FileData != nil {
+			t.Errorf("%s: main GetMedia(portrait) = %+v (err=%v), want the seeded title and no bytes", label, got, err)
+		}
+		wantBytes(label+": main portrait", main, portrait.ID, "PORTRAIT-FILE", "PORTRAIT-THUMB")
+		if file, _, present := stored(t, main, portrait.ID); !present || string(file) != "PORTRAIT-FILE" {
+			t.Errorf("%s: main portrait row stores %q (present=%v), want its own bytes", label, file, present)
+		}
+	}
+	mainView("baseline")
+	if got := listIDs(main, alex.ID); len(got) != 2 || !got[portrait.ID] || !got[letter.ID] {
+		t.Errorf("baseline: main ListMediaForEntity(alex) = %v, want portrait and letter", got)
+	}
+
+	// Before the branch writes anything it resolves to main and stores nothing.
+	wantBytes("unwritten branch", branchID, portrait.ID, "PORTRAIT-FILE", "PORTRAIT-THUMB")
+	if _, _, present := stored(t, branchID, portrait.ID); present {
+		t.Errorf("unwritten branch: a branch row exists before any branch write")
+	}
+
+	// --- Step 2: a branch METADATA edit stores no copy of the bytes. ---
+	project("branch retitle", branchID, domain.NewMediaUpdated(portrait.ID, map[string]any{
+		"title": "portrait (branch reading)", "crop_left": 5,
+	}))
+	wantNoCopy("after branch retitle", branchID, portrait.ID)
+	if got, err := readStore.GetMedia(ctx, branchID, portrait.ID); err != nil || got == nil ||
+		got.Title != "portrait (branch reading)" || got.CropLeft == nil || *got.CropLeft != 5 || got.FileData != nil {
+		t.Errorf("branch GetMedia(portrait) = %+v (err=%v), want the branch title and crop, no bytes", got, err)
+	}
+	wantBytes("branch portrait after retitle", branchID, portrait.ID, "PORTRAIT-FILE", "PORTRAIT-THUMB")
+	if got, err := readStore.GetMediaWithData(ctx, branchID, portrait.ID); err != nil || got == nil || got.Title != "portrait (branch reading)" {
+		t.Errorf("branch GetMediaWithData(portrait) = %+v (err=%v), want the branch metadata beside main's bytes", got, err)
+	}
+	mainView("after branch retitle")
+
+	// Even a caller that hands SaveMedia the full record, bytes included, cannot
+	// copy them into the shadow row.
+	full, err := readStore.GetMediaWithData(ctx, branchID, portrait.ID)
+	if err != nil || full == nil {
+		t.Fatalf("branch GetMediaWithData(portrait): %+v (err=%v)", full, err)
+	}
+	full.Description = "annotated on the branch"
+	if err := readStore.SaveMedia(ctx, branchID, full); err != nil {
+		t.Fatalf("branch SaveMedia with bytes: %v", err)
+	}
+	wantNoCopy("after branch SaveMedia with bytes", branchID, portrait.ID)
+	wantBytes("branch portrait after full save", branchID, portrait.ID, "PORTRAIT-FILE", "PORTRAIT-THUMB")
+
+	// --- Step 3: a branch upload is a new id that owns its bytes. ---
+	scan := newMedia("scan", alex.ID, "SCAN-FILE", "SCAN-THUMB")
+	project("branch upload", branchID, domain.NewMediaCreated(scan))
+	if file, thumb, present := stored(t, branchID, scan.ID); !present || string(file) != "SCAN-FILE" || string(thumb) != "SCAN-THUMB" {
+		t.Errorf("branch upload row stores %q/%q (present=%v), want its own bytes", file, thumb, present)
+	}
+	project("branch retitle upload", branchID, domain.NewMediaUpdated(scan.ID, map[string]any{"title": "scan (retitled)"}))
+	wantBytes("branch upload after retitle", branchID, scan.ID, "SCAN-FILE", "SCAN-THUMB")
+	if got, err := readStore.GetMedia(ctx, main, scan.ID); err != nil || got != nil {
+		t.Errorf("main GetMedia(branch upload) = %+v (err=%v), want absent", got, err)
+	}
+	if got := listIDs(branchID, alex.ID); len(got) != 3 || !got[scan.ID] {
+		t.Errorf("branch ListMediaForEntity(alex) = %v, want portrait, letter and scan", got)
+	}
+	if got := listIDs(main, alex.ID); len(got) != 2 || got[scan.ID] {
+		t.Errorf("main ListMediaForEntity(alex) after branch upload = %v, want portrait and letter only", got)
+	}
+
+	// --- Step 4: re-link an item on the branch; the entity filter follows the
+	// winning row. ---
+	relinked, err := readStore.GetMedia(ctx, branchID, letter.ID)
+	if err != nil || relinked == nil {
+		t.Fatalf("branch GetMedia(letter): %+v (err=%v)", relinked, err)
+	}
+	relinked.EntityID = blair.ID
+	if err := readStore.SaveMedia(ctx, branchID, relinked); err != nil {
+		t.Fatalf("branch re-link: %v", err)
+	}
+	wantNoCopy("after branch re-link", branchID, letter.ID)
+	if got := listIDs(branchID, alex.ID); got[letter.ID] {
+		t.Errorf("branch ListMediaForEntity(alex) still lists the re-linked letter: %v", got)
+	}
+	if got := listIDs(branchID, blair.ID); len(got) != 2 || !got[letter.ID] || !got[deed.ID] {
+		t.Errorf("branch ListMediaForEntity(blair) = %v, want letter and deed", got)
+	}
+	if got := listIDs(main, alex.ID); !got[letter.ID] {
+		t.Errorf("main ListMediaForEntity(alex) lost the letter after a branch re-link: %v", got)
+	}
+	wantBytes("branch letter after re-link", branchID, letter.ID, "LETTER-FILE", "LETTER-THUMB")
+
+	// --- Step 5: a branch tombstone hides the item and never touches main's bytes. ---
+	project("branch delete", branchID, domain.NewMediaDeleted(portrait.ID, "branch hypothesis"))
+	wantGone("branch after delete", branchID, portrait.ID)
+	wantNoCopy("branch tombstone", branchID, portrait.ID)
+	mainView("after branch delete")
+
+	// --- Step 6: deleting a person on the branch cascades to the media the
+	// branch shows for them (the re-linked letter and the deed), branch only. ---
+	project("branch delete person", branchID, domain.NewPersonDeleted(blair.ID, "branch hypothesis"))
+	wantGone("branch letter after cascade", branchID, letter.ID)
+	wantGone("branch deed after cascade", branchID, deed.ID)
+	wantBytes("main letter after branch cascade", main, letter.ID, "LETTER-FILE", "LETTER-THUMB")
+	wantBytes("main deed after branch cascade", main, deed.ID, "DEED-FILE", "DEED-THUMB")
+	if _, _, present := stored(t, branchID, deed.ID); !present {
+		t.Errorf("branch cascade wrote no tombstone for the deed")
+	}
+	wantNoCopy("branch deed tombstone", branchID, deed.ID)
+
+	// --- Step 7: main deletes an item a second branch still shows through a live
+	// shadow; the shadow keeps the shared bytes. ---
+	other, err := domain.NewBranch("media-keeper", "keeps a shadow", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create second branch", main, domain.NewBranchCreated(other))
+	otherID := domain.BranchID(other.ID)
+	project("second branch retitle", otherID, domain.NewMediaUpdated(letter.ID, map[string]any{"title": "letter (kept)"}))
+	wantNoCopy("second branch shadow", otherID, letter.ID)
+
+	project("main delete letter", main, domain.NewMediaDeleted(letter.ID, "mainline cleanup"))
+	wantGone("main letter after main delete", main, letter.ID)
+	if got := listIDs(main, alex.ID); got[letter.ID] {
+		t.Errorf("main ListMediaForEntity(alex) still lists the deleted letter: %v", got)
+	}
+	wantBytes("second branch letter after main delete", otherID, letter.ID, "LETTER-FILE", "LETTER-THUMB")
+	if got, err := readStore.GetMedia(ctx, otherID, letter.ID); err != nil || got == nil || got.Title != "letter (kept)" {
+		t.Errorf("second branch GetMedia(letter) after main delete = %+v (err=%v), want its shadow", got, err)
+	}
+	fresh, err := domain.NewBranch("media-fresh", "no rows of its own", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create fresh branch", main, domain.NewBranchCreated(fresh))
+	wantGone("fresh branch letter after main delete", domain.BranchID(fresh.ID), letter.ID)
+
+	// Main deletes an item no branch shows live (the first branch only holds a
+	// tombstone of the deed): a real removal.
+	project("main delete deed", main, domain.NewMediaDeleted(deed.ID, "mainline cleanup"))
+	if _, _, present := stored(t, main, deed.ID); present {
+		t.Errorf("main deed row survived a delete no live shadow needed")
+	}
+
+	// Purging the second branch releases the letter's main row and its bytes.
+	project("delete second branch", main, domain.NewBranchDeleted(other.ID))
+	if _, _, present := stored(t, main, letter.ID); present {
+		t.Errorf("main letter tombstone survived the purge of the last branch that needed it")
+	}
+	if _, _, present := stored(t, otherID, letter.ID); present {
+		t.Errorf("second branch letter shadow survived its purge")
+	}
+
+	// --- Step 8: purging the first branch resolves it back to main. ---
+	project("delete branch", main, domain.NewBranchDeleted(branch.ID))
+	mainView("after purge")
+	for _, id := range []uuid.UUID{portrait.ID, letter.ID, deed.ID, scan.ID} {
+		if _, _, present := stored(t, branchID, id); present {
+			t.Errorf("purged branch still stores a row for %s", id)
+		}
+	}
+	if got, err := readStore.GetMedia(ctx, branchID, portrait.ID); err != nil || got == nil || got.Title != "portrait" {
+		t.Errorf("purged branch GetMedia(portrait) = %+v (err=%v), want main's row", got, err)
+	}
+	wantBytes("purged branch portrait", branchID, portrait.ID, "PORTRAIT-FILE", "PORTRAIT-THUMB")
+	wantGone("purged branch upload", branchID, scan.ID)
+	if got := listIDs(branchID, alex.ID); len(got) != 1 || !got[portrait.ID] {
+		t.Errorf("purged branch ListMediaForEntity(alex) = %v, want main's portrait only", got)
 	}
 }

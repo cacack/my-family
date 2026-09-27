@@ -220,22 +220,22 @@ func (m *mockReadModelStore) DeleteCitation(ctx context.Context, branchID domain
 }
 
 // Media stub methods
-func (m *mockReadModelStore) GetMedia(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
+func (m *mockReadModelStore) GetMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) GetMediaWithData(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
+func (m *mockReadModelStore) GetMediaWithData(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) GetMediaThumbnail(ctx context.Context, id uuid.UUID) ([]byte, error) {
+func (m *mockReadModelStore) GetMediaThumbnail(ctx context.Context, branchID domain.BranchID, id uuid.UUID) ([]byte, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaReadModel) error {
+func (m *mockReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 

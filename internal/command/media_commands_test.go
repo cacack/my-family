@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cacack/my-family/internal/command"
+	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
 	"github.com/cacack/my-family/internal/repository/memory"
 )
@@ -124,7 +125,7 @@ func TestUploadMedia(t *testing.T) {
 				}
 
 				// Verify media in read model (use GetMediaWithData to include binary data)
-				media, _ := readStore.GetMediaWithData(ctx, result.ID)
+				media, _ := readStore.GetMediaWithData(ctx, domain.MainBranchID, result.ID)
 				if media == nil {
 					t.Fatal("Media not found in read model")
 				}
@@ -248,7 +249,7 @@ func TestUpdateMedia(t *testing.T) {
 
 			if !tt.wantErr && tt.input.Title != nil {
 				// Verify update in read model
-				media, _ := readStore.GetMedia(ctx, tt.input.ID)
+				media, _ := readStore.GetMedia(ctx, domain.MainBranchID, tt.input.ID)
 				if media == nil {
 					t.Fatal("Media not found in read model")
 				}
@@ -314,7 +315,7 @@ func TestDeleteMedia(t *testing.T) {
 	}
 
 	// Verify media is deleted
-	media, _ := readStore.GetMedia(ctx, uploadResult.ID)
+	media, _ := readStore.GetMedia(ctx, domain.MainBranchID, uploadResult.ID)
 	if media != nil {
 		t.Error("Media should be deleted from read model")
 	}
@@ -360,7 +361,7 @@ func TestRollbackMedia(t *testing.T) {
 	}
 
 	// Verify title was updated
-	media, _ := readStore.GetMedia(ctx, uploadResult.ID)
+	media, _ := readStore.GetMedia(ctx, domain.MainBranchID, uploadResult.ID)
 	if media.Title != "Updated Title" {
 		t.Errorf("Title should be 'Updated Title', got %s", media.Title)
 	}
@@ -376,7 +377,7 @@ func TestRollbackMedia(t *testing.T) {
 	}
 
 	// Verify title was rolled back
-	media, _ = readStore.GetMedia(ctx, uploadResult.ID)
+	media, _ = readStore.GetMedia(ctx, domain.MainBranchID, uploadResult.ID)
 	if media.Title != "Original Title" {
 		t.Errorf("Title should be 'Original Title' after rollback, got %s", media.Title)
 	}
@@ -425,7 +426,7 @@ func TestUploadMedia_WithPDF(t *testing.T) {
 	}
 
 	// Verify in read model - no thumbnail for PDF
-	media, _ := readStore.GetMedia(ctx, result.ID)
+	media, _ := readStore.GetMedia(ctx, domain.MainBranchID, result.ID)
 	if media == nil {
 		t.Fatal("Media not found in read model")
 	}

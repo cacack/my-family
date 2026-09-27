@@ -36,9 +36,9 @@ func (p *Projector) Apply(ctx context.Context, event domain.Event) error {
 // branchID (domain.MainBranchID) reproduces pre-branch, main-only behavior.
 // Only the branch-scoped entities — the #669 slice (Person, PersonName, Person
 // EXID, Family, Family EXID, FamilyChild, PedigreeEdge), the person/family
-// facts (LifeEvent, Attribute, Association; #757) and the evidence (Source,
-// SourceExternalID, Citation, Note; #758) — honor branchID; all other handlers
-// ignore it and write main-only.
+// facts (LifeEvent, Attribute, Association; #757), the evidence (Source,
+// SourceExternalID, Citation, Note; #758) and media metadata (#759) — honor
+// branchID; all other handlers ignore it and write main-only.
 func (p *Projector) Project(ctx context.Context, event domain.Event, version int64, branchID domain.BranchID) error {
 	switch e := event.(type) {
 	case domain.PersonCreated:
@@ -70,11 +70,11 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.CitationDeleted:
 		return p.projectCitationDeleted(ctx, e, branchID)
 	case domain.MediaCreated:
-		return p.projectMediaCreated(ctx, e, version)
+		return p.projectMediaCreated(ctx, e, version, branchID)
 	case domain.MediaUpdated:
-		return p.projectMediaUpdated(ctx, e, version)
+		return p.projectMediaUpdated(ctx, e, version, branchID)
 	case domain.MediaDeleted:
-		return p.projectMediaDeleted(ctx, e)
+		return p.projectMediaDeleted(ctx, e, branchID)
 	case domain.LifeEventCreated:
 		return p.projectLifeEventCreated(ctx, e, version, branchID)
 	case domain.LifeEventUpdated:
@@ -909,7 +909,9 @@ func (p *Projector) projectCitationDeleted(ctx context.Context, e domain.Citatio
 	return p.readStore.DeleteCitation(ctx, branchID, e.CitationID)
 }
 
-func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreated, version int64) error {
+// projectMediaCreated writes the item's origin row on branchID, the only write
+// that ever carries its file bytes (the #759 blob rule on ReadModelStore).
+func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreated, version int64, branchID domain.BranchID) error {
 	media := &MediaReadModel{
 		ID:            e.MediaID,
 		EntityType:    e.EntityType,
@@ -932,11 +934,15 @@ func (p *Projector) projectMediaCreated(ctx context.Context, e domain.MediaCreat
 		Translations: e.Translations,
 	}
 
-	return p.readStore.SaveMedia(ctx, media)
+	return p.readStore.SaveMedia(ctx, branchID, media)
 }
 
-func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdated, version int64) error {
-	media, err := p.readStore.GetMediaWithData(ctx, e.MediaID)
+// projectMediaUpdated applies a metadata edit on branchID. It reads the item
+// WITHOUT its bytes (MediaUpdated never changes them), so the save carries none:
+// the origin row keeps its bytes, and a branch shadow row stays metadata-only
+// (#759).
+func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdated, version int64, branchID domain.BranchID) error {
+	media, err := p.readStore.GetMedia(ctx, branchID, e.MediaID)
 	if err != nil {
 		return err
 	}
@@ -993,13 +999,13 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 	}
 
 	media.Version = version
-	media.UpdatedAt = time.Now()
+	media.UpdatedAt = e.OccurredAt()
 
-	return p.readStore.SaveMedia(ctx, media)
+	return p.readStore.SaveMedia(ctx, branchID, media)
 }
 
-func (p *Projector) projectMediaDeleted(ctx context.Context, e domain.MediaDeleted) error {
-	return p.readStore.DeleteMedia(ctx, e.MediaID)
+func (p *Projector) projectMediaDeleted(ctx context.Context, e domain.MediaDeleted, branchID domain.BranchID) error {
+	return p.readStore.DeleteMedia(ctx, branchID, e.MediaID)
 }
 
 func (p *Projector) projectLifeEventCreated(ctx context.Context, e domain.LifeEventCreated, version int64, branchID domain.BranchID) error {
@@ -1600,14 +1606,14 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 7. Transfer media from merged person to survivor
-	mediaList, _, err := p.readStore.ListMediaForEntity(ctx, "person", e.MergedID, ListOptions{Limit: 10000})
+	mediaList, _, err := p.readStore.ListMediaForEntity(ctx, "person", e.MergedID, ListOptions{Limit: 10000, BranchID: branchID})
 	if err != nil {
 		return fmt.Errorf("fetch media for merged person %s: %w", e.MergedID, err)
 	}
 	for _, media := range mediaList {
 		media.EntityID = e.SurvivorID
 		media.UpdatedAt = e.OccurredAt()
-		if err := p.readStore.SaveMedia(ctx, &media); err != nil {
+		if err := p.readStore.SaveMedia(ctx, branchID, &media); err != nil {
 			return fmt.Errorf("migrate media %s for merged person %s: %w", media.ID, e.MergedID, err)
 		}
 	}

@@ -1286,7 +1286,7 @@ func TestProjector_MediaCreated(t *testing.T) {
 	}
 
 	// Verify media was created
-	retrieved, err := readStore.GetMediaWithData(ctx, media.ID)
+	retrieved, err := readStore.GetMediaWithData(ctx, domain.MainBranchID, media.ID)
 	if err != nil {
 		t.Fatalf("GetMediaWithData failed: %v", err)
 	}
@@ -1342,7 +1342,7 @@ func TestProjector_MediaUpdated(t *testing.T) {
 	}
 
 	// Verify changes
-	retrieved, _ := readStore.GetMedia(ctx, media.ID)
+	retrieved, _ := readStore.GetMedia(ctx, domain.MainBranchID, media.ID)
 	if retrieved == nil {
 		t.Fatal("Media not found after update")
 	}
@@ -1382,7 +1382,7 @@ func TestProjector_MediaDeleted(t *testing.T) {
 	}
 
 	// Verify deletion
-	retrieved, _ := readStore.GetMedia(ctx, media.ID)
+	retrieved, _ := readStore.GetMedia(ctx, domain.MainBranchID, media.ID)
 	if retrieved != nil {
 		t.Error("Media should be deleted")
 	}

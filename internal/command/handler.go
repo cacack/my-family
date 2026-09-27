@@ -43,11 +43,12 @@ var (
 // here only when every store call its handler makes is branch-keyed (the
 // copy-on-write overlay #669 added for persons, person names, families, family
 // children and pedigree edges, #757 extended to life events, attributes and
-// associations, and #758 to sources, citations and notes).
+// associations, #758 to sources, citations and notes, and #759 to media
+// metadata).
 //
 // Deliberately excluded despite their handlers taking a branchID:
-//   - PersonMerged — branch-scoped for the slice, fact and citation writes, but
-//     it also rewrites media, evidence-analysis and research rows that are
+//   - PersonMerged — branch-scoped for the slice, fact, citation and media
+//     writes, but it also rewrites evidence-analysis and research rows that are
 //     main-only, so a branch-scoped merge would mutate main.
 //   - LDSOrdinanceCreated — same shape, but PERMANENT. LDS ordinances are
 //     deliberately never branch-scoped, so this entry is not waiting on anything.
@@ -91,6 +92,13 @@ var branchAwareEventTypes = map[string]struct{}{
 	"NoteCreated":     {},
 	"NoteUpdated":     {},
 	"NoteDeleted":     {},
+	// Media metadata (#759). The bytes stay shared: MediaUpdated never carries
+	// any, and a branch shadow row of a mainline item stores none (the blob rule
+	// on repository.ReadModelStore). MediaCreated on a branch is a new id whose
+	// origin row is the branch's own.
+	"MediaCreated": {},
+	"MediaUpdated": {},
+	"MediaDeleted": {},
 }
 
 // BranchAwareEventTypes returns the event types a branch-scoped handler may
@@ -204,11 +212,11 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 // UpdateFamily, DeleteFamily, LinkChild, UnlinkChild, CreateAssociation,
 // UpdateAssociation, DeleteAssociation, CreateSource, UpdateSource,
 // DeleteSource, CreateCitation, UpdateCitation, DeleteCitation, CreateNote,
-// UpdateNote and DeleteNote. (Life events and attributes have no
+// UpdateNote, DeleteNote, UploadMedia, UpdateMedia and DeleteMedia. (Life events and attributes have no
 // commands of their own yet — GEDCOM import writes them, on main — but their
 // events are allowlisted so a branch merge or a future command can carry them.)
 //
-// Every other entity command — media, submitters, repositories, LDS
+// Every other entity command — submitters, repositories, LDS
 // ordinances, evidence analyses and conflicts, research logs, proof summaries
 // and MergePersons — routes through execute too, so on a branch it
 // fails loudly rather than writing main. Issue #676 moves those onto the branch

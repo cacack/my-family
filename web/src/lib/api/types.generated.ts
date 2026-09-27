@@ -872,10 +872,19 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List media attached to a person */
+        /**
+         * List media attached to a person
+         * @description Returns the person's media metadata, newest first. With `?branch=` the
+         *     person and the list are read from that branch's isolated view.
+         */
         get: operations["listPersonMedia"];
         put?: never;
-        /** Upload media to a person */
+        /**
+         * Upload media to a person
+         * @description Uploads a new media item for the person. With `?branch=` the item is
+         *     created on that branch only (and the person must exist there); the
+         *     uploaded bytes belong to that new item.
+         */
         post: operations["uploadPersonMedia"];
         delete?: never;
         options?: never;
@@ -893,12 +902,25 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get media metadata */
+        /**
+         * Get media metadata
+         * @description Returns the media item's metadata. With `?branch=` it is read from that
+         *     branch's isolated view.
+         */
         get: operations["getMedia"];
-        /** Update media metadata */
+        /**
+         * Update media metadata
+         * @description Updates the media item's metadata (never its file). With `?branch=` the
+         *     edit lands on that branch only; the file bytes are shared with the
+         *     mainline and are not copied.
+         */
         put: operations["updateMedia"];
         post?: never;
-        /** Delete media */
+        /**
+         * Delete media
+         * @description Deletes the media item. With `?branch=` it is deleted on that branch
+         *     only; the mainline item and its file are untouched.
+         */
         delete: operations["deleteMedia"];
         options?: never;
         head?: never;
@@ -915,7 +937,12 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Download media file */
+        /**
+         * Download media file
+         * @description Returns the media file. With `?branch=` the item is resolved through that
+         *     branch's isolated view (a branch-deleted item is not found); the bytes
+         *     themselves are shared with the mainline.
+         */
         get: operations["downloadMedia"];
         put?: never;
         post?: never;
@@ -935,7 +962,12 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get media thumbnail */
+        /**
+         * Get media thumbnail
+         * @description Returns the media thumbnail. With `?branch=` the item is resolved through
+         *     that branch's isolated view; the bytes themselves are shared with the
+         *     mainline.
+         */
         get: operations["getMediaThumbnail"];
         put?: never;
         post?: never;
@@ -6306,6 +6338,15 @@ export interface operations {
     listPersonMedia: {
         parameters: {
             query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 limit?: components["parameters"]["limitParam"];
                 offset?: components["parameters"]["offsetParam"];
             };
@@ -6331,7 +6372,17 @@ export interface operations {
     };
     uploadPersonMedia: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 id: components["parameters"]["personId"];
@@ -6383,7 +6434,17 @@ export interface operations {
     };
     getMedia: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Media ID */
@@ -6407,7 +6468,17 @@ export interface operations {
     };
     updateMedia: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Media ID */
@@ -6438,6 +6509,15 @@ export interface operations {
     deleteMedia: {
         parameters: {
             query: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
                 /** @description Entity version for optimistic locking */
                 version: components["parameters"]["versionParam"];
             };
@@ -6464,7 +6544,17 @@ export interface operations {
     };
     downloadMedia: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Media ID */
@@ -6492,7 +6582,17 @@ export interface operations {
     };
     getMediaThumbnail: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Media ID */

@@ -311,9 +311,10 @@ Branch scoping is a bounded set, not a migration in progress. Three different re
 read-model entity on `main`, and they must not be confused:
 
 - **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
-  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676): media metadata
-  ([#759](https://github.com/cacack/my-family/issues/759)) and GPS artifacts
-  ([#760](https://github.com/cacack/my-family/issues/760)).
+  the remaining sub-issue of [#676](https://github.com/cacack/my-family/issues/676): GPS artifacts
+  ([#760](https://github.com/cacack/my-family/issues/760)). (Media metadata,
+  [#759](https://github.com/cacack/my-family/issues/759), is delivered; its file bytes are shared
+  by design, not pending — see the implementation note below.)
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
   be answered first. This is snapshots and brick walls, both waiting on
   [#624](https://github.com/cacack/my-family/issues/624) (below).
@@ -857,6 +858,76 @@ alter a primary key, so `detectBranchCapable` now also requires `branch_id` in t
 every branch write with `ErrBranchesUnsupported` until the read model is rebuilt (#680), exactly as
 a pre-#757 one does. The check now looks for `branch_id` in the key rather than for a multi-column
 key, because `source_external_ids` was already keyed by the composite `(source_id, sequence)`.
+
+## Implementation Note — media metadata (#676 sub-issue D, #759, delivered)
+
+**Only the metadata forks; the file bytes are shared, never copied per branch.** A branch stores
+deltas whose cost scales with what it changes, so retitling a photo on a branch must not become a
+multi-megabyte write. `media` therefore gets the usual overlay — composite `(id, branch_id)` key,
+`branch_id`-leading index, `deleted` tombstone, one set-based overlay read with a main-scope fast
+path, a place in `PurgeBranch`, and the six `Media*` store methods threaded with the branch scope —
+but the two byte columns, `file_data` and `thumbnail_data`, follow their own rule.
+
+**The decision: blobs stay on the media row, NULL on a shadow, read through a fallback.** Two
+designs were on the table: keep the byte columns on `media` and leave them NULL on a branch shadow
+row, or split them into a separate, deliberately branch-less `media_blobs` table keyed by media id.
+The first was chosen because it keeps the invariant both simpler and directly testable:
+
+- The bytes are written exactly once, by `MediaCreated`, onto the row that created the item — its
+  *origin row*: main for a mainline upload, the branch's own row for an item uploaded on a branch
+  (a new id, which owns its bytes). No later event carries bytes: `MediaUpdated` edits metadata
+  only, and `projectMediaUpdated` reads the item with `GetMedia`, never `GetMediaWithData`.
+- A branch shadow row of an item that has a main row is **metadata only** — its byte columns are
+  NULL. `SaveMedia` enforces this in the statement itself: on a non-main branch, an id with a main
+  row gets NULL bytes whatever the caller passes; and no save ever clears bytes already stored
+  (nil means "keep").
+- `GetMedia` and `ListMediaForEntity` never read the byte columns (their overlay projects an
+  explicit metadata column list, so even the SQLite `ROW_NUMBER` window never carries a blob).
+  `GetMediaWithData` and `GetMediaThumbnail` resolve the winning row by `(id, branch_id)` alone,
+  then take the bytes from the winning row, else from main's row. A tombstone therefore hides the
+  bytes too.
+
+The rule is one sentence — *a shadow row's byte columns are NULL* — so the proof is one assertion
+on the stored row, made in `TestBranchScenario_MediaOverlay` on all three backends after a branch
+metadata edit (and after a branch `SaveMedia` handed the full record, bytes included), alongside
+`GetMediaWithData` / `GetMediaThumbnail` returning main's bytes on that branch. A `media_blobs`
+split would have needed a second table, a larger migration (a data move on PostgreSQL and a table
+rebuild on SQLite), its own garbage collection, and a pre-#759 SQLite database could no longer serve
+mainline media at all until rebuilt.
+
+**Deletes never lose shared bytes.** A branch delete (and a branch cascade) writes a metadata-only
+tombstone on the branch and never touches main's row. The one case that needed a rule of its own is
+a *mainline* delete of an item that some branch still shows through a live shadow: hard-deleting
+main's row would leave that shadow with metadata and no file. Instead main's row is kept as a
+tombstone — hidden from main and from every branch without a row of its own, since a winning
+tombstone hides the id — and is dropped once no live shadow needs it: when the last such branch
+deletes the item, or when `PurgeBranch` purges it. A main delete with no live shadow is a plain
+removal. `TestReadModelStore_DeleteCascadesMedia` and the scenario pin this on all three backends.
+
+**The cascade is new, not a replacement.** Media never had a foreign key to its owner (the owner is
+polymorphic: person, family or source), so deleting a person used to leave its media rows behind.
+`DeletePerson`, `DeleteFamily` and `DeleteSource` now delete (main) or tombstone (branch) the
+owner's media on the same branch, under the rule above. `ListMediaForEntity` decides the owner on
+each item's *winning* row, like the life-event lists, so a branch that re-links an item
+(`PersonMerged` moves a merged person's media to the survivor) lists it under its new owner only.
+
+**BR-006 and merge.** `MediaCreated`, `MediaUpdated` and `MediaDeleted` join the allowlist;
+`MediaCreated` is conflict-blind like the other per-entity creates. `PersonMerged` stays off the
+allowlist: its media transfer is now branch-scoped, but it still rewrites evidence-analysis and
+research rows that are main-only until #760.
+
+**API and UI.** Seven operations gained `?branch=` — `getMedia`, `updateMedia`, `deleteMedia`,
+`listPersonMedia`, `uploadPersonMedia`, `downloadMedia` and `getMediaThumbnail` — bringing the total
+to 54. The content and thumbnail reads take the scope although the bytes are shared, because a
+branch-deleted item must be not-found there too; the client's URL builders for `<img src>` and the
+multipart upload, which bypass the request helper, append the scope themselves. Media history and
+rollback stay mainline, as rollback does for every entity.
+
+**Upgrading an existing database.** PostgreSQL migrates `media` in place and drops `NOT NULL` from
+`file_data`. SQLite cannot alter either, so `detectBranchCapable` also requires `branch_id` in the
+primary key of `media`; a database created before #759 refuses every branch write with
+`ErrBranchesUnsupported` until the read model is rebuilt (#680). Its mainline media keeps working —
+a metadata-only save supplies the row's own stored bytes, so the legacy `NOT NULL` never trips.
 
 ## References
 

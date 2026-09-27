@@ -24,8 +24,8 @@ type ReadModelStore struct {
 	// branchCapable reports whether the branch-scoped tables carry the composite
 	// (id, branch_id) PRIMARY KEY that a branch's copy-on-write shadow row needs.
 	// A freshly created schema always does; a database created before #669 (or,
-	// for the person/family fact tables, before #757, or for the evidence tables,
-	// before #758) keeps its pre-branch key
+	// for the person/family fact tables, before #757, for the evidence tables,
+	// before #758, or for media, before #759) keeps its pre-branch key
 	// (SQLite cannot alter a PK in place), so branch writes
 	// are refused with repository.ErrBranchesUnsupported rather than failing later
 	// on an opaque constraint violation. See detectBranchCapable and issue #680.
@@ -77,8 +77,9 @@ func NewReadModelStore(db *sql.DB) (*ReadModelStore, error) {
 // detectBranchCapable reports whether every table in branchKeyedTables carries
 // branch_id in its PRIMARY KEY. persons stands for the seven #669 slice tables,
 // which all gained their composite key in the same schema revision; the
-// person/family fact tables gained theirs later (#757) and the evidence tables
-// later still (#758), so a database built between two revisions has some
+// person/family fact tables gained theirs later (#757), the evidence tables
+// later still (#758) and media last (#759), so a database built between two
+// revisions has some
 // branch-capable tables and some single-key ones.
 // Such a database refuses EVERY branch write, not just the newer tables': a branch
 // DeletePerson must tombstone the person's facts too, and letting half the
@@ -319,8 +320,13 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_citations_owner ON citations(fact_owner_id);
 
 		-- Media table
+		-- Branch-aware for METADATA only (#759): (id, branch_id) row identity +
+		-- deleted tombstone. file_data/thumbnail_data are nullable because a branch
+		-- shadow row of a mainline item carries none: the bytes stay on the item's
+		-- origin row and are shared (see the blob rule on repository.ReadModelStore).
 		CREATE TABLE IF NOT EXISTS media (
-			id TEXT PRIMARY KEY,
+			id TEXT NOT NULL,
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			entity_type TEXT NOT NULL,
 			entity_id TEXT NOT NULL,
 			title TEXT NOT NULL,
@@ -329,7 +335,7 @@ func (s *ReadModelStore) createTables() error {
 			media_type TEXT NOT NULL,
 			filename TEXT NOT NULL,
 			file_size INTEGER NOT NULL,
-			file_data BLOB NOT NULL,
+			file_data BLOB,
 			thumbnail_data BLOB,
 			crop_left INTEGER,
 			crop_top INTEGER,
@@ -342,7 +348,9 @@ func (s *ReadModelStore) createTables() error {
 			-- GEDCOM 7.0 enhanced fields
 			files TEXT,        -- JSON array of file references
 			format TEXT,       -- Primary format/MIME type
-			translations TEXT  -- JSON array of translated titles
+			translations TEXT, -- JSON array of translated titles
+			deleted INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_media_entity ON media(entity_type, entity_id);
@@ -802,6 +810,9 @@ func (s *ReadModelStore) runMigrations() {
 		{"idx_sources_id_branch", "sources", "id, branch_id"},
 		{"idx_citations_id_branch", "citations", "id, branch_id"},
 		{"idx_notes_id_branch", "notes", "id, branch_id"},
+		// Media (#759): same reasoning for a database created before media gained
+		// its composite key.
+		{"idx_media_id_branch", "media", "id, branch_id"},
 	} {
 		// #nosec G201 -- idx fields are internal constants, never user input.
 		_, _ = s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS ` + idx.name + ` ON ` + idx.table + `(` + idx.cols + `)`)
@@ -809,25 +820,28 @@ func (s *ReadModelStore) runMigrations() {
 }
 
 // branchScopedTables are every read-model table carrying branch_id/deleted: the
-// seven #669 slice tables, the three person/family fact tables (#757) and the
-// four evidence tables (#758). PurgeBranch drops a branch's rows from each, and
-// runMigrations gives each its branch_id-leading index.
+// seven #669 slice tables, the three person/family fact tables (#757), the
+// four evidence tables (#758) and media (#759). PurgeBranch drops a branch's rows
+// from each, and runMigrations gives each its branch_id-leading index.
 var branchScopedTables = []string{
 	"persons", "families", "family_children", "pedigree_edges",
 	"person_names", "person_external_ids", "family_external_ids",
 	"life_events", "attributes", "associations",
 	"sources", "source_external_ids", "citations", "notes",
+	"media",
 }
 
 // branchKeyedTables are the branch-scoped tables whose row identity must include
 // branch_id for a branch shadow row to exist. persons stands for the seven #669
 // slice tables (they gained their composite key in one schema revision), the
-// fact tables for #757 and the evidence tables for #758. detectBranchCapable
+// fact tables for #757, the evidence tables for #758 and media for #759.
+// detectBranchCapable
 // requires branch_id in every one of their PRIMARY KEYs.
 var branchKeyedTables = []string{
 	"persons",
 	"life_events", "attributes", "associations",
 	"sources", "source_external_ids", "citations", "notes",
+	"media",
 }
 
 // migrateBranchColumns adds the #669 branch_id/deleted columns to any slice table
@@ -1770,7 +1784,8 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 // referenced persons(id) with NO ON DELETE (RESTRICT), which would have blocked
 // the delete; blocking is not reproducible against an append-only event log, so
 // we cascade-delete orphan attributes too. The person's own life events go with it
-// as well (#757).
+// as well (#757), and so does its media (#759), under the blob rule (see
+// cascadeMedia).
 func (s *ReadModelStore) deletePersonMain(ctx context.Context, id uuid.UUID) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1797,6 +1812,9 @@ func (s *ReadModelStore) deletePersonMain(ctx context.Context, id uuid.UUID) err
 		}
 	}
 	if err := cascadePersonFacts(ctx, tx, domain.MainBranchID, id); err != nil {
+		return err
+	}
+	if err := cascadeMedia(ctx, tx, personMediaFilter, domain.MainBranchID, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -1835,6 +1853,9 @@ func (s *ReadModelStore) tombstonePersonBranch(ctx context.Context, branchID dom
 		return fmt.Errorf("tombstone pedigree edge: %w", err)
 	}
 	if err := cascadePersonFacts(ctx, tx, branchID, id); err != nil {
+		return err
+	}
+	if err := cascadeMedia(ctx, tx, personMediaFilter, branchID, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -2495,7 +2516,8 @@ func (s *ReadModelStore) SaveFamily(ctx context.Context, branchID domain.BranchI
 }
 
 // DeleteFamily removes a family. On the mainline this is a real DELETE that
-// cascades (in code) to the family's children and external IDs. On a non-main
+// cascades (in code) to the family's children, external IDs, life events and
+// media. On a non-main
 // branch it writes a deleted=1 tombstone for the family plus cascade tombstones
 // for its children and external IDs (mirrors the memory backend).
 func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
@@ -2508,8 +2530,12 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// The family's own life events cascade with it on either scope (#757).
+	// The family's own life events cascade with it on either scope (#757), and
+	// so does its media (#759).
 	if err := cascadeFactRows(ctx, tx, "life_events", eventSelectCols, familyEventsFilter, branchID, id); err != nil {
+		return err
+	}
+	if err := cascadeMedia(ctx, tx, familyMediaFilter, branchID, id); err != nil {
 		return err
 	}
 
@@ -2817,6 +2843,11 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	defer func() { _ = tx.Rollback() }()
 
 	branchStr := branchID.String()
+	// Main media tombstones kept alive only for this branch's shadows go first,
+	// while the branch rows that name them still exist (#759).
+	if err := gcMainMedia(ctx, tx, gcMainMediaBeforePurge, mainBranchID, branchStr, branchStr, mainBranchID); err != nil {
+		return err
+	}
 	for _, table := range branchScopedTables {
 		// #nosec G202 -- table is from the fixed branchScopedTables list, not user input
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
@@ -3174,7 +3205,7 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchI
 }
 
 // DeleteSource removes a source on the given branch (ADR-005, #758) together
-// with its external identifiers and its citations — the manual cascade that
+// with its external identifiers, its citations and its media (#759) — the manual cascade that
 // replaces the dropped foreign keys. On main the rows are deleted; off main the
 // source and every citation of it the branch sees are tombstoned, and its
 // external-id bucket is replaced by an empty tombstone bucket. Only branchID's
@@ -3190,6 +3221,9 @@ func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.Branc
 	defer func() { _ = tx.Rollback() }()
 
 	if err := cascadeFactRows(ctx, tx, "citations", citationSelectCols, sourceCitationsFilter, branchID, id); err != nil {
+		return err
+	}
+	if err := cascadeMedia(ctx, tx, sourceMediaFilter, branchID, id); err != nil {
 		return err
 	}
 	if branchID.IsMain() {
@@ -3383,10 +3417,18 @@ const (
 // Main takes the fast path (issue #669): main never shadows itself, so the plain
 // branch-filtered subquery flattens into the caller and keeps its indexes.
 func factOverlaySubquery(table, filter string, filterArgs []any, branchID domain.BranchID) (string, []any) {
+	return overlayColsSubquery(table, "*", filter, filterArgs, branchID)
+}
+
+// overlayColsSubquery is factOverlaySubquery projected to cols ("*" for every
+// column). An explicit column list keeps the columns it omits out of the
+// ROW_NUMBER window entirely, which is how the media reads avoid ever touching
+// the byte columns (#759). cols must be a package constant.
+func overlayColsSubquery(table, cols, filter string, filterArgs []any, branchID domain.BranchID) (string, []any) {
 	if branchID.IsMain() {
 		// #nosec G202 -- table, cols and filter are package constants, not user input
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-		sub := "(SELECT * FROM " + table + " WHERE branch_id = ? AND deleted = 0"
+		sub := "(SELECT " + cols + " FROM " + table + " WHERE branch_id = ? AND deleted = 0"
 		args := []any{mainBranchID}
 		if filter != "" {
 			sub += " AND " + filter
@@ -3406,9 +3448,14 @@ func factOverlaySubquery(table, filter string, filterArgs []any, branchID domain
 		args = append(args, filterArgs...)
 		args = append(args, filterArgs...)
 	}
+	// The window needs deleted beside cols; "*" already carries it.
+	inner := cols
+	if cols != "*" {
+		inner = cols + ", deleted"
+	}
 	// #nosec G202 -- table, cols and filter are package constants, not user input
 	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
-	return "(SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn FROM " +
+	return "(SELECT " + cols + " FROM (SELECT " + inner + ", ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn FROM " +
 		table + " WHERE branch_id IN (?, ?)" + candidates + ") WHERE rn = 1 AND deleted = 0" + outer + ")", args
 }
 
@@ -4013,68 +4060,140 @@ func scanAttributeRow(rows *sql.Rows) (*repository.AttributeReadModel, error) {
 	return scanAttribute(rows)
 }
 
-// GetMedia retrieves media metadata by ID (excludes FileData and ThumbnailData).
-func (s *ReadModelStore) GetMedia(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
-			   filename, file_size, crop_left, crop_top, crop_width, crop_height,
-			   gedcom_xref, version, created_at, updated_at,
-			   files, format, translations
-		FROM media WHERE id = ?
-	`, id.String())
+// Media (#759) is branch-scoped for its METADATA only; the file bytes are
+// shared. See the blob rule on repository.ReadModelStore: the bytes live on the
+// item's origin row (the row MediaCreated wrote), a branch shadow row of a
+// mainline item holds NULL bytes, and the byte reads fall back from the winning
+// row to the main row. Every media read resolves the overlay over
+// mediaSelectCols, which names no byte column, so the ROW_NUMBER window never
+// carries a blob and GetMedia and ListMediaForEntity never read one.
 
-	return scanMediaMetadata(row)
+const (
+	// mediaSelectCols is scanMediaRow's column order (unaliased). It deliberately
+	// omits file_data and thumbnail_data.
+	mediaSelectCols = `id, entity_type, entity_id, title, description, mime_type, media_type,
+		filename, file_size, crop_left, crop_top, crop_width, crop_height,
+		gedcom_xref, version, created_at, updated_at, files, format, translations`
+
+	// mediaWinnerCols is mediaSelectCols qualified by the w alias the byte reads
+	// join the winning row under.
+	mediaWinnerCols = `w.id, w.entity_type, w.entity_id, w.title, w.description, w.mime_type, w.media_type,
+		w.filename, w.file_size, w.crop_left, w.crop_top, w.crop_width, w.crop_height,
+		w.gedcom_xref, w.version, w.created_at, w.updated_at, w.files, w.format, w.translations`
+
+	// mediaWinnerJoin resolves the winning row of one media id WITHOUT reading
+	// its bytes (o ranks the rows by (id, branch_id) alone), joins it back as w,
+	// and joins main's row as m only when the winner is not main's own row, so
+	// the byte columns can COALESCE from the winner to main. Bind
+	// mediaWinnerArgs.
+	mediaWinnerJoin = `FROM (
+			SELECT id, branch_id, deleted,
+				ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
+			FROM media WHERE id = ? AND branch_id IN (?, ?)
+		) o
+		JOIN media w ON w.id = o.id AND w.branch_id = o.branch_id
+		LEFT JOIN media m ON m.id = o.id AND m.branch_id = ? AND o.branch_id <> ?
+		WHERE o.rn = 1 AND o.deleted = 0`
+
+	// Per-owner media filters; each binds the owner id once.
+	personMediaFilter = `entity_type = 'person' AND entity_id = ?`
+	familyMediaFilter = `entity_type = 'family' AND entity_id = ?`
+	sourceMediaFilter = `entity_type = 'source' AND entity_id = ?`
+	// entityMediaFilter backs ListMediaForEntity; it binds (entity type, entity id).
+	entityMediaFilter = `entity_type = ? AND entity_id = ?`
+	// mediaIDFilter selects one media id; it binds the id.
+	mediaIDFilter = `id = ?`
+
+	// mediaLiveShadow holds when a non-main branch still shows the main row m
+	// through a live shadow row; it binds main.
+	mediaLiveShadow = `EXISTS (SELECT 1 FROM media b WHERE b.id = m.id AND b.branch_id <> ? AND b.deleted = 0)`
+
+	// Main-tombstone collection after a branch-side delete: main rows kept alive
+	// only for a shadow the branch has now tombstoned. Binds (main, branch, main).
+	gcMainMediaAfterDelete = `
+		DELETE FROM media AS m
+		WHERE m.branch_id = ? AND m.deleted = 1
+		  AND m.id IN (SELECT id FROM media WHERE branch_id = ? AND deleted = 1)
+		  AND NOT EXISTS (SELECT 1 FROM media b WHERE b.id = m.id AND b.branch_id <> ? AND b.deleted = 0)`
+
+	// Main-tombstone collection before PurgeBranch drops the branch's rows: main
+	// rows kept alive only for this branch's shadows. Binds (main, branch,
+	// branch, main).
+	gcMainMediaBeforePurge = `
+		DELETE FROM media AS m
+		WHERE m.branch_id = ? AND m.deleted = 1
+		  AND m.id IN (SELECT id FROM media WHERE branch_id = ?)
+		  AND NOT EXISTS (SELECT 1 FROM media b WHERE b.id = m.id AND b.branch_id NOT IN (?, ?) AND b.deleted = 0)`
+)
+
+// mediaWinnerArgs are the args mediaWinnerJoin binds.
+func mediaWinnerArgs(branchID domain.BranchID, id uuid.UUID) []any {
+	branch := branchID.String()
+	return []any{branch, id.String(), branch, mainBranchID, mainBranchID, mainBranchID}
 }
 
-// GetMediaWithData retrieves full media record including FileData and ThumbnailData.
-func (s *ReadModelStore) GetMediaWithData(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
-			   filename, file_size, file_data, thumbnail_data,
-			   crop_left, crop_top, crop_width, crop_height,
-			   gedcom_xref, version, created_at, updated_at,
-			   files, format, translations
-		FROM media WHERE id = ?
-	`, id.String())
-
-	return scanMediaFull(row)
+// GetMedia retrieves media metadata by ID within the branch overlay (ADR-005,
+// #759). It never reads the file bytes.
+func (s *ReadModelStore) GetMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
+	sub, args := overlayColsSubquery("media", mediaSelectCols, mediaIDFilter, []any{id.String()}, branchID)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, "SELECT "+mediaSelectCols+" FROM "+sub+" md", args...)
+	return scanMediaRow(row, false)
 }
 
-// GetMediaThumbnail retrieves just the thumbnail bytes for efficient serving.
-func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, id uuid.UUID) ([]byte, error) {
+// GetMediaWithData retrieves the full media record within the branch overlay:
+// the winning row's metadata, and the shared bytes from the winning row else the
+// main row (#759).
+func (s *ReadModelStore) GetMediaWithData(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
+	// #nosec G202 -- the query is assembled from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, `SELECT `+mediaWinnerCols+`,
+			COALESCE(w.file_data, m.file_data), COALESCE(w.thumbnail_data, m.thumbnail_data)
+		`+mediaWinnerJoin, mediaWinnerArgs(branchID, id)...)
+	return scanMediaRow(row, true)
+}
+
+// GetMediaThumbnail retrieves just the thumbnail bytes of a media item visible
+// on branchID, read from the winning row else the main row (#759). It returns
+// nil when the item is absent or tombstoned on the branch.
+func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, branchID domain.BranchID, id uuid.UUID) ([]byte, error) {
 	var thumbnail []byte
-	err := s.db.QueryRowContext(ctx, `
-		SELECT thumbnail_data FROM media WHERE id = ?
-	`, id.String()).Scan(&thumbnail)
-
-	if err == sql.ErrNoRows {
+	// #nosec G202 -- the query is assembled from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(w.thumbnail_data, m.thumbnail_data) `+mediaWinnerJoin,
+		mediaWinnerArgs(branchID, id)...).Scan(&thumbnail)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return thumbnail, err
+	if err != nil {
+		return nil, fmt.Errorf("get media thumbnail: %w", err)
+	}
+	return thumbnail, nil
 }
 
-// ListMediaForEntity returns a paginated list of media for an entity.
+// ListMediaForEntity returns a paginated list of the media attached to an
+// entity as opts.BranchID sees it (ADR-005, #759), newest first. The entity
+// filter is decided on each item's winning row, and no byte column is read.
 func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
-	// Count total
+	sub, args := overlayColsSubquery("media", mediaSelectCols, entityMediaFilter,
+		[]any{entityType, entityID.String()}, opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM media WHERE entity_type = ? AND entity_id = ?",
-		entityType, entityID.String()).Scan(&total)
-	if err != nil {
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" md", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count media: %w", err)
 	}
 
-	// Query with pagination (metadata only, ordered by created_at DESC)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, entity_type, entity_id, title, description, mime_type, media_type,
-			   filename, file_size, crop_left, crop_top, crop_width, crop_height,
-			   gedcom_xref, version, created_at, updated_at,
-			   files, format, translations
-		FROM media
-		WHERE entity_type = ? AND entity_id = ?
-		ORDER BY created_at DESC
+		SELECT `+mediaSelectCols+`
+		FROM `+sub+` md
+		ORDER BY created_at DESC, id DESC
 		LIMIT ? OFFSET ?
-	`, entityType, entityID.String(), opts.Limit, opts.Offset)
+	`, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query media: %w", err)
 	}
@@ -4082,7 +4201,7 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 
 	var items []repository.MediaReadModel
 	for rows.Next() {
-		m, err := scanMediaMetadataRow(rows)
+		m, err := scanMediaRow(rows, false)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -4092,8 +4211,17 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	return items, total, rows.Err()
 }
 
-// SaveMedia saves or updates a media record.
-func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaReadModel) error {
+// SaveMedia saves or updates a media record on the given branch (ADR-005, #759).
+// A save always clears any prior tombstone. It enforces the blob rule in the
+// statement itself: on a non-main branch, an id that has a main row gets NULL
+// bytes whatever the caller passes (the shadow borrows main's), and nil bytes
+// never overwrite stored ones. (The COALESCE with the row's own stored bytes
+// keeps a pre-#759 database, whose file_data is still NOT NULL, writable for a
+// mainline metadata edit.)
+func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
 	// Serialize JSON fields
 	filesJSON, err := domain.MarshalFilesToJSON(media.Files)
 	if err != nil {
@@ -4104,14 +4232,22 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaR
 		return fmt.Errorf("marshal translations: %w", err)
 	}
 
+	// Numbered parameters: ?1 id, ?2 branch, ?3 main, ?4 file bytes, ?5 thumbnail
+	// bytes, then the metadata columns in order.
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO media (id, entity_type, entity_id, title, description, mime_type, media_type,
-						  filename, file_size, file_data, thumbnail_data,
+		INSERT INTO media (id, branch_id, file_data, thumbnail_data,
+						  entity_type, entity_id, title, description, mime_type, media_type,
+						  filename, file_size,
 						  crop_left, crop_top, crop_width, crop_height,
 						  gedcom_xref, version, created_at, updated_at,
-						  files, format, translations)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
+						  files, format, translations, deleted)
+		VALUES (?1, ?2,
+			CASE WHEN ?2 <> ?3 AND EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id = ?3) THEN NULL
+				ELSE COALESCE(?4, (SELECT file_data FROM media WHERE id = ?1 AND branch_id = ?2)) END,
+			CASE WHEN ?2 <> ?3 AND EXISTS (SELECT 1 FROM media WHERE id = ?1 AND branch_id = ?3) THEN NULL
+				ELSE ?5 END,
+			?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, 0)
+		ON CONFLICT(id, branch_id) DO UPDATE SET
 			entity_type = excluded.entity_type,
 			entity_id = excluded.entity_id,
 			title = excluded.title,
@@ -4120,8 +4256,8 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaR
 			media_type = excluded.media_type,
 			filename = excluded.filename,
 			file_size = excluded.file_size,
-			file_data = excluded.file_data,
-			thumbnail_data = excluded.thumbnail_data,
+			file_data = COALESCE(excluded.file_data, media.file_data),
+			thumbnail_data = COALESCE(excluded.thumbnail_data, media.thumbnail_data),
 			crop_left = excluded.crop_left,
 			crop_top = excluded.crop_top,
 			crop_width = excluded.crop_width,
@@ -4131,202 +4267,165 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaR
 			updated_at = excluded.updated_at,
 			files = excluded.files,
 			format = excluded.format,
-			translations = excluded.translations
-	`, media.ID.String(), media.EntityType, media.EntityID.String(), media.Title,
+			translations = excluded.translations,
+			deleted = 0
+	`, media.ID.String(), branchID.String(), mainBranchID,
+		nullableBytes(media.FileData), nullableBytes(media.ThumbnailData),
+		media.EntityType, media.EntityID.String(), media.Title,
 		nullableString(media.Description), media.MimeType, string(media.MediaType),
-		media.Filename, media.FileSize, media.FileData, media.ThumbnailData,
+		media.Filename, media.FileSize,
 		nullableInt(media.CropLeft), nullableInt(media.CropTop),
 		nullableInt(media.CropWidth), nullableInt(media.CropHeight),
 		nullableString(media.GedcomXref), media.Version,
 		formatTimestamp(media.CreatedAt), formatTimestamp(media.UpdatedAt),
 		nullableBytes(filesJSON), nullableString(media.Format), nullableBytes(translationsJSON))
-
-	return err
+	if err != nil {
+		return fmt.Errorf("save media: %w", err)
+	}
+	return nil
 }
 
-// DeleteMedia removes a media record.
-func (s *ReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM media WHERE id = ?", id.String())
-	return err
+// DeleteMedia removes a media item on the given branch (ADR-005, #759). On a
+// non-main branch it writes a metadata-only tombstone and never touches main's
+// row or bytes. On main it is a real removal — unless a branch still shows the
+// item through a live shadow row, in which case main's row is kept as a
+// tombstone so that shadow keeps its bytes.
+func (s *ReadModelStore) DeleteMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := cascadeMedia(ctx, tx, mediaIDFilter, branchID, id); err != nil {
+		return fmt.Errorf("delete media: %w", err)
+	}
+	return tx.Commit()
 }
 
-// Media scanner helpers
+// cascadeMedia removes, on branchID, every media row filter selects for value —
+// one id for DeleteMedia, or every item attached to an owner for the manual
+// cascade DeletePerson/DeleteFamily/DeleteSource run (media never had a foreign
+// key to its owner; #759). Off main each item the branch sees is tombstoned
+// (metadata only), then any main tombstone no live shadow needs any more is
+// dropped; on main the rows go through deleteMainMedia so a live branch shadow
+// keeps its bytes. filter must be a package constant binding value once.
+func cascadeMedia(ctx context.Context, tx *sql.Tx, filter string, branchID domain.BranchID, value uuid.UUID) error {
+	if branchID.IsMain() {
+		return deleteMainMedia(ctx, tx, filter, value)
+	}
+	sub, args := overlayColsSubquery("media", mediaSelectCols, filter, []any{value.String()}, branchID)
+	if err := tombstoneFactRows(ctx, tx, "media", mediaSelectCols, branchID, sub, args); err != nil {
+		return fmt.Errorf("tombstone media: %w", err)
+	}
+	return gcMainMedia(ctx, tx, gcMainMediaAfterDelete, mainBranchID, branchID.String(), mainBranchID)
+}
 
-func scanMediaMetadata(row rowScanner) (*repository.MediaReadModel, error) {
+// deleteMainMedia removes the main rows filter selects for value: each is
+// hard-deleted, except that one a non-main branch still shows through a live
+// shadow row becomes a main tombstone instead, keeping the bytes that shadow
+// borrows (#759). filter must be a package constant binding value once.
+func deleteMainMedia(ctx context.Context, tx *sql.Tx, filter string, value uuid.UUID) error {
+	// #nosec G202 -- filter and mediaLiveShadow are package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if _, err := tx.ExecContext(ctx, `UPDATE media AS m SET deleted = 1
+		WHERE m.branch_id = ? AND m.deleted = 0 AND `+filter+` AND `+mediaLiveShadow,
+		mainBranchID, value.String(), mainBranchID); err != nil {
+		return fmt.Errorf("tombstone shared media on main: %w", err)
+	}
+	// #nosec G202 -- filter and mediaLiveShadow are package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media AS m
+		WHERE m.branch_id = ? AND `+filter+` AND NOT `+mediaLiveShadow,
+		mainBranchID, value.String(), mainBranchID); err != nil {
+		return fmt.Errorf("delete media on main: %w", err)
+	}
+	return nil
+}
+
+// gcMainMedia drops the main media tombstones that no live branch shadow needs
+// any more; stmt is gcMainMediaAfterDelete or gcMainMediaBeforePurge.
+func gcMainMedia(ctx context.Context, db sqlExecer, stmt string, args ...any) error {
+	if _, err := db.ExecContext(ctx, stmt, args...); err != nil {
+		return fmt.Errorf("collect main media tombstones: %w", err)
+	}
+	return nil
+}
+
+// scanMediaRow scans one mediaSelectCols row, followed by the file and
+// thumbnail bytes when withData is set. It returns (nil, nil) for
+// sql.ErrNoRows so single-row lookups report absence as nil.
+func scanMediaRow(row rowScanner, withData bool) (*repository.MediaReadModel, error) {
 	var (
-		idStr, entityType, entityIDStr string
-		title, mimeType, mediaType     string
-		filename                       string
-		description, gedcomXref        sql.NullString
-		fileSize, version              int64
-		cropLeft, cropTop              sql.NullInt64
-		cropWidth, cropHeight          sql.NullInt64
-		createdAt, updatedAt           string
-		// GEDCOM 7.0 enhanced fields
-		filesJSON, translationsJSON sql.NullString
-		format                      sql.NullString
+		m                             repository.MediaReadModel
+		idStr, entityIDStr, mediaType string
+		description, gedcomXref       sql.NullString
+		cropLeft, cropTop             sql.NullInt64
+		cropWidth, cropHeight         sql.NullInt64
+		createdAt, updatedAt          string
+		filesJSON, translationsJSON   sql.NullString
+		format                        sql.NullString
 	)
 
-	err := row.Scan(&idStr, &entityType, &entityIDStr, &title, &description,
-		&mimeType, &mediaType, &filename, &fileSize,
+	dest := []any{&idStr, &m.EntityType, &entityIDStr, &m.Title, &description,
+		&m.MimeType, &mediaType, &m.Filename, &m.FileSize,
 		&cropLeft, &cropTop, &cropWidth, &cropHeight,
-		&gedcomXref, &version, &createdAt, &updatedAt,
-		&filesJSON, &format, &translationsJSON)
+		&gedcomXref, &m.Version, &createdAt, &updatedAt,
+		&filesJSON, &format, &translationsJSON}
+	if withData {
+		dest = append(dest, &m.FileData, &m.ThumbnailData)
+	}
 
-	if err == sql.ErrNoRows {
+	err := row.Scan(dest...)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("scan media metadata: %w", err)
+		return nil, fmt.Errorf("scan media: %w", err)
 	}
 
-	id, _ := uuid.Parse(idStr)
-	entityID, _ := uuid.Parse(entityIDStr)
+	if m.ID, err = uuid.Parse(idStr); err != nil {
+		return nil, fmt.Errorf("parse media id %q: %w", idStr, err)
+	}
+	if m.EntityID, err = uuid.Parse(entityIDStr); err != nil {
+		return nil, fmt.Errorf("parse media entity id %q: %w", entityIDStr, err)
+	}
 
 	// Deserialize JSON fields
-	files, err := domain.UnmarshalFilesFromJSON([]byte(filesJSON.String))
-	if err != nil {
+	if m.Files, err = domain.UnmarshalFilesFromJSON([]byte(filesJSON.String)); err != nil {
 		return nil, fmt.Errorf("unmarshal files: %w", err)
 	}
-	translations, err := domain.UnmarshalTranslationsFromJSON([]byte(translationsJSON.String))
-	if err != nil {
+	if m.Translations, err = domain.UnmarshalTranslationsFromJSON([]byte(translationsJSON.String)); err != nil {
 		return nil, fmt.Errorf("unmarshal translations: %w", err)
 	}
 
-	m := &repository.MediaReadModel{
-		ID:           id,
-		EntityType:   entityType,
-		EntityID:     entityID,
-		Title:        title,
-		Description:  description.String,
-		MimeType:     mimeType,
-		MediaType:    domain.MediaType(mediaType),
-		Filename:     filename,
-		FileSize:     fileSize,
-		GedcomXref:   gedcomXref.String,
-		Version:      version,
-		Files:        files,
-		Format:       format.String,
-		Translations: translations,
-	}
-
-	if cropLeft.Valid {
-		v := int(cropLeft.Int64)
-		m.CropLeft = &v
-	}
-	if cropTop.Valid {
-		v := int(cropTop.Int64)
-		m.CropTop = &v
-	}
-	if cropWidth.Valid {
-		v := int(cropWidth.Int64)
-		m.CropWidth = &v
-	}
-	if cropHeight.Valid {
-		v := int(cropHeight.Int64)
-		m.CropHeight = &v
-	}
-
+	m.MediaType = domain.MediaType(mediaType)
+	m.Description = description.String
+	m.GedcomXref = gedcomXref.String
+	m.Format = format.String
+	m.CropLeft = nullIntPtr(cropLeft)
+	m.CropTop = nullIntPtr(cropTop)
+	m.CropWidth = nullIntPtr(cropWidth)
+	m.CropHeight = nullIntPtr(cropHeight)
 	if t, err := parseTimestamp(createdAt); err == nil {
 		m.CreatedAt = t
 	}
 	if t, err := parseTimestamp(updatedAt); err == nil {
 		m.UpdatedAt = t
 	}
-
-	return m, nil
+	return &m, nil
 }
 
-func scanMediaMetadataRow(rows *sql.Rows) (*repository.MediaReadModel, error) {
-	return scanMediaMetadata(rows)
-}
-
-func scanMediaFull(row rowScanner) (*repository.MediaReadModel, error) {
-	var (
-		idStr, entityType, entityIDStr string
-		title, mimeType, mediaType     string
-		filename                       string
-		description, gedcomXref        sql.NullString
-		fileSize, version              int64
-		fileData, thumbnailData        []byte
-		cropLeft, cropTop              sql.NullInt64
-		cropWidth, cropHeight          sql.NullInt64
-		createdAt, updatedAt           string
-		// GEDCOM 7.0 enhanced fields
-		filesJSON, translationsJSON sql.NullString
-		format                      sql.NullString
-	)
-
-	err := row.Scan(&idStr, &entityType, &entityIDStr, &title, &description,
-		&mimeType, &mediaType, &filename, &fileSize, &fileData, &thumbnailData,
-		&cropLeft, &cropTop, &cropWidth, &cropHeight,
-		&gedcomXref, &version, &createdAt, &updatedAt,
-		&filesJSON, &format, &translationsJSON)
-
-	if err == sql.ErrNoRows {
-		return nil, nil
+// nullIntPtr converts a nullable integer column to an *int.
+func nullIntPtr(v sql.NullInt64) *int {
+	if !v.Valid {
+		return nil
 	}
-	if err != nil {
-		return nil, fmt.Errorf("scan media full: %w", err)
-	}
-
-	id, _ := uuid.Parse(idStr)
-	entityID, _ := uuid.Parse(entityIDStr)
-
-	// Deserialize JSON fields
-	files, err := domain.UnmarshalFilesFromJSON([]byte(filesJSON.String))
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal files: %w", err)
-	}
-	translations, err := domain.UnmarshalTranslationsFromJSON([]byte(translationsJSON.String))
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal translations: %w", err)
-	}
-
-	m := &repository.MediaReadModel{
-		ID:            id,
-		EntityType:    entityType,
-		EntityID:      entityID,
-		Title:         title,
-		Description:   description.String,
-		MimeType:      mimeType,
-		MediaType:     domain.MediaType(mediaType),
-		Filename:      filename,
-		FileSize:      fileSize,
-		FileData:      fileData,
-		ThumbnailData: thumbnailData,
-		GedcomXref:    gedcomXref.String,
-		Version:       version,
-		Files:         files,
-		Format:        format.String,
-		Translations:  translations,
-	}
-
-	if cropLeft.Valid {
-		v := int(cropLeft.Int64)
-		m.CropLeft = &v
-	}
-	if cropTop.Valid {
-		v := int(cropTop.Int64)
-		m.CropTop = &v
-	}
-	if cropWidth.Valid {
-		v := int(cropWidth.Int64)
-		m.CropWidth = &v
-	}
-	if cropHeight.Valid {
-		v := int(cropHeight.Int64)
-		m.CropHeight = &v
-	}
-
-	if t, err := parseTimestamp(createdAt); err == nil {
-		m.CreatedAt = t
-	}
-	if t, err := parseTimestamp(updatedAt); err == nil {
-		m.UpdatedAt = t
-	}
-
-	return m, nil
+	i := int(v.Int64)
+	return &i
 }
 
 // GetSurnameIndex returns unique surnames with counts and letter counts within

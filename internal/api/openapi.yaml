@@ -1420,8 +1420,12 @@ paths:
     get:
       operationId: listPersonMedia
       summary: List media attached to a person
+      description: |
+        Returns the person's media metadata, newest first. With `?branch=` the
+        person and the list are read from that branch's isolated view.
       tags: [media]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
       responses:
@@ -1437,7 +1441,13 @@ paths:
     post:
       operationId: uploadPersonMedia
       summary: Upload media to a person
+      description: |
+        Uploads a new media item for the person. With `?branch=` the item is
+        created on that branch only (and the person must exist there); the
+        uploaded bytes belong to that new item.
       tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1494,7 +1504,12 @@ paths:
     get:
       operationId: getMedia
       summary: Get media metadata
+      description: |
+        Returns the media item's metadata. With `?branch=` it is read from that
+        branch's isolated view.
       tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Media metadata
@@ -1508,7 +1523,13 @@ paths:
     put:
       operationId: updateMedia
       summary: Update media metadata
+      description: |
+        Updates the media item's metadata (never its file). With `?branch=` the
+        edit lands on that branch only; the file bytes are shared with the
+        mainline and are not copied.
       tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -1532,8 +1553,12 @@ paths:
     delete:
       operationId: deleteMedia
       summary: Delete media
+      description: |
+        Deletes the media item. With `?branch=` it is deleted on that branch
+        only; the mainline item and its file are untouched.
       tags: [media]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':
@@ -1558,7 +1583,13 @@ paths:
     get:
       operationId: downloadMedia
       summary: Download media file
+      description: |
+        Returns the media file. With `?branch=` the item is resolved through that
+        branch's isolated view (a branch-deleted item is not found); the bytes
+        themselves are shared with the mainline.
       tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Media file content
@@ -1599,7 +1630,13 @@ paths:
     get:
       operationId: getMediaThumbnail
       summary: Get media thumbnail
+      description: |
+        Returns the media thumbnail. With `?branch=` the item is resolved through
+        that branch's isolated view; the bytes themselves are shared with the
+        mainline.
       tags: [media]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Thumbnail image (JPEG)

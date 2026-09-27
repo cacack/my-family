@@ -1,6 +1,7 @@
 package command_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
@@ -434,6 +435,87 @@ func TestBranchAssociationLifecycle(t *testing.T) {
 		PersonID: branchOnly, AssociateID: subject, Role: "mentor",
 	}); !errors.Is(err, command.ErrInvalidInput) {
 		t.Errorf("main CreateAssociation with a branch-only person: err = %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestBranchMediaLifecycle is the #759 round trip through the command layer: a
+// branch-scoped handler retitles, uploads and deletes media on the branch only
+// (BR-006 admits the events), the branch reads main's shared bytes for the
+// retitled item, and main's media is untouched throughout.
+func TestBranchMediaLifecycle(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+
+	person, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	upload := command.UploadMediaInput{
+		EntityType: "person", EntityID: person.ID, Title: "Portrait",
+		MediaType: "photo", Filename: "portrait.jpg", FileData: createTestJPEG(),
+	}
+	photo, err := f.handler.UploadMedia(ctx, upload)
+	if err != nil {
+		t.Fatalf("main UploadMedia failed: %v", err)
+	}
+
+	branch, err := f.handler.CreateBranch(ctx, "media", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	scoped := f.handler.WithBranch(branch)
+	branchID := domain.BranchID(branch.ID)
+
+	title := "Portrait (branch reading)"
+	if _, err := scoped.UpdateMedia(ctx, command.UpdateMediaInput{ID: photo.ID, Title: &title, Version: photo.Version}); err != nil {
+		t.Fatalf("branch UpdateMedia failed: %v", err)
+	}
+	onBranch, err := f.readStore.GetMediaWithData(ctx, branchID, photo.ID)
+	if err != nil || onBranch == nil || onBranch.Title != title {
+		t.Fatalf("branch GetMediaWithData = %+v (err=%v), want title %q", onBranch, err, title)
+	}
+	if !bytes.Equal(onBranch.FileData, upload.FileData) || len(onBranch.ThumbnailData) == 0 {
+		t.Errorf("branch GetMediaWithData bytes = %d/%d, want main's shared file and thumbnail",
+			len(onBranch.FileData), len(onBranch.ThumbnailData))
+	}
+	onMain, err := f.readStore.GetMedia(ctx, domain.MainBranchID, photo.ID)
+	if err != nil || onMain == nil || onMain.Title != "Portrait" {
+		t.Fatalf("main GetMedia after branch update = %+v (err=%v), want the main title", onMain, err)
+	}
+
+	// A branch upload is branch-only.
+	branchScan, err := scoped.UploadMedia(ctx, command.UploadMediaInput{
+		EntityType: "person", EntityID: person.ID, Title: "Branch scan",
+		MediaType: "document", Filename: "scan.jpg", FileData: createTestJPEG(),
+	})
+	if err != nil {
+		t.Fatalf("branch UploadMedia failed: %v", err)
+	}
+	if got, err := f.readStore.GetMedia(ctx, domain.MainBranchID, branchScan.ID); err != nil || got != nil {
+		t.Errorf("main GetMedia(branch upload) = %+v (err=%v), want absent", got, err)
+	}
+	if got, _, err := f.readStore.ListMediaForEntity(ctx, "person", person.ID,
+		repository.ListOptions{Limit: 10, BranchID: branchID}); err != nil || len(got) != 2 {
+		t.Errorf("branch ListMediaForEntity = %d items (err=%v), want 2", len(got), err)
+	}
+
+	// A branch delete hides the item on the branch only.
+	onBranchMeta, err := f.readStore.GetMedia(ctx, branchID, photo.ID)
+	if err != nil || onBranchMeta == nil {
+		t.Fatalf("branch GetMedia failed: %+v (err=%v)", onBranchMeta, err)
+	}
+	if err := scoped.DeleteMedia(ctx, photo.ID, onBranchMeta.Version, "branch hypothesis"); err != nil {
+		t.Fatalf("branch DeleteMedia failed: %v", err)
+	}
+	if got, err := f.readStore.GetMediaWithData(ctx, branchID, photo.ID); err != nil || got != nil {
+		t.Errorf("branch GetMediaWithData after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if err := scoped.DeleteMedia(ctx, photo.ID, onBranchMeta.Version, ""); !errors.Is(err, command.ErrMediaNotFound) {
+		t.Errorf("branch DeleteMedia of a branch-deleted item: err = %v, want ErrMediaNotFound", err)
+	}
+	mainFull, err := f.readStore.GetMediaWithData(ctx, domain.MainBranchID, photo.ID)
+	if err != nil || mainFull == nil || !bytes.Equal(mainFull.FileData, upload.FileData) {
+		t.Errorf("main GetMediaWithData after branch delete = %+v (err=%v), want it and its bytes kept", mainFull, err)
 	}
 }
 
@@ -1280,6 +1362,7 @@ type driftSeed struct {
 	source      uuid.UUID
 	citation    uuid.UUID
 	note        uuid.UUID
+	media       uuid.UUID
 }
 
 func seedDriftFixture(t *testing.T) driftSeed {
@@ -1368,6 +1451,16 @@ func seedDriftFixture(t *testing.T) driftSeed {
 		t.Fatalf("CreateNote failed: %v", err)
 	}
 	seed.note = note.ID
+
+	// Media (#759): one photo of the person, with its bytes on main.
+	photo, err := f.handler.UploadMedia(ctx, command.UploadMediaInput{
+		EntityType: "person", EntityID: seed.person, Title: "Portrait",
+		MediaType: "photo", Filename: "portrait.jpg", FileData: createTestJPEG(),
+	})
+	if err != nil {
+		t.Fatalf("UploadMedia failed: %v", err)
+	}
+	seed.media = photo.ID
 
 	branch, err := f.handler.CreateBranch(ctx, "drift-probe", "")
 	if err != nil {
@@ -1471,6 +1564,21 @@ var branchAwareProbes = map[string]func(s driftSeed) domain.Event{
 	"NoteDeleted": func(s driftSeed) domain.Event {
 		return domain.NewNoteDeleted(s.note, "branch hypothesis")
 	},
+	"MediaCreated": func(s driftSeed) domain.Event {
+		m := domain.NewMedia("Branch scan", "person", s.child)
+		m.MimeType = "image/jpeg"
+		m.MediaType = domain.MediaPhoto
+		m.Filename = "scan.jpg"
+		m.FileData = createTestJPEG()
+		m.FileSize = int64(len(m.FileData))
+		return domain.NewMediaCreated(m)
+	},
+	"MediaUpdated": func(s driftSeed) domain.Event {
+		return domain.NewMediaUpdated(s.media, map[string]any{"title": "Portrait (branch reading)"})
+	},
+	"MediaDeleted": func(s driftSeed) domain.Event {
+		return domain.NewMediaDeleted(s.media, "branch hypothesis")
+	},
 }
 
 // mainRows is the mainline read-model state a branch-scoped projection must
@@ -1488,6 +1596,7 @@ type mainRows struct {
 	Source       *repository.SourceReadModel
 	SourceCites  []repository.CitationReadModel
 	Note         *repository.NoteReadModel
+	Media        *repository.MediaReadModel
 }
 
 func readMainRows(t *testing.T, s driftSeed) mainRows {
@@ -1549,6 +1658,12 @@ func readMainRows(t *testing.T, s driftSeed) mainRows {
 		t.Fatalf("GetNote(main) failed: %v", err)
 	}
 	rows.Note = note
+	// GetMediaWithData, so main's bytes are compared too (#759).
+	media, err := rs.GetMediaWithData(ctx, domain.MainBranchID, s.media)
+	if err != nil {
+		t.Fatalf("GetMediaWithData(main) failed: %v", err)
+	}
+	rows.Media = media
 
 	family, err := rs.GetFamily(ctx, domain.MainBranchID, s.family)
 	if err != nil {
@@ -1689,6 +1804,9 @@ var conflictBlindEventTypes = map[string]string{
 	"SourceCreated":   "opens a branch-only stream; identity collisions are the create_create scan's job",
 	"CitationCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
 	"NoteCreated":     "opens a branch-only stream; identity collisions are the create_create scan's job",
+	// Media (#759): each media item is its own aggregate, so MediaCreated opens a
+	// stream nothing on main can have touched.
+	"MediaCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
 }
 
 // TestBranchAwareEventTypes_AreConflictComparable is the drift guard between the

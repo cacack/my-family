@@ -17,7 +17,8 @@ import (
 // copy-on-write shadow row (ADR-005). SQLite cannot alter a table's PRIMARY KEY in
 // place, so a database created before #669 keeps its single-column `id` key (as
 // does one created before #757 for life_events, attributes and associations, or
-// before #758 for sources, source_external_ids, citations and notes): a
+// before #758 for sources, source_external_ids, citations and notes, or before
+// #759 for media): a
 // shadow row (same id, different branch_id) would violate it. Rather than let such
 // a database look branch-capable and then fail with an opaque constraint error,
 // branch writes are refused up front with this error. Mainline (MainBranchID)
@@ -368,8 +369,10 @@ type ProofSummaryReadModel struct {
 //
 // 1. BRANCH-SCOPED ENTITIES — the #669 slice (Person, PersonName, PersonExternalID,
 // Family, FamilyExternalID, FamilyChild, PedigreeEdge), the person/family facts
-// (LifeEvent, Attribute, Association; #757, sub-issue B of #676) and the evidence
-// (Source, SourceExternalID, Citation, Note; #758, sub-issue C). These own
+// (LifeEvent, Attribute, Association; #757, sub-issue B of #676), the evidence
+// (Source, SourceExternalID, Citation, Note; #758, sub-issue C) and media
+// metadata (Media; #759, sub-issue D — see the blob rule on the media methods
+// below: only metadata forks, the file bytes stay shared). These own
 // branch_id-keyed tables. Their methods take an explicit domain.BranchID
 // (single-row) or carry it on ListOptions/SearchOptions (list/search); a
 // copy-on-write overlay resolves the branch's row for an entity else falls back to
@@ -387,8 +390,6 @@ type ProofSummaryReadModel struct {
 // 3. MAIN-ONLY, PENDING — no branchID yet, but destined for one. These are the
 // remaining sub-issues of #676, and each must replicate the category-1 pattern
 // (branch_id column + overlay + tombstone + cascade) on all three backends:
-//   - Media metadata is sub-issue D (#759); blobs stay shared and are never copied
-//     into a branch shadow row.
 //   - EvidenceAnalysis, EvidenceConflict, ResearchLog and ProofSummary are
 //     sub-issue E (#760).
 //
@@ -413,7 +414,8 @@ type ProofSummaryReadModel struct {
 //
 // Tombstone representation is an internal, backend-specific detail and NOT part of
 // this contract: only the fact that a branch row is a tombstone is meaningful (memory
-// stores a nil entry; SQLite/Postgres set a `deleted` flag on a shadow row whose other
+// stores a nil entry, or a flagged row for media, whose main tombstone must keep its
+// shared bytes; SQLite/Postgres set a `deleted` flag on a shadow row whose other
 // columns are unspecified). Every read path filters tombstones out identically, but do
 // not rely on a tombstone row's field values being consistent across backends.
 type ReadModelStore interface {
@@ -465,11 +467,13 @@ type ReadModelStore interface {
 	// branch-scoped tables: the seven slice tables (persons, person_names,
 	// person_external_ids, families, family_external_ids, family_children,
 	// pedigree_edges), the person/family fact tables (life_events, attributes,
-	// associations; #757) and the evidence tables (sources, source_external_ids,
-	// citations, notes; #758). It backs the
+	// associations; #757), the evidence tables (sources, source_external_ids,
+	// citations, notes; #758) and media (#759). It backs the
 	// branch-delete lifecycle (ADR-005): once a branch is archived its copy-on-write
 	// rows and tombstones are dropped. It is a no-op for domain.MainBranchID — the
-	// mainline is never purged.
+	// mainline is never purged. It also drops any mainline media tombstone that was
+	// kept alive only to lend its file bytes to this branch (see the media blob
+	// rule below).
 	PurgeBranch(ctx context.Context, branchID domain.BranchID) error
 
 	// Source operations (branch-scoped, #758)
@@ -503,13 +507,45 @@ type ReadModelStore interface {
 	SaveCitation(ctx context.Context, branchID domain.BranchID, citation *CitationReadModel) error
 	DeleteCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Media operations
-	GetMedia(ctx context.Context, id uuid.UUID) (*MediaReadModel, error)
-	GetMediaWithData(ctx context.Context, id uuid.UUID) (*MediaReadModel, error) // Includes FileData
-	GetMediaThumbnail(ctx context.Context, id uuid.UUID) ([]byte, error)
+	// Media operations (branch-scoped METADATA, #759)
+	//
+	// Media is a branch-scoped entity (ADR-005) for its metadata only — title,
+	// description, media type, crop box, files, format, translations and entity
+	// linkage. Single-row methods take an explicit branchID; ListMediaForEntity
+	// carries it on opts.BranchID and, like the life-event lists, resolves every
+	// media id the entity has on either side and re-applies the entity filter to
+	// the WINNING row, so a branch that re-links an item (PersonMerged) lists it
+	// under its new owner only.
+	//
+	// THE BLOB RULE — the file bytes (FileData, ThumbnailData) are shared, never
+	// copied per branch:
+	//   - The bytes are written once, by MediaCreated, onto the row that created the
+	//     item (its origin row: main for a mainline upload, the branch's row for an
+	//     item uploaded on a branch, which is a new id and so owns its bytes). No
+	//     later event carries bytes.
+	//   - A branch shadow row of an item that has a main row is METADATA ONLY: its
+	//     byte columns are NULL. SaveMedia on a non-main branch stores no bytes for
+	//     such an id even when handed some, and no SaveMedia ever clears bytes
+	//     already stored (nil bytes mean "keep").
+	//   - GetMedia and ListMediaForEntity never read the byte columns.
+	//     GetMediaWithData and GetMediaThumbnail resolve the metadata through the
+	//     overlay (so a tombstone hides the bytes too) and read the bytes from the
+	//     winning row, else from the main row.
+	//   - A branch delete (tombstone) never touches main's row or its bytes. A
+	//     mainline delete of an item that a branch still shows through a live
+	//     shadow row keeps main's row as a tombstone — hidden from main and from
+	//     every branch without its own row — so the shadow keeps its bytes; the
+	//     tombstone is dropped once no live shadow remains (the branch deletes the
+	//     item or is purged).
+	//
+	// DeletePerson, DeleteFamily and DeleteSource cascade to the media attached to
+	// the deleted entity on the same branch, under the same rule.
+	GetMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*MediaReadModel, error)
+	GetMediaWithData(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*MediaReadModel, error) // Includes FileData
+	GetMediaThumbnail(ctx context.Context, branchID domain.BranchID, id uuid.UUID) ([]byte, error)
 	ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts ListOptions) ([]MediaReadModel, int, error)
-	SaveMedia(ctx context.Context, media *MediaReadModel) error
-	DeleteMedia(ctx context.Context, id uuid.UUID) error
+	SaveMedia(ctx context.Context, branchID domain.BranchID, media *MediaReadModel) error
+	DeleteMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
 	// Life event operations (branch-scoped, #757)
 	//
