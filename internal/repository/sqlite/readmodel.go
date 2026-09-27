@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
@@ -1087,6 +1088,9 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		limit = 100
 	}
 
+	// Trim like the PostgreSQL and memory stores do, so a whitespace-only query is
+	// "no query" (a filters-only search) on both the FTS5 and LIKE paths.
+	opts.Query = strings.TrimSpace(opts.Query)
 	hasQuery := opts.Query != ""
 	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
 		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
@@ -2960,7 +2964,9 @@ func scanFamilyRow(rows *sql.Rows) (*repository.FamilyReadModel, error) {
 // escapeFTS5Query turns free-text user input into an FTS5 MATCH expression
 // that searches for the input literally (issue #762).
 //
-// The input is split on whitespace and every token is emitted as an FTS5 string
+// Control characters (including NUL, at which FTS5 stops reading a string and
+// reports "unterminated string") are treated as whitespace, then the input is
+// split on whitespace and every token is emitted as an FTS5 string
 // ("..."), with any embedded double quote doubled ("" is FTS5's only escape
 // inside a string). Inside a string no character is an operator, so *, +, -, (,
 // ), :, ^, apostrophes and bare words such as AND/OR/NOT/NEAR are all literal
@@ -2983,7 +2989,12 @@ func scanFamilyRow(rows *sql.Rows) (*repository.FamilyReadModel, error) {
 // at startup by tryCreateFTS5), and as the existing "fuzzy found nothing"
 // fallback.
 func escapeFTS5Query(query string, prefix bool) string {
-	tokens := strings.Fields(query)
+	tokens := strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, query))
 	if len(tokens) == 0 {
 		return ""
 	}

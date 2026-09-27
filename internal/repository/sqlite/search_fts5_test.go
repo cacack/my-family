@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -28,6 +30,9 @@ var fts5SpecialInputs = []string{
 	"*", "+", "-", `"`, "(", ")", ":", "^", "'",
 	"O'Brien", "Smith-Jones", `"John"`, `'John'`, `"John" AND "Doe"`,
 	`John OR Mary`, `NEAR(John Doe)`, `given_name:John`, `^John`, `-John`, `a"b`, `""`,
+	// FTS5 stops reading a string at NUL ("unterminated string"), so control
+	// characters must never reach the MATCH expression.
+	"\x00", "a\x00b", "Jo\x00hn", "\x00\"", "John\x07Doe", "\x1b[0m",
 }
 
 func TestEscapeFTS5Query(t *testing.T) {
@@ -61,6 +66,12 @@ func TestEscapeFTS5Query(t *testing.T) {
 		{`a"b`, false, `"a""b"`},
 		{`John OR Mary`, false, `"John" "OR" "Mary"`},
 		{`given_name:John`, false, `"given_name:John"`},
+		{"\x00", false, ""},
+		{"\x00", true, ""},
+		{"a\x00b", false, `"a" "b"`},
+		{"Jo\x00hn", true, `"Jo" "hn"*`},
+		{"John\x07Doe", false, `"John" "Doe"`},
+		{"\x00\"", false, `""""`},
 	}
 	for _, tt := range tests {
 		got := sqlite.EscapeFTS5Query(tt.query, tt.prefix)
@@ -95,6 +106,14 @@ func TestEscapeFTS5Query_ValidSyntax(t *testing.T) {
 	for _, in := range fts5SpecialInputs {
 		for _, prefix := range []bool{false, true} {
 			q := sqlite.EscapeFTS5Query(in, prefix)
+			if q == "" {
+				// No tokens: the documented contract is that callers never pass ""
+				// to MATCH (searchPersonsFTS returns no results instead).
+				if strings.TrimFunc(in, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) != "" {
+					t.Errorf("input %q (prefix=%v) unexpectedly escaped to empty", in, prefix)
+				}
+				continue
+			}
 			rows, err := db.Query(`SELECT rowid FROM t WHERE t MATCH ?`, q)
 			if err != nil {
 				t.Errorf("input %q (prefix=%v) -> %q: invalid FTS5: %v", in, prefix, q, err)
@@ -244,6 +263,12 @@ func TestSearchPersons_FTS5Escaping(t *testing.T) {
 		{name: "alternate name nickname", query: "Zack", want: []string{zachary}},
 		{name: "empty query", query: ""},
 		{name: "whitespace query", query: "   "},
+		{name: "padded query", query: "  O'Brien  ", want: []string{maryAnn}},
+		{name: "NUL only", query: "\x00"},
+		{name: "NUL only fuzzy", query: "\x00", fuzzy: true},
+		{name: "embedded NUL", query: "a\x00b"},
+		{name: "embedded NUL fuzzy", query: "Jo\x00hn", fuzzy: true},
+		{name: "NUL separates terms", query: "John\x00Doe", want: []string{johnDoe}},
 		{name: "fuzzy prefix", query: "Joh", fuzzy: true, want: []string{johnDoe, johnnyWalker}},
 		{name: "fuzzy prefix Zac", query: "Zac", fuzzy: true, want: []string{zachary}},
 		{name: "fuzzy hyphenated prefix", query: "Smith-Jo", fuzzy: true, want: []string{annaSJ}},
@@ -290,10 +315,48 @@ func TestSearchPersons_LikeEscaping(t *testing.T) {
 		{name: "alternate name nickname", query: "Zack", want: []string{zachary}},
 		{name: "empty query", query: ""},
 		{name: "whitespace query", query: "   "},
+		{name: "padded query", query: "  O'Brien  ", want: []string{maryAnn}},
 		{name: "fuzzy prefix", query: "Joh", fuzzy: true, want: []string{johnDoe, johnnyWalker}},
 		{name: "fuzzy prefix Zac", query: "Zac", fuzzy: true, want: []string{zachary}},
 		{name: "fuzzy no match", query: "xyz123notfound", fuzzy: true},
 	})
+}
+
+// TestSearchPersons_WhitespaceQueryIsFiltersOnly verifies a whitespace-only query
+// counts as no query, so date filters still apply, identically on the FTS5 and
+// LIKE paths and in line with the PostgreSQL and memory stores (issue #762).
+func TestSearchPersons_WhitespaceQueryIsFiltersOnly(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	born := func(y int) *time.Time {
+		d := time.Date(y, 1, 1, 0, 0, 0, 0, time.UTC)
+		return &d
+	}
+	for _, p := range []struct {
+		given string
+		birth *time.Time
+	}{{"Early", born(1800)}, {"Late", born(1900)}} {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: uuid.New(), GivenName: p.given, Surname: "Test", FullName: p.given + " Test",
+			BirthDateSort: p.birth, Version: 1, UpdatedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("save person %s: %v", p.given, err)
+		}
+	}
+	for _, q := range []string{"", "  ", " \t "} {
+		for _, fuzzy := range []bool{false, true} {
+			results, err := store.SearchPersons(ctx, repository.SearchOptions{
+				Query: q, Fuzzy: fuzzy, BirthDateFrom: born(1850), Limit: 10,
+			})
+			if err != nil {
+				t.Fatalf("SearchPersons(%q, fuzzy=%v): %v", q, fuzzy, err)
+			}
+			if len(results) != 1 || results[0].GivenName != "Late" {
+				t.Errorf("SearchPersons(%q, fuzzy=%v) with birth filter = %d results, want only Late", q, fuzzy, len(results))
+			}
+		}
+	}
 }
 
 // TestSearchPersons_FTS5ErrorSurfaced verifies a failing FTS5 query is returned as

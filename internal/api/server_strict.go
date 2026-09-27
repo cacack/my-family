@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	gcgedcom "github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
@@ -2999,6 +3000,22 @@ func stringFromParam(s *string) string {
 	return *s
 }
 
+// searchTextParamsError validates the free-text search parameters and returns a
+// client-facing message, or "" when they are acceptable. Control characters are
+// rejected: NUL cannot be stored in a PostgreSQL text parameter and ends an FTS5
+// string early, so it would otherwise surface as a 500 (issue #762).
+func searchTextParamsError(q, birthPlace, deathPlace string) string {
+	if q != "" && len(q) < 2 {
+		return "Search query must be at least 2 characters"
+	}
+	for _, v := range []string{q, birthPlace, deathPlace} {
+		if strings.ContainsFunc(v, unicode.IsControl) {
+			return "Search parameters must not contain control characters"
+		}
+	}
+	return ""
+}
+
 // SearchPersons implements StrictServerInterface.
 func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
 	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
@@ -3027,10 +3044,10 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 		}}, nil
 	}
 
-	if hasQuery && len(queryStr) < 2 {
+	if msg := searchTextParamsError(queryStr, birthPlace, deathPlace); msg != "" {
 		return SearchPersons400JSONResponse{BadRequestJSONResponse{
 			Code:    "bad_request",
-			Message: "Search query must be at least 2 characters",
+			Message: msg,
 		}}, nil
 	}
 
