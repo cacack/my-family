@@ -1277,15 +1277,20 @@ artifact also names its subject (a person or family) on another stream, the shap
 media, so the pre-claim dangling-reference check refuses a replayed artifact whose *final* subject —
 the last `subject_id` a create or an update set, unless the stream ends deleted — will not exist on
 main when it lands, by the media rule (a subject the replay deletes counts only when its stream
-replays after the artifact's).
+replays after the artifact's). The write path requires only a non-nil subject id, so a subject id
+no person or family ever had in the log is accepted on merge as it is on `main`; only a subject
+that was a person or family and is gone is dangling.
 
 `main`'s `DeletePerson` / `DeleteFamily` cascade removes a subject's artifacts with no event on
 their streams, so per-stream conflict detection sees neither of two loss paths, and the pre-claim
 check refuses both (`checkGPSSubjectSurvives`, `checkSubjectDeleteOrphansNoGPS`):
 
 - A replayed *edit* of an artifact `main` no longer has (removed with its subject after the fork)
-  would land on a missing row as a silent no-op. A stream with a merge conflict is left to the
-  conflict machinery, so a main-side `*Deleted` of the artifact is still reported as a conflict.
+  would land on a missing row as a silent no-op. A stream whose merge conflict is still undecided
+  is left to the conflict machinery, so a main-side `*Deleted` of the artifact is still reported as
+  a conflict first. Once decided the rule applies: an `edit_edit` conflict resolved `branch` does
+  not show that `main` later deleted the subject, so replaying it onto the cascaded artifact is
+  refused (only `main` goes through).
 - A replayed `PersonDeleted` / `FamilyDeleted` while `main` has an artifact about that subject that
   it added or changed after the fork (one set-based read of the event log over those streams), or
   that the branch re-points away only after the delete replays, would cascade research off `main`
@@ -1316,11 +1321,15 @@ applies them on the terms the media rule has: an auto-planned artifact stream wh
 resolution, or deleted by a stream already on `main`), an auto-planned edit of an artifact `main`
 no longer has, and an auto-planned subject delete that would cascade onto research `main` added
 or changed after the fork are pending; `main` rolls such a stream forward without it, and `branch`
-is refused as a dangling reference. A resume has no conflict verdict to defer to, so the edit rule
-applies to every stream it would replay. A `main` resolution may not exclude a subject the replay
+is refused as a dangling reference. A resume has no undecided conflicts (every conflict was
+resolved at claim time, and a main-side delete only ever accepts `main`), so the edit rule applies
+to every stream it would replay, exactly as it applied at claim time to decided conflicts. A `main` resolution may not exclude a subject the replay
 creates while an artifact already on `main` is about it (reachable only from a pre-#685 claim). A
-landed artifact that the replay re-pointed away from a subject and that `main` has since
-re-pointed back counts as `main`'s own research for the subject-delete rule. Landed detection is
+landed artifact that the replay re-pointed away from a subject but that `main`'s read model still
+lists under it is judged from `main`'s log, not the row, since its projection may have failed and
+the repair runs after the checks: if the log leaves it about another subject (or deleted), the
+delete is sound; if `main` re-pointed it back after the landing, it counts as `main`'s own research
+for the subject-delete rule. Landed detection is
 the usual payload-id scan; the read-model repair follows the version rule (every GPS projection
 writes the row, version included, in one save). A missing GPS row counts as removed for a reason
 the log explains when its subject's `main` stream ends in a delete, following a person subject

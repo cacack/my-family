@@ -252,11 +252,15 @@ type evidencePlan struct {
 	// stream after it.
 	basePosition int64
 
-	// conflicted names the streams the merge plan reports a conflict on
-	// (merge only). The GPS edit rule leaves them to the conflict machinery
-	// (checkGPSSubjectSurvives). A resume has no conflict verdict to defer
-	// to: a stream it cannot vouch for is made pending instead.
-	conflicted map[uuid.UUID]bool
+	// undecided names the streams with a merge conflict the caller has not
+	// resolved yet (merge only). The merge will refuse with ErrMergeConflicts
+	// until they are, so the GPS edit rule (checkGPSSubjectSurvives) leaves
+	// them to the conflict report rather than pre-empt it; once a conflict is
+	// decided, the rule applies to its stream like any other — an edit_edit
+	// conflict resolved "branch" says nothing about whether main still has
+	// the artifact. A resume never has an undecided conflict: a stream it
+	// cannot vouch for is made pending instead.
+	undecided map[uuid.UUID]bool
 }
 
 // validateNoDanglingEvidence is the evidence and media half of
@@ -317,7 +321,7 @@ func (h *Handler) validateNoDanglingEvidence(ctx context.Context, mergePlan *que
 		replayed:     make(map[uuid.UUID]streamGroup, len(groups)),
 		order:        replayOrder(groups),
 		basePosition: mergePlan.Branch.BasePosition,
-		conflicted:   make(map[uuid.UUID]bool, len(mergePlan.Conflicts)),
+		undecided:    make(map[uuid.UUID]bool, len(mergePlan.Conflicts)),
 	}
 	for _, group := range groups {
 		if resolutions[group.streamID] != ResolveMain {
@@ -325,12 +329,16 @@ func (h *Handler) validateNoDanglingEvidence(ctx context.Context, mergePlan *que
 		}
 	}
 
-	// A stream with a merge conflict is the conflict machinery's to report: a
-	// main-side delete of a GPS artifact is an edit-vs-delete conflict whose
-	// only honourable resolution skips the branch's stream, so it must not be
-	// pre-empted here by a dangling-reference refusal.
+	// A stream with an undecided merge conflict is the conflict machinery's to
+	// report first: a main-side delete of a GPS artifact is an edit-vs-delete
+	// conflict whose only supported resolution skips the branch's stream, so
+	// it must not be pre-empted here by a dangling-reference refusal. A
+	// decided conflict gets no such pass: "main" leaves the stream out of
+	// the replay, and "branch" replays it, so the rules must hold.
 	for _, conflict := range mergePlan.Conflicts {
-		plan.conflicted[conflict.StreamID] = true
+		if _, decided := resolutions[conflict.StreamID]; !decided {
+			plan.undecided[conflict.StreamID] = true
+		}
 	}
 
 	for _, group := range groups {

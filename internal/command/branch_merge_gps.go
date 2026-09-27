@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -113,12 +114,15 @@ func groupDeletesGPSSubject(group streamGroup) bool {
 //   - An edit (no create, no delete) of an artifact main no longer has. Main's
 //     subject-delete cascade removes artifacts with no event on their stream,
 //     so no merge conflict flags it, and the replayed update would be a silent
-//     no-op. On a merge, a stream with a merge conflict is skipped: the
-//     conflict is reported (and resolved) on its own terms. A resume has no
-//     conflict verdict, so it applies the rule to every stream it would
-//     replay; one that fails it is made pending.
+//     no-op. On a merge, a stream whose merge conflict is still undecided is
+//     skipped, so the conflict is reported first; once decided "branch" (an
+//     edit_edit conflict does not show main's later subject delete) the rule
+//     applies. A resume has no undecided conflicts, so it applies the rule to
+//     every stream it would replay; one that fails it is made pending.
 //
-//   - An artifact whose final subject will not exist on main when it lands.
+//   - An artifact whose final subject will not exist on main when it lands,
+//     though it was a person or family (a subject id no person or family ever
+//     had is accepted, as the write path accepts it).
 //     The rule is checkMediaOwnerSurvives': a subject the replay itself deletes
 //     is fine only when its stream replays AFTER the artifact's (and, on a
 //     resume, has not already landed), so the subject's delete cascades the
@@ -129,7 +133,7 @@ func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup
 	if err != nil || !outcome.touched || outcome.deleted {
 		return err
 	}
-	if !outcome.created && !plan.conflicted[group.streamID] {
+	if !outcome.created && !plan.undecided[group.streamID] {
 		exists, err := h.gpsArtifactOnMain(ctx, group.streamType, group.streamID)
 		if err != nil {
 			return err
@@ -153,11 +157,17 @@ func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup
 		}
 	} else {
 		exists, err := h.gpsSubjectOnMain(ctx, subjectID)
-		if err != nil {
+		if err != nil || exists {
 			return err
 		}
-		if exists {
-			return nil
+		// The write path does not require the subject to exist (only a
+		// non-nil id), so a subject no person or family ever had is accepted
+		// on main as on the branch; refusing it here would make the branch
+		// hold research its own merge can never take. Only a subject that
+		// was a person or family, and is gone, is dangling.
+		known, err := h.gpsSubjectEverExisted(ctx, subjectID)
+		if err != nil || !known {
+			return err
 		}
 	}
 	return fmt.Errorf(
@@ -206,6 +216,22 @@ func (h *Handler) gpsSubjectOnMain(ctx context.Context, subjectID uuid.UUID) (bo
 		exists, err := h.mediaOwnerOnMain(ctx, entityType, subjectID)
 		if err != nil || exists {
 			return exists, err
+		}
+	}
+	return false, nil
+}
+
+// gpsSubjectEverExisted reports whether the log has ever held a person or
+// family with the id, on main or on any branch. Stream types are compared
+// case-insensitively: GEDCOM import writes "person", the commands "Person".
+func (h *Handler) gpsSubjectEverExisted(ctx context.Context, subjectID uuid.UUID) (bool, error) {
+	events, err := h.eventStore.ReadStream(ctx, subjectID)
+	if err != nil {
+		return false, fmt.Errorf("checking subject %s in the event log: %w", subjectID, err)
+	}
+	for i := range events {
+		if strings.EqualFold(events[i].StreamType, "Person") || strings.EqualFold(events[i].StreamType, "Family") {
+			return true, nil
 		}
 	}
 	return false, nil
@@ -263,9 +289,14 @@ func (h *Handler) gpsArtifactIDsOnMain(ctx context.Context, subjectID uuid.UUID)
 //     branch, and the cascade would drop it from main with no record.
 //
 // On a resume, an artifact stream already on main whose replay re-pointed it
-// away, yet which main still has about the subject, was re-pointed back by
-// main after it landed. That is main's own change, so it is judged like an
-// untouched artifact (and refused: its stream was written after the fork).
+// away, yet which main's read model still has about the subject, is judged
+// from main's LOG, not the row: the row may be stale (the landed append's
+// projection failed, and reprojectLandedStreams repairs it only after these
+// checks). If main's log leaves the artifact about another subject, or
+// deleted, the cascade will not reach it once the row is repaired. If the log
+// has it about this subject again, main re-pointed it back after the branch's
+// re-point landed — main's own change the branch never saw — and the delete
+// is refused.
 func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group streamGroup, plan evidencePlan) error {
 	if !groupDeletesGPSSubject(group) {
 		return nil
@@ -275,7 +306,7 @@ func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group stre
 	if err != nil {
 		return err
 	}
-	var untouched []uuid.UUID
+	var untouched, landedRepoints []uuid.UUID
 	for _, id := range ids {
 		artifactGroup, ok := plan.replayed[id]
 		if !ok {
@@ -289,13 +320,16 @@ func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group stre
 		repointsAway := outcome.subjectSet && !outcome.deleted && outcome.subjectID != subjectID
 		switch {
 		case repointsAway && plan.landed[id]:
-			untouched = append(untouched, id)
+			landedRepoints = append(landedRepoints, id)
 		case repointsAway && plan.order[id] > plan.order[subjectID]:
 			return fmt.Errorf(
 				"%w: the branch re-points main's %s %s away from %s and deletes %s, but the delete replays first "+
 					"and would remove the artifact from main before the re-point lands",
 				ErrMergeDanglingReference, artifactGroup.streamType, id, subjectID, subjectID)
 		}
+	}
+	if err := h.checkLandedRepointsStayAway(ctx, subjectID, landedRepoints); err != nil {
+		return err
 	}
 	if len(untouched) == 0 {
 		return nil
@@ -310,6 +344,39 @@ func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group stre
 			"%w: the branch deletes %s, but main's %s %s about it was added or changed after the fork; "+
 				"merging would delete that research from main with no record",
 			ErrMergeDanglingReference, subjectID, changed[0].StreamType, changed[0].StreamID)
+	}
+	return nil
+}
+
+// checkLandedRepointsStayAway judges the GPS artifacts a resume's landed
+// replay re-pointed away from a subject the replay is about to delete, but
+// which main's read model still lists under that subject (see
+// checkSubjectDeleteOrphansNoGPS). Main's log decides: one set-based read of
+// the artifacts' streams, folded to where main's log leaves each artifact.
+func (h *Handler) checkLandedRepointsStayAway(ctx context.Context, subjectID uuid.UUID, ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	byStream, err := h.readMainStreams(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("checking main's GPS research on %s: %w", subjectID, err)
+	}
+	for _, id := range ids {
+		events := byStream[id]
+		if len(events) == 0 {
+			return fmt.Errorf("checking main's GPS research on %s: main's log has no events for landed stream %s", subjectID, id)
+		}
+		onMain, err := gpsOutcomeOf(streamGroup{streamID: id, streamType: events[0].StreamType, events: events})
+		if err != nil {
+			return err
+		}
+		if onMain.deleted || (onMain.subjectSet && onMain.subjectID != subjectID) {
+			continue
+		}
+		return fmt.Errorf(
+			"%w: the branch re-pointed %s %s away from %s and deletes %s, but main re-pointed it back after the "+
+				"re-point landed; merging would delete that research from main with no record",
+			ErrMergeDanglingReference, events[0].StreamType, id, subjectID, subjectID)
 	}
 	return nil
 }
