@@ -1446,8 +1446,10 @@ their **payload**; an event written before #839 has no such field and decodes to
 mainline, so old logs replay unchanged (ES-007). The **envelope stays on the mainline** for a branch
 snapshot too. The registry is not an overlay entity — a snapshot id is unique and has no shadow row
 — and a branch-tagged envelope would put a lifecycle marker into the branch's own event set, which
-merge replay, conflict detection and the branch compare read. That is the same shape as the branch
-lifecycle events: mainline records naming a branch in their payload. `DeleteSnapshot` deletes only a
+merge replay, conflict detection and the branch compare read. This is deliberately unlike the
+branch lifecycle events (`BranchCreated`, `BranchDeleted`, `BranchMerged`), which are appended on the
+branch's own envelope; a snapshot marker is kept off it so that merge replay, the conflict classifiers
+and `ReadBranch(branch)` never carry it. `DeleteSnapshot` deletes only a
 snapshot of the handler's branch; one from another scope is "not found", as the scoped list and get
 say.
 

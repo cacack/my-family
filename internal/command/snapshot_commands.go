@@ -59,8 +59,10 @@ func (h *Handler) CreateSnapshot(ctx context.Context, name, description string) 
 	// entity — a snapshot id is unique and has no shadow row — and a
 	// branch-tagged envelope would put a lifecycle marker into the branch's own
 	// event set, which merge replay, conflict detection and branch compare read.
-	// This mirrors the branch lifecycle events, which are mainline-enveloped
-	// records naming a branch in their payload.
+	// This is deliberately unlike the branch lifecycle events, which are
+	// appended on the branch's own envelope: a snapshot marker is kept off it so
+	// that merge replay, the conflict classifiers and ReadBranch(branch) never
+	// carry it.
 	if err := h.eventStore.Append(ctx, snapshot.ID, snapshotStreamType, []domain.Event{event}, -1, repository.MainScope); err != nil {
 		return nil, fmt.Errorf("appending snapshot created event: %w", err)
 	}
