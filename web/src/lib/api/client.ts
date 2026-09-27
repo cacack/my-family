@@ -400,6 +400,10 @@ export interface FamilyCreate {
 export interface FamilyUpdate {
 	partner1_id?: string;
 	partner2_id?: string;
+	/** Remove partner 1. Cannot be combined with `partner1_id`. */
+	clear_partner1?: boolean;
+	/** Remove partner 2. Cannot be combined with `partner2_id`. */
+	clear_partner2?: boolean;
 	relationship_type?: 'marriage' | 'partnership' | 'unknown';
 	marriage_date?: string;
 	marriage_place?: string;

@@ -1,7 +1,19 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type FamilyDetail, type RollbackResponse, formatGenDate, formatPersonName } from '$lib/api/client';
+	import { tick } from 'svelte';
+	import {
+		api,
+		type FamilyChild,
+		type FamilyDetail,
+		type PersonSummary,
+		type RollbackResponse,
+		formatGenDate,
+		formatPersonName
+	} from '$lib/api/client';
+	import AddChildDialog from '$lib/components/AddChildDialog.svelte';
+	import PartnerPickers, { partnerChanges } from '$lib/components/PartnerPickers.svelte';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import RestorePointBrowser from '$lib/components/RestorePointBrowser.svelte';
@@ -18,6 +30,7 @@
 	let error: string | null = $state(null);
 	let editing = $state(false);
 	let saving = $state(false);
+	let saveError: string | null = $state(null);
 	let historyExpanded = $state(false);
 	let historyTab: 'history' | 'restore' = $state('history');
 	let historyCount: number | null = $state(null);
@@ -28,6 +41,43 @@
 	// Rollback state
 	let rollbackDialog = $state({ open: false, targetVersion: 0, targetSummary: '' });
 	let rollbackSuccess: { show: boolean; message: string; changes?: Record<string, unknown> } = $state({ show: false, message: '' });
+
+	// Children: the Add child dialog and the Remove child confirmation.
+	let addChildOpen = $state(false);
+	let removeTarget: FamilyChild | null = $state(null);
+	let removing = $state(false);
+	let removeError: string | null = $state(null);
+	let childrenHeading: HTMLHeadingElement | undefined = $state();
+
+	// Polite live region for the outcome of child and partner changes.
+	let announcement = $state('');
+	function announce(message: string) {
+		announcement = '';
+		setTimeout(() => {
+			announcement = message;
+		}, 50);
+	}
+
+	// The partner pickers of the edit form.
+	let partner1: PersonSummary | null = $state(null);
+	let partner2: PersonSummary | null = $state(null);
+
+	/** The family's partners and children: none of them can be added as a child. */
+	function linkedIds(current: FamilyDetail | null): string[] {
+		if (!current) return [];
+		return [
+			...(current.partner1_id ? [current.partner1_id] : []),
+			...(current.partner2_id ? [current.partner2_id] : []),
+			...childIdsOf(current)
+		];
+	}
+
+	function childIdsOf(current: FamilyDetail | null): string[] {
+		return (current?.children ?? []).map((child) => child.person_id);
+	}
+
+	const linkedPersonIds = $derived(linkedIds(family));
+	const childIds = $derived(childIdsOf(family));
 
 	// Form state
 	let formData = $state({
@@ -51,6 +101,16 @@
 		if (family) {
 			await loadHistoryCount(id);
 		}
+	}
+
+	/**
+	 * Re-read the family after a change made on this page, without the loading
+	 * state: the page stays mounted, so focus and open dialogs are not lost.
+	 */
+	async function refreshFamily(id: string) {
+		family = await api.getFamily(id);
+		resetForm();
+		await loadHistoryCount(id);
 	}
 
 	// Guards loadHistoryCount against a slower, older request overwriting a newer one.
@@ -102,8 +162,21 @@
 		rollbackSuccess = { show: false, message: '' };
 	}
 
+	/** A partner as the picker shows it; a partner with no summary still has a name. */
+	function partnerSummary(
+		id: string | undefined,
+		summary: PersonSummary | undefined,
+		name: string | undefined
+	): PersonSummary | null {
+		if (!id) return null;
+		if (summary) return summary;
+		return { id, given_name: name ?? '', surname: '' };
+	}
+
 	function resetForm() {
 		if (family) {
+			partner1 = partnerSummary(family.partner1_id, family.partner1, family.partner1_name);
+			partner2 = partnerSummary(family.partner2_id, family.partner2, family.partner2_name);
 			formData = {
 				relationship_type: family.relationship_type || '',
 				marriage_date: family.marriage_date?.raw || '',
@@ -114,6 +187,7 @@
 
 	function startEdit() {
 		resetForm();
+		saveError = null;
 		editing = true;
 	}
 
@@ -125,6 +199,7 @@
 	async function saveFamily() {
 		if (!family) return;
 		saving = true;
+		saveError = null;
 		try {
 			await api.updateFamily(family.id, {
 				relationship_type: (formData.relationship_type || undefined) as
@@ -134,12 +209,14 @@
 					| undefined,
 				marriage_date: formData.marriage_date || undefined,
 				marriage_place: formData.marriage_place || undefined,
+				...partnerChanges(family, partner1, partner2),
 				version: family.version
 			});
-			await loadFamily(family.id);
+			await refreshFamily(family.id);
 			editing = false;
+			announce('Family saved');
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to save';
+			saveError = (e as { message?: string }).message || 'Failed to save';
 		} finally {
 			saving = false;
 		}
@@ -154,6 +231,48 @@
 			goto('/families');
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to delete';
+		}
+	}
+
+	function childName(child: FamilyChild): string {
+		return child.person ? formatPersonName(child.person) : 'Unknown';
+	}
+
+	async function handleChildAdded(_child: FamilyChild, person: PersonSummary) {
+		if (!family) return;
+		try {
+			await refreshFamily(family.id);
+		} catch (e) {
+			error = (e as { message?: string }).message || 'Failed to load family';
+			return;
+		}
+		announce(`${formatPersonName(person)} added as a child`);
+	}
+
+	function openRemoveChild(child: FamilyChild) {
+		removeError = null;
+		removeTarget = child;
+	}
+
+	async function confirmRemoveChild(e: Event) {
+		// Keep the dialog open until the request settles, so a failure shows in it.
+		e.preventDefault();
+		if (!family || !removeTarget) return;
+		const target = removeTarget;
+		removing = true;
+		removeError = null;
+		try {
+			await api.removeChildFromFamily(family.id, target.person_id);
+			removeTarget = null;
+			await refreshFamily(family.id);
+			announce(`${childName(target)} removed from this family`);
+			// The row and its button are gone; land focus on the section instead.
+			await tick();
+			childrenHeading?.focus();
+		} catch (err) {
+			removeError = (err as { message?: string }).message || 'Failed to remove the child';
+		} finally {
+			removing = false;
 		}
 	}
 
@@ -197,6 +316,10 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+<div class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="announcer">
+	{announcement}
+</div>
+
 <div class="family-page">
 	<header class="page-header">
 		<a href="/families" class="back-link">&larr; Families</a>
@@ -217,6 +340,12 @@
 		{#if editing}
 			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveFamily(); }}>
 				<h2 class="edit-title">{getPartnerDisplay()}</h2>
+
+				<PartnerPickers bind:partner1 bind:partner2 excludeIds={childIds} disabled={saving} />
+
+				{#if saveError}
+					<div class="dialog-error" role="alert">{saveError}</div>
+				{/if}
 
 				<div class="form-row">
 					<label>
@@ -297,28 +426,38 @@
 					</div>
 				{/if}
 
-				{#if family.children && family.children.length > 0}
-					<div class="info-section">
-						<h2>Children ({family.children.length})</h2>
+				<div class="info-section">
+					<div class="section-header">
+						<h2 bind:this={childrenHeading} tabindex="-1">
+							Children{#if family.children && family.children.length > 0}&nbsp;({family.children.length}){/if}
+						</h2>
+						<Button variant="outline" size="sm" onclick={() => (addChildOpen = true)}>Add child</Button>
+					</div>
+					{#if family.children && family.children.length > 0}
 						<ul class="children-list">
-							{#each family.children as child}
+							{#each family.children as child (child.person_id)}
 								<li>
 									<a href="/persons/{child.person?.id || child.person_id}">
-										{child.person ? formatPersonName(child.person) : 'Unknown'}
+										{childName(child)}
 									</a>
 									{#if child.relationship_type && child.relationship_type !== 'biological'}
 										<span class="child-type">({child.relationship_type})</span>
 									{/if}
+									<button
+										type="button"
+										class="remove-child"
+										aria-label="Remove {childName(child)} from this family"
+										onclick={() => openRemoveChild(child)}
+									>
+										Remove
+									</button>
 								</li>
 							{/each}
 						</ul>
-					</div>
-				{:else}
-					<div class="info-section">
-						<h2>Children</h2>
+					{:else}
 						<p class="empty-message">No children recorded</p>
-					</div>
-				{/if}
+					{/if}
+				</div>
 
 				<!-- Guard here (in addition to ExternalLinks' own empty check) so the
 				     "External links" heading is suppressed when there are none. -->
@@ -396,6 +535,43 @@
 						onCancel={handleRollbackCancel}
 					/>
 				{/if}
+
+				<AddChildDialog
+					bind:open={addChildOpen}
+					familyId={family.id}
+					familyName={getPartnerDisplay()}
+					excludeIds={linkedPersonIds}
+					onAdded={handleChildAdded}
+				/>
+
+				<AlertDialog.Root
+					open={removeTarget !== null}
+					onOpenChange={(isOpen) => {
+						if (!isOpen && !removing) removeTarget = null;
+					}}
+				>
+					<AlertDialog.Content>
+						<AlertDialog.Header>
+							<AlertDialog.Title>Remove this child from the family?</AlertDialog.Title>
+							<AlertDialog.Description>
+								{removeTarget ? childName(removeTarget) : ''} will no longer be recorded as a child of
+								{getPartnerDisplay()}. The person is kept; only the link is removed, and it stays in
+								the family's history.
+							</AlertDialog.Description>
+						</AlertDialog.Header>
+
+						{#if removeError}
+							<div class="dialog-error" role="alert">{removeError}</div>
+						{/if}
+
+						<AlertDialog.Footer>
+							<AlertDialog.Cancel disabled={removing}>Cancel</AlertDialog.Cancel>
+							<AlertDialog.Action variant="destructive" disabled={removing} onclick={confirmRemoveChild}>
+								{removing ? 'Removing...' : 'Remove child'}
+							</AlertDialog.Action>
+						</AlertDialog.Footer>
+					</AlertDialog.Content>
+				</AlertDialog.Root>
 			</div>
 		{/if}
 	{/if}
@@ -554,6 +730,69 @@
 		margin: 0;
 		color: #1e293b;
 		font-size: 0.875rem;
+	}
+
+	.section-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.info-section .section-header h2 {
+		margin: 0;
+	}
+
+	.section-header h2:focus {
+		outline: none;
+	}
+
+	.section-header h2:focus-visible {
+		outline: 2px solid #3b82f6;
+		outline-offset: 2px;
+	}
+
+	.remove-child {
+		float: right;
+		padding: 0.125rem 0.5rem;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		background: none;
+		color: #b91c1c;
+		font-size: 0.8125rem;
+		cursor: pointer;
+	}
+
+	.remove-child:hover {
+		background: #fef2f2;
+		border-color: #fecaca;
+	}
+
+	.remove-child:focus-visible {
+		outline: 2px solid #3b82f6;
+		outline-offset: 1px;
+	}
+
+	.dialog-error {
+		padding: 0.625rem 0.75rem;
+		color: #dc2626;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 6px;
+		font-size: 0.875rem;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	.children-list {
