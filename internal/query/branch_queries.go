@@ -29,6 +29,8 @@ var researchMetadataEventTypes = map[string]bool{
 	"BranchMerged":    true,
 	"SnapshotCreated": true,
 	"SnapshotDeleted": true,
+	// A resumed merge's decision record (#685), on the branch's own stream.
+	"BranchMergeResumed": true,
 }
 
 // BranchService provides query operations for research branches.

@@ -34,11 +34,12 @@ func newBranchFixture() *branchFixture {
 // so newBranchFixture is just this with no wrappers — one authoritative wiring
 // rather than a near-copy per race harness.
 //
-// branchFixture.eventStore stays the UNDERLYING store either way, so a test can
+// branchFixture.eventStore (and readStore) stays the UNDERLYING store either way, so a test can
 // seed and assert through it without going back through its own wrapper.
 type branchFixtureDeps struct {
 	wrapEvents    func(repository.EventStore) repository.EventStore
 	wrapPositions func(repository.SnapshotStore) repository.SnapshotStore
+	wrapReads     func(repository.ReadModelStore) repository.ReadModelStore
 }
 
 func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
@@ -50,6 +51,10 @@ func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
 	if deps.wrapEvents != nil {
 		events = deps.wrapEvents(eventStore)
 	}
+	var reads repository.ReadModelStore = readStore
+	if deps.wrapReads != nil {
+		reads = deps.wrapReads(readStore)
+	}
 	var positions repository.SnapshotStore = memory.NewSnapshotStore(eventStore)
 	if deps.wrapPositions != nil {
 		positions = deps.wrapPositions(positions)
@@ -59,7 +64,7 @@ func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
 		eventStore:  eventStore,
 		readStore:   readStore,
 		branchStore: branchStore,
-		handler:     command.NewHandlerWithBranches(events, readStore, branchStore, positions),
+		handler:     command.NewHandlerWithBranches(events, reads, branchStore, positions),
 	}
 }
 

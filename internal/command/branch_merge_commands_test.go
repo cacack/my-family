@@ -527,7 +527,7 @@ func TestMergeBranch_ConcurrentClaimLoses(t *testing.T) {
 	// The rival merge claims the branch stream first, straight through the inner
 	// store, so our claim's expected version is stale by the time it lands.
 	racing.rival = func() {
-		rivalEvent := domain.NewBranchMerged(branch.ID, branch.BasePosition, branch.BasePosition, "rival")
+		rivalEvent := domain.NewBranchMerged(branch.ID, branch.BasePosition, branch.BasePosition, "rival", nil)
 		if err := inner.Append(ctx, branch.ID, "branch", []domain.Event{rivalEvent}, 1, repository.AppendScope{
 			BranchID:     domain.BranchID(branch.ID),
 			BasePosition: branch.BasePosition,
@@ -997,7 +997,7 @@ func TestMergeBranch_InterruptedClaimIsNotReplayedTwice(t *testing.T) {
 	ctx := context.Background()
 
 	// Reproduce the interrupted claim: the event lands, the projection doesn't.
-	orphaned := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, s.branch.BasePosition, "interrupted")
+	orphaned := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, s.branch.BasePosition, "interrupted", nil)
 	if err := s.f.eventStore.Append(ctx, s.branch.ID, "branch", []domain.Event{orphaned}, 1,
 		repository.AppendScope{BranchID: domain.BranchID(s.branch.ID), BasePosition: s.branch.BasePosition}); err != nil {
 		t.Fatalf("seeding the interrupted claim failed: %v", err)
@@ -1060,7 +1060,7 @@ func TestMergeBranch_InterruptedClaimIsNotReplayedTwice(t *testing.T) {
 // It is NOT the only collaborator call MergeBranch makes in that span, and a
 // test extending this harness must not assume so: validateNoDanglingReferences
 // runs first and reads readStore.GetPerson for every ChildLinkedToFamily event
-// naming a person outside the replay set. The seedMerge fixture has no family
+// naming a person the replay does not create. The seedMerge fixture has no family
 // events, so for THESE tests GetMaxPosition is the only such call; a
 // family-link scenario would need to account for that read as well.
 //
@@ -1395,7 +1395,7 @@ func TestMergeBranch_StaleCheckIgnoresUntouchedStream(t *testing.T) {
 // fails on the first thing it tries and main is never modified at all. The error
 // has to say so — "claimed but main untouched" and "claimed and half-applied"
 // need different responses from whoever reads the 500, and only the message can
-// tell them apart (#685 tracks actually resuming either).
+// tell them apart (either is then finished by ResumeMerge, #685).
 func TestMergeBranch_StalePlanDuringReplayIsPartiallyApplied(t *testing.T) {
 	var racing *racingEventStore
 	f := newBranchFixtureWith(branchFixtureDeps{

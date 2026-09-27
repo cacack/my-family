@@ -204,7 +204,7 @@ Notes on partial rows:
 
 - **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`). Branch ⚠️: the read model, projections and BR-006 allowlist are branch-scoped ([#757](https://github.com/cacack/my-family/issues/757)) — a branch delete of their owner tombstones them, the cemetery index and group-sheet negations read them through the overlay, and a branch merge can carry their events — but with no command of their own there is no API path that writes one on a branch.
 - **Snapshot**: event-sourced since [#624](https://github.com/cacack/my-family/issues/624) — `Handler.CreateSnapshot` / `DeleteSnapshot` emit `SnapshotCreated` / `SnapshotDeleted` and the projection writes the registry, so snapshots created from that point on rebuild from the log. Rows predating #624 have no event and would not survive a rebuild (see ADR-005 "Still open"); rebuild tooling ([#680](https://github.com/cacack/my-family/issues/680)) must backfill them. GEDCOM is N/A (a research marker is not a genealogy record). The Branch column is ❌ rather than N/A (or ⛔, where it sat until #624 made snapshots event-sourced): a snapshot *taken on a branch* is meaningful (ADR-005) but the registry has no `branch_id` column yet, so both commands refuse on a branch-scoped handler.
-- **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
+- **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. `BranchMergeResumed` ([#685](https://github.com/cacack/my-family/issues/685)) is emitted by `Handler.ResumeMerge` when a resume records its decisions; it is decoded (ES-007) and handled as a projection no-op (PR-004). The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
 ### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts / #758 evidence)
 
@@ -322,9 +322,11 @@ types is [#676](https://github.com/cacack/my-family/issues/676).
 Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
 delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI
 ([#95](https://github.com/cacack/my-family/issues/95)) drives it from `/branches/{id}` — resolve
-each conflict, or leave a whole entity behind as a `main` resolution. What is still outstanding is
-partial merge ([#684](https://github.com/cacack/my-family/issues/684)) and resumable merge
-([#685](https://github.com/cacack/my-family/issues/685)): excluding an entity is not the same as
+each conflict, or leave a whole entity behind as a `main` resolution. A merge interrupted mid-replay
+is finished with `POST /branches/{id}/merge/resume` ([#685](https://github.com/cacack/my-family/issues/685);
+API only, not yet surfaced in the UI; the merge dialog tells the user an administrator can finish
+it). The resume covers every stream a branch can write — persons, families and associations. What is still outstanding is partial merge
+([#684](https://github.com/cacack/my-family/issues/684)): excluding an entity is not the same as
 promoting a subset of one entity's changes.
 
 ---

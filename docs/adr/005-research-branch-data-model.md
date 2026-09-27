@@ -218,8 +218,11 @@ finalized in implementation:
   (ES-002). Projections drop the branch's overlay rows.
 - **`BranchMerged`** — `{ BranchID, BasePosition, MergedAtPosition, OccurredAt }`. Records that a
   branch's changes were promoted to `main` (see Merge, below).
+- **`BranchMergeResumed`** — `{ BranchID, MergedAtPosition, ReplayStreamVersions, Resolutions,
+  OccurredAt }`. Added by #685: records the decisions a resumed merge made, and the replay plan
+  they produce (see "Resuming an interrupted merge" in the merge implementation note).
 
-All three satisfy the existing `Event` interface (ES-005) and must be added to `DecodeEvent()`
+All of them satisfy the existing `Event` interface (ES-005) and must be added to `DecodeEvent()`
 (ES-007) and to projection handling (PR-004) when implemented.
 
 **Entity-level deletes on a branch are not `BranchDeleted`.** Deleting a *person* (or any entity)
@@ -514,7 +517,9 @@ Merge shipped as `Handler.MergeBranch` (`internal/command/branch_merge_commands.
 built by `BranchService.PlanMerge` (`internal/query/merge_conflicts.go`), exposed as
 `POST /branches/{id}/merge`. The invariant it upholds is BR-004, whose canonical text and
 verification live in [ARCHITECTURAL-INVARIANTS.md](../ARCHITECTURAL-INVARIANTS.md). Four things
-departed from §Merge as written and are recorded here.
+departed from §Merge as written and are recorded here. An interrupted replay is finished by
+`Handler.ResumeMerge` / `POST /branches/{id}/merge/resume` (#685, delivered — see "Resuming an
+interrupted merge" below).
 
 **The atomic guard is the branch's own version constraint, not a status CAS.** §Merge asks for an
 atomic compare-and-set on `active → merged`. The implementation gets that for free from a
@@ -529,14 +534,14 @@ call, so a projection rebuild reconstructs the merge record — the same rule br
 delete follow. A sequential retry against an already-`merged` branch is refused earlier still, by
 the status guard, as `409 branch_not_active`.
 
-**The claim and the replay are NOT one transaction — this is a real gap.** §Merge asks for the
+**The claim and the replay are NOT one transaction — bounded, and since #685 recoverable.** §Merge asks for the
 CAS, the replay, the reprojection, and the `BranchMerged` emission to run *in a single
 transaction*. They do not, because the codebase has no cross-store transaction facility:
 ADR-003's synchronous projections commit per-append, and the event store and read-model store are
 separate interfaces with no shared transaction handle. The failure mode is therefore real and
 observable: if a replay append or projection fails partway, the branch is already `merged` while
-`main` carries only some of the branch's entities. The merge does not retry or roll back. Two
-things bound the damage, neither of which closes it:
+`main` carries only some of the branch's entities. The merge itself does not retry or roll back;
+the state is finished by resuming (below). Three things bound the damage:
 
 - Replay issues **one `Append` per stream**, not per event, and the SQL backends wrap an `Append`
   in a transaction — so the failure granularity is a whole entity, never a half-applied one.
@@ -547,10 +552,143 @@ things bound the damage, neither of which closes it:
   `500 merge_partially_applied`) rather than a generic failure, because it is the one merge outcome
   a client must not retry: the branch is terminal, so a retry returns `409 branch_not_active`,
   which is not evidence the merge completed. `GET /branches/{id}/compare` still works on a merged
-  branch and is the way to see what actually landed.
+  branch and is the way to see what actually landed; `POST /branches/{id}/merge/resume` is the way
+  to finish it.
 
-Recovering from that state is manual today. **Resumable merge is tracked as follow-up work
-(#685)**, not treated as done.
+**Resuming an interrupted merge (#685, delivered).** `Handler.ResumeMerge`, exposed as
+`POST /branches/{id}/merge/resume`, completes the replay append-only (ES-002): it appends only the
+branch events not yet on `main` — plus, when the caller had to decide something, one decision record
+on the branch's own stream — and never rewrites or removes anything. It needs no transaction, because
+both halves of what it must know are durable in the log:
+
+- **What landed is derived from `main`.** The replay re-appends each branch event *decoded*, so the
+  domain event's own payload id (`BaseEvent.ID`) travels with it onto `main`. Resume reads `main`'s
+  events on the replay set's streams after the claim's `MergedAtPosition` — one set-based, paged
+  `ReadStreamsForBranch` scan, not a read per stream — and a stream whose branch events' ids are
+  all present is already replayed. One `Append` per stream is atomic on every backend, so a stream
+  is wholly there or not at all; a half-present stream cannot come from an interrupted merge and
+  is refused rather than guessed at.
+- **What remains is recorded on the claim, and on any resume that decided something.** `BranchMerged` now carries `ReplayStreamVersions`:
+  every stream the merge will replay, mapped to its #698 pin (`main`'s version when the verdict was
+  computed). A stream the branch touched but absent from the map was resolved to `main`. So the
+  per-stream resolutions and the staleness pins survive the request that chose them, in the log.
+  The field is deliberately not `omitempty`: an empty plan is stored as `{}` and decodes non-nil,
+  while a claim written before #685 has no key and decodes nil — "replay nothing" and "plan not
+  recorded" are different facts. A resume that decides streams appends `BranchMergeResumed` to the
+  branch's own stream **before replaying anything**, carrying the whole updated plan (a stream
+  resolved to `main` dropped, a stream resolved to `branch` re-pinned to the version the caller
+  reviewed) plus the resolutions themselves for audit; the latest such record replaces the claim's
+  plan. It is a lifecycle marker like `BranchMerged` — excluded from replay and diffs, handled in
+  `DecodeEvent` (ES-007) and, as a no-op, in the projector (PR-004) — and its append asserts the
+  branch stream's version, so two resumes cannot both record decisions
+  (`409 merge_resume_concurrent`).
+
+A remaining stream is replayed automatically only when `main` still sits at its pinned version —
+the same guarantee the original attempt ran under, re-asserted at append time by the shared
+`replayStream`. Otherwise (a mainline write landed on it after the claim, which is exactly the
+residual staleness window below; `main` deleted the entity or merged it away since the claim; a
+pre-#685 claim with no plan; or a replay that would now leave `main` referencing a person it no
+longer has) resume refuses with
+`ErrMergeResumeNeedsResolution` (`409 merge_resume_needs_resolution`), **writing nothing**, and
+lists the streams. The caller reviews them with `compare` and resumes again with a resolution per
+listed stream: `branch` replays over `main` as it now stands (asserting *that* version, so a
+further write still trips the guard), `main` leaves the entity as `main` has it — the deliberate
+roll-forward. `branch` is a `400` for an entity `main` has removed since the claim — its stream
+ends in a delete, `main` merged the person into another (`PersonMerged` writes only to the
+survivor's stream, so the merged person's stream still sits at its pin), or an association lost a
+person to the delete cascade — for the reason `MergeBranch` offers only `main` on a main-side
+delete: replaying edits onto an absent row appends them after its removal and restores nothing. A
+resolution for any stream the claim or an earlier resume already decided is a
+`400` (unless `main` has since moved that stream again; see below): a second request must not
+quietly re-decide what the first one reviewed. That rule needs the
+decision itself in the log, not just its effect: a `main` decision's effect is the *absence* of
+replayed events, which a later resume cannot tell apart from "not yet replayed", so without
+`BranchMergeResumed` the next resume would find the stream stale again, ask again, and accept
+`branch`. Because the record lands before the replay, a resume interrupted after deciding leaves the
+decision in force and the next resume carries it out without asking.
+
+The third case exists because `main` can remove a person after the claim without touching any
+stream the plan pinned: a branch that links `main`'s person P into `main`'s family F leaves P
+unlinked on `main` until F replays, so `main` may delete P (or merge P away) in the interruption
+window. F is not stale — `main` never wrote to it — so the plan would replay it automatically,
+and the dangling-reference check (below) would refuse that replay on every attempt, with no
+resolution accepted for F because it was "already decided". Resume therefore runs the
+dangling-reference check over the streams the plan would replay *before* deciding which need the
+caller and lists any stream that fails it as pending. A person counts as present if `main`'s read
+model has them, or if a stream already on `main` or still to be replayed (not resolved to `main` by
+this very request) *creates* them and `main` has not removed them since. Merely replaying a
+person's stream does not count: when the branch both edited and linked P, P's stream of edits
+replays onto a person `main` merged away without bringing them back, so without this rule the
+resume would report success over a phantom child. Such a P is itself pending (removed on `main`),
+and so is F. A
+`main` resolution rolls the merge forward without it, recorded like any other decision; `branch`
+is refused as a dangling reference. The check then runs once more over the final decision, and
+also over the streams *already* on `main`: a `main` resolution may not exclude a person the branch
+created whom a landed stream references and `main` lacks (reachable only from a pre-#685 claim, where the branch created
+both the family and the child and only the family landed). Only this request's own resolutions are
+checked against landed streams; a person `main` itself removed later is `main`'s change, not the
+resume's to refuse. Every refusal — pending, dangling, concurrent — comes before the first write,
+including the read-model repair below, so a `409` has written nothing at all.
+
+A claim written before #685 has no plan, so its first resume must decide every stream not yet on
+`main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams
+the original request already declined. The log cannot distinguish those from unreplayed ones, so
+the operator should check `compare` before answering; once answered, the answer is final like any
+other.
+
+"Final" is exact for a `main` decision: the stream leaves the plan and no later resume offers it
+again. A `branch` decision instead re-pins the stream at the version `main` had when it was made,
+and the plan vouches for the replay only while `main` is still at that version. If `main` writes to
+the entity again (or removes a person its replay references) before the replay lands — the
+decision's replay was interrupted, or lost the staleness race — that write was never reviewed, so
+the #698 guard's reasoning applies afresh: the stream is pending again and a new request may decide
+it either way. Keeping the old `branch` decision would silently override the unreviewed write.
+
+Resume is idempotent: after completion it appends nothing and reports `replayed_event_count: 0`.
+Concurrent resumes cannot both append a stream, because `replayStream` now passes the version it
+read to `Append` unchanged — including `0` for a stream `main` has never seen, which asserts "no
+prior events" — instead of translating `0` to the `-1` sentinel that switches the optimistic check
+off. A resume that itself fails is reported as `500 merge_partially_applied` again, and resuming
+again is the remedy. A claim whose registry projection never landed (branch still reads `active`)
+is repaired by resume exactly as by `claimMerge`, then resumed — unless the branch was written to
+in that window (an event after the claim's `MergedAtPosition`), which the recorded plan never
+considered, so resume refuses rather than replay or drop it. An archived branch is refused
+(`409 merge_not_claimed`), as is a branch never claimed.
+
+**The read model is completed too.** If an earlier attempt's `Append` landed but its synchronous
+projection then failed, the stream counts as replayed — appending its events again to re-drive the
+projection would duplicate them — and `main`'s read model is behind the log for that entity. The
+repo has no read-model rebuild command yet (#680), so resume repairs it itself: for every
+already-replayed stream it compares `main`'s read-model version with `main`'s stream version. Every
+projection handler for the branch-aware event set a branch can carry (BR-006: person, family and —
+since #757 — association streams) writes the
+aggregate's version as its last step, so a row behind the log is re-projected from the first event
+past its version; re-running an event whose projection stopped midway is safe because its writes are
+upserts and deletes, and the counter it bumps is part of the final write that did not happen. A
+missing row is re-projected from the start unless the log explains its absence (the stream ends in a
+delete; `main` merged the person away with `PersonMerged`, which writes nothing to the merged
+person's stream; or an association's person is gone from `main`, whose delete cascade removes the
+row without writing to the association's stream). Repaired streams are reported in
+`reprojected_stream_ids`; a resume after that finds nothing behind.
+
+The repair takes no lock and appends nothing, so it can run alongside another resume's repair or a
+mainline write to the same entity. Most projections set the row's version outright, so re-running
+an *old* event after a newer one was projected would roll the row back — version and fields. The
+repair therefore never applies an event the row already reflects: it re-reads the row before each
+event and skips any at or below the row's version. That leaves only the instant between that read
+and the projection's own save, so before reporting a stream repaired it reads the row and `main`'s
+stream version once more and, if a racing write slipped into that instant and was rolled back,
+re-projects the missing tail from the log (a bounded number of times, then `500
+merge_partially_applied`: resume again). A row that disappears during the repair is not re-created;
+the next resume classifies it. The dangling-reference check also counts a person created by an
+already-replayed stream as present, since the creation is on `main` in the log, unless the log
+shows `main` removed them since. The fault-injection
+coverage is `internal/command/branch_merge_resume_test.go` and
+`internal/command/branch_merge_resume_refs_test.go` (memory: dangling references, racing repairs,
+associations) and `internal/integration/branch_merge_resume_test.go`, which drives an interrupted
+merge and its resume over HTTP against memory, SQLite and PostgreSQL — including a resume-time
+`main` decision that a later resume must neither re-ask nor reverse, a family whose child `main`
+deleted after the interruption, and a replay whose projection failed after its append committed.
 
 **The conflict verdict is pinned to the versions it was computed against (#698, delivered).**
 `PlanMerge` runs once, and a mainline write landing before the replay was never compared with the
@@ -587,7 +725,8 @@ definition exists to prevent. Three pieces close that:
   (`command.ErrMergePlanIncomplete`), never defaulted to `0` — a stream `main` has never seen is
   legitimately pinned at `0`, so treating absence as zero would silently wave through exactly the
   create-vs-create shape the guard exists for. `PlanMerge` satisfies this by construction; the
-  refusal is for the second plan constructor a stored, replayed plan (#685) would introduce. The
+  refusal guards any future plan constructor; #685's resume applies the same never-default rule to
+  the plan recorded on the claim, where an absent stream means "resolved to `main`". The
   create-vs-create class itself is *not* pinned: a colliding create on `main` lives on a different
   stream by definition, so it has no version in the replay set. That class is inert in v0.12 (its
   gate never opens without branch-scoped GEDCOM import, an explicit non-goal of epic #54), so the
@@ -604,9 +743,11 @@ definition exists to prevent. Three pieces close that:
 The guard is an **explicit version comparison, not delegated to `Append`'s optimistic
 concurrency**. All three backends — PostgreSQL (the primary, per ADR-002), SQLite and the
 in-memory test double — gate that check on `expectedVersion >= 0`, so the `-1` a
-branch-created stream is appended with turns it off entirely rather than asserting "no prior
-events" — leaning on `Append` would leave precisely the case where `main` *gains* a stream the
-branch also created completely unguarded. It is also deliberately **broader than a conflict**: any
+branch-created stream was appended with turned it off entirely rather than asserting "no prior
+events" — leaning on `Append` would have left precisely the case where `main` *gains* a stream the
+branch also created completely unguarded. (Since #685 the replay passes `0` rather than `-1`, so
+`Append` now does assert an empty stream; the explicit comparison stays, because `Append` only
+compares against the version the replay itself just read, never against the plan's pin.) It is also deliberately **broader than a conflict**: any
 mainline write to a replayed stream trips it, including one the classifier would have cleared. Rerunning
 full conflict detection per stream was considered and rejected (it doubles the scan cost and still
 leaves a window), so the guard fails safe on movement. A false positive costs one re-plan, after
@@ -615,7 +756,8 @@ which detection has run against the new `main` and the retry succeeds.
 **Residual window, and what it costs recoverability.** The pre-claim check is not a lock, so a
 write can still land between it and a given stream's append. The replay-time assertion catches it,
 but by then the branch is claimed, so it surfaces as the partially-applied state above
-(`500 merge_partially_applied`, message naming the stale plan) rather than as a clean refusal.
+(`500 merge_partially_applied`, message naming the stale plan) rather than as a clean refusal. A
+resume then reports that stream as needing a resolution rather than replaying it over the write.
 Shrinking that last window needs the cross-store transaction the codebase does not have; a
 merge-wide lock is not an option, as it contradicts the per-`(stream, branch)` design this ADR
 rests on.
@@ -627,7 +769,7 @@ including one the classifier would have cleared. For a single-stream branch the 
 in recoverability, accepted because the alternative is the silent override, and bounded rather than
 fixed: the replay's error states **explicitly whether `main` was modified at all**, so an operator
 can tell "claimed, nothing replayed, `main` untouched" from a genuine half-application without
-inferring it from counts. Actually resuming either remains #685.
+inferring it from counts. Either state is finished by resuming (#685, above).
 
 **Conflict detection, and why the create-vs-create scan is gated.** All three classes from
 §Conflict definition are detected, as a pure function (`classifyConflicts`) over the two event
@@ -655,8 +797,8 @@ partial-failure state looks like: if the replay then fails, the branch's work is
 branch overlay *and* from `main`'s read model, present only in the event log.
 
 That is survivable, and deliberately so. The log is the source of truth (ES-002), it is what
-`PlanMerge` reads, and it is therefore what any resumed merge (#685) will replay from — recovery
-never needed the overlay. Nor does the purge widen what a client can observe: a merged branch's
+`PlanMerge` reads, and it is therefore what a resumed merge (#685) replays from — recovery never
+needed the overlay. Nor does the purge widen what a client can observe: a merged branch's
 `?branch=` reads already 404 the instant `Status` flips, so the rows it deletes were unreachable
 from the moment the claim landed.
 
@@ -671,15 +813,21 @@ purge-on-`BranchDeleted` behavior to the other terminal status.
 
 **Per-entity resolutions do not compose with cross-entity references.** Resolutions are keyed by
 aggregate, but the branch's events reference each other *across* aggregates: `ChildLinkedToFamily`
-lives on the family's stream and names a person on another. Excluding a person — which a
+lives on the family's stream and names a person on another, as do the partners a `FamilyCreated`
+names or a `FamilyUpdated` sets, and so (since #757 made associations branch-writable) does
+`AssociationCreated`, which names two. Excluding a person — which a
 `main`-deleted conflict *forces*, since `main` is then the only offered resolution — therefore does
 not exclude the family event that links them, and the projection writes that row unconditionally
 (the branch-scoping work dropped the FK cascade that would once have caught it). Left alone, this
-returns a successful merge while `main` gains a family child pointing at a person it does not have.
+returns a successful merge while `main` gains a family child (or partner) pointing at a person it
+does not have.
 The merge refuses instead (`ErrMergeDanglingReference`, `409 merge_dangling_reference`), checked
-before the claim: a replayed link must name a person `main` already has or that the replay itself
-will create. Dropping the link silently was rejected as the same class of defect per-conflict
-review exists to prevent. Unlink events are not checked — removing a person `main` lacks is a no-op.
+before the claim: a replayed link or association must name a person `main` already has or that the
+replay itself will create — a stream that only edits the person does not count, since `main` can
+merge a person away without writing to their stream, which leaves the branch's edits conflict-free
+but the person gone. Dropping the link silently was rejected as the same class of defect per-conflict
+review exists to prevent. Unlink events, and a `FamilyUpdated` that clears a partner, are not checked — removing a person
+`main` lacks is a no-op.
 
 #758 put sources and citations on the allowlist, which opened two more shapes of the same class,
 now refused by the same check (`validateNoDanglingEvidence`). A citation lives on its own stream
@@ -699,8 +847,9 @@ retry trusting only the registry would observe the already-incremented version, 
 `BranchMerged`, and replay the whole branch onto `main` again. `claimMerge` therefore consults the
 log — the only place a half-completed claim is visible — before appending: an existing
 `BranchMerged` means the branch is claimed, so the command re-projects it to repair the registry
-and then refuses. Refusing rather than resuming is deliberate; from that state the replay's
-progress is unknown, and `GET /branches/{id}/compare` is how to see what landed.
+and then refuses. Refusing rather than silently continuing is deliberate: a second *merge* would
+re-plan against a `main` the first attempt may already have written to. Finishing the first
+attempt is `ResumeMerge`'s job, which works from the plan its claim recorded.
 
 **Scan truncation is reported per side.** `branch_too_large` and `main_too_far_ahead` are distinct
 refusals because they have distinct causes and remedies. A branch bigger than the cap is a

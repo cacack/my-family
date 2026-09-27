@@ -593,8 +593,8 @@ func (h *Handler) linkChildToFamily(ctx context.Context, familyID, childID uuid.
 		return fmt.Errorf("appending child linked event: %w", err)
 	}
 
-	// Project to read model
-	return h.projector.Apply(ctx, event)
+	// Project to read model at the version the append produced.
+	return h.projector.Project(ctx, event, family.Version+1, domain.MainBranchID)
 }
 
 // importEvent creates a life event from GEDCOM data.

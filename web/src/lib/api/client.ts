@@ -61,6 +61,9 @@ export type BranchMergeRequest = components['schemas']['BranchMergeRequest'];
 export type BranchMergeResult = components['schemas']['BranchMergeResult'];
 export type MergeResolutionEntry = components['schemas']['MergeResolutionEntry'];
 export type BranchMergeConflictError = components['schemas']['BranchMergeConflictError'];
+export type BranchMergeResumeRequest = components['schemas']['BranchMergeResumeRequest'];
+export type BranchMergeResumeResult = components['schemas']['BranchMergeResumeResult'];
+export type BranchMergeResumeError = components['schemas']['BranchMergeResumeError'];
 /**
  * The side that wins for one entity - `'branch' | 'main'`. Derived from the
  * generated entry rather than hand-written so it cannot drift from the spec's
@@ -2310,6 +2313,27 @@ class ApiClient {
 		return this.request<BranchMergeResult>(
 			'POST',
 			`/branches/${encodeURIComponent(id)}/merge`,
+			req
+		);
+	}
+
+	/**
+	 * Finish a merge that answered `500 merge_partially_applied` (#685). Only
+	 * the branch events not already on the mainline are replayed, and resuming
+	 * a completed merge is a no-op (`replayed_event_count: 0`), so unlike
+	 * `mergeBranch()` a retry after a 500 is safe.
+	 *
+	 * A `409 merge_resume_needs_resolution` carries `pending_stream_ids`: the
+	 * entities the mainline changed since the merge was claimed. Resolve each
+	 * via `req.resolutions` after showing the user `compareBranch()`.
+	 */
+	async resumeBranchMerge(
+		id: string,
+		req: BranchMergeResumeRequest = {}
+	): Promise<BranchMergeResumeResult> {
+		return this.request<BranchMergeResumeResult>(
+			'POST',
+			`/branches/${encodeURIComponent(id)}/merge/resume`,
 			req
 		);
 	}

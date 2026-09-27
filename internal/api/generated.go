@@ -115,6 +115,33 @@ func (e BranchMergeConflictErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for BranchMergeResumeErrorCode.
+const (
+	ResumeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
+	ResumeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
+	ResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
+	ResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
+	ResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
+)
+
+// Valid indicates whether the value is a known member of the BranchMergeResumeErrorCode enum.
+func (e BranchMergeResumeErrorCode) Valid() bool {
+	switch e {
+	case ResumeBranchTooLarge:
+		return true
+	case ResumeConcurrent:
+		return true
+	case ResumeDanglingReference:
+		return true
+	case ResumeMergeNotClaimed:
+		return true
+	case ResumeNeedsResolution:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChangeEntryAction.
 const (
 	ChangeEntryActionCreated ChangeEntryAction = "created"
@@ -2098,6 +2125,59 @@ type BranchMergeResult struct {
 	// SkippedStreamIds The entities resolved to `main`, whose branch changes were
 	// deliberately not replayed. `[]`, never `null`, when nothing was
 	// skipped.
+	SkippedStreamIds []openapi_types.UUID `json:"skipped_stream_ids"`
+}
+
+// BranchMergeResumeError A refused resume. Shares `code`/`message` with the standard `Error`
+// shape and adds the pending entity list.
+type BranchMergeResumeError struct {
+	// Code Which refusal this is - see the operation's 409 description
+	Code BranchMergeResumeErrorCode `json:"code"`
+
+	// Message Human-readable explanation
+	Message string `json:"message"`
+
+	// PendingStreamIds Present only for `merge_resume_needs_resolution`: the entities that
+	// need a resolution before the resume can proceed.
+	PendingStreamIds *[]openapi_types.UUID `json:"pending_stream_ids,omitempty"`
+}
+
+// BranchMergeResumeErrorCode Which refusal this is - see the operation's 409 description
+type BranchMergeResumeErrorCode string
+
+// BranchMergeResumeRequest Decisions for the entities a resume reported as pending.
+type BranchMergeResumeRequest struct {
+	// Resolutions One entry per entity listed in a previous refusal's
+	// `pending_stream_ids`. Any other entity is a `400`: its fate was
+	// fixed when the merge was claimed. A `stream_id` may appear at most
+	// once.
+	Resolutions *[]MergeResolutionEntry `json:"resolutions,omitempty"`
+}
+
+// BranchMergeResumeResult What the resume did. The merge is complete when this is returned.
+type BranchMergeResumeResult struct {
+	// AlreadyReplayedStreamIds Entities whose branch changes were already on the mainline, and so
+	// were left alone. `[]`, never `null`.
+	AlreadyReplayedStreamIds []openapi_types.UUID `json:"already_replayed_stream_ids"`
+	Branch                   Branch               `json:"branch"`
+
+	// MergedAtPosition The log head position recorded by the original merge's claim.
+	MergedAtPosition int64 `json:"merged_at_position"`
+
+	// ReplayedEventCount How many branch events THIS call re-appended to the mainline. `0`
+	// when the merge was already complete.
+	ReplayedEventCount int `json:"replayed_event_count"`
+
+	// ReprojectedStreamIds Entities whose branch changes were already in the mainline's event
+	// log but whose mainline read model was behind it (an earlier
+	// attempt's projection failed after its append). This call
+	// re-projected them from the log; no events were appended for them.
+	// `[]`, never `null`.
+	ReprojectedStreamIds []openapi_types.UUID `json:"reprojected_stream_ids"`
+
+	// SkippedStreamIds Entities resolved to `main` (by the merge, by an earlier resume, or
+	// by this one), whose branch changes are deliberately not replayed.
+	// `[]`, never `null`.
 	SkippedStreamIds []openapi_types.UUID `json:"skipped_stream_ids"`
 }
 
@@ -5371,6 +5451,9 @@ type CreateBranchJSONRequestBody = BranchCreate
 // MergeBranchJSONRequestBody defines body for MergeBranch for application/json ContentType.
 type MergeBranchJSONRequestBody = BranchMergeRequest
 
+// ResumeBranchMergeJSONRequestBody defines body for ResumeBranchMerge for application/json ContentType.
+type ResumeBranchMergeJSONRequestBody = BranchMergeResumeRequest
+
 // PreviewCitationTemplateJSONRequestBody defines body for PreviewCitationTemplate for application/json ContentType.
 type PreviewCitationTemplateJSONRequestBody PreviewCitationTemplateJSONBody
 
@@ -5532,6 +5615,9 @@ type ServerInterface interface {
 	// Merge a branch into the mainline
 	// (POST /branches/{id}/merge)
 	MergeBranch(ctx echo.Context, id BranchId) error
+	// Finish a merge whose replay onto the mainline was interrupted
+	// (POST /branches/{id}/merge/resume)
+	ResumeBranchMerge(ctx echo.Context, id BranchId) error
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx echo.Context, params GetBrickWallsParams) error
@@ -6225,6 +6311,22 @@ func (w *ServerInterfaceWrapper) MergeBranch(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.MergeBranch(ctx, id)
+	return err
+}
+
+// ResumeBranchMerge converts echo context to params.
+func (w *ServerInterfaceWrapper) ResumeBranchMerge(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ResumeBranchMerge(ctx, id)
 	return err
 }
 
@@ -9366,6 +9468,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/branches/:id", wrapper.GetBranch, options.OperationMiddlewares["getBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge", wrapper.MergeBranch, options.OperationMiddlewares["mergeBranch"]...)
+	router.POST(options.BaseURL+"/branches/:id/merge/resume", wrapper.ResumeBranchMerge, options.OperationMiddlewares["resumeBranchMerge"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
@@ -10170,6 +10273,101 @@ type MergeBranch503JSONResponse struct {
 }
 
 func (response MergeBranch503JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBranchMergeRequestObject struct {
+	Id   BranchId `json:"id"`
+	Body *ResumeBranchMergeJSONRequestBody
+}
+
+type ResumeBranchMergeResponseObject interface {
+	VisitResumeBranchMergeResponse(w http.ResponseWriter) error
+}
+
+type ResumeBranchMerge200JSONResponse BranchMergeResumeResult
+
+func (response ResumeBranchMerge200JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBranchMerge400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ResumeBranchMerge400JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBranchMerge404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ResumeBranchMerge404JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBranchMerge409JSONResponse BranchMergeResumeError
+
+func (response ResumeBranchMerge409JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBranchMerge500JSONResponse Error
+
+func (response ResumeBranchMerge500JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeBranchMerge503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response ResumeBranchMerge503JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -15949,6 +16147,9 @@ type StrictServerInterface interface {
 	// Merge a branch into the mainline
 	// (POST /branches/{id}/merge)
 	MergeBranch(ctx context.Context, request MergeBranchRequestObject) (MergeBranchResponseObject, error)
+	// Finish a merge whose replay onto the mainline was interrupted
+	// (POST /branches/{id}/merge/resume)
+	ResumeBranchMerge(ctx context.Context, request ResumeBranchMergeRequestObject) (ResumeBranchMergeResponseObject, error)
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx context.Context, request GetBrickWallsRequestObject) (GetBrickWallsResponseObject, error)
@@ -16720,6 +16921,40 @@ func (sh *strictHandler) MergeBranch(ctx echo.Context, id BranchId) error {
 		return err
 	} else if validResponse, ok := response.(MergeBranchResponseObject); ok {
 		return validResponse.VisitMergeBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// ResumeBranchMerge operation middleware
+func (sh *strictHandler) ResumeBranchMerge(ctx echo.Context, id BranchId) error {
+	var request ResumeBranchMergeRequestObject
+
+	request.Id = id
+
+	var body ResumeBranchMergeJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return err
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeBranchMerge(ctx.Request().Context(), request.(ResumeBranchMergeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeBranchMerge")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(ResumeBranchMergeResponseObject); ok {
+		return validResponse.VisitResumeBranchMergeResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
