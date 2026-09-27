@@ -719,6 +719,60 @@ func TestResumeMerge_BranchResolutionSurvivesInterruption(t *testing.T) {
 	}
 }
 
+// TestResumeMerge_BranchResolutionLapsesWhenMainMovesAgain pins the limit of
+// a "branch" decision's finality: it re-pins the stream at the version main
+// had when it was made, so if main writes to that entity again before the
+// replay lands, the decision no longer vouches for the replay (that write was
+// never reviewed). The entity is pending again and may be re-decided — here
+// to "main", which keeps main's newer write.
+func TestResumeMerge_BranchResolutionLapsesWhenMainMovesAgain(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.makeSecondStreamStale(t)
+
+	s.faulty.armed, s.faulty.failAt, s.faulty.mainAppends = true, 1, 0
+	_, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch},
+	})
+	s.faulty.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("interrupted resume: error = %v, want ErrMergePartiallyApplied", err)
+	}
+
+	// main writes to the entity again before the decision is carried out.
+	version, err := s.f.eventStore.GetStreamVersion(ctx, s.second, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if _, err := s.handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID: s.second, Surname: strPtr("Murray"), Version: version,
+	}); err != nil {
+		t.Fatalf("mainline UpdatePerson failed: %v", err)
+	}
+
+	result, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+	if !errors.Is(err, command.ErrMergeResumeNeedsResolution) {
+		t.Fatalf("bare ResumeMerge error = %v, want ErrMergeResumeNeedsResolution", err)
+	}
+	if !slices.Equal(result.PendingStreamIDs, []uuid.UUID{s.second}) {
+		t.Errorf("PendingStreamIDs = %v, want [%s] pending again", result.PendingStreamIDs, s.second)
+	}
+
+	if _, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveMain},
+	}); err != nil {
+		t.Fatalf("re-deciding the lapsed stream to main failed: %v", err)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Murray" {
+		t.Errorf("second stream surname = %q, want main's newer write kept", got)
+	}
+	if got := len(resumeRecords(t, s)); got != 2 {
+		t.Errorf("got %d BranchMergeResumed records, want both decisions recorded", got)
+	}
+}
+
 // TestResumeMerge_LegacyClaimDecisionIsFinal: for a claim that recorded no
 // plan, the first resume's decisions become the plan.
 func TestResumeMerge_LegacyClaimDecisionIsFinal(t *testing.T) {

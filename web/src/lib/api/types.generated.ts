@@ -1834,8 +1834,13 @@ export interface paths {
          *     `branch` for an entity `main` has deleted or merged away, since
          *     replaying edits onto it would restore nothing. The resolutions
          *     are recorded in the branch's event log before anything is replayed, so
-         *     they are final: a later resume carries them out and never asks for, or
-         *     accepts, a different decision on those entities.
+         *     a later resume carries them out without asking again. A `main`
+         *     decision is permanent: no later resume asks for, or accepts, a
+         *     different decision on that entity. A `branch` decision holds only
+         *     while `main` leaves the entity alone: if `main` writes to it again (or
+         *     removes a person it references) before its replay lands, that newer
+         *     write was never reviewed, so the entity is pending again and may be
+         *     decided afresh.
          *
          *     **The mainline read model is repaired too.** If an earlier attempt's
          *     append reached the log but its projection then failed, that entity is
@@ -7856,8 +7861,8 @@ export interface operations {
              *     - `merge_dangling_reference` — the replay would leave the mainline
              *       holding a relationship pointing at a person the mainline will not
              *       have, because that person was deleted there or was excluded by a
-             *       `main` resolution while a family child link or an association
-             *       naming them would still be replayed. Resolutions are per entity,
+             *       `main` resolution while a family partner or child link, or an
+             *       association, naming them would still be replayed. Resolutions are per entity,
              *       but the branch's events reference each other across entities, so
              *       excluding a person does not exclude the references to them. The
              *       message names both the person and the referencing entity.

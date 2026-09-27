@@ -75,6 +75,12 @@ type ResumeMergeInput struct {
 	// resume, and a resume that could re-decide it would let a second request
 	// quietly rewrite what the first one reviewed. The decisions are recorded
 	// in the log (domain.BranchMergeResumed) before anything is replayed.
+	//
+	// A "main" decision is permanent. A "branch" decision re-pins the stream at
+	// main's version when it was made, so it holds only while main leaves the
+	// entity alone: a mainline write to it (or the removal of a person it
+	// references) before its replay lands was never reviewed, and makes the
+	// stream pending — and decidable — again.
 	Resolutions map[uuid.UUID]MergeResolution
 }
 

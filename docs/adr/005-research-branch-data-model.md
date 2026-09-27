@@ -600,7 +600,8 @@ survivor's stream, so the merged person's stream still sits at its pin), or an a
 person to the delete cascade — for the reason `MergeBranch` offers only `main` on a main-side
 delete: replaying edits onto an absent row appends them after its removal and restores nothing. A
 resolution for any stream the claim or an earlier resume already decided is a
-`400`: a second request must not quietly re-decide what the first one reviewed. That rule needs the
+`400` (unless `main` has since moved that stream again; see below): a second request must not
+quietly re-decide what the first one reviewed. That rule needs the
 decision itself in the log, not just its effect: a `main` decision's effect is the *absence* of
 replayed events, which a later resume cannot tell apart from "not yet replayed", so without
 `BranchMergeResumed` the next resume would find the stream stale again, ask again, and accept
@@ -635,6 +636,14 @@ A claim written before #685 has no plan, so its first resume must decide every s
 the original request already declined. The log cannot distinguish those from unreplayed ones, so
 the operator should check `compare` before answering; once answered, the answer is final like any
 other.
+
+"Final" is exact for a `main` decision: the stream leaves the plan and no later resume offers it
+again. A `branch` decision instead re-pins the stream at the version `main` had when it was made,
+and the plan vouches for the replay only while `main` is still at that version. If `main` writes to
+the entity again (or removes a person its replay references) before the replay lands — the
+decision's replay was interrupted, or lost the staleness race — that write was never reviewed, so
+the #698 guard's reasoning applies afresh: the stream is pending again and a new request may decide
+it either way. Keeping the old `branch` decision would silently override the unreviewed write.
 
 Resume is idempotent: after completion it appends nothing and reports `replayed_event_count: 0`.
 Concurrent resumes cannot both append a stream, because `replayStream` now passes the version it
@@ -805,18 +814,21 @@ purge-on-`BranchDeleted` behavior to the other terminal status.
 
 **Per-entity resolutions do not compose with cross-entity references.** Resolutions are keyed by
 aggregate, but the branch's events reference each other *across* aggregates: `ChildLinkedToFamily`
-lives on the family's stream and names a person on another, and so (since #757 made associations
-branch-writable) does `AssociationCreated`, which names two. Excluding a person — which a
+lives on the family's stream and names a person on another, as do the partners a `FamilyCreated`
+names or a `FamilyUpdated` sets, and so (since #757 made associations branch-writable) does
+`AssociationCreated`, which names two. Excluding a person — which a
 `main`-deleted conflict *forces*, since `main` is then the only offered resolution — therefore does
 not exclude the family event that links them, and the projection writes that row unconditionally
 (the branch-scoping work dropped the FK cascade that would once have caught it). Left alone, this
-returns a successful merge while `main` gains a family child pointing at a person it does not have.
+returns a successful merge while `main` gains a family child (or partner) pointing at a person it
+does not have.
 The merge refuses instead (`ErrMergeDanglingReference`, `409 merge_dangling_reference`), checked
 before the claim: a replayed link or association must name a person `main` already has or that the
 replay itself will create — a stream that only edits the person does not count, since `main` can
 merge a person away without writing to their stream, which leaves the branch's edits conflict-free
 but the person gone. Dropping the link silently was rejected as the same class of defect per-conflict
-review exists to prevent. Unlink events are not checked — removing a person `main` lacks is a no-op.
+review exists to prevent. Unlink events, and a `FamilyUpdated` that clears a partner, are not checked — removing a person
+`main` lacks is a no-op.
 
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that

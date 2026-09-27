@@ -744,7 +744,7 @@ type danglingReference struct {
 
 func (d danglingReference) err() error {
 	return fmt.Errorf(
-		"%w: the branch's stream %s (a family child link or an association) references person %s, "+
+		"%w: the branch's stream %s (a family partner or child link, or an association) references person %s, "+
 			"but that person will not exist on main (deleted or merged away there, or excluded by a \"main\" resolution)",
 		ErrMergeDanglingReference, d.streamID, d.personID)
 }
@@ -787,11 +787,35 @@ func (h *Handler) findDanglingReferences(ctx context.Context, groups []streamGro
 }
 
 // personReferences returns the persons a branch event makes main point at: the
-// child of a ChildLinkedToFamily, and both sides of an AssociationCreated (an
+// partners a FamilyCreated names, a partner a FamilyUpdated sets, the child of
+// a ChildLinkedToFamily, and both sides of an AssociationCreated (an
 // association's persons are fixed at creation; AssociationUpdated cannot
-// change them).
+// change them). A FamilyUpdated that clears a partner references no one.
 func personReferences(evt repository.StoredEvent) ([]uuid.UUID, error) {
 	switch evt.EventType {
+	case "FamilyCreated":
+		var payload struct {
+			Partner1ID *uuid.UUID `json:"partner1_id"`
+			Partner2ID *uuid.UUID `json:"partner2_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding family on stream %s: %w", evt.StreamID, err)
+		}
+		return nonNilPersons(payload.Partner1ID, payload.Partner2ID), nil
+	case "FamilyUpdated":
+		var payload struct {
+			Changes map[string]json.RawMessage `json:"changes"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding family update on stream %s: %w", evt.StreamID, err)
+		}
+		var ids []uuid.UUID
+		for _, key := range []string{"partner1_id", "partner2_id"} {
+			if id := partnerChange(payload.Changes[key]); id != nil {
+				ids = append(ids, *id)
+			}
+		}
+		return ids, nil
 	case "ChildLinkedToFamily":
 		var payload struct {
 			PersonID uuid.UUID `json:"person_id"`
@@ -811,6 +835,34 @@ func personReferences(evt repository.StoredEvent) ([]uuid.UUID, error) {
 		return []uuid.UUID{payload.PersonID, payload.AssociateID}, nil
 	}
 	return nil, nil
+}
+
+// partnerChange decodes one partner entry of a FamilyUpdated's changes the
+// way the projection reads it (resolvePartnerChange in
+// internal/repository/projection.go): a UUID string sets that person; an
+// absent entry, null, or any value the projection would store as "no partner"
+// references no one.
+func partnerChange(raw json.RawMessage) *uuid.UUID {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil || s == "" {
+		return nil
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return nil // the projection clears the partner for this value too
+	}
+	return &id
+}
+
+// nonNilPersons returns the set ids among ids, in order.
+func nonNilPersons(ids ...*uuid.UUID) []uuid.UUID {
+	var out []uuid.UUID
+	for _, id := range ids {
+		if id != nil {
+			out = append(out, *id)
+		}
+	}
+	return out
 }
 
 // validateResolutions rejects resolutions the merge cannot honor: one naming a
