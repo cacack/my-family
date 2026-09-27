@@ -45,9 +45,13 @@
 	 *
 	 * Known gap, not closed by #676 (whose sub-issues are all delivered): `/`
 	 * (dashboard and discovery feed), `/descendancy/{id}`, `/relationship`,
-	 * `/repositories`, `/import`, and the panels on person and family detail
-	 * pages that are not themselves scoped — change history and restore points.
-	 * All of them answer from the mainline today; none of them says so.
+	 * `/repositories` and `/import`. All of them answer from the mainline today;
+	 * none of them says so.
+	 *
+	 * The history panels on person and family detail pages follow the branch
+	 * (#824), labelling each entry as the branch's own or inherited from the
+	 * mainline. Restore points and rollback are mainline-only (ADR-005), so those
+	 * pages withdraw them on a branch rather than labelling them.
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 

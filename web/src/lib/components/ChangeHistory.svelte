@@ -180,6 +180,11 @@
 					<div class="entry-header">
 						<span class="timestamp">{formatTimestamp(entry.timestamp)}</span>
 						<Badge variant={getActionBadgeVariant(entry.action)} class="capitalize {getActionBadgeClass(entry.action)}">{entry.action}</Badge>
+						{#if entry.origin === 'branch'}
+							<Badge variant="outline" class="origin-badge" title="Made on this research branch">This branch</Badge>
+						{:else if entry.origin === 'main'}
+							<Badge variant="outline" class="origin-badge" title="Inherited from the mainline">Mainline</Badge>
+						{/if}
 					</div>
 					<div class="entry-body">
 						<span class="entity-type">{entry.entity_type}</span>

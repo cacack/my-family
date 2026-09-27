@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import FamilyPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+
+const { branchState } = vi.hoisted(() => ({
+	// The real store exposes a read-only view, so the active branch is injected.
+	branchState: { id: null as string | null }
+}));
+
+vi.mock('$lib/stores/activeBranch.svelte', () => ({
+	activeBranch: branchState
+}));
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -11,7 +20,8 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		api: {
 			getFamily: vi.fn(),
 			deleteFamily: vi.fn(),
-			getFamilyHistory: vi.fn()
+			getFamilyHistory: vi.fn(),
+			getFamilyRestorePoints: vi.fn()
 		}
 	};
 });
@@ -93,6 +103,7 @@ const mockEmptyHistory: apiModule.ChangeHistoryResponse = {
 describe('Family Detail Page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		branchState.id = null;
 		// Default mock for history - returns empty
 		vi.mocked(apiModule.api.getFamilyHistory).mockResolvedValue(mockEmptyHistory);
 	});
@@ -226,5 +237,63 @@ describe('Family Detail Page', () => {
 			expect(backLink).not.toBeNull();
 			expect(backLink?.getAttribute('href')).toBe('/families');
 		});
+	});
+
+	// #823: a family created on a branch used to blank the page, because the
+	// history count ran in the same try as the family and 404'd on the mainline.
+	it('still renders the family when the history count fails', async () => {
+		branchState.id = 'branch-id';
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+		vi.mocked(apiModule.api.getFamilyHistory).mockRejectedValue({ message: 'Family not found' });
+
+		render(FamilyPage);
+
+		await waitFor(() => {
+			expect(screen.getByText('John Smith & Jane Smith')).toBeDefined();
+		});
+		await waitFor(() => expect(apiModule.api.getFamilyHistory).toHaveBeenCalled());
+		expect(screen.queryByText('Family not found')).toBeNull();
+		expect(screen.getByRole('heading', { name: /History/ }).textContent?.trim()).toBe('History');
+	});
+
+	it('shows the history count on the badge', async () => {
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+		vi.mocked(apiModule.api.getFamilyHistory).mockResolvedValue({ ...mockEmptyHistory, total: 3 });
+
+		render(FamilyPage);
+
+		await waitFor(() => {
+			expect(screen.getByRole('heading', { name: /History/ }).textContent).toContain('3');
+		});
+	});
+
+	it('offers the Restore tab on the mainline', async () => {
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+
+		render(FamilyPage);
+		await fireEvent.click(await screen.findByRole('button', { name: /History/ }));
+
+		expect(screen.getByRole('button', { name: 'Restore' })).toBeDefined();
+	});
+
+	// #824: rollback is mainline-only, so on a branch the Restore tab and the
+	// rollback dialog are withdrawn; the change log (the branch's view) stays.
+	it('withdraws Restore and rollback on a branch', async () => {
+		branchState.id = 'branch-id';
+		vi.mocked(apiModule.api.getFamily).mockResolvedValue(mockFamilyWithChildren);
+
+		render(FamilyPage);
+		await fireEvent.click(await screen.findByRole('button', { name: /History/ }));
+
+		expect(screen.getByText(/Restore points and rollback work on the mainline only/)).toBeDefined();
+		expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
+		await waitFor(() =>
+			expect(apiModule.api.getFamilyHistory).toHaveBeenCalledWith('test-family-id', {
+				limit: 20,
+				offset: 0
+			})
+		);
+		expect(apiModule.api.getFamilyRestorePoints).not.toHaveBeenCalled();
 	});
 });
