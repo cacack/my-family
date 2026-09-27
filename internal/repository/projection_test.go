@@ -4752,3 +4752,62 @@ func TestProjector_BranchLifecycleNilStore(t *testing.T) {
 		t.Errorf("BranchDeleted with nil store should no-op, got %v", err)
 	}
 }
+
+// TestProjector_ChildLinkIsIdempotent: a child link or unlink sets the family's
+// child count and version absolutely, so projecting the same event again — as
+// concurrent merge-resume repairs can (#685) — does not drift the row, and an
+// event projected late never lowers the version.
+func TestProjector_ChildLinkIsIdempotent(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+
+	parent := domain.NewPerson("John", "Doe")
+	first := domain.NewPerson("Jimmy", "Doe")
+	second := domain.NewPerson("Jenny", "Doe")
+	for _, person := range []*domain.Person{parent, first, second} {
+		if err := projector.Project(ctx, domain.NewPersonCreated(person), 1, domain.MainBranchID); err != nil {
+			t.Fatalf("Project person failed: %v", err)
+		}
+	}
+	family := domain.NewFamilyWithPartners(&parent.ID, nil)
+	if err := projector.Project(ctx, domain.NewFamilyCreated(family), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project family failed: %v", err)
+	}
+
+	assertRow := func(t *testing.T, wantCount int, wantVersion int64) {
+		t.Helper()
+		row, err := readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
+		if err != nil || row == nil {
+			t.Fatalf("GetFamily = %v (err %v)", row, err)
+		}
+		if row.ChildCount != wantCount || row.Version != wantVersion {
+			t.Errorf("family row count/version = %d/%d, want %d/%d", row.ChildCount, row.Version, wantCount, wantVersion)
+		}
+	}
+
+	linkFirst := domain.NewChildLinkedToFamily(domain.NewFamilyChild(family.ID, first.ID, domain.ChildBiological))
+	linkSecond := domain.NewChildLinkedToFamily(domain.NewFamilyChild(family.ID, second.ID, domain.ChildBiological))
+	unlinkFirst := domain.NewChildUnlinkedFromFamily(family.ID, first.ID)
+
+	steps := []struct {
+		name        string
+		event       domain.Event
+		version     int64
+		wantCount   int
+		wantVersion int64
+	}{
+		{"link", linkFirst, 2, 1, 2},
+		{"same link again", linkFirst, 2, 1, 2},
+		{"second link", linkSecond, 3, 2, 3},
+		{"first link projected late", linkFirst, 2, 2, 3},
+		{"unlink", unlinkFirst, 4, 1, 4},
+		{"same unlink again", unlinkFirst, 4, 1, 4},
+	}
+	for _, step := range steps {
+		if err := projector.Project(ctx, step.event, step.version, domain.MainBranchID); err != nil {
+			t.Fatalf("%s: Project failed: %v", step.name, err)
+		}
+		t.Run(step.name, func(t *testing.T) { assertRow(t, step.wantCount, step.wantVersion) })
+	}
+}

@@ -34,8 +34,15 @@ type readModelState struct {
 // version is the number of events on the stream whose projection completed. A
 // row behind main's stream version is re-projected from the first event past
 // it; re-running an event whose projection stopped midway is safe because each
-// of its writes is an upsert, a delete, or — for the family's child count —
-// part of the same final write that did not happen.
+// of its writes is an upsert or a delete, and the family's child count and
+// version are set absolutely (the number of child rows; the event's version,
+// never lowered) rather than stepped.
+//
+// That is also what makes the repair safe to run concurrently. Nothing here
+// appends, so no optimistic check serializes two resumes repairing the same
+// stream, or a resume and a mainline write to it: both may project the same
+// events. Every projection they can run is idempotent in that sense, so the
+// row converges on the log whichever finishes last.
 //
 // A missing row is re-projected from the start unless the entity is gone for a
 // reason the log explains: its stream ends in a delete, or (for a person) main

@@ -160,9 +160,11 @@ type resumeDecision struct {
 //
 // Resume is idempotent: once every stream is on main (or skipped), a further
 // call appends nothing and reports ReplayedEventCount 0. Two concurrent resumes
-// cannot both append a stream: each asserts the stream's main version on
-// Append, so the loser gets a concurrency conflict (reported as
-// ErrMergePartiallyApplied) and its retry finds the stream already replayed.
+// cannot both append a stream: main's versions are read before the scan for
+// landed streams, so a stream the other resume lands after that read is either
+// seen as landed or planned at its pre-landing version; the append asserts that
+// version, so the loser is refused (reported as ErrMergePartiallyApplied) and
+// its retry finds the stream already replayed.
 // Two concurrent resumes cannot both record decisions either: the record
 // asserts the branch stream's version (ErrMergeResumeConcurrent).
 //
@@ -222,11 +224,20 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		return nil, err
 	}
 
-	landed, err := h.streamsAlreadyOnMain(ctx, groups, claim.MergedAtPosition)
+	// Main's versions are read BEFORE the landed scan, and the order is what
+	// keeps a concurrent resume from landing a stream twice. A stream another
+	// resume appends before the scan shows as landed and is left alone. One it
+	// appends after the scan was read at its pre-landing version, so this
+	// call's step for it asserts that stale version and replayStream refuses
+	// it (ErrMergePlanStale) instead of appending over the other resume's
+	// copy. Read the other way round, a landing between the two reads would
+	// look unlanded AND already at main's new version — decidable, and a
+	// "branch" resolution would then replay it a second time.
+	mainVersions, err := h.mainStreamVersions(ctx, groups)
 	if err != nil {
 		return nil, err
 	}
-	mainVersions, err := h.mainStreamVersions(ctx, groups)
+	landed, err := h.streamsAlreadyOnMain(ctx, groups, claim.MergedAtPosition)
 	if err != nil {
 		return nil, err
 	}

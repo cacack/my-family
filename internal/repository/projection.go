@@ -50,9 +50,9 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 	case domain.FamilyUpdated:
 		return p.projectFamilyUpdated(ctx, e, version, branchID)
 	case domain.ChildLinkedToFamily:
-		return p.projectChildLinked(ctx, e, branchID)
+		return p.projectChildLinked(ctx, e, version, branchID)
 	case domain.ChildUnlinkedFromFamily:
-		return p.projectChildUnlinked(ctx, e, branchID)
+		return p.projectChildUnlinked(ctx, e, version, branchID)
 	case domain.FamilyDeleted:
 		return p.projectFamilyDeleted(ctx, e, branchID)
 	case domain.SourceCreated:
@@ -493,7 +493,7 @@ func (p *Projector) resolvePartnerChange(ctx context.Context, branchID domain.Br
 	return &parsed, person.GivenName, person.Surname
 }
 
-func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily, branchID domain.BranchID) error {
+func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily, version int64, branchID domain.BranchID) error {
 	// Get child name (split into given/surname)
 	var childGivenName, childSurname string
 	if child, _ := p.readStore.GetPerson(ctx, branchID, e.PersonID); child != nil {
@@ -553,18 +553,35 @@ func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinked
 		}
 	}
 
-	// Increment family child count and version
 	if family != nil {
-		family.ChildCount++
-		family.Version++
-		family.UpdatedAt = e.OccurredAt()
-		return p.readStore.SaveFamily(ctx, branchID, family)
+		return p.saveFamilyAfterChildChange(ctx, branchID, family, version, e.OccurredAt())
 	}
 
 	return nil
 }
 
-func (p *Projector) projectChildUnlinked(ctx context.Context, e domain.ChildUnlinkedFromFamily, branchID domain.BranchID) error {
+// saveFamilyAfterChildChange records a child link or unlink on the family row.
+//
+// Both values are set absolutely rather than stepped, so projecting the same
+// event twice — a merge resume re-projecting a stream from the log (#685) while
+// a concurrent resume or a mainline write does the same — converges on the
+// right row instead of drifting: the child count is the number of child rows
+// the family now has, and the version is the event's own, never lowered by an
+// event projected late.
+func (p *Projector) saveFamilyAfterChildChange(ctx context.Context, branchID domain.BranchID, family *FamilyReadModel, version int64, at time.Time) error {
+	children, err := p.readStore.GetFamilyChildren(ctx, branchID, family.ID)
+	if err != nil {
+		return err
+	}
+	family.ChildCount = len(children)
+	if version > family.Version {
+		family.Version = version
+	}
+	family.UpdatedAt = at
+	return p.readStore.SaveFamily(ctx, branchID, family)
+}
+
+func (p *Projector) projectChildUnlinked(ctx context.Context, e domain.ChildUnlinkedFromFamily, version int64, branchID domain.BranchID) error {
 	if err := p.readStore.DeleteFamilyChild(ctx, branchID, e.FamilyID, e.PersonID); err != nil {
 		return err
 	}
@@ -574,18 +591,12 @@ func (p *Projector) projectChildUnlinked(ctx context.Context, e domain.ChildUnli
 		return err
 	}
 
-	// Decrement family child count and increment version
 	family, err := p.readStore.GetFamily(ctx, branchID, e.FamilyID)
 	if err != nil {
 		return err
 	}
 	if family != nil {
-		if family.ChildCount > 0 {
-			family.ChildCount--
-		}
-		family.Version++
-		family.UpdatedAt = e.OccurredAt()
-		return p.readStore.SaveFamily(ctx, branchID, family)
+		return p.saveFamilyAfterChildChange(ctx, branchID, family, version, e.OccurredAt())
 	}
 
 	return nil

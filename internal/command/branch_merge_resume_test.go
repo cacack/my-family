@@ -2,6 +2,7 @@ package command_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -31,6 +32,25 @@ type faultyReplayStore struct {
 	failAt           int
 	mainAppends      int
 	raceResumeRecord bool
+
+	// afterMainScan, when set, runs once right after a set-based read of
+	// main's streams returns — the point where a rival resume can act behind
+	// this one's back. skipMainScans lets that many reads pass first.
+	afterMainScan func()
+	skipMainScans int
+}
+
+func (s *faultyReplayStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
+	events, err := s.EventStore.ReadStreamsForBranch(ctx, streamIDs, branchID, fromPosition, limit)
+	if hook := s.afterMainScan; hook != nil && branchID.IsMain() {
+		if s.skipMainScans > 0 {
+			s.skipMainScans--
+			return events, err
+		}
+		s.afterMainScan = nil
+		hook()
+	}
+	return events, err
 }
 
 func (s *faultyReplayStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
@@ -51,12 +71,21 @@ func (s *faultyReplayStore) Append(ctx context.Context, streamID uuid.UUID, stre
 // injects.
 var errInjectedProjectionFailure = errors.New("injected read-model failure during projection")
 
-// faultyReadStore fails mainline SavePerson for one person while armed, so a
-// replay's Append lands in the log but its projection does not.
+// faultyReadStore fails mainline SavePerson for one person, or SaveFamily for
+// one family, while armed, so a replay's Append lands in the log but its
+// projection does not.
 type faultyReadStore struct {
 	repository.ReadModelStore
 	armed      bool
 	failPerson uuid.UUID
+	failFamily uuid.UUID
+}
+
+func (s *faultyReadStore) SaveFamily(ctx context.Context, branchID domain.BranchID, family *repository.FamilyReadModel) error {
+	if s.armed && branchID.IsMain() && family.ID == s.failFamily {
+		return errInjectedProjectionFailure
+	}
+	return s.ReadModelStore.SaveFamily(ctx, branchID, family)
 }
 
 func (s *faultyReadStore) SavePerson(ctx context.Context, branchID domain.BranchID, person *repository.PersonReadModel) error {
@@ -922,4 +951,195 @@ func TestResumeMerge_GoneEntitiesAreNotResurrected(t *testing.T) {
 			t.Errorf("merged-away person on main = %v (err %v), want it to stay gone", got, err)
 		}
 	})
+}
+
+// mainCopiesOf counts main's events on a stream that carry the given payload
+// id — how many times one branch event reached main.
+func mainCopiesOf(t *testing.T, s resumeSeed, streamID, eventID uuid.UUID) int {
+	t.Helper()
+	events, err := s.f.eventStore.ReadStreamsForBranch(context.Background(), []uuid.UUID{streamID}, domain.MainBranchID, 0, 1000)
+	if err != nil {
+		t.Fatalf("ReadStreamsForBranch failed: %v", err)
+	}
+	copies := 0
+	for i := range events {
+		if storedPayloadID(t, events[i]) == eventID {
+			copies++
+		}
+	}
+	return copies
+}
+
+// storedPayloadID is a stored event's domain event id, which a replay carries
+// onto main unchanged.
+func storedPayloadID(t *testing.T, evt repository.StoredEvent) uuid.UUID {
+	t.Helper()
+	var payload struct {
+		ID uuid.UUID `json:"id"`
+	}
+	if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		t.Fatalf("decoding event id: %v", err)
+	}
+	return payload.ID
+}
+
+// TestResumeMerge_ConcurrentLandingIsNotReplayedTwice is the regression test
+// for a race between the scan for landed streams and the read of main's
+// versions: a rival resume that landed a stream between the two made it look
+// unlanded yet already at main's new version, so a "branch" resolution for it
+// was accepted and the branch's events were appended to main a second time.
+func TestResumeMerge_ConcurrentLandingIsNotReplayedTwice(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.makeSecondStreamStale(t)
+
+	// A first resume decides the stale stream for the branch, then fails to
+	// replay it: the decision is recorded, the stream is not on main.
+	s.faulty.armed, s.faulty.failAt, s.faulty.mainAppends = true, 1, 0
+	_, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch},
+	})
+	s.faulty.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("interrupted resume: error = %v, want ErrMergePartiallyApplied", err)
+	}
+
+	var branchEventID uuid.UUID
+	for _, stored := range branchEventsFor(t, s.f, s.second, domain.BranchID(s.branch.ID)) {
+		branchEventID = storedPayloadID(t, stored)
+	}
+	if branchEventID == uuid.Nil {
+		t.Fatal("branch has no event on the second stream")
+	}
+	before, err := s.f.eventStore.GetStreamVersion(ctx, s.second, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+
+	// Two users answer the same earlier refusal. This request's main scan is
+	// overtaken by a rival resume that lands the stream.
+	rivalRan := false
+	s.faulty.afterMainScan = func() {
+		rival, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+		if err != nil {
+			t.Errorf("rival ResumeMerge failed: %v", err)
+			return
+		}
+		rivalRan = rival.ReplayedEventCount == 1
+	}
+	result, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch},
+	})
+	if !rivalRan {
+		t.Fatal("the rival resume did not land the stream mid-request; the race was not exercised")
+	}
+	if err == nil {
+		t.Errorf("overtaken resume succeeded (replayed %d), want it refused", result.ReplayedEventCount)
+	}
+
+	if got := mainCopiesOf(t, s, s.second, branchEventID); got != 1 {
+		t.Errorf("branch event reached main %d times, want exactly once", got)
+	}
+	after, err := s.f.eventStore.GetStreamVersion(ctx, s.second, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if after != before+1 {
+		t.Errorf("main version of the stream went %d -> %d, want one replayed event", before, after)
+	}
+
+	// And the merge is complete: a further resume is a no-op.
+	again, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+	if err != nil {
+		t.Fatalf("bare ResumeMerge after the race failed: %v", err)
+	}
+	if again.ReplayedEventCount != 0 || !slices.Contains(again.AlreadyReplayedStreamIDs, s.second) {
+		t.Errorf("follow-up resume replayed %d, already-replayed %v; want a no-op with the stream landed",
+			again.ReplayedEventCount, again.AlreadyReplayedStreamIDs)
+	}
+}
+
+// TestResumeMerge_ConcurrentRepairsDoNotDoubleCount: a replayed
+// ChildLinkedToFamily reached main's log but its projection failed before the
+// family row was saved. Two resumes then repair the family at once, both having
+// read the row at its old version. The repair must converge on one child, not
+// count the link once per resume.
+func TestResumeMerge_ConcurrentRepairsDoNotDoubleCount(t *testing.T) {
+	var events *faultyReplayStore
+	var reads *faultyReadStore
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapEvents: func(inner repository.EventStore) repository.EventStore {
+			events = &faultyReplayStore{EventStore: inner}
+			return events
+		},
+		wrapReads: func(inner repository.ReadModelStore) repository.ReadModelStore {
+			reads = &faultyReadStore{ReadModelStore: inner}
+			return reads
+		},
+	})
+	ctx := context.Background()
+
+	parent, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	child, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Byron", Surname: "King"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	family, err := f.handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &parent.ID})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "link-child", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	if _, err := f.handler.WithBranch(branch).LinkChild(ctx, command.LinkChildInput{FamilyID: family.ID, ChildID: child.ID}); err != nil {
+		t.Fatalf("branch LinkChild failed: %v", err)
+	}
+
+	reads.armed, reads.failFamily = true, family.ID
+	_, err = f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	reads.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) || !errors.Is(err, errInjectedProjectionFailure) {
+		t.Fatalf("MergeBranch error = %v, want the projection failure wrapped in ErrMergePartiallyApplied", err)
+	}
+
+	// The first resume's second main scan is the re-projection's read of the
+	// family's events, taken after it read the row's version. A rival resume
+	// repairs the family in full right there.
+	events.skipMainScans = 1
+	events.afterMainScan = func() {
+		if _, err := f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID}); err != nil {
+			t.Errorf("rival ResumeMerge failed: %v", err)
+		}
+	}
+	result, err := f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	if err != nil {
+		t.Fatalf("ResumeMerge failed: %v", err)
+	}
+	if events.afterMainScan != nil {
+		t.Fatal("the rival resume never ran; the race was not exercised")
+	}
+	if !slices.Equal(result.ReprojectedStreamIDs, []uuid.UUID{family.ID}) {
+		t.Errorf("ReprojectedStreamIDs = %v, want [%s]", result.ReprojectedStreamIDs, family.ID)
+	}
+
+	row, err := f.readStore.GetFamily(ctx, domain.MainBranchID, family.ID)
+	if err != nil || row == nil {
+		t.Fatalf("main GetFamily = %v (err %v)", row, err)
+	}
+	if row.ChildCount != 1 {
+		t.Errorf("ChildCount = %d, want 1 after two concurrent repairs", row.ChildCount)
+	}
+	logVersion, err := f.eventStore.GetStreamVersion(ctx, family.ID, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if row.Version != logVersion {
+		t.Errorf("read-model version = %d, want the log's %d", row.Version, logVersion)
+	}
 }
