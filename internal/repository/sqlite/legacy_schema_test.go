@@ -791,8 +791,8 @@ func TestLegacyEventStoreRebuild(t *testing.T) {
 		t.Fatalf("main version after rebuild = %d (err %v), want 3", v, err)
 	}
 
-	// ...and a branch write now succeeds, seeded from main's version at the base.
-	branch := repository.AppendScope{BranchID: domain.BranchID(uuid.New()), BasePosition: 3}
+	// ...and a branch write now succeeds, seeded from main's current version.
+	branch := repository.AppendScope{BranchID: domain.BranchID(uuid.New())}
 	if err := store.Append(ctx, streamID, "Person",
 		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"surname": "Revised"})}, 3, branch); err != nil {
 		t.Fatalf("branch append after rebuild: %v", err)
@@ -807,7 +807,7 @@ func TestLegacyEventStoreRebuild(t *testing.T) {
 	// A second branch takes version 4 of the SAME stream — impossible under the
 	// legacy UNIQUE(stream_id, version), so this is the constraint swap proving
 	// itself rather than just the DDL text.
-	other := repository.AppendScope{BranchID: domain.BranchID(uuid.New()), BasePosition: 3}
+	other := repository.AppendScope{BranchID: domain.BranchID(uuid.New())}
 	if err := store.Append(ctx, streamID, "Person",
 		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"surname": "Alternate"})}, 3, other); err != nil {
 		t.Fatalf("second branch append at the same version after rebuild: %v", err)

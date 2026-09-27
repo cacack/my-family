@@ -151,9 +151,8 @@ type RollbackResult struct {
 // Handler processes commands and returns resulting domain events.
 //
 // A Handler carries a branch scope (ADR-005). Its zero value is the mainline:
-// branchID is domain.MainBranchID and basePosition is 0, which is exactly
-// repository.MainScope, so a handler built by any constructor behaves as it did
-// before branches existed. WithBranch returns a scoped copy.
+// branchID is domain.MainBranchID, which is exactly repository.MainScope, so a
+// handler built by any constructor behaves as it did before branches existed. WithBranch returns a scoped copy.
 type Handler struct {
 	eventStore  repository.EventStore
 	readStore   repository.ReadModelStore
@@ -175,8 +174,7 @@ type Handler struct {
 	branchService *query.BranchService
 
 	// Branch scope applied to every append and projection made through execute.
-	branchID     domain.BranchID
-	basePosition int64
+	branchID domain.BranchID
 }
 
 // NewHandler creates a new command handler. Its projector has no branch registry
@@ -280,14 +278,13 @@ func (h *Handler) WithBranch(b *domain.Branch) *Handler {
 	}
 	scoped := *h
 	scoped.branchID = domain.BranchID(b.ID)
-	scoped.basePosition = b.BasePosition
 	return &scoped
 }
 
 // appendScope is the handler's branch scope in event-store form. For an
 // unscoped handler this equals repository.MainScope.
 func (h *Handler) appendScope() repository.AppendScope {
-	return repository.AppendScope{BranchID: h.branchID, BasePosition: h.basePosition}
+	return repository.AppendScope{BranchID: h.branchID}
 }
 
 // execute is a helper that appends events, projects them, and returns the new version.

@@ -1159,9 +1159,6 @@ func runBranchVersioningScenario(t *testing.T, store repository.EventStore) {
 	if len(all) != 3 {
 		t.Fatalf("ReadAll after seeding returned %d events, want 3", len(all))
 	}
-	basePosition := all[len(all)-1].Position
-	branchA.BasePosition = basePosition
-	branchB.BasePosition = basePosition
 
 	// --- Seeding: a branch's first write continues main's version line at 4. ---
 	branchEdit := domain.NewPersonUpdated(streamID, map[string]any{"surname": "Revised-A"})
@@ -1199,6 +1196,26 @@ func runBranchVersioningScenario(t *testing.T, store repository.EventStore) {
 	}
 	if v, err := store.GetStreamVersion(ctx, streamID, branchA.BranchID); err != nil || v != 4 {
 		t.Fatalf("branch A version after main advanced = %d (err %v), want 4 (unchanged)", v, err)
+	}
+
+	// --- An untouched stream seeds from main's CURRENT version (#844): a branch
+	// forked when main was at 3 that first writes after main reached 4 must accept
+	// the version its live-overlay read shows (4), and refuse the as-of-fork 3. ---
+	branchC := repository.AppendScope{BranchID: domain.BranchID(uuid.New())}
+	err = store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "as-of-fork"})}, 3, branchC)
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("branch C append at the as-of-fork version: want ErrConcurrencyConflict, got %v", err)
+	}
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "live overlay"})}, 4, branchC); err != nil {
+		t.Fatalf("branch C append at main's current version: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchC.BranchID); err != nil || v != 5 {
+		t.Fatalf("branch C version = %d (err %v), want 5 (continuing main's current line)", v, err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID); err != nil || v != 4 {
+		t.Fatalf("main version after branch C write = %d (err %v), want 4 (unchanged)", v, err)
 	}
 
 	// --- Optimistic concurrency still bites WITHIN a branch. ---

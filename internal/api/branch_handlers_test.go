@@ -744,6 +744,79 @@ func mainSurname(t *testing.T, server *api.Server, personID string) string {
 	return surname
 }
 
+// TestBranchUpdate_EntityMainEditedAfterFork is the #844 reproduction over
+// HTTP: a person main edited after the fork, untouched on the branch, is shown
+// on the branch at main's current version, and a branch PUT carrying that
+// version succeeds. The as-of-fork version is refused, and the merge still
+// reports the edit/edit conflict on the field both sides changed.
+func TestBranchUpdate_EntityMainEditedAfterFork(t *testing.T) {
+	server := setupBranchTestServer()
+	personID := createPerson(t, server, "Ada", "Lovelace")
+
+	putPerson := func(query, body string) *httptest.ResponseRecorder {
+		return do(t, server, http.MethodPut, "/api/v1/persons/"+personID+query, body)
+	}
+	versionOf := func(rec *httptest.ResponseRecorder) int64 {
+		raw, _ := decodeJSON(t, rec)["version"].(float64)
+		return int64(raw)
+	}
+
+	// Steps 1-2: an edit on main, then fork. Versions are relative to the
+	// created person's, which creation may have advanced past 1.
+	created := versionOf(do(t, server, http.MethodGet, "/api/v1/persons/"+personID, ""))
+	if rec := putPerson("", fmt.Sprintf(`{"birth_place":"London","version":%d}`, created)); rec.Code != http.StatusOK {
+		t.Fatalf("Main update 1: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	branchID := createBranch(t, server, "Post-fork correction")
+
+	// Step 3: main edits again after the fork.
+	if rec := putPerson("", fmt.Sprintf(`{"surname":"King","version":%d}`, created+1)); rec.Code != http.StatusOK {
+		t.Fatalf("Main update 2: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Step 4: the branch shows main's current row, not the as-of-fork one.
+	rec := do(t, server, http.MethodGet, "/api/v1/persons/"+personID+"?branch="+branchID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Branch read: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	current := created + 2
+	if got := versionOf(rec); got != current {
+		t.Fatalf("Branch read version = %d, want %d (main's current)", got, current)
+	}
+
+	// The as-of-fork version was never displayed on the branch: 409.
+	if rec := putPerson("?branch="+branchID, fmt.Sprintf(`{"surname":"Byron","version":%d}`, current-1)); rec.Code != http.StatusConflict {
+		t.Fatalf("Branch update at the as-of-fork version: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Step 5: the displayed version is accepted.
+	rec = putPerson("?branch="+branchID, fmt.Sprintf(`{"surname":"Byron","version":%d}`, current))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Branch update at the displayed version: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+	}
+	if got := versionOf(rec); got != current+1 {
+		t.Errorf("Branch update version = %d, want %d", got, current+1)
+	}
+	if got := mainSurname(t, server, personID); got != "King" {
+		t.Errorf("Main surname after the branch edit = %q, want King (isolated)", got)
+	}
+
+	// Main's post-fork edit still counts as a main change at merge time.
+	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Merge: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+	conflicts, _ := decodeJSON(t, rec)["conflicts"].([]any)
+	if len(conflicts) != 1 {
+		t.Fatalf("conflicts = %v, want one. Body: %s", conflicts, rec.Body.String())
+	}
+	conflict, _ := conflicts[0].(map[string]any)
+	fields, _ := conflict["fields"].([]any)
+	if conflict["stream_id"] != personID || conflict["kind"] != "edit_edit" || len(fields) != 1 || fields[0] != "surname" {
+		t.Errorf("conflict = %v, want edit_edit on the person's surname", conflict)
+	}
+}
+
 func TestMergeBranch(t *testing.T) {
 	server := setupBranchTestServer()
 	personID, branchID, _ := forkAndEditPerson(t, server, "Byron")
@@ -1001,9 +1074,6 @@ func TestMergeBranch_TooLarge(t *testing.T) {
 	server, eventStore := setupBranchTestServerWithEventStore()
 	_, branchID, _ := forkAndEditPerson(t, server, "Byron")
 
-	rec := do(t, server, http.MethodGet, "/api/v1/branches/"+branchID, "")
-	basePosition, _ := decodeJSON(t, rec)["base_position"].(float64)
-
 	// Push the branch past the 1000-event comparison cap so its conflict scan
 	// comes back truncated. Written straight to the log on a stream of its own:
 	// 1000 HTTP round trips would buy nothing and cost seconds.
@@ -1013,15 +1083,12 @@ func TestMergeBranch_TooLarge(t *testing.T) {
 		edits[i] = domain.NewPersonUpdated(bulkID, map[string]any{"note": i})
 	}
 	err := eventStore.Append(context.Background(), bulkID, "person", edits, -1,
-		repository.AppendScope{
-			BranchID:     domain.BranchID(uuid.MustParse(branchID)),
-			BasePosition: int64(basePosition),
-		})
+		repository.AppendScope{BranchID: domain.BranchID(uuid.MustParse(branchID))})
 	if err != nil {
 		t.Fatalf("Seeding an oversized branch: %v", err)
 	}
 
-	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`)
+	rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("Merge: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
 	}

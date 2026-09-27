@@ -969,7 +969,7 @@ func TestEventStore_ReadByStream_BranchScoped(t *testing.T) {
 		t.Fatalf("Append() main failed: %v", err)
 	}
 
-	branchScope := repository.AppendScope{BranchID: branchID, BasePosition: 2}
+	branchScope := repository.AppendScope{BranchID: branchID}
 	branchEvents := []domain.Event{
 		domain.NewPersonUpdated(streamID, map[string]any{"notes": "branch edit 1"}),
 		domain.NewPersonUpdated(streamID, map[string]any{"notes": "branch edit 2"}),
@@ -1056,7 +1056,7 @@ func TestEventStore_ReadStreamsForBranch(t *testing.T) {
 	seed(second, repository.MainScope, "post-1")    // position 3
 	seed(first, repository.MainScope, "post-2")     // position 4
 	seed(unrelated, repository.MainScope, "post-3") // position 5
-	seed(first, repository.AppendScope{BranchID: branchID, BasePosition: basePosition}, "branch")
+	seed(first, repository.AppendScope{BranchID: branchID}, "branch")
 
 	t.Run("empty stream set reads nothing", func(t *testing.T) {
 		events, err := store.ReadStreamsForBranch(ctx, nil, domain.MainBranchID, 0, 100)

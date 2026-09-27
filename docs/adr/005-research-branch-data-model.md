@@ -190,8 +190,10 @@ a **`branch_id` copy-on-write overlay** on the read model, with **`main` as a re
   key the version counter on the aggregate `streamID` alone. Branch writes must not contend with
   `main` (or other branches) on that counter, or two isolated hypotheses touching the same person
   would spuriously fail at *write* time. So the version dimension gains `branch_id`: a branch's
-  first write to an existing aggregate seeds its expected version from that aggregate's `main`
-  version at `base_position`, then increments within the branch. Divergence between a branch and
+  first write to an existing aggregate seeds its expected version from that aggregate's **current**
+  `main` version — the version the live overlay shows the branch — then increments within the
+  branch (originally the `main` version *at `base_position`*; changed by #844, see the
+  implementation note below). Divergence between a branch and
   `main` is surfaced at *merge* time by conflict detection (below), never as a write-time
   concurrency error (preserves DB-002's meaning per scope).
 - **Read-model rows** carry a `branch_id`. Branch edits write shadow rows; branch deletes write
@@ -1425,6 +1427,54 @@ With the two history reads that is ten more operations carrying `?branch=`, 86 i
 Verified by `TestGetEntityHistoryOn_AllBackends` (`internal/query`, memory/SQLite/PostgreSQL),
 `TestPersonHistory_*`, `TestFamilyHistory_*`, `TestRollback_RefusedOnBranch` (`internal/api`), the
 person and family page tests, and `e2e/branch-entity-pages.spec.ts`.
+
+## Implementation Note — branch version seeding follows the live overlay (#844, delivered)
+
+**Problem.** §The model first seeded a branch's version line for an aggregate from `main`'s
+version *as of `base_position`*, while the read side (§The model's copy-on-write overlay) serves an
+untouched aggregate from `main`'s *current* row. The two disagreed for any aggregate `main` edited
+after the fork: the branch displayed version N+k, the UI sent N+k, and the append expected N, so
+the edit failed with 409 — and a retry got the same 409. Every entity `main` corrected after the
+fork was uneditable from the branch.
+
+**Decision: option (a) — seed from `main`'s current version.** For a stream the branch has not
+written yet, `EventStore.Append` on a branch scope now takes `main`'s current version of that
+stream (`MAX(version)` over its `main` events, no position filter) as the branch's current version.
+The expected version a branch append accepts is therefore exactly the version a branch read shows,
+matching the live overlay and the entity history of #823/#824 (which already treats `main`'s
+post-fork, pre-first-write events as inherited). Once the branch has written the stream its own
+version line takes over, as before. The rule lives in the one append path shared by every entity
+type — the three backends (memory, SQLite, PostgreSQL) implement it identically — so persons,
+families, sources, citations, notes, media, evidence and GPS artifacts all follow it without
+per-entity code. `AppendScope` lost its `BasePosition` field: nothing in the append depends on the
+fork point any more, and keeping an ignored field would invite callers to believe otherwise.
+
+Option (b) — have branch reads report the as-of-fork version — was rejected: it contradicts the
+live overlay, which shows `main`'s current data for an untouched entity, and would pair post-fork
+field values with a pre-fork version.
+
+**Concurrency is unchanged in kind.** A `main` write landing between the branch's read and its
+write advances `main`'s version, so the branch's displayed version is stale and the append (or the
+command's own read-model check) refuses it with 409 — the same guarantee a `main` edit gets. A
+`main` write committing *after* the branch's first append has read `main`'s version is not a
+write-time conflict, by BR-005's design: branch and `main` never contend on the version counter
+(`UNIQUE(stream_id, branch_id, version)`), and that divergence is surfaced at merge time.
+
+**Merge classification is unchanged.** The conflict detector reads `main`'s own events with
+`position > base_position`, so `main`'s post-fork edits remain `main` changes even though the
+branch's first write now starts after them. When the branch then changes the same field, the merge
+reports an `edit_edit` conflict on it; when it changes a different field, both edits merge. Note
+that the branch's shadow row already contains `main`'s post-fork values (it was seeded from the row
+the branch was reading), so the conflict is conservative: a reviewer confirms a branch edit made
+with `main`'s correction on screen, rather than the merge silently overwriting it.
+
+Verified by `runBranchVersioningScenario` (identical copies for memory, SQLite and PostgreSQL:
+the as-of-fork version is refused and `main`'s current version accepted),
+`TestBranchEditAfterMainCorrection` (identical scenario bodies in `internal/repository/{memory,
+sqlite,postgres}`: the issue's reproduction through a real command handler for a person, a family
+and a source, the stale as-of-fork version and a racing `main` write both refused, and the merge
+reporting `edit_edit` on exactly the fields both sides changed), and
+`TestBranchUpdate_EntityMainEditedAfterFork` (`internal/api`, the reproduction over HTTP).
 
 ## References
 

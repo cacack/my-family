@@ -459,7 +459,7 @@ func TestResumeMerge_LegacyClaimWithoutPlan(t *testing.T) {
 		BasePosition:     s.branch.BasePosition,
 		MergedAtPosition: logHead(t, s.f),
 	}
-	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID), BasePosition: s.branch.BasePosition}
+	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID)}
 	version, err := s.f.eventStore.GetStreamVersion(ctx, s.branch.ID, scope.BranchID)
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)
@@ -590,7 +590,7 @@ func TestResumeMerge_PartiallyPresentStreamIsRefused(t *testing.T) {
 	// Claim with a nothing-replayed plan, then copy ONE of the two branch
 	// events onto main by hand.
 	head := logHead(t, s.f)
-	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID), BasePosition: s.branch.BasePosition}
+	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID)}
 	version, err := s.f.eventStore.GetStreamVersion(ctx, s.branch.ID, scope.BranchID)
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)
@@ -622,7 +622,7 @@ func TestResumeMerge_RefusesBranchWritesAfterTheClaim(t *testing.T) {
 	s := seedMerge(t, "Byron")
 	ctx := context.Background()
 
-	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID), BasePosition: s.branch.BasePosition}
+	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID)}
 	version, err := s.f.eventStore.GetStreamVersion(ctx, s.branch.ID, scope.BranchID)
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)
@@ -849,7 +849,7 @@ func TestResumeMerge_LegacyClaimDecisionIsFinal(t *testing.T) {
 		BasePosition:     s.branch.BasePosition,
 		MergedAtPosition: logHead(t, s.f),
 	}
-	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID), BasePosition: s.branch.BasePosition}
+	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID)}
 	version, err := s.f.eventStore.GetStreamVersion(ctx, s.branch.ID, scope.BranchID)
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)

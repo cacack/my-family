@@ -23,38 +23,36 @@ var (
 // branch-related arguments into one value so Append's positional list stays
 // readable as branching grows.
 //
-// BranchID names the branch the appended events belong to. BasePosition is the
-// main Position the branch forked from; it matters only for a branch's FIRST
-// write to a given aggregate, where the branch seeds its version line from that
-// aggregate's main version as of BasePosition so the branch continues the
-// aggregate's numbering instead of restarting at 1. It is ignored on the
-// mainline.
+// BranchID names the branch the appended events belong to.
+//
+// A branch's FIRST write to an aggregate that already exists on main seeds the
+// branch's version line from that aggregate's CURRENT main version, so the
+// branch continues the aggregate's numbering instead of restarting at 1. It is
+// main's current version, not its version as of the branch's fork point,
+// because that is the version a branch read shows: until the branch writes an
+// aggregate, the read model's live copy-on-write overlay serves main's current
+// row (ADR-005 §The model). Seeding from the fork point made every aggregate
+// main edited after the fork uneditable from the branch — the UI sends the
+// version it displayed and the append expected an older one (#844). Main's
+// post-fork events still sit after the branch's base position, so the merge
+// compare classifies them as main changes exactly as before. Nothing in the
+// append depends on the fork point, so the scope carries none.
 //
 // The ZERO VALUE IS MainScope, and deliberately so: domain.MainBranchID is the
 // zero UUID (ADR-005 §Sub-decision 3), so a forgotten scope argument falls back
 // to the mainline rather than to an arbitrary branch. Code that must be
 // branch-scoped therefore fails loudly (writes land on main) instead of
 // silently corrupting some other branch's overlay.
-//
-// INVARIANT: a non-main scope must carry the branch's real
-// domain.Branch.BasePosition. A branch scope built with BasePosition left at
-// zero seeds its version line from "main as of position 0" — i.e. version 0 —
-// so the branch's first write to an already-existing aggregate restarts that
-// aggregate's numbering at 1 instead of continuing main's. This is NOT checked
-// at runtime: BasePosition 0 is legitimate for a branch forked off an empty
-// log, so the zero value is indistinguishable from a genuine fork point.
-// Construct branch scopes from a loaded domain.Branch, never by hand.
 type AppendScope struct {
-	BranchID     domain.BranchID
-	BasePosition int64
+	BranchID domain.BranchID
 }
 
-// MainScope is the mainline append scope: the reserved main branch, forked from
-// nothing. Every non-branch call site passes this. Struct values can't be const,
-// so this is a var — treat it as immutable. It is spelled out rather than left
-// implicit even though AppendScope{} equals it (see the type's doc comment),
-// because an explicit MainScope at a call site states intent.
-var MainScope = AppendScope{BranchID: domain.MainBranchID, BasePosition: 0}
+// MainScope is the mainline append scope: the reserved main branch. Every
+// non-branch call site passes this. Struct values can't be const, so this is a
+// var — treat it as immutable. It is spelled out rather than left implicit even
+// though AppendScope{} equals it (see the type's doc comment), because an
+// explicit MainScope at a call site states intent.
+var MainScope = AppendScope{BranchID: domain.MainBranchID}
 
 // EventStore provides append-only storage for domain events.
 type EventStore interface {
@@ -64,8 +62,7 @@ type EventStore interface {
 	// prior events for the stream on that branch.
 	//
 	// scope (last param, matching Projector.Project's branch-last convention) tags
-	// every appended event with its branch and carries the branch's base position;
-	// pass MainScope for the mainline. Versioning is per-(streamID, branch): a
+	// every appended event with its branch; pass MainScope for the mainline. Versioning is per-(streamID, branch): a
 	// branch append never contends with main, and main never contends with a
 	// branch. Divergence surfaces at merge time, not at write time (ADR-005).
 	Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope AppendScope) error

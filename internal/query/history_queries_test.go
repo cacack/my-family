@@ -1526,7 +1526,7 @@ func TestHistoryService_GetEntityHistory_BranchIsolation(t *testing.T) {
 
 	require.NoError(t, eventStore.Append(ctx, streamID, "Person", []domain.Event{
 		domain.NewPersonUpdated(streamID, map[string]any{"surname": "Hypothesis"}),
-	}, -1, repository.AppendScope{BranchID: branchID, BasePosition: 2}))
+	}, -1, repository.AppendScope{BranchID: branchID}))
 
 	result, err := service.GetEntityHistory(ctx, "person", streamID, 20, 0)
 	require.NoError(t, err)
