@@ -409,3 +409,148 @@ func TestResumeMerge_LegacyClaimRefusesExcludingALandedLogsSubject(t *testing.T)
 		t.Errorf("main log = %+v, want it about the landed person", got)
 	}
 }
+
+// deletePersonOnBranch deletes a person on a branch at its current version.
+func (e evidenceResume) deletePersonOnBranch(t *testing.T, h *command.Handler, branch *domain.Branch, id uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	p, err := e.f.readStore.GetPerson(ctx, domain.BranchID(branch.ID), id)
+	if err != nil || p == nil {
+		t.Fatalf("GetPerson = %v, %v", p, err)
+	}
+	if err := h.DeletePerson(ctx, command.DeletePersonInput{ID: id, Version: p.Version, Reason: "duplicate"}); err != nil {
+		t.Fatalf("branch DeletePerson failed: %v", err)
+	}
+}
+
+// assertSubjectDeletePending resumes with no decisions and expects exactly the
+// subject's delete to be pending; "branch" for it is then refused without
+// writing, and "main" finishes the resume keeping the subject.
+func (e evidenceResume) assertSubjectDeletePending(t *testing.T, branch *domain.Branch, subject uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	before := e.mainEventCount(t)
+	result, err := e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	if !errors.Is(err, command.ErrMergeResumeNeedsResolution) {
+		t.Fatalf("ResumeMerge error = %v, want ErrMergeResumeNeedsResolution", err)
+	}
+	if result == nil || !slices.Equal(result.PendingStreamIDs, []uuid.UUID{subject}) {
+		t.Fatalf("PendingStreamIDs = %v, want [%s]", result, subject)
+	}
+	if _, err := e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID: branch.ID, Resolutions: map[uuid.UUID]command.MergeResolution{subject: command.ResolveBranch},
+	}); !errors.Is(err, command.ErrMergeDanglingReference) {
+		t.Fatalf("ResumeMerge(branch) error = %v, want ErrMergeDanglingReference", err)
+	}
+	if got := e.mainEventCount(t); got != before {
+		t.Fatalf("refused resumes wrote %d event(s) to main", got-before)
+	}
+	e.resume(t, branch.ID, map[uuid.UUID]command.MergeResolution{subject: command.ResolveMain})
+	if p, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, subject); err != nil || p == nil {
+		t.Errorf("main person = %v (err=%v), want kept", p, err)
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
+}
+
+// TestResumeMerge_SubjectDeleteOntoMainEditOfLandedArtifactIsPending: the
+// branch edits main's evidence analysis about a person and then deletes the
+// person. The merge stops after the analysis edit lands, and main then edits
+// the analysis again. The landed stream is never conflict-checked again, so
+// replaying the delete would cascade main's post-landing edit away with no
+// record: the delete is pending, and "main" keeps the analysis with main's
+// edit.
+func TestResumeMerge_SubjectDeleteOntoMainEditOfLandedArtifactIsPending(t *testing.T) {
+	e := newEvidenceResume(t)
+	ctx := context.Background()
+	subject := e.mainPerson(t, "Owen")
+	analysis := e.analysis(t, e.f.handler, subject, "Born 1850")
+	branch, scoped := e.branch(t, "tidy-owen")
+	branchConclusion := "Born 1851"
+	if _, err := scoped.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{
+		ID: analysis, Conclusion: &branchConclusion, Version: 1,
+	}); err != nil {
+		t.Fatalf("branch UpdateEvidenceAnalysis failed: %v", err)
+	}
+	e.deletePersonOnBranch(t, scoped, branch, subject)
+
+	e.interrupt(t, branch, 2)
+	landed := e.mainAnalysis(t, analysis)
+	if landed == nil || landed.Conclusion != branchConclusion {
+		t.Fatalf("main analysis after interruption = %+v, want the branch's edit landed", landed)
+	}
+	mainConclusion := "Born 1852, per the parish register"
+	if _, err := e.f.handler.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{
+		ID: analysis, Conclusion: &mainConclusion, Version: landed.Version,
+	}); err != nil {
+		t.Fatalf("main UpdateEvidenceAnalysis failed: %v", err)
+	}
+
+	e.assertSubjectDeletePending(t, branch, subject)
+	if got := e.mainAnalysis(t, analysis); got == nil || got.Conclusion != mainConclusion {
+		t.Errorf("main analysis = %+v, want main's post-landing edit kept", got)
+	}
+}
+
+// TestResumeMerge_SubjectDeleteOntoMainEditOfLandedLogIsPending: the branch
+// creates a research log about a main person and then deletes the person. The
+// log lands before the interruption; main then adds notes to it. Replaying the
+// delete would cascade main's notes away, so it is pending.
+func TestResumeMerge_SubjectDeleteOntoMainEditOfLandedLogIsPending(t *testing.T) {
+	e := newEvidenceResume(t)
+	ctx := context.Background()
+	doomed := e.mainPerson(t, "Doomed")
+	branch, scoped := e.branch(t, "tidy-doomed")
+	logID := e.researchLog(t, scoped, doomed, "County archive")
+	e.deletePersonOnBranch(t, scoped, branch, doomed)
+
+	e.interrupt(t, branch, 2)
+	landed := e.mainLog(t, logID)
+	if landed == nil {
+		t.Fatal("main has no research log after interruption, want the branch's log landed")
+	}
+	notes := "Checked the index too"
+	if _, err := e.f.handler.UpdateResearchLog(ctx, command.UpdateResearchLogInput{
+		ID: logID, Notes: &notes, Version: landed.Version,
+	}); err != nil {
+		t.Fatalf("main UpdateResearchLog failed: %v", err)
+	}
+
+	e.assertSubjectDeletePending(t, branch, doomed)
+	if got := e.mainLog(t, logID); got == nil || got.Notes != notes {
+		t.Errorf("main research log = %+v, want main's notes kept", got)
+	}
+}
+
+// TestResumeMerge_SubjectDeleteCascadesUnchangedLandedArtifact: as above, but
+// main leaves the landed analysis alone. The branch saw everything the
+// cascade removes, so the resume replays the delete and the analysis goes
+// with the person, as on the branch.
+func TestResumeMerge_SubjectDeleteCascadesUnchangedLandedArtifact(t *testing.T) {
+	e := newEvidenceResume(t)
+	ctx := context.Background()
+	subject := e.mainPerson(t, "Owen")
+	analysis := e.analysis(t, e.f.handler, subject, "Born 1850")
+	branch, scoped := e.branch(t, "tidy-owen")
+	conclusion := "Born 1851"
+	if _, err := scoped.UpdateEvidenceAnalysis(ctx, command.UpdateEvidenceAnalysisInput{
+		ID: analysis, Conclusion: &conclusion, Version: 1,
+	}); err != nil {
+		t.Fatalf("branch UpdateEvidenceAnalysis failed: %v", err)
+	}
+	e.deletePersonOnBranch(t, scoped, branch, subject)
+
+	e.interrupt(t, branch, 2)
+	if e.mainAnalysis(t, analysis) == nil {
+		t.Fatal("main has no analysis after interruption, want the branch's edit landed")
+	}
+	done := e.resume(t, branch.ID, nil)
+	if len(done.PendingStreamIDs) != 0 {
+		t.Fatalf("PendingStreamIDs = %v, want none", done.PendingStreamIDs)
+	}
+	if got := e.mainAnalysis(t, analysis); got != nil {
+		t.Errorf("main analysis = %+v, want cascaded with its subject as on the branch", got)
+	}
+	if p, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, subject); err != nil || p != nil {
+		t.Errorf("main person = %v (err=%v), want deleted", p, err)
+	}
+}

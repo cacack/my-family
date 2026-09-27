@@ -1329,7 +1329,11 @@ landed artifact that the replay re-pointed away from a subject but that `main`'s
 lists under it is judged from `main`'s log, not the row, since its projection may have failed and
 the repair runs after the checks: if the log leaves it about another subject (or deleted), the
 delete is sound; if `main` re-pointed it back after the landing, it counts as `main`'s own research
-for the subject-delete rule. Landed detection is
+for the subject-delete rule. Any other landed artifact `main` still lists under the subject is not
+the "branch saw it" case a fresh merge relies on: nothing conflict-checks `main`'s writes to a landed
+stream after it landed. So if `main`'s log has an event on its stream after the landed replay's own
+events (matched by payload id), the subject delete is pending too. The media owner-delete rule
+applies the same check to a landed media item of the owner. Landed detection is
 the usual payload-id scan; the read-model repair follows the version rule (every GPS projection
 writes the row, version included, in one save). A missing GPS row counts as removed for a reason
 the log explains when its subject's `main` stream ends in a delete, following a person subject

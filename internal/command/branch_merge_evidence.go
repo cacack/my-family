@@ -372,7 +372,7 @@ func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evi
 	if err := h.checkSourceDeleteOrphansNothing(ctx, group, plan.replayed); err != nil {
 		return err
 	}
-	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, group, plan.replayed); err != nil {
+	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, group, plan); err != nil {
 		return err
 	}
 	if err := h.checkMediaOwnerSurvives(ctx, group, plan); err != nil {
@@ -622,19 +622,22 @@ func ownerDeleteOf(group streamGroup) (entityType string, deletedAt int64, ok bo
 // the branch's view and was cascaded there too, and replaying the delete
 // reproduces that. An item main wrote to after it — typically an upload the
 // branch never saw — is refused. Items whose media stream the replay itself
-// carries are the branch's own business and skipped; a person main merged
+// carries are the branch's own business and skipped, except on a resume for
+// one whose stream already landed: nothing conflict-checks main's writes to a
+// landed stream after it landed, so such an item main wrote to after the
+// landed replay's own events is refused too. A person main merged
 // into the owner after the branch's delete wrote PersonMerged to the owner's
 // stream, which the merge's conflict detection (or, on resume, the plan's
 // staleness pin) already puts in front of the caller.
 //
 // The work is one media listing per owner-deleting stream and one set-based
 // scan of the listed items' main streams — never a read per item.
-func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup) error {
+func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group streamGroup, plan evidencePlan) error {
 	entityType, deletedAt, ok := ownerDeleteOf(group)
 	if !ok {
 		return nil
 	}
-	var candidates []uuid.UUID
+	var candidates, landedItems []uuid.UUID
 	for offset := 0; ; offset += mediaPageSize {
 		page, total, err := h.readStore.ListMediaForEntity(ctx, entityType, group.streamID,
 			repository.ListOptions{Limit: mediaPageSize, Offset: offset, BranchID: domain.MainBranchID})
@@ -642,20 +645,35 @@ func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group stre
 			return fmt.Errorf("checking media of %s %s on main: %w", entityType, group.streamID, err)
 		}
 		for i := range page {
-			if _, ours := replayed[page[i].ID]; !ours {
+			switch _, ours := plan.replayed[page[i].ID]; {
+			case !ours:
 				candidates = append(candidates, page[i].ID)
+			case plan.landed[page[i].ID]:
+				landedItems = append(landedItems, page[i].ID)
 			}
 		}
 		if len(page) == 0 || offset+len(page) >= total {
 			break
 		}
 	}
-	if len(candidates) == 0 {
+	if len(candidates)+len(landedItems) == 0 {
 		return nil
 	}
-	events, err := h.readMainStreams(ctx, candidates)
+	events, err := h.readMainStreams(ctx, append(append([]uuid.UUID{}, candidates...), landedItems...))
 	if err != nil {
 		return err
+	}
+	for _, mediaID := range landedItems {
+		later, err := mainWriteAfterLanding(plan.replayed[mediaID], events[mediaID])
+		if err != nil {
+			return err
+		}
+		if later != nil {
+			return fmt.Errorf(
+				"%w: the branch deletes %s %s, but main changed its media %s (%s at position %d) after the branch's "+
+					"own changes to it landed; merging would delete it from main with no record",
+				ErrMergeDanglingReference, entityType, group.streamID, mediaID, later.EventType, later.Position)
+		}
 	}
 	for _, mediaID := range candidates {
 		for _, evt := range events[mediaID] {
@@ -669,4 +687,39 @@ func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group stre
 		}
 	}
 	return nil
+}
+
+// mainWriteAfterLanding returns main's first event on a landed stream that
+// follows the landed replay's own events (matched by payload event id, which a
+// replay preserves), or nil when main has not written the stream since. A
+// landed stream none of whose replayed events main's log holds is an error:
+// the caller's landed view and the log disagree.
+func mainWriteAfterLanding(group streamGroup, mainEvents []repository.StoredEvent) (*repository.StoredEvent, error) {
+	ours := make(map[uuid.UUID]bool, len(group.events))
+	for i := range group.events {
+		id, err := eventPayloadID(group.events[i])
+		if err != nil {
+			return nil, err
+		}
+		ours[id] = true
+	}
+	landedAt := int64(-1)
+	for i := range mainEvents {
+		id, err := eventPayloadID(mainEvents[i])
+		if err != nil {
+			return nil, err
+		}
+		if ours[id] {
+			landedAt = mainEvents[i].Position
+		}
+	}
+	if landedAt < 0 {
+		return nil, fmt.Errorf("checking landed stream %s: main's log holds none of its replayed events", group.streamID)
+	}
+	for i := range mainEvents {
+		if mainEvents[i].Position > landedAt {
+			return &mainEvents[i], nil
+		}
+	}
+	return nil, nil
 }

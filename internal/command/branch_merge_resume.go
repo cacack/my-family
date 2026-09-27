@@ -55,14 +55,15 @@ var (
 	//     creates it to main, or a stream already on main deleted it — or it
 	//     deletes a media owner while main has an item of that owner it wrote
 	//     to after the branch's delete (typically an upload made during the
-	//     interruption).
+	//     interruption), or changed after the branch's own edit of it landed.
 	//   - the same for GPS artifacts (#760): the stream edits an evidence
 	//     analysis, evidence conflict, research log or proof summary main no
 	//     longer has, sets one's subject to a person or family main will not
 	//     have when it lands, or deletes a person or family while main has GPS
 	//     research about them that the branch never saw (added or changed on
-	//     main after the fork, or re-pointed back by main after the replay
-	//     moved it away).
+	//     main after the fork, changed on main after the branch's own edit of
+	//     it landed, or re-pointed back by main after the replay moved it
+	//     away).
 	//
 	// The streams are listed on ResumeMergeResult.PendingStreamIDs. Inspect them
 	// with GET /branches/{id}/compare, then resume again with a resolution for
