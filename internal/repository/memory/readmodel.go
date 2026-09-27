@@ -152,13 +152,13 @@ type ReadModelStore struct {
 	sourceExternalIDs     map[uuid.UUID][]repository.SourceExternalIDReadModel // keyed by source ID
 	citations             map[uuid.UUID]*repository.CitationReadModel
 	media                 map[uuid.UUID]*repository.MediaReadModel
-	events                map[uuid.UUID]*repository.EventReadModel
-	attributes            map[uuid.UUID]*repository.AttributeReadModel
+	events                map[branchKey]*repository.EventReadModel     // branch-scoped (#757)
+	attributes            map[branchKey]*repository.AttributeReadModel // branch-scoped (#757)
 	notes                 map[uuid.UUID]*repository.NoteReadModel
 	submitters            map[uuid.UUID]*repository.SubmitterReadModel
 	repositories          map[uuid.UUID]*repository.RepositoryReadModel
 	repositoryExternalIDs map[uuid.UUID][]repository.RepositoryExternalIDReadModel // keyed by repository ID
-	associations          map[uuid.UUID]*repository.AssociationReadModel
+	associations          map[branchKey]*repository.AssociationReadModel           // branch-scoped (#757)
 	ldsOrdinances         map[uuid.UUID]*repository.LDSOrdinanceReadModel
 	evidenceAnalyses      map[uuid.UUID]*repository.EvidenceAnalysisReadModel
 	evidenceConflicts     map[uuid.UUID]*repository.EvidenceConflictReadModel
@@ -180,13 +180,13 @@ func NewReadModelStore() *ReadModelStore {
 		sourceExternalIDs:     make(map[uuid.UUID][]repository.SourceExternalIDReadModel),
 		citations:             make(map[uuid.UUID]*repository.CitationReadModel),
 		media:                 make(map[uuid.UUID]*repository.MediaReadModel),
-		events:                make(map[uuid.UUID]*repository.EventReadModel),
-		attributes:            make(map[uuid.UUID]*repository.AttributeReadModel),
+		events:                make(map[branchKey]*repository.EventReadModel),
+		attributes:            make(map[branchKey]*repository.AttributeReadModel),
 		notes:                 make(map[uuid.UUID]*repository.NoteReadModel),
 		submitters:            make(map[uuid.UUID]*repository.SubmitterReadModel),
 		repositories:          make(map[uuid.UUID]*repository.RepositoryReadModel),
 		repositoryExternalIDs: make(map[uuid.UUID][]repository.RepositoryExternalIDReadModel),
-		associations:          make(map[uuid.UUID]*repository.AssociationReadModel),
+		associations:          make(map[branchKey]*repository.AssociationReadModel),
 		ldsOrdinances:         make(map[uuid.UUID]*repository.LDSOrdinanceReadModel),
 		evidenceAnalyses:      make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel),
 		evidenceConflicts:     make(map[uuid.UUID]*repository.EvidenceConflictReadModel),
@@ -500,7 +500,9 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 		// ON DELETE CASCADE. attributes referenced persons(id) with NO ON DELETE
 		// (RESTRICT), which would have blocked the delete; blocking is not
 		// reproducible against an append-only event log, so we cascade-delete
-		// orphan attributes too. associations/attributes are main-only.
+		// orphan attributes too. The person's own life events (owner_type
+		// "person") go with it as well (#757), so no backend keeps counting a
+		// deleted person's burial in the cemetery index.
 		delete(s.persons, branchKey{domain.MainBranchID, id})
 		delete(s.personNames, branchKey{domain.MainBranchID, id})
 		delete(s.personExternalIDs, branchKey{domain.MainBranchID, id})
@@ -519,26 +521,49 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 			}
 			storeBucket(s.familyChildren, k.branch, k.id, out)
 		}
-		for aid, assoc := range s.associations {
-			if assoc != nil && (assoc.PersonID == id || assoc.AssociateID == id) {
-				delete(s.associations, aid)
-			}
-		}
-		for atid, attr := range s.attributes {
-			if attr != nil && attr.PersonID == id {
-				delete(s.attributes, atid)
-			}
-		}
+		s.cascadePersonFacts(domain.MainBranchID, id)
 		return nil
 	}
-	// Branch delete: tombstone the person and its branch-scoped dependents.
-	// associations/attributes are main-only (not branch-scoped), so a branch
-	// delete does not touch them.
+	// Branch delete: tombstone the person and its branch-scoped dependents,
+	// including the person/family facts it owns or is associated through.
 	s.persons[branchKey{branchID, id}] = nil           // tombstone
 	s.personNames[branchKey{branchID, id}] = nil       // cascade tombstone
 	s.personExternalIDs[branchKey{branchID, id}] = nil // cascade tombstone
 	s.pedigreeEdges[branchKey{branchID, id}] = nil     // cascade tombstone
+	s.cascadePersonFacts(branchID, id)
 	return nil
+}
+
+// removeRow deletes the row (branch, id) from a single-row branch-scoped map: on
+// main it is a real removal, on a non-main branch it stores a nil tombstone so
+// the main fallback does not resurrect the row. Callers hold s.mu.
+func removeRow[T any](m map[branchKey]*T, branch domain.BranchID, id uuid.UUID) {
+	if branch == domain.MainBranchID {
+		delete(m, branchKey{branch, id})
+		return
+	}
+	m[branchKey{branch, id}] = nil
+}
+
+// cascadePersonFacts removes, on branch, every life event, attribute and
+// association the person owns (associations on either side). Main rows are hard
+// deleted; a branch tombstones each row visible on it (#757). Callers hold s.mu.
+func (s *ReadModelStore) cascadePersonFacts(branch domain.BranchID, personID uuid.UUID) {
+	for _, e := range resolveAllRows(s.events, branch) {
+		if e.OwnerType == "person" && e.OwnerID == personID {
+			removeRow(s.events, branch, e.ID)
+		}
+	}
+	for _, a := range resolveAllRows(s.attributes, branch) {
+		if a.PersonID == personID {
+			removeRow(s.attributes, branch, a.ID)
+		}
+	}
+	for _, a := range resolveAllRows(s.associations, branch) {
+		if a.PersonID == personID || a.AssociateID == personID {
+			removeRow(s.associations, branch, a.ID)
+		}
+	}
 }
 
 // SavePersonName saves or updates a person name variant on the given branch.
@@ -862,6 +887,12 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// The family's own life events (owner_type "family") cascade with it (#757).
+	for _, e := range resolveAllRows(s.events, branchID) {
+		if e.OwnerType == "family" && e.OwnerID == id {
+			removeRow(s.events, branchID, e.ID)
+		}
+	}
 	if branchID == domain.MainBranchID {
 		delete(s.families, branchKey{domain.MainBranchID, id})
 		delete(s.familyChildren, branchKey{domain.MainBranchID, id})
@@ -1008,8 +1039,9 @@ func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain
 	return nil
 }
 
-// PurgeBranch hard-deletes every slice-map entry keyed to branchID across the
-// seven branch-scoped slice entities. It is a no-op for the mainline
+// PurgeBranch hard-deletes every map entry keyed to branchID across the
+// branch-scoped entities (the seven #669 slice entities plus life events,
+// attributes and associations, #757). It is a no-op for the mainline
 // (domain.MainBranchID), which is never purged. See ADR-005 and the
 // branch-delete projection handler.
 func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
@@ -1020,9 +1052,6 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// associations/attributes are intentionally excluded: they are main-scoped
-	// (not branch-keyed), so a branch-only entity cannot own them and purging
-	// them here would delete mainline data.
 	deleteBranchRows(s.persons, branchID)
 	deleteBranchRows(s.personNames, branchID)
 	deleteBranchRows(s.personExternalIDs, branchID)
@@ -1030,6 +1059,9 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	deleteBranchRows(s.familyExternalIDs, branchID)
 	deleteBranchRows(s.familyChildren, branchID)
 	deleteBranchRows(s.pedigreeEdges, branchID)
+	deleteBranchRows(s.events, branchID)
+	deleteBranchRows(s.attributes, branchID)
+	deleteBranchRows(s.associations, branchID)
 	return nil
 }
 
@@ -1057,12 +1089,12 @@ func (s *ReadModelStore) Reset() {
 	s.sources = make(map[uuid.UUID]*repository.SourceReadModel)
 	s.citations = make(map[uuid.UUID]*repository.CitationReadModel)
 	s.media = make(map[uuid.UUID]*repository.MediaReadModel)
-	s.events = make(map[uuid.UUID]*repository.EventReadModel)
-	s.attributes = make(map[uuid.UUID]*repository.AttributeReadModel)
+	s.events = make(map[branchKey]*repository.EventReadModel)
+	s.attributes = make(map[branchKey]*repository.AttributeReadModel)
 	s.notes = make(map[uuid.UUID]*repository.NoteReadModel)
 	s.submitters = make(map[uuid.UUID]*repository.SubmitterReadModel)
 	s.repositories = make(map[uuid.UUID]*repository.RepositoryReadModel)
-	s.associations = make(map[uuid.UUID]*repository.AssociationReadModel)
+	s.associations = make(map[branchKey]*repository.AssociationReadModel)
 	s.ldsOrdinances = make(map[uuid.UUID]*repository.LDSOrdinanceReadModel)
 	s.evidenceAnalyses = make(map[uuid.UUID]*repository.EvidenceAnalysisReadModel)
 	s.evidenceConflicts = make(map[uuid.UUID]*repository.EvidenceConflictReadModel)
@@ -1372,74 +1404,80 @@ func (s *ReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// GetEvent retrieves an event by ID.
-func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
+// GetEvent retrieves a life event by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EventReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	e, exists := s.events[id]
-	if !exists {
+	e, _ := resolveRow(s.events, branchID, id)
+	if e == nil {
 		return nil, nil
 	}
 	eventCopy := *e
 	return &eventCopy, nil
 }
 
-// ListEventsForPerson returns all events for a person.
-func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// compareEvents orders life events by fact type, then date (undated last), then
+// id — the order the SQL backends return them in.
+func compareEvents(a, b *repository.EventReadModel) int {
+	cmp := strings.Compare(string(a.FactType), string(b.FactType))
+	if cmp == 0 {
+		switch {
+		case a.DateSort != nil && b.DateSort != nil:
+			cmp = a.DateSort.Compare(*b.DateSort)
+		case a.DateSort == nil && b.DateSort != nil:
+			cmp = 1 // nil dates sort after non-nil
+		case a.DateSort != nil && b.DateSort == nil:
+			cmp = -1
+		}
+	}
+	if cmp == 0 {
+		cmp = strings.Compare(a.ID.String(), b.ID.String())
+	}
+	return cmp
+}
 
+// listOwnerEvents returns the life events of one owner visible on branchID,
+// in compareEvents order.
+func (s *ReadModelStore) listOwnerEvents(branchID domain.BranchID, ownerType string, ownerID uuid.UUID) []repository.EventReadModel {
 	var results []repository.EventReadModel
-	for _, e := range s.events {
-		if e.OwnerType == "person" && e.OwnerID == personID {
+	for _, e := range resolveAllRows(s.events, branchID) {
+		if e.OwnerType == ownerType && e.OwnerID == ownerID {
 			results = append(results, *e)
 		}
 	}
-	return results, nil
+	sort.Slice(results, func(i, j int) bool { return compareEvents(&results[i], &results[j]) < 0 })
+	return results
 }
 
-// ListEventsForFamily returns all events for a family.
-func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+// ListEventsForPerson returns all life events of a person within the branch overlay.
+func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.EventReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	var results []repository.EventReadModel
-	for _, e := range s.events {
-		if e.OwnerType == "family" && e.OwnerID == familyID {
-			results = append(results, *e)
-		}
-	}
-	return results, nil
+	return s.listOwnerEvents(branchID, "person", personID), nil
 }
 
-// ListEvents returns all events with pagination.
+// ListEventsForFamily returns all life events of a family within the branch overlay.
+func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.listOwnerEvents(branchID, "family", familyID), nil
+}
+
+// ListEvents returns the life events visible on opts.BranchID with pagination.
 func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	events := make([]repository.EventReadModel, 0, len(s.events))
-	for _, e := range s.events {
+	resolved := resolveAllRows(s.events, opts.BranchID)
+	events := make([]repository.EventReadModel, 0, len(resolved))
+	for _, e := range resolved {
 		events = append(events, *e)
 	}
 
 	// Sort by fact type, then by date, then by ID for deterministic ordering
 	sort.Slice(events, func(i, j int) bool {
-		cmp := strings.Compare(string(events[i].FactType), string(events[j].FactType))
-		if cmp == 0 {
-			// Sort by date if same fact type
-			if events[i].DateSort != nil && events[j].DateSort != nil {
-				cmp = events[i].DateSort.Compare(*events[j].DateSort)
-			} else if events[i].DateSort == nil && events[j].DateSort != nil {
-				cmp = 1 // nil dates sort after non-nil
-			} else if events[i].DateSort != nil && events[j].DateSort == nil {
-				cmp = -1
-			}
-			// Both nil: cmp stays 0
-		}
-		if cmp == 0 {
-			cmp = strings.Compare(events[i].ID.String(), events[j].ID.String())
-		}
+		cmp := compareEvents(&events[i], &events[j])
 		if opts.Order == "desc" {
 			return cmp > 0
 		}
@@ -1447,85 +1485,101 @@ func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOpt
 	})
 
 	total := len(events)
-
-	// Paginate
-	start := opts.Offset
-	if start > len(events) {
-		start = len(events)
-	}
-	end := start + opts.Limit
-	if end > len(events) {
-		end = len(events)
-	}
-
+	start, end := pageBounds(len(events), opts)
 	return events[start:end], total, nil
 }
 
-// SaveEvent saves or updates an event.
-func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
+// pageBounds clamps opts' offset/limit window to a slice of length n.
+func pageBounds(n int, opts repository.ListOptions) (start, end int) {
+	start = opts.Offset
+	if start > n {
+		start = n
+	}
+	if start < 0 {
+		start = 0
+	}
+	end = start + opts.Limit
+	if end > n || opts.Limit < 0 {
+		end = n
+	}
+	return start, end
+}
+
+// SaveEvent saves or updates a life event on the given branch (ADR-005).
+func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID, event *repository.EventReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	eventCopy := *event
-	s.events[event.ID] = &eventCopy
+	s.events[branchKey{branchID, event.ID}] = &eventCopy
 	return nil
 }
 
-// DeleteEvent removes an event.
-func (s *ReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
+// DeleteEvent removes a life event: a real removal on main, a tombstone on a
+// non-main branch so the main fallback does not resurrect it.
+func (s *ReadModelStore) DeleteEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.events, id)
+	removeRow(s.events, branchID, id)
 	return nil
 }
 
-// GetAttribute retrieves an attribute by ID.
-func (s *ReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
+// GetAttribute retrieves an attribute by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.AttributeReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	a, exists := s.attributes[id]
-	if !exists {
+	a, _ := resolveRow(s.attributes, branchID, id)
+	if a == nil {
 		return nil, nil
 	}
 	attrCopy := *a
 	return &attrCopy, nil
 }
 
-// ListAttributesForPerson returns all attributes for a person.
-func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+// compareAttributes orders attributes by fact type, then value, then id — the
+// order the SQL backends return them in.
+func compareAttributes(a, b *repository.AttributeReadModel) int {
+	cmp := strings.Compare(string(a.FactType), string(b.FactType))
+	if cmp == 0 {
+		cmp = strings.Compare(a.Value, b.Value)
+	}
+	if cmp == 0 {
+		cmp = strings.Compare(a.ID.String(), b.ID.String())
+	}
+	return cmp
+}
+
+// ListAttributesForPerson returns all attributes of a person within the branch overlay.
+func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.AttributeReadModel
-	for _, a := range s.attributes {
+	for _, a := range resolveAllRows(s.attributes, branchID) {
 		if a.PersonID == personID {
 			results = append(results, *a)
 		}
 	}
+	sort.Slice(results, func(i, j int) bool { return compareAttributes(&results[i], &results[j]) < 0 })
 	return results, nil
 }
 
-// ListAttributes returns all attributes with pagination.
+// ListAttributes returns the attributes visible on opts.BranchID with pagination.
 func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	attributes := make([]repository.AttributeReadModel, 0, len(s.attributes))
-	for _, a := range s.attributes {
+	resolved := resolveAllRows(s.attributes, opts.BranchID)
+	attributes := make([]repository.AttributeReadModel, 0, len(resolved))
+	for _, a := range resolved {
 		attributes = append(attributes, *a)
 	}
 
 	// Sort by fact type, then by value, then by ID for deterministic ordering
 	sort.Slice(attributes, func(i, j int) bool {
-		cmp := strings.Compare(string(attributes[i].FactType), string(attributes[j].FactType))
-		if cmp == 0 {
-			cmp = strings.Compare(attributes[i].Value, attributes[j].Value)
-		}
-		if cmp == 0 {
-			cmp = strings.Compare(attributes[i].ID.String(), attributes[j].ID.String())
-		}
+		cmp := compareAttributes(&attributes[i], &attributes[j])
 		if opts.Order == "desc" {
 			return cmp > 0
 		}
@@ -1533,36 +1587,27 @@ func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.Lis
 	})
 
 	total := len(attributes)
-
-	// Paginate
-	start := opts.Offset
-	if start > len(attributes) {
-		start = len(attributes)
-	}
-	end := start + opts.Limit
-	if end > len(attributes) {
-		end = len(attributes)
-	}
-
+	start, end := pageBounds(len(attributes), opts)
 	return attributes[start:end], total, nil
 }
 
-// SaveAttribute saves or updates an attribute.
-func (s *ReadModelStore) SaveAttribute(ctx context.Context, attribute *repository.AttributeReadModel) error {
+// SaveAttribute saves or updates an attribute on the given branch (ADR-005).
+func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.BranchID, attribute *repository.AttributeReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	attrCopy := *attribute
-	s.attributes[attribute.ID] = &attrCopy
+	s.attributes[branchKey{branchID, attribute.ID}] = &attrCopy
 	return nil
 }
 
-// DeleteAttribute removes an attribute.
-func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) error {
+// DeleteAttribute removes an attribute: a real removal on main, a tombstone on a
+// non-main branch.
+func (s *ReadModelStore) DeleteAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.attributes, id)
+	removeRow(s.attributes, branchID, id)
 	return nil
 }
 
@@ -1732,26 +1777,17 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return results, total, nil
 }
 
-// GetCemeteryIndex returns unique burial/cremation places with person counts.
-//
-// MAIN-ONLY on purpose: it reads life events alone, and life events are not
-// branch-scoped yet (sub-issue B of #676, #757). There is no overlay to resolve, so
-// this takes no branchID -- do not "fix" it to accept one before #757 lands.
-//
-// KNOWN DIVERGENCE: these counts can disagree with GetPersonsByCemetery under a
-// branch scope. The count here is distinct OwnerID over life events with no lookup
-// into persons, so it still counts a person the branch tombstoned;
-// GetPersonsByCemetery resolves the person side through the overlay and drops
-// tombstones. A branch that deleted a buried person therefore sees "Oak Grove -
-// 1 person" in the index and an empty list on click-through. Closing the gap needs
-// both sides branch-aware, which waits on #757.
-func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
+// GetCemeteryIndex returns burial/cremation places with the number of distinct
+// owners placed there, counted over branchID's overlay of life events (ADR-005).
+// A branch that tombstoned a person also tombstoned that person's life events
+// (DeletePerson's cascade), so the index agrees with GetPersonsByCemetery.
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Count distinct persons per place for burial/cremation events
 	placePersons := make(map[string]map[uuid.UUID]struct{})
-	for _, e := range s.events {
+	for _, e := range resolveAllRows(s.events, branchID) {
 		if e.Place == "" {
 			continue
 		}
@@ -1779,17 +1815,17 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.Cem
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given
-// place, drawn from opts.BranchID's overlay of persons (ADR-005).
+// place. Both sides of the join resolve through opts.BranchID's overlay (ADR-005):
+// the branch-visible life events pick the owners, the branch-visible persons are
+// returned.
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Find distinct person IDs with matching burial/cremation events (exact
-	// case-insensitive match). This half of the join stays on main: life events are
-	// not branch-scoped yet (sub-issue B of #676, #757). Only the persons side below
-	// honors the branch scope.
+	// case-insensitive match).
 	matchedIDs := make(map[uuid.UUID]struct{})
-	for _, e := range s.events {
+	for _, e := range resolveAllRows(s.events, opts.BranchID) {
 		if e.FactType != domain.FactPersonBurial && e.FactType != domain.FactPersonCremation {
 			continue
 		}
@@ -2184,26 +2220,27 @@ func (s *ReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID) err
 	return nil
 }
 
-// GetAssociation retrieves an association by ID.
-func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
+// GetAssociation retrieves an association by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.AssociationReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	assoc, exists := s.associations[id]
-	if !exists {
+	assoc, _ := resolveRow(s.associations, branchID, id)
+	if assoc == nil {
 		return nil, nil
 	}
 	result := *assoc
 	return &result, nil
 }
 
-// ListAssociations returns a paginated list of associations.
+// ListAssociations returns a paginated list of the associations visible on
+// opts.BranchID.
 func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.AssociationReadModel
-	for _, assoc := range s.associations {
+	for _, assoc := range resolveAllRows(s.associations, opts.BranchID) {
 		results = append(results, *assoc)
 	}
 
@@ -2241,13 +2278,14 @@ func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.L
 	return results, total, nil
 }
 
-// ListAssociationsForPerson returns all associations for a given person.
-func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+// ListAssociationsForPerson returns all associations visible on branchID in
+// which the person is either the subject or the associate.
+func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.AssociationReadModel
-	for _, assoc := range s.associations {
+	for _, assoc := range resolveAllRows(s.associations, branchID) {
 		if assoc.PersonID == personID || assoc.AssociateID == personID {
 			results = append(results, *assoc)
 		}
@@ -2265,22 +2303,23 @@ func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, personID
 	return results, nil
 }
 
-// SaveAssociation saves or updates an association.
-func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.AssociationReadModel) error {
+// SaveAssociation saves or updates an association on the given branch (ADR-005).
+func (s *ReadModelStore) SaveAssociation(ctx context.Context, branchID domain.BranchID, assoc *repository.AssociationReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := *assoc
-	s.associations[assoc.ID] = &result
+	s.associations[branchKey{branchID, assoc.ID}] = &result
 	return nil
 }
 
-// DeleteAssociation removes an association.
-func (s *ReadModelStore) DeleteAssociation(ctx context.Context, id uuid.UUID) error {
+// DeleteAssociation removes an association: a real removal on main, a tombstone
+// on a non-main branch.
+func (s *ReadModelStore) DeleteAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.associations, id)
+	removeRow(s.associations, branchID, id)
 	return nil
 }
 

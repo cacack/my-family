@@ -259,11 +259,10 @@ type CemeteryEntry struct {
 	Count int    `json:"count"`
 }
 
-// GetCemeteryIndex returns the cemetery/burial place index.
-//
-// Main-only: it aggregates `life_events`, which carries no branch_id (sub-issue B, #757).
-func (s *BrowseService) GetCemeteryIndex(ctx context.Context) (*CemeteryIndexResult, error) {
-	entries, err := s.readStore.GetCemeteryIndex(ctx)
+// GetCemeteryIndex returns the cemetery/burial place index within the branch
+// overlay (ADR-005); the zero branchID (MainBranchID) reads the mainline.
+func (s *BrowseService) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) (*CemeteryIndexResult, error) {
+	entries, err := s.readStore.GetCemeteryIndex(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -292,9 +291,9 @@ type GetPersonsByCemeteryInput struct {
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given place.
 //
-// Split scope: only the person side follows input.BranchID's overlay; the burial and
-// cremation `life_events` joined against it stay main-only (sub-issue B, #757), so a
-// branch's counts here can disagree with GetCemeteryIndex.
+// Both sides of the join follow input.BranchID's overlay (ADR-005): the burial and
+// cremation life events select the owners, and the persons returned are the
+// branch's view of them (#757), so the list agrees with GetCemeteryIndex.
 func (s *BrowseService) GetPersonsByCemetery(ctx context.Context, input GetPersonsByCemeteryInput) (*PersonListResult, error) {
 	// Apply defaults
 	limit := input.Limit

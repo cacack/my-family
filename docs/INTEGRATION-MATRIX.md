@@ -163,10 +163,10 @@ Current implementation status for tracking completeness.
 | Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
 | Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
 | Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
-| Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | LDSOrdinance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
-| LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
-| Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ❌ | Partial |
+| LifeEvent | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | Partial |
+| Attribute | ✅ | ✅ | ⚠️ | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | Partial |
 | Repository | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
 | Snapshot | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ❌ | Complete |
 | Branch | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | Complete |
@@ -202,15 +202,15 @@ being entities of their own — see
 
 Notes on partial rows:
 
-- **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`).
+- **LifeEvent / Attribute**: no dedicated CRUD commands or API endpoints; only bulk export (`/export/events`, `/export/attributes`). Branch ⚠️: the read model, projections and BR-006 allowlist are branch-scoped ([#757](https://github.com/cacack/my-family/issues/757)) — a branch delete of their owner tombstones them, the cemetery index and group-sheet negations read them through the overlay, and a branch merge can carry their events — but with no command of their own there is no API path that writes one on a branch.
 - **Snapshot**: event-sourced since [#624](https://github.com/cacack/my-family/issues/624) — `Handler.CreateSnapshot` / `DeleteSnapshot` emit `SnapshotCreated` / `SnapshotDeleted` and the projection writes the registry, so snapshots created from that point on rebuild from the log. Rows predating #624 have no event and would not survive a rebuild (see ADR-005 "Still open"); rebuild tooling ([#680](https://github.com/cacack/my-family/issues/680)) must backfill them. GEDCOM is N/A (a research marker is not a genealogy record). The Branch column is ❌ rather than N/A (or ⛔, where it sat until #624 made snapshots event-sourced): a snapshot *taken on a branch* is meaningful (ADR-005) but the registry has no `branch_id` column yet, so both commands refuse on a branch-scoped handler.
 - **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
-### Branch coverage detail (#669 read / #670 write / #756 aggregates)
+### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts)
 
-Seven read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
-overlay (#669). Branch **writes** cover a narrower set, because a write also needs a branch-scoped
-command path:
+Ten read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
+overlay: the seven-type #669 slice and the three person/family fact types of #757. Branch
+**writes** cover a narrower set, because a write also needs a branch-scoped command path:
 
 | Read-model type | Branch reads (#669) | Branch writes (#670) | How it is written on a branch |
 |---|---|---|---|
@@ -221,6 +221,9 @@ command path:
 | PedigreeEdge | ✅ | ✅ | derived — reprojected from branch-scoped child link/unlink |
 | PersonExternalID | ✅ | ❌ | written only by GEDCOM import, which is main-only by design (#670 non-goal) |
 | FamilyExternalID | ✅ | ❌ | same as PersonExternalID |
+| LifeEvent (#757) | ✅ | ⚠️ | no command of its own; tombstoned by a branch `deletePerson` / `deleteFamily` |
+| Attribute (#757) | ✅ | ⚠️ | same as LifeEvent |
+| Association (#757) | ✅ | ✅ | `createAssociation` / `updateAssociation` / `deleteAssociation` |
 
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
 `getPedigree`) were the original #669/#670 slice. Sub-issue A of #676
@@ -236,10 +239,23 @@ that slice's overlay and own no `branch_id` column of their own:
 | `getPersonsByCemetery` | GET | `/browse/cemeteries/{place}/persons` |
 | `getMapLocations` | GET | `/map/locations` |
 
-That is **22 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+Sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)) added seven more: the cemetery
+index, now that `life_events` carries a `branch_id`, and the six association operations:
+
+| operationId | Method | Path |
+|---|---|---|
+| `browseCemeteries` | GET | `/browse/cemeteries` |
+| `listAssociations` | GET | `/associations` |
+| `createAssociation` | POST | `/associations` |
+| `getAssociation` | GET | `/associations/{id}` |
+| `updateAssociation` | PUT | `/associations/{id}` |
+| `deleteAssociation` | DELETE | `/associations/{id}` |
+| `listAssociationsForPerson` | GET | `/persons/{id}/associations` |
+
+That is **29 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 22 in `isBranchScopedRequest()`
+The frontend mirrors exactly those 29 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
 `?branch=` while `listFamilies` does not. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
@@ -249,13 +265,12 @@ fails in **both** directions, so the allowlist cannot silently fall behind the s
 Branch scoping is no longer confined to the seven-type slice, so "everything else is main-only" is
 not the rule. The surfaces that *are* still mainline-only while a branch is active render
 `MainlineNotice.svelte`, so the UI never presents mainline data as branch data. Within browse and
-map that is now exactly two: the cemetery **index** (`browseCemeteries`, which aggregates
-`life_events` — no `branch_id` yet, [#757](https://github.com/cacack/my-family/issues/757)) and
-brick walls (not event-sourced, so branch-scoping them means first deciding whether they become
-event-sourced — [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
-[#761](https://github.com/cacack/my-family/issues/761)). The
-surname index and per-surname list, the place index and per-place list, the per-cemetery person
-list, and the map all follow the active branch. Grow the allowlist and the notice coverage together
+map that is now exactly one: brick walls (not event-sourced, so branch-scoping them means first
+deciding whether they become event-sourced —
+[ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
+[#761](https://github.com/cacack/my-family/issues/761)). The surname index and per-surname list,
+the place index and per-place list, the cemetery index and per-cemetery person list, and the map
+all follow the active branch. Grow the allowlist and the notice coverage together
 as the remaining #676 sub-issues land.
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in
@@ -271,8 +286,8 @@ behaves like a normal working copy:
   the branch was created show through (the deliberate "live overlay" of ADR-005).
 
 Remaining gaps, both deliberate: GEDCOM import/export is main-only (a stated non-goal of #670), and
-rollback is main-only (`Handler.rollbackEntity`). Widening branch writes to the entity types outside
-the seven-type slice is [#676](https://github.com/cacack/my-family/issues/676).
+rollback is main-only (`Handler.rollbackEntity`). Widening branch writes to the remaining entity
+types is [#676](https://github.com/cacack/my-family/issues/676).
 
 Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
 delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI

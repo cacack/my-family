@@ -258,13 +258,13 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		result.CitationsExported += len(allCitations)
 
 		// Fetch events and attributes for this person
-		events, _ := exp.readStore.ListEventsForPerson(ctx, p.ID)
-		attributes, _ := exp.readStore.ListAttributesForPerson(ctx, p.ID)
+		events, _ := exp.readStore.ListEventsForPerson(ctx, domain.MainBranchID, p.ID)
+		attributes, _ := exp.readStore.ListAttributesForPerson(ctx, domain.MainBranchID, p.ID)
 		result.EventsExported += len(events)
 		result.AttributesExported += len(attributes)
 
 		// Fetch associations for this person (where this person is the PersonID)
-		allAssocs, _ := exp.readStore.ListAssociationsForPerson(ctx, p.ID)
+		allAssocs, _ := exp.readStore.ListAssociationsForPerson(ctx, domain.MainBranchID, p.ID)
 		// Filter to only associations where this person is the PersonID (the one who has the association)
 		var associations []repository.AssociationReadModel
 		for _, a := range allAssocs {
@@ -304,7 +304,7 @@ func (exp *Exporter) ExportWithOptions(ctx context.Context, w io.Writer, opts Ex
 		result.CitationsExported += len(marriageCitations)
 
 		// Fetch events for this family
-		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, f.ID)
+		familyEvents, _ := exp.readStore.ListEventsForFamily(ctx, domain.MainBranchID, f.ID)
 		result.EventsExported += len(familyEvents)
 
 		// Fetch LDS ordinances for this family

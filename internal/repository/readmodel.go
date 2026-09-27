@@ -15,7 +15,8 @@ import (
 // ErrBranchesUnsupported is returned by a branch-scoped WRITE when the underlying
 // read-model schema predates branch support and cannot represent a branch's
 // copy-on-write shadow row (ADR-005). SQLite cannot alter a table's PRIMARY KEY in
-// place, so a database created before #669 keeps its single-column `id` key: a
+// place, so a database created before #669 keeps its single-column `id` key (as
+// does one created before #757 for life_events, attributes and associations): a
 // shadow row (same id, different branch_id) would violate it. Rather than let such
 // a database look branch-capable and then fail with an opaque constraint error,
 // branch writes are refused up front with this error. Mainline (MainBranchID)
@@ -364,26 +365,26 @@ type ProofSummaryReadModel struct {
 // categories 3 and 4 both mean "main-only today" for very different reasons — 3 is
 // unfinished work, 4 is a decision.
 //
-// 1. BRANCH-SCOPED SLICE ENTITIES (#669) — Person, PersonName, PersonExternalID,
-// Family, FamilyExternalID, FamilyChild, and PedigreeEdge. These own branch_id-keyed
-// tables. Their methods take an explicit domain.BranchID (single-row) or carry it on
-// ListOptions/SearchOptions (list/search); a copy-on-write overlay resolves the
-// branch's row for an entity else falls back to the reserved main row, and branch
-// deletes write tombstones.
+// 1. BRANCH-SCOPED ENTITIES — the #669 slice (Person, PersonName, PersonExternalID,
+// Family, FamilyExternalID, FamilyChild, PedigreeEdge) and the person/family facts
+// (LifeEvent, Attribute, Association; #757, sub-issue B of #676). These own
+// branch_id-keyed tables. Their methods take an explicit domain.BranchID
+// (single-row) or carry it on ListOptions/SearchOptions (list/search); a
+// copy-on-write overlay resolves the branch's row for an entity else falls back to
+// the reserved main row, and branch deletes write tombstones.
 //
 // 2. BRANCH-AWARE AGGREGATES (#756, sub-issue A of #676) — the browse and map
 // aggregates: GetSurnameIndex, GetSurnamesByLetter, GetPersonsBySurname,
-// GetPlaceHierarchy, GetPersonsByPlace, GetPersonsByCemetery, and GetMapLocations.
-// They own no table of their own; they aggregate `persons`, so they resolve through
-// the slice's overlay and need no new schema. They carry the scope the same way
-// category 1 does — an explicit branchID, or opts.BranchID for the list methods — and
-// so report the branch's view of the tree, not main's.
+// GetPlaceHierarchy, GetPersonsByPlace, GetCemeteryIndex, GetPersonsByCemetery, and
+// GetMapLocations. They own no table of their own; they aggregate `persons` (and,
+// for the cemetery pair, `life_events`), so they resolve through the category-1
+// overlay and need no new schema. They carry the scope the same way category 1
+// does — an explicit branchID, or opts.BranchID for the list methods — and so
+// report the branch's view of the tree, not main's.
 //
 // 3. MAIN-ONLY, PENDING — no branchID yet, but destined for one. These are the
 // remaining sub-issues of #676, and each must replicate the category-1 pattern
 // (branch_id column + overlay + tombstone + cascade) on all three backends:
-//   - LifeEvent (EventReadModel), Attribute, Association, and GetCemeteryIndex —
-//     which reads `life_events` alone — are sub-issue B (#757).
 //   - Source, SourceExternalID, Citation and Note are sub-issue C (#758).
 //   - Media metadata is sub-issue D (#759); blobs stay shared and are never copied
 //     into a branch shadow row.
@@ -460,9 +461,11 @@ type ReadModelStore interface {
 	SavePedigreeEdge(ctx context.Context, branchID domain.BranchID, edge *PedigreeEdge) error
 	DeletePedigreeEdge(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) error
 
-	// PurgeBranch hard-deletes every overlay row for branchID across the seven
-	// branch-scoped slice tables (persons, person_names, person_external_ids,
-	// families, family_external_ids, family_children, pedigree_edges). It backs the
+	// PurgeBranch hard-deletes every overlay row for branchID across the
+	// branch-scoped tables: the seven slice tables (persons, person_names,
+	// person_external_ids, families, family_external_ids, family_children,
+	// pedigree_edges) and the person/family fact tables (life_events, attributes,
+	// associations; #757). It backs the
 	// branch-delete lifecycle (ADR-005): once a branch is archived its copy-on-write
 	// rows and tombstones are dropped. It is a no-op for domain.MainBranchID — the
 	// mainline is never purged.
@@ -496,20 +499,25 @@ type ReadModelStore interface {
 	SaveMedia(ctx context.Context, media *MediaReadModel) error
 	DeleteMedia(ctx context.Context, id uuid.UUID) error
 
-	// Event operations
-	GetEvent(ctx context.Context, id uuid.UUID) (*EventReadModel, error)
+	// Life event operations (branch-scoped, #757)
+	//
+	// LifeEvent is a branch-scoped entity (ADR-005): single-row methods take an
+	// explicit branchID; ListEvents carries it on opts.BranchID. The per-owner lists
+	// resolve every row the owner has through the same per-id overlay, so a branch
+	// sees main's untouched rows beside its own shadows and never a tombstoned one.
+	GetEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*EventReadModel, error)
 	ListEvents(ctx context.Context, opts ListOptions) ([]EventReadModel, int, error)
-	ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]EventReadModel, error)
-	ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]EventReadModel, error)
-	SaveEvent(ctx context.Context, event *EventReadModel) error
-	DeleteEvent(ctx context.Context, id uuid.UUID) error
+	ListEventsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]EventReadModel, error)
+	ListEventsForFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]EventReadModel, error)
+	SaveEvent(ctx context.Context, branchID domain.BranchID, event *EventReadModel) error
+	DeleteEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
-	// Attribute operations
-	GetAttribute(ctx context.Context, id uuid.UUID) (*AttributeReadModel, error)
+	// Attribute operations (branch-scoped, #757; same shape as life events)
+	GetAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*AttributeReadModel, error)
 	ListAttributes(ctx context.Context, opts ListOptions) ([]AttributeReadModel, int, error)
-	ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]AttributeReadModel, error)
-	SaveAttribute(ctx context.Context, attribute *AttributeReadModel) error
-	DeleteAttribute(ctx context.Context, id uuid.UUID) error
+	ListAttributesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]AttributeReadModel, error)
+	SaveAttribute(ctx context.Context, branchID domain.BranchID, attribute *AttributeReadModel) error
+	DeleteAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
 	// Note operations
 	GetNote(ctx context.Context, id uuid.UUID) (*NoteReadModel, error)
@@ -533,12 +541,12 @@ type ReadModelStore interface {
 	ReplaceRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID, ids []RepositoryExternalIDReadModel) error
 	GetRepositoryExternalIDs(ctx context.Context, repositoryID uuid.UUID) ([]RepositoryExternalIDReadModel, error)
 
-	// Association operations
-	GetAssociation(ctx context.Context, id uuid.UUID) (*AssociationReadModel, error)
+	// Association operations (branch-scoped, #757; same shape as life events)
+	GetAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*AssociationReadModel, error)
 	ListAssociations(ctx context.Context, opts ListOptions) ([]AssociationReadModel, int, error)
-	ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]AssociationReadModel, error)
-	SaveAssociation(ctx context.Context, association *AssociationReadModel) error
-	DeleteAssociation(ctx context.Context, id uuid.UUID) error
+	ListAssociationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]AssociationReadModel, error)
+	SaveAssociation(ctx context.Context, branchID domain.BranchID, association *AssociationReadModel) error
+	DeleteAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error
 
 	// LDS Ordinance operations
 	GetLDSOrdinance(ctx context.Context, id uuid.UUID) (*LDSOrdinanceReadModel, error)
@@ -581,10 +589,9 @@ type ReadModelStore interface {
 
 	// Browse operations
 	//
-	// These aggregate `persons`, so they see the branch overlay (ADR-005):
-	// single-row aggregates take an explicit branchID, the paged ones carry it on
-	// opts.BranchID. GetCemeteryIndex is the one carve-out — category 3 (main-only,
-	// pending) rather than category 2.
+	// These aggregate `persons` (and, for the cemetery pair, `life_events`), so they
+	// see the branch overlay (ADR-005): single-row aggregates take an explicit
+	// branchID, the paged ones carry it on opts.BranchID.
 
 	// GetSurnameIndex returns surname and initial-letter counts within the branch
 	// overlay (ADR-005).
@@ -597,10 +604,9 @@ type ReadModelStore interface {
 	// overlay (ADR-005).
 	GetPlaceHierarchy(ctx context.Context, branchID domain.BranchID, parent string) ([]PlaceEntry, error)
 	GetPersonsByPlace(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
-	// GetCemeteryIndex is MAIN-ONLY, PENDING (category 3): it reads `life_events`,
-	// which has no branch_id yet. Sub-issue B of #676 (#757) gives it one, and this
-	// method joins category 2 with it.
-	GetCemeteryIndex(ctx context.Context) ([]CemeteryEntry, error)
+	// GetCemeteryIndex returns burial/cremation places with the number of distinct
+	// owners whose branch-visible life events place them there (ADR-005, #757).
+	GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]CemeteryEntry, error)
 	GetPersonsByCemetery(ctx context.Context, place string, opts ListOptions) ([]PersonReadModel, int, error)
 
 	// Map operations

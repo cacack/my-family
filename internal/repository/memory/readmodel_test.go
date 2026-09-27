@@ -2080,13 +2080,13 @@ func TestReadModelStore_SaveAndGetEvent(t *testing.T) {
 	}
 
 	// Save event
-	err := store.SaveEvent(ctx, event)
+	err := store.SaveEvent(ctx, domain.MainBranchID, event)
 	if err != nil {
 		t.Fatalf("SaveEvent() failed: %v", err)
 	}
 
 	// Get event
-	retrieved, err := store.GetEvent(ctx, event.ID)
+	retrieved, err := store.GetEvent(ctx, domain.MainBranchID, event.ID)
 	if err != nil {
 		t.Fatalf("GetEvent() failed: %v", err)
 	}
@@ -2125,7 +2125,7 @@ func TestReadModelStore_GetEventNonExistent(t *testing.T) {
 
 	nonExistentID := uuid.New()
 
-	retrieved, err := store.GetEvent(ctx, nonExistentID)
+	retrieved, err := store.GetEvent(ctx, domain.MainBranchID, nonExistentID)
 	if err != nil {
 		t.Fatalf("GetEvent() failed: %v", err)
 	}
@@ -2176,14 +2176,14 @@ func TestReadModelStore_ListEventsForPerson(t *testing.T) {
 	}
 
 	for _, e := range events {
-		err := store.SaveEvent(ctx, e)
+		err := store.SaveEvent(ctx, domain.MainBranchID, e)
 		if err != nil {
 			t.Fatalf("SaveEvent() failed: %v", err)
 		}
 	}
 
 	// List events for person
-	results, err := store.ListEventsForPerson(ctx, personID)
+	results, err := store.ListEventsForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("ListEventsForPerson() failed: %v", err)
 	}
@@ -2240,14 +2240,14 @@ func TestReadModelStore_ListEventsForFamily(t *testing.T) {
 	}
 
 	for _, e := range events {
-		err := store.SaveEvent(ctx, e)
+		err := store.SaveEvent(ctx, domain.MainBranchID, e)
 		if err != nil {
 			t.Fatalf("SaveEvent() failed: %v", err)
 		}
 	}
 
 	// List events for family
-	results, err := store.ListEventsForFamily(ctx, familyID)
+	results, err := store.ListEventsForFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("ListEventsForFamily() failed: %v", err)
 	}
@@ -2281,7 +2281,7 @@ func TestReadModelStore_UpdateEvent(t *testing.T) {
 	}
 
 	// Save initial version
-	err := store.SaveEvent(ctx, event)
+	err := store.SaveEvent(ctx, domain.MainBranchID, event)
 	if err != nil {
 		t.Fatalf("SaveEvent() failed: %v", err)
 	}
@@ -2290,13 +2290,13 @@ func TestReadModelStore_UpdateEvent(t *testing.T) {
 	event.Place = "New Cemetery"
 	event.Version = 2
 
-	err = store.SaveEvent(ctx, event)
+	err = store.SaveEvent(ctx, domain.MainBranchID, event)
 	if err != nil {
 		t.Fatalf("SaveEvent() update failed: %v", err)
 	}
 
 	// Retrieve and verify update
-	retrieved, err := store.GetEvent(ctx, eventID)
+	retrieved, err := store.GetEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("GetEvent() failed: %v", err)
 	}
@@ -2323,19 +2323,19 @@ func TestReadModelStore_DeleteEvent(t *testing.T) {
 	}
 
 	// Save event
-	err := store.SaveEvent(ctx, event)
+	err := store.SaveEvent(ctx, domain.MainBranchID, event)
 	if err != nil {
 		t.Fatalf("SaveEvent() failed: %v", err)
 	}
 
 	// Delete event
-	err = store.DeleteEvent(ctx, event.ID)
+	err = store.DeleteEvent(ctx, domain.MainBranchID, event.ID)
 	if err != nil {
 		t.Fatalf("DeleteEvent() failed: %v", err)
 	}
 
 	// Verify event is deleted
-	retrieved, err := store.GetEvent(ctx, event.ID)
+	retrieved, err := store.GetEvent(ctx, domain.MainBranchID, event.ID)
 	if err != nil {
 		t.Fatalf("GetEvent() after delete failed: %v", err)
 	}
@@ -2364,13 +2364,13 @@ func TestReadModelStore_SaveAndGetAttribute(t *testing.T) {
 	}
 
 	// Save attribute
-	err := store.SaveAttribute(ctx, attribute)
+	err := store.SaveAttribute(ctx, domain.MainBranchID, attribute)
 	if err != nil {
 		t.Fatalf("SaveAttribute() failed: %v", err)
 	}
 
 	// Get attribute
-	retrieved, err := store.GetAttribute(ctx, attribute.ID)
+	retrieved, err := store.GetAttribute(ctx, domain.MainBranchID, attribute.ID)
 	if err != nil {
 		t.Fatalf("GetAttribute() failed: %v", err)
 	}
@@ -2406,7 +2406,7 @@ func TestReadModelStore_GetAttributeNonExistent(t *testing.T) {
 
 	nonExistentID := uuid.New()
 
-	retrieved, err := store.GetAttribute(ctx, nonExistentID)
+	retrieved, err := store.GetAttribute(ctx, domain.MainBranchID, nonExistentID)
 	if err != nil {
 		t.Fatalf("GetAttribute() failed: %v", err)
 	}
@@ -2462,14 +2462,14 @@ func TestReadModelStore_ListAttributesForPerson(t *testing.T) {
 	}
 
 	for _, a := range attributes {
-		err := store.SaveAttribute(ctx, a)
+		err := store.SaveAttribute(ctx, domain.MainBranchID, a)
 		if err != nil {
 			t.Fatalf("SaveAttribute() failed: %v", err)
 		}
 	}
 
 	// List attributes for person
-	results, err := store.ListAttributesForPerson(ctx, personID)
+	results, err := store.ListAttributesForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("ListAttributesForPerson() failed: %v", err)
 	}
@@ -2501,7 +2501,7 @@ func TestReadModelStore_UpdateAttribute(t *testing.T) {
 	}
 
 	// Save initial version
-	err := store.SaveAttribute(ctx, attribute)
+	err := store.SaveAttribute(ctx, domain.MainBranchID, attribute)
 	if err != nil {
 		t.Fatalf("SaveAttribute() failed: %v", err)
 	}
@@ -2510,13 +2510,13 @@ func TestReadModelStore_UpdateAttribute(t *testing.T) {
 	attribute.Value = "Merchant"
 	attribute.Version = 2
 
-	err = store.SaveAttribute(ctx, attribute)
+	err = store.SaveAttribute(ctx, domain.MainBranchID, attribute)
 	if err != nil {
 		t.Fatalf("SaveAttribute() update failed: %v", err)
 	}
 
 	// Retrieve and verify update
-	retrieved, err := store.GetAttribute(ctx, attrID)
+	retrieved, err := store.GetAttribute(ctx, domain.MainBranchID, attrID)
 	if err != nil {
 		t.Fatalf("GetAttribute() failed: %v", err)
 	}
@@ -2543,19 +2543,19 @@ func TestReadModelStore_DeleteAttribute(t *testing.T) {
 	}
 
 	// Save attribute
-	err := store.SaveAttribute(ctx, attribute)
+	err := store.SaveAttribute(ctx, domain.MainBranchID, attribute)
 	if err != nil {
 		t.Fatalf("SaveAttribute() failed: %v", err)
 	}
 
 	// Delete attribute
-	err = store.DeleteAttribute(ctx, attribute.ID)
+	err = store.DeleteAttribute(ctx, domain.MainBranchID, attribute.ID)
 	if err != nil {
 		t.Fatalf("DeleteAttribute() failed: %v", err)
 	}
 
 	// Verify attribute is deleted
-	retrieved, err := store.GetAttribute(ctx, attribute.ID)
+	retrieved, err := store.GetAttribute(ctx, domain.MainBranchID, attribute.ID)
 	if err != nil {
 		t.Fatalf("GetAttribute() after delete failed: %v", err)
 	}
@@ -2589,14 +2589,14 @@ func TestReadModelStore_MultipleAttributeTypes(t *testing.T) {
 			Version:   1,
 			CreatedAt: time.Now(),
 		}
-		err := store.SaveAttribute(ctx, attr)
+		err := store.SaveAttribute(ctx, domain.MainBranchID, attr)
 		if err != nil {
 			t.Fatalf("SaveAttribute() for %s failed: %v", factType, err)
 		}
 	}
 
 	// List all attributes
-	results, err := store.ListAttributesForPerson(ctx, personID)
+	results, err := store.ListAttributesForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("ListAttributesForPerson() failed: %v", err)
 	}
@@ -2647,7 +2647,7 @@ func TestReadModelStore_MultipleEventTypes(t *testing.T) {
 			Version:   1,
 			CreatedAt: time.Now(),
 		}
-		err := store.SaveEvent(ctx, event)
+		err := store.SaveEvent(ctx, domain.MainBranchID, event)
 		if err != nil {
 			t.Fatalf("SaveEvent() for person %s failed: %v", factType, err)
 		}
@@ -2673,14 +2673,14 @@ func TestReadModelStore_MultipleEventTypes(t *testing.T) {
 			Version:   1,
 			CreatedAt: time.Now(),
 		}
-		err := store.SaveEvent(ctx, event)
+		err := store.SaveEvent(ctx, domain.MainBranchID, event)
 		if err != nil {
 			t.Fatalf("SaveEvent() for family %s failed: %v", factType, err)
 		}
 	}
 
 	// List person events
-	personResults, err := store.ListEventsForPerson(ctx, personID)
+	personResults, err := store.ListEventsForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("ListEventsForPerson() failed: %v", err)
 	}
@@ -2690,7 +2690,7 @@ func TestReadModelStore_MultipleEventTypes(t *testing.T) {
 	}
 
 	// List family events
-	familyResults, err := store.ListEventsForFamily(ctx, familyID)
+	familyResults, err := store.ListEventsForFamily(ctx, domain.MainBranchID, familyID)
 	if err != nil {
 		t.Fatalf("ListEventsForFamily() failed: %v", err)
 	}
@@ -2926,7 +2926,7 @@ func TestReadModelStore_GetCemeteryIndex_Empty(t *testing.T) {
 	store := memory.NewReadModelStore()
 	ctx := context.Background()
 
-	entries, err := store.GetCemeteryIndex(ctx)
+	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex() failed: %v", err)
 	}
@@ -3010,12 +3010,12 @@ func TestReadModelStore_GetCemeteryIndex(t *testing.T) {
 	}
 
 	for _, e := range events {
-		if err := store.SaveEvent(ctx, e); err != nil {
+		if err := store.SaveEvent(ctx, domain.MainBranchID, e); err != nil {
 			t.Fatalf("SaveEvent() failed: %v", err)
 		}
 	}
 
-	entries, err := store.GetCemeteryIndex(ctx)
+	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex() failed: %v", err)
 	}
@@ -3058,7 +3058,7 @@ func TestReadModelStore_GetCemeteryIndex_DistinctPersons(t *testing.T) {
 
 	// Same person has both burial and cremation at the same place
 	for _, ft := range []domain.FactType{domain.FactPersonBurial, domain.FactPersonCremation} {
-		err := store.SaveEvent(ctx, &repository.EventReadModel{
+		err := store.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 			ID:        uuid.New(),
 			OwnerType: "person",
 			OwnerID:   personID,
@@ -3072,7 +3072,7 @@ func TestReadModelStore_GetCemeteryIndex_DistinctPersons(t *testing.T) {
 		}
 	}
 
-	entries, err := store.GetCemeteryIndex(ctx)
+	entries, err := store.GetCemeteryIndex(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex() failed: %v", err)
 	}
@@ -3120,7 +3120,7 @@ func TestReadModelStore_GetPersonsByCemetery(t *testing.T) {
 
 	// person1 and person2 buried at same cemetery
 	for _, pid := range []uuid.UUID{person1, person2} {
-		err := store.SaveEvent(ctx, &repository.EventReadModel{
+		err := store.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 			ID:        uuid.New(),
 			OwnerType: "person",
 			OwnerID:   pid,
@@ -3135,7 +3135,7 @@ func TestReadModelStore_GetPersonsByCemetery(t *testing.T) {
 	}
 
 	// person3 cremated elsewhere
-	err := store.SaveEvent(ctx, &repository.EventReadModel{
+	err := store.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        uuid.New(),
 		OwnerType: "person",
 		OwnerID:   person3,
@@ -3190,7 +3190,7 @@ func TestReadModelStore_GetPersonsByCemetery_CaseInsensitive(t *testing.T) {
 		t.Fatalf("SavePerson() failed: %v", err)
 	}
 
-	err = store.SaveEvent(ctx, &repository.EventReadModel{
+	err = store.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        uuid.New(),
 		OwnerType: "person",
 		OwnerID:   personID,
@@ -3237,7 +3237,7 @@ func TestReadModelStore_GetPersonsByCemetery_Pagination(t *testing.T) {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
 
-		err = store.SaveEvent(ctx, &repository.EventReadModel{
+		err = store.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 			ID:        uuid.New(),
 			OwnerType: "person",
 			OwnerID:   pid,
@@ -3530,7 +3530,7 @@ func TestReadModelStore_ListEvents(t *testing.T) {
 	}
 
 	for _, e := range events {
-		err := store.SaveEvent(ctx, e)
+		err := store.SaveEvent(ctx, domain.MainBranchID, e)
 		if err != nil {
 			t.Fatalf("SaveEvent() failed: %v", err)
 		}
@@ -3664,7 +3664,7 @@ func TestReadModelStore_ListAttributes(t *testing.T) {
 	}
 
 	for _, a := range attributes {
-		err := store.SaveAttribute(ctx, a)
+		err := store.SaveAttribute(ctx, domain.MainBranchID, a)
 		if err != nil {
 			t.Fatalf("SaveAttribute() failed: %v", err)
 		}

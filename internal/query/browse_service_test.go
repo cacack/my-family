@@ -545,7 +545,7 @@ func saveCemeteryTestData(t *testing.T, ctx context.Context, readStore *memory.R
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
-		err = readStore.SaveEvent(ctx, &repository.EventReadModel{
+		err = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 			ID:        uuid.New(),
 			OwnerType: "person",
 			OwnerID:   pid,
@@ -566,7 +566,7 @@ func TestGetCemeteryIndex_EmptyDatabase(t *testing.T) {
 	service := query.NewBrowseService(readStore)
 	ctx := context.Background()
 
-	result, err := service.GetCemeteryIndex(ctx)
+	result, err := service.GetCemeteryIndex(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex failed: %v", err)
 	}
@@ -596,7 +596,7 @@ func TestGetCemeteryIndex(t *testing.T) {
 		{"Alice", "Brown", domain.FactPersonBurial, "Green Lawn Cemetery"},
 	})
 
-	result, err := service.GetCemeteryIndex(ctx)
+	result, err := service.GetCemeteryIndex(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex failed: %v", err)
 	}
@@ -636,7 +636,7 @@ func TestGetCemeteryIndex_IncludesCremation(t *testing.T) {
 		{"John", "Doe", domain.FactPersonCremation, "Memorial Crematorium"},
 	})
 
-	result, err := service.GetCemeteryIndex(ctx)
+	result, err := service.GetCemeteryIndex(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("GetCemeteryIndex failed: %v", err)
 	}
@@ -750,7 +750,7 @@ func TestGetPersonsByCemetery_Pagination(t *testing.T) {
 			Version:   1,
 			UpdatedAt: time.Now(),
 		})
-		_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+		_ = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 			ID:        uuid.New(),
 			OwnerType: "person",
 			OwnerID:   pid,
@@ -809,7 +809,7 @@ func TestGetPersonsByCemetery_LimitCapping(t *testing.T) {
 		Version:   1,
 		UpdatedAt: time.Now(),
 	})
-	_ = readStore.SaveEvent(ctx, &repository.EventReadModel{
+	_ = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 		ID:        uuid.New(),
 		OwnerType: "person",
 		OwnerID:   pid,
@@ -861,10 +861,10 @@ type branchScopeSpy struct {
 	personsByPlace    []domain.BranchID
 	personsByCemetery []domain.BranchID
 	mapLocations      []domain.BranchID
+	cemeteryIndex     []domain.BranchID
 
 	// The main-only methods carry no scope at all — the counters just prove the
 	// service still reaches them unchanged.
-	cemeteryIndexCalls    int
 	brickWallCalls        int
 	setBrickWallCalls     int
 	resolveBrickWallCalls int
@@ -905,8 +905,8 @@ func (s *branchScopeSpy) GetMapLocations(_ context.Context, branchID domain.Bran
 	return nil, nil
 }
 
-func (s *branchScopeSpy) GetCemeteryIndex(_ context.Context) ([]repository.CemeteryEntry, error) {
-	s.cemeteryIndexCalls++
+func (s *branchScopeSpy) GetCemeteryIndex(_ context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
+	s.cemeteryIndex = append(s.cemeteryIndex, branchID)
 	return nil, nil
 }
 
@@ -992,6 +992,14 @@ func TestBrowseService_BranchScopeReachesStore(t *testing.T) {
 			},
 			got: func(s *branchScopeSpy) []domain.BranchID { return s.mapLocations },
 		},
+		{
+			name: "GetCemeteryIndex",
+			call: func(s *query.BrowseService, b domain.BranchID) error {
+				_, err := s.GetCemeteryIndex(context.Background(), b)
+				return err
+			},
+			got: func(s *branchScopeSpy) []domain.BranchID { return s.cemeteryIndex },
+		},
 	}
 
 	for _, tt := range tests {
@@ -1020,17 +1028,14 @@ func TestBrowseService_BranchScopeReachesStore(t *testing.T) {
 	}
 }
 
-// TestBrowseService_MainOnlyPathsUnscoped pins the four reads that stay on the
-// mainline this cycle: their store methods take no branch scope at all, so
-// there is nothing for a caller to redirect (sub-issues B/#757 and F/#761).
+// TestBrowseService_MainOnlyPathsUnscoped pins the three brick-wall paths that
+// stay on the mainline: their store methods take no branch scope at all, so
+// there is nothing for a caller to redirect (sub-issue F/#761).
 func TestBrowseService_MainOnlyPathsUnscoped(t *testing.T) {
 	spy := &branchScopeSpy{}
 	service := query.NewBrowseService(spy)
 	ctx := context.Background()
 
-	if _, err := service.GetCemeteryIndex(ctx); err != nil {
-		t.Fatalf("GetCemeteryIndex failed: %v", err)
-	}
 	if _, err := service.GetBrickWalls(ctx, true); err != nil {
 		t.Fatalf("GetBrickWalls failed: %v", err)
 	}
@@ -1041,9 +1046,8 @@ func TestBrowseService_MainOnlyPathsUnscoped(t *testing.T) {
 		t.Fatalf("ResolveBrickWall failed: %v", err)
 	}
 
-	if spy.cemeteryIndexCalls != 1 || spy.brickWallCalls != 1 ||
-		spy.setBrickWallCalls != 1 || spy.resolveBrickWallCalls != 1 {
-		t.Errorf("main-only calls = %d/%d/%d/%d, want 1 each",
-			spy.cemeteryIndexCalls, spy.brickWallCalls, spy.setBrickWallCalls, spy.resolveBrickWallCalls)
+	if spy.brickWallCalls != 1 || spy.setBrickWallCalls != 1 || spy.resolveBrickWallCalls != 1 {
+		t.Errorf("main-only calls = %d/%d/%d, want 1 each",
+			spy.brickWallCalls, spy.setBrickWallCalls, spy.resolveBrickWallCalls)
 	}
 }

@@ -1428,7 +1428,7 @@ func TestProjector_LifeEventCreated_ForPerson(t *testing.T) {
 	}
 
 	// Verify life event was created
-	rm, err := readStore.GetEvent(ctx, lifeEvent.ID)
+	rm, err := readStore.GetEvent(ctx, domain.MainBranchID, lifeEvent.ID)
 	if err != nil {
 		t.Fatalf("GetEvent failed: %v", err)
 	}
@@ -1486,7 +1486,7 @@ func TestProjector_LifeEventCreated_ForFamily(t *testing.T) {
 	}
 
 	// Verify life event was created
-	rm, err := readStore.GetEvent(ctx, lifeEvent.ID)
+	rm, err := readStore.GetEvent(ctx, domain.MainBranchID, lifeEvent.ID)
 	if err != nil {
 		t.Fatalf("GetEvent failed: %v", err)
 	}
@@ -1534,7 +1534,7 @@ func TestProjector_LifeEventCreated_WithCause(t *testing.T) {
 	}
 
 	// Verify
-	rm, _ := readStore.GetEvent(ctx, lifeEvent.ID)
+	rm, _ := readStore.GetEvent(ctx, domain.MainBranchID, lifeEvent.ID)
 	if rm == nil {
 		t.Fatal("Life event not found")
 	}
@@ -1566,7 +1566,7 @@ func TestProjector_LifeEventCreated_WithoutDate(t *testing.T) {
 	}
 
 	// Verify
-	rm, _ := readStore.GetEvent(ctx, lifeEvent.ID)
+	rm, _ := readStore.GetEvent(ctx, domain.MainBranchID, lifeEvent.ID)
 	if rm == nil {
 		t.Fatal("Life event not found")
 	}
@@ -1594,7 +1594,7 @@ func TestProjector_LifeEventDeleted(t *testing.T) {
 	}
 
 	// Verify event exists
-	rm, _ := readStore.GetEvent(ctx, lifeEvent.ID)
+	rm, _ := readStore.GetEvent(ctx, domain.MainBranchID, lifeEvent.ID)
 	if rm == nil {
 		t.Fatal("Life event should exist before deletion")
 	}
@@ -1607,7 +1607,7 @@ func TestProjector_LifeEventDeleted(t *testing.T) {
 	}
 
 	// Verify deletion
-	rm, _ = readStore.GetEvent(ctx, lifeEvent.ID)
+	rm, _ = readStore.GetEvent(ctx, domain.MainBranchID, lifeEvent.ID)
 	if rm != nil {
 		t.Error("Life event should be deleted")
 	}
@@ -1635,7 +1635,7 @@ func TestProjector_LifeEventsList(t *testing.T) {
 	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent2), 2, domain.MainBranchID)
 
 	// List events for person
-	events, err := readStore.ListEventsForPerson(ctx, person.ID)
+	events, err := readStore.ListEventsForPerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		t.Fatalf("ListEventsForPerson failed: %v", err)
 	}
@@ -1668,7 +1668,7 @@ func TestProjector_AttributeCreated(t *testing.T) {
 	}
 
 	// Verify attribute was created
-	rm, err := readStore.GetAttribute(ctx, attribute.ID)
+	rm, err := readStore.GetAttribute(ctx, domain.MainBranchID, attribute.ID)
 	if err != nil {
 		t.Fatalf("GetAttribute failed: %v", err)
 	}
@@ -1717,7 +1717,7 @@ func TestProjector_AttributeCreated_WithoutDate(t *testing.T) {
 	}
 
 	// Verify
-	rm, _ := readStore.GetAttribute(ctx, attribute.ID)
+	rm, _ := readStore.GetAttribute(ctx, domain.MainBranchID, attribute.ID)
 	if rm == nil {
 		t.Fatal("Attribute not found")
 	}
@@ -1748,7 +1748,7 @@ func TestProjector_AttributeDeleted(t *testing.T) {
 	}
 
 	// Verify attribute exists
-	rm, _ := readStore.GetAttribute(ctx, attribute.ID)
+	rm, _ := readStore.GetAttribute(ctx, domain.MainBranchID, attribute.ID)
 	if rm == nil {
 		t.Fatal("Attribute should exist before deletion")
 	}
@@ -1761,7 +1761,7 @@ func TestProjector_AttributeDeleted(t *testing.T) {
 	}
 
 	// Verify deletion
-	rm, _ = readStore.GetAttribute(ctx, attribute.ID)
+	rm, _ = readStore.GetAttribute(ctx, domain.MainBranchID, attribute.ID)
 	if rm != nil {
 		t.Error("Attribute should be deleted")
 	}
@@ -1784,7 +1784,7 @@ func TestProjector_AttributesList(t *testing.T) {
 	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr2), 2, domain.MainBranchID)
 
 	// List attributes for person
-	attrs, err := readStore.ListAttributesForPerson(ctx, person.ID)
+	attrs, err := readStore.ListAttributesForPerson(ctx, domain.MainBranchID, person.ID)
 	if err != nil {
 		t.Fatalf("ListAttributesForPerson failed: %v", err)
 	}
@@ -2734,7 +2734,7 @@ func TestProjector_PersonMerged_EventTransfer(t *testing.T) {
 	projector.Project(ctx, domain.NewLifeEventCreatedFromModel(lifeEvent), 2, domain.MainBranchID)
 
 	// Verify event is for merged person
-	events, _ := readStore.ListEventsForPerson(ctx, merged.ID)
+	events, _ := readStore.ListEventsForPerson(ctx, domain.MainBranchID, merged.ID)
 	if len(events) != 1 {
 		t.Fatalf("Expected 1 event for merged person, got %d", len(events))
 	}
@@ -2758,7 +2758,7 @@ func TestProjector_PersonMerged_EventTransfer(t *testing.T) {
 	}
 
 	// Verify event was transferred to survivor
-	survivorEvents, _ := readStore.ListEventsForPerson(ctx, survivor.ID)
+	survivorEvents, _ := readStore.ListEventsForPerson(ctx, domain.MainBranchID, survivor.ID)
 	if len(survivorEvents) != 1 {
 		t.Fatalf("Expected 1 event for survivor, got %d", len(survivorEvents))
 	}
@@ -2836,7 +2836,7 @@ func TestProjector_PersonMerged_AttributeTransfer(t *testing.T) {
 	projector.Project(ctx, domain.NewAttributeCreatedFromModel(attr), 2, domain.MainBranchID)
 
 	// Verify attribute is for merged person
-	attrs, _ := readStore.ListAttributesForPerson(ctx, merged.ID)
+	attrs, _ := readStore.ListAttributesForPerson(ctx, domain.MainBranchID, merged.ID)
 	if len(attrs) != 1 {
 		t.Fatalf("Expected 1 attribute for merged person, got %d", len(attrs))
 	}
@@ -2860,7 +2860,7 @@ func TestProjector_PersonMerged_AttributeTransfer(t *testing.T) {
 	}
 
 	// Verify attribute was transferred to survivor
-	survivorAttrs, _ := readStore.ListAttributesForPerson(ctx, survivor.ID)
+	survivorAttrs, _ := readStore.ListAttributesForPerson(ctx, domain.MainBranchID, survivor.ID)
 	if len(survivorAttrs) != 1 {
 		t.Fatalf("Expected 1 attribute for survivor, got %d", len(survivorAttrs))
 	}
@@ -3618,7 +3618,7 @@ func TestProjector_AssociationCreated(t *testing.T) {
 	}
 
 	// Verify association in read model
-	rm, err := readStore.GetAssociation(ctx, association.ID)
+	rm, err := readStore.GetAssociation(ctx, domain.MainBranchID, association.ID)
 	if err != nil {
 		t.Fatalf("GetAssociation failed: %v", err)
 	}
@@ -3710,12 +3710,59 @@ func TestProjector_AssociationUpdated(t *testing.T) {
 				t.Fatalf("Project update failed: %v", err)
 			}
 
-			rm, err := readStore.GetAssociation(ctx, association.ID)
+			rm, err := readStore.GetAssociation(ctx, domain.MainBranchID, association.ID)
 			if err != nil {
 				t.Fatalf("GetAssociation failed: %v", err)
 			}
 			tt.validate(t, rm)
 		})
+	}
+}
+
+// TestProjector_AssociationUpdated_NoteIDsShapes pins the note_ids change in
+// every shape it reaches the projector in: []uuid.UUID from a command, []any of
+// strings once decoded from the event store (a rebuild or a branch merge
+// replay), null to clear, and a malformed list that must be skipped whole.
+func TestProjector_AssociationUpdated_NoteIDsShapes(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+
+	association := domain.NewAssociation(uuid.New(), uuid.New(), "witness")
+	if err := projector.Project(ctx, domain.NewAssociationCreated(association), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project create failed: %v", err)
+	}
+	noteA, noteB := uuid.New(), uuid.New()
+
+	steps := []struct {
+		name  string
+		value any
+		want  []uuid.UUID
+	}{
+		{"typed slice", []uuid.UUID{noteA}, []uuid.UUID{noteA}},
+		{"decoded strings", []any{noteA.String(), noteB.String()}, []uuid.UUID{noteA, noteB}},
+		{"malformed entry is skipped", []any{noteA.String(), 42}, []uuid.UUID{noteA, noteB}},
+		{"unparseable id is skipped", []any{"not-a-uuid"}, []uuid.UUID{noteA, noteB}},
+		{"unexpected type is skipped", "nope", []uuid.UUID{noteA, noteB}},
+		{"null clears", nil, nil},
+	}
+	for i, step := range steps {
+		update := domain.NewAssociationUpdated(association.ID, map[string]any{"note_ids": step.value})
+		if err := projector.Project(ctx, update, int64(i+2), domain.MainBranchID); err != nil {
+			t.Fatalf("%s: Project update failed: %v", step.name, err)
+		}
+		rm, err := readStore.GetAssociation(ctx, domain.MainBranchID, association.ID)
+		if err != nil || rm == nil {
+			t.Fatalf("%s: GetAssociation = %+v (err=%v)", step.name, rm, err)
+		}
+		if len(rm.NoteIDs) != len(step.want) {
+			t.Fatalf("%s: NoteIDs = %v, want %v", step.name, rm.NoteIDs, step.want)
+		}
+		for j := range step.want {
+			if rm.NoteIDs[j] != step.want[j] {
+				t.Errorf("%s: NoteIDs = %v, want %v", step.name, rm.NoteIDs, step.want)
+			}
+		}
 	}
 }
 
@@ -3757,7 +3804,7 @@ func TestProjector_AssociationDeleted(t *testing.T) {
 	}
 
 	// Verify deletion
-	rm, _ := readStore.GetAssociation(ctx, association.ID)
+	rm, _ := readStore.GetAssociation(ctx, domain.MainBranchID, association.ID)
 	if rm != nil {
 		t.Error("Association should be deleted")
 	}

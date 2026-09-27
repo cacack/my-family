@@ -262,8 +262,9 @@ type GroupSheet struct {
 // GetGroupSheet returns a family group sheet with full details.
 //
 // branchID scopes the family and every person/child/pedigree lookup it fans out
-// to; the zero value (MainBranchID) reproduces the pre-branch behavior. Event and
-// citation lookups remain main-only until those read models become branch-aware.
+// to, including the negated life events it reads (#757); the zero value
+// (MainBranchID) reproduces the pre-branch behavior. Citation lookups remain
+// main-only until that read model becomes branch-aware (#758).
 func (s *FamilyService) GetGroupSheet(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) (*GroupSheet, error) {
 	// Get family details
 	family, err := s.readStore.GetFamily(ctx, branchID, familyID)
@@ -292,7 +293,7 @@ func (s *FamilyService) GetGroupSheet(ctx context.Context, branchID domain.Branc
 	}
 
 	// Check for negated marriage events
-	s.applyNegatedFamilyEvents(ctx, familyID, &gs.Marriage)
+	s.applyNegatedFamilyEvents(ctx, branchID, familyID, &gs.Marriage)
 
 	// Get husband/partner1 details
 	if family.Partner1ID != nil {
@@ -368,7 +369,7 @@ func (s *FamilyService) getGroupSheetPerson(ctx context.Context, branchID domain
 	}
 
 	// Check for negated birth/death events
-	s.applyNegatedPersonEvents(ctx, personID, &gsp.Birth, &gsp.Death)
+	s.applyNegatedPersonEvents(ctx, branchID, personID, &gsp.Birth, &gsp.Death)
 
 	// Get parents
 	edge, err := s.readStore.GetPedigreeEdge(ctx, branchID, personID)
@@ -432,7 +433,7 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, branchID domain.
 	}
 
 	// Check for negated birth/death events
-	s.applyNegatedPersonEvents(ctx, person.ID, &gsc.Birth, &gsc.Death)
+	s.applyNegatedPersonEvents(ctx, branchID, person.ID, &gsc.Birth, &gsc.Death)
 
 	// Get spouse (first partner family where this person is a partner)
 	families, err := s.readStore.GetFamiliesForPerson(ctx, branchID, person.ID)
@@ -459,8 +460,8 @@ func (s *FamilyService) getGroupSheetChild(ctx context.Context, branchID domain.
 // and applies them to the group sheet person's events. This handles the case where
 // a negative assertion exists (e.g., "no birth recorded") but the person read model
 // has no birth date/place.
-func (s *FamilyService) applyNegatedPersonEvents(ctx context.Context, personID uuid.UUID, birth **GroupSheetEvent, death **GroupSheetEvent) {
-	events, err := s.readStore.ListEventsForPerson(ctx, personID)
+func (s *FamilyService) applyNegatedPersonEvents(ctx context.Context, branchID domain.BranchID, personID uuid.UUID, birth **GroupSheetEvent, death **GroupSheetEvent) {
+	events, err := s.readStore.ListEventsForPerson(ctx, branchID, personID)
 	if err != nil {
 		return
 	}
@@ -497,8 +498,8 @@ func (s *FamilyService) applyNegatedPersonEvents(ctx context.Context, personID u
 
 // applyNegatedFamilyEvents checks the events table for negated marriage events
 // and applies them to the group sheet marriage event.
-func (s *FamilyService) applyNegatedFamilyEvents(ctx context.Context, familyID uuid.UUID, marriage **GroupSheetEvent) {
-	events, err := s.readStore.ListEventsForFamily(ctx, familyID)
+func (s *FamilyService) applyNegatedFamilyEvents(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID, marriage **GroupSheetEvent) {
+	events, err := s.readStore.ListEventsForFamily(ctx, branchID, familyID)
 	if err != nil {
 		return
 	}

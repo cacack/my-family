@@ -240,39 +240,39 @@ func (m *mockReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) erro
 }
 
 // Event stub methods
-func (m *mockReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
+func (m *mockReadModelStore) GetEvent(ctx context.Context, _ domain.BranchID, id uuid.UUID) (*repository.EventReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
+func (m *mockReadModelStore) ListEventsForPerson(ctx context.Context, _ domain.BranchID, personID uuid.UUID) ([]repository.EventReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+func (m *mockReadModelStore) ListEventsForFamily(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.EventReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
+func (m *mockReadModelStore) SaveEvent(ctx context.Context, _ domain.BranchID, event *repository.EventReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteEvent(ctx context.Context, _ domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 
 // Attribute stub methods
-func (m *mockReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
+func (m *mockReadModelStore) GetAttribute(ctx context.Context, _ domain.BranchID, id uuid.UUID) (*repository.AttributeReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+func (m *mockReadModelStore) ListAttributesForPerson(ctx context.Context, _ domain.BranchID, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SaveAttribute(ctx context.Context, attribute *repository.AttributeReadModel) error {
+func (m *mockReadModelStore) SaveAttribute(ctx context.Context, _ domain.BranchID, attribute *repository.AttributeReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteAttribute(ctx context.Context, _ domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 
@@ -292,7 +292,7 @@ func (m *mockReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID dom
 func (m *mockReadModelStore) GetPersonsByPlace(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
+func (m *mockReadModelStore) GetCemeteryIndex(ctx context.Context, _ domain.BranchID) ([]repository.CemeteryEntry, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
@@ -356,19 +356,19 @@ func (m *mockReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID)
 }
 
 // Association stub methods
-func (m *mockReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
+func (m *mockReadModelStore) GetAssociation(ctx context.Context, _ domain.BranchID, id uuid.UUID) (*repository.AssociationReadModel, error) {
 	return nil, nil
 }
 func (m *mockReadModelStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
 	return nil, 0, nil
 }
-func (m *mockReadModelStore) ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+func (m *mockReadModelStore) ListAssociationsForPerson(ctx context.Context, _ domain.BranchID, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
 	return nil, nil
 }
-func (m *mockReadModelStore) SaveAssociation(ctx context.Context, association *repository.AssociationReadModel) error {
+func (m *mockReadModelStore) SaveAssociation(ctx context.Context, _ domain.BranchID, association *repository.AssociationReadModel) error {
 	return nil
 }
-func (m *mockReadModelStore) DeleteAssociation(ctx context.Context, id uuid.UUID) error {
+func (m *mockReadModelStore) DeleteAssociation(ctx context.Context, _ domain.BranchID, id uuid.UUID) error {
 	return nil
 }
 
