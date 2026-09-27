@@ -775,7 +775,9 @@ before #757 keeps lone-id keys on these tables; `detectBranchCapable` now requir
 on `life_events`, `attributes` and `associations` as well as `persons`, and such a database refuses
 *every* branch write with `ErrBranchesUnsupported` until the read model is rebuilt (#680). Refusing
 only fact writes would be worse: a branch `DeletePerson` has to tombstone the person's facts, so a
-half-capable schema would accept branches it could not delete cleanly.
+half-capable schema would accept branches it could not delete cleanly. The one exception is
+`PurgeBranch`: a database built between #669 and #757 may already hold branches in its slice tables,
+so purging is never refused — deleting or merging such a branch still drops its overlay rows.
 
 ## References
 

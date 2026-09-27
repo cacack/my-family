@@ -99,8 +99,10 @@ func TestLegacySchemaRefusesBranchWrites(t *testing.T) {
 	if err := store.DeletePerson(ctx, branch, personID); !errors.Is(err, repository.ErrBranchesUnsupported) {
 		t.Fatalf("branch DeletePerson on legacy schema: want ErrBranchesUnsupported, got %v", err)
 	}
-	if err := store.PurgeBranch(ctx, branch); !errors.Is(err, repository.ErrBranchesUnsupported) {
-		t.Fatalf("PurgeBranch on legacy schema: want ErrBranchesUnsupported, got %v", err)
+	// PurgeBranch is deliberately unguarded: it only deletes, and a lone-id table
+	// holds no branch rows, so on a pre-#669 database it is a harmless no-op.
+	if err := store.PurgeBranch(ctx, branch); err != nil {
+		t.Fatalf("PurgeBranch on legacy schema: want no-op success, got %v", err)
 	}
 
 	// Mainline stays fully usable on the un-rebuilt database.
@@ -222,6 +224,83 @@ func TestPreFactBranchSchemaRefusesBranchWrites(t *testing.T) {
 	}
 	if got, err := store.GetEvent(ctx, domain.MainBranchID, event.ID); err != nil || got != nil {
 		t.Errorf("main GetEvent after delete = %+v (err=%v), want absent", got, err)
+	}
+}
+
+// TestPreFactBranchSchemaPurgesExistingBranch covers a database built between
+// #669 and #757 that ALREADY holds a branch: its persons table has the composite
+// key, so the branch's shadow rows were written before the fact tables gained
+// theirs. The schema is no longer branch-capable, but deleting or merging that
+// branch must still purge its overlay — otherwise projectBranchDeleted and
+// projectBranchMerged would fail after their event is appended and the rows
+// would linger forever.
+func TestPreFactBranchSchemaPurgesExistingBranch(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-prefact-purge-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	// Pre-#757 attributes: lone-id key, no branch columns.
+	if _, err := db.Exec(`
+		CREATE TABLE attributes (
+			id TEXT PRIMARY KEY,
+			person_id TEXT NOT NULL,
+			fact_type TEXT NOT NULL,
+			value TEXT NOT NULL DEFAULT '',
+			date_raw TEXT,
+			date_sort TEXT,
+			place TEXT,
+			version INTEGER NOT NULL DEFAULT 1,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`); err != nil {
+		t.Fatalf("create pre-#757 attributes: %v", err)
+	}
+
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	personID := uuid.New()
+
+	// A main row and a branch shadow row that existed before the upgrade. The
+	// branch row is inserted directly: the store now (correctly) refuses new
+	// branch writes on this schema.
+	if err := store.SavePerson(ctx, domain.MainBranchID, branchPersonRM(personID, "Main", "Row")); err != nil {
+		t.Fatalf("main SavePerson: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO persons (id, branch_id, given_name, surname) VALUES (?, ?, 'Branch', 'Row')`,
+		personID.String(), branch.String()); err != nil {
+		t.Fatalf("seed pre-existing branch row: %v", err)
+	}
+	if err := store.SavePerson(ctx, branch, branchPersonRM(personID, "New", "Write")); !errors.Is(err, repository.ErrBranchesUnsupported) {
+		t.Fatalf("new branch SavePerson: want ErrBranchesUnsupported, got %v", err)
+	}
+
+	if err := store.PurgeBranch(ctx, branch); err != nil {
+		t.Fatalf("PurgeBranch of pre-existing branch: %v", err)
+	}
+
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM persons WHERE branch_id = ?`, branch.String()).Scan(&n); err != nil {
+		t.Fatalf("count branch rows: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("branch rows after purge = %d, want 0", n)
+	}
+	got, err := store.GetPerson(ctx, domain.MainBranchID, personID)
+	if err != nil || got == nil || got.GivenName != "Main" {
+		t.Errorf("main GetPerson after purge = %+v (err=%v), want the untouched Main row", got, err)
 	}
 }
 

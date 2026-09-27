@@ -2772,10 +2772,14 @@ func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain
 // PurgeBranch hard-deletes every row for branchID across the branch-scoped
 // tables (branchScopedTables). It is a no-op for the mainline (domain.MainBranchID), which is
 // never purged. See ADR-005 and the branch-delete projection handler.
+//
+// Unlike every other branch-scoped write it is NOT guarded by guardBranchWrite:
+// a database built between #669 and #757 is no longer branch-capable yet may
+// already hold live branch rows in its slice tables, and those branches must
+// stay deletable and mergeable. The DELETE is safe on any schema, because
+// migrateBranchColumns gives every branchScopedTables table a branch_id column
+// and a lone-id table simply holds no rows for the branch.
 func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
-	if err := s.guardBranchWrite(branchID); err != nil {
-		return err
-	}
 	if branchID.IsMain() {
 		return nil
 	}
