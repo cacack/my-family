@@ -188,7 +188,7 @@
 						variant="ghost"
 						size="sm"
 						disabled={disabled || !acceptsAny(entityType, 'branch')}
-						aria-label="Take the branch's version for every {typeLabel.toLowerCase()} conflict"
+						aria-label="Take branch for every {typeLabel.toLowerCase()} conflict"
 						onclick={() => decideAll('branch', entityType)}
 					>
 						Take branch
@@ -197,7 +197,7 @@
 						variant="ghost"
 						size="sm"
 						disabled={disabled || !acceptsAny(entityType, 'main')}
-						aria-label="Keep the mainline's version for every {typeLabel.toLowerCase()} conflict"
+						aria-label="Keep mainline for every {typeLabel.toLowerCase()} conflict"
 						onclick={() => decideAll('main', entityType)}
 					>
 						Keep mainline

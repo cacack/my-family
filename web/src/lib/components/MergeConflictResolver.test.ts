@@ -328,14 +328,30 @@ describe('MergeConflictResolver', () => {
 			renderResolver([EDIT_EDIT, SOURCE_EDIT, CREATE_CREATE], { onresolveall });
 
 			await fireEvent.click(
-				screen.getByRole('button', { name: "Take the branch's version for every source conflict" })
+				screen.getByRole('button', { name: 'Take branch for every source conflict' })
 			);
 			expect(onresolveall).toHaveBeenLastCalledWith([[SOURCE_EDIT.stream_id, 'branch']]);
 
 			await fireEvent.click(
-				screen.getByRole('button', { name: "Keep the mainline's version for every person conflict" })
+				screen.getByRole('button', { name: 'Keep mainline for every person conflict' })
 			);
 			expect(onresolveall).toHaveBeenLastCalledWith([[EDIT_EDIT.stream_id, 'main']]);
+		});
+
+		it('gives every bulk button an accessible name that contains its visible text', () => {
+			renderResolver([EDIT_EDIT, SOURCE_EDIT, CREATE_CREATE]);
+
+			// WCAG 2.5.3 (Label in Name): a voice-control user saying the visible
+			// text must be able to reach the button.
+			const group = screen.getByRole('group', { name: 'Decide several at once' });
+			const buttons = within(group).getAllByRole('button');
+			expect(buttons.length).toBeGreaterThan(2);
+			for (const button of buttons) {
+				const visible = (button.textContent ?? '').trim();
+				const name = button.getAttribute('aria-label') ?? visible;
+				expect(visible).not.toBe('');
+				expect(name.toLowerCase()).toContain(visible.toLowerCase());
+			}
 		});
 
 		it('disables a side no targeted conflict accepts', () => {
