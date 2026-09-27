@@ -26,6 +26,20 @@
 	let loading = $state(true);
 	let error: string | null = $state(null);
 
+	/**
+	 * Monotonic token for list loads. The mount load, the reload after a create
+	 * and the reload after a delete can overlap; only the latest may write, so a
+	 * slow earlier response cannot overwrite a newer list.
+	 */
+	let loadRequest = 0;
+	/** After the first load, reloads refresh in place instead of unmounting the list. */
+	let hasLoaded = false;
+
+	/** Focus target after a delete, since the deleted row's Delete button is gone. */
+	let headingEl: HTMLHeadingElement | null = $state(null);
+	/** Set when a delete succeeds, so the dialog's close hands focus to the heading. */
+	let focusHeadingOnClose = false;
+
 	// Create dialog
 	let createOpen = $state(false);
 	let creating = $state(false);
@@ -91,18 +105,23 @@
 	}
 
 	async function loadSnapshots() {
-		loading = true;
-		error = null;
+		const request = ++loadRequest;
+		// Only the first load shows the loading state. A later refresh keeps the
+		// list mounted, so the buttons (and keyboard focus) do not vanish under it.
+		if (!hasLoaded) loading = true;
 		try {
 			const result = await api.listSnapshots();
+			if (request !== loadRequest) return;
 			snapshots = result.items;
+			error = null;
 		} catch (e) {
+			if (request !== loadRequest) return;
 			error = (e as ApiError).message || 'Failed to load snapshots';
 			snapshots = [];
-		} finally {
-			syncCompareSelection();
-			loading = false;
 		}
+		syncCompareSelection();
+		hasLoaded = true;
+		loading = false;
 	}
 
 	function openCreate() {
@@ -151,6 +170,7 @@
 		deleteError = null;
 		try {
 			await api.deleteSnapshot(target.id);
+			focusHeadingOnClose = true;
 			deleteTarget = null;
 			announce(`Snapshot ${target.name} deleted.`);
 			await loadSnapshots();
@@ -159,6 +179,7 @@
 			if (apiError.status === 404) {
 				// Already gone (another tab, another user): the outcome the user asked
 				// for. Refresh rather than show an error they cannot act on.
+				focusHeadingOnClose = true;
 				deleteTarget = null;
 				announce(`Snapshot ${target.name} was already deleted.`);
 				await loadSnapshots();
@@ -197,7 +218,7 @@
 
 	<header class="page-header">
 		<div>
-			<h1>Research Snapshots</h1>
+			<h1 bind:this={headingEl} tabindex="-1">Research Snapshots</h1>
 			<p class="description">
 				Mark milestones in your research, like "Pre-DNA results" or "After courthouse trip", then
 				compare two of them to see everything that changed in between. A snapshot is only a
@@ -263,7 +284,7 @@
 									variant="outline"
 									size="sm"
 									href={snapshotCompareHref(previous.id, snapshot.id)}
-									aria-label="Compare {snapshot.name} with the previous snapshot, {previous.name}"
+									aria-label="Compare with previous: {previous.name} to {snapshot.name}"
 								>
 									Compare with previous
 								</Button>
@@ -368,7 +389,16 @@
 		if (!isOpen && !deleting) deleteTarget = null;
 	}}
 >
-	<AlertDialog.Content>
+	<AlertDialog.Content
+		onCloseAutoFocus={(event) => {
+			// The row whose Delete button opened the dialog is gone after a delete,
+			// so focus would otherwise fall to <body>. Land on the page heading.
+			if (!focusHeadingOnClose) return;
+			focusHeadingOnClose = false;
+			event.preventDefault();
+			headingEl?.focus();
+		}}
+	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>Delete this snapshot?</AlertDialog.Title>
 			<AlertDialog.Description>

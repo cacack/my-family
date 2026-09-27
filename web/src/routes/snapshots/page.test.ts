@@ -101,7 +101,7 @@ describe('Snapshots page', () => {
 
 		await screen.findByRole('heading', { name: 'Pre-DNA results' });
 		expect(screen.queryByLabelText('From')).toBeNull();
-		expect(screen.queryByRole('link', { name: /compare .* with the previous/i })).toBeNull();
+		expect(screen.queryByRole('link', { name: /^Compare with previous/ })).toBeNull();
 	});
 
 	it('surfaces a load failure', async () => {
@@ -141,6 +141,41 @@ describe('Snapshots page', () => {
 					'Snapshot After courthouse trip created.'
 				);
 			});
+		});
+
+		it('ignores a slower earlier list response that settles after the post-create reload', async () => {
+			const newSnapshot: Snapshot = {
+				id: '44444444-4444-4444-4444-444444444444',
+				name: 'After census review',
+				position: 150,
+				created_at: '2026-04-01T09:00:00Z'
+			};
+			let resolveInitial: (value: { items: Snapshot[]; total: number }) => void = () => {};
+			listSnapshots
+				.mockReset()
+				.mockImplementationOnce(
+					() =>
+						new Promise((resolve) => {
+							resolveInitial = resolve;
+						})
+				)
+				.mockResolvedValueOnce({ items: [newSnapshot, courthouse, dna, baseline], total: 4 });
+			createSnapshot.mockResolvedValue(newSnapshot);
+
+			render(Page);
+			// The initial load is still pending while the user creates a snapshot.
+			await fireEvent.click(screen.getByRole('button', { name: /new snapshot/i }));
+			const nameInput = await screen.findByLabelText('Name');
+			await fireEvent.input(nameInput, { target: { value: 'After census review' } });
+			await fireEvent.click(screen.getByRole('button', { name: /^Create snapshot$/ }));
+
+			expect(await screen.findByRole('heading', { name: 'After census review' })).toBeDefined();
+
+			// Now the stale initial response arrives, without the new snapshot.
+			resolveInitial({ items: [courthouse, dna, baseline], total: 3 });
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			expect(screen.getByRole('heading', { name: 'After census review' })).toBeDefined();
 		});
 
 		it('omits an empty description rather than sending ""', async () => {
@@ -212,6 +247,36 @@ describe('Snapshots page', () => {
 					'Snapshot Pre-DNA results deleted.'
 				);
 			});
+		});
+
+		it('keeps the list mounted while refreshing and moves focus to the heading after a delete', async () => {
+			let resolveReload: (value: { items: Snapshot[]; total: number }) => void = () => {};
+			render(Page);
+			await screen.findByRole('heading', { name: 'Pre-DNA results' });
+			listSnapshots.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						resolveReload = resolve;
+					})
+			);
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Delete snapshot Pre-DNA results' }));
+			await fireEvent.click(await screen.findByRole('button', { name: /^Delete snapshot$/ }));
+			await waitFor(() => expect(listSnapshots).toHaveBeenCalledTimes(2));
+
+			// The refresh is in flight: the list stays, no loading state replaces it.
+			expect(screen.queryByText('Loading snapshots...')).toBeNull();
+			expect(screen.getByRole('heading', { name: 'After courthouse trip' })).toBeDefined();
+
+			resolveReload({ items: [courthouse, dna], total: 2 });
+			await waitFor(() =>
+				expect(screen.queryByRole('heading', { name: 'Pre-DNA results' })).toBeNull()
+			);
+			await waitFor(() =>
+				expect(document.activeElement).toBe(
+					screen.getByRole('heading', { level: 1, name: 'Research Snapshots' })
+				)
+			);
 		});
 
 		it('does nothing when the confirmation is cancelled', async () => {
@@ -291,15 +356,16 @@ describe('Snapshots page', () => {
 			await screen.findByRole('heading', { name: 'Pre-DNA results' });
 
 			const link = screen.getByRole('link', {
-				name: 'Compare After courthouse trip with the previous snapshot, Post-DNA results'
+				name: 'Compare with previous: Post-DNA results to After courthouse trip'
 			});
+			// WCAG 2.5.3: the accessible name starts with the visible label.
+			expect(link.textContent?.trim()).toBe('Compare with previous');
+			expect(link.getAttribute('aria-label')?.startsWith('Compare with previous')).toBe(true);
 			expect(link.getAttribute('href')).toBe(
 				`/snapshots/compare?from=${dna.id}&to=${courthouse.id}`
 			);
 			// The oldest has nothing before it.
-			expect(
-				screen.queryByRole('link', { name: /Compare Pre-DNA results with the previous/ })
-			).toBeNull();
+			expect(screen.queryByRole('link', { name: /to Pre-DNA results$/ })).toBeNull();
 		});
 	});
 });
