@@ -1590,8 +1590,9 @@ func TestBranchScenario_GPSOverlay(t *testing.T) {
 // before it filters on status, so the branch no longer lists the conflict while
 // main still does), edits and adds research logs, and re-points the proof
 // summary at the family (the per-subject and per-fact lists match the winning
-// row). Deletes follow: a branch tombstone of a main analysis, then the person
-// itself, which cascades every GPS artifact about the person on the branch only.
+// row). Deletes follow: branch tombstones of a main analysis and of main's
+// conflict, then the person itself, which cascades every GPS artifact about the
+// person on the branch only, then the family's proof and a branch-only log.
 // Every step asserts main is untouched. Last, deleting the branch purges its GPS
 // rows so the branch id resolves to main again.
 func runBranchGPSScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
@@ -1850,6 +1851,17 @@ func runBranchGPSScenario(t *testing.T, readStore repository.ReadModelStore, bra
 	if got := totals(branchID); got != [4]int{2, 1, 2, 1} {
 		t.Errorf("branch GPS totals after analysis delete = %v, want [2 1 2 1]", got)
 	}
+	// Evidence conflicts have no delete event; the store method tombstones too.
+	if err := readStore.DeleteEvidenceConflict(ctx, branchID, conflict.ID); err != nil {
+		t.Fatalf("branch DeleteEvidenceConflict: %v", err)
+	}
+	mainView("after branch conflict delete")
+	if got, err := readStore.GetEvidenceConflict(ctx, branchID, conflict.ID); err != nil || got != nil {
+		t.Errorf("branch GetEvidenceConflict after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got := conflictsFor(branchID, subject.ID); len(got) != 0 {
+		t.Errorf("branch GetConflictsForSubject after delete = %+v, want none", got)
+	}
 
 	project("branch delete person", branchID, domain.NewPersonDeleted(subject.ID, "branch hypothesis"))
 	mainView("after branch person delete")
@@ -1870,6 +1882,23 @@ func runBranchGPSScenario(t *testing.T, readStore repository.ReadModelStore, bra
 	}
 	if got := proofsBySubject(branchID, family.ID); got != 1 {
 		t.Errorf("branch GetProofSummariesBySubject(family) after person delete = %d, want 1", got)
+	}
+
+	// Explicit deletes of the family's artifacts: a tombstone over main's
+	// (re-pointed) proof summary and the removal of a branch-only research log.
+	project("branch delete proof and log", branchID,
+		domain.NewProofSummaryDeleted(proof.ID, "branch hypothesis"),
+		domain.NewResearchLogDeleted(familyLog.ID, "branch hypothesis"),
+	)
+	mainView("after branch proof and log delete")
+	if got := totals(branchID); got != [4]int{0, 0, 0, 0} {
+		t.Errorf("branch GPS totals after every delete = %v, want [0 0 0 0]", got)
+	}
+	if got, err := readStore.GetProofSummary(ctx, branchID, proof.ID); err != nil || got != nil {
+		t.Errorf("branch GetProofSummary after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := readStore.GetResearchLog(ctx, branchID, familyLog.ID); err != nil || got != nil {
+		t.Errorf("branch GetResearchLog(branch-only) after delete = %+v (err=%v), want gone", got, err)
 	}
 
 	// A save after a delete clears the tombstone.
