@@ -406,6 +406,110 @@ func TestDeleteSnapshot_ConvergesOnAnExistingTombstone(t *testing.T) {
 	}
 }
 
+// snapshotRaceStore lets a test slip a rival append onto a stream between the
+// handler's ReadStream and its Append, the window two concurrent deletes share.
+type snapshotRaceStore struct {
+	*memory.EventStore
+	beforeAppend func(ctx context.Context, streamID uuid.UUID)
+}
+
+func (r *snapshotRaceStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
+	if hook := r.beforeAppend; hook != nil {
+		r.beforeAppend = nil // fire once, for the handler's own append
+		hook(ctx, streamID)
+	}
+	return r.EventStore.Append(ctx, streamID, streamType, events, expectedVersion, scope)
+}
+
+// newRacingSnapshotFixture builds a snapshot fixture whose handler writes through
+// a snapshotRaceStore, and returns that store so the test can arm the race.
+func newRacingSnapshotFixture() (*snapshotFixture, *snapshotRaceStore) {
+	base := memory.NewEventStore()
+	racing := &snapshotRaceStore{EventStore: base}
+	readStore := memory.NewReadModelStore()
+	snapshotStore := memory.NewSnapshotStore(base)
+	return &snapshotFixture{
+		eventStore:    base,
+		readStore:     readStore,
+		snapshotStore: snapshotStore,
+		handler: command.NewHandlerWithBranches(
+			racing, readStore, memory.NewBranchStore(), snapshotStore),
+	}, racing
+}
+
+// TestDeleteSnapshot_LosesRaceToRivalDelete covers two deletes that both read
+// the stream before either appends. The loser's append conflicts; because the
+// winner's tombstone is what the loser wanted, the loser must succeed rather
+// than surface a 500, and the log must still hold exactly one tombstone.
+func TestDeleteSnapshot_LosesRaceToRivalDelete(t *testing.T) {
+	f, racing := newRacingSnapshotFixture()
+	ctx := context.Background()
+
+	snapshot, err := f.handler.CreateSnapshot(ctx, "milestone", "")
+	if err != nil {
+		t.Fatalf("CreateSnapshot failed: %v", err)
+	}
+
+	// The rival appends its tombstone (without projecting it) after this
+	// handler has read version 1, so the handler's append at 1 conflicts.
+	racing.beforeAppend = func(ctx context.Context, streamID uuid.UUID) {
+		if err := f.eventStore.Append(ctx, streamID, "snapshot",
+			[]domain.Event{domain.NewSnapshotDeleted(streamID)}, 1, repository.MainScope); err != nil {
+			t.Fatalf("rival tombstone append failed: %v", err)
+		}
+	}
+
+	if err := f.handler.DeleteSnapshot(ctx, snapshot.ID); err != nil {
+		t.Fatalf("losing DeleteSnapshot = %v, want success", err)
+	}
+	if _, err := f.snapshotStore.Get(ctx, snapshot.ID); !errors.Is(err, repository.ErrSnapshotNotFound) {
+		t.Errorf("Get after losing delete = %v, want ErrSnapshotNotFound", err)
+	}
+
+	var tombstones int
+	for _, e := range f.snapshotEvents(t) {
+		if e.EventType == "SnapshotDeleted" {
+			tombstones++
+		}
+	}
+	if tombstones != 1 {
+		t.Errorf("SnapshotDeleted events = %d, want 1", tombstones)
+	}
+}
+
+// TestDeleteSnapshot_ConflictWithoutTombstoneFails guards the other side of the
+// race handling: a conflict caused by something other than a rival delete is
+// not a delete, so it must still fail and leave the registry row in place.
+func TestDeleteSnapshot_ConflictWithoutTombstoneFails(t *testing.T) {
+	f, racing := newRacingSnapshotFixture()
+	ctx := context.Background()
+
+	snapshot, err := f.handler.CreateSnapshot(ctx, "milestone", "")
+	if err != nil {
+		t.Fatalf("CreateSnapshot failed: %v", err)
+	}
+
+	racing.beforeAppend = func(ctx context.Context, streamID uuid.UUID) {
+		other, err := domain.NewSnapshot("unrelated", "", 0)
+		if err != nil {
+			t.Fatalf("NewSnapshot failed: %v", err)
+		}
+		other.ID = streamID
+		if err := f.eventStore.Append(ctx, streamID, "snapshot",
+			[]domain.Event{domain.NewSnapshotCreated(other)}, 1, repository.MainScope); err != nil {
+			t.Fatalf("rival non-delete append failed: %v", err)
+		}
+	}
+
+	err = f.handler.DeleteSnapshot(ctx, snapshot.ID)
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("DeleteSnapshot = %v, want it to wrap ErrConcurrencyConflict", err)
+	}
+	if _, err := f.snapshotStore.Get(ctx, snapshot.ID); err != nil {
+		t.Errorf("registry row should survive a failed delete, got %v", err)
+	}
+}
+
 // TestSnapshotCommands_RefuseOnBranch guards the gap ADR-005 leaves open: a
 // branch snapshot needs a (branch_id, position) pointer the registry cannot yet
 // hold, so recording one as mainline would be wrong.

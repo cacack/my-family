@@ -105,18 +105,11 @@ func (h *Handler) DeleteSnapshot(ctx context.Context, snapshotID uuid.UUID) erro
 
 	// A tombstone already on the log with the registry row still present is the
 	// torn state a delete leaves when its append succeeded but its projection did
-	// not — and what a rival concurrent delete leaves behind. Re-project that
-	// tombstone rather than appending a second one: same outcome, and ES-002 keeps
-	// the log free of a duplicate that says nothing new.
+	// not — and what a rival delete that finished before this read leaves behind.
+	// Re-project that tombstone rather than appending a second one: same outcome,
+	// and ES-002 keeps the log free of a duplicate that says nothing new.
 	if tombstone != nil {
-		decoded, err := tombstone.DecodeEvent()
-		if err != nil {
-			return fmt.Errorf("decoding the existing snapshot tombstone: %w", err)
-		}
-		if err := h.projector.Project(ctx, decoded, tombstone.Version, domain.MainBranchID); err != nil {
-			return fmt.Errorf("projecting the existing snapshot tombstone: %w", err)
-		}
-		return nil
+		return h.reprojectSnapshotTombstone(ctx, tombstone)
 	}
 
 	// The snapshot's stream already holds SnapshotCreated, so append at its
@@ -132,6 +125,12 @@ func (h *Handler) DeleteSnapshot(ctx context.Context, snapshotID uuid.UUID) erro
 
 	event := domain.NewSnapshotDeleted(snapshotID)
 	if err := h.eventStore.Append(ctx, snapshotID, snapshotStreamType, []domain.Event{event}, expectedVersion, repository.MainScope); err != nil {
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			// A rival delete read the same version and appended first. Its
+			// tombstone is the delete this caller asked for, so converge on it
+			// instead of reporting a failure for a snapshot that is now gone.
+			return h.convergeOnRivalSnapshotDelete(ctx, snapshotID, err)
+		}
 		return fmt.Errorf("appending snapshot deleted event: %w", err)
 	}
 
@@ -139,6 +138,37 @@ func (h *Handler) DeleteSnapshot(ctx context.Context, snapshotID uuid.UUID) erro
 		return fmt.Errorf("projecting snapshot deleted event: %w", err)
 	}
 
+	return nil
+}
+
+// convergeOnRivalSnapshotDelete handles a concurrency conflict on the tombstone
+// append. It re-reads the stream: when a tombstone is now present, a rival delete
+// won the race, and re-projecting that tombstone makes this call succeed exactly
+// as if it had arrived second. Any other conflict (the stream moved for a reason
+// other than a delete) is returned unchanged.
+func (h *Handler) convergeOnRivalSnapshotDelete(ctx context.Context, snapshotID uuid.UUID, appendErr error) error {
+	stored, err := h.eventStore.ReadStream(ctx, snapshotID)
+	if err != nil {
+		return fmt.Errorf("re-reading snapshot stream after a concurrent append: %w", err)
+	}
+	tombstone, _ := scanSnapshotStream(stored)
+	if tombstone == nil {
+		return fmt.Errorf("appending snapshot deleted event: %w", appendErr)
+	}
+	return h.reprojectSnapshotTombstone(ctx, tombstone)
+}
+
+// reprojectSnapshotTombstone projects a SnapshotDeleted event already on the
+// log. Projecting a tombstone for a registry row that is already gone is a
+// no-op, so this is safe whether or not the rival's projection has run yet.
+func (h *Handler) reprojectSnapshotTombstone(ctx context.Context, tombstone *repository.StoredEvent) error {
+	decoded, err := tombstone.DecodeEvent()
+	if err != nil {
+		return fmt.Errorf("decoding the existing snapshot tombstone: %w", err)
+	}
+	if err := h.projector.Project(ctx, decoded, tombstone.Version, domain.MainBranchID); err != nil {
+		return fmt.Errorf("projecting the existing snapshot tombstone: %w", err)
+	}
 	return nil
 }
 

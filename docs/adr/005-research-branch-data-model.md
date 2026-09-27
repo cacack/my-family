@@ -331,8 +331,10 @@ read-model entities.
 `SnapshotCreated` event, so "the registry rebuilds from the log" holds only for snapshots created
 after this change. Nothing replays the log into a projector today, so no data is at risk yet; the
 constraint is that rebuild tooling (#680) must backfill those rows — or consciously drop them —
-rather than assume the log is complete. Deleting such a snapshot works: `GetStreamVersion` reports
-0 for a stream with no events, and `DeleteSnapshot` translates that to a new-stream append.
+rather than assume the log is complete. Deleting such a snapshot works: `DeleteSnapshot` reads the
+snapshot's stream (`ReadStream`, then `scanSnapshotStream` over its mainline events), finds version
+0 because the stream has no events, and appends the tombstone with `expectedVersion` -1 (a new
+stream).
 
 ## Entities that stay main-only
 
