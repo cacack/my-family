@@ -73,13 +73,23 @@ describe('Add Family page (#826)', () => {
 		await waitFor(() => expect(goto).toHaveBeenCalledWith('/families/new-fam'));
 	});
 
-	it('creates a family with no partners when none are picked', async () => {
+	it('requires at least one partner before it can be created', async () => {
 		render(AddFamilyPage);
-		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
+		expect(screen.queryByText(/Both are optional/)).toBeNull();
+		expect(screen.getByTestId('partner-required')).toBeDefined();
+		const submit = screen.getByRole('button', { name: 'Create Family' }) as HTMLButtonElement;
+		expect(submit.disabled).toBe(true);
+		await fireEvent.submit(submit.closest('form')!);
+		expect(createFamily).not.toHaveBeenCalled();
+
+		await pick('Partner 2', 'Jones', /Ann Jones/);
+		expect(screen.queryByTestId('partner-required')).toBeNull();
+		expect(submit.disabled).toBe(false);
+		await fireEvent.click(submit);
 		await waitFor(() => expect(createFamily).toHaveBeenCalled());
 		const payload = createFamily.mock.calls[0][0];
 		expect(payload.partner1_id).toBeUndefined();
-		expect(payload.partner2_id).toBeUndefined();
+		expect(payload.partner2_id).toBe('ann-id');
 	});
 
 	it('prefills partner 1 from ?partner1= (the person page "Add family" shortcut)', async () => {
@@ -112,6 +122,7 @@ describe('Add Family page (#826)', () => {
 		addChildToFamily.mockRejectedValue({ message: 'Circular ancestry detected' });
 		render(AddFamilyPage);
 		await screen.findByTestId('child-note');
+		await pick('Partner 1', 'Smith', /John Smith/);
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
 
@@ -148,6 +159,8 @@ describe('Add Family page (#826)', () => {
 
 		release(mary);
 		await screen.findByTestId('child-note');
+		getPerson.mockResolvedValue(john);
+		await pick('Partner 1', 'Smith', /John Smith/);
 		await fireEvent.click(screen.getByRole('button', { name: 'Create Family' }));
 		await waitFor(() => expect(addChildToFamily).toHaveBeenCalledWith('new-fam', { person_id: 'mary-id' }));
 	});

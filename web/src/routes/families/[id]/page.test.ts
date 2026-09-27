@@ -365,6 +365,19 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		);
 	});
 
+	it('will not save a family with both partners cleared', async () => {
+		await openEdit();
+		expect(screen.queryByTestId('partner-required')).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear Partner 2: Jane Smith' }));
+
+		expect(screen.getByTestId('partner-required')).toBeDefined();
+		const save = screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement;
+		expect(save.disabled).toBe(true);
+		await fireEvent.submit(save.closest('form')!);
+		expect(api.updateFamily).not.toHaveBeenCalled();
+	});
+
 	it('keeps the form open and shows a refused save in it', async () => {
 		vi.mocked(api.updateFamily).mockRejectedValue({ message: 'partner1 and partner2 must be different people' });
 		await openEdit();

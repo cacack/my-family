@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
 )
@@ -114,5 +116,77 @@ func TestUpdateFamily_SetAndClearSamePartnerRefused(t *testing.T) {
 				t.Errorf("stream has %d events, want only the create", len(stream))
 			}
 		})
+	}
+}
+
+// TestUpdateFamily_CannotClearLastPartner (#826): a family must keep at least
+// one partner, the rule CreateFamily and domain.Family.Validate enforce.
+// Clearing both at once, or clearing the only remaining one, is refused and
+// nothing is appended.
+func TestUpdateFamily_CannotClearLastPartner(t *testing.T) {
+	t.Run("both at once", func(t *testing.T) {
+		f := newFamilyFixture(t)
+		_, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
+			ID: f.familyID, ClearPartner1: true, ClearPartner2: true, Version: f.version,
+		})
+		if !errors.Is(err, command.ErrInvalidFamilyInput) {
+			t.Fatalf("UpdateFamily error = %v, want ErrInvalidFamilyInput", err)
+		}
+		assertStreamLen(t, f, 1)
+	})
+	t.Run("last remaining", func(t *testing.T) {
+		f := newFamilyFixture(t)
+		if _, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
+			ID: f.familyID, ClearPartner2: true, Version: f.version,
+		}); err != nil {
+			t.Fatalf("clear partner2: %v", err)
+		}
+		_, err := f.handler.UpdateFamily(f.ctx, command.UpdateFamilyInput{
+			ID: f.familyID, ClearPartner1: true, Version: f.version + 1,
+		})
+		if !errors.Is(err, command.ErrInvalidFamilyInput) {
+			t.Fatalf("UpdateFamily error = %v, want ErrInvalidFamilyInput", err)
+		}
+		assertStreamLen(t, f, 2)
+		fam, err := f.read.GetFamily(f.ctx, domain.MainBranchID, f.familyID)
+		if err != nil || fam == nil {
+			t.Fatalf("GetFamily: %v", err)
+		}
+		if fam.Partner1ID == nil || *fam.Partner1ID != f.p1 {
+			t.Errorf("partner1 = %v, want kept %s", fam.Partner1ID, f.p1)
+		}
+	})
+}
+
+// TestCreateFamily_ValidationErrorsWrapSentinel: CreateFamily's input errors
+// wrap ErrInvalidFamilyInput so the API maps them to 400, not 500.
+func TestCreateFamily_ValidationErrorsWrapSentinel(t *testing.T) {
+	f := newFamilyFixture(t)
+	missing := uuid.New()
+	for _, tc := range []struct {
+		name  string
+		input command.CreateFamilyInput
+	}{
+		{"no partners", command.CreateFamilyInput{RelationshipType: "marriage"}},
+		{"unknown partner1", command.CreateFamilyInput{Partner1ID: &missing}},
+		{"unknown partner2", command.CreateFamilyInput{Partner1ID: &f.p3, Partner2ID: &missing}},
+		{"same partner twice", command.CreateFamilyInput{Partner1ID: &f.p3, Partner2ID: &f.p3}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := f.handler.CreateFamily(f.ctx, tc.input); !errors.Is(err, command.ErrInvalidFamilyInput) {
+				t.Fatalf("CreateFamily error = %v, want ErrInvalidFamilyInput", err)
+			}
+		})
+	}
+}
+
+func assertStreamLen(t *testing.T, f *familyFixture, want int) {
+	t.Helper()
+	stream, err := f.events.ReadStream(f.ctx, f.familyID)
+	if err != nil {
+		t.Fatalf("ReadStream: %v", err)
+	}
+	if len(stream) != want {
+		t.Errorf("stream has %d events, want %d", len(stream), want)
 	}
 }

@@ -61,6 +61,8 @@
 	// The partner pickers of the edit form.
 	let partner1: PersonSummary | null = $state(null);
 	let partner2: PersonSummary | null = $state(null);
+	// A family must keep at least one partner; the server refuses clearing both.
+	const hasPartner = $derived(!!partner1 || !!partner2);
 
 	/** The family's partners and children: none of them can be added as a child. */
 	function linkedIds(current: FamilyDetail | null): string[] {
@@ -197,7 +199,7 @@
 	}
 
 	async function saveFamily() {
-		if (!family) return;
+		if (!family || !hasPartner) return;
 		saving = true;
 		saveError = null;
 		try {
@@ -371,7 +373,7 @@
 
 				<div class="form-actions">
 					<Button variant="outline" onclick={cancelEdit} disabled={saving}>Cancel</Button>
-					<Button type="submit" disabled={saving}>
+					<Button type="submit" disabled={saving || !hasPartner}>
 						{saving ? 'Saving...' : 'Save Changes'}
 					</Button>
 				</div>

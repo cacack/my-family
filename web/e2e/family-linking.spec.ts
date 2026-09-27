@@ -166,11 +166,15 @@ test('on the mainline, change and clear a partner and remove a child in the UI',
 	await page.goto(`/families/${family.id}`);
 	await expect(page.getByRole('heading', { level: 1, name: `Rowan ${surname} & Sage ${surname}` })).toBeVisible();
 
-	// Swap partner 1 for Ash and remove partner 2.
+	// Swap partner 1 for Ash and remove partner 2. With both slots empty the
+	// form will not save: a family must keep at least one partner.
 	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
 	await page.getByRole('button', { name: `Clear Partner 1: Rowan ${surname}` }).click();
-	await pick(page, 'Partner 1', `Ash ${surname}`);
 	await page.getByRole('button', { name: `Clear Partner 2: Sage ${surname}` }).click();
+	await expect(page.getByTestId('partner-required')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Save Changes' })).toBeDisabled();
+	await pick(page, 'Partner 1', `Ash ${surname}`);
+	await expect(page.getByTestId('partner-required')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Save Changes' }).click();
 	await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);
 	await expect(page.getByRole('heading', { level: 1, name: `Ash ${surname}` })).toBeVisible();
@@ -196,6 +200,7 @@ test('on the mainline, change and clear a partner and remove a child in the UI',
 	await page.goto(`/persons/${wren.id}`);
 	await page.getByRole('link', { name: 'Add parents' }).click();
 	await expect(page.getByTestId('child-note')).toContainText(`Wren ${surname} will be added as a child`);
+	await expect(page.getByRole('button', { name: 'Create Family' })).toBeDisabled();
 	await pick(page, 'Partner 1', `Rowan ${surname}`);
 	await page.getByRole('button', { name: 'Create Family' }).click();
 	await expect(page.getByRole('heading', { level: 1, name: `Rowan ${surname}` })).toBeVisible();

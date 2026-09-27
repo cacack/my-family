@@ -57,7 +57,9 @@
 
 <fieldset class="partner-pickers" {disabled}>
 	<legend>Partners</legend>
-	<p class="hint">Search by name. Both are optional, and either can be changed or removed later.</p>
+	<p class="hint">
+		Search by name. A family needs at least one partner; either can be changed or removed later.
+	</p>
 	<div class="pickers">
 		<PersonSelector
 			label="Partner 1"
@@ -74,6 +76,9 @@
 			{disabled}
 		/>
 	</div>
+	{#if !partner1 && !partner2}
+		<p class="required-note" data-testid="partner-required">Pick at least one partner to save.</p>
+	{/if}
 </fieldset>
 
 <style>
@@ -96,6 +101,12 @@
 		font-size: 0.8125rem;
 		color: #64748b;
 		margin: 0 0 0.75rem;
+	}
+
+	.required-note {
+		font-size: 0.8125rem;
+		color: #b45309;
+		margin: 0.5rem 0 0;
 	}
 
 	.pickers {

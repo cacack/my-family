@@ -161,16 +161,23 @@ func runPartnerChangePedigree(t *testing.T, server *api.Server, st stores, backe
 	mustDo(t, server, http.MethodPost, mergePath(branchID), mergeBody("partner swap"), http.StatusOK)
 	assertPedigreeEdge(t, st, domain.MainBranchID, childID, other, mother)
 
-	// --- Clearing both partners leaves the child with no parents. ---
+	// --- A family must keep a partner: clearing both is refused (400) and the
+	// child's edge is untouched. ---
 	mustDo(t, server, http.MethodPut, familyPath,
 		fmt.Sprintf(`{"clear_partner1":true,"clear_partner2":true,"version":%d}`, entityVersion(t, server, familyPath, "")),
+		http.StatusBadRequest)
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, other, mother)
+
+	// --- Clearing one partner after the merge drops them from the edge. ---
+	mustDo(t, server, http.MethodPut, familyPath,
+		fmt.Sprintf(`{"clear_partner1":true,"version":%d}`, entityVersion(t, server, familyPath, "")),
 		http.StatusOK)
-	assertPedigreeEdge(t, st, domain.MainBranchID, childID, "", "")
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, "", mother)
 
 	// --- Replay: rebuilding the read model from the log gives the same edge. ---
 	fresh := backend.setup(t)
 	replayLog(t, ctx, st.events, fresh.read)
-	assertPedigreeEdge(t, fresh, domain.MainBranchID, childID, "", "")
+	assertPedigreeEdge(t, fresh, domain.MainBranchID, childID, "", mother)
 }
 
 // assertPedigreeEdge checks a child's father/mother on a scope; "" means unset.

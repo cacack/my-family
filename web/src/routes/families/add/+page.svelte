@@ -41,6 +41,8 @@
 	let prefillToken = 0;
 	const childPending = $derived.by(() => !!requestedChildId && child?.id !== requestedChildId);
 	const formLocked = $derived(saving || !!createdFamilyId || prefilling);
+	// A family needs at least one partner; the server refuses one without.
+	const hasPartner = $derived(!!partner1 || !!partner2);
 
 	async function prefill(partner1Id: string | null, childId: string | null) {
 		const token = ++prefillToken;
@@ -76,7 +78,7 @@
 	});
 
 	async function handleSubmit() {
-		if (formLocked || childPending) return;
+		if (formLocked || childPending || !hasPartner) return;
 		saving = true;
 		error = null;
 		try {
@@ -184,7 +186,7 @@
 
 		<div class="form-actions">
 			<Button type="button" variant="outline" onclick={handleCancel} disabled={saving}>Cancel</Button>
-			<Button type="submit" disabled={formLocked || childPending}>
+			<Button type="submit" disabled={formLocked || childPending || !hasPartner}>
 				{saving ? 'Creating...' : prefilling ? 'Loading...' : 'Create Family'}
 			</Button>
 		</div>

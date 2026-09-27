@@ -158,3 +158,54 @@ func TestUpdateFamily_ClearPartner(t *testing.T) {
 		t.Errorf("partner1_id = %v, want %s", got["partner1_id"], p1)
 	}
 }
+
+// TestUpdateFamily_KeepsAtLeastOnePartner (#826): a PUT that would leave a
+// family with no partners — clearing both at once, or clearing the last one —
+// is a 400 VALIDATION error, matching the create-time rule.
+func TestUpdateFamily_KeepsAtLeastOnePartner(t *testing.T) {
+	server := setupFamilyTestServer(t)
+	p1 := createTestPerson(t, server, "Avery", "Placeholder")["id"].(string)
+	p2 := createTestPerson(t, server, "Blake", "Sample")["id"].(string)
+	familyID := createFamilyOf(t, server, p1, p2)
+
+	rec := putFamily(t, server, familyID, map[string]any{"version": 1, "clear_partner1": true, "clear_partner2": true})
+	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["code"] != "VALIDATION_ERROR" {
+		t.Fatalf("clear both: %d %s, want 400 VALIDATION_ERROR", rec.Code, rec.Body.String())
+	}
+
+	if rec = putFamily(t, server, familyID, map[string]any{"version": 1, "clear_partner2": true}); rec.Code != http.StatusOK {
+		t.Fatalf("clear partner2: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = putFamily(t, server, familyID, map[string]any{"version": 2, "clear_partner1": true})
+	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["code"] != "VALIDATION_ERROR" {
+		t.Fatalf("clear last partner: %d %s, want 400 VALIDATION_ERROR", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCreateFamily_ValidationIs400 (#826): creating a family with no partners,
+// or with an unknown one, is a 400 VALIDATION error, not a generic 500.
+func TestCreateFamily_ValidationIs400(t *testing.T) {
+	server := setupFamilyTestServer(t)
+	for _, tc := range []struct {
+		name string
+		body map[string]any
+	}{
+		{"no partners", map[string]any{"relationship_type": "marriage"}},
+		{"unknown partner1", map[string]any{"partner1_id": uuid.NewString()}},
+		{"unknown partner2", map[string]any{"partner2_id": uuid.NewString()}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(tc.body)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(raw))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["code"] != "VALIDATION_ERROR" {
+				t.Fatalf("status = %d %s, want 400 VALIDATION_ERROR", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
