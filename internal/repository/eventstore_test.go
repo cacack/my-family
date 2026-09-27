@@ -578,6 +578,21 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 			},
 		},
 		{
+			name: "BranchMergeResumed",
+			event: domain.NewBranchMergeResumed(uuid.New(), 99,
+				map[uuid.UUID]int64{uuid.Nil: 3}, map[uuid.UUID]string{uuid.Nil: "branch"}),
+			eventType: "BranchMergeResumed",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BranchMergeResumed)
+				if !ok {
+					t.Fatalf("Expected BranchMergeResumed, got %T", decoded)
+				}
+				if e.MergedAtPosition != 99 || e.ReplayStreamVersions[uuid.Nil] != 3 || e.Resolutions[uuid.Nil] != "branch" {
+					t.Errorf("decoded = %+v, want position 99, plan {nil: 3}, resolutions {nil: branch}", e)
+				}
+			},
+		},
+		{
 			name:      "RepositoryCreated",
 			event:     domain.NewRepositoryCreated(domain.NewRepository("National Archives")),
 			eventType: "RepositoryCreated",
@@ -976,7 +991,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"MediaCreated", "MediaUpdated", "MediaDeleted",
 		"NameAdded", "NameUpdated", "NameRemoved",
 		"SnapshotCreated", "PersonMerged",
-		"BranchCreated", "BranchDeleted", "BranchMerged",
+		"BranchCreated", "BranchDeleted", "BranchMerged", "BranchMergeResumed",
 		"NoteCreated", "NoteUpdated", "NoteDeleted",
 		"SubmitterCreated", "SubmitterUpdated", "SubmitterDeleted",
 		"AssociationCreated", "AssociationUpdated", "AssociationDeleted",

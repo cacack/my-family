@@ -1567,3 +1567,41 @@ func TestBranchMerged_ReplayPlan(t *testing.T) {
 		t.Errorf("legacy claim ReplayStreamVersions = %v, want nil", legacy.ReplayStreamVersions)
 	}
 }
+
+// TestBranchMergeResumed_RoundTrip pins the resume decision record (#685): the
+// plan and resolutions round-trip, the constructor copies its maps, and a nil
+// plan is stored as {} so it never decodes as "no plan".
+func TestBranchMergeResumed_RoundTrip(t *testing.T) {
+	branchID, stream := uuid.New(), uuid.New()
+	plan := map[uuid.UUID]int64{stream: 4}
+	resolutions := map[uuid.UUID]string{stream: "branch"}
+	event := NewBranchMergeResumed(branchID, 7, plan, resolutions)
+	plan[stream], resolutions[stream] = 99, "main" // copied, so these must not leak in
+
+	if event.EventType() != "BranchMergeResumed" {
+		t.Errorf("EventType() = %v, want BranchMergeResumed", event.EventType())
+	}
+	if event.AggregateID() != branchID {
+		t.Errorf("AggregateID() = %v, want %v", event.AggregateID(), branchID)
+	}
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	var decoded BranchMergeResumed
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if decoded.MergedAtPosition != 7 || decoded.ReplayStreamVersions[stream] != 4 || decoded.Resolutions[stream] != "branch" {
+		t.Errorf("decoded = %+v, want position 7, plan {%s: 4}, resolutions {%s: branch}", decoded, stream, stream)
+	}
+
+	empty, err := json.Marshal(NewBranchMergeResumed(branchID, 7, nil, nil))
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	if !strings.Contains(string(empty), `"replay_stream_versions":{}`) {
+		t.Errorf("empty plan should be stored as {}, got %s", empty)
+	}
+}

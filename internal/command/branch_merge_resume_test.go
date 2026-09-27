@@ -21,14 +21,23 @@ var errInjectedReplayFailure = errors.New("injected storage failure during repla
 // everything else through. Mainline appends made while seeding happen before it
 // is armed, so the count covers only the merge's replay (the claim is on the
 // branch's own scope and is never counted).
+//
+// raceResumeRecord makes the next append of a BranchMergeResumed decision
+// record lose its optimistic-concurrency check, as if a rival resume had
+// recorded first.
 type faultyReplayStore struct {
 	repository.EventStore
-	armed       bool
-	failAt      int
-	mainAppends int
+	armed            bool
+	failAt           int
+	mainAppends      int
+	raceResumeRecord bool
 }
 
 func (s *faultyReplayStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
+	if s.raceResumeRecord && len(events) == 1 && events[0].EventType() == "BranchMergeResumed" {
+		s.raceResumeRecord = false
+		return repository.ErrConcurrencyConflict
+	}
 	if s.armed && scope.BranchID.IsMain() {
 		s.mainAppends++
 		if s.mainAppends == s.failAt {
@@ -38,11 +47,31 @@ func (s *faultyReplayStore) Append(ctx context.Context, streamID uuid.UUID, stre
 	return s.EventStore.Append(ctx, streamID, streamType, events, expectedVersion, scope)
 }
 
+// errInjectedProjectionFailure is the read-model failure faultyReadStore
+// injects.
+var errInjectedProjectionFailure = errors.New("injected read-model failure during projection")
+
+// faultyReadStore fails mainline SavePerson for one person while armed, so a
+// replay's Append lands in the log but its projection does not.
+type faultyReadStore struct {
+	repository.ReadModelStore
+	armed      bool
+	failPerson uuid.UUID
+}
+
+func (s *faultyReadStore) SavePerson(ctx context.Context, branchID domain.BranchID, person *repository.PersonReadModel) error {
+	if s.armed && branchID.IsMain() && person.ID == s.failPerson {
+		return errInjectedProjectionFailure
+	}
+	return s.ReadModelStore.SavePerson(ctx, branchID, person)
+}
+
 // resumeSeed is a branch that edits two persons, so a replay can fail after one
 // of them has reached main.
 type resumeSeed struct {
 	f       *branchFixture
 	faulty  *faultyReplayStore
+	reads   *faultyReadStore
 	branch  *domain.Branch
 	first   uuid.UUID
 	second  uuid.UUID
@@ -52,10 +81,15 @@ type resumeSeed struct {
 func seedResume(t *testing.T) resumeSeed {
 	t.Helper()
 	var faulty *faultyReplayStore
+	var reads *faultyReadStore
 	f := newBranchFixtureWith(branchFixtureDeps{
 		wrapEvents: func(inner repository.EventStore) repository.EventStore {
 			faulty = &faultyReplayStore{EventStore: inner}
 			return faulty
+		},
+		wrapReads: func(inner repository.ReadModelStore) repository.ReadModelStore {
+			reads = &faultyReadStore{ReadModelStore: inner}
+			return reads
 		},
 	})
 	ctx := context.Background()
@@ -82,7 +116,7 @@ func seedResume(t *testing.T) resumeSeed {
 			t.Fatalf("branch UpdatePerson failed: %v", err)
 		}
 	}
-	return resumeSeed{f: f, faulty: faulty, branch: branch, first: first.ID, second: second.ID, handler: f.handler}
+	return resumeSeed{f: f, faulty: faulty, reads: reads, branch: branch, first: first.ID, second: second.ID, handler: f.handler}
 }
 
 // interruptSecondStream runs a merge whose replay fails on its second stream,
@@ -504,4 +538,388 @@ func TestResumeMerge_RefusesBranchWritesAfterTheClaim(t *testing.T) {
 	if got := logHead(t, s.f); got != head {
 		t.Errorf("refused resume wrote to the log (%d -> %d)", head, got)
 	}
+}
+
+// makeSecondStreamStale interrupts the merge on the second stream and then
+// lands a mainline write on it, so a resume must ask for a resolution.
+func (s resumeSeed) makeSecondStreamStale(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	s.interruptSecondStream(t, command.MergeBranchInput{BranchID: s.branch.ID})
+	version, err := s.f.eventStore.GetStreamVersion(ctx, s.second, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if _, err := s.handler.UpdatePerson(ctx, command.UpdatePersonInput{
+		ID: s.second, GivenName: strPtr("Augusta"), Version: version,
+	}); err != nil {
+		t.Fatalf("mainline UpdatePerson failed: %v", err)
+	}
+}
+
+// resumeRecords returns the BranchMergeResumed decision records on the
+// branch's own stream, decoded.
+func resumeRecords(t *testing.T, s resumeSeed) []domain.BranchMergeResumed {
+	t.Helper()
+	var records []domain.BranchMergeResumed
+	for _, stored := range branchEventsFor(t, s.f, s.branch.ID, domain.BranchID(s.branch.ID)) {
+		if stored.EventType != "BranchMergeResumed" {
+			continue
+		}
+		decoded, err := stored.DecodeEvent()
+		if err != nil {
+			t.Fatalf("DecodeEvent failed: %v", err)
+		}
+		records = append(records, decoded.(domain.BranchMergeResumed))
+	}
+	return records
+}
+
+// TestResumeMerge_MainResolutionIsFinal is the regression test for a resume
+// whose "main" decision was not durable: the next resume found the stream
+// unreplayed and stale again, asked for a fresh decision, and accepted
+// "branch" — replaying the rejected edit over main long after the merge
+// reported complete.
+func TestResumeMerge_MainResolutionIsFinal(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.makeSecondStreamStale(t)
+
+	if _, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveMain},
+	}); err != nil {
+		t.Fatalf("resolved ResumeMerge failed: %v", err)
+	}
+
+	// The decision is in the log, with the stream dropped from the plan.
+	records := resumeRecords(t, s)
+	if len(records) != 1 {
+		t.Fatalf("got %d BranchMergeResumed records, want 1", len(records))
+	}
+	if records[0].Resolutions[s.second] != string(command.ResolveMain) {
+		t.Errorf("recorded resolutions = %v, want second -> main", records[0].Resolutions)
+	}
+	if _, planned := records[0].ReplayStreamVersions[s.second]; planned {
+		t.Errorf("recorded plan %v still replays the stream resolved to main", records[0].ReplayStreamVersions)
+	}
+
+	// Idempotent: a bare resume is a no-op, not a fresh request for a decision.
+	head := logHead(t, s.f)
+	again, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+	if err != nil {
+		t.Fatalf("bare ResumeMerge after the resolved one failed: %v", err)
+	}
+	if again.ReplayedEventCount != 0 {
+		t.Errorf("ReplayedEventCount = %d, want 0", again.ReplayedEventCount)
+	}
+	if !slices.Contains(again.SkippedStreamIDs, s.second) {
+		t.Errorf("SkippedStreamIDs = %v, want the second stream skipped", again.SkippedStreamIDs)
+	}
+	if got := logHead(t, s.f); got != head {
+		t.Errorf("log head moved %d -> %d on a no-op resume", head, got)
+	}
+
+	// ...and the decision cannot be reversed.
+	_, err = s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch},
+	})
+	if !errors.Is(err, command.ErrUnknownResolution) {
+		t.Fatalf("re-deciding a resolved stream: error = %v, want ErrUnknownResolution", err)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Hopper" {
+		t.Errorf("second stream surname = %q, want main's kept", got)
+	}
+	if got := logHead(t, s.f); got != head {
+		t.Errorf("refused re-decision wrote to the log (%d -> %d)", head, got)
+	}
+}
+
+// TestResumeMerge_BranchResolutionSurvivesInterruption: a "branch" decision is
+// recorded before the replay it causes, so if that replay is interrupted the
+// next resume carries the decision out without asking again.
+func TestResumeMerge_BranchResolutionSurvivesInterruption(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.makeSecondStreamStale(t)
+
+	s.faulty.armed, s.faulty.failAt, s.faulty.mainAppends = true, 1, 0
+	_, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch},
+	})
+	s.faulty.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("interrupted resume: error = %v, want ErrMergePartiallyApplied", err)
+	}
+	if got := len(resumeRecords(t, s)); got != 1 {
+		t.Fatalf("got %d BranchMergeResumed records, want the decision recorded before the replay", got)
+	}
+
+	result, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+	if err != nil {
+		t.Fatalf("bare ResumeMerge after the interrupted one failed: %v", err)
+	}
+	if result.ReplayedEventCount != 1 {
+		t.Errorf("ReplayedEventCount = %d, want 1", result.ReplayedEventCount)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Byron" {
+		t.Errorf("second stream surname = %q, want the recorded branch decision carried out", got)
+	}
+	if got := len(resumeRecords(t, s)); got != 1 {
+		t.Errorf("got %d BranchMergeResumed records, want no new record from a resume that decided nothing", got)
+	}
+}
+
+// TestResumeMerge_LegacyClaimDecisionIsFinal: for a claim that recorded no
+// plan, the first resume's decisions become the plan.
+func TestResumeMerge_LegacyClaimDecisionIsFinal(t *testing.T) {
+	s := seedMerge(t, "Byron")
+	ctx := context.Background()
+	legacy := domain.BranchMerged{
+		BaseEvent:        domain.NewBaseEvent(),
+		BranchID:         s.branch.ID,
+		BasePosition:     s.branch.BasePosition,
+		MergedAtPosition: logHead(t, s.f),
+	}
+	scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID), BasePosition: s.branch.BasePosition}
+	version, err := s.f.eventStore.GetStreamVersion(ctx, s.branch.ID, scope.BranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if err := s.f.eventStore.Append(ctx, s.branch.ID, "branch", []domain.Event{legacy}, version, scope); err != nil {
+		t.Fatalf("appending legacy claim failed: %v", err)
+	}
+
+	if _, err := s.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.person: command.ResolveMain},
+	}); err != nil {
+		t.Fatalf("resolved ResumeMerge failed: %v", err)
+	}
+	if _, err := s.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID}); err != nil {
+		t.Fatalf("bare ResumeMerge after the resolved one failed: %v", err)
+	}
+	_, err = s.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.person: command.ResolveBranch},
+	})
+	if !errors.Is(err, command.ErrUnknownResolution) {
+		t.Fatalf("re-deciding: error = %v, want ErrUnknownResolution", err)
+	}
+	if got := mainSurnameOf(t, s.f, s.person); got != "Lovelace" {
+		t.Errorf("surname = %q, want main's kept", got)
+	}
+}
+
+// TestResumeMerge_ConcurrentDecisionRecordLoses: when a rival resume records
+// its decisions first, this one replays nothing and says so.
+func TestResumeMerge_ConcurrentDecisionRecordLoses(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.makeSecondStreamStale(t)
+
+	head := logHead(t, s.f)
+	s.faulty.raceResumeRecord = true
+	_, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:    s.branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch},
+	})
+	if !errors.Is(err, command.ErrMergeResumeConcurrent) {
+		t.Fatalf("error = %v, want ErrMergeResumeConcurrent", err)
+	}
+	if got := logHead(t, s.f); got != head {
+		t.Errorf("losing resume wrote to the log (%d -> %d)", head, got)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Hopper" {
+		t.Errorf("second stream surname = %q, want nothing replayed", got)
+	}
+}
+
+// TestResumeMerge_RepairsAFailedProjection: the interrupted attempt's Append
+// landed but its projection failed, so main's LOG has the stream and its read
+// model does not. Resume must not append the events again, and must bring the
+// read model level with the log.
+func TestResumeMerge_RepairsAFailedProjection(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+
+	s.reads.armed, s.reads.failPerson = true, s.second
+	_, err := s.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID})
+	s.reads.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) || !errors.Is(err, errInjectedProjectionFailure) {
+		t.Fatalf("MergeBranch error = %v, want the projection failure wrapped in ErrMergePartiallyApplied", err)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Hopper" {
+		t.Fatalf("second stream surname = %q, want the failed projection to have left the read model behind", got)
+	}
+
+	head := logHead(t, s.f)
+	result, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+	if err != nil {
+		t.Fatalf("ResumeMerge failed: %v", err)
+	}
+	if result.ReplayedEventCount != 0 {
+		t.Errorf("ReplayedEventCount = %d, want 0 (the events are already in the log)", result.ReplayedEventCount)
+	}
+	if !slices.Equal(result.ReprojectedStreamIDs, []uuid.UUID{s.second}) {
+		t.Errorf("ReprojectedStreamIDs = %v, want [%s]", result.ReprojectedStreamIDs, s.second)
+	}
+	if got := logHead(t, s.f); got != head {
+		t.Errorf("repairing the read model wrote to the log (%d -> %d)", head, got)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Byron" {
+		t.Errorf("second stream surname = %q, want the read model repaired", got)
+	}
+	person, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.second)
+	if err != nil {
+		t.Fatalf("GetPerson failed: %v", err)
+	}
+	logVersion, err := s.f.eventStore.GetStreamVersion(ctx, s.second, domain.MainBranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if person.Version != logVersion {
+		t.Errorf("read-model version = %d, want the log's %d", person.Version, logVersion)
+	}
+
+	again, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+	if err != nil {
+		t.Fatalf("second ResumeMerge failed: %v", err)
+	}
+	if len(again.ReprojectedStreamIDs) != 0 || again.ReplayedEventCount != 0 {
+		t.Errorf("second resume reprojected %v and replayed %d, want a no-op", again.ReprojectedStreamIDs, again.ReplayedEventCount)
+	}
+}
+
+// TestResumeMerge_RepairsAMissingRowAndLinksToIt: a person the branch created
+// reached main's log but not its read model, and the family linking them as a
+// child was never replayed. Resume re-projects the person and then replays the
+// family — the link must not be refused as dangling, because the person IS on
+// main in the log.
+func TestResumeMerge_RepairsAMissingRowAndLinksToIt(t *testing.T) {
+	var reads *faultyReadStore
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapReads: func(inner repository.ReadModelStore) repository.ReadModelStore {
+			reads = &faultyReadStore{ReadModelStore: inner}
+			return reads
+		},
+	})
+	ctx := context.Background()
+
+	parent, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "new-child", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	onBranch := f.handler.WithBranch(branch)
+	child, err := onBranch.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Byron", Surname: "King"})
+	if err != nil {
+		t.Fatalf("branch CreatePerson failed: %v", err)
+	}
+	family, err := onBranch.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &parent.ID})
+	if err != nil {
+		t.Fatalf("branch CreateFamily failed: %v", err)
+	}
+	if _, err := onBranch.LinkChild(ctx, command.LinkChildInput{FamilyID: family.ID, ChildID: child.ID}); err != nil {
+		t.Fatalf("branch LinkChild failed: %v", err)
+	}
+
+	reads.armed, reads.failPerson = true, child.ID
+	_, err = f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	reads.armed = false
+	if !errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePartiallyApplied", err)
+	}
+	if person, err := f.readStore.GetPerson(ctx, domain.MainBranchID, child.ID); err != nil || person != nil {
+		t.Fatalf("child on main read model = %v (err %v), want missing after the failed projection", person, err)
+	}
+
+	result, err := f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	if err != nil {
+		t.Fatalf("ResumeMerge failed: %v", err)
+	}
+	if !slices.Equal(result.ReprojectedStreamIDs, []uuid.UUID{child.ID}) {
+		t.Errorf("ReprojectedStreamIDs = %v, want [%s]", result.ReprojectedStreamIDs, child.ID)
+	}
+	if person, err := f.readStore.GetPerson(ctx, domain.MainBranchID, child.ID); err != nil || person == nil {
+		t.Fatalf("child on main read model = %v (err %v), want it re-projected", person, err)
+	}
+	children, err := f.readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
+	if err != nil {
+		t.Fatalf("GetFamilyChildren failed: %v", err)
+	}
+	if len(children) != 1 || children[0].PersonID != child.ID {
+		t.Errorf("main family children = %v, want the replayed link to the child", children)
+	}
+}
+
+// TestResumeMerge_GoneEntitiesAreNotResurrected: a replayed person missing
+// from main's read model is left alone when the log explains why — its stream
+// ends in a delete, or main merged it into another person.
+func TestResumeMerge_GoneEntitiesAreNotResurrected(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("deleted on the branch", func(t *testing.T) {
+		s := seedMerge(t, "Byron")
+		person, err := s.f.readStore.GetPerson(ctx, domain.BranchID(s.branch.ID), s.person)
+		if err != nil || person == nil {
+			t.Fatalf("branch GetPerson failed: %v", err)
+		}
+		if err := s.f.handler.WithBranch(s.branch).DeletePerson(ctx, command.DeletePersonInput{
+			ID: s.person, Version: person.Version,
+		}); err != nil {
+			t.Fatalf("branch DeletePerson failed: %v", err)
+		}
+		if _, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID}); err != nil {
+			t.Fatalf("MergeBranch failed: %v", err)
+		}
+
+		result, err := s.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+		if err != nil {
+			t.Fatalf("ResumeMerge failed: %v", err)
+		}
+		if len(result.ReprojectedStreamIDs) != 0 {
+			t.Errorf("ReprojectedStreamIDs = %v, want none", result.ReprojectedStreamIDs)
+		}
+		if got, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person); err != nil || got != nil {
+			t.Errorf("deleted person on main = %v (err %v), want it to stay deleted", got, err)
+		}
+	})
+
+	t.Run("merged away on main", func(t *testing.T) {
+		s := seedMerge(t, "Byron")
+		if _, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID}); err != nil {
+			t.Fatalf("MergeBranch failed: %v", err)
+		}
+		survivor, err := s.f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Augusta", Surname: "Byron"})
+		if err != nil {
+			t.Fatalf("CreatePerson failed: %v", err)
+		}
+		merged, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person)
+		if err != nil || merged == nil {
+			t.Fatalf("main GetPerson failed: %v", err)
+		}
+		if _, err := s.f.handler.MergePersons(ctx, command.MergePersonsInput{
+			SurvivorID: survivor.ID, MergedID: s.person,
+			SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+		}); err != nil {
+			t.Fatalf("MergePersons failed: %v", err)
+		}
+
+		result, err := s.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID})
+		if err != nil {
+			t.Fatalf("ResumeMerge failed: %v", err)
+		}
+		if len(result.ReprojectedStreamIDs) != 0 {
+			t.Errorf("ReprojectedStreamIDs = %v, want none", result.ReprojectedStreamIDs)
+		}
+		if got, err := s.f.readStore.GetPerson(ctx, domain.MainBranchID, s.person); err != nil || got != nil {
+			t.Errorf("merged-away person on main = %v (err %v), want it to stay gone", got, err)
+		}
+	})
 }

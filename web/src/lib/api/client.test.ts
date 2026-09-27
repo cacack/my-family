@@ -292,7 +292,8 @@ describe('resumeBranchMerge', () => {
 		merged_at_position: 128,
 		replayed_event_count: 1,
 		already_replayed_stream_ids: [],
-		skipped_stream_ids: []
+		skipped_stream_ids: [],
+		reprojected_stream_ids: []
 	};
 
 	let fetchMock: ReturnType<typeof vi.fn>;

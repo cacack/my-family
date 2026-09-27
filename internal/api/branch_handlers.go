@@ -416,6 +416,7 @@ func (ss *StrictServer) ResumeBranchMerge(ctx context.Context, request ResumeBra
 		ReplayedEventCount:       result.ReplayedEventCount,
 		AlreadyReplayedStreamIds: nonNilUUIDs(result.AlreadyReplayedStreamIDs),
 		SkippedStreamIds:         nonNilUUIDs(result.SkippedStreamIDs),
+		ReprojectedStreamIds:     nonNilUUIDs(result.ReprojectedStreamIDs),
 	}, nil
 }
 
@@ -448,6 +449,9 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 
 	case errors.Is(err, command.ErrBranchTooLargeToMerge):
 		return refuse(ResumeBranchTooLarge)
+
+	case errors.Is(err, command.ErrMergeResumeConcurrent):
+		return refuse(ResumeConcurrent)
 
 	case errors.Is(err, command.ErrUnknownResolution):
 		return ResumeBranchMerge400JSONResponse{BadRequestJSONResponse{

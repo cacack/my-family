@@ -4656,6 +4656,9 @@ func TestProjector_BranchLifecycleRegistry(t *testing.T) {
 	}
 
 	// BranchDeleted -> status archived.
+	if err := projector.Project(ctx, domain.NewBranchMergeResumed(branch.ID, 1, nil, nil), 3, domain.MainBranchID); err != nil {
+		t.Errorf("BranchMergeResumed should no-op, got %v", err)
+	}
 	if err := projector.Project(ctx, domain.NewBranchDeleted(branch.ID), 3, domain.MainBranchID); err != nil {
 		t.Fatalf("Project BranchDeleted failed: %v", err)
 	}

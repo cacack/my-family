@@ -218,8 +218,11 @@ finalized in implementation:
   (ES-002). Projections drop the branch's overlay rows.
 - **`BranchMerged`** — `{ BranchID, BasePosition, MergedAtPosition, OccurredAt }`. Records that a
   branch's changes were promoted to `main` (see Merge, below).
+- **`BranchMergeResumed`** — `{ BranchID, MergedAtPosition, ReplayStreamVersions, Resolutions,
+  OccurredAt }`. Added by #685: records the decisions a resumed merge made, and the replay plan
+  they produce (see "Resuming an interrupted merge" in the merge implementation note).
 
-All three satisfy the existing `Event` interface (ES-005) and must be added to `DecodeEvent()`
+All of them satisfy the existing `Event` interface (ES-005) and must be added to `DecodeEvent()`
 (ES-007) and to projection handling (PR-004) when implemented.
 
 **Entity-level deletes on a branch are not `BranchDeleted`.** Deleting a *person* (or any entity)
@@ -518,8 +521,9 @@ the state is finished by resuming (below). Three things bound the damage:
 
 **Resuming an interrupted merge (#685, delivered).** `Handler.ResumeMerge`, exposed as
 `POST /branches/{id}/merge/resume`, completes the replay append-only (ES-002): it appends only the
-branch events not yet on `main`, and never rewrites or removes anything. It needs no transaction
-and no progress record of its own, because both halves of what it must know are already durable:
+branch events not yet on `main` — plus, when the caller had to decide something, one decision record
+on the branch's own stream — and never rewrites or removes anything. It needs no transaction, because
+both halves of what it must know are durable in the log:
 
 - **What landed is derived from `main`.** The replay re-appends each branch event *decoded*, so the
   domain event's own payload id (`BaseEvent.ID`) travels with it onto `main`. Resume reads `main`'s
@@ -528,13 +532,20 @@ and no progress record of its own, because both halves of what it must know are 
   all present is already replayed. One `Append` per stream is atomic on every backend, so a stream
   is wholly there or not at all; a half-present stream cannot come from an interrupted merge and
   is refused rather than guessed at.
-- **What remains is recorded on the claim.** `BranchMerged` now carries `ReplayStreamVersions`:
+- **What remains is recorded on the claim, and on any resume that decided something.** `BranchMerged` now carries `ReplayStreamVersions`:
   every stream the merge will replay, mapped to its #698 pin (`main`'s version when the verdict was
   computed). A stream the branch touched but absent from the map was resolved to `main`. So the
   per-stream resolutions and the staleness pins survive the request that chose them, in the log.
   The field is deliberately not `omitempty`: an empty plan is stored as `{}` and decodes non-nil,
   while a claim written before #685 has no key and decodes nil — "replay nothing" and "plan not
-  recorded" are different facts.
+  recorded" are different facts. A resume that decides streams appends `BranchMergeResumed` to the
+  branch's own stream **before replaying anything**, carrying the whole updated plan (a stream
+  resolved to `main` dropped, a stream resolved to `branch` re-pinned to the version the caller
+  reviewed) plus the resolutions themselves for audit; the latest such record replaces the claim's
+  plan. It is a lifecycle marker like `BranchMerged` — excluded from replay and diffs, handled in
+  `DecodeEvent` (ES-007) and, as a no-op, in the projector (PR-004) — and its append asserts the
+  branch stream's version, so two resumes cannot both record decisions
+  (`409 merge_resume_concurrent`).
 
 A remaining stream is replayed automatically only when `main` still sits at its pinned version —
 the same guarantee the original attempt ran under, re-asserted at append time by the shared
@@ -544,10 +555,19 @@ residual staleness window below; or a pre-#685 claim with no plan) resume refuse
 lists the streams. The caller reviews them with `compare` and resumes again with a resolution per
 listed stream: `branch` replays over `main` as it now stands (asserting *that* version, so a
 further write still trips the guard), `main` leaves the entity as `main` has it — the deliberate
-roll-forward. A resolution for any stream the claim already decided is a `400`: a second request
-must not quietly re-decide what the first one reviewed. That decision is not itself recorded as an
-event; its effect is (the replayed events on `main`, or their absence), which is the same audit
-granularity the original merge's per-stream `main` resolutions have.
+roll-forward. A resolution for any stream the claim or an earlier resume already decided is a
+`400`: a second request must not quietly re-decide what the first one reviewed. That rule needs the
+decision itself in the log, not just its effect: a `main` decision's effect is the *absence* of
+replayed events, which a later resume cannot tell apart from "not yet replayed", so without
+`BranchMergeResumed` the next resume would find the stream stale again, ask again, and accept
+`branch`. Because the record lands before the replay, a resume interrupted after deciding leaves the
+decision in force and the next resume carries it out without asking.
+
+A claim written before #685 has no plan, so its first resume must decide every stream not yet on
+`main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams
+the original request already declined. The log cannot distinguish those from unreplayed ones, so
+the operator should check `compare` before answering; once answered, the answer is final like any
+other.
 
 Resume is idempotent: after completion it appends nothing and reports `replayed_event_count: 0`.
 Concurrent resumes cannot both append a stream, because `replayStream` now passes the version it
@@ -560,13 +580,25 @@ in that window (an event after the claim's `MergedAtPosition`), which the record
 considered, so resume refuses rather than replay or drop it. An archived branch is refused
 (`409 merge_not_claimed`), as is a branch never claimed.
 
-Scope boundary: resume completes the **event log**, the source of truth. If an earlier attempt's
-`Append` landed but its synchronous projection then failed, that stream counts as replayed and its
-read-model rows are repaired by a projection rebuild, as for any other ADR-003 projection failure —
-replaying the events again to re-drive the projection would duplicate them. The fault-injection
+**The read model is completed too.** If an earlier attempt's `Append` landed but its synchronous
+projection then failed, the stream counts as replayed — appending its events again to re-drive the
+projection would duplicate them — and `main`'s read model is behind the log for that entity. The
+repo has no read-model rebuild command yet (#680), so resume repairs it itself: for every
+already-replayed stream it compares `main`'s read-model version with `main`'s stream version. Every
+projection handler for the branch-aware event set (BR-006: person and family streams) writes the
+aggregate's version as its last step, so a row behind the log is re-projected from the first event
+past its version; re-running an event whose projection stopped midway is safe because its writes are
+upserts and deletes, and the counter it bumps is part of the final write that did not happen. A
+missing row is re-projected from the start unless the log explains its absence (the stream ends in a
+delete, or `main` merged the person away with `PersonMerged`, which writes nothing to the merged
+person's stream). Repaired streams are reported in `reprojected_stream_ids`; a resume after that
+finds nothing behind. The dangling-reference check also counts already-replayed streams as present,
+since their events are on `main` in the log. The fault-injection
 coverage is `internal/command/branch_merge_resume_test.go` (memory) and
 `internal/integration/branch_merge_resume_test.go`, which drives an interrupted merge and its
-resume over HTTP against memory, SQLite and PostgreSQL.
+resume over HTTP against memory, SQLite and PostgreSQL — including a resume-time `main` decision
+that a later resume must neither re-ask nor reverse, and a replay whose projection failed after its
+append committed.
 
 **The conflict verdict is pinned to the versions it was computed against (#698, delivered).**
 `PlanMerge` runs once, and a mainline write landing before the replay was never compared with the

@@ -151,6 +151,13 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectBranchDeleted(ctx, e)
 	case domain.BranchMerged:
 		return p.projectBranchMerged(ctx, e)
+	case domain.BranchMergeResumed:
+		// A decision record on the branch's own stream (#685). The registry
+		// already reads "merged" from the claim, and the decisions' effect on
+		// main is the replayed events themselves, projected as they are
+		// appended — so there is nothing to project. The explicit case keeps
+		// PR-004 honest: it is handled, not silently unknown.
+		return nil
 	default:
 		// Unknown event types are ignored (forward compatibility)
 		return nil

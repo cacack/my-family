@@ -176,3 +176,124 @@ func entryStrings(t *testing.T, values []any) []string {
 	}
 	return out
 }
+
+// faultyReadStore wraps a backend's read-model store and, while armed, fails
+// mainline SavePerson for one person — so a replay's Append commits to the log
+// and its synchronous projection does not.
+type faultyReadStore struct {
+	repository.ReadModelStore
+	mu         sync.Mutex
+	failPerson uuid.UUID
+}
+
+func (s *faultyReadStore) failFor(id uuid.UUID) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failPerson = id
+}
+
+func (s *faultyReadStore) SavePerson(ctx context.Context, branchID domain.BranchID, person *repository.PersonReadModel) error {
+	s.mu.Lock()
+	fail := branchID.IsMain() && person.ID == s.failPerson
+	s.mu.Unlock()
+	if fail {
+		return errors.New("injected read-model failure during projection")
+	}
+	return s.ReadModelStore.SavePerson(ctx, branchID, person)
+}
+
+// TestBranchMergeResume_DecisionsAndProjection covers, on every backend, the
+// two ways a resume used to leave a merge unfinished: a "main" decision that a
+// later resume could reverse, and a replay whose projection failed after its
+// Append committed.
+func TestBranchMergeResume_DecisionsAndProjection(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			t.Run("main decision is final", func(t *testing.T) {
+				st := backend.setup(t)
+				faulty := &faultyReplayStore{EventStore: st.events}
+				wrapped := st
+				wrapped.events = faulty
+				runResumeMainDecisionIsFinal(t, newServer(t, wrapped), faulty)
+			})
+			t.Run("failed projection is repaired", func(t *testing.T) {
+				st := backend.setup(t)
+				reads := &faultyReadStore{ReadModelStore: st.read}
+				wrapped := st
+				wrapped.read = reads
+				runResumeRepairsProjection(t, newServer(t, wrapped), st.events, reads)
+			})
+		})
+	}
+}
+
+func runResumeMainDecisionIsFinal(t *testing.T, server *api.Server, faulty *faultyReplayStore) {
+	t.Helper()
+	person := createPerson(t, server, "Alex", "Original")
+	branchID := createBranch(t, server, "rejected-line")
+	branchPath := "/api/v1/branches/" + branchID
+	path := "/api/v1/persons/" + person
+	mustDo(t, server, http.MethodPut, scoped(path, branchID),
+		fmt.Sprintf(`{"surname":"Revised","version":%d}`, entityVersion(t, server, path, branchID)), http.StatusOK)
+
+	faulty.arm(1)
+	mustDo(t, server, http.MethodPost, branchPath+"/merge", `{}`, http.StatusInternalServerError)
+	faulty.disarm()
+	mustDo(t, server, http.MethodPut, path,
+		fmt.Sprintf(`{"given_name":"Alexa","version":%d}`, entityVersion(t, server, path, "")), http.StatusOK)
+
+	mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, person), http.StatusOK)
+
+	again := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusOK)
+	if got := again["replayed_event_count"]; got != float64(0) {
+		t.Errorf("bare resume replayed_event_count = %v, want 0", got)
+	}
+	mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"}]}`, person), http.StatusBadRequest)
+	if got := mustString(t, getEntity(t, server, path, ""), "surname"); got != "Original" {
+		t.Errorf("surname on main = %q, want main's decision to stand", got)
+	}
+}
+
+func runResumeRepairsProjection(t *testing.T, server *api.Server, events repository.EventStore, reads *faultyReadStore) {
+	t.Helper()
+	ctx := context.Background()
+	person := createPerson(t, server, "Alex", "Original")
+	branchID := createBranch(t, server, "projection-line")
+	branchPath := "/api/v1/branches/" + branchID
+	path := "/api/v1/persons/" + person
+	mustDo(t, server, http.MethodPut, scoped(path, branchID),
+		fmt.Sprintf(`{"surname":"Revised","version":%d}`, entityVersion(t, server, path, branchID)), http.StatusOK)
+
+	reads.failFor(uuid.MustParse(person))
+	mustDo(t, server, http.MethodPost, branchPath+"/merge", `{}`, http.StatusInternalServerError)
+	reads.failFor(uuid.Nil)
+	if got := mustString(t, getEntity(t, server, path, ""), "surname"); got != "Original" {
+		t.Fatalf("surname on main = %q, want the failed projection to have left it behind", got)
+	}
+	logBefore := mainEventCount(t, ctx, events, person)
+
+	resumed := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusOK)
+	if got := resumed["replayed_event_count"]; got != float64(0) {
+		t.Errorf("replayed_event_count = %v, want 0 (the events are already in the log)", got)
+	}
+	if got := entryStrings(t, jsonArray(t, resumed, "reprojected_stream_ids")); len(got) != 1 || got[0] != person {
+		t.Errorf("reprojected_stream_ids = %v, want [%s]", got, person)
+	}
+	if got := mainEventCount(t, ctx, events, person); got != logBefore {
+		t.Errorf("person has %d main events after resume, want %d (no re-append)", got, logBefore)
+	}
+	entity := getEntity(t, server, path, "")
+	if got := mustString(t, entity, "surname"); got != "Revised" {
+		t.Errorf("surname on main = %q, want the read model repaired", got)
+	}
+	if got := entity["version"]; got != float64(logBefore) {
+		t.Errorf("read-model version = %v, want the log's %d", got, logBefore)
+	}
+
+	again := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume", "", http.StatusOK)
+	if got := jsonArray(t, again, "reprojected_stream_ids"); len(got) != 0 {
+		t.Errorf("second resume reprojected_stream_ids = %v, want none", got)
+	}
+}

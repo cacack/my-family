@@ -270,7 +270,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err := validateConflictResolutions(plan.Conflicts, input.Resolutions); err != nil {
 		return nil, err
 	}
-	if err := h.validateNoDanglingReferences(ctx, groups, input.Resolutions); err != nil {
+	if err := h.validateNoDanglingReferences(ctx, groups, input.Resolutions, nil); err != nil {
 		return nil, err
 	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
@@ -691,8 +691,19 @@ func groupEventsByStream(events []repository.StoredEvent) []streamGroup {
 //
 // Only link events are checked. Unlinking a person main does not have removes
 // nothing and is harmless.
-func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
-	replayed := make(map[uuid.UUID]bool, len(groups))
+//
+// alreadyOnMain names streams whose branch events a resume (#685) found already
+// replayed. They count as present exactly like the streams about to be
+// replayed: their events are on main in the LOG, which is the authority, even
+// if an interrupted attempt's projection never wrote their read-model rows.
+// MergeBranch passes nil.
+func (h *Handler) validateNoDanglingReferences(ctx context.Context, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution, alreadyOnMain map[uuid.UUID]bool) error {
+	replayed := make(map[uuid.UUID]bool, len(groups)+len(alreadyOnMain))
+	for streamID, onMain := range alreadyOnMain {
+		if onMain {
+			replayed[streamID] = true
+		}
+	}
 	for _, group := range groups {
 		if resolutions[group.streamID] != ResolveMain {
 			replayed[group.streamID] = true

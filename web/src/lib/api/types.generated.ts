@@ -1829,7 +1829,15 @@ export interface paths {
          *     `GET /branches/{id}/compare`, then resume again with one `resolutions`
          *     entry for each: `branch` replays the branch's changes over `main` as it
          *     now stands, `main` leaves the entity as `main` has it. Only pending
-         *     entities may be resolved; naming any other is a `400`.
+         *     entities may be resolved; naming any other is a `400`. The resolutions
+         *     are recorded in the branch's event log before anything is replayed, so
+         *     they are final: a later resume carries them out and never asks for, or
+         *     accepts, a different decision on those entities.
+         *
+         *     **The mainline read model is repaired too.** If an earlier attempt's
+         *     append reached the log but its projection then failed, that entity is
+         *     not replayed again; instead its missing projection is re-run from the
+         *     log, and it is listed in `reprojected_stream_ids`.
          *
          *     **Idempotent.** Resuming a merge that has already finished (whether by
          *     the original request or an earlier resume) writes nothing and returns
@@ -4122,10 +4130,19 @@ export interface components {
              */
             already_replayed_stream_ids: string[];
             /**
-             * @description Entities resolved to `main` (by the merge, or by this resume), whose
-             *     branch changes are deliberately not replayed. `[]`, never `null`.
+             * @description Entities resolved to `main` (by the merge, by an earlier resume, or
+             *     by this one), whose branch changes are deliberately not replayed.
+             *     `[]`, never `null`.
              */
             skipped_stream_ids: string[];
+            /**
+             * @description Entities whose branch changes were already in the mainline's event
+             *     log but whose mainline read model was behind it (an earlier
+             *     attempt's projection failed after its append). This call
+             *     re-projected them from the log; no events were appended for them.
+             *     `[]`, never `null`.
+             */
+            reprojected_stream_ids: string[];
         };
         /**
          * @description A refused resume. Shares `code`/`message` with the standard `Error`
@@ -4137,7 +4154,7 @@ export interface components {
              * @example merge_resume_needs_resolution
              * @enum {string}
              */
-            code: "merge_not_claimed" | "merge_resume_needs_resolution" | "merge_dangling_reference" | "branch_too_large";
+            code: "merge_not_claimed" | "merge_resume_needs_resolution" | "merge_dangling_reference" | "branch_too_large" | "merge_resume_concurrent";
             /** @description Human-readable explanation */
             message: string;
             /**
@@ -7904,6 +7921,9 @@ export interface operations {
              *       mainline holding a relationship to a person it will not have.
              *     - `branch_too_large` — the branch's replay set exceeds the read cap
              *       and cannot be resumed in full.
+             *     - `merge_resume_concurrent` — another resume of the same merge
+             *       recorded its resolutions first. Resume again; the entities it
+             *       decided are no longer pending.
              */
             409: {
                 headers: {

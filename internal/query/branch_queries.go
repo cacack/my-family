@@ -19,6 +19,8 @@ var branchLifecycleEventTypes = map[string]bool{
 	"BranchCreated": true,
 	"BranchDeleted": true,
 	"BranchMerged":  true,
+	// A resumed merge's decision record (#685), on the branch's own stream.
+	"BranchMergeResumed": true,
 }
 
 // BranchService provides query operations for research branches.

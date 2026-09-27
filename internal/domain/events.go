@@ -965,6 +965,57 @@ func NewBranchMerged(branchID uuid.UUID, basePosition, mergedAtPosition int64, n
 	}
 }
 
+// BranchMergeResumed records the decisions a resumed merge made (#685). It is
+// appended to the branch's OWN stream, after the BranchMerged claim, by
+// command.Handler.ResumeMerge — and only when that resume had to decide
+// something the claim could not (a stream main moved on after the claim, or a
+// claim that predates #685 and recorded no plan). Like BranchMerged it is a
+// marker and is never replayed onto main.
+//
+// ReplayStreamVersions is the replay plan AS IT NOW STANDS, replacing the
+// claim's (and any earlier BranchMergeResumed's) in full, with the same
+// meaning as BranchMerged.ReplayStreamVersions: every stream the merge
+// replays, mapped to the main version its replay asserts; a stream the branch
+// touched but absent here was resolved to "main". Recording the whole plan,
+// rather than only the delta, keeps "what is the plan now" a matter of reading
+// the latest marker. Resolutions is the audit record of what this resume was
+// asked to decide ("branch" or "main" per stream).
+//
+// Without this record a resume-time "main" decision would exist only as the
+// absence of replayed events, so the next resume would find the stream
+// unreplayed and stale again and ask for — and accept — a fresh decision,
+// letting a second request quietly reverse what the first one reviewed.
+type BranchMergeResumed struct {
+	BaseEvent
+	BranchID             uuid.UUID            `json:"branch_id"`
+	MergedAtPosition     int64                `json:"merged_at_position"`
+	ReplayStreamVersions map[uuid.UUID]int64  `json:"replay_stream_versions"`
+	Resolutions          map[uuid.UUID]string `json:"resolutions"`
+}
+
+func (e BranchMergeResumed) EventType() string      { return "BranchMergeResumed" }
+func (e BranchMergeResumed) AggregateID() uuid.UUID { return e.BranchID }
+
+// NewBranchMergeResumed creates a BranchMergeResumed event. Both maps are
+// copied, and a nil map is stored as `{}`.
+func NewBranchMergeResumed(branchID uuid.UUID, mergedAtPosition int64, replayStreamVersions map[uuid.UUID]int64, resolutions map[uuid.UUID]string) BranchMergeResumed {
+	plan := make(map[uuid.UUID]int64, len(replayStreamVersions))
+	for streamID, version := range replayStreamVersions {
+		plan[streamID] = version
+	}
+	decided := make(map[uuid.UUID]string, len(resolutions))
+	for streamID, side := range resolutions {
+		decided[streamID] = side
+	}
+	return BranchMergeResumed{
+		BaseEvent:            NewBaseEvent(),
+		BranchID:             branchID,
+		MergedAtPosition:     mergedAtPosition,
+		ReplayStreamVersions: plan,
+		Resolutions:          decided,
+	}
+}
+
 // PersonMerged event is emitted when two persons are merged into one.
 // The survivor person continues to exist with merged data; the merged person is deleted.
 type PersonMerged struct {

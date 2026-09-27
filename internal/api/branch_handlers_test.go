@@ -1271,14 +1271,22 @@ func TestMergeBranch_PlanStale(t *testing.T) {
 // switchableReplayEventStore fails every mainline replay append while failing
 // is set, like failingReplayEventStore, but can be switched off so the same
 // server can then resume the merge (#685).
+//
+// raceResumeRecord makes the next resume decision record lose its version
+// check, as if a rival resume had recorded first.
 type switchableReplayEventStore struct {
 	repository.EventStore
-	failing bool
+	failing          bool
+	raceResumeRecord bool
 }
 
 func (s *switchableReplayEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string,
 	events []domain.Event, expectedVersion int64, scope repository.AppendScope,
 ) error {
+	if s.raceResumeRecord && len(events) == 1 && events[0].EventType() == "BranchMergeResumed" {
+		s.raceResumeRecord = false
+		return repository.ErrConcurrencyConflict
+	}
 	if s.failing && scope.BranchID == domain.MainBranchID && len(events) > 0 && events[0].EventType() != "PersonCreated" {
 		return errors.New("simulated storage failure during replay")
 	}
@@ -1326,7 +1334,7 @@ func TestResumeBranchMerge(t *testing.T) {
 	if resp["replayed_event_count"] != float64(1) {
 		t.Errorf("replayed_event_count = %v, want 1", resp["replayed_event_count"])
 	}
-	for _, field := range []string{"already_replayed_stream_ids", "skipped_stream_ids"} {
+	for _, field := range []string{"already_replayed_stream_ids", "skipped_stream_ids", "reprojected_stream_ids"} {
 		if values, ok := resp[field].([]any); !ok || len(values) != 0 {
 			t.Errorf("%s = %v, want []", field, resp[field])
 		}
@@ -1353,10 +1361,89 @@ func TestResumeBranchMerge(t *testing.T) {
 
 // TestResumeBranchMerge_NeedsResolution: main moved on the unreplayed entity
 // after the claim, so the resume refuses with the pending list until the
-// caller decides.
+// caller decides. The decision is final: a later bare resume is a no-op, and
+// the entity can no longer be resolved either way.
 func TestResumeBranchMerge_NeedsResolution(t *testing.T) {
+	for _, tc := range []struct {
+		resolution  string
+		wantSurname string
+	}{
+		{"branch", "Byron"},
+		{"main", "Lovelace"},
+	} {
+		t.Run(tc.resolution, func(t *testing.T) {
+			server, store := setupSwitchableReplayServer()
+			personID, branchID := interruptThenMoveMain(t, server, store)
+			resumePath := "/api/v1/branches/" + branchID + "/merge/resume"
+
+			rec := do(t, server, http.MethodPost, resumePath, "")
+			if rec.Code != http.StatusConflict {
+				t.Fatalf("Resume: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+			}
+			resp := decodeJSON(t, rec)
+			if resp["code"] != "merge_resume_needs_resolution" {
+				t.Errorf("code = %v, want merge_resume_needs_resolution", resp["code"])
+			}
+			if pending, _ := resp["pending_stream_ids"].([]any); len(pending) != 1 || pending[0] != personID {
+				t.Errorf("pending_stream_ids = %v, want [%s]", resp["pending_stream_ids"], personID)
+			}
+
+			rec = do(t, server, http.MethodPost, resumePath,
+				fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":%q}]}`, personID, tc.resolution))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("resolved Resume: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+			}
+			if got := mainSurname(t, server, personID); got != tc.wantSurname {
+				t.Errorf("Main surname after resume = %q, want %s", got, tc.wantSurname)
+			}
+
+			rec = do(t, server, http.MethodPost, resumePath, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("bare Resume after the resolved one: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+			}
+			if got := decodeJSON(t, rec)["replayed_event_count"]; got != float64(0) {
+				t.Errorf("replayed_event_count = %v, want 0", got)
+			}
+
+			for _, side := range []string{"branch", "main"} {
+				rec = do(t, server, http.MethodPost, resumePath,
+					fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":%q}]}`, personID, side))
+				if rec.Code != http.StatusBadRequest {
+					t.Errorf("re-deciding as %s: status = %d, want 400. Body: %s", side, rec.Code, rec.Body.String())
+				}
+			}
+			if got := mainSurname(t, server, personID); got != tc.wantSurname {
+				t.Errorf("Main surname after refused re-decisions = %q, want %s", got, tc.wantSurname)
+			}
+		})
+	}
+}
+
+// TestResumeBranchMerge_Concurrent: a resume whose decision record loses to a
+// rival's is a 409 merge_resume_concurrent, having replayed nothing.
+func TestResumeBranchMerge_Concurrent(t *testing.T) {
 	server, store := setupSwitchableReplayServer()
-	personID, branchID, _ := forkAndEditPerson(t, server, "Byron")
+	personID, branchID := interruptThenMoveMain(t, server, store)
+
+	store.raceResumeRecord = true
+	rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"}]}`, personID))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Resume: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+	if code := decodeJSON(t, rec)["code"]; code != "merge_resume_concurrent" {
+		t.Errorf("code = %v, want merge_resume_concurrent", code)
+	}
+	if got := mainSurname(t, server, personID); got != "Lovelace" {
+		t.Errorf("Main surname = %q, want nothing replayed", got)
+	}
+}
+
+// interruptThenMoveMain interrupts a merge before its only replay and then
+// lands a mainline write on that entity, so a resume needs a resolution.
+func interruptThenMoveMain(t *testing.T, server *api.Server, store *switchableReplayEventStore) (personID, branchID string) {
+	t.Helper()
+	personID, branchID, _ = forkAndEditPerson(t, server, "Byron")
 
 	store.failing = true
 	if rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{}`); rec.Code != http.StatusInternalServerError {
@@ -1371,27 +1458,7 @@ func TestResumeBranchMerge_NeedsResolution(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("mainline update: status = %d. Body: %s", rec.Code, rec.Body.String())
 	}
-
-	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge/resume", "")
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("Resume: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
-	}
-	resp := decodeJSON(t, rec)
-	if resp["code"] != "merge_resume_needs_resolution" {
-		t.Errorf("code = %v, want merge_resume_needs_resolution", resp["code"])
-	}
-	if pending, _ := resp["pending_stream_ids"].([]any); len(pending) != 1 || pending[0] != personID {
-		t.Errorf("pending_stream_ids = %v, want [%s]", resp["pending_stream_ids"], personID)
-	}
-
-	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge/resume",
-		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"}]}`, personID))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("resolved Resume: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
-	}
-	if got := mainSurname(t, server, personID); got != "Byron" {
-		t.Errorf("Main surname after resume = %q, want Byron", got)
-	}
+	return personID, branchID
 }
 
 // TestResumeBranchMerge_Refusals pins the status/code of each refusal.

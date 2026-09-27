@@ -38,6 +38,13 @@ var (
 	// each: "branch" replays the branch's events over main as it now stands,
 	// "main" leaves the entity as main has it.
 	ErrMergeResumeNeedsResolution = errors.New("merge resume needs a resolution for streams whose replay the claim cannot vouch for")
+
+	// ErrMergeResumeConcurrent is returned when another resume of the same
+	// merge recorded its decisions (domain.BranchMergeResumed) between this
+	// call reading the plan and appending its own. Nothing has been replayed by
+	// the refusing call. Resume again: the plan it then reads includes the
+	// other request's decisions, and it will not re-decide them.
+	ErrMergeResumeConcurrent = errors.New("another resume of this merge recorded its decisions first")
 )
 
 // resumeScanPage is the page size of the scan that finds which of the branch's
@@ -50,11 +57,12 @@ const resumeScanPage = 1000
 type ResumeMergeInput struct {
 	BranchID uuid.UUID
 
-	// Resolutions decides the streams the claim cannot vouch for (see
+	// Resolutions decides the streams the recorded plan cannot vouch for (see
 	// ErrMergeResumeNeedsResolution). It may name ONLY those streams: every
-	// other stream's fate was fixed when the merge was claimed, and a resume
-	// that could re-decide it would let a second request quietly rewrite what
-	// the first one reviewed.
+	// other stream's fate was fixed when the merge was claimed or by an earlier
+	// resume, and a resume that could re-decide it would let a second request
+	// quietly rewrite what the first one reviewed. The decisions are recorded
+	// in the log (domain.BranchMergeResumed) before anything is replayed.
 	Resolutions map[uuid.UUID]MergeResolution
 }
 
@@ -76,10 +84,16 @@ type ResumeMergeResult struct {
 	// already on main when this call started, so it left them alone.
 	AlreadyReplayedStreamIDs []uuid.UUID
 
-	// SkippedStreamIDs are the streams resolved to main — at claim time, or by
-	// this call's Resolutions — whose branch events are deliberately not
-	// replayed.
+	// SkippedStreamIDs are the streams resolved to main — at claim time, by an
+	// earlier resume, or by this call's Resolutions — whose branch events are
+	// deliberately not replayed.
 	SkippedStreamIDs []uuid.UUID
+
+	// ReprojectedStreamIDs are already-replayed streams whose main read model
+	// was found behind main's event log — an earlier attempt's Append landed
+	// but its synchronous projection failed — and which this call re-projected
+	// from the log. Nothing is appended for them.
+	ReprojectedStreamIDs []uuid.UUID
 
 	// PendingStreamIDs is populated only alongside
 	// ErrMergeResumeNeedsResolution: the streams that need a resolution.
@@ -92,11 +106,37 @@ type resumeStep struct {
 	planned int64 // the main version the append asserts
 }
 
+// mergeRecord is what a branch's own stream says about its merge: the claim,
+// the replay plan as it now stands, and the stream's version.
+type mergeRecord struct {
+	claim domain.BranchMerged
+
+	// plan is the claim's ReplayStreamVersions, replaced by the latest
+	// BranchMergeResumed's when a resume has recorded decisions. nil only for
+	// a pre-#685 claim no resume has decided anything for.
+	plan map[uuid.UUID]int64
+
+	// branchVersion is the branch's own stream version, which recording a
+	// resume's decisions asserts.
+	branchVersion int64
+}
+
+// resumeDecision is planResume's verdict.
+type resumeDecision struct {
+	steps []resumeStep
+
+	// nextPlan is the plan with this call's resolutions applied — what a
+	// BranchMergeResumed records. Meaningful only when resolutions were given.
+	nextPlan map[uuid.UUID]int64
+}
+
 // ResumeMerge finishes a merge whose replay onto main was interrupted after
 // the branch was claimed (issue #685; ADR-005 §Merge implementation note).
 //
 // It never rewrites history (ES-002): it only appends the branch events that
-// are not yet on main, exactly as MergeBranch would have.
+// are not yet on main, exactly as MergeBranch would have, plus — when the
+// caller had to decide something — one BranchMergeResumed decision record on
+// the branch's own stream.
 //
 // What already landed is DERIVED FROM MAIN, not remembered. Replay re-appends
 // each branch event decoded, so the event's own payload id travels with it onto
@@ -106,28 +146,35 @@ type resumeStep struct {
 // either wholly on main or not there at all — a stream found half-there is an
 // invariant breach and is refused rather than guessed at.
 //
-// What is still to do comes from the CLAIM. MergeBranch records its replay plan
-// on the BranchMerged event (domain.BranchMerged.ReplayStreamVersions): the
-// streams to replay and main's version of each when the conflict verdict was
-// computed. A remaining stream is replayed automatically only when main still
-// sits at that pinned version — the same staleness guarantee the first attempt
-// ran under. Anything else needs the caller's resolution
-// (ErrMergeResumeNeedsResolution), checked before anything is written.
+// What is still to do comes from the RECORDED PLAN. MergeBranch records its
+// replay plan on the BranchMerged event (domain.BranchMerged.ReplayStreamVersions):
+// the streams to replay and main's version of each when the conflict verdict
+// was computed. A remaining stream is replayed automatically only when main
+// still sits at that pinned version — the same staleness guarantee the first
+// attempt ran under. Anything else needs the caller's resolution
+// (ErrMergeResumeNeedsResolution), checked before anything is written. The
+// caller's resolutions are then appended as a domain.BranchMergeResumed carrying
+// the updated plan BEFORE any replay, and every later resume reads that plan.
+// So a stream a resume resolved to main stays skipped for good, and a stream it
+// resolved to branch is re-pinned to the version the caller reviewed.
 //
 // Resume is idempotent: once every stream is on main (or skipped), a further
 // call appends nothing and reports ReplayedEventCount 0. Two concurrent resumes
 // cannot both append a stream: each asserts the stream's main version on
 // Append, so the loser gets a concurrency conflict (reported as
 // ErrMergePartiallyApplied) and its retry finds the stream already replayed.
+// Two concurrent resumes cannot both record decisions either: the record
+// asserts the branch stream's version (ErrMergeResumeConcurrent).
 //
 // A replay failure DURING a resume is reported exactly like one during a merge
 // (ErrMergePartiallyApplied), and the remedy is the same: resume again.
 //
-// Read-model scope: resume completes the EVENT LOG, the source of truth. If an
-// earlier attempt's Append landed but its synchronous projection then failed,
-// the stream counts as replayed here and its read-model rows are repaired by a
-// projection rebuild, as for any other ADR-003 projection failure — replaying
-// the events a second time to re-drive the projection would duplicate them.
+// Read model: if an earlier attempt's Append landed but its synchronous
+// projection then failed, the stream counts as replayed in the log, and its
+// events are not appended again. Resume instead compares the stream's main
+// read-model version with main's event-log version and, where the read model is
+// behind, re-projects the missing events from the log (reprojectLandedStreams),
+// reporting those streams in ReprojectedStreamIDs.
 func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*ResumeMergeResult, error) {
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
@@ -137,10 +184,11 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	if err != nil {
 		return nil, err // includes repository.ErrBranchNotFound
 	}
-	claim, err := h.resumableClaim(ctx, branch)
+	record, err := h.resumableMerge(ctx, branch)
 	if err != nil {
 		return nil, err
 	}
+	claim := record.claim
 
 	replaySet, err := h.branchService.LoadMergeReplaySet(ctx, branch.ID)
 	if err != nil {
@@ -178,35 +226,53 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	if err != nil {
 		return nil, err
 	}
+	mainVersions, err := h.mainStreamVersions(ctx, groups)
+	if err != nil {
+		return nil, err
+	}
 
 	result := &ResumeMergeResult{MergedAtPosition: claim.MergedAtPosition}
-	steps, err := h.planResume(ctx, claim, groups, landed, input.Resolutions, result)
+	decision, err := planResume(claim.BranchID, record.plan, groups, landed, mainVersions, input.Resolutions, result)
 	if err != nil {
 		return nil, err
 	}
 	if len(result.PendingStreamIDs) > 0 {
 		result.Branch = branch
 		return result, fmt.Errorf(
-			"%w: %d stream(s) still to replay for branch %s cannot be replayed on the claim's plan "+
-				"(main moved on them since the claim, or the claim recorded no plan). Nothing has been written; "+
+			"%w: %d stream(s) still to replay for branch %s cannot be replayed on the recorded plan "+
+				"(main moved on them since it was recorded, or the claim recorded no plan). Nothing has been written; "+
 				"review them with GET /branches/{id}/compare and resume again with a resolution for each: %v",
 			ErrMergeResumeNeedsResolution, len(result.PendingStreamIDs), branch.ID, result.PendingStreamIDs)
 	}
 
-	// Same cross-entity check the merge ran before its claim: a resolution
-	// made here can exclude a person a replayed family event still links.
-	if err := h.validateNoDanglingReferences(ctx, stepGroups(steps), nil); err != nil {
+	// Bring main's read model level with the log for the streams already
+	// there, before anything reads it on their behalf.
+	result.ReprojectedStreamIDs, err = h.reprojectLandedStreams(ctx, groups, landed, mainVersions)
+	if err != nil {
 		return nil, err
 	}
 
-	for i, step := range steps {
+	// Same cross-entity check the merge ran before its claim: a resolution
+	// made here can exclude a person a replayed family event still links. The
+	// streams already on main count as present.
+	if err := h.validateNoDanglingReferences(ctx, stepGroups(decision.steps), nil, landed); err != nil {
+		return nil, err
+	}
+
+	if len(input.Resolutions) > 0 {
+		if err := h.recordResumeDecisions(ctx, branch, record, decision.nextPlan, input.Resolutions); err != nil {
+			return nil, err
+		}
+	}
+
+	for i, step := range decision.steps {
 		appended, err := h.replayStream(ctx, step.group, step.planned)
 		result.ReplayedEventCount += appended
 		if err != nil {
 			return nil, fmt.Errorf(
 				"%w: resuming merge of branch %s: stream %s failed after %d of %d remaining stream(s) "+
 					"(%d event(s)) reached main in this attempt; resume again to finish: %w",
-				ErrMergePartiallyApplied, branch.ID, step.group.streamID, i, len(steps), result.ReplayedEventCount, err)
+				ErrMergePartiallyApplied, branch.ID, step.group.streamID, i, len(decision.steps), result.ReplayedEventCount, err)
 		}
 	}
 
@@ -218,53 +284,145 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	return result, nil
 }
 
-// resumableClaim returns the branch's BranchMerged claim, refusing a branch
-// that has none. A claim whose registry projection never landed (the branch
-// still reads "active") is repaired first, exactly as claimMerge repairs it —
-// resuming is the natural next step from that state too.
-func (h *Handler) resumableClaim(ctx context.Context, branch *domain.Branch) (domain.BranchMerged, error) {
+// resumableMerge reads the branch's own stream for its merge claim and any
+// decisions earlier resumes recorded, refusing a branch that has no claim. A
+// claim whose registry projection never landed (the branch still reads
+// "active") is repaired first, exactly as claimMerge repairs it — resuming is
+// the natural next step from that state too.
+func (h *Handler) resumableMerge(ctx context.Context, branch *domain.Branch) (mergeRecord, error) {
 	if branch.Status == domain.BranchStatusArchived {
-		return domain.BranchMerged{}, fmt.Errorf("%w: branch %s is archived", ErrMergeNotClaimed, branch.ID)
+		return mergeRecord{}, fmt.Errorf("%w: branch %s is archived", ErrMergeNotClaimed, branch.ID)
 	}
 
-	claimed, err := h.branchAlreadyClaimed(ctx, branch)
+	stored, err := h.eventStore.ReadStream(ctx, branch.ID)
 	if err != nil {
-		return domain.BranchMerged{}, err
+		return mergeRecord{}, fmt.Errorf("reading branch stream: %w", err)
 	}
-	if claimed == nil {
-		return domain.BranchMerged{}, fmt.Errorf("%w: branch %s is %s and was never claimed for a merge; merge it instead",
+	// ReadStream spans every branch, so keep only this branch's own scope
+	// before trusting an event type, and order by version so "latest" means
+	// the last one appended.
+	own := make([]repository.StoredEvent, 0, len(stored))
+	for i := range stored {
+		if stored[i].BranchID == domain.BranchID(branch.ID) {
+			own = append(own, stored[i])
+		}
+	}
+	sort.Slice(own, func(i, j int) bool { return own[i].Version < own[j].Version })
+
+	var (
+		record       mergeRecord
+		claimed      bool
+		claimVersion int64
+	)
+	for i := range own {
+		evt := own[i]
+		record.branchVersion = evt.Version
+		switch evt.EventType {
+		case "BranchMerged":
+			if claimed {
+				continue // the CAS admits one claim; the first is the claim
+			}
+			decoded, err := evt.DecodeEvent()
+			if err != nil {
+				return mergeRecord{}, fmt.Errorf("decoding branch merged event: %w", err)
+			}
+			claim, ok := decoded.(domain.BranchMerged)
+			if !ok {
+				return mergeRecord{}, fmt.Errorf("branch %s: merge claim decoded as %T, want BranchMerged", branch.ID, decoded)
+			}
+			record.claim, record.plan, claimed, claimVersion = claim, claim.ReplayStreamVersions, true, evt.Version
+		case "BranchMergeResumed":
+			if !claimed {
+				return mergeRecord{}, fmt.Errorf("branch %s: resume record at version %d precedes any merge claim", branch.ID, evt.Version)
+			}
+			decoded, err := evt.DecodeEvent()
+			if err != nil {
+				return mergeRecord{}, fmt.Errorf("decoding branch merge resumed event: %w", err)
+			}
+			resumed, ok := decoded.(domain.BranchMergeResumed)
+			if !ok {
+				return mergeRecord{}, fmt.Errorf("branch %s: resume record decoded as %T, want BranchMergeResumed", branch.ID, decoded)
+			}
+			if resumed.ReplayStreamVersions == nil {
+				// The constructor always stores {}; a missing plan here would
+				// silently turn every stream into "resolved to main".
+				return mergeRecord{}, fmt.Errorf("branch %s: resume record at version %d carries no replay plan", branch.ID, evt.Version)
+			}
+			record.plan = resumed.ReplayStreamVersions
+		}
+	}
+	if !claimed {
+		return mergeRecord{}, fmt.Errorf("%w: branch %s is %s and was never claimed for a merge; merge it instead",
 			ErrMergeNotClaimed, branch.ID, branch.Status)
-	}
-	claim, ok := claimed.(domain.BranchMerged)
-	if !ok {
-		return domain.BranchMerged{}, fmt.Errorf("branch %s: merge claim decoded as %T, want BranchMerged", branch.ID, claimed)
 	}
 
 	if branch.Status != domain.BranchStatusMerged {
-		scope := branchScope(branch)
-		version, err := h.eventStore.GetStreamVersion(ctx, branch.ID, scope.BranchID)
-		if err != nil {
-			return domain.BranchMerged{}, fmt.Errorf("getting branch stream version: %w", err)
-		}
-		if err := h.projector.Project(ctx, claim, version, scope.BranchID); err != nil {
-			return domain.BranchMerged{}, fmt.Errorf("repairing branch registry after an interrupted claim: %w", err)
+		if err := h.projector.Project(ctx, record.claim, claimVersion, domain.BranchID(branch.ID)); err != nil {
+			return mergeRecord{}, fmt.Errorf("repairing branch registry after an interrupted claim: %w", err)
 		}
 	}
-	return claim, nil
+	return record, nil
+}
+
+// recordResumeDecisions appends the caller's resolutions, and the plan they
+// produce, to the branch's own stream at the version resumableMerge read. It
+// runs before any replay, so a decision is durable before it has any effect on
+// main: an interrupted resume leaves the decision recorded and the next resume
+// carries it out rather than asking again.
+func (h *Handler) recordResumeDecisions(
+	ctx context.Context,
+	branch *domain.Branch,
+	record mergeRecord,
+	nextPlan map[uuid.UUID]int64,
+	resolutions map[uuid.UUID]MergeResolution,
+) error {
+	decided := make(map[uuid.UUID]string, len(resolutions))
+	for streamID, side := range resolutions {
+		decided[streamID] = string(side)
+	}
+	event := domain.NewBranchMergeResumed(branch.ID, record.claim.MergedAtPosition, nextPlan, decided)
+	scope := branchScope(branch)
+	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, record.branchVersion, scope); err != nil {
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return fmt.Errorf("%w: branch %s; nothing has been replayed — resume again to see the plan as it now stands", ErrMergeResumeConcurrent, branch.ID)
+		}
+		return fmt.Errorf("recording resume decisions: %w", err)
+	}
+	if err := h.projector.Project(ctx, event, record.branchVersion+1, scope.BranchID); err != nil {
+		return fmt.Errorf("projecting resume decisions: %w", err)
+	}
+	return nil
+}
+
+// mainStreamVersions reads main's current version of every stream in the
+// replay set.
+func (h *Handler) mainStreamVersions(ctx context.Context, groups []streamGroup) (map[uuid.UUID]int64, error) {
+	versions := make(map[uuid.UUID]int64, len(groups))
+	for _, group := range groups {
+		version, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
+		if err != nil {
+			return nil, fmt.Errorf("getting main stream version for %s: %w", group.streamID, err)
+		}
+		versions[group.streamID] = version
+	}
+	return versions, nil
 }
 
 // planResume decides, per stream, what a resume does, filling the result's
 // already-replayed, skipped and pending lists. It writes nothing: every refusal
 // it can produce happens before the first append.
-func (h *Handler) planResume(
-	ctx context.Context,
-	claim domain.BranchMerged,
+//
+// plan is the recorded plan (claim, or latest resume record); nil means a
+// pre-#685 claim nothing has been decided for yet.
+func planResume(
+	branchID uuid.UUID,
+	plan map[uuid.UUID]int64,
 	groups []streamGroup,
 	landed map[uuid.UUID]bool,
+	mainVersions map[uuid.UUID]int64,
 	resolutions map[uuid.UUID]MergeResolution,
 	result *ResumeMergeResult,
-) ([]resumeStep, error) {
-	plan := claim.ReplayStreamVersions // nil: a pre-#685 claim with no recorded plan
+) (resumeDecision, error) {
 	if plan != nil {
 		inReplaySet := make(map[uuid.UUID]bool, len(groups))
 		for _, group := range groups {
@@ -272,13 +430,28 @@ func (h *Handler) planResume(
 		}
 		for streamID := range plan {
 			if !inReplaySet[streamID] {
-				return nil, fmt.Errorf("branch %s: the merge claim plans a replay of stream %s, which the branch never changed",
-					claim.BranchID, streamID)
+				return resumeDecision{}, fmt.Errorf("branch %s: the merge's recorded plan replays stream %s, which the branch never changed",
+					branchID, streamID)
 			}
 		}
 	}
 
-	var steps []resumeStep
+	// nextPlan starts as the recorded plan. A pre-#685 claim has none, so it
+	// starts from the streams already on main — they were replayed, so they
+	// belong in "every stream the merge replays" — pinned at main's version.
+	nextPlan := make(map[uuid.UUID]int64, len(groups))
+	for streamID, version := range plan {
+		nextPlan[streamID] = version
+	}
+	if plan == nil {
+		for _, group := range groups {
+			if landed[group.streamID] {
+				nextPlan[group.streamID] = mainVersions[group.streamID]
+			}
+		}
+	}
+
+	decision := resumeDecision{}
 	decidable := make(map[uuid.UUID]bool)
 	for _, group := range groups {
 		if landed[group.streamID] {
@@ -288,35 +461,35 @@ func (h *Handler) planResume(
 
 		pinned, planned := plan[group.streamID]
 		if plan != nil && !planned {
-			// Resolved to main when the merge was claimed.
+			// Resolved to main when the merge was claimed, or by an earlier
+			// resume's recorded decision.
 			result.SkippedStreamIDs = append(result.SkippedStreamIDs, group.streamID)
 			continue
 		}
 
-		current, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
-		if err != nil {
-			return nil, fmt.Errorf("getting main stream version for %s: %w", group.streamID, err)
-		}
+		current := mainVersions[group.streamID]
 		if planned && current == pinned {
-			steps = append(steps, resumeStep{group: group, planned: pinned})
+			decision.steps = append(decision.steps, resumeStep{group: group, planned: pinned})
 			continue
 		}
 
-		// The claim cannot vouch for this stream; only the caller can.
+		// The recorded plan cannot vouch for this stream; only the caller can.
 		decidable[group.streamID] = true
 		switch resolutions[group.streamID] {
 		case ResolveBranch:
-			steps = append(steps, resumeStep{group: group, planned: current})
+			decision.steps = append(decision.steps, resumeStep{group: group, planned: current})
+			nextPlan[group.streamID] = current
 		case ResolveMain:
 			result.SkippedStreamIDs = append(result.SkippedStreamIDs, group.streamID)
+			delete(nextPlan, group.streamID)
 		default:
 			result.PendingStreamIDs = append(result.PendingStreamIDs, group.streamID)
 		}
 	}
 
-	// A resolution for a stream the claim already decided is refused rather
-	// than ignored: the caller believes they are choosing something they are
-	// not. Sorted so a request with several bad entries reports the same one.
+	// A resolution for a stream already decided is refused rather than
+	// ignored: the caller believes they are choosing something they are not.
+	// Sorted so a request with several bad entries reports the same one.
 	undecidable := make([]uuid.UUID, 0, len(resolutions))
 	for streamID := range resolutions {
 		if !decidable[streamID] {
@@ -325,12 +498,13 @@ func (h *Handler) planResume(
 	}
 	if len(undecidable) > 0 {
 		sort.Slice(undecidable, func(i, j int) bool { return undecidable[i].String() < undecidable[j].String() })
-		return nil, fmt.Errorf(
-			"%w: stream %s was already decided when the merge was claimed (or is already on main); "+
+		return resumeDecision{}, fmt.Errorf(
+			"%w: stream %s was already decided — when the merge was claimed or by an earlier resume — or is already on main; "+
 				"a resume may resolve only the streams it reports as pending",
 			ErrUnknownResolution, undecidable[0])
 	}
-	return steps, nil
+	decision.nextPlan = nextPlan
+	return decision, nil
 }
 
 // streamsAlreadyOnMain reports, per stream of the replay set, whether its

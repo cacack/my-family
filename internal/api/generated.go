@@ -118,6 +118,7 @@ func (e BranchMergeConflictErrorCode) Valid() bool {
 // Defines values for BranchMergeResumeErrorCode.
 const (
 	ResumeBranchTooLarge    BranchMergeResumeErrorCode = "branch_too_large"
+	ResumeConcurrent        BranchMergeResumeErrorCode = "merge_resume_concurrent"
 	ResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
 	ResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
 	ResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
@@ -127,6 +128,8 @@ const (
 func (e BranchMergeResumeErrorCode) Valid() bool {
 	switch e {
 	case ResumeBranchTooLarge:
+		return true
+	case ResumeConcurrent:
 		return true
 	case ResumeDanglingReference:
 		return true
@@ -2165,8 +2168,16 @@ type BranchMergeResumeResult struct {
 	// when the merge was already complete.
 	ReplayedEventCount int `json:"replayed_event_count"`
 
-	// SkippedStreamIds Entities resolved to `main` (by the merge, or by this resume), whose
-	// branch changes are deliberately not replayed. `[]`, never `null`.
+	// ReprojectedStreamIds Entities whose branch changes were already in the mainline's event
+	// log but whose mainline read model was behind it (an earlier
+	// attempt's projection failed after its append). This call
+	// re-projected them from the log; no events were appended for them.
+	// `[]`, never `null`.
+	ReprojectedStreamIds []openapi_types.UUID `json:"reprojected_stream_ids"`
+
+	// SkippedStreamIds Entities resolved to `main` (by the merge, by an earlier resume, or
+	// by this one), whose branch changes are deliberately not replayed.
+	// `[]`, never `null`.
 	SkippedStreamIds []openapi_types.UUID `json:"skipped_stream_ids"`
 }
 
