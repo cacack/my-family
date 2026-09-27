@@ -45,7 +45,9 @@ func (ss *StrictServer) CreateSnapshot(ctx context.Context, request CreateSnapsh
 		description = *request.Body.Description
 	}
 
-	snapshot, err := ss.server.snapshotService.CreateSnapshot(ctx, name, description)
+	// Snapshot creation is a command, not a query: it appends SnapshotCreated and
+	// the projection writes the registry row (issue #624).
+	snapshot, err := ss.server.commandHandler.CreateSnapshot(ctx, name, description)
 	if err != nil {
 		// Check for validation errors
 		if errors.Is(err, domain.ErrSnapshotNameRequired) ||
@@ -80,7 +82,9 @@ func (ss *StrictServer) GetSnapshot(ctx context.Context, request GetSnapshotRequ
 
 // DeleteSnapshot implements StrictServerInterface.
 func (ss *StrictServer) DeleteSnapshot(ctx context.Context, request DeleteSnapshotRequestObject) (DeleteSnapshotResponseObject, error) {
-	err := ss.server.snapshotService.DeleteSnapshot(ctx, request.Id)
+	// Deletion is a command too: it appends SnapshotDeleted and the projection
+	// drops the registry row. The events the snapshot marked are untouched.
+	err := ss.server.commandHandler.DeleteSnapshot(ctx, request.Id)
 	if err != nil {
 		if errors.Is(err, repository.ErrSnapshotNotFound) {
 			return DeleteSnapshot404JSONResponse{NotFoundJSONResponse{

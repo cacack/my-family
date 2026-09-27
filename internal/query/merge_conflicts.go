@@ -493,7 +493,7 @@ func isPersonNameEvent(eventType string) bool {
 // delete of any genealogy aggregate; callers strip them first, and the check
 // here keeps the rule true of the function on its own.
 func isAggregateDelete(eventType string) bool {
-	return strings.HasSuffix(eventType, "Deleted") && !branchLifecycleEventTypes[eventType]
+	return strings.HasSuffix(eventType, "Deleted") && !researchMetadataEventTypes[eventType]
 }
 
 // The two directions a child-of-family relationship can be asserted in. They
@@ -643,7 +643,7 @@ func xrefOwners(events []repository.StoredEvent) map[string]uuid.UUID {
 
 // createdGedcomXref returns the GEDCOM xref a *Created event carries, or "".
 func createdGedcomXref(evt repository.StoredEvent) string {
-	if !strings.HasSuffix(evt.EventType, "Created") || branchLifecycleEventTypes[evt.EventType] {
+	if !strings.HasSuffix(evt.EventType, "Created") || researchMetadataEventTypes[evt.EventType] {
 		return ""
 	}
 	var payload struct {

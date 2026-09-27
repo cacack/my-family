@@ -89,7 +89,8 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > `web/src/lib/api/client.test.ts`. Still main-only, deliberately: the cemetery *index*, whose
 > `life_events` source table has no `branch_id`
 > ([#757](https://github.com/cacack/my-family/issues/757)), and brick walls, which are not
-> event-sourced and so cannot be branch-scoped until the #624 "what is an event" call is made
+> event-sourced and so cannot be branch-scoped until they get the event-sourcing decision
+> [#624](https://github.com/cacack/my-family/issues/624) made for snapshots
 > ([#761](https://github.com/cacack/my-family/issues/761)).
 >
 > **BR-003's scope is bounded by decision, not only by progress.** Extending branch-scoping to the

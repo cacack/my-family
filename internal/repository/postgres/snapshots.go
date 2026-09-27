@@ -12,6 +12,9 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// Compile-time assertion that SnapshotStore satisfies the interface.
+var _ repository.SnapshotStore = (*SnapshotStore)(nil)
+
 // SnapshotStore is a PostgreSQL implementation of repository.SnapshotStore.
 type SnapshotStore struct {
 	db *sql.DB
@@ -56,6 +59,30 @@ func (s *SnapshotStore) Create(ctx context.Context, snapshot *domain.Snapshot) e
 	)
 	if err != nil {
 		return fmt.Errorf("insert snapshot: %w", err)
+	}
+	return nil
+}
+
+// Upsert stores a snapshot, inserting it or overwriting an existing row with the
+// same ID. The projection uses this so replaying SnapshotCreated is idempotent.
+func (s *SnapshotStore) Upsert(ctx context.Context, snapshot *domain.Snapshot) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO snapshots (id, name, description, position, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO UPDATE SET
+			name = EXCLUDED.name,
+			description = EXCLUDED.description,
+			position = EXCLUDED.position,
+			created_at = EXCLUDED.created_at
+	`,
+		snapshot.ID,
+		snapshot.Name,
+		nullableString(snapshot.Description),
+		snapshot.Position,
+		snapshot.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert snapshot: %w", err)
 	}
 	return nil
 }

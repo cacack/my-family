@@ -16,6 +16,7 @@ import (
 // mockSnapshotStore implements repository.SnapshotStore for testing.
 type mockSnapshotStore struct {
 	createFunc         func(ctx context.Context, snapshot *domain.Snapshot) error
+	upsertFunc         func(ctx context.Context, snapshot *domain.Snapshot) error
 	getFunc            func(ctx context.Context, id uuid.UUID) (*domain.Snapshot, error)
 	listFunc           func(ctx context.Context) ([]*domain.Snapshot, error)
 	deleteFunc         func(ctx context.Context, id uuid.UUID) error
@@ -25,6 +26,13 @@ type mockSnapshotStore struct {
 func (m *mockSnapshotStore) Create(ctx context.Context, snapshot *domain.Snapshot) error {
 	if m.createFunc != nil {
 		return m.createFunc(ctx, snapshot)
+	}
+	return nil
+}
+
+func (m *mockSnapshotStore) Upsert(ctx context.Context, snapshot *domain.Snapshot) error {
+	if m.upsertFunc != nil {
+		return m.upsertFunc(ctx, snapshot)
 	}
 	return nil
 }
@@ -68,72 +76,6 @@ func TestNewSnapshotService(t *testing.T) {
 	assert.Equal(t, snapshotStore, service.snapshotStore)
 	assert.Equal(t, eventStore, service.eventStore)
 	assert.Equal(t, historyService, service.historyService)
-}
-
-func TestSnapshotService_CreateSnapshot(t *testing.T) {
-	tests := []struct {
-		name         string
-		snapshotName string
-		description  string
-		maxPosition  int64
-		wantErr      bool
-	}{
-		{
-			name:         "valid snapshot",
-			snapshotName: "Pre-DNA results",
-			description:  "Before DNA test",
-			maxPosition:  42,
-			wantErr:      false,
-		},
-		{
-			name:         "valid snapshot without description",
-			snapshotName: "Milestone",
-			description:  "",
-			maxPosition:  10,
-			wantErr:      false,
-		},
-		{
-			name:         "empty name returns error",
-			snapshotName: "",
-			description:  "Description",
-			maxPosition:  5,
-			wantErr:      true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var createdSnapshot *domain.Snapshot
-			snapshotStore := &mockSnapshotStore{
-				getMaxPositionFunc: func(ctx context.Context) (int64, error) {
-					return tt.maxPosition, nil
-				},
-				createFunc: func(ctx context.Context, snapshot *domain.Snapshot) error {
-					createdSnapshot = snapshot
-					return nil
-				},
-			}
-
-			service := NewSnapshotService(snapshotStore, &mockEventStore{}, &HistoryService{})
-			snapshot, err := service.CreateSnapshot(context.Background(), tt.snapshotName, tt.description)
-
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.NotNil(t, snapshot)
-			assert.Equal(t, tt.snapshotName, snapshot.Name)
-			assert.Equal(t, tt.description, snapshot.Description)
-			assert.Equal(t, tt.maxPosition, snapshot.Position)
-			assert.NotEqual(t, uuid.Nil, snapshot.ID)
-			assert.NotZero(t, snapshot.CreatedAt)
-
-			// Verify the snapshot was passed to Create
-			assert.Equal(t, snapshot, createdSnapshot)
-		})
-	}
 }
 
 func TestSnapshotService_ListSnapshots(t *testing.T) {
@@ -206,31 +148,6 @@ func TestSnapshotService_GetSnapshot(t *testing.T) {
 
 	t.Run("not found", func(t *testing.T) {
 		_, err := service.GetSnapshot(context.Background(), uuid.New())
-		assert.ErrorIs(t, err, repository.ErrSnapshotNotFound)
-	})
-}
-
-func TestSnapshotService_DeleteSnapshot(t *testing.T) {
-	snapshotID := uuid.New()
-
-	snapshotStore := &mockSnapshotStore{
-		deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-			if id == snapshotID {
-				return nil
-			}
-			return repository.ErrSnapshotNotFound
-		},
-	}
-
-	service := NewSnapshotService(snapshotStore, &mockEventStore{}, &HistoryService{})
-
-	t.Run("success", func(t *testing.T) {
-		err := service.DeleteSnapshot(context.Background(), snapshotID)
-		require.NoError(t, err)
-	})
-
-	t.Run("not found", func(t *testing.T) {
-		err := service.DeleteSnapshot(context.Background(), uuid.New())
 		assert.ErrorIs(t, err, repository.ErrSnapshotNotFound)
 	})
 }

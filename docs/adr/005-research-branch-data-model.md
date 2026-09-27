@@ -296,14 +296,45 @@ Snapshots and branch base points are the same primitive — a named pointer to a
 - **Rollback** to a snapshot is a read/compare operation over positions and, under the overlay
   model, is naturally scoped by `branch_id`.
 
-This ADR does **not** change how snapshots are created. However, it surfaces a coupling that
-**#624** must resolve: `SnapshotCreated` exists and decodes (ES-007) but is never emitted —
-`SnapshotService.CreateSnapshot` writes directly to the `SnapshotStore`, bypassing the
-event-sourced pipeline. **Recommendation for #624 (not implemented here):** route snapshot
-creation/deletion through the event pipeline (emit `SnapshotCreated`, add a projection) so
-snapshots carry the same audit-trail guarantee (ADR-001) as every other mutation, and so a
-branch-scoped snapshot is expressible as a branch-tagged event. #624 remains the issue that
-implements this decision.
+This ADR did **not** change how snapshots are created. It surfaced a coupling that **#624** had
+to resolve: `SnapshotCreated` existed and decoded (ES-007) but was never emitted —
+`SnapshotService.CreateSnapshot` wrote directly to the `SnapshotStore`, bypassing the
+event-sourced pipeline. The recommendation recorded here was to route snapshot creation and
+deletion through the event pipeline.
+
+#### Implementation Note — snapshot event model (#624, delivered)
+
+The recommendation was adopted. Snapshots are now event-sourced, exactly like the branch registry:
+
+- **`CreateSnapshot` / `DeleteSnapshot` are commands** on `command.Handler`, not query-service
+  methods. They append `SnapshotCreated` / the new `SnapshotDeleted` on the snapshot's own stream
+  (stream type `snapshot`, the snapshot id as stream id) on `repository.MainScope`.
+- **The registry is projection-written.** `projectSnapshotCreated` upserts the row and
+  `projectSnapshotDeleted` drops it, so rebuilding the projection reconstructs the registry — the
+  property a directly-written store could never have. `SnapshotStore` gained `Upsert` (all three
+  backends) for idempotent replay, and a replayed delete against a missing row is a no-op.
+- **The marker never perturbs what it marks.** `CreateSnapshot` reads the log head *before*
+  appending, so the snapshot's `Position` excludes its own creation event. This is the answer to
+  the chicken-and-egg the issue raised, and it matches how `CreateBranch` pins a base position.
+- **Snapshot events are hidden from the change log.** `mapEventTypeToEntityAndAction` skips both
+  types: they are audit records on the log, not genealogical changes, and a snapshot comparison
+  reads a range that contains one of the two markers.
+
+**Still open — branch-scoped snapshots.** The bullet above ("a snapshot taken *on a branch* points
+to `(branch_id, position)`") is **not** implemented: the `snapshots` table has no `branch_id`
+column. Rather than record a branch snapshot as if it were a mainline one, both commands refuse on
+a branch-scoped handler with `ErrSnapshotNotBranchScoped`. Closing that gap means giving the
+snapshot registry the same `branch_id` overlay treatment #676 is fanning out to the other
+read-model entities.
+
+**Still open — snapshots created before #624.** Rows written by the old direct-store path carry no
+`SnapshotCreated` event, so "the registry rebuilds from the log" holds only for snapshots created
+after this change. Nothing replays the log into a projector today, so no data is at risk yet; the
+constraint is that rebuild tooling (#680) must backfill those rows — or consciously drop them —
+rather than assume the log is complete. Deleting such a snapshot works: `DeleteSnapshot` reads the
+snapshot's stream (`ReadStream`, then `scanSnapshotStream` over its mainline events), finds version
+0 because the stream has no events, and appends the tombstone with `expectedVersion` -1 (a new
+stream).
 
 ## Entities that stay main-only
 
@@ -315,10 +346,14 @@ read-model entity on `main`, and they must not be confused:
   person/family facts ([#757](https://github.com/cacack/my-family/issues/757)), evidence
   ([#758](https://github.com/cacack/my-family/issues/758)), media metadata
   ([#759](https://github.com/cacack/my-family/issues/759)) and GPS artifacts
-  ([#760](https://github.com/cacack/my-family/issues/760)).
+  ([#760](https://github.com/cacack/my-family/issues/760)). Snapshots are pending too, though not
+  as a #676 sub-issue: #624 made them event-sourced, and what remains is giving the registry a
+  `branch_id` (see *Interaction with snapshots and rollback*, "Still open — branch-scoped
+  snapshots").
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
-  be answered first. This is snapshots and brick walls, both waiting on
-  [#624](https://github.com/cacack/my-family/issues/624) (below).
+  be answered first. This is brick walls, which wait on an event-sourcing decision of their own
+  (below). Snapshots were here until [#624](https://github.com/cacack/my-family/issues/624) made
+  that decision for them.
 - **Decided** — the entity will not gain a `branch_id` at all. That set is fixed here.
 
 ### The decided set
@@ -343,7 +378,7 @@ tests — for no expressible research use case.
 ordinary rather than exploratory. This section is the place to revisit it; changing it means
 amending this ADR, not silently adding a column.
 
-### Blocked on the #624 question — brick walls and snapshots
+### Blocked on an event-sourcing decision — brick walls
 
 `SetBrickWall` and `ResolveBrickWall` (`internal/repository/{postgres,sqlite,memory}/readmodel.go`)
 **write the read model directly, bypassing the event store.** There is no `BrickWallSet` event and no
@@ -354,19 +389,22 @@ ADR defines: there are no branch-tagged events to project, nothing to replay on 
 for conflict detection to compare against the base position. **Branch-scoping brick walls therefore
 means first deciding whether they become event-sourced** — the same call
 [#624](https://github.com/cacack/my-family/issues/624) must make for snapshots, and for the same
-reason (see *Interaction with snapshots and rollback*, above). This ADR records the question and its
-coupling; it does not answer it.
+reason (see *Interaction with snapshots and rollback*, above). #624 has since answered it for
+snapshots — emit the events and let a projection write the registry — and that answer is the natural
+precedent for brick walls, but applying it to them is a separate change. This ADR records the
+brick-wall question and its coupling; it does not answer it.
 
 Until then brick walls stay main-only. Sub-issue A ([#756](https://github.com/cacack/my-family/issues/756))
 applied only the *leak* fix — constraining the mainline UPDATE to mainline rows, so a mainline call
 stops mutating every branch's shadow row (BR-003) — and left the scoping question open.
 
-**Snapshots are in the same state, for the same reason.** `SnapshotService.CreateSnapshot` writes
-straight to the `SnapshotStore`, so `SnapshotCreated` decodes but is never emitted (see *Interaction
-with snapshots and rollback*, above). A snapshot therefore cannot be branch-scoped until #624
-decides whether it becomes event-sourced. Snapshot is **not** a #676 sub-issue, and
-`docs/INTEGRATION-MATRIX.md` marks its Branch column ⛔ rather than ❌ to keep it out of the pending
-bucket.
+**Snapshots were in the same state, for the same reason, until #624.** `SnapshotService.CreateSnapshot`
+used to write straight to the `SnapshotStore`, so `SnapshotCreated` decoded but was never emitted.
+#624 routed creation and deletion through the event pipeline (see *Implementation Note — snapshot
+event model*, above), which unblocks branch scoping: a snapshot now has events a `branch_id` can tag.
+Snapshots therefore moved from blocked to pending, and `docs/INTEGRATION-MATRIX.md` marks their
+Branch column ❌ rather than ⛔. They are still **not** a #676 sub-issue; the remaining work is the
+`(branch_id, position)` registry described in "Still open — branch-scoped snapshots".
 
 ## Consequences
 
