@@ -45,11 +45,16 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 	key := streamBranch{streamID: streamID, branchID: scope.BranchID}
 	currentVersion := s.versions[key]
 
-	// A branch's first write to an existing aggregate continues main's CURRENT
-	// version line rather than restarting at 1 — the version the branch's live
-	// overlay read shows for an aggregate it has not touched (ADR-005, #844).
+	// A branch's first write to an existing aggregate continues the version line
+	// the branch's read shows rather than restarting at 1: main's CURRENT version,
+	// or the branch's cross-stream shadow row version when the caller reports one
+	// (repository.BranchSeedVersion; ADR-005, #844).
 	if currentVersion == 0 && !scope.BranchID.IsMain() {
-		currentVersion = s.versions[streamBranch{streamID: streamID, branchID: domain.MainBranchID}]
+		seed, err := repository.BranchSeedVersion(s.versions[streamBranch{streamID: streamID, branchID: domain.MainBranchID}], scope)
+		if err != nil {
+			return err
+		}
+		currentVersion = seed
 	}
 
 	// Check optimistic concurrency

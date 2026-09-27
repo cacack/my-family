@@ -305,8 +305,19 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 		}
 	}
 
-	// Append events to the event store on the handler's branch scope.
-	if err := h.eventStore.Append(ctx, id, streamType, events, expectedVersion, h.appendScope()); err != nil {
+	// Append events to the event store on the handler's branch scope. A branch
+	// append that checks a version also reports the branch's cross-stream shadow
+	// row version, if any, so a first branch write expects exactly the version the
+	// branch's read showed (#844; see repository.AppendScope).
+	scope := h.appendScope()
+	if !h.branchID.IsMain() && expectedVersion >= 0 {
+		overlay, err := h.branchOverlayVersion(ctx, streamType, id)
+		if err != nil {
+			return 0, err
+		}
+		scope.OverlayVersion = overlay
+	}
+	if err := h.eventStore.Append(ctx, id, streamType, events, expectedVersion, scope); err != nil {
 		return 0, err
 	}
 

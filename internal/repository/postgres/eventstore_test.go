@@ -1181,6 +1181,35 @@ func runBranchVersioningScenario(t *testing.T, store repository.EventStore) {
 		t.Fatalf("main version after branch C write = %d (err %v), want 4 (unchanged)", v, err)
 	}
 
+	// --- A stream the branch reads through its own cross-stream shadow row
+	// (#844): the caller reports that row's version as OverlayVersion, and the
+	// branch's first write seeds from it instead of main's current version. ---
+	branchD := repository.AppendScope{BranchID: domain.BranchID(uuid.New()), OverlayVersion: 9}
+	err = store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "ahead of main"})}, 9, branchD)
+	if !errors.Is(err, repository.ErrInvalidOverlayVersion) {
+		t.Fatalf("branch D append with an overlay version ahead of main: want ErrInvalidOverlayVersion, got %v", err)
+	}
+	branchD.OverlayVersion = 3
+	err = store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "main current"})}, 4, branchD)
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("branch D append at main's version past its shadow: want ErrConcurrencyConflict, got %v", err)
+	}
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "shadow"})}, 3, branchD); err != nil {
+		t.Fatalf("branch D append at its shadow row's version: %v", err)
+	}
+	// Once the branch has appended, its own line governs; OverlayVersion is ignored.
+	branchD.OverlayVersion = 2
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "own line"})}, 4, branchD); err != nil {
+		t.Fatalf("branch D second append on its own line: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchD.BranchID); err != nil || v != 5 {
+		t.Fatalf("branch D version = %d (err %v), want 5 (continuing its shadow's line)", v, err)
+	}
+
 	// --- Optimistic concurrency still bites WITHIN a branch. ---
 	err = store.Append(ctx, streamID, "Person",
 		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "stale"})}, 3, branchA)

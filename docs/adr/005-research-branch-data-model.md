@@ -191,7 +191,8 @@ a **`branch_id` copy-on-write overlay** on the read model, with **`main` as a re
   `main` (or other branches) on that counter, or two isolated hypotheses touching the same person
   would spuriously fail at *write* time. So the version dimension gains `branch_id`: a branch's
   first write to an existing aggregate seeds its expected version from that aggregate's **current**
-  `main` version — the version the live overlay shows the branch — then increments within the
+  `main` version — the version the live overlay shows the branch (or, for a row the branch already
+  shadows through another stream's event, that shadow's version) — then increments within the
   branch (originally the `main` version *at `base_position`*; changed by #844, see the
   implementation note below). Divergence between a branch and
   `main` is surfaced at *merge* time by conflict detection (below), never as a write-time
@@ -1440,7 +1441,7 @@ fork was uneditable from the branch.
 **Decision: option (a) — seed from `main`'s current version.** For a stream the branch has not
 written yet, `EventStore.Append` on a branch scope now takes `main`'s current version of that
 stream (`MAX(version)` over its `main` events, no position filter) as the branch's current version.
-The expected version a branch append accepts is therefore exactly the version a branch read shows,
+The expected version a branch append accepts is therefore the version a branch read shows,
 matching the live overlay and the entity history of #823/#824 (which already treats `main`'s
 post-fork, pre-first-write events as inherited). Once the branch has written the stream its own
 version line takes over, as before. The rule lives in the one append path shared by every entity
@@ -1448,6 +1449,29 @@ type — the three backends (memory, SQLite, PostgreSQL) implement it identicall
 families, sources, citations, notes, media, evidence and GPS artifacts all follow it without
 per-entity code. `AppendScope` lost its `BasePosition` field: nothing in the append depends on the
 fork point any more, and keeping an ignored field would invite callers to believe otherwise.
+
+**Cross-stream shadow rows seed from their own version.** An untouched stream is not always read
+from `main`'s current row. A projection can write a branch's own copy of an aggregate from an event
+on a *different* stream: `CitationCreated`, a `CitationUpdated` that moves the citation, and
+`CitationDeleted` save a branch copy of the source row to change its citation count. That copy keeps
+the version the source had when it was copied, and — being a branch row — it keeps shadowing
+`main` after `main` edits the source again. The branch then displays version V while `main` is at
+V+k, and seeding from `main`'s current version would refuse the displayed V (and the command's own
+read-model check would refuse `main`'s V+k), leaving the source uneditable on the branch. So the
+rule is: **seed from whatever the branch's read serves** — the branch's shadow row version when a
+cross-stream shadow exists, else `main`'s current version. Only the read model knows a shadow
+exists, so the command handler reports it: on a branch append that checks a version, `execute`
+reads the aggregate's row on `main` and on the branch (`branchOverlayStreams`, one resolver per
+branch-scoped aggregate type, not only sources, so a future cross-stream projection is covered too)
+and, when the branch serves a row whose version differs from `main`'s, passes that version as
+`AppendScope.OverlayVersion`. `repository.BranchSeedVersion` is the single seeding rule the three
+event stores apply: `OverlayVersion` when set (refused with `ErrInvalidOverlayVersion` if it is
+ahead of `main`'s version, which no copy of a `main` row can be), else `main`'s current version. It
+is consulted only for the branch's first append to the stream; after that the branch's own line
+governs. `PersonMerged` also writes cross-stream rows, but it is not branch-aware (BR-006), so it
+never writes them on a branch. The shadow also keeps the copy's *data*: a source a branch cited
+shows the branch the source as it was when cited, not `main`'s later correction — ordinary
+copy-on-write, now with a version that agrees with it.
 
 Option (b) — have branch reads report the as-of-fork version — was rejected: it contradicts the
 live overlay, which shows `main`'s current data for an untouched entity, and would pair post-fork
@@ -1472,8 +1496,12 @@ Verified by `runBranchVersioningScenario` (identical copies for memory, SQLite a
 the as-of-fork version is refused and `main`'s current version accepted),
 `TestBranchEditAfterMainCorrection` (identical scenario bodies in `internal/repository/{memory,
 sqlite,postgres}`: the issue's reproduction through a real command handler for a person, a family
-and a source, the stale as-of-fork version and a racing `main` write both refused, and the merge
-reporting `edit_edit` on exactly the fields both sides changed), and
+and a source, the stale as-of-fork version and a racing `main` write both refused, a source shadowed
+by a branch citation and then corrected on `main` editable at the shadow's version and refused at
+`main`'s, and the merge reporting `edit_edit` on exactly the fields both sides changed),
+`runBranchVersioningScenario`'s `OverlayVersion` cases (seed from the shadow, refuse an overlay
+version ahead of `main`, ignore it once the branch has its own line), `TestBranchOverlayStreams_*`
+and `TestBranchOverlayVersion` (`internal/command`, every resolver and the error path), and
 `TestBranchUpdate_EntityMainEditedAfterFork` (`internal/api`, the reproduction over HTTP).
 
 ## References

@@ -73,6 +73,10 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	if err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}
+	cited, err := h.CreateSource(ctx, command.CreateSourceInput{Title: "Placeholder Census", SourceType: "book"})
+	if err != nil {
+		t.Fatalf("CreateSource (cited): %v", err)
+	}
 
 	branch, err := h.CreateBranch(ctx, "post-fork-edits", "")
 	if err != nil {
@@ -169,6 +173,48 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 		t.Fatalf("main UpdateSource after branch edit: %v", err)
 	}
 
+	// --- A cross-stream shadow: a branch citation bumps its source's citation
+	// count by saving a branch copy of the source row, and that copy keeps the
+	// version the source had when it was copied. Main then corrects the source,
+	// but the branch keeps serving its copy — so the branch has appended nothing
+	// to the source's stream, yet reads a row older than main's. Its first edit
+	// must expect the copy's version, not main's current one. ---
+	if _, err := onBranch.CreateCitation(ctx, command.CreateCitationInput{SourceID: cited.ID, FactType: "person_birth", FactOwnerID: person.ID}); err != nil {
+		t.Fatalf("branch CreateCitation: %v", err)
+	}
+	if _, err := h.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, Author: str("Main Author"), Version: 1}); err != nil {
+		t.Fatalf("post-citation main UpdateSource: %v", err)
+	}
+	shownCited, err := readStore.GetSource(ctx, branchID, cited.ID)
+	if err != nil || shownCited == nil {
+		t.Fatalf("branch GetSource (cited) = %v (err %v)", shownCited, err)
+	}
+	if shownCited.Version != 1 || shownCited.CitationCount != 1 || shownCited.Author != "" {
+		t.Fatalf("branch cited source = version %d citations %d author %q, want the branch's copy: 1, 1, %q",
+			shownCited.Version, shownCited.CitationCount, shownCited.Author, "")
+	}
+	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, CallNumber: str("B-2"), Version: 2}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("branch UpdateSource at main's version, which the branch never showed: want ErrConcurrencyConflict, got %v", err)
+	}
+	citedRes, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, CallNumber: str("B-2"), Version: shownCited.Version})
+	if err != nil {
+		t.Fatalf("branch UpdateSource of a shadowed source at the displayed version: %v", err)
+	}
+	if citedRes.Version != 2 {
+		t.Fatalf("branch UpdateSource (cited) version = %d, want 2", citedRes.Version)
+	}
+	afterCited, err := readStore.GetSource(ctx, branchID, cited.ID)
+	if err != nil || afterCited == nil {
+		t.Fatalf("branch GetSource (cited) after edit = %v (err %v)", afterCited, err)
+	}
+	if afterCited.Version != 2 || afterCited.CallNumber != "B-2" || afterCited.CitationCount != 1 {
+		t.Fatalf("branch cited source after edit = version %d call number %q citations %d, want 2 %q 1",
+			afterCited.Version, afterCited.CallNumber, afterCited.CitationCount, "B-2")
+	}
+	if _, err := onBranch.UpdateSource(ctx, command.UpdateSourceInput{ID: cited.ID, Notes: str("stale"), Version: 1}); !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("branch UpdateSource (cited) at the now-stale version: want ErrConcurrencyConflict, got %v", err)
+	}
+
 	// --- Merge: main's post-fork events are main changes (they sit after the
 	// base position), so where the branch then changed the same field — the
 	// person's surname, the family's marriage place — the compare reports an
@@ -228,5 +274,13 @@ func runBranchEditAfterMainCorrection(t *testing.T, h *command.Handler, readStor
 	if mainSource.CallNumber != "B-1" || mainSource.Author != "Main Author" || mainSource.Notes != "main again" {
 		t.Fatalf("main source after merge = call number %q author %q notes %q, want both sides' edits",
 			mainSource.CallNumber, mainSource.Author, mainSource.Notes)
+	}
+	mainCited, err := readStore.GetSource(ctx, domain.MainBranchID, cited.ID)
+	if err != nil || mainCited == nil {
+		t.Fatalf("main GetSource (cited) after merge = %v (err %v)", mainCited, err)
+	}
+	if mainCited.CallNumber != "B-2" || mainCited.Author != "Main Author" || mainCited.CitationCount != 1 {
+		t.Fatalf("main cited source after merge = call number %q author %q citations %d, want %q %q 1",
+			mainCited.CallNumber, mainCited.Author, mainCited.CitationCount, "B-2", "Main Author")
 	}
 }

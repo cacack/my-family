@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,17 +27,31 @@ var (
 // BranchID names the branch the appended events belong to.
 //
 // A branch's FIRST write to an aggregate that already exists on main seeds the
-// branch's version line from that aggregate's CURRENT main version, so the
-// branch continues the aggregate's numbering instead of restarting at 1. It is
-// main's current version, not its version as of the branch's fork point,
-// because that is the version a branch read shows: until the branch writes an
-// aggregate, the read model's live copy-on-write overlay serves main's current
-// row (ADR-005 §The model). Seeding from the fork point made every aggregate
-// main edited after the fork uneditable from the branch — the UI sends the
-// version it displayed and the append expected an older one (#844). Main's
-// post-fork events still sit after the branch's base position, so the merge
-// compare classifies them as main changes exactly as before. Nothing in the
-// append depends on the fork point, so the scope carries none.
+// branch's version line from the version the branch's READ shows for that
+// aggregate, so the branch continues the aggregate's numbering instead of
+// restarting at 1 and the expected version a branch append accepts is exactly
+// the version a branch read displayed (#844). Until the branch appends to an
+// aggregate's stream, the read model serves one of two rows for it:
+//
+//   - main's CURRENT row, through the live copy-on-write overlay (ADR-005 §The
+//     model). This is the usual case, and the seed is main's current stream
+//     version, which the store reads inside the append itself. It is not main's
+//     version as of the branch's fork point: seeding from the fork point made
+//     every aggregate main edited after the fork uneditable from the branch.
+//   - the branch's OWN shadow row, written by the projection of an event on
+//     ANOTHER stream (a cross-stream shadow: a branch citation bumps its source's
+//     citation count by saving a branch copy of the source row). That copy keeps
+//     the version the source had when it was copied, and it keeps shadowing main
+//     after main edits the source again. Only the read model knows it exists, so
+//     the caller reports its version in OverlayVersion.
+//
+// OverlayVersion is therefore the version of the branch's cross-stream shadow
+// row for the stream, or 0 when the branch reads the stream from main. It is
+// consulted only for the branch's first append to the stream (see
+// BranchSeedVersion); once the branch has appended, its own version line
+// governs. Main's post-fork events still sit after the branch's base position,
+// so the merge compare classifies them as main changes exactly as before.
+// Nothing in the append depends on the fork point, so the scope carries none.
 //
 // The ZERO VALUE IS MainScope, and deliberately so: domain.MainBranchID is the
 // zero UUID (ADR-005 §Sub-decision 3), so a forgotten scope argument falls back
@@ -44,7 +59,30 @@ var (
 // branch-scoped therefore fails loudly (writes land on main) instead of
 // silently corrupting some other branch's overlay.
 type AppendScope struct {
-	BranchID domain.BranchID
+	BranchID       domain.BranchID
+	OverlayVersion int64
+}
+
+// ErrInvalidOverlayVersion is returned by a branch's first append to a stream
+// when the scope's OverlayVersion names a version main's stream never reached.
+// A cross-stream shadow row copies a row main served, so its version can never
+// be ahead of main's; one that is signals a caller bug, not a stale client.
+var ErrInvalidOverlayVersion = errors.New("overlay version is ahead of the stream's main version")
+
+// BranchSeedVersion is the version a branch's FIRST append to a stream continues
+// from, given main's current version of that stream (0 when main has none). It
+// is the one seeding rule every EventStore backend applies (DB-001), so the
+// backends differ only in how they read mainVersion: the branch's cross-stream
+// shadow row version when scope reports one, otherwise main's current version —
+// in both cases the version the branch's read shows (see AppendScope).
+func BranchSeedVersion(mainVersion int64, scope AppendScope) (int64, error) {
+	if scope.OverlayVersion <= 0 {
+		return mainVersion, nil
+	}
+	if scope.OverlayVersion > mainVersion {
+		return 0, fmt.Errorf("%w: overlay version %d, main version %d", ErrInvalidOverlayVersion, scope.OverlayVersion, mainVersion)
+	}
+	return scope.OverlayVersion, nil
 }
 
 // MainScope is the mainline append scope: the reserved main branch. Every
