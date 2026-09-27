@@ -45,8 +45,8 @@ test('comparing two snapshots shows the mainline edit between them, and not the 
 	const { snapshots, merge } = readSeed();
 
 	await page.goto('/snapshots');
-	await page.getByLabel('From').selectOption(snapshots.beforeId);
-	await page.getByLabel('To').selectOption(snapshots.afterId);
+	await page.getByLabel('From', { exact: true }).selectOption(snapshots.beforeId);
+	await page.getByLabel('To', { exact: true }).selectOption(snapshots.afterId);
 	await page.getByRole('button', { name: 'Compare', exact: true }).click();
 
 	await expect(page).toHaveURL(/\/snapshots\/compare\?/);
