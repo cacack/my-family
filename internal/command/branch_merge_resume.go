@@ -49,6 +49,13 @@ var (
 	//     call resolves it to main), or a source delete that would cascade onto
 	//     a citation of it main still has (typically one main added after the
 	//     claim).
+	//   - the same for media (#759): the stream uploads a media item whose
+	//     owner (person, family or source) main will not have when it lands —
+	//     main deleted it after the claim, this call resolves the stream that
+	//     creates it to main, or a stream already on main deleted it — or it
+	//     deletes a media owner while main has an item of that owner it wrote
+	//     to after the branch's delete (typically an upload made during the
+	//     interruption).
 	//
 	// The streams are listed on ResumeMergeResult.PendingStreamIDs. Inspect them
 	// with GET /branches/{id}/compare, then resume again with a resolution for
@@ -142,6 +149,12 @@ type resumeView struct {
 	// for a reason main's log explains (see streamsRemovedOnMain).
 	removed map[uuid.UUID]bool
 
+	// relinked maps each landed media item whose main row is missing and
+	// whose person owner main has since merged into another person to the
+	// final survivor: the owner the read-model repair attaches it to (see
+	// mediaRelink).
+	relinked map[uuid.UUID]uuid.UUID
+
 	// created names the persons a replay group creates and main has not
 	// removed since (see personsCreatedByReplay).
 	created map[uuid.UUID]bool
@@ -234,9 +247,17 @@ type resumeDecision struct {
 // Evidence (#758): the replay runs in the evidence order MergeBranch uses
 // (orderEvidenceForReplay), and the evidence rules MergeBranch checks before
 // its claim (checkEvidence: a citation must end up citing a source main will
-// have; a source delete must not cascade onto a citation main keeps) are
+// have; a source delete must not cascade onto a citation main keeps; and,
+// since #759, a media upload must land on an owner main will have and an
+// owner delete must not cascade onto media the branch never saw) are
 // applied exactly as the person-reference rules are — an auto-planned stream
 // that breaks one is pending, and the final decision is checked again.
+//
+// Media (#759): landed detection and the read-model repair treat a media
+// stream like any other, and neither ever writes a branch row or copies file
+// bytes — see branch_merge_resume_media.go for why the repair cannot lose
+// shared bytes, and for the one case (an owner merged into a person main
+// still has) it refuses instead of repairing.
 func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*ResumeMergeResult, error) {
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
@@ -280,7 +301,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 
 	// What main removed since the claim, and so which persons the replay can
 	// still vouch for.
-	removed, err := h.streamsRemovedOnMain(ctx, groups, mainVersions)
+	removed, relinked, err := h.streamsRemovedOnMain(ctx, groups, mainVersions)
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +309,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		landed:       landed,
 		mainVersions: mainVersions,
 		removed:      removed,
+		relinked:     relinked,
 		created:      personsCreatedByReplay(groups, removed),
 	}
 
@@ -308,8 +330,8 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		return result, fmt.Errorf(
 			"%w: %d stream(s) still to replay for branch %s cannot be replayed on the recorded plan "+
 				"(main moved on them since it was recorded, main removed the entity, the claim recorded no plan, "+
-				"or replaying them would leave main referencing a person or source it no longer has, or cascade onto "+
-				"a citation it still has). Nothing has been written; "+
+				"or replaying them would leave main referencing a person, source or media owner it no longer has, or cascade onto "+
+				"a citation or media item it still has). Nothing has been written; "+
 				"review them with GET /branches/{id}/compare and resume again with a resolution for each: %v",
 			ErrMergeResumeNeedsResolution, len(result.PendingStreamIDs), branch.ID, result.PendingStreamIDs)
 	}
@@ -427,7 +449,7 @@ func (h *Handler) resumeReplayGroups(ctx context.Context, branch *domain.Branch,
 	// therefore continues the original order, and the remaining citations
 	// find their sources on main and leave a doomed source before its delete
 	// cascades.
-	return orderEvidenceForReplay(groupEventsByStream(replaySet.ReplayEvents)), nil
+	return orderEvidenceForReplay(groupEventsByStream(replaySet.ReplayEvents))
 }
 
 // resumableMerge reads the branch's own stream for its merge claim and any
@@ -692,9 +714,13 @@ func refuseUndecidableResolutions(resolutions map[uuid.UUID]MergeResolution, dec
 // The evidence rules (checkEvidence, #758) are applied the same way: an
 // auto-planned citation whose final source main will not have, or an
 // auto-planned source delete that would cascade onto a citation main still
-// has, is flagged too. For them a stream counts as replayed on the same terms
-// — already on main, or planned and not resolved to main by this call — and a
-// source main removed since the claim does not count as one main will have.
+// has, is flagged too, as is an auto-planned media upload whose owner main
+// will not have when it lands, or an auto-planned owner delete that would
+// cascade onto an item main wrote to after the branch's delete (#759). For them a stream counts as replayed on
+// the same terms — already on main, or planned and not resolved to main by
+// this call — and a source or media owner main removed since the claim does
+// not count as one main will have. An owner-deleting stream already on main
+// has deleted the owner whatever its place in the replay order.
 //
 // A person counts as present if main's read model has them, or if a group the
 // resume has replayed or may still replay (already on main, or planned and not
@@ -715,7 +741,12 @@ func (h *Handler) danglingAutoPlannedStreams(
 		return nil, nil // nothing replays automatically without a plan
 	}
 	present := make(map[uuid.UUID]bool, len(groups))
-	evidence := evidencePlan{replayed: make(map[uuid.UUID]streamGroup, len(groups)), removed: view.removed}
+	evidence := evidencePlan{
+		replayed: make(map[uuid.UUID]streamGroup, len(groups)),
+		removed:  view.removed,
+		order:    replayOrder(groups),
+		landed:   view.landed,
+	}
 	var auto []streamGroup
 	for _, group := range groups {
 		id := group.streamID
@@ -830,9 +861,11 @@ func (h *Handler) validateResumeReferences(
 }
 
 // validateResumeEvidence is validateResumeReferences' evidence half: the
-// streams about to be replayed must pass checkEvidence, and this call's own
-// "main" resolution may not exclude a source the replay creates while a
-// citation already on main cites it.
+// streams about to be replayed must pass checkEvidence (the citation, source
+// and media-owner rules), and this call's own "main" resolution may not
+// exclude a source the replay creates while a citation already on main cites
+// it, nor a media owner main does not have while a media upload already on
+// main is attached to it (checkLandedMediaOwners).
 func (h *Handler) validateResumeEvidence(
 	ctx context.Context,
 	groups []streamGroup,
@@ -840,7 +873,12 @@ func (h *Handler) validateResumeEvidence(
 	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
 ) error {
-	evidence := evidencePlan{replayed: make(map[uuid.UUID]streamGroup, len(groups)), removed: view.removed}
+	evidence := evidencePlan{
+		replayed: make(map[uuid.UUID]streamGroup, len(groups)),
+		removed:  view.removed,
+		order:    replayOrder(groups),
+		landed:   view.landed,
+	}
 	byID := make(map[uuid.UUID]streamGroup, len(groups))
 	for _, group := range groups {
 		byID[group.streamID] = group
@@ -880,7 +918,7 @@ func (h *Handler) validateResumeEvidence(
 				ErrMergeDanglingReference, group.streamID, outcome.sourceID)
 		}
 	}
-	return nil
+	return h.checkLandedMediaOwners(ctx, groups, view, resolutions)
 }
 
 // personsCreatedByReplay returns the persons whose replay group creates them
@@ -898,16 +936,19 @@ func personsCreatedByReplay(groups []streamGroup, removed map[uuid.UUID]bool) ma
 // streamsRemovedOnMain returns the streams of the replay set whose entity main
 // had and no longer has, for a reason main's log explains: the stream ends in
 // a delete; a person was merged into another (PersonMerged, which does not
-// write to the merged person's stream); or an association lost one of its
+// write to the merged person's stream); an association lost one of its
 // persons to a delete cascade (which does not write to the association's
-// stream either). Such a stream's replay restores nothing, whatever the plan
+// stream either); a citation lost its source, or a media item its owner, the
+// same way. Such a stream's replay restores nothing, whatever the plan
 // pinned, and the person it names is not present for reference checks.
 //
 // A stream main never had (version 0: the branch created the entity and it
 // has not landed) cannot have been removed. A row missing for any other
 // reason — a failed projection of an already-replayed stream — is not a
-// removal; reprojectLandedStreams repairs it.
-func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup, mainVersions map[uuid.UUID]int64) (map[uuid.UUID]bool, error) {
+// removal; reprojectLandedStreams repairs it. For a missing media row whose
+// person owner main merged into another person, it also reports the final
+// survivor that repair re-links the item to.
+func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup, mainVersions map[uuid.UUID]int64) (map[uuid.UUID]bool, map[uuid.UUID]uuid.UUID, error) {
 	var missing []streamGroup
 	states := make(map[uuid.UUID]readModelState)
 	for _, group := range groups {
@@ -916,7 +957,7 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 		}
 		state, err := h.mainReadModelState(ctx, group)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if state.present {
 			continue
@@ -925,7 +966,7 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 		missing = append(missing, group)
 	}
 	if len(missing) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	streamIDs := make([]uuid.UUID, 0, len(missing))
@@ -934,30 +975,37 @@ func (h *Handler) streamsRemovedOnMain(ctx context.Context, groups []streamGroup
 	}
 	mainEvents, err := h.readMainStreams(ctx, streamIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	removedElsewhere, err := h.missingRowsRemovedElsewhere(ctx, missing, states, mainEvents)
+	removedElsewhere, relink, err := h.missingRowsRemovedElsewhere(ctx, missing, states, mainEvents)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	removed := make(map[uuid.UUID]bool, len(missing))
 	for _, group := range missing {
 		gone, err := h.goneForLoggedReason(ctx, group, mainEvents[group.streamID], removedElsewhere[group.streamID])
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if gone {
 			removed[group.streamID] = true
 		}
 	}
-	return removed, nil
+	var relinked map[uuid.UUID]uuid.UUID
+	for mediaID, move := range relink {
+		if relinked == nil {
+			relinked = make(map[uuid.UUID]uuid.UUID, len(relink))
+		}
+		relinked[mediaID] = move.target
+	}
+	return removed, relinked, nil
 }
 
 // isReadModelStream reports whether mainReadModelState can read a stream
 // type's main row.
 func isReadModelStream(streamType string) bool {
 	return isPersonStream(streamType) || strings.EqualFold(streamType, familyStreamType) || isAssociationStream(streamType) ||
-		isSourceStream(streamType) || isCitationStream(streamType) || isNoteStream(streamType)
+		isSourceStream(streamType) || isCitationStream(streamType) || isNoteStream(streamType) || isMediaStream(streamType)
 }
 
 // streamsAlreadyOnMain reports, per stream of the replay set, whether its

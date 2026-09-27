@@ -125,7 +125,7 @@ type UpdateMediaResult struct {
 // UpdateMedia updates media metadata (not the file itself).
 func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*UpdateMediaResult, error) {
 	// Get current media from read model
-	current, err := h.readStore.GetMedia(ctx, input.ID)
+	current, err := h.readStore.GetMedia(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting media: %w", err)
 	}
@@ -183,7 +183,7 @@ func (h *Handler) UpdateMedia(ctx context.Context, input UpdateMediaInput) (*Upd
 // DeleteMedia deletes a media record.
 func (h *Handler) DeleteMedia(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	// Get current media from read model
-	current, err := h.readStore.GetMedia(ctx, id)
+	current, err := h.readStore.GetMedia(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting media: %w", err)
 	}
@@ -210,7 +210,7 @@ func (h *Handler) DeleteMedia(ctx context.Context, id uuid.UUID, version int64, 
 // RollbackMedia rolls back media to a specific version.
 func (h *Handler) RollbackMedia(ctx context.Context, mediaID uuid.UUID, targetVersion int64) (*RollbackResult, error) {
 	return h.rollbackEntity(ctx, "Media", mediaID, targetVersion, func(id uuid.UUID) (bool, error) {
-		m, err := h.readStore.GetMedia(ctx, id)
+		m, err := h.readStore.GetMedia(ctx, domain.MainBranchID, id)
 		if err != nil {
 			return false, err
 		}

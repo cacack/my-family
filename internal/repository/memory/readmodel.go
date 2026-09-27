@@ -151,10 +151,10 @@ type ReadModelStore struct {
 	sources               map[branchKey]*repository.SourceReadModel            // branch-scoped (#758)
 	sourceExternalIDs     map[branchKey][]repository.SourceExternalIDReadModel // branch-scoped bucket keyed by source ID (#758)
 	citations             map[branchKey]*repository.CitationReadModel          // branch-scoped (#758)
-	media                 map[uuid.UUID]*repository.MediaReadModel
-	events                map[branchKey]*repository.EventReadModel     // branch-scoped (#757)
-	attributes            map[branchKey]*repository.AttributeReadModel // branch-scoped (#757)
-	notes                 map[branchKey]*repository.NoteReadModel      // branch-scoped (#758)
+	media                 map[branchKey]*mediaRow                              // branch-scoped metadata; bytes shared (#759)
+	events                map[branchKey]*repository.EventReadModel             // branch-scoped (#757)
+	attributes            map[branchKey]*repository.AttributeReadModel         // branch-scoped (#757)
+	notes                 map[branchKey]*repository.NoteReadModel              // branch-scoped (#758)
 	submitters            map[uuid.UUID]*repository.SubmitterReadModel
 	repositories          map[uuid.UUID]*repository.RepositoryReadModel
 	repositoryExternalIDs map[uuid.UUID][]repository.RepositoryExternalIDReadModel // keyed by repository ID
@@ -179,7 +179,7 @@ func NewReadModelStore() *ReadModelStore {
 		sources:               make(map[branchKey]*repository.SourceReadModel),
 		sourceExternalIDs:     make(map[branchKey][]repository.SourceExternalIDReadModel),
 		citations:             make(map[branchKey]*repository.CitationReadModel),
-		media:                 make(map[uuid.UUID]*repository.MediaReadModel),
+		media:                 make(map[branchKey]*mediaRow),
 		events:                make(map[branchKey]*repository.EventReadModel),
 		attributes:            make(map[branchKey]*repository.AttributeReadModel),
 		notes:                 make(map[branchKey]*repository.NoteReadModel),
@@ -522,6 +522,7 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 			storeBucket(s.familyChildren, k.branch, k.id, out)
 		}
 		s.cascadePersonFacts(domain.MainBranchID, id)
+		s.cascadeMedia(domain.MainBranchID, "person", id)
 		return nil
 	}
 	// Branch delete: tombstone the person and its branch-scoped dependents,
@@ -531,6 +532,7 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 	s.personExternalIDs[branchKey{branchID, id}] = nil // cascade tombstone
 	s.pedigreeEdges[branchKey{branchID, id}] = nil     // cascade tombstone
 	s.cascadePersonFacts(branchID, id)
+	s.cascadeMedia(branchID, "person", id)
 	return nil
 }
 
@@ -889,12 +891,14 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// The family's own life events (owner_type "family") cascade with it (#757).
+	// The family's own life events (owner_type "family") cascade with it (#757),
+	// and so does its media (#759).
 	for _, e := range resolveAllRows(s.events, branchID) {
 		if e.OwnerType == "family" && e.OwnerID == id {
 			removeRow(s.events, branchID, e.ID)
 		}
 	}
+	s.cascadeMedia(branchID, "family", id)
 	if branchID == domain.MainBranchID {
 		delete(s.families, branchKey{domain.MainBranchID, id})
 		delete(s.familyChildren, branchKey{domain.MainBranchID, id})
@@ -1044,7 +1048,7 @@ func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain
 // PurgeBranch hard-deletes every map entry keyed to branchID across the
 // branch-scoped entities (the seven #669 slice entities, life events,
 // attributes and associations (#757), and sources, source external IDs,
-// citations and notes (#758)). It is a no-op for the mainline
+// citations and notes (#758), and media (#759)). It is a no-op for the mainline
 // (domain.MainBranchID), which is never purged. See ADR-005 and the
 // branch-delete projection handler.
 func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
@@ -1069,6 +1073,9 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	deleteBranchRows(s.sourceExternalIDs, branchID)
 	deleteBranchRows(s.citations, branchID)
 	deleteBranchRows(s.notes, branchID)
+	deleteBranchRows(s.media, branchID)
+	// Drop main media tombstones kept alive only for this branch's shadows (#759).
+	s.collectMainMediaTombstones()
 	return nil
 }
 
@@ -1096,7 +1103,7 @@ func (s *ReadModelStore) Reset() {
 	s.sources = make(map[branchKey]*repository.SourceReadModel)
 	s.sourceExternalIDs = make(map[branchKey][]repository.SourceExternalIDReadModel)
 	s.citations = make(map[branchKey]*repository.CitationReadModel)
-	s.media = make(map[uuid.UUID]*repository.MediaReadModel)
+	s.media = make(map[branchKey]*mediaRow)
 	s.events = make(map[branchKey]*repository.EventReadModel)
 	s.attributes = make(map[branchKey]*repository.AttributeReadModel)
 	s.notes = make(map[branchKey]*repository.NoteReadModel)
@@ -1191,7 +1198,7 @@ func (s *ReadModelStore) SaveSource(ctx context.Context, branchID domain.BranchI
 
 // DeleteSource removes a source on the given branch: a real removal on main, a
 // tombstone on a non-main branch. The source's external identifiers and its
-// citations go with it on the same branch (#758) — the manual cascade that
+// citations and media go with it on the same branch (#758, #759) — the manual cascade that
 // replaces the dropped foreign keys; other branches are untouched.
 func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
@@ -1202,6 +1209,7 @@ func (s *ReadModelStore) DeleteSource(ctx context.Context, branchID domain.Branc
 			removeRow(s.citations, branchID, c.ID)
 		}
 	}
+	s.cascadeMedia(branchID, "source", id)
 	storeBucket(s.sourceExternalIDs, branchID, id, nil)
 	removeRow(s.sources, branchID, id)
 	return nil
@@ -1322,67 +1330,133 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, branchID domain.Bra
 	return nil
 }
 
-// GetMedia retrieves media metadata by ID (excludes FileData and ThumbnailData).
-func (s *ReadModelStore) GetMedia(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// mediaRow is one stored media row (ADR-005, #759). Unlike the other
+// single-row maps, a tombstone is a row with deleted set rather than a nil
+// entry, because a MAIN tombstone must keep its bytes while a branch shadow
+// still borrows them (the blob rule on repository.ReadModelStore). FileData and
+// ThumbnailData on a branch shadow row of a mainline item are always nil.
+type mediaRow struct {
+	m       repository.MediaReadModel
+	deleted bool
+}
 
-	m, exists := s.media[id]
-	if !exists {
-		return nil, nil
+// mediaWinner returns the row branch resolves for id — its own row, else main's
+// — or nil when neither exists. Callers hold s.mu.
+func (s *ReadModelStore) mediaWinner(branch domain.BranchID, id uuid.UUID) *mediaRow {
+	if r, ok := s.media[branchKey{branch, id}]; ok {
+		return r
 	}
-	// Return copy without binary data
-	result := *m
+	if branch != domain.MainBranchID {
+		return s.media[branchKey{domain.MainBranchID, id}]
+	}
+	return nil
+}
+
+// visibleMedia returns every live media row branch sees, one per id. Callers
+// hold s.mu.
+func (s *ReadModelStore) visibleMedia(branch domain.BranchID) []*mediaRow {
+	out := make([]*mediaRow, 0)
+	seen := make(map[uuid.UUID]bool)
+	for k := range s.media {
+		if (k.branch != branch && k.branch != domain.MainBranchID) || seen[k.id] {
+			continue
+		}
+		seen[k.id] = true
+		if r := s.mediaWinner(branch, k.id); r != nil && !r.deleted {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// metadataOnly returns a copy of a stored row without its bytes.
+func metadataOnly(r *mediaRow) *repository.MediaReadModel {
+	result := r.m
 	result.FileData = nil
 	result.ThumbnailData = nil
-	return &result, nil
+	return &result
 }
 
-// GetMediaWithData retrieves full media record including FileData and ThumbnailData.
-func (s *ReadModelStore) GetMediaWithData(ctx context.Context, id uuid.UUID) (*repository.MediaReadModel, error) {
+// GetMedia retrieves media metadata by ID within the branch overlay (ADR-005,
+// #759); FileData and ThumbnailData are left empty.
+func (s *ReadModelStore) GetMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	m, exists := s.media[id]
-	if !exists {
+	r := s.mediaWinner(branchID, id)
+	if r == nil || r.deleted {
 		return nil, nil
 	}
-	result := *m
-	return &result, nil
+	return metadataOnly(r), nil
 }
 
-// GetMediaThumbnail retrieves just the thumbnail bytes.
-func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, id uuid.UUID) ([]byte, error) {
+// sharedMediaBytes returns the bytes branch reads for the winning row w: w's
+// own, else main's (#759). Callers hold s.mu.
+func (s *ReadModelStore) sharedMediaBytes(w *mediaRow, id uuid.UUID) (file, thumb []byte) {
+	file, thumb = w.m.FileData, w.m.ThumbnailData
+	if main, ok := s.media[branchKey{domain.MainBranchID, id}]; ok && main != w {
+		if file == nil {
+			file = main.m.FileData
+		}
+		if thumb == nil {
+			thumb = main.m.ThumbnailData
+		}
+	}
+	return file, thumb
+}
+
+// GetMediaWithData retrieves the full media record within the branch overlay:
+// the winning row's metadata and the shared bytes (#759).
+func (s *ReadModelStore) GetMediaWithData(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.MediaReadModel, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	m, exists := s.media[id]
-	if !exists {
+	r := s.mediaWinner(branchID, id)
+	if r == nil || r.deleted {
 		return nil, nil
 	}
-	return m.ThumbnailData, nil
+	result := r.m
+	result.FileData, result.ThumbnailData = s.sharedMediaBytes(r, id)
+	return &result, nil
 }
 
-// ListMediaForEntity returns a paginated list of media for an entity.
+// GetMediaThumbnail retrieves just the thumbnail bytes of a media item visible
+// on branchID (#759).
+func (s *ReadModelStore) GetMediaThumbnail(ctx context.Context, branchID domain.BranchID, id uuid.UUID) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	r := s.mediaWinner(branchID, id)
+	if r == nil || r.deleted {
+		return nil, nil
+	}
+	_, thumb := s.sharedMediaBytes(r, id)
+	return thumb, nil
+}
+
+// ListMediaForEntity returns a paginated list of the media attached to an
+// entity as opts.BranchID sees it (ADR-005, #759), newest first; the entity
+// filter is decided on each item's winning row.
 func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType string, entityID uuid.UUID, opts repository.ListOptions) ([]repository.MediaReadModel, int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var results []repository.MediaReadModel
-	for _, m := range s.media {
-		if m.EntityType == entityType && m.EntityID == entityID {
-			result := *m
-			result.FileData = nil
-			result.ThumbnailData = nil
-			results = append(results, result)
+	for _, r := range s.visibleMedia(opts.BranchID) {
+		if r.m.EntityType == entityType && r.m.EntityID == entityID {
+			results = append(results, *metadataOnly(r))
 		}
 	}
 
 	total := len(results)
 
-	// Sort by created_at DESC
+	// Sort by created_at DESC, id DESC (the SQL backends' order).
 	sort.Slice(results, func(i, j int) bool {
-		return results[i].CreatedAt.After(results[j].CreatedAt)
+		cmp := compareTimestamps(results[i].CreatedAt, results[j].CreatedAt)
+		if cmp == 0 {
+			cmp = strings.Compare(results[i].ID.String(), results[j].ID.String())
+		}
+		return cmp > 0
 	})
 
 	// Apply pagination
@@ -1401,23 +1475,131 @@ func (s *ReadModelStore) ListMediaForEntity(ctx context.Context, entityType stri
 	return results, total, nil
 }
 
-// SaveMedia saves or updates a media record.
-func (s *ReadModelStore) SaveMedia(ctx context.Context, media *repository.MediaReadModel) error {
+// SaveMedia saves or updates a media record on the given branch (ADR-005,
+// #759), clearing any prior tombstone. It enforces the blob rule: on a non-main
+// branch an id that has a main row stores no bytes whatever the caller passes,
+// and nil bytes never overwrite stored ones.
+func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID, media *repository.MediaReadModel) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	result := *media
-	s.media[media.ID] = &result
+	key := branchKey{branchID, media.ID}
+	row := &mediaRow{m: *media}
+	_, hasMain := s.media[branchKey{domain.MainBranchID, media.ID}]
+	prev, hasOwn := s.media[key]
+	// A byte-less branch save of an id with no row anywhere is a metadata edit
+	// of an item main has since deleted: store nothing rather than a shadow
+	// with no bytes (parity with the SQL backends).
+	if branchID != domain.MainBranchID && len(media.FileData) == 0 && !hasMain && !hasOwn {
+		return nil
+	}
+	if branchID != domain.MainBranchID && hasMain {
+		row.m.FileData, row.m.ThumbnailData = nil, nil
+	}
+	if hasOwn {
+		if row.m.FileData == nil {
+			row.m.FileData = prev.m.FileData
+		}
+		if row.m.ThumbnailData == nil {
+			row.m.ThumbnailData = prev.m.ThumbnailData
+		}
+	}
+	s.media[key] = row
+	if branchID == domain.MainBranchID {
+		s.releaseBranchMediaBytes(media.ID, row)
+	}
 	return nil
 }
 
-// DeleteMedia removes a media record.
-func (s *ReadModelStore) DeleteMedia(ctx context.Context, id uuid.UUID) error {
+// releaseBranchMediaBytes clears the byte columns of every branch row of id
+// once main's row holds the same bytes — a branch upload merged into main —
+// so the bytes are stored exactly once and the branch reads them through the
+// main fallback (#759). Callers hold s.mu.
+func (s *ReadModelStore) releaseBranchMediaBytes(id uuid.UUID, main *mediaRow) {
+	for k, r := range s.media {
+		if k.id != id || k.branch == domain.MainBranchID {
+			continue
+		}
+		if main.m.FileData != nil {
+			r.m.FileData = nil
+		}
+		if main.m.ThumbnailData != nil {
+			r.m.ThumbnailData = nil
+		}
+	}
+}
+
+// DeleteMedia removes a media item on the given branch (ADR-005, #759): a
+// metadata-only tombstone off main; on main a real removal, unless a branch
+// still shows the item through a live shadow row, in which case main's row
+// stays as a tombstone that keeps the shared bytes.
+func (s *ReadModelStore) DeleteMedia(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.media, id)
+	s.removeMedia(branchID, id)
+	s.collectMainMediaTombstones()
 	return nil
+}
+
+// cascadeMedia removes, on branch, every media item the branch sees attached
+// to (entityType, entityID) — the manual cascade of DeletePerson, DeleteFamily
+// and DeleteSource (#759). Callers hold s.mu.
+func (s *ReadModelStore) cascadeMedia(branch domain.BranchID, entityType string, entityID uuid.UUID) {
+	for _, r := range s.visibleMedia(branch) {
+		if r.m.EntityType == entityType && r.m.EntityID == entityID {
+			s.removeMedia(branch, r.m.ID)
+		}
+	}
+	s.collectMainMediaTombstones()
+}
+
+// removeMedia deletes one media id on branch under the blob rule. Callers hold
+// s.mu.
+func (s *ReadModelStore) removeMedia(branch domain.BranchID, id uuid.UUID) {
+	if branch == domain.MainBranchID {
+		main, ok := s.media[branchKey{domain.MainBranchID, id}]
+		if !ok {
+			return
+		}
+		if s.hasLiveMediaShadow(id, domain.MainBranchID) {
+			main.deleted = true
+			return
+		}
+		delete(s.media, branchKey{domain.MainBranchID, id})
+		return
+	}
+	w := s.mediaWinner(branch, id)
+	if w == nil || w.deleted {
+		return // nothing visible to hide
+	}
+	key := branchKey{branch, id}
+	if own, ok := s.media[key]; ok {
+		own.deleted = true
+		return
+	}
+	s.media[key] = &mediaRow{m: *metadataOnly(w), deleted: true}
+}
+
+// hasLiveMediaShadow reports whether a non-main branch other than except shows
+// id through a live row of its own. Callers hold s.mu.
+func (s *ReadModelStore) hasLiveMediaShadow(id uuid.UUID, except domain.BranchID) bool {
+	for k, r := range s.media {
+		if k.id == id && k.branch != domain.MainBranchID && k.branch != except && !r.deleted {
+			return true
+		}
+	}
+	return false
+}
+
+// collectMainMediaTombstones drops every main media tombstone that no live
+// branch shadow needs any more. Callers hold s.mu.
+func (s *ReadModelStore) collectMainMediaTombstones() {
+	for k, r := range s.media {
+		if k.branch == domain.MainBranchID && r.deleted && !s.hasLiveMediaShadow(k.id, domain.MainBranchID) {
+			delete(s.media, k)
+		}
+	}
 }
 
 // GetEvent retrieves a life event by ID within the branch overlay (ADR-005).

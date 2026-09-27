@@ -1712,13 +1712,26 @@ func (ss *StrictServer) ListHistory(ctx context.Context, request ListHistoryRequ
 // Media endpoints
 // ============================================================================
 
-// DeleteMedia implements StrictServerInterface.
+// DeleteMedia implements StrictServerInterface. With ?branch= the item is
+// tombstoned on that branch only; the mainline row and its file are untouched
+// (#759).
 func (ss *StrictServer) DeleteMedia(ctx context.Context, request DeleteMediaRequestObject) (DeleteMediaResponseObject, error) {
-	if err := ss.server.commandHandler.DeleteMedia(ctx, request.Id, request.Params.Version, "user request"); err != nil {
-		if errors.Is(err, query.ErrNotFound) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ss.branchWriter(branch).DeleteMedia(ctx, request.Id, request.Params.Version, "user request"); err != nil {
+		if isMediaNotFound(err) {
 			return DeleteMedia404JSONResponse{NotFoundJSONResponse{
 				Code:    "not_found",
 				Message: "Media not found",
+			}}, nil
+		}
+		if errors.Is(err, repository.ErrConcurrencyConflict) {
+			return DeleteMedia409JSONResponse{ConflictJSONResponse{
+				Code:    "conflict",
+				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
 		return nil, err
@@ -1727,9 +1740,22 @@ func (ss *StrictServer) DeleteMedia(ctx context.Context, request DeleteMediaRequ
 	return DeleteMedia204Response{}, nil
 }
 
-// GetMedia implements StrictServerInterface.
+// isMediaNotFound reports whether err means the media item is absent from the
+// requested view: the command layer's ErrMediaNotFound or the query layer's
+// ErrNotFound.
+func isMediaNotFound(err error) bool {
+	return errors.Is(err, command.ErrMediaNotFound) || errors.Is(err, query.ErrNotFound)
+}
+
+// GetMedia implements StrictServerInterface. With ?branch= the metadata is read
+// from that branch's isolated view (#759).
 func (ss *StrictServer) GetMedia(ctx context.Context, request GetMediaRequestObject) (GetMediaResponseObject, error) {
-	media, err := ss.server.readStore.GetMedia(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	media, err := ss.server.readStore.GetMedia(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1743,15 +1769,21 @@ func (ss *StrictServer) GetMedia(ctx context.Context, request GetMediaRequestObj
 	return GetMedia200JSONResponse(convertMediaReadModelToGenerated(*media)), nil
 }
 
-// UpdateMedia implements StrictServerInterface.
+// UpdateMedia implements StrictServerInterface. With ?branch= the metadata edit
+// lands on that branch only; the file bytes stay shared (#759).
 func (ss *StrictServer) UpdateMedia(ctx context.Context, request UpdateMediaRequestObject) (UpdateMediaResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	var mediaType *string
 	if request.Body.MediaType != nil {
 		mt := string(*request.Body.MediaType)
 		mediaType = &mt
 	}
 
-	result, err := ss.server.commandHandler.UpdateMedia(ctx, command.UpdateMediaInput{
+	result, err := ss.branchWriter(branch).UpdateMedia(ctx, command.UpdateMediaInput{
 		ID:          request.Id,
 		Title:       request.Body.Title,
 		Description: request.Body.Description,
@@ -1769,7 +1801,7 @@ func (ss *StrictServer) UpdateMedia(ctx context.Context, request UpdateMediaRequ
 				Message: "Version conflict - entity was modified",
 			}}, nil
 		}
-		if errors.Is(err, query.ErrNotFound) {
+		if isMediaNotFound(err) {
 			return UpdateMedia404JSONResponse{NotFoundJSONResponse{
 				Code:    "not_found",
 				Message: "Media not found",
@@ -1778,7 +1810,7 @@ func (ss *StrictServer) UpdateMedia(ctx context.Context, request UpdateMediaRequ
 		return nil, err
 	}
 
-	media, err := ss.server.readStore.GetMedia(ctx, request.Id)
+	media, err := ss.server.readStore.GetMedia(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1793,9 +1825,15 @@ func (ss *StrictServer) UpdateMedia(ctx context.Context, request UpdateMediaRequ
 	return UpdateMedia200JSONResponse(convertMediaReadModelToGenerated(*media)), nil
 }
 
-// DownloadMedia implements StrictServerInterface.
+// DownloadMedia implements StrictServerInterface. With ?branch= the item is
+// resolved through that branch's view; the bytes are the shared ones (#759).
 func (ss *StrictServer) DownloadMedia(ctx context.Context, request DownloadMediaRequestObject) (DownloadMediaResponseObject, error) {
-	media, err := ss.server.readStore.GetMediaWithData(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	media, err := ss.server.readStore.GetMediaWithData(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -1824,9 +1862,15 @@ func (ss *StrictServer) DownloadMedia(ctx context.Context, request DownloadMedia
 	}
 }
 
-// GetMediaThumbnail implements StrictServerInterface.
+// GetMediaThumbnail implements StrictServerInterface. With ?branch= the item is
+// resolved through that branch's view; the bytes are the shared ones (#759).
 func (ss *StrictServer) GetMediaThumbnail(ctx context.Context, request GetMediaThumbnailRequestObject) (GetMediaThumbnailResponseObject, error) {
-	thumbnail, err := ss.server.readStore.GetMediaThumbnail(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	thumbnail, err := ss.server.readStore.GetMediaThumbnail(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2232,7 +2276,12 @@ func (ss *StrictServer) GetPersonHistory(ctx context.Context, request GetPersonH
 
 // ListPersonMedia implements StrictServerInterface.
 func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonMediaRequestObject) (ListPersonMediaResponseObject, error) {
-	person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	person, err := ss.server.readStore.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2253,8 +2302,9 @@ func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonM
 	}
 
 	items, total, err := ss.server.readStore.ListMediaForEntity(ctx, "person", request.Id, repository.ListOptions{
-		Limit:  limit,
-		Offset: offset,
+		Limit:    limit,
+		Offset:   offset,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -2273,7 +2323,12 @@ func (ss *StrictServer) ListPersonMedia(ctx context.Context, request ListPersonM
 
 // UploadPersonMedia implements StrictServerInterface.
 func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPersonMediaRequestObject) (UploadPersonMediaResponseObject, error) {
-	person, err := ss.server.readStore.GetPerson(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	person, err := ss.server.readStore.GetPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -2301,7 +2356,9 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 	}
 	defer part.Close()
 
-	fileData, err := io.ReadAll(part)
+	// Read at most one byte past the limit, so an oversized upload is refused
+	// below without first buffering all of it in memory.
+	fileData, err := io.ReadAll(io.LimitReader(part, domain.MaxMediaFileSize+1))
 	if err != nil {
 		return nil, err
 	}
@@ -2319,7 +2376,7 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 		title = "Uploaded media"
 	}
 
-	result, err := ss.server.commandHandler.UploadMedia(ctx, command.UploadMediaInput{
+	result, err := ss.branchWriter(branch).UploadMedia(ctx, command.UploadMediaInput{
 		EntityType:  "person",
 		EntityID:    request.Id,
 		Title:       title,
@@ -2332,7 +2389,7 @@ func (ss *StrictServer) UploadPersonMedia(ctx context.Context, request UploadPer
 		return nil, err
 	}
 
-	media, err := ss.server.readStore.GetMedia(ctx, result.ID)
+	media, err := ss.server.readStore.GetMedia(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
 	}

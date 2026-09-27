@@ -345,10 +345,11 @@ Branch scoping is a bounded set, not a migration in progress. Three different re
 read-model entity on `main`, and they must not be confused:
 
 - **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
-  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676): media metadata
-  ([#759](https://github.com/cacack/my-family/issues/759)) and GPS artifacts
-  ([#760](https://github.com/cacack/my-family/issues/760)). Snapshots are pending too, though not
-  as a #676 sub-issue: #624 made them event-sourced, and what remains is giving the registry a
+  the remaining sub-issue of [#676](https://github.com/cacack/my-family/issues/676): GPS artifacts
+  ([#760](https://github.com/cacack/my-family/issues/760)). (Media metadata,
+  [#759](https://github.com/cacack/my-family/issues/759), is delivered; its file bytes are shared
+  by design, not pending — see the implementation note below.) Snapshots are pending too, though
+  not as a #676 sub-issue: #624 made them event-sourced, and what remains is giving the registry a
   `branch_id` (see *Interaction with snapshots and rollback*, "Still open — branch-scoped
   snapshots").
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
@@ -588,15 +589,15 @@ the same guarantee the original attempt ran under, re-asserted at append time by
 `replayStream`. Otherwise (a mainline write landed on it after the claim, which is exactly the
 residual staleness window below; `main` deleted the entity or merged it away since the claim; a
 pre-#685 claim with no plan; or a replay that would now leave `main` referencing a person it no
-longer has) resume refuses with
+longer has, or break an evidence or media-owner rule — see below) resume refuses with
 `ErrMergeResumeNeedsResolution` (`409 merge_resume_needs_resolution`), **writing nothing**, and
 lists the streams. The caller reviews them with `compare` and resumes again with a resolution per
 listed stream: `branch` replays over `main` as it now stands (asserting *that* version, so a
 further write still trips the guard), `main` leaves the entity as `main` has it — the deliberate
 roll-forward. `branch` is a `400` for an entity `main` has removed since the claim — its stream
 ends in a delete, `main` merged the person into another (`PersonMerged` writes only to the
-survivor's stream, so the merged person's stream still sits at its pin), or an association lost a
-person to the delete cascade — for the reason `MergeBranch` offers only `main` on a main-side
+survivor's stream, so the merged person's stream still sits at its pin), an association lost a
+person to the delete cascade, or a citation or media item lost its source or owner the same way — for the reason `MergeBranch` offers only `main` on a main-side
 delete: replaying edits onto an absent row appends them after its removal and restores nothing. A
 resolution for any stream the claim or an earlier resume already decided is a
 `400` (unless `main` has since moved that stream again; see below): a second request must not
@@ -645,6 +646,41 @@ such a stream forward without it; `branch` is refused as a dangling reference. T
 checked again, and a `main` resolution may not exclude a source the replay creates while a citation
 already on `main` cites it (reachable only from a pre-#685 claim).
 
+**Media on resume (#759).** The merge's media-owner rule is part of the same shared check
+(`checkEvidence`), so a resume applies it on the same terms: a media upload the plan would replay
+automatically is pending when its owner (person, family or source) will not exist on `main` when it
+lands — `main` deleted it after the claim, this request resolves the stream that creates it to
+`main`, or a stream already on `main` deleted it (an owner-deleting stream counts as deleting
+*after* the upload only while it is itself still to be replayed). `main` rolls such a stream
+forward without it; `branch` is refused as a dangling reference, and a `main` resolution may not
+skip the stream of an owner `main` does not have while an upload already on `main` is attached to
+it — a stream that creates the owner, and equally one that creates *and* deletes it, whose delete
+the replay order (upload first) counts on to cascade the item away. The owner checked is the one
+`main`'s row names (a person merge on `main` moves the item to the survivor); an item `main` has
+since deleted, or cascaded away with an owner it had, leaves nothing to orphan, so deleting the
+item on `main` is the other way out. The reverse
+rule holds too: an auto-planned owner delete is pending while `main` has an item of that owner it
+wrote to after the branch's delete — typically one uploaded during the interruption — and `main`
+rolls it forward without the delete, keeping both. Landed
+detection is the usual payload-id scan, and a media stream's `main` row is read with `GetMedia`,
+never the bytes. The read-model repair follows the version rule — every media projection writes the
+row, version included, in one save — and cannot copy or lose file bytes: it projects `main`'s own
+events onto `main` only, the only event carrying bytes is `MediaCreated` (whose bytes are `main`'s
+own, in `main`'s log), `MediaUpdated` re-saves metadata with nil bytes (which keep what is stored),
+and no branch row is written beyond the byte release every mainline save of a merged upload makes
+(the branch's origin row drops its now-duplicate copy; see the media note below). A missing media row counts as removed for a reason the log
+explains when its owner's `main` stream ends in a delete (the owner→media cascade writes nothing to
+the media stream), following a person owner through any person merges `main` recorded since; a
+pending edit of such an item resolves only to `main`, and a landed upload is not resurrected. One
+case needs a step beyond re-projection: a landed upload whose projection failed and whose owner
+person `main` then merged into a person it still has. `PersonMerged` would have moved the item to
+the survivor, and that transfer is not in the media stream, so re-projecting the stream alone would
+attach it to the merged-away person. The transfer is fully determined by `main`'s log, though, so
+the repair re-projects the item and then re-links its row to the final survivor (following any
+later merges) — the same save `PersonMerged` makes, version and bytes untouched — and the landed-owner
+check treats the item as that survivor's. The scan for merges is repeated after the re-link, so a
+merge of the survivor recorded meanwhile is followed too. No rebuild (#680) is needed.
+
 A claim written before #685 has no plan, so its first resume must decide every stream not yet on
 `main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams
 the original request already declined. The log cannot distinguish those from unreplayed ones, so
@@ -676,15 +712,17 @@ projection would duplicate them — and `main`'s read model is behind the log fo
 repo has no read-model rebuild command yet (#680), so resume repairs it itself: for every
 already-replayed stream it compares `main`'s read-model version with `main`'s stream version. Every
 projection handler for the branch-aware event set a branch can carry (BR-006: person, family and —
-since #757 — association streams, and since #758 source, citation and note streams) writes the
+since #757 — association streams, since #758 source, citation and note streams, and since #759
+media streams) writes the
 aggregate's version as its last step, so a row behind the log is re-projected from the first event
 past its version; re-running an event whose projection stopped midway is safe because its writes are
 upserts and deletes, and the counter it bumps is part of the final write that did not happen. A
 missing row is re-projected from the start unless the log explains its absence (the stream ends in a
 delete; `main` merged the person away with `PersonMerged`, which writes nothing to the merged
 person's stream; an association's person is gone from `main`, whose delete cascade removes the
-row without writing to the association's stream; or a citation's source was deleted on `main`, whose
-cascade removes the citation the same way). Repaired streams are reported in
+row without writing to the association's stream; a citation's source was deleted on `main`, whose
+cascade removes the citation the same way; or a media item's owner was, likewise — see *Media on
+resume*). Repaired streams are reported in
 `reprojected_stream_ids`; a resume after that finds nothing behind.
 
 The one evidence write outside that version rule is a source's `citation_count`, which the citation
@@ -721,7 +759,10 @@ merge and its resume over HTTP against memory, SQLite and PostgreSQL — includi
 `main` decision that a later resume must neither re-ask nor reverse, a family whose child `main`
 deleted after the interruption, a replay whose projection failed after its append committed, a
 merge carrying sources and citations (a re-pointed citation and a source delete included) interrupted
-mid-replay, and a cited source `main` deleted after the interruption.
+mid-replay, a cited source `main` deleted after the interruption, and (#759,
+`branch_merge_resume_media_test.go` in both packages) a merge carrying media uploads and edits
+interrupted mid-replay, a media owner `main` deleted after the interruption, and a failed media
+projection repaired with the shared bytes intact on `main` and the branch.
 
 **The conflict verdict is pinned to the versions it was computed against (#698, delivered).**
 `PlanMerge` runs once, and a mainline write landing before the replay was never compared with the
@@ -872,6 +913,35 @@ while `main` has a citation of that source that the replay does not itself delet
 elsewhere. The branch's own delete guard (`ErrSourceHasCitations`) only sees the branch's view, so a
 citation `main` added after the fork would otherwise be deleted from `main` by the source→citation
 cascade, with no `CitationDeleted` event and no conflict shown.
+
+#759 put `MediaCreated` on the allowlist, which opened a third shape: a branch upload names its owner
+(a person, family or source) on another stream, and the projection saves the media row without
+checking that owner. A replayed upload whose stream does not end deleted is refused unless its owner
+exists on `main` or is replayed — and a replayed owner that the replay itself deletes counts only
+when its stream replays *after* the upload, so the owner's delete cascades the item on `main` as it
+did on the branch. Otherwise `main` would gain a media item attached to nothing. For a person or
+family owner the replay guarantees that order itself: `moveMediaBeforeOwnerDelete` moves the upload
+ahead of the owner's deleting stream, so a branch that uploads to a person it created (or edited)
+and then deletes that person merges — the upload lands and the delete cascades it. (A source
+owner's delete already replays after every upload, since the evidence order puts deleted sources
+last.) What is refused is an owner deleted by a stream that nonetheless lands first — on resume, a
+delete already on `main` — or one deleted on `main` or excluded by a `main` resolution.
+
+The owner→media cascade #759 added to `DeletePerson`, `DeleteFamily` and `DeleteSource` opened the
+reverse shape, the media counterpart of (2): a replayed owner delete cascading onto an item `main`
+has that the branch never saw (`checkOwnerDeleteOrphansNoMedia`). Media has no delete guard like
+`ErrSourceHasCitations` — the branch's delete cascades every item the branch sees, and the overlay
+shows it `main`'s items, including ones `main` added after the fork — so what the branch accounted
+for is decided by the log: an item `main` last wrote to (uploaded or edited) *before* the branch's
+delete event was in the branch's view and was cascaded there too, and replaying the delete
+reproduces the branch's result. An item `main` wrote to *after* it — typically an upload made after
+the branch deleted its owner — is refused, since the cascade would remove it from `main` with no
+`MediaDeleted` event and no conflict shown. Items whose media stream the replay itself carries are
+the replay's own business. A person `main` merged into the owner after the delete needs no rule of
+its own: `PersonMerged` writes the owner's stream, which the conflict detection already shows. The
+check is one owner-media listing and one set-based scan of the listed items' `main` histories per
+owner-deleting stream. `ResumeMerge` applies both media rules with its pending semantics (see *Media
+on resume* under the merge implementation note).
 
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that
@@ -1077,6 +1147,89 @@ alter a primary key, so `detectBranchCapable` now also requires `branch_id` in t
 every branch write with `ErrBranchesUnsupported` until the read model is rebuilt (#680), exactly as
 a pre-#757 one does. The check now looks for `branch_id` in the key rather than for a multi-column
 key, because `source_external_ids` was already keyed by the composite `(source_id, sequence)`.
+
+## Implementation Note — media metadata (#676 sub-issue D, #759, delivered)
+
+**Only the metadata forks; the file bytes are shared, never copied per branch.** A branch stores
+deltas whose cost scales with what it changes, so retitling a photo on a branch must not become a
+multi-megabyte write. `media` therefore gets the usual overlay — composite `(id, branch_id)` key,
+`branch_id`-leading index, `deleted` tombstone, one set-based overlay read with a main-scope fast
+path, a place in `PurgeBranch`, and the six `Media*` store methods threaded with the branch scope —
+but the two byte columns, `file_data` and `thumbnail_data`, follow their own rule.
+
+**The decision: blobs stay on the media row, NULL on a shadow, read through a fallback.** Two
+designs were on the table: keep the byte columns on `media` and leave them NULL on a branch shadow
+row, or split them into a separate, deliberately branch-less `media_blobs` table keyed by media id.
+The first was chosen because it keeps the invariant both simpler and directly testable:
+
+- The bytes are written exactly once, by `MediaCreated`, onto the row that created the item — its
+  *origin row*: main for a mainline upload, the branch's own row for an item uploaded on a branch
+  (a new id, which owns its bytes). No later event carries bytes: `MediaUpdated` edits metadata
+  only, and `projectMediaUpdated` reads the item with `GetMedia`, never `GetMediaWithData`.
+- A branch shadow row of an item that has a main row is **metadata only** — its byte columns are
+  NULL. `SaveMedia` enforces this in the statement itself: on a non-main branch, an id with a main
+  row gets NULL bytes whatever the caller passes; and no save ever clears bytes already stored
+  (nil means "keep").
+- A merge turns an origin row into such a shadow: replaying a branch upload's `MediaCreated` onto
+  main gives main's row the bytes, so a mainline `SaveMedia` clears, on every branch row of that id,
+  each byte column main's row now holds. The bytes stay stored once — on main — and the merged
+  branch reads them through the fallback below; a later mainline delete keeps main's row as a
+  tombstone while that branch still shows the item (the rule under "Deletes never lose shared
+  bytes").
+- `GetMedia` and `ListMediaForEntity` never read the byte columns (their overlay projects an
+  explicit metadata column list, so even the SQLite `ROW_NUMBER` window never carries a blob).
+  `GetMediaWithData` and `GetMediaThumbnail` resolve the winning row by `(id, branch_id)` alone,
+  then take the bytes from the winning row, else from main's row. A tombstone therefore hides the
+  bytes too.
+
+The rule is one sentence — *a shadow row's byte columns are NULL* — so the proof is one assertion
+on the stored row, made in `TestBranchScenario_MediaOverlay` on all three backends after a branch
+metadata edit (and after a branch `SaveMedia` handed the full record, bytes included), alongside
+`GetMediaWithData` / `GetMediaThumbnail` returning main's bytes on that branch. A `media_blobs`
+split would have needed a second table, a larger migration (a data move on PostgreSQL and a table
+rebuild on SQLite), its own garbage collection, and a pre-#759 SQLite database could no longer serve
+mainline media at all until rebuilt.
+
+**Deletes never lose shared bytes.** A branch delete (and a branch cascade) writes a metadata-only
+tombstone on the branch and never touches main's row. The one case that needed a rule of its own is
+a *mainline* delete of an item that some branch still shows through a live shadow: hard-deleting
+main's row would leave that shadow with metadata and no file. Instead main's row is kept as a
+tombstone — hidden from main and from every branch without a row of its own, since a winning
+tombstone hides the id — and is dropped once no live shadow needs it: when the last such branch
+deletes the item, or when `PurgeBranch` purges it. A main delete with no live shadow is a plain
+removal. `TestReadModelStore_DeleteCascadesMedia` and the scenario pin this on all three backends.
+
+**The cascade is new, not a replacement.** Media never had a foreign key to its owner (the owner is
+polymorphic: person, family or source), so deleting a person used to leave its media rows behind.
+`DeletePerson`, `DeleteFamily` and `DeleteSource` now delete (main) or tombstone (branch) the
+owner's media on the same branch, under the rule above. `ListMediaForEntity` decides the owner on
+each item's *winning* row, like the life-event lists, so a branch that re-links an item
+(`PersonMerged` moves a merged person's media to the survivor) lists it under its new owner only.
+
+**BR-006 and merge.** `MediaCreated`, `MediaUpdated` and `MediaDeleted` join the allowlist;
+`MediaCreated` is conflict-blind like the other per-entity creates. The replay moves a media
+upload whose person or family owner is deleted by its own replayed stream to just before that
+stream (`moveMediaBeforeOwnerDelete`), so a branch that creates or edits a person, photographs them
+and then deletes them merges the way it happened — the upload lands, and the owner's delete
+cascades it — instead of tripping the media-owner rule because the owner was touched first. A
+media stream references nothing but its owner, so the move is safe. A merge interrupted mid-replay
+resumes media streams like any other (#685): the media-owner rule applies with resume's pending
+semantics, and the read-model repair never copies or drops shared bytes — see *Media on resume*.
+`PersonMerged` stays off the allowlist: its media transfer is now branch-scoped, but it still
+rewrites evidence-analysis and research rows that are main-only until #760.
+
+**API and UI.** Seven operations gained `?branch=` — `getMedia`, `updateMedia`, `deleteMedia`,
+`listPersonMedia`, `uploadPersonMedia`, `downloadMedia` and `getMediaThumbnail` — bringing the total
+to 54. The content and thumbnail reads take the scope although the bytes are shared, because a
+branch-deleted item must be not-found there too; the client's URL builders for `<img src>` and the
+multipart upload, which bypass the request helper, append the scope themselves. Media history and
+rollback stay mainline, as rollback does for every entity.
+
+**Upgrading an existing database.** PostgreSQL migrates `media` in place and drops `NOT NULL` from
+`file_data`. SQLite cannot alter either, so `detectBranchCapable` also requires `branch_id` in the
+primary key of `media`; a database created before #759 refuses every branch write with
+`ErrBranchesUnsupported` until the read model is rebuilt (#680). Its mainline media keeps working —
+a metadata-only save supplies the row's own stored bytes, so the legacy `NOT NULL` never trips.
 
 ## References
 
