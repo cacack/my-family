@@ -277,9 +277,10 @@ the seven-type slice is [#676](https://github.com/cacack/my-family/issues/676).
 Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
 delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI
 ([#95](https://github.com/cacack/my-family/issues/95)) drives it from `/branches/{id}` — resolve
-each conflict, or leave a whole entity behind as a `main` resolution. What is still outstanding is
-partial merge ([#684](https://github.com/cacack/my-family/issues/684)) and resumable merge
-([#685](https://github.com/cacack/my-family/issues/685)): excluding an entity is not the same as
+each conflict, or leave a whole entity behind as a `main` resolution. A merge interrupted mid-replay
+is finished with `POST /branches/{id}/merge/resume` ([#685](https://github.com/cacack/my-family/issues/685);
+API only, not yet surfaced in the UI). What is still outstanding is partial merge
+([#684](https://github.com/cacack/my-family/issues/684)): excluding an entity is not the same as
 promoting a subset of one entity's changes.
 
 ---

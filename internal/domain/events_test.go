@@ -1462,7 +1462,7 @@ func TestNoteDeleted_RoundTrip(t *testing.T) {
 
 func TestBranchMerged_RoundTrip(t *testing.T) {
 	branchID := uuid.New()
-	event := NewBranchMerged(branchID, 42, 99, "Promoted after confirming the 1880 census match")
+	event := NewBranchMerged(branchID, 42, 99, "Promoted after confirming the 1880 census match", nil)
 
 	if event.EventType() != "BranchMerged" {
 		t.Errorf("EventType() = %v, want BranchMerged", event.EventType())
@@ -1503,7 +1503,7 @@ func TestBranchMerged_RoundTrip(t *testing.T) {
 // TestBranchMerged_EmptyNoteOmitted pins the omitempty tag: a merge without a
 // rationale must not write an empty "note" key into the stored payload.
 func TestBranchMerged_EmptyNoteOmitted(t *testing.T) {
-	event := NewBranchMerged(uuid.New(), 1, 2, "")
+	event := NewBranchMerged(uuid.New(), 1, 2, "", nil)
 
 	data, err := json.Marshal(event)
 	if err != nil {
@@ -1520,5 +1520,50 @@ func TestBranchMerged_EmptyNoteOmitted(t *testing.T) {
 	}
 	if decoded.Note != "" {
 		t.Errorf("Note = %q, want empty", decoded.Note)
+	}
+}
+
+// TestBranchMerged_ReplayPlan pins the recorded-plan contract resume (#685)
+// relies on: a plan round-trips, an empty plan is stored as {} and decodes
+// non-nil, and a claim with no plan key (written before #685) decodes nil.
+func TestBranchMerged_ReplayPlan(t *testing.T) {
+	stream := uuid.New()
+	source := map[uuid.UUID]int64{stream: 3}
+	event := NewBranchMerged(uuid.New(), 1, 2, "", source)
+	source[stream] = 99 // the constructor copies, so this must not leak in
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	var decoded BranchMerged
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if got, ok := decoded.ReplayStreamVersions[stream]; !ok || got != 3 {
+		t.Errorf("ReplayStreamVersions[%s] = %d, %v; want 3, true", stream, got, ok)
+	}
+
+	empty, err := json.Marshal(NewBranchMerged(uuid.New(), 1, 2, "", nil))
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	if !strings.Contains(string(empty), `"replay_stream_versions":{}`) {
+		t.Errorf("empty plan should be stored as {}, got %s", empty)
+	}
+	var emptyDecoded BranchMerged
+	if err := json.Unmarshal(empty, &emptyDecoded); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if emptyDecoded.ReplayStreamVersions == nil {
+		t.Error("an empty recorded plan decoded as nil, indistinguishable from an unrecorded one")
+	}
+
+	var legacy BranchMerged
+	if err := json.Unmarshal([]byte(`{"branch_id":"`+uuid.NewString()+`","base_position":1,"merged_at_position":2}`), &legacy); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if legacy.ReplayStreamVersions != nil {
+		t.Errorf("legacy claim ReplayStreamVersions = %v, want nil", legacy.ReplayStreamVersions)
 	}
 }

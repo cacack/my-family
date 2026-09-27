@@ -2688,8 +2688,8 @@ paths:
         which is not evidence the merge completed. Call
         `GET /branches/{id}/compare` (it still works on a merged branch, reading
         the event log rather than the branch's view) to see what did and did not
-        land. Recovery is manual today; resumable merge is tracked as
-        [#685](https://github.com/cacack/my-family/issues/685).
+        land, and finish the merge with `POST /branches/{id}/merge/resume`,
+        which replays only what is not yet on `main`.
 
         **Every detected conflict must carry a resolution.** Call
         `GET /branches/{id}/compare` first: its `conflicts` array is the
@@ -2813,14 +2813,102 @@ paths:
             first entity leaves `main` completely untouched, which needs a
             different response from a genuine half-application and is stated
             explicitly rather than left to be inferred from the counts. Do not
-            retry either way; the branch is terminal. Verify with
-            `GET /branches/{id}/compare`. This also covers the residual
+            retry this request either way; the branch is terminal. Finish the
+            merge with `POST /branches/{id}/merge/resume`. This also covers the residual
             staleness window: the pre-merge check is not a lock, so a mainline
             write landing after it is caught by the replay's own per-stream
             version assertion — the message then says the plan went stale, but
             the branch is already claimed, which is why it is reported here and
             not as `409 merge_plan_stale`. Any other `500` is an unexpected
             error and carries the generic `internal_error` code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+  /branches/{id}/merge/resume:
+    parameters:
+      - $ref: '#/components/parameters/branchId'
+
+    post:
+      operationId: resumeBranchMerge
+      summary: Finish a merge whose replay onto the mainline was interrupted
+      description: |
+        Completes a merge that answered `500 merge_partially_applied`: the
+        branch was claimed (it is `merged`) but only some of its entities
+        reached `main`. Only the branch events that are **not already on
+        `main`** are replayed; nothing is rewritten or removed (ES-002).
+
+        **What already landed is derived from `main` itself.** A replayed event
+        keeps the branch event's own id, so an entity whose branch events are
+        already on `main` after the merge's claim is left alone. An entity is
+        always wholly replayed or not at all, because each is replayed in one
+        atomic append.
+
+        **What is left to do comes from the merge's own claim.** The merge
+        recorded which entities it would replay and the `main` version its
+        conflict verdict was computed against for each. A remaining entity is
+        replayed automatically only if `main` is still at that version. If
+        `main` moved on it since — or the claim predates this endpoint and
+        recorded no plan — the resume is refused with
+        `409 merge_resume_needs_resolution`, **nothing is written**, and
+        `pending_stream_ids` lists those entities. Review them with
+        `GET /branches/{id}/compare`, then resume again with one `resolutions`
+        entry for each: `branch` replays the branch's changes over `main` as it
+        now stands, `main` leaves the entity as `main` has it. Only pending
+        entities may be resolved; naming any other is a `400`.
+
+        **Idempotent.** Resuming a merge that has already finished (whether by
+        the original request or an earlier resume) writes nothing and returns
+        `200` with `replayed_event_count: 0`. Retrying after a `500` from this
+        endpoint is safe and is the remedy.
+      tags: [branches]
+      requestBody:
+        required: false
+        description: |
+          Optional. Needed only to resolve the entities a previous resume
+          reported as pending.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchMergeResumeRequest'
+      responses:
+        '200':
+          description: The merge is complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchMergeResumeResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The resume was refused and nothing was written. `code` says why:
+
+            - `merge_not_claimed` — the branch was never claimed for a merge
+              (merge it with `POST /branches/{id}/merge` instead), or it is
+              `archived`.
+            - `merge_resume_needs_resolution` — at least one entity still to
+              replay needs a decision; see `pending_stream_ids` and the
+              operation description.
+            - `merge_dangling_reference` — a `main` resolution would leave the
+              mainline holding a relationship to a person it will not have.
+            - `branch_too_large` — the branch's replay set exceeds the read cap
+              and cannot be resumed in full.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchMergeResumeError'
+        '500':
+          description: |
+            `merge_partially_applied` — the resume itself was interrupted
+            partway. Whatever it replayed stays on `main`; resume again to
+            finish. Any other `500` is an unexpected error and carries the
+            generic `internal_error` code.
           content:
             application/json:
               schema:
@@ -6836,6 +6924,89 @@ components:
             The full conflict list. Present only for `merge_conflicts`, where it
             carries every conflict - not just the undecided ones - so the review
             UI can render the whole picture.
+
+    BranchMergeResumeRequest:
+      type: object
+      description: Decisions for the entities a resume reported as pending.
+      properties:
+        resolutions:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/MergeResolutionEntry'
+          description: |
+            One entry per entity listed in a previous refusal's
+            `pending_stream_ids`. Any other entity is a `400`: its fate was
+            fixed when the merge was claimed. A `stream_id` may appear at most
+            once.
+
+    BranchMergeResumeResult:
+      type: object
+      description: What the resume did. The merge is complete when this is returned.
+      required:
+        - branch
+        - merged_at_position
+        - replayed_event_count
+        - already_replayed_stream_ids
+        - skipped_stream_ids
+      properties:
+        branch:
+          $ref: '#/components/schemas/Branch'
+        merged_at_position:
+          type: integer
+          format: int64
+          description: The log head position recorded by the original merge's claim.
+          example: 128
+        replayed_event_count:
+          type: integer
+          description: |
+            How many branch events THIS call re-appended to the mainline. `0`
+            when the merge was already complete.
+          example: 3
+        already_replayed_stream_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Entities whose branch changes were already on the mainline, and so
+            were left alone. `[]`, never `null`.
+        skipped_stream_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Entities resolved to `main` (by the merge, or by this resume), whose
+            branch changes are deliberately not replayed. `[]`, never `null`.
+
+    BranchMergeResumeError:
+      type: object
+      description: |
+        A refused resume. Shares `code`/`message` with the standard `Error`
+        shape and adds the pending entity list.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [merge_not_claimed, merge_resume_needs_resolution, merge_dangling_reference, branch_too_large]
+          # Distinct Go constant names: the last two values are shared with
+          # BranchMergeConflictError's enum, and a name collision would make
+          # the generator prefix every constant of both enums.
+          x-enum-varnames: [ResumeMergeNotClaimed, ResumeNeedsResolution, ResumeDanglingReference, ResumeBranchTooLarge]
+          description: Which refusal this is - see the operation's 409 description
+          example: "merge_resume_needs_resolution"
+        message:
+          type: string
+          description: Human-readable explanation
+        pending_stream_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Present only for `merge_resume_needs_resolution`: the entities that
+            need a resolution before the resume can proceed.
 
     RelationshipPathNode:
       type: object

@@ -13,6 +13,7 @@ import {
 	getClientBranch,
 	type BranchMergeConflictError,
 	type BranchMergeResult,
+	type BranchMergeResumeResult,
 	type GenDate
 } from './client';
 
@@ -276,6 +277,55 @@ describe('mergeBranch', () => {
 		// `request()` rethrows the parsed body as-is with `status` stamped on, so
 		// the extra `conflicts` field survives with no extra plumbing.
 		await expect(api.mergeBranch(BRANCH_ID)).rejects.toEqual({ ...refusal, status: 409 });
+	});
+});
+
+describe('resumeBranchMerge', () => {
+	const resumed: BranchMergeResumeResult = {
+		branch: {
+			id: BRANCH_ID,
+			name: 'census-1881',
+			base_position: 12,
+			status: 'merged',
+			created_at: '2026-01-01T00:00:00Z'
+		},
+		merged_at_position: 128,
+		replayed_event_count: 1,
+		already_replayed_stream_ids: [],
+		skipped_stream_ids: []
+	};
+
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			statusText: '',
+			json: async () => resumed
+		});
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('POSTs to /branches/{id}/merge/resume with the id URL-encoded', async () => {
+		await expect(api.resumeBranchMerge('branch/with space')).resolves.toEqual(resumed);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			'/api/v1/branches/branch%2Fwith%20space/merge/resume'
+		);
+		expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+		expect(fetchMock.mock.calls[0][1].body).toBe('{}');
+	});
+
+	it('serializes the resolutions it is given', async () => {
+		const resolutions = [
+			{ stream_id: '55555555-5555-5555-5555-555555555555', resolution: 'main' as const }
+		];
+		await api.resumeBranchMerge(BRANCH_ID, { resolutions });
+		expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ resolutions });
 	});
 });
 

@@ -4637,7 +4637,7 @@ func TestProjector_BranchLifecycleRegistry(t *testing.T) {
 	}
 
 	// BranchMerged -> status merged, with the merge record.
-	merged := domain.NewBranchMerged(branch.ID, 42, 100, "sources reconciled")
+	merged := domain.NewBranchMerged(branch.ID, 42, 100, "sources reconciled", nil)
 	if err := projector.Project(ctx, merged, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project BranchMerged failed: %v", err)
 	}
@@ -4695,7 +4695,7 @@ func TestProjector_BranchMergedPurgesOverlay(t *testing.T) {
 		t.Fatal("branch overlay row missing before the merge")
 	}
 
-	merged := domain.NewBranchMerged(branch.ID, 0, 2, "folded into main")
+	merged := domain.NewBranchMerged(branch.ID, 0, 2, "folded into main", nil)
 	if err := projector.Project(ctx, merged, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project BranchMerged failed: %v", err)
 	}
@@ -4742,7 +4742,7 @@ func TestProjector_BranchLifecycleNilStore(t *testing.T) {
 	if err := projector.Project(ctx, domain.NewBranchCreated(branch), 1, domain.MainBranchID); err != nil {
 		t.Errorf("BranchCreated with nil store should no-op, got %v", err)
 	}
-	if err := projector.Project(ctx, domain.NewBranchMerged(branch.ID, 0, 1, ""), 2, domain.MainBranchID); err != nil {
+	if err := projector.Project(ctx, domain.NewBranchMerged(branch.ID, 0, 1, "", nil), 2, domain.MainBranchID); err != nil {
 		t.Errorf("BranchMerged with nil store should no-op, got %v", err)
 	}
 	if err := projector.Project(ctx, domain.NewBranchDeleted(branch.ID), 3, domain.MainBranchID); err != nil {
