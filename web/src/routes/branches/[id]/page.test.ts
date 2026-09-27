@@ -403,6 +403,92 @@ describe('Branch comparison page', () => {
 			expect(screen.getByText('All 1 conflict decided.')).toBeDefined();
 		});
 
+		it('does not offer "Review & merge" for a branch with no changes (#828)', async () => {
+			compareBranch.mockResolvedValue(
+				comparison({
+					branch_changes: [],
+					main_changes: [],
+					branch_change_count: 0,
+					main_change_count: 0,
+					overlapping_stream_ids: [],
+					conflicts: []
+				})
+			);
+			render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+
+			const button = screen.getByRole('button', { name: 'Review & merge' }) as HTMLButtonElement;
+			expect(button.disabled).toBe(true);
+			expect(screen.getByText('This branch has no changes to merge yet.')).toBeDefined();
+		});
+
+		it('shows what each side says for a conflict, and sends its rationale (#828)', async () => {
+			compareBranch.mockResolvedValue(
+				comparison({
+					conflicts: [
+						{
+							...editEdit(PERSON_ID, 'Ada Lovelace'),
+							field_values: [
+								{
+									field: 'surname',
+									label: 'Surname',
+									base_value: 'Byron',
+									branch_value: 'Lovelace',
+									main_value: 'King'
+								}
+							]
+						}
+					]
+				})
+			);
+			const { container } = render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+
+			const table = within(container).getByRole('table');
+			expect(within(table).getByRole('rowheader', { name: 'Surname' })).toBeDefined();
+			expect(within(table).getByText('Byron')).toBeDefined();
+			expect(within(table).getByText('Lovelace')).toBeDefined();
+			expect(within(table).getByText('King')).toBeDefined();
+
+			await fireEvent.click(radio(container, PERSON_ID, 'branch'));
+			await fireEvent.input(within(container).getByLabelText(/Why this side/), {
+				target: { value: '  Marriage register, 1835  ' }
+			});
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Review & merge' }));
+			expect(await screen.findByText('Why: Marriage register, 1835')).toBeDefined();
+			await fireEvent.click(await screen.findByRole('button', { name: 'Merge branch' }));
+
+			await waitFor(() => expect(mergeBranch).toHaveBeenCalledTimes(1));
+			expect(sentResolutions()).toEqual([
+				{ stream_id: PERSON_ID, resolution: 'branch', rationale: 'Marriage register, 1835' }
+			]);
+		});
+
+		it('decides every conflict at once from the bulk control', async () => {
+			compareBranch.mockResolvedValue(
+				twoEntityComparison({
+					conflicts: [editEdit(PERSON_ID, 'Ada Lovelace'), editEdit(OTHER_ID, 'Grace Hopper')]
+				})
+			);
+			render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			expect(screen.getByText('2 of 2 conflicts still undecided.')).toBeDefined();
+
+			await fireEvent.click(
+				screen.getByRole('button', { name: "Keep the mainline's version for all" })
+			);
+
+			expect(screen.getByText('All 2 conflicts decided.')).toBeDefined();
+			await fireEvent.click(screen.getByRole('button', { name: 'Review & merge' }));
+			await fireEvent.click(await screen.findByRole('button', { name: 'Merge branch' }));
+			await waitFor(() => expect(mergeBranch).toHaveBeenCalledTimes(1));
+			expect(sentResolutions()).toEqual([
+				{ stream_id: OTHER_ID, resolution: 'main' },
+				{ stream_id: PERSON_ID, resolution: 'main' }
+			]);
+		});
+
 		it('announces the undecided count to assistive tech', async () => {
 			render(Page);
 			await screen.findByRole('heading', { name: 'Maternal Smith line' });

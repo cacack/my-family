@@ -57,6 +57,8 @@ export type BranchCreate = components['schemas']['BranchCreate'];
 export type BranchList = components['schemas']['BranchList'];
 export type BranchComparisonResult = components['schemas']['BranchComparisonResult'];
 export type MergeConflict = components['schemas']['MergeConflict'];
+/** One contested field of a conflict, valued at the fork and on each side (#828). */
+export type MergeConflictField = components['schemas']['MergeConflictField'];
 export type BranchMergeRequest = components['schemas']['BranchMergeRequest'];
 export type BranchMergeResult = components['schemas']['BranchMergeResult'];
 export type MergeResolutionEntry = components['schemas']['MergeResolutionEntry'];
@@ -2498,6 +2500,7 @@ const BRANCH_MERGE_REFUSAL_CODES = [
 	'main_too_far_ahead',
 	'merge_plan_stale',
 	'merge_dangling_reference',
+	'merge_empty',
 	'merge_partially_applied',
 	'invalid_resolution',
 	'validation_error'

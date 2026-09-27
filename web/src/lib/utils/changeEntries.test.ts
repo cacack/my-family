@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { CHANGE_ENTITY_TYPES, changeEntryLink, entityTypeLabel } from './changeEntries';
+import {
+	CHANGE_ENTITY_TYPES,
+	changeEntryLink,
+	entityTypeLabel,
+	unnamedEntityLabel
+} from './changeEntries';
 
 const ID = '11111111-1111-1111-1111-111111111111';
 const PARENT = '22222222-2222-2222-2222-222222222222';
@@ -72,5 +77,14 @@ describe('entityTypeLabel', () => {
 	it('falls back to a readable form of an unrecognised type', () => {
 		expect(entityTypeLabel('some_thing')).toBe('Some thing');
 		expect(entityTypeLabel('')).toBe('Entity');
+	});
+});
+
+describe('unnamedEntityLabel', () => {
+	it('names the entity type rather than saying "entity"', () => {
+		expect(unnamedEntityLabel('evidence_analysis')).toBe('Unnamed evidence analysis');
+		expect(unnamedEntityLabel('life_event')).toBe('Unnamed life event');
+		expect(unnamedEntityLabel('lds_ordinance')).toBe('Unnamed LDS ordinance');
+		expect(unnamedEntityLabel('')).toBe('Unnamed entity');
 	});
 });

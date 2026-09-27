@@ -29,6 +29,8 @@
 	export interface MergePlanDecision {
 		conflict: MergeConflict;
 		resolution: MergeResolution;
+		/** Why that side won, when the user said (#828). Sent with the merge. */
+		rationale?: string;
 	}
 
 	/**
@@ -112,6 +114,12 @@
 				"Merging would leave the mainline holding a reference to something it will not have - a family child whose person was deleted there, or a citation whose source was - or would delete a mainline citation of a source the branch deleted. Decisions are made per entity, but the branch's events reference each other across entities, so leaving one entity out does not leave the references to it out. Nothing was written - close this and revisit what you are excluding.",
 			recovery: 'close'
 		},
+		merge_empty: {
+			title: 'This branch has nothing to merge',
+			body:
+				'The branch has made no changes of its own since it was created, so a merge would promote nothing. Nothing was written and the branch is still active - make the research changes on the branch first.',
+			recovery: 'close'
+		},
 		merge_partially_applied: {
 			title: 'The merge was claimed but did not finish',
 			body:
@@ -127,7 +135,7 @@
 		validation_error: {
 			title: 'The merge request itself was rejected',
 			body:
-				'The server refused the request before considering the merge - the note is the usual cause, and its limit is counted in bytes, so accented and non-Latin characters cost more than one each. Nothing was written. The message below is the server\'s own; compare again and retry with the request corrected.',
+				'The server refused the request before considering the merge - the note is the usual cause, and its limit is counted in bytes, so accented and non-Latin characters cost more than one each. A decision\'s rationale is limited to 1000 characters. Nothing was written. The message below is the server\'s own; compare again and retry with the request corrected.',
 			recovery: 'recompare'
 		}
 	};
@@ -168,7 +176,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { entityTypeLabel } from '$lib/utils/changeEntries';
+	import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
 
 	interface Props {
 		open: boolean;
@@ -399,12 +407,18 @@
 							<li>
 								<div class="entity-head">
 									<span class="entity-type">{entityTypeLabel(decision.conflict.entity_type)}</span>
-									<span class="entity-name">{decision.conflict.entity_name || 'Unnamed entity'}</span>
+									<span class="entity-name"
+										>{decision.conflict.entity_name ||
+											unnamedEntityLabel(decision.conflict.entity_type)}</span
+									>
 									<Badge variant={decision.resolution === 'branch' ? 'default' : 'secondary'}>
 										{resolutionLabel(decision.resolution)}
 									</Badge>
 								</div>
 								<p class="entity-detail">{resolutionDetail(decision.resolution)}</p>
+								{#if decision.rationale}
+									<p class="entity-detail rationale">Why: {decision.rationale}</p>
+								{/if}
 							</li>
 						{/each}
 					</ul>
@@ -423,7 +437,9 @@
 							<li>
 								<div class="entity-head">
 									<span class="entity-type">{entityTypeLabel(entity.entityType)}</span>
-									<span class="entity-name">{entity.entityName || 'Unnamed entity'}</span>
+									<span class="entity-name"
+										>{entity.entityName || unnamedEntityLabel(entity.entityType)}</span
+									>
 									<Badge variant="outline">Not merging</Badge>
 								</div>
 							</li>
@@ -567,6 +583,11 @@
 		margin: 0.375rem 0 0;
 		font-size: 0.8125rem;
 		color: #475569;
+	}
+
+	.entity-detail.rationale {
+		font-style: italic;
+		overflow-wrap: anywhere;
 	}
 
 	.field {

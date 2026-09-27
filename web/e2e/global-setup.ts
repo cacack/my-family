@@ -84,10 +84,11 @@ export default async function globalSetup(): Promise<void> {
 		surname: 'Hartwell',
 		birth_place: 'Springfield, Illinois'
 	});
+	const mergeBaseBirthPlace = 'Old Harbour';
 	const mergePerson = await call<CreatedPerson>('POST', '/persons', {
 		given_name: 'Bartholomew',
 		surname: 'Hartwell',
-		birth_place: 'Old Harbour'
+		birth_place: mergeBaseBirthPlace
 	});
 	const family = await call<CreatedFamily>('POST', '/families', {
 		partner1_id: switcherPerson.id,
@@ -160,6 +161,8 @@ export default async function globalSetup(): Promise<void> {
 				branchBirthPlace: mergeBranchBirthPlace
 			},
 			conflictField: 'birth_place',
+			conflictFieldLabel: 'Birth place',
+			baseBirthPlace: mergeBaseBirthPlace,
 			familyId: family.id,
 			familyName: `${displayName(switcherPerson)} & ${displayName(mergePerson)}`,
 			familyBranchMarriagePlace

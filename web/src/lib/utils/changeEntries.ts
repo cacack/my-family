@@ -47,6 +47,17 @@ export function entityTypeLabel(entityType: string): string {
 	return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Entity';
 }
 
+/**
+ * What to show for an entity whose display name could not be resolved - its
+ * type, never a bare "Unnamed entity" (#828).
+ */
+export function unnamedEntityLabel(entityType: string): string {
+	const label = entityTypeLabel(entityType);
+	// Keep an acronym ("LDS ordinance") as it is; lower-case an ordinary word.
+	const acronym = /^[A-Z]{2,}\b/.test(label);
+	return `Unnamed ${acronym ? label : label.charAt(0).toLowerCase() + label.slice(1)}`;
+}
+
 /** The page of an entity that has one of its own. */
 function pageOf(entityType: string, id: string): string | null {
 	switch (entityType) {

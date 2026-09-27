@@ -57,6 +57,10 @@ export interface SeedData {
 		person: SeededPerson;
 		/** The contested field, as the conflict reports it. */
 		conflictField: string;
+		/** The contested field's readable label, as the review renders it. */
+		conflictFieldLabel: string;
+		/** The merge person's birth place when the branch forked - the "base". */
+		baseBirthPlace: string;
 		/** Edited on the branch only, so the diff has a second entity type. */
 		familyId: string;
 		familyName: string;
@@ -127,6 +131,8 @@ export function writeSeed(seed: SeedData): void {
 			branchName: asText(seed.merge.branchName, 'merge.branchName'),
 			person: checkPerson(seed.merge.person, 'merge.person'),
 			conflictField: matched(FIELD, seed.merge.conflictField, 'merge.conflictField'),
+			conflictFieldLabel: asText(seed.merge.conflictFieldLabel, 'merge.conflictFieldLabel'),
+			baseBirthPlace: asText(seed.merge.baseBirthPlace, 'merge.baseBirthPlace'),
 			familyId: asId(seed.merge.familyId, 'merge.familyId'),
 			familyName: asText(seed.merge.familyName, 'merge.familyName'),
 			familyBranchMarriagePlace: asText(

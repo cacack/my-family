@@ -49,7 +49,7 @@ const plan: MergePlan = {
 		}
 	],
 	decisions: [
-		{ conflict: editEdit, resolution: 'branch' },
+		{ conflict: editEdit, resolution: 'branch', rationale: 'Baptism register, 1815' },
 		{ conflict: unnamed, resolution: 'main' }
 	],
 	hasMore: false
@@ -135,10 +135,14 @@ describe('MergeConfirmDialog', () => {
 			expect(screen.getByText('Ada Lovelace')).toBeDefined();
 			expect(screen.getByText('This branch wins')).toBeDefined();
 			expect(screen.getByText(/branch's version is replayed onto the mainline/)).toBeDefined();
-			// The `main` side of the second decision, and its empty-name fallback.
-			expect(screen.getByText('Unnamed entity')).toBeDefined();
+			// The `main` side of the second decision, and its empty-name fallback,
+			// which names the entity type rather than saying "entity" (#828).
+			expect(screen.getByText('Unnamed family')).toBeDefined();
 			expect(screen.getByText('The mainline wins')).toBeDefined();
 			expect(screen.getByText(/mainline's version stands/)).toBeDefined();
+			// A decision's rationale is shown with it; one without shows none.
+			expect(screen.getByText('Why: Baptism register, 1815')).toBeDefined();
+			expect(screen.getAllByText(/^Why:/)).toHaveLength(1);
 		});
 
 		it('lists the excluded entities, marked as not being promoted', () => {
