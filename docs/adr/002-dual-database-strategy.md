@@ -153,8 +153,8 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   storage such an event stays in the log without its read-model row, and there
   is no projection rebuild yet, so PR-001 (projection in the same transaction
   as append) is a target, not a guarantee, for the SQL backends. Making
-  projection failures fail the command, or adding a rebuild, still needs a
-  tracking issue.
+  projection failures fail the command, or adding a rebuild, is tracked in
+  [#845](https://github.com/cacack/my-family/issues/845).
 
 ### Build Implications (cgo)
 
