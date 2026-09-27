@@ -1814,13 +1814,13 @@ func TestReadModelStore_SaveAndGetMedia(t *testing.T) {
 	}
 
 	// Save media
-	err := store.SaveMedia(ctx, media)
+	err := store.SaveMedia(ctx, domain.MainBranchID, media)
 	if err != nil {
 		t.Fatalf("SaveMedia() failed: %v", err)
 	}
 
 	// Get media (metadata only)
-	retrieved, err := store.GetMedia(ctx, media.ID)
+	retrieved, err := store.GetMedia(ctx, domain.MainBranchID, media.ID)
 	if err != nil {
 		t.Fatalf("GetMedia() failed: %v", err)
 	}
@@ -1861,13 +1861,13 @@ func TestReadModelStore_GetMediaWithData(t *testing.T) {
 	}
 
 	// Save media
-	err := store.SaveMedia(ctx, media)
+	err := store.SaveMedia(ctx, domain.MainBranchID, media)
 	if err != nil {
 		t.Fatalf("SaveMedia() failed: %v", err)
 	}
 
 	// Get media with data
-	retrieved, err := store.GetMediaWithData(ctx, media.ID)
+	retrieved, err := store.GetMediaWithData(ctx, domain.MainBranchID, media.ID)
 	if err != nil {
 		t.Fatalf("GetMediaWithData() failed: %v", err)
 	}
@@ -1903,13 +1903,13 @@ func TestReadModelStore_GetMediaThumbnail(t *testing.T) {
 	}
 
 	// Save media
-	err := store.SaveMedia(ctx, media)
+	err := store.SaveMedia(ctx, domain.MainBranchID, media)
 	if err != nil {
 		t.Fatalf("SaveMedia() failed: %v", err)
 	}
 
 	// Get thumbnail
-	retrieved, err := store.GetMediaThumbnail(ctx, media.ID)
+	retrieved, err := store.GetMediaThumbnail(ctx, domain.MainBranchID, media.ID)
 	if err != nil {
 		t.Fatalf("GetMediaThumbnail() failed: %v", err)
 	}
@@ -1919,7 +1919,7 @@ func TestReadModelStore_GetMediaThumbnail(t *testing.T) {
 	}
 
 	// Non-existent media
-	retrieved, err = store.GetMediaThumbnail(ctx, uuid.New())
+	retrieved, err = store.GetMediaThumbnail(ctx, domain.MainBranchID, uuid.New())
 	if err != nil {
 		t.Fatalf("GetMediaThumbnail() for non-existent failed: %v", err)
 	}
@@ -1946,7 +1946,7 @@ func TestReadModelStore_ListMediaForEntity(t *testing.T) {
 			CreatedAt:  time.Now().Add(time.Duration(i) * time.Hour),
 			UpdatedAt:  time.Now(),
 		}
-		_ = store.SaveMedia(ctx, media)
+		_ = store.SaveMedia(ctx, domain.MainBranchID, media)
 	}
 
 	// Create media for different entity
@@ -1959,7 +1959,7 @@ func TestReadModelStore_ListMediaForEntity(t *testing.T) {
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
-	_ = store.SaveMedia(ctx, otherMedia)
+	_ = store.SaveMedia(ctx, domain.MainBranchID, otherMedia)
 
 	// List all for entity
 	results, total, err := store.ListMediaForEntity(ctx, "person", entityID, repository.ListOptions{})
@@ -2012,19 +2012,19 @@ func TestReadModelStore_DeleteMedia(t *testing.T) {
 	}
 
 	// Save media
-	err := store.SaveMedia(ctx, media)
+	err := store.SaveMedia(ctx, domain.MainBranchID, media)
 	if err != nil {
 		t.Fatalf("SaveMedia() failed: %v", err)
 	}
 
 	// Delete media
-	err = store.DeleteMedia(ctx, media.ID)
+	err = store.DeleteMedia(ctx, domain.MainBranchID, media.ID)
 	if err != nil {
 		t.Fatalf("DeleteMedia() failed: %v", err)
 	}
 
 	// Verify deleted
-	retrieved, err := store.GetMedia(ctx, media.ID)
+	retrieved, err := store.GetMedia(ctx, domain.MainBranchID, media.ID)
 	if err != nil {
 		t.Fatalf("GetMedia() after delete failed: %v", err)
 	}
@@ -2039,7 +2039,7 @@ func TestReadModelStore_GetMedia_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Get non-existent media
-	retrieved, err := store.GetMedia(ctx, uuid.New())
+	retrieved, err := store.GetMedia(ctx, domain.MainBranchID, uuid.New())
 	if err != nil {
 		t.Fatalf("GetMedia() for non-existent failed: %v", err)
 	}
@@ -2049,7 +2049,7 @@ func TestReadModelStore_GetMedia_NotFound(t *testing.T) {
 	}
 
 	// GetMediaWithData for non-existent
-	retrieved, err = store.GetMediaWithData(ctx, uuid.New())
+	retrieved, err = store.GetMediaWithData(ctx, domain.MainBranchID, uuid.New())
 	if err != nil {
 		t.Fatalf("GetMediaWithData() for non-existent failed: %v", err)
 	}

@@ -341,7 +341,7 @@ func (h *Handler) collectTransferredEvents(ctx context.Context, mergedID uuid.UU
 
 // collectTransferredMedia returns IDs of media from merged person.
 func (h *Handler) collectTransferredMedia(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	media, _, err := h.readStore.ListMediaForEntity(ctx, "person", mergedID, repository.ListOptions{Limit: 10000})
+	media, _, err := h.readStore.ListMediaForEntity(ctx, "person", mergedID, repository.ListOptions{Limit: 10000, BranchID: domain.MainBranchID})
 	if err != nil {
 		return nil, fmt.Errorf("listing media for person: %w", err)
 	}

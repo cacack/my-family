@@ -473,3 +473,116 @@ func TestReadModelStore_DeleteSourceCascade(t *testing.T) {
 		t.Errorf("main DeleteSource reached the sibling branch's citation: got %+v (err=%v)", got, err)
 	}
 }
+
+// TestReadModelStore_DeleteCascadesMedia verifies the #759 media cascade:
+// media has no foreign key to its owner, so DeletePerson, DeleteFamily and
+// DeleteSource delete (main) or tombstone (branch) the owner's media by hand, on
+// that branch only. A branch cascade never touches main's rows or bytes, and a
+// main cascade keeps the bytes a sibling branch's live shadow still borrows.
+// The assertions are byte-for-byte identical across the memory/sqlite/postgres
+// backends (DB-001).
+func TestReadModelStore_DeleteCascadesMedia(t *testing.T) {
+	store, cleanup := newMediaCascadeStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	main := domain.MainBranchID
+	now := time.Now()
+	newMedia := func(entityType string, owner uuid.UUID, bytes string) *repository.MediaReadModel {
+		return &repository.MediaReadModel{
+			ID: uuid.New(), EntityType: entityType, EntityID: owner, Title: entityType + " media",
+			MimeType: "image/jpeg", MediaType: domain.MediaPhoto, Filename: "m.jpg",
+			FileSize: int64(len(bytes)), FileData: []byte(bytes), ThumbnailData: []byte(bytes + "-thumb"),
+			Version: 1, CreatedAt: now, UpdatedAt: now,
+		}
+	}
+
+	for _, tc := range []struct {
+		entityType string
+		del        func(branchID domain.BranchID, id uuid.UUID) error
+	}{
+		{"person", func(b domain.BranchID, id uuid.UUID) error { return store.DeletePerson(ctx, b, id) }},
+		{"family", func(b domain.BranchID, id uuid.UUID) error { return store.DeleteFamily(ctx, b, id) }},
+		{"source", func(b domain.BranchID, id uuid.UUID) error { return store.DeleteSource(ctx, b, id) }},
+	} {
+		t.Run(tc.entityType, func(t *testing.T) {
+			branch := domain.BranchID(uuid.New())
+			sibling := domain.BranchID(uuid.New())
+			owner, otherOwner := uuid.New(), uuid.New()
+
+			owned := newMedia(tc.entityType, owner, "OWNED")
+			kept := newMedia(tc.entityType, otherOwner, "KEPT")
+			for _, m := range []*repository.MediaReadModel{owned, kept} {
+				if err := store.SaveMedia(ctx, main, m); err != nil {
+					t.Fatalf("SaveMedia main: %v", err)
+				}
+			}
+			branchOnly := newMedia(tc.entityType, owner, "BRANCH-ONLY")
+			if err := store.SaveMedia(ctx, branch, branchOnly); err != nil {
+				t.Fatalf("SaveMedia branch: %v", err)
+			}
+			// The sibling keeps a live metadata shadow of the owned item.
+			shadow := *owned
+			shadow.FileData, shadow.ThumbnailData = nil, nil
+			shadow.Title = "sibling reading"
+			if err := store.SaveMedia(ctx, sibling, &shadow); err != nil {
+				t.Fatalf("SaveMedia sibling: %v", err)
+			}
+
+			// --- Branch delete: the owner's media (main's and the branch's own)
+			// is tombstoned on the branch only. ---
+			if err := tc.del(branch, owner); err != nil {
+				t.Fatalf("branch delete: %v", err)
+			}
+			for _, id := range []uuid.UUID{owned.ID, branchOnly.ID} {
+				if got, err := store.GetMediaWithData(ctx, branch, id); err != nil || got != nil {
+					t.Errorf("branch GetMediaWithData(%s) after cascade = %+v (err=%v), want tombstoned", id, got, err)
+				}
+			}
+			if got, _, err := store.ListMediaForEntity(ctx, tc.entityType, owner, repository.ListOptions{Limit: 10, BranchID: branch}); err != nil || len(got) != 0 {
+				t.Errorf("branch ListMediaForEntity(owner) after cascade = %d items (err=%v), want 0", len(got), err)
+			}
+			if got, err := store.GetMedia(ctx, branch, kept.ID); err != nil || got == nil {
+				t.Errorf("branch cascade removed another owner's media: %+v (err=%v)", got, err)
+			}
+			if got, err := store.GetMediaWithData(ctx, main, owned.ID); err != nil || got == nil || string(got.FileData) != "OWNED" {
+				t.Errorf("main GetMediaWithData(owned) after branch cascade = %+v (err=%v), want it and its bytes", got, err)
+			}
+			if got, err := store.GetMediaWithData(ctx, sibling, owned.ID); err != nil || got == nil || got.Title != "sibling reading" || string(got.FileData) != "OWNED" {
+				t.Errorf("sibling GetMediaWithData(owned) after branch cascade = %+v (err=%v), want its shadow over main's bytes", got, err)
+			}
+
+			// --- Main delete: main's media for the owner goes, but the sibling's
+			// live shadow keeps reading the shared bytes. ---
+			if err := tc.del(main, owner); err != nil {
+				t.Fatalf("main delete: %v", err)
+			}
+			if got, err := store.GetMedia(ctx, main, owned.ID); err != nil || got != nil {
+				t.Errorf("main GetMedia(owned) after cascade = %+v (err=%v), want gone", got, err)
+			}
+			if got, _, err := store.ListMediaForEntity(ctx, tc.entityType, owner, repository.ListOptions{Limit: 10}); err != nil || len(got) != 0 {
+				t.Errorf("main ListMediaForEntity(owner) after cascade = %d items (err=%v), want 0", len(got), err)
+			}
+			if got, err := store.GetMediaWithData(ctx, main, kept.ID); err != nil || got == nil || string(got.FileData) != "KEPT" {
+				t.Errorf("main cascade removed another owner's media: %+v (err=%v)", got, err)
+			}
+			if got, err := store.GetMediaWithData(ctx, sibling, owned.ID); err != nil || got == nil || string(got.FileData) != "OWNED" || string(got.ThumbnailData) != "OWNED-thumb" {
+				t.Errorf("sibling GetMediaWithData(owned) after main cascade = %+v (err=%v), want the shared bytes kept", got, err)
+			}
+
+			// Once the sibling deletes its shadow too, nothing is left anywhere.
+			if err := store.DeleteMedia(ctx, sibling, owned.ID); err != nil {
+				t.Fatalf("sibling DeleteMedia: %v", err)
+			}
+			if got, err := store.GetMediaWithData(ctx, sibling, owned.ID); err != nil || got != nil {
+				t.Errorf("sibling GetMediaWithData(owned) after its delete = %+v (err=%v), want gone", got, err)
+			}
+		})
+	}
+}
+
+// newMediaCascadeStore returns this backend's store for the media cascade test.
+func newMediaCascadeStore(t *testing.T) (repository.ReadModelStore, func()) {
+	t.Helper()
+	return setupTestReadModelDB(t)
+}

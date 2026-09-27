@@ -160,7 +160,7 @@ Current implementation status for tracking completeness.
 | Family | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | Complete |
 | Source | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Citation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
-| Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Complete |
+| Media | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Note | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
 | Submitter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | Complete |
 | Association | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Complete |
@@ -206,11 +206,11 @@ Notes on partial rows:
 - **Snapshot**: event-sourced since [#624](https://github.com/cacack/my-family/issues/624) — `Handler.CreateSnapshot` / `DeleteSnapshot` emit `SnapshotCreated` / `SnapshotDeleted` and the projection writes the registry, so snapshots created from that point on rebuild from the log. Rows predating #624 have no event and would not survive a rebuild (see ADR-005 "Still open"); rebuild tooling ([#680](https://github.com/cacack/my-family/issues/680)) must backfill them. GEDCOM is N/A (a research marker is not a genealogy record). The Branch column is ❌ rather than N/A (or ⛔, where it sat until #624 made snapshots event-sourced): a snapshot *taken on a branch* is meaningful (ADR-005) but the registry has no `branch_id` column yet, so both commands refuse on a branch-scoped handler.
 - **Branch**: create, delete/archive (#670) and merge ([#55](https://github.com/cacack/my-family/issues/55), delivered) are implemented, with list/get/compare queries and a `/branches` API. `BranchMerged` is emitted by `Handler.claimMerge` and projected to the registry. `BranchMergeResumed` ([#685](https://github.com/cacack/my-family/issues/685)) is emitted by `Handler.ResumeMerge` when a resume records its decisions; it is decoded (ES-007) and handled as a projection no-op (PR-004). The frontend surface (switcher, banner, `/branches` list and comparison view) ships with [#94](https://github.com/cacack/my-family/issues/94) and [#95](https://github.com/cacack/my-family/issues/95): `/branches/{id}` is the merge review, so `POST /branches/{id}/merge` is driven from the UI — conflict resolution, per-entity exclusion, and the merge itself. GEDCOM and the Branch column are N/A: a branch is not a genealogy record and cannot itself live on a branch.
 
-### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts / #758 evidence)
+### Branch coverage detail (#669 read / #670 write / #756 aggregates / #757 facts / #758 evidence / #759 media)
 
-Fourteen read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
-overlay: the seven-type #669 slice, the three person/family fact types of #757 and the four
-evidence types of #758. Branch
+Fifteen read-model types carry a `branch_id` of their own and are branch-aware by copy-on-write
+overlay: the seven-type #669 slice, the three person/family fact types of #757, the four
+evidence types of #758 and media metadata (#759; the file bytes are shared, never copied). Branch
 **writes** cover a narrower set, because a write also needs a branch-scoped command path:
 
 | Read-model type | Branch reads (#669) | Branch writes (#670) | How it is written on a branch |
@@ -229,6 +229,7 @@ evidence types of #758. Branch
 | SourceExternalID (#758) | ✅ | ⚠️ | written only by GEDCOM import (main-only); tombstoned by a branch `deleteSource` |
 | Citation (#758) | ✅ | ✅ | `createCitation` / `updateCitation` / `deleteCitation`; the denormalized source title and the source's citation count resolve on the branch. Known gap: bumping the count writes a branch copy of the source, which then hides later main edits to that source on the branch (stale view, tracked in [#815](https://github.com/cacack/my-family/issues/815)) |
 | Note (#758) | ✅ | ✅ | `createNote` / `updateNote` / `deleteNote` |
+| Media (#759) | ✅ | ✅ | `uploadPersonMedia` / `updateMedia` / `deleteMedia`; metadata only — a branch row stores no copy of the file or thumbnail, which are read from main's row. Also tombstoned by a branch `deletePerson` / `deleteFamily` / `deleteSource` |
 
 Those 11 write operations plus 5 reads (`listPersons`, `getPerson`, `getFamily`, `getPersonNames`,
 `getPedigree`) were the original #669/#670 slice. Sub-issue A of #676
@@ -282,10 +283,24 @@ for every entity:
 | `updateNote` | PUT | `/notes/{id}` |
 | `deleteNote` | DELETE | `/notes/{id}` |
 
-That is **47 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+Sub-issue D ([#759](https://github.com/cacack/my-family/issues/759)) added seven for media. The
+content and thumbnail reads take the scope although the bytes are shared, so a branch-deleted item
+is not-found there too:
+
+| operationId | Method | Path |
+|---|---|---|
+| `listPersonMedia` | GET | `/persons/{id}/media` |
+| `uploadPersonMedia` | POST | `/persons/{id}/media` |
+| `getMedia` | GET | `/media/{id}` |
+| `updateMedia` | PUT | `/media/{id}` |
+| `deleteMedia` | DELETE | `/media/{id}` |
+| `downloadMedia` | GET | `/media/{id}/content` |
+| `getMediaThumbnail` | GET | `/media/{id}/thumbnail` |
+
+That is **54 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 47 in `isBranchScopedRequest()`
+The frontend mirrors exactly those 54 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path — `POST /families` takes
 `?branch=` while `listFamilies` does not. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
@@ -300,7 +315,8 @@ deciding whether they become event-sourced —
 [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
 [#761](https://github.com/cacack/my-family/issues/761)). The surname index and per-surname list,
 the place index and per-place list, the cemetery index and per-cemetery person list, and the map
-all follow the active branch, and so do the source list and source detail pages (#758). Grow the allowlist and the notice coverage together
+all follow the active branch, and so do the source list and source detail pages (#758) and the
+person media gallery (#759). Grow the allowlist and the notice coverage together
 as the remaining #676 sub-issues land.
 
 **Isolation is complete for these types.** Branch writes never touch `main` (proven end to end in

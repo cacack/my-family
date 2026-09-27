@@ -525,6 +525,118 @@ func TestPreEvidenceExternalIDKeyIsNotBranchCapable(t *testing.T) {
 	}
 }
 
+// preMediaSQLiteDDL is the media table as it stood before #759: keyed by a lone
+// id, with file_data NOT NULL. SQLite cannot re-key it (or relax the NOT NULL)
+// in place.
+const preMediaSQLiteDDL = `
+	CREATE TABLE media (
+		id TEXT PRIMARY KEY,
+		entity_type TEXT NOT NULL,
+		entity_id TEXT NOT NULL,
+		title TEXT NOT NULL,
+		description TEXT,
+		mime_type TEXT NOT NULL,
+		media_type TEXT NOT NULL,
+		filename TEXT NOT NULL,
+		file_size INTEGER NOT NULL,
+		file_data BLOB NOT NULL,
+		thumbnail_data BLOB,
+		crop_left INTEGER,
+		crop_top INTEGER,
+		crop_width INTEGER,
+		crop_height INTEGER,
+		gedcom_xref TEXT,
+		version INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+		files TEXT,
+		format TEXT,
+		translations TEXT
+	);
+`
+
+// TestPreMediaBranchSchemaRefusesBranchWrites covers a database built between
+// #758 and #759: every other branch-scoped table carries its branch key, but
+// media keeps its lone-id key and NOT NULL file_data. Such a database must
+// refuse media branch writes (and, like any partially branch-keyed schema,
+// every other branch write) with repository.ErrBranchesUnsupported, while
+// mainline media keeps working — including a metadata-only update, which hands
+// SaveMedia no bytes and must keep the stored ones rather than trip NOT NULL —
+// and PurgeBranch still runs.
+func TestPreMediaBranchSchemaRefusesBranchWrites(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "myfamily-premedia-readmodel-*.db")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
+
+	db, err := sqlite.OpenDB(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(preMediaSQLiteDDL); err != nil {
+		t.Fatalf("create pre-#759 media table: %v", err)
+	}
+
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	ctx := context.Background()
+	main := domain.MainBranchID
+	branch := domain.BranchID(uuid.New())
+	now := time.Now()
+	owner := uuid.New()
+	media := &repository.MediaReadModel{
+		ID: uuid.New(), EntityType: "person", EntityID: owner, Title: "Portrait",
+		MimeType: "image/jpeg", MediaType: domain.MediaPhoto, Filename: "portrait.jpg",
+		FileSize: 4, FileData: []byte("FILE"), ThumbnailData: []byte("THUMB"),
+		Version: 1, CreatedAt: now, UpdatedAt: now,
+	}
+
+	for name, err := range map[string]error{
+		"SaveMedia":   store.SaveMedia(ctx, branch, media),
+		"DeleteMedia": store.DeleteMedia(ctx, branch, media.ID),
+		"SavePerson":  store.SavePerson(ctx, branch, branchPersonRM(uuid.New(), "Branch", "Row")),
+	} {
+		if !errors.Is(err, repository.ErrBranchesUnsupported) {
+			t.Errorf("branch %s on pre-#759 schema: want ErrBranchesUnsupported, got %v", name, err)
+		}
+	}
+
+	// Mainline keeps working: insert, a metadata-only update, reads, delete.
+	if err := store.SaveMedia(ctx, main, media); err != nil {
+		t.Fatalf("main SaveMedia: %v", err)
+	}
+	meta, err := store.GetMedia(ctx, main, media.ID)
+	if err != nil || meta == nil {
+		t.Fatalf("main GetMedia = %+v (err=%v)", meta, err)
+	}
+	meta.Title = "Portrait (retitled)"
+	if err := store.SaveMedia(ctx, main, meta); err != nil {
+		t.Fatalf("main metadata-only SaveMedia on NOT NULL file_data: %v", err)
+	}
+	got, err := store.GetMediaWithData(ctx, main, media.ID)
+	if err != nil || got == nil || got.Title != "Portrait (retitled)" || string(got.FileData) != "FILE" || string(got.ThumbnailData) != "THUMB" {
+		t.Fatalf("main GetMediaWithData after update = %+v (err=%v), want the new title and the kept bytes", got, err)
+	}
+	if items, total, err := store.ListMediaForEntity(ctx, "person", owner, repository.ListOptions{Limit: 10}); err != nil || total != 1 || len(items) != 1 {
+		t.Errorf("main ListMediaForEntity = %d/%d (err=%v), want 1", len(items), total, err)
+	}
+	if err := store.PurgeBranch(ctx, branch); err != nil {
+		t.Errorf("PurgeBranch on pre-#759 schema: %v", err)
+	}
+	if err := store.DeleteMedia(ctx, main, media.ID); err != nil {
+		t.Fatalf("main DeleteMedia: %v", err)
+	}
+	if got, err := store.GetMedia(ctx, main, media.ID); err != nil || got != nil {
+		t.Errorf("main GetMedia after delete = %+v (err=%v), want absent", got, err)
+	}
+}
+
 // legacyEventFixture is one row of the pre-ADR-005 events table. Ids and
 // positions are asserted to survive the rebuild byte-for-byte.
 type legacyEventFixture struct {

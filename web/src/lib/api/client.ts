@@ -137,8 +137,10 @@ const TEXT_SEGMENT = '[^/]+';
  * sub-issue A (#756) fanned out over, the person/family facts of
  * sub-issue B (#757) — the cemetery index and the association endpoints — and
  * the evidence of sub-issue C (#758): sources (including search), citations
- * and notes. Source and citation history, restore points and rollback stay
- * mainline-only, as rollback does for every entity. The
+ * and notes, and the media of sub-issue D (#759): metadata CRUD, the person's
+ * media list and upload, and the content and thumbnail reads. Source and
+ * citation history, restore points and rollback stay mainline-only, as
+ * rollback does for every entity. The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -193,7 +195,14 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{ methods: ['GET'], pattern: new RegExp(`^/citations/${UUID_SEGMENT}/format$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/citations$`) },
 	{ methods: ['GET', 'POST'], pattern: new RegExp('^/notes$') },
-	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/notes/${UUID_SEGMENT}$`) }
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/notes/${UUID_SEGMENT}$`) },
+	// Media metadata (#759). The file bytes are shared with the mainline, but the
+	// content and thumbnail reads still take the scope: a branch-deleted item
+	// must 404 there too.
+	{ methods: ['GET', 'POST'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/media$`) },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/media/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/content$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/media/${UUID_SEGMENT}/thumbnail$`) }
 ];
 
 /**
@@ -1702,7 +1711,9 @@ class ApiClient {
 		if (description) formData.append('description', description);
 		if (mediaType) formData.append('media_type', mediaType);
 
-		const response = await fetch(`${API_BASE}/persons/${personId}/media`, {
+		// Raw fetch (multipart), so the branch scope is applied here rather than by
+		// request().
+		const response = await fetch(`${API_BASE}${withBranchScope('POST', `/persons/${personId}/media`)}`, {
 			method: 'POST',
 			body: formData
 		});
@@ -1731,12 +1742,14 @@ class ApiClient {
 		return this.request<void>('DELETE', `/media/${id}?version=${version}`);
 	}
 
+	// URL builders for <img src> and download links, which bypass request(): they
+	// carry the active branch scope themselves (#759).
 	getMediaContentUrl(id: string): string {
-		return `${API_BASE}/media/${id}/content`;
+		return `${API_BASE}${withBranchScope('GET', `/media/${id}/content`)}`;
 	}
 
 	getMediaThumbnailUrl(id: string): string {
-		return `${API_BASE}/media/${id}/thumbnail`;
+		return `${API_BASE}${withBranchScope('GET', `/media/${id}/thumbnail`)}`;
 	}
 
 	// History endpoints
