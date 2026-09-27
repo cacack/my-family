@@ -2,10 +2,9 @@
 // backend, so cross-feature flows are proven against the SQL backends rather
 // than only in memory (DB-001).
 //
-// One caveat worth stating plainly: `cmd/myfamily` wires the in-memory stores
-// unconditionally today. So this proves backend parity for the branch/merge
-// flows, not that any deployed topology works end to end — though each SQL
-// backend does run on the single database `internal/config` can express.
+// The bundles are built by `internal/storage` — the same constructor `serve`
+// uses — so each SQL backend runs on exactly the topology a deployment gets:
+// one database holding all four stores, schema set up by the stores themselves.
 //
 // The package holds no non-test code: it is a harness plus scenarios. Each
 // scenario body is written ONCE and executed against every entry in `backends`,
@@ -35,9 +34,7 @@ import (
 	"github.com/cacack/my-family/internal/api"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/repository"
-	"github.com/cacack/my-family/internal/repository/memory"
-	pgstore "github.com/cacack/my-family/internal/repository/postgres"
-	"github.com/cacack/my-family/internal/repository/sqlite"
+	"github.com/cacack/my-family/internal/storage"
 )
 
 // ============================================================================
@@ -70,59 +67,41 @@ var backends = []backend{
 	{"Postgres", setupPostgres},
 }
 
-// setupMemory builds the in-memory bundle. The memory snapshot store needs the
-// concrete event store, which is why it is constructed before the bundle.
+// setupMemory builds the in-memory bundle, as demo mode does.
 func setupMemory(t *testing.T) stores {
 	t.Helper()
-	eventStore := memory.NewEventStore()
-	return stores{
-		events:    eventStore,
-		read:      memory.NewReadModelStore(),
-		snapshots: memory.NewSnapshotStore(eventStore),
-		branches:  memory.NewBranchStore(),
-	}
+	return fromStorage(t, storage.OpenMemory(), nil)
 }
 
 // All four stores share ONE database per SQL backend — the topology ADR-002
 // describes and the only one config can express (a single `SQLITE_PATH` /
 // `DATABASE_URL`). The schemas coexist because their table names are disjoint
 // (DB-006): the log owns `events`, the read model's life facts live in
-// `life_events`.
+// `life_events`. The file lives in t.TempDir(), which removes it.
 func setupSQLite(t *testing.T) stores {
 	t.Helper()
-
-	db := openSQLite(t, filepath.Join(t.TempDir(), "myfamily.db"))
-
-	eventStore, err := sqlite.NewEventStore(db)
-	if err != nil {
-		t.Fatalf("create sqlite event store: %v", err)
-	}
-	snapshotStore, err := sqlite.NewSnapshotStore(db)
-	if err != nil {
-		t.Fatalf("create sqlite snapshot store: %v", err)
-	}
-	readStore, err := sqlite.NewReadModelStore(db)
-	if err != nil {
-		t.Fatalf("create sqlite read model store: %v", err)
-	}
-	branchStore, err := sqlite.NewBranchStore(db)
-	if err != nil {
-		t.Fatalf("create sqlite branch store: %v", err)
-	}
-
-	return stores{events: eventStore, read: readStore, snapshots: snapshotStore, branches: branchStore}
+	opened, err := storage.OpenSQLite(filepath.Join(t.TempDir(), "myfamily.db"))
+	return fromStorage(t, opened, err)
 }
 
-// openSQLite opens one sqlite file and closes it when the test ends. The file
-// lives in t.TempDir(), which removes it.
-func openSQLite(t *testing.T, path string) *sql.DB {
+// fromStorage adapts a storage bundle to the harness's interface-only view and
+// closes it when the test ends.
+func fromStorage(t *testing.T, opened *storage.Stores, err error) stores {
 	t.Helper()
-	db, err := sqlite.OpenDB(path)
 	if err != nil {
-		t.Fatalf("open sqlite database %s: %v", path, err)
+		t.Fatalf("open stores: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
-	return db
+	t.Cleanup(func() {
+		if err := opened.Close(); err != nil {
+			t.Errorf("close stores: %v", err)
+		}
+	})
+	return stores{
+		events:    opened.Events,
+		read:      opened.ReadModel,
+		snapshots: opened.Snapshots,
+		branches:  opened.Branches,
+	}
 }
 
 // setupPostgres builds the bundle over a throwaway PostgreSQL container.
@@ -143,13 +122,13 @@ func setupPostgres(t *testing.T) stores {
 		// named database, dropped again when the test ends.
 		admin := openPostgres(t, serverURL)
 		name := "t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-		db := createPostgresDatabase(t, admin, serverURL, name)
+		dsn := createPostgresDatabase(t, admin, serverURL, name)
+		// Registered before the stores' own Close, so it runs after it.
 		t.Cleanup(func() {
-			db.Close()
 			// #nosec G202 -- name is generated above from a UUID, never external input.
 			_, _ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)")
 		})
-		return newPostgresStores(t, db)
+		return newPostgresStores(t, dsn)
 	}
 	if !isDockerAvailable() {
 		t.Skip("Docker is not available, skipping PostgreSQL integration test")
@@ -193,8 +172,7 @@ func setupPostgres(t *testing.T) stores {
 	}
 
 	// One database for all four stores, as on SQLite (DB-006).
-	db := createPostgresDatabase(t, admin, connStr, "myfamily")
-	return newPostgresStores(t, db)
+	return newPostgresStores(t, createPostgresDatabase(t, admin, connStr, "myfamily"))
 }
 
 // localPostgresEnv names an optional PostgreSQL server URL. When set, the
@@ -203,33 +181,17 @@ func setupPostgres(t *testing.T) stores {
 const localPostgresEnv = "MYFAMILY_TEST_POSTGRES_URL"
 
 // newPostgresStores builds the four PostgreSQL stores over one database.
-func newPostgresStores(t *testing.T, db *sql.DB) stores {
+func newPostgresStores(t *testing.T, dsn string) stores {
 	t.Helper()
-	eventStore, err := pgstore.NewEventStore(db)
-	if err != nil {
-		t.Fatalf("create postgres event store: %v", err)
-	}
-	snapshotStore, err := pgstore.NewSnapshotStore(db)
-	if err != nil {
-		t.Fatalf("create postgres snapshot store: %v", err)
-	}
-	readStore, err := pgstore.NewReadModelStore(db)
-	if err != nil {
-		t.Fatalf("create postgres read model store: %v", err)
-	}
-	branchStore, err := pgstore.NewBranchStore(db)
-	if err != nil {
-		t.Fatalf("create postgres branch store: %v", err)
-	}
-
-	return stores{events: eventStore, read: readStore, snapshots: snapshotStore, branches: branchStore}
+	opened, err := storage.OpenPostgres(dsn)
+	return fromStorage(t, opened, err)
 }
 
 // createPostgresDatabase creates a database in the running container and
-// returns a connection to it. CREATE DATABASE cannot run inside a transaction
+// returns its connection URL. CREATE DATABASE cannot run inside a transaction
 // and needs a connection to some other database, which is what admin is.
 // name is either a literal from this file or generated from a UUID.
-func createPostgresDatabase(t *testing.T, admin *sql.DB, connStr, name string) *sql.DB {
+func createPostgresDatabase(t *testing.T, admin *sql.DB, connStr, name string) string {
 	t.Helper()
 	// #nosec G202 -- name is a literal or UUID-derived, never external input.
 	if _, err := admin.Exec("CREATE DATABASE " + name); err != nil {
@@ -241,7 +203,7 @@ func createPostgresDatabase(t *testing.T, admin *sql.DB, connStr, name string) *
 		t.Fatalf("parse postgres connection string: %v", err)
 	}
 	dsn.Path = "/" + name
-	return openPostgres(t, dsn.String())
+	return dsn.String()
 }
 
 // openPostgres opens a connection and closes it when the test ends.

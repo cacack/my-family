@@ -10,10 +10,9 @@ import (
 	"syscall"
 
 	"github.com/cacack/my-family/internal/api"
-	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/config"
 	"github.com/cacack/my-family/internal/demo"
-	"github.com/cacack/my-family/internal/repository/memory"
+	"github.com/cacack/my-family/internal/storage"
 	"github.com/cacack/my-family/internal/web"
 )
 
@@ -32,7 +31,9 @@ func main() {
 
 	switch os.Args[1] {
 	case "serve":
-		runServer()
+		if err := runServer(); err != nil {
+			log.Fatal(err)
+		}
 	case "version":
 		fmt.Printf("my-family %s (commit: %s, built: %s)\n", version, commit, date)
 	case "help", "-h", "--help":
@@ -56,24 +57,34 @@ Commands:
   help      Show this help message
 
 Environment Variables:
-  DATABASE_URL   PostgreSQL connection string (optional, uses SQLite by default)
-  SQLITE_PATH    SQLite database path (default: ./myfamily.db)
+  DATABASE_URL   PostgreSQL connection string (if set, data is stored in PostgreSQL)
+  SQLITE_PATH    SQLite database path, used when DATABASE_URL is unset (default: ./myfamily.db)
   PORT           HTTP server port (default: 8080)
   LOG_LEVEL      Log level: debug, info, warn, error (default: info)
   LOG_FORMAT     Log format: text, json (default: text)
-  DEMO_MODE      Run with sample data, no persistence (default: false)`)
+  DEMO_MODE      Run in memory with sample data, no persistence; overrides
+                 DATABASE_URL and SQLITE_PATH (default: false)`)
 }
 
-func runServer() {
+// runServer opens the configured store, serves until SIGINT/SIGTERM, then
+// closes the store. It returns an error only for failures that must stop the
+// process with a non-zero exit.
+func runServer() error {
 	// Load configuration
 	cfg := config.Load()
 
-	// Create repositories
-	// For MVP, use in-memory stores. SQLite will be added later.
-	eventStore := memory.NewEventStore()
-	readStore := memory.NewReadModelStore()
-	snapshotStore := memory.NewSnapshotStore(eventStore)
-	branchStore := memory.NewBranchStore()
+	// Open the configured store: DEMO_MODE -> memory, DATABASE_URL -> PostgreSQL,
+	// otherwise SQLite at SQLITE_PATH. A backend that cannot be opened stops the
+	// server here; there is no silent fallback to memory.
+	stores, err := storage.Open(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to open %s storage: %w", storage.Select(cfg), err)
+	}
+	defer func() {
+		if err := stores.Close(); err != nil {
+			log.Printf("Error closing storage: %v", err)
+		}
+	}()
 
 	// Get frontend filesystem (embedded in production, local in dev)
 	frontendFS, err := web.GetFileSystem()
@@ -83,13 +94,12 @@ func runServer() {
 	}
 
 	log.Printf("Starting My Family server on port %d", cfg.Port)
-	if cfg.UsePostgreSQL() {
-		log.Printf("Database: PostgreSQL")
-	} else {
-		log.Printf("Database: In-memory (SQLite path configured: %s)", cfg.SQLitePath)
-	}
+	log.Printf("Database: %s", stores.Describe())
 	if cfg.DemoMode {
 		log.Printf("Mode: DEMO (sample data, no persistence)")
+		if cfg.UsePostgreSQL() {
+			log.Printf("Note: DATABASE_URL is ignored in demo mode")
+		}
 	}
 	if frontendFS != nil {
 		log.Printf("Frontend: Embedded")
@@ -97,23 +107,23 @@ func runServer() {
 		log.Printf("Frontend: Not available (API only)")
 	}
 
+	// Build server options
+	serverOpts := []api.ServerOption{api.WithBranchStore(stores.Branches)}
+	if cfg.DemoMode {
+		mem := stores.Memory
+		serverOpts = append(serverOpts, api.WithDemoReset(mem.Events, mem.ReadModel, mem.Snapshots))
+	}
+
+	// Create server
+	server := api.NewServer(cfg, stores.Events, stores.ReadModel, stores.Snapshots, frontendFS, serverOpts...)
+
 	// Seed demo data if demo mode is enabled
 	if cfg.DemoMode {
-		cmdHandler := command.NewHandlerWithBranches(eventStore, readStore, branchStore, snapshotStore)
-		if err := demo.SeedDemoData(context.Background(), cmdHandler); err != nil {
-			log.Fatalf("Failed to seed demo data: %v", err)
+		if err := demo.SeedDemoData(context.Background(), server.CommandHandler()); err != nil {
+			return fmt.Errorf("failed to seed demo data: %w", err)
 		}
 		log.Printf("Demo data loaded: sample family tree ready")
 	}
-
-	// Build server options
-	serverOpts := []api.ServerOption{api.WithBranchStore(branchStore)}
-	if cfg.DemoMode {
-		serverOpts = append(serverOpts, api.WithDemoReset(eventStore, readStore, snapshotStore))
-	}
-
-	// Create and start server
-	server := api.NewServer(cfg, eventStore, readStore, snapshotStore, frontendFS, serverOpts...)
 
 	// Handle graceful shutdown
 	go func() {
@@ -127,8 +137,10 @@ func runServer() {
 		}
 	}()
 
-	// Start server
+	// Start server; it returns once Shutdown closes it, and the deferred
+	// Close then releases the database.
 	if err := server.Start(); err != nil {
 		log.Printf("Server stopped: %v", err)
 	}
+	return nil
 }

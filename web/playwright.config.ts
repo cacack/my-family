@@ -11,7 +11,9 @@
  * failed.
  */
 import { defineConfig, devices } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BASE_URL, E2E_PORT, OUTPUT_DIR } from './e2e/seed';
 
@@ -23,14 +25,33 @@ if (!existsSync(BINARY)) {
 	);
 }
 
+/**
+ * `serve` persists to SQLite by default, so the suite points it at a database
+ * file of its own - fresh every run - rather than at `./myfamily.db`. Global
+ * setup relies on starting from an empty store, and a developer's own data must
+ * never be seeded into.
+ *
+ * This module is evaluated by the runner and again by every worker. Only the
+ * runner creates the directory; it publishes the path through the environment,
+ * which the workers inherit, so there is exactly one database per run. The
+ * runner removes it on exit.
+ */
+const DB_DIR_ENV = 'MYFAMILY_E2E_DB_DIR';
+if (!process.env[DB_DIR_ENV]) {
+	const dir = mkdtempSync(join(tmpdir(), 'myfamily-e2e-'));
+	process.env[DB_DIR_ENV] = dir;
+	process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+}
+const SQLITE_PATH = join(process.env[DB_DIR_ENV] as string, 'myfamily.db');
+
 export default defineConfig({
 	testDir: 'e2e',
 	outputDir: OUTPUT_DIR,
 	globalSetup: './e2e/global-setup.ts',
 
 	/**
-	 * One worker, no parallelism. The specs share one server whose store is in
-	 * memory, and merging a branch is terminal - serial execution is what keeps
+	 * One worker, no parallelism. The specs share one server and one store, and
+	 * merging a branch is terminal - serial execution is what keeps
 	 * a failure legible rather than a race to explain.
 	 */
 	workers: 1,
@@ -63,7 +84,10 @@ export default defineConfig({
 		// The API answers before the SPA is ever requested, so this is the
 		// earliest honest readiness signal.
 		url: `${BASE_URL}/api/v1/branches`,
-		env: { PORT: String(E2E_PORT) },
+		// SQLITE_PATH as well as PORT: see SQLITE_PATH above. DATABASE_URL and
+		// DEMO_MODE are pinned empty so an exported value in the developer's shell
+		// cannot redirect the suite to a real database or the demo tree.
+		env: { PORT: String(E2E_PORT), SQLITE_PATH, DATABASE_URL: '', DEMO_MODE: '' },
 		// In CI a stray listener on this port is a bug, not a convenience.
 		reuseExistingServer: !process.env.CI,
 		// Echo logs one line per asset request; piping them buries the test
