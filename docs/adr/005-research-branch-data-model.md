@@ -321,9 +321,12 @@ The recommendation was adopted. Snapshots are now event-sourced, exactly like th
 - **The marker never perturbs what it marks.** `CreateSnapshot` reads the log head *before*
   appending, so the snapshot's `Position` excludes its own creation event. This is the answer to
   the chicken-and-egg the issue raised, and it matches how `CreateBranch` pins a base position.
-- **Snapshot events are hidden from the change log.** `mapEventTypeToEntityAndAction` skips both
+- **Snapshot events are hidden from the change log.** The history event-type table excludes both
   types: they are audit records on the log, not genealogical changes, and a snapshot comparison
-  reads a range that contains one of the two markers.
+  reads a range that contains one of the two markers. Since #739 the exclusion is applied in the
+  store for the global history, so it no longer under-fills pages or inflates `total` — see
+  [HISTORY-EVENT-TYPES.md](../HISTORY-EVENT-TYPES.md), which records the mapped-or-excluded
+  decision for every event type, including the branch lifecycle events.
 
 **Still open — branch-scoped snapshots.** The bullet above ("a snapshot taken *on a branch* points
 to `(branch_id, position)`") is **not** implemented: the `snapshots` table has no `branch_id`

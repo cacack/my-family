@@ -4,6 +4,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"sync"
 	"time"
 
@@ -303,5 +304,59 @@ func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time
 		Events:     result,
 		TotalCount: totalCount,
 		HasMore:    end < totalCount,
+	}, nil
+}
+
+// ReadGlobalHistory returns one page of the global history with every filter
+// applied before pagination (see repository.GlobalHistoryQuery), ordered by
+// timestamp then position like the SQL stores.
+func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	include := make(map[string]bool, len(q.IncludeEventTypes))
+	for _, t := range q.IncludeEventTypes {
+		include[t] = true
+	}
+	exclude := make(map[string]bool, len(q.ExcludeEventTypes))
+	for _, t := range q.ExcludeEventTypes {
+		exclude[t] = true
+	}
+
+	filtered := make([]repository.StoredEvent, 0, len(s.events))
+	for i := range s.events {
+		event := s.events[i]
+		if !q.FromTime.IsZero() && event.Timestamp.Before(q.FromTime) {
+			continue
+		}
+		if !q.ToTime.IsZero() && event.Timestamp.After(q.ToTime) {
+			continue
+		}
+		if len(include) > 0 && !include[event.EventType] {
+			continue
+		}
+		if exclude[event.EventType] {
+			continue
+		}
+		if q.BranchID != nil && event.BranchID != *q.BranchID {
+			continue
+		}
+		filtered = append(filtered, event)
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		if !filtered[i].Timestamp.Equal(filtered[j].Timestamp) {
+			return filtered[i].Timestamp.Before(filtered[j].Timestamp)
+		}
+		return filtered[i].Position < filtered[j].Position
+	})
+
+	total := len(filtered)
+	start := min(max(q.Offset, 0), total)
+	end := min(start+max(q.Limit, 0), total)
+
+	return &repository.HistoryPage{
+		Events:     append([]repository.StoredEvent{}, filtered[start:end]...),
+		TotalCount: total,
+		HasMore:    end < total,
 	}, nil
 }

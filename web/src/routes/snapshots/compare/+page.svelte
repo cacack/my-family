@@ -8,11 +8,11 @@
 	 * older one - so the page always presents "older -> newer" whichever order
 	 * the ids were given in.
 	 *
-	 * Only person, family, source and citation changes are itemized; the
-	 * server labels any other event type `unknown` (sub-records such as names or
-	 * life events written alongside a person). Those are counted, not listed:
-	 * their `entity_name` is a bare id, which would make the diff less readable,
-	 * not more.
+	 * Every change is itemized: the server maps each event to an entity type
+	 * (persons, families, sources and citations, but also names, life events,
+	 * attributes, notes, media and research artifacts) or leaves it out of the
+	 * change log altogether (snapshot markers, imports), so there is nothing
+	 * left to count without listing (#827).
 	 */
 	import { page } from '$app/stores';
 	import {
@@ -27,17 +27,14 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Label } from '$lib/components/ui/label';
 	import { snapshotCompareHref } from '$lib/utils/snapshots';
+	import {
+		CHANGE_ENTITY_TYPES,
+		ENTITY_TYPE_LABELS as ENTITY_LABELS,
+		changeEntryLink
+	} from '$lib/utils/changeEntries';
 
 	type EntityType = BranchChangeEntry['entity_type'];
 	type EntityFilter = EntityType | 'all';
-
-	const ENTITY_LABELS: Record<EntityType, string> = {
-		person: 'Person',
-		family: 'Family',
-		source: 'Source',
-		citation: 'Citation'
-	};
-	const ITEMIZED = new Set<string>(Object.keys(ENTITY_LABELS));
 
 	const fromId = $derived($page.url.searchParams.get('from') ?? '');
 	const toId = $derived($page.url.searchParams.get('to') ?? '');
@@ -64,21 +61,19 @@
 	const newer: Snapshot | null = $derived(
 		comparison ? (comparison.older_first ? comparison.snapshot2 : comparison.snapshot1) : null
 	);
-	const itemized = $derived(
-		(comparison?.changes ?? []).filter((entry) => ITEMIZED.has(entry.entity_type))
-	);
-	const otherCount = $derived((comparison?.changes.length ?? 0) - itemized.length);
+	const itemized = $derived(comparison?.changes ?? []);
 	const visible = $derived(
 		entityFilter === 'all' ? itemized : itemized.filter((e) => e.entity_type === entityFilter)
 	);
 	const counts = $derived({
 		created: itemized.filter((e) => e.action === 'created').length,
 		updated: itemized.filter((e) => e.action === 'updated').length,
-		deleted: itemized.filter((e) => e.action === 'deleted').length
+		deleted: itemized.filter((e) => e.action === 'deleted').length,
+		merged: itemized.filter((e) => e.action === 'merged').length
 	});
 	/** Entity types actually present, so the filter never offers an empty choice. */
 	const presentTypes = $derived(
-		(Object.keys(ENTITY_LABELS) as EntityType[]).filter((type) =>
+		CHANGE_ENTITY_TYPES.filter((type) =>
 			itemized.some((e) => e.entity_type === type)
 		)
 	);
@@ -89,8 +84,8 @@
 
 	const summary = $derived(
 		itemized.length === 0
-			? 'No changes to people, families, sources or citations between these snapshots.'
-			: `${plural(itemized.length, 'change')}: ${counts.created} created, ${counts.updated} updated, ${counts.deleted} deleted.`
+			? 'No changes between these snapshots.'
+			: `${plural(itemized.length, 'change')}: ${counts.created} created, ${counts.updated} updated, ${counts.deleted} deleted${counts.merged > 0 ? `, ${counts.merged} merged` : ''}.`
 	);
 
 	function announce(message: string) {
@@ -111,17 +106,7 @@
 	}
 
 	function entityLink(entry: BranchChangeEntry): string | null {
-		if (entry.action === 'deleted') return null;
-		switch (entry.entity_type) {
-			case 'person':
-				return `/persons/${entry.entity_id}`;
-			case 'family':
-				return `/families/${entry.entity_id}`;
-			case 'source':
-				return `/sources/${entry.entity_id}`;
-			default:
-				return null;
-		}
+		return changeEntryLink(entry);
 	}
 
 	// A soft navigation between two comparisons reuses this component, so a slow
@@ -240,12 +225,6 @@
 		{/if}
 
 		<p class="summary">{summary}</p>
-		{#if otherCount > 0}
-			<p class="note">
-				Plus {plural(otherCount, 'related record change')} (such as names and life events recorded
-				with a person) that are not itemized here.
-			</p>
-		{/if}
 		{#if comparison.has_more}
 			<p class="truncated" role="note">
 				This range holds more changes than can be compared at once, so only the earliest ones are

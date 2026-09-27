@@ -418,6 +418,82 @@ func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time
 	return scanHistoryPage(rows, limit, offset)
 }
 
+// Fixed WHERE-clause fragments for ReadGlobalHistory. Each carries only a %d
+// for its $-placeholder number; every value is a bind parameter.
+const (
+	globalHistoryFromTime = "timestamp >= $%d"
+	globalHistoryToTime   = "timestamp <= $%d"
+	globalHistoryInclude  = "event_type = ANY($%d)"
+	globalHistoryExclude  = "NOT (event_type = ANY($%d))"
+	globalHistoryBranch   = "branch_id = $%d"
+)
+
+// ReadGlobalHistory returns one page of the global history with every filter
+// applied before pagination (see repository.GlobalHistoryQuery). The total is
+// counted by its own query rather than a window function, so a page past the
+// end still reports the real total instead of zero.
+func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+	var where []string
+	var args []any
+	add := func(fragment string, value any) {
+		args = append(args, value)
+		where = append(where, fmt.Sprintf(fragment, len(args)))
+	}
+	if !q.FromTime.IsZero() {
+		add(globalHistoryFromTime, q.FromTime)
+	}
+	if !q.ToTime.IsZero() {
+		add(globalHistoryToTime, q.ToTime)
+	}
+	if len(q.IncludeEventTypes) > 0 {
+		add(globalHistoryInclude, pq.Array(q.IncludeEventTypes))
+	}
+	if len(q.ExcludeEventTypes) > 0 {
+		add(globalHistoryExclude, pq.Array(q.ExcludeEventTypes))
+	}
+	if q.BranchID != nil {
+		add(globalHistoryBranch, q.BranchID.UUID())
+	}
+	whereClause := ""
+	if len(where) > 0 {
+		whereClause = " WHERE " + strings.Join(where, " AND ")
+	}
+
+	var total int
+	// #nosec G202 -- whereClause is joined from the package constants above, carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events"+whereClause, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count global history: %w", err)
+	}
+
+	limit := max(q.Limit, 0)
+	offset := max(q.Offset, 0)
+	pageArgs := append(append([]any{}, args...), limit, offset)
+	// #nosec G201 G202 -- whereClause is joined from the package constants above; limit and offset are bind parameters
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	pageQuery := "SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position FROM events" +
+		whereClause + fmt.Sprintf(" ORDER BY timestamp ASC, position ASC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, pageQuery, pageArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("query global history: %w", err)
+	}
+	defer rows.Close()
+
+	events, err := scanEvents(rows)
+	if err != nil {
+		return nil, err
+	}
+	if events == nil {
+		events = []repository.StoredEvent{}
+	}
+	return &repository.HistoryPage{
+		Events:     events,
+		TotalCount: total,
+		HasMore:    offset+len(events) < total,
+	}, nil
+}
+
 // scanHistoryPage scans rows into a HistoryPage with pagination info.
 func scanHistoryPage(rows *sql.Rows, limit, offset int) (*repository.HistoryPage, error) {
 	var events []repository.StoredEvent

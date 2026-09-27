@@ -238,6 +238,108 @@ describe('Branch comparison page', () => {
 		expect(screen.getByText('King')).toBeDefined();
 	});
 
+	it('renders every branch-aware entity type by label, name and page, never as a raw id', async () => {
+		const NOTE_ID = '55555555-5555-5555-5555-555555555555';
+		const EVENT_ID = '44444444-4444-4444-4444-444444444444';
+		const LOG_ID = '33333333-3333-3333-3333-333333333333';
+		compareBranch.mockResolvedValue(
+			comparison({
+				branch_changes: [
+					{
+						id: 'e1',
+						timestamp: '2026-01-16T10:30:00Z',
+						entity_type: 'person',
+						entity_id: PERSON_ID,
+						entity_name: 'Ada Lovelace',
+						action: 'updated',
+						changes: {
+							name: { old_value: 'Ada Byron', new_value: 'Augusta Ada Byron' }
+						}
+					},
+					{
+						id: 'e2',
+						timestamp: '2026-01-16T10:31:00Z',
+						entity_type: 'note',
+						entity_id: NOTE_ID,
+						entity_name: 'Ada wrote the first algorithm',
+						action: 'created'
+					},
+					{
+						id: 'e3',
+						timestamp: '2026-01-16T10:32:00Z',
+						entity_type: 'life_event',
+						entity_id: EVENT_ID,
+						entity_name: 'Birth, 10 DEC 1815, London',
+						action: 'updated',
+						parent_entity_type: 'person',
+						parent_entity_id: PERSON_ID,
+						changes: {
+							place: { old_value: 'Marylebone', new_value: 'London' }
+						}
+					},
+					{
+						id: 'e4',
+						timestamp: '2026-01-16T10:33:00Z',
+						entity_type: 'research_log',
+						entity_id: LOG_ID,
+						entity_name: 'Searched baptism registers (National Archives)',
+						action: 'created'
+					}
+				],
+				branch_change_count: 4,
+				conflicts: [],
+				overlapping_stream_ids: []
+			})
+		);
+
+		render(Page);
+		const side = await screen.findByTestId('branch-changes');
+		const items = within(side).getAllByRole('listitem');
+		expect(items).toHaveLength(4);
+
+		// The person's name change shows what it replaced.
+		expect(within(items[0]).getByText('Ada Byron')).toBeDefined();
+		expect(within(items[0]).getByText('Augusta Ada Byron')).toBeDefined();
+
+		// A note has no page, so it is named but not linked.
+		expect(within(items[1]).getByText('Note')).toBeDefined();
+		expect(within(items[1]).getAllByText('Ada wrote the first algorithm')).toHaveLength(2);
+		expect(within(items[1]).queryByRole('link')).toBeNull();
+
+		// A life event links to the person that presents it.
+		expect(within(items[2]).getByText('Life event')).toBeDefined();
+		expect(
+			within(items[2])
+				.getByRole('link', { name: 'Birth, 10 DEC 1815, London' })
+				.getAttribute('href')
+		).toBe(`/persons/${PERSON_ID}`);
+		expect(within(items[2]).getByText('Marylebone')).toBeDefined();
+
+		// A research log links to its own page.
+		expect(
+			within(items[3])
+				.getByRole('link', {
+					name: 'Searched baptism registers (National Archives)'
+				})
+				.getAttribute('href')
+		).toBe(`/evidence/research-logs/${LOG_ID}`);
+
+		// The leave-out control is labelled with the entity's name, visibly too.
+		expect(
+			within(items[1]).getByRole('checkbox', {
+				name: 'Leave out of the merge: Ada wrote the first algorithm'
+			})
+		).toBeDefined();
+		expect(within(items[1]).getByText(/Leave out of the merge:/).textContent).toContain(
+			'Ada wrote the first algorithm'
+		);
+
+		expect(screen.queryByText(/unknown/i)).toBeNull();
+		for (const id of [NOTE_ID, EVENT_ID, LOG_ID]) {
+			expect(screen.queryByText(id)).toBeNull();
+		}
+	});
+
 	it('reports conflicts as the verdict, with the contested fields', async () => {
 		render(Page);
 

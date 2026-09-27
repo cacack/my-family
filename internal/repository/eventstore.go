@@ -129,6 +129,34 @@ type EventStore interface {
 	//   - offset: Number of events to skip (for pagination)
 	// Returns a HistoryPage with events, total count, and hasMore flag.
 	ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*HistoryPage, error)
+
+	// ReadGlobalHistory is ReadGlobalByTime with every filter the global change
+	// history needs applied IN THE STORE, before pagination, so the page and
+	// its TotalCount/HasMore are computed over the same set of events (#739).
+	// See GlobalHistoryQuery for the filters. Results are ordered by timestamp,
+	// then position, ascending.
+	ReadGlobalHistory(ctx context.Context, q GlobalHistoryQuery) (*HistoryPage, error)
+}
+
+// GlobalHistoryQuery filters and paginates ReadGlobalHistory. Every filter is
+// evaluated by the store before LIMIT/OFFSET.
+type GlobalHistoryQuery struct {
+	// FromTime and ToTime bound the event timestamp, inclusive. A zero value
+	// leaves that side unbounded.
+	FromTime time.Time
+	ToTime   time.Time
+	// IncludeEventTypes, when non-empty, keeps only these event types.
+	IncludeEventTypes []string
+	// ExcludeEventTypes drops these event types. Applied after the include
+	// list, so a type named in both is dropped.
+	ExcludeEventTypes []string
+	// BranchID, when non-nil, keeps only that branch's own events. Pass
+	// &domain.MainBranchID for the mainline's history (ADR-005). Nil reads
+	// every branch.
+	BranchID *domain.BranchID
+	// Limit caps the page (non-positive yields an empty page); Offset skips.
+	Limit  int
+	Offset int
 }
 
 // StoredEvent represents an event as stored in the event store.

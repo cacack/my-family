@@ -66,3 +66,85 @@ describe('ChangeHistory origin labels (#824)', () => {
 		expect(screen.queryByText('This branch')).toBeNull();
 	});
 });
+
+describe('ChangeHistory global log (#739)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('renders every entity type by label and name, linking sub-records to their owner', async () => {
+		const NOTE_ID = '22222222-2222-2222-2222-222222222222';
+		const CITATION_ID = '33333333-3333-3333-3333-333333333333';
+		const SOURCE_ID = '44444444-4444-4444-4444-444444444444';
+		const ANALYSIS_ID = '55555555-5555-5555-5555-555555555555';
+		vi.mocked(apiModule.api.getGlobalHistory).mockResolvedValue({
+			items: [
+				entry({
+					id: 'n',
+					entity_type: 'note',
+					entity_id: NOTE_ID,
+					entity_name: 'A note excerpt',
+					action: 'created'
+				}),
+				entry({
+					id: 'c',
+					entity_type: 'citation',
+					entity_id: CITATION_ID,
+					entity_name: '1850 Census (Birth)',
+					parent_entity_type: 'source',
+					parent_entity_id: SOURCE_ID
+				}),
+				entry({
+					id: 'a',
+					entity_type: 'evidence_analysis',
+					entity_id: ANALYSIS_ID,
+					entity_name: 'Birth: Born 1815',
+					action: 'created'
+				}),
+				entry({
+					id: 'm',
+					action: 'merged',
+					changes: { merged_person: { new_value: 'Ada Byron' } }
+				})
+			],
+			total: 4,
+			limit: 20,
+			offset: 0,
+			has_more: false
+		});
+
+		render(ChangeHistory);
+
+		expect(await screen.findByText('A note excerpt')).toBeDefined();
+		expect(screen.getByText('Note', { selector: '.entity-type' })).toBeDefined();
+		expect(screen.queryByRole('link', { name: 'A note excerpt' })).toBeNull();
+		expect(screen.getByRole('link', { name: '1850 Census (Birth)' }).getAttribute('href')).toBe(
+			`/sources/${SOURCE_ID}`
+		);
+		expect(screen.getByText('Evidence analysis', { selector: '.entity-type' })).toBeDefined();
+		expect(screen.getByRole('link', { name: 'Birth: Born 1815' }).getAttribute('href')).toBe(
+			`/evidence/analyses/${ANALYSIS_ID}`
+		);
+		// A person merge offers its field changes like an update does.
+		expect(screen.getByText('merged')).toBeDefined();
+		expect(screen.getByRole('button', { name: /Show changes/ })).toBeDefined();
+	});
+
+	it('offers every entity type in the filter', async () => {
+		vi.mocked(apiModule.api.getGlobalHistory).mockResolvedValue({
+			items: [],
+			total: 0,
+			limit: 20,
+			offset: 0,
+			has_more: false
+		});
+
+		render(ChangeHistory);
+
+		const select = await screen.findByLabelText('Entity Type');
+		const values = [...select.querySelectorAll('option')].map((o) => o.getAttribute('value'));
+		expect(values).toContain('life_event');
+		expect(values).toContain('research_log');
+		expect(values).toHaveLength(17);
+	});
+});

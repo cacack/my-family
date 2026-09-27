@@ -55,7 +55,7 @@ New entity types (Person, Family, Source, Citation, Media, Repository) require i
 | 5 | `XCreated`, `XUpdated`, `XDeleted` event types | Event sourcing ([ADR-001](./adr/001-event-sourcing-cqrs.md)) | Event exists |
 | 6 | `NewXCreated()` factory using `NewBaseEvent()` | Consistent timestamps | Factory test |
 | 7 | Events implement `Event` interface | Type safety | Compile check |
-| 8 | Case in `DecodeEvent()` switch | Event deserialization | Integration test |
+| 8 | Case in `DecodeEvent()` switch, and a row in `historyEventCatalog` (mapped or excluded, see [HISTORY-EVENT-TYPES.md](./HISTORY-EVENT-TYPES.md)) | Event deserialization; every change-log view renders it | Integration test; `TestHistoryCatalog_CoversEveryEventType` |
 
 #### Command Layer (2 items)
 

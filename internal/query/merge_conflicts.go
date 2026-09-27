@@ -719,6 +719,18 @@ func createdGedcomXref(evt repository.StoredEvent) string {
 	return payload.GedcomXref
 }
 
+// conflictEntityType is the ChangeEntry entity type of the entity evt belongs
+// to — the one vocabulary a compare response speaks (historyEventCatalog). An
+// event type the catalog does not map (unreachable for any decodable type)
+// falls back to its lower-cased stream type, which is at least the entity's
+// real name.
+func conflictEntityType(evt *repository.StoredEvent) string {
+	if class, ok := classifyHistoryEvent(evt.EventType); ok && !class.Excluded() {
+		return class.EntityType
+	}
+	return strings.ToLower(evt.StreamType)
+}
+
 // enrichConflictEntities labels each conflict with the type and display name of
 // the entity it is about, so a reviewer sees "Ada Lovelace" and not a UUID.
 //
@@ -742,25 +754,20 @@ func (s *BranchService) enrichConflictEntities(ctx context.Context, branchID dom
 		}
 	}
 
-	// Pass 1: type every conflict and register the entity it names.
-	refs := newEntityRefs()
+	// Pass 1: type every conflict from the event that first touched it.
+	touches := make([]repository.StoredEvent, 0, len(conflicts))
 	for i := range conflicts {
 		evt := firstTouch[conflicts[i].StreamID]
 		if evt == nil {
 			continue
 		}
-		// Lower-cased, because that is the vocabulary the rest of the API speaks:
-		// ChangeEntry.EntityType is "person"/"family", and entityNames.name
-		// switches on those same lower-case names — handed "Person" it silently
-		// falls through to its default and every conflict comes back unnamed.
-		// Derived from StreamType rather than mapEventTypeToEntityAndAction
-		// because that mapper answers "unknown" for every entity outside the four
-		// it knows, whereas a stream type is always the entity's real name.
-		conflicts[i].EntityType = strings.ToLower(evt.StreamType)
-		refs.addEvent(conflicts[i].EntityType, conflicts[i].StreamID, evt)
+		conflicts[i].EntityType = conflictEntityType(evt)
+		touches = append(touches, *evt)
 	}
 
-	names, err := s.historyService.resolveEntityNamesOn(ctx, branchID, refs)
+	// One batched description for every conflicted entity: the same naming
+	// change entries use, so a conflict and the entries it contests read alike.
+	desc, err := s.historyService.describeEvents(ctx, branchID, touches)
 	if err != nil {
 		return err
 	}
@@ -771,7 +778,7 @@ func (s *BranchService) enrichConflictEntities(ctx context.Context, branchID dom
 		if evt == nil {
 			continue
 		}
-		name := names.name(conflicts[i].EntityType, conflicts[i].StreamID, evt)
+		name := desc.name(conflicts[i].EntityType, conflicts[i].StreamID, evt)
 		if name == conflicts[i].StreamID.String() {
 			// name falls back to the id when nothing resolves. The conflict
 			// already carries the id in StreamID, so report the absence as

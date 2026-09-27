@@ -173,27 +173,14 @@ func TestGetGlobalHistory_WithEntityTypeFilter(t *testing.T) {
 func TestGetGlobalHistory_InvalidEntityType(t *testing.T) {
 	server := setupTestServer()
 
-	// Note: The OpenAPI spec defines entity_type as an enum, but the generated
-	// code doesn't perform enum validation. Invalid entity types are accepted
-	// and simply result in no matches (empty list).
+	// An entity type outside the ChangeEntry vocabulary is refused at the API
+	// boundary. Accepting it would read as "no filter" and return everything.
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/history?entity_type=invalid", http.NoBody)
 	rec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(rec, req)
 
-	// Invalid entity types return 200 with empty results
-	if rec.Code != http.StatusOK {
-		t.Errorf("Status = %d, want %d", rec.Code, http.StatusOK)
-	}
-
-	// Verify we get an empty result
-	var result map[string]interface{}
-	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
-
-	items := result["items"].([]interface{})
-	if len(items) != 0 {
-		t.Errorf("Expected empty items for invalid entity type, got %d", len(items))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
 
@@ -651,5 +638,70 @@ func TestHistoryResponseFormat(t *testing.T) {
 	// Should contain person's name
 	if !strings.Contains(entityName, "Alice") && !strings.Contains(entityName, "Johnson") {
 		t.Errorf("entity_name = %v, expected to contain Alice or Johnson", entityName)
+	}
+}
+
+// TestGetGlobalHistory_EveryEntityTypeIsReadable is #739 over HTTP: sub-records
+// come back typed, named and linked to the page that presents them, the
+// entity_type filter covers them, and no item falls outside the contract.
+func TestGetGlobalHistory_EveryEntityTypeIsReadable(t *testing.T) {
+	server := setupTestServer()
+	personID := createPerson(t, server, "Ada", "Lovelace")
+
+	rec := do(t, server, http.MethodPost, "/api/v1/sources", `{"source_type":"archive","title":"Parish Register"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create source: %d %s", rec.Code, rec.Body.String())
+	}
+	sourceID, _ := decodeJSON(t, rec)["id"].(string)
+	rec = do(t, server, http.MethodPost, "/api/v1/citations",
+		`{"source_id":"`+sourceID+`","fact_type":"person_birth","fact_owner_id":"`+personID+`","page":"p. 4"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create citation: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = do(t, server, http.MethodPost, "/api/v1/notes", `{"text":"Baptised at St James"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("create note: %d %s", rec.Code, rec.Body.String())
+	}
+
+	items := func(query string) []map[string]any {
+		t.Helper()
+		rec := do(t, server, http.MethodGet, "/api/v1/history"+query, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /history%s: %d %s", query, rec.Code, rec.Body.String())
+		}
+		body := decodeJSON(t, rec)
+		raw, _ := body["items"].([]any)
+		if total, _ := body["total"].(float64); int(total) != len(raw) {
+			t.Errorf("GET /history%s: total %v, items %d", query, total, len(raw))
+		}
+		out := make([]map[string]any, 0, len(raw))
+		for _, r := range raw {
+			item, _ := r.(map[string]any)
+			if item["entity_type"] == "unknown" || item["action"] == "unknown" {
+				t.Errorf("item outside the contract: %v", item)
+			}
+			out = append(out, item)
+		}
+		return out
+	}
+
+	all := items("")
+	if len(all) != 5 { // PersonCreated, NameAdded, SourceCreated, CitationCreated, NoteCreated
+		t.Errorf("global history has %d items, want 5: %v", len(all), all)
+	}
+
+	citations := items("?entity_type=citation")
+	if len(citations) != 1 {
+		t.Fatalf("citation filter: %d items, want 1", len(citations))
+	}
+	if got := citations[0]["entity_name"]; got != "Parish Register (Birth)" {
+		t.Errorf("citation name = %v", got)
+	}
+	if citations[0]["parent_entity_type"] != "source" || citations[0]["parent_entity_id"] != sourceID {
+		t.Errorf("citation parent = %v %v, want source %s", citations[0]["parent_entity_type"], citations[0]["parent_entity_id"], sourceID)
+	}
+
+	notes := items("?entity_type=note")
+	if len(notes) != 1 || notes[0]["entity_name"] != "Baptised at St James" {
+		t.Errorf("note filter: %v", notes)
 	}
 }

@@ -98,16 +98,19 @@ const personDelete: BranchChangeEntry = {
 	action: 'deleted'
 };
 
-// The server labels sub-record events it does not itemize as `unknown`, which
-// is outside the generated enum - hence the cast.
-const subRecord = {
+// A sub-record: no page of its own, so it links to the person that presents it.
+const LIFE_EVENT_ID = '88888888-8888-8888-8888-888888888888';
+const subRecord: BranchChangeEntry = {
 	id: 'e4',
 	timestamp: '2026-01-20T09:00:01Z',
-	entity_type: 'unknown',
-	entity_id: PERSON_ID,
-	entity_name: PERSON_ID,
-	action: 'unknown'
-} as unknown as BranchChangeEntry;
+	entity_type: 'life_event',
+	entity_id: LIFE_EVENT_ID,
+	entity_name: 'Birth, 1850, Ohio',
+	action: 'updated',
+	parent_entity_type: 'person',
+	parent_entity_id: PERSON_ID,
+	changes: { place: { old_value: 'Kentucky', new_value: 'Ohio' } }
+};
 
 function comparison(overrides: Partial<SnapshotComparisonResult> = {}): SnapshotComparisonResult {
 	const changes = overrides.changes ?? [personUpdate, subRecord, familyCreate, personDelete];
@@ -165,11 +168,11 @@ describe('Snapshot comparison page', () => {
 	it('summarizes and itemizes the changes, with a field-level diff for updates', async () => {
 		render(Page);
 
-		expect(await screen.findByText('3 changes: 1 created, 1 updated, 1 deleted.')).toBeDefined();
+		expect(await screen.findByText('4 changes: 1 created, 2 updated, 1 deleted.')).toBeDefined();
 
 		const list = screen.getByRole('list', { name: 'Changes, oldest first' });
 		const items = within(list).getAllByRole('listitem');
-		expect(items).toHaveLength(3);
+		expect(items).toHaveLength(4);
 
 		const person = within(items[0]).getByRole('link', { name: 'Mary Smith' });
 		expect(person.getAttribute('href')).toBe(`/persons/${PERSON_ID}`);
@@ -177,19 +180,25 @@ describe('Snapshot comparison page', () => {
 		expect(within(items[0]).getByText('Franklin County, Ohio')).toBeDefined();
 
 		expect(
-			within(items[1]).getByRole('link', { name: 'John Smith & Mary Jones' }).getAttribute('href')
+			within(items[2]).getByRole('link', { name: 'John Smith & Mary Jones' }).getAttribute('href')
 		).toBe(`/families/${FAMILY_ID}`);
 
 		// A deleted entity has no page to link to.
-		expect(within(items[2]).queryByRole('link')).toBeNull();
-		expect(within(items[2]).getByText('Duplicate John')).toBeDefined();
+		expect(within(items[3]).queryByRole('link')).toBeNull();
+		expect(within(items[3]).getByText('Duplicate John')).toBeDefined();
 	});
 
-	it('counts sub-record changes instead of listing them by raw id', async () => {
+	it('lists sub-records by name, with their before/after values, linked to their owner', async () => {
 		render(Page);
 
-		await screen.findByText(/1 related record change \(/);
-		expect(screen.queryByText(PERSON_ID)).toBeNull();
+		const list = await screen.findByRole('list', { name: 'Changes, oldest first' });
+		const item = within(list).getAllByRole('listitem')[1];
+		expect(within(item).getByText('Life event')).toBeDefined();
+		const link = within(item).getByRole('link', { name: 'Birth, 1850, Ohio' });
+		expect(link.getAttribute('href')).toBe(`/persons/${PERSON_ID}`);
+		expect(within(item).getByText('Kentucky')).toBeDefined();
+		expect(screen.queryByText(LIFE_EVENT_ID)).toBeNull();
+		expect(screen.queryByText(/unknown/i)).toBeNull();
 	});
 
 	it('filters the list by entity type', async () => {
@@ -201,6 +210,10 @@ describe('Snapshot comparison page', () => {
 		const list = screen.getByRole('list', { name: 'Changes, oldest first' });
 		expect(within(list).getAllByRole('listitem')).toHaveLength(1);
 		expect(within(list).getByText('John Smith & Mary Jones')).toBeDefined();
+
+		await fireEvent.change(screen.getByLabelText('Show'), { target: { value: 'life_event' } });
+		expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+		expect(within(list).getByText('Birth, 1850, Ohio')).toBeDefined();
 	});
 
 	it('warns when the range was truncated', async () => {
@@ -216,11 +229,7 @@ describe('Snapshot comparison page', () => {
 
 		render(Page);
 
-		expect(
-			await screen.findByText(
-				'No changes to people, families, sources or citations between these snapshots.'
-			)
-		).toBeDefined();
+		expect(await screen.findByText('No changes between these snapshots.')).toBeDefined();
 		expect(screen.queryByRole('list', { name: 'Changes, oldest first' })).toBeNull();
 	});
 
@@ -229,7 +238,7 @@ describe('Snapshot comparison page', () => {
 
 		await waitFor(() => {
 			expect(screen.getByTestId('announcer').textContent).toContain(
-				'Comparison loaded. 3 changes: 1 created, 1 updated, 1 deleted.'
+				'Comparison loaded. 4 changes: 1 created, 2 updated, 1 deleted.'
 			);
 		});
 	});

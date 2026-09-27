@@ -148,7 +148,7 @@ func seedNamedEvents(t *testing.T, ctx context.Context, store repository.ReadMod
 		set.wantNames[person] = given + " " + surname
 		set.wantNames[family] = given + " " + surname
 		set.wantNames[source] = title
-		set.wantNames[citation] = title + " (person_birth)"
+		set.wantNames[citation] = title + " (Birth)"
 	}
 	return set
 }

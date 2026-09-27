@@ -1739,6 +1739,15 @@ func (ss *StrictServer) ListHistory(ctx context.Context, request ListHistoryRequ
 		toTime = *request.Params.To
 	}
 
+	// An unknown entity type must be refused, not read as "no filter": the
+	// event-type lookup below answers nil for it, which the store would take
+	// to mean every type.
+	if !validEnumParam(request.Params.EntityType) {
+		return ListHistory400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_parameter",
+			Message: "Invalid entity_type parameter",
+		}}, nil
+	}
 	var eventTypes []string
 	if request.Params.EntityType != nil {
 		eventTypes = mapEntityTypeToEventTypes(string(*request.Params.EntityType))

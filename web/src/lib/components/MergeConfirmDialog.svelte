@@ -168,6 +168,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { entityTypeLabel } from '$lib/utils/changeEntries';
 
 	interface Props {
 		open: boolean;
@@ -397,7 +398,7 @@
 						{#each plan.decisions as decision (decision.conflict.stream_id)}
 							<li>
 								<div class="entity-head">
-									<span class="entity-type">{decision.conflict.entity_type}</span>
+									<span class="entity-type">{entityTypeLabel(decision.conflict.entity_type)}</span>
 									<span class="entity-name">{decision.conflict.entity_name || 'Unnamed entity'}</span>
 									<Badge variant={decision.resolution === 'branch' ? 'default' : 'secondary'}>
 										{resolutionLabel(decision.resolution)}
@@ -421,7 +422,7 @@
 						{#each shownExclusions as entity (entity.streamId)}
 							<li>
 								<div class="entity-head">
-									<span class="entity-type">{entity.entityType}</span>
+									<span class="entity-type">{entityTypeLabel(entity.entityType)}</span>
 									<span class="entity-name">{entity.entityName || 'Unnamed entity'}</span>
 									<Badge variant="outline">Not merging</Badge>
 								</div>

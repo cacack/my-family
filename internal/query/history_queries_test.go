@@ -21,6 +21,7 @@ type mockEventStore struct {
 	readByStreamFunc      func(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error)
 	lastReadByStreamScope domain.BranchID
 	readGlobalByTimeFunc  func(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error)
+	lastGlobalQuery       repository.GlobalHistoryQuery
 }
 
 func (m *mockEventStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
@@ -60,6 +61,11 @@ func (m *mockEventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime 
 		return m.readGlobalByTimeFunc(ctx, fromTime, toTime, eventTypes, limit, offset)
 	}
 	return &repository.HistoryPage{}, nil
+}
+
+func (m *mockEventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+	m.lastGlobalQuery = q
+	return m.ReadGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
 }
 
 // mockReadModelStore implements repository.ReadModelStore for testing.
@@ -142,16 +148,15 @@ func resolveName(t *testing.T, service *HistoryService, entityType string, id uu
 	return names.name(entityType, id, evt)
 }
 
-// extractChangesResolved runs extractChanges with the names evt references
-// resolved first, as transformStoredEvents does.
+// extractChangesResolved describes evt as a batch of one, as
+// transformStoredEvents does, and returns its entry's field changes.
 func extractChangesResolved(t *testing.T, service *HistoryService, evt repository.StoredEvent) (map[string]FieldChange, error) {
 	t.Helper()
-	entityType, _ := service.mapEventTypeToEntityAndAction(evt.EventType)
-	refs := newEntityRefs()
-	refs.addEvent(entityType, evt.StreamID, &evt)
-	names, err := service.resolveEntityNames(context.Background(), refs)
-	require.NoError(t, err)
-	return service.extractChanges(evt, names)
+	desc, err := service.describeEvents(context.Background(), domain.MainBranchID, []repository.StoredEvent{evt})
+	if err != nil {
+		return nil, err
+	}
+	return desc.entryChanges(&evt), nil
 }
 
 // Stub methods for other ReadModelStore methods
@@ -779,41 +784,43 @@ func TestGetGlobalHistory(t *testing.T) {
 	}
 }
 
-func TestMapEventTypeToEntityAndAction(t *testing.T) {
-	service := &HistoryService{}
-
+func TestClassifyHistoryEvent(t *testing.T) {
 	tests := []struct {
 		eventType      string
 		wantEntityType string
 		wantAction     string
+		wantExcluded   bool
 	}{
-		{"PersonCreated", "person", "created"},
-		{"PersonUpdated", "person", "updated"},
-		{"PersonDeleted", "person", "deleted"},
-		{"FamilyCreated", "family", "created"},
-		{"FamilyUpdated", "family", "updated"},
-		{"FamilyDeleted", "family", "deleted"},
-		{"ChildLinkedToFamily", "family", "updated"},
-		{"ChildUnlinkedFromFamily", "family", "updated"},
-		{"SourceCreated", "source", "created"},
-		{"SourceUpdated", "source", "updated"},
-		{"SourceDeleted", "source", "deleted"},
-		{"CitationCreated", "citation", "created"},
-		{"CitationUpdated", "citation", "updated"},
-		{"CitationDeleted", "citation", "deleted"},
-		{"GedcomImported", "skip", ""},
-		{"SnapshotCreated", "skip", ""},
-		{"SnapshotDeleted", "skip", ""},
-		{"UnknownEvent", "unknown", "unknown"},
+		{"PersonCreated", "person", "created", false},
+		{"PersonUpdated", "person", "updated", false},
+		{"PersonDeleted", "person", "deleted", false},
+		{"FamilyCreated", "family", "created", false},
+		{"ChildLinkedToFamily", "family", "updated", false},
+		{"ChildUnlinkedFromFamily", "family", "updated", false},
+		{"CitationDeleted", "citation", "deleted", false},
+		{"NameAdded", "person", "updated", false},
+		{"PersonMerged", "person", "merged", false},
+		{"LifeEventCreated", "life_event", "created", false},
+		{"EvidenceConflictDetected", "evidence_conflict", "created", false},
+		{"EvidenceConflictResolved", "evidence_conflict", "updated", false},
+		{"GedcomImported", "", "", true},
+		{"SnapshotCreated", "", "", true},
+		{"SnapshotDeleted", "", "", true},
+		{"BranchMerged", "", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.eventType, func(t *testing.T) {
-			entityType, action := service.mapEventTypeToEntityAndAction(tt.eventType)
-			assert.Equal(t, tt.wantEntityType, entityType)
-			assert.Equal(t, tt.wantAction, action)
+			class, ok := classifyHistoryEvent(tt.eventType)
+			require.True(t, ok)
+			assert.Equal(t, tt.wantExcluded, class.Excluded())
+			assert.Equal(t, tt.wantEntityType, class.EntityType)
+			assert.Equal(t, tt.wantAction, class.Action)
 		})
 	}
+
+	_, ok := classifyHistoryEvent("UnknownEvent")
+	assert.False(t, ok, "an unlisted type is reported as unknown to the caller, never mapped")
 }
 
 func TestExtractChanges(t *testing.T) {
@@ -970,7 +977,7 @@ func TestGetEntityName(t *testing.T) {
 			entityType: "citation",
 			entityID:   citationID,
 			event:      &repository.StoredEvent{EventType: "CitationCreated"},
-			wantName:   "1900 Census (person_birth)",
+			wantName:   "1900 Census (Birth)",
 		},
 		{
 			name:       "unknown entity type",
@@ -1430,11 +1437,16 @@ func TestSnapshotEventsAreSkipped(t *testing.T) {
 	assert.Empty(t, entries, "snapshot lifecycle events should be filtered out of the change log")
 }
 
-func TestUnknownEventTypeStillReturnsUnknown(t *testing.T) {
-	service := &HistoryService{}
-	entityType, action := service.mapEventTypeToEntityAndAction("CompletelyUnknownEvent")
-	assert.Equal(t, "unknown", entityType)
-	assert.Equal(t, "unknown", action)
+// An event type missing from the catalog never surfaces as "unknown": the
+// ChangeEntry contract has no such value. (The coverage test keeps every
+// decodable type in the catalog; this pins the defensive path.)
+func TestUnknownEventTypeIsNeverReportedAsUnknown(t *testing.T) {
+	service := NewHistoryService(&mockEventStore{}, &mockReadModelStore{})
+	entries, err := service.transformStoredEvents(context.Background(), []repository.StoredEvent{{
+		ID: uuid.New(), StreamID: uuid.New(), EventType: "CompletelyUnknownEvent", Data: []byte(`{}`),
+	}})
+	require.NoError(t, err)
+	assert.Empty(t, entries)
 }
 
 func TestGetFamilyNameFallbackFromCreationEvent(t *testing.T) {

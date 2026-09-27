@@ -533,7 +533,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List global change history */
+        /**
+         * List global change history
+         * @description The mainline's change log, oldest first. Every event type is either
+         *     mapped to an entry or deliberately excluded (snapshot markers, GEDCOM
+         *     import records, branch lifecycle events - see
+         *     docs/HISTORY-EVENT-TYPES.md), and the exclusion is applied in the store
+         *     before pagination, so `total` and `has_more` describe exactly the set
+         *     `items` is paged from. A research branch's own edits are not listed:
+         *     they are not part of the mainline until a merge replays them.
+         */
         get: operations["listHistory"];
         put?: never;
         post?: never;
@@ -3183,18 +3192,52 @@ export interface components {
             id: string;
             /** Format: date-time */
             timestamp: string;
-            /** @enum {string} */
-            entity_type: "person" | "family" | "source" | "citation";
-            /** Format: uuid */
+            /**
+             * @description The kind of entity the change is about. A person's name variants
+             *     live on the person, so a name change is a `person` entry whose
+             *     `changes` carry the `name`.
+             * @enum {string}
+             */
+            entity_type: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary";
+            /**
+             * Format: uuid
+             * @description The changed entity's id (its event stream). Merge exclusions and
+             *     conflicts are keyed by this id.
+             */
             entity_id: string;
-            /** @description Human-readable name of the entity */
+            /**
+             * @description Human-readable name of the entity: a person's or family's names, a
+             *     source title, a life event's or attribute's fact type and date, a
+             *     note excerpt, a media title, a research log's search, an evidence
+             *     analysis's or proof summary's fact type and conclusion, an
+             *     association's role and people.
+             */
             entity_name?: string;
-            /** @enum {string} */
-            action: "created" | "updated" | "deleted";
-            /** @description Field-level changes for updates */
+            /**
+             * @description `merged` is a person merge, reported on the surviving person.
+             * @enum {string}
+             */
+            action: "created" | "updated" | "deleted" | "merged";
+            /**
+             * @description Field-level changes for updates and merges. `old_value` is the value
+             *     the change replaced, derived from the entity's earlier events.
+             */
             changes?: {
                 [key: string]: components["schemas"]["FieldChange"];
             };
+            /**
+             * @description For a record without a page of its own, the kind of entity whose
+             *     page presents it: a life event's or LDS ordinance's person or
+             *     family, an attribute's or association's person, a citation's
+             *     source, a media item's owner. Absent otherwise.
+             * @enum {string}
+             */
+            parent_entity_type?: "person" | "family" | "source";
+            /**
+             * Format: uuid
+             * @description The id of the entity `parent_entity_type` names.
+             */
+            parent_entity_id?: string;
             /** @description ID of user who made the change (null if single-user) */
             user_id?: string;
             /**
@@ -4198,11 +4241,9 @@ export interface components {
              */
             supported_resolutions: ("branch" | "main")[];
             /**
-             * @description Kind of entity the conflict is about, lower-cased to match
-             *     `ChangeEntry.entity_type` - the same response carries both, so they
-             *     use one vocabulary. Derived from the event store's stream type, so
-             *     entities beyond the four `ChangeEntry` knows still report their real
-             *     name rather than `unknown`.
+             * @description Kind of entity the conflict is about, in the `ChangeEntry.entity_type`
+             *     vocabulary - the same response carries both, so they use one
+             *     vocabulary (derived from the same event-type table).
              * @example person
              */
             entity_type: string;
@@ -6113,8 +6154,12 @@ export interface operations {
     listHistory: {
         parameters: {
             query?: {
-                /** @description Filter by entity type */
-                entity_type?: "person" | "family" | "source" | "citation";
+                /**
+                 * @description Filter by entity type - the `ChangeEntry.entity_type` vocabulary.
+                 *     Applied in the store before pagination, so `total` counts only the
+                 *     matching entries.
+                 */
+                entity_type?: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary";
                 /** @description Start date/time for history (ISO 8601) */
                 from?: string;
                 /** @description End date/time for history (ISO 8601) */

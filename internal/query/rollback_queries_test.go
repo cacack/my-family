@@ -1858,3 +1858,7 @@ func TestGetRestorePoints_LimitConstraints(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, result.Offset)
 }
+
+func (m *rollbackMockEventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+	return m.ReadGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
+}

@@ -190,6 +190,7 @@ Quick reference for which tests verify which invariants.
 | ES-005 | Compile-time check | Automated |
 | ES-006 | `internal/domain/events_test.go` - factory tests | Automated |
 | ES-007 | `internal/repository/eventstore_test.go` - decode all types | Automated |
+| ES-008 | `internal/query/history_catalog_test.go` - every decodable type classified; global history paginates over shown entries on all backends | Automated |
 | DB-001 | `internal/integration/` + the per-backend `branch_scenario_test.go` trio | Automated |
 | DB-002 | `internal/repository/eventstore_test.go` - concurrency | Automated |
 | DB-003 | `internal/repository/*_test.go` - nil for missing | Automated |

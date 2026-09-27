@@ -146,6 +146,7 @@ func (e BranchMergeResumeErrorCode) Valid() bool {
 const (
 	ChangeEntryActionCreated ChangeEntryAction = "created"
 	ChangeEntryActionDeleted ChangeEntryAction = "deleted"
+	ChangeEntryActionMerged  ChangeEntryAction = "merged"
 	ChangeEntryActionUpdated ChangeEntryAction = "updated"
 )
 
@@ -156,6 +157,8 @@ func (e ChangeEntryAction) Valid() bool {
 		return true
 	case ChangeEntryActionDeleted:
 		return true
+	case ChangeEntryActionMerged:
+		return true
 	case ChangeEntryActionUpdated:
 		return true
 	default:
@@ -165,22 +168,58 @@ func (e ChangeEntryAction) Valid() bool {
 
 // Defines values for ChangeEntryEntityType.
 const (
-	ChangeEntryEntityTypeCitation ChangeEntryEntityType = "citation"
-	ChangeEntryEntityTypeFamily   ChangeEntryEntityType = "family"
-	ChangeEntryEntityTypePerson   ChangeEntryEntityType = "person"
-	ChangeEntryEntityTypeSource   ChangeEntryEntityType = "source"
+	ChangeEntryEntityTypeAssociation      ChangeEntryEntityType = "association"
+	ChangeEntryEntityTypeAttribute        ChangeEntryEntityType = "attribute"
+	ChangeEntryEntityTypeCitation         ChangeEntryEntityType = "citation"
+	ChangeEntryEntityTypeEvidenceAnalysis ChangeEntryEntityType = "evidence_analysis"
+	ChangeEntryEntityTypeEvidenceConflict ChangeEntryEntityType = "evidence_conflict"
+	ChangeEntryEntityTypeFamily           ChangeEntryEntityType = "family"
+	ChangeEntryEntityTypeLdsOrdinance     ChangeEntryEntityType = "lds_ordinance"
+	ChangeEntryEntityTypeLifeEvent        ChangeEntryEntityType = "life_event"
+	ChangeEntryEntityTypeMedia            ChangeEntryEntityType = "media"
+	ChangeEntryEntityTypeNote             ChangeEntryEntityType = "note"
+	ChangeEntryEntityTypePerson           ChangeEntryEntityType = "person"
+	ChangeEntryEntityTypeProofSummary     ChangeEntryEntityType = "proof_summary"
+	ChangeEntryEntityTypeRepository       ChangeEntryEntityType = "repository"
+	ChangeEntryEntityTypeResearchLog      ChangeEntryEntityType = "research_log"
+	ChangeEntryEntityTypeSource           ChangeEntryEntityType = "source"
+	ChangeEntryEntityTypeSubmitter        ChangeEntryEntityType = "submitter"
 )
 
 // Valid indicates whether the value is a known member of the ChangeEntryEntityType enum.
 func (e ChangeEntryEntityType) Valid() bool {
 	switch e {
+	case ChangeEntryEntityTypeAssociation:
+		return true
+	case ChangeEntryEntityTypeAttribute:
+		return true
 	case ChangeEntryEntityTypeCitation:
+		return true
+	case ChangeEntryEntityTypeEvidenceAnalysis:
+		return true
+	case ChangeEntryEntityTypeEvidenceConflict:
 		return true
 	case ChangeEntryEntityTypeFamily:
 		return true
+	case ChangeEntryEntityTypeLdsOrdinance:
+		return true
+	case ChangeEntryEntityTypeLifeEvent:
+		return true
+	case ChangeEntryEntityTypeMedia:
+		return true
+	case ChangeEntryEntityTypeNote:
+		return true
 	case ChangeEntryEntityTypePerson:
 		return true
+	case ChangeEntryEntityTypeProofSummary:
+		return true
+	case ChangeEntryEntityTypeRepository:
+		return true
+	case ChangeEntryEntityTypeResearchLog:
+		return true
 	case ChangeEntryEntityTypeSource:
+		return true
+	case ChangeEntryEntityTypeSubmitter:
 		return true
 	default:
 		return false
@@ -199,6 +238,27 @@ func (e ChangeEntryOrigin) Valid() bool {
 	case ChangeEntryOriginBranch:
 		return true
 	case ChangeEntryOriginMain:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChangeEntryParentEntityType.
+const (
+	ChangeEntryParentEntityTypeFamily ChangeEntryParentEntityType = "family"
+	ChangeEntryParentEntityTypePerson ChangeEntryParentEntityType = "person"
+	ChangeEntryParentEntityTypeSource ChangeEntryParentEntityType = "source"
+)
+
+// Valid indicates whether the value is a known member of the ChangeEntryParentEntityType enum.
+func (e ChangeEntryParentEntityType) Valid() bool {
+	switch e {
+	case ChangeEntryParentEntityTypeFamily:
+		return true
+	case ChangeEntryParentEntityTypePerson:
+		return true
+	case ChangeEntryParentEntityTypeSource:
 		return true
 	default:
 		return false
@@ -684,16 +744,16 @@ func (e MergeConflictSupportedResolutions) Valid() bool {
 
 // Defines values for MergePersonsRequestFieldResolution.
 const (
-	MergePersonsRequestFieldResolutionMerged   MergePersonsRequestFieldResolution = "merged"
-	MergePersonsRequestFieldResolutionSurvivor MergePersonsRequestFieldResolution = "survivor"
+	Merged   MergePersonsRequestFieldResolution = "merged"
+	Survivor MergePersonsRequestFieldResolution = "survivor"
 )
 
 // Valid indicates whether the value is a known member of the MergePersonsRequestFieldResolution enum.
 func (e MergePersonsRequestFieldResolution) Valid() bool {
 	switch e {
-	case MergePersonsRequestFieldResolutionMerged:
+	case Merged:
 		return true
-	case MergePersonsRequestFieldResolutionSurvivor:
+	case Survivor:
 		return true
 	default:
 		return false
@@ -1053,25 +1113,25 @@ func (e ResearchStatus) Valid() bool {
 
 // Defines values for RestorePointAction.
 const (
-	RestorePointActionCreated  RestorePointAction = "created"
-	RestorePointActionDeleted  RestorePointAction = "deleted"
-	RestorePointActionLinked   RestorePointAction = "linked"
-	RestorePointActionUnlinked RestorePointAction = "unlinked"
-	RestorePointActionUpdated  RestorePointAction = "updated"
+	Created  RestorePointAction = "created"
+	Deleted  RestorePointAction = "deleted"
+	Linked   RestorePointAction = "linked"
+	Unlinked RestorePointAction = "unlinked"
+	Updated  RestorePointAction = "updated"
 )
 
 // Valid indicates whether the value is a known member of the RestorePointAction enum.
 func (e RestorePointAction) Valid() bool {
 	switch e {
-	case RestorePointActionCreated:
+	case Created:
 		return true
-	case RestorePointActionDeleted:
+	case Deleted:
 		return true
-	case RestorePointActionLinked:
+	case Linked:
 		return true
-	case RestorePointActionUnlinked:
+	case Unlinked:
 		return true
-	case RestorePointActionUpdated:
+	case Updated:
 		return true
 	default:
 		return false
@@ -1278,22 +1338,58 @@ func (e PreviewGedcomExportParamsVersion) Valid() bool {
 
 // Defines values for ListHistoryParamsEntityType.
 const (
-	ListHistoryParamsEntityTypeCitation ListHistoryParamsEntityType = "citation"
-	ListHistoryParamsEntityTypeFamily   ListHistoryParamsEntityType = "family"
-	ListHistoryParamsEntityTypePerson   ListHistoryParamsEntityType = "person"
-	ListHistoryParamsEntityTypeSource   ListHistoryParamsEntityType = "source"
+	ListHistoryParamsEntityTypeAssociation      ListHistoryParamsEntityType = "association"
+	ListHistoryParamsEntityTypeAttribute        ListHistoryParamsEntityType = "attribute"
+	ListHistoryParamsEntityTypeCitation         ListHistoryParamsEntityType = "citation"
+	ListHistoryParamsEntityTypeEvidenceAnalysis ListHistoryParamsEntityType = "evidence_analysis"
+	ListHistoryParamsEntityTypeEvidenceConflict ListHistoryParamsEntityType = "evidence_conflict"
+	ListHistoryParamsEntityTypeFamily           ListHistoryParamsEntityType = "family"
+	ListHistoryParamsEntityTypeLdsOrdinance     ListHistoryParamsEntityType = "lds_ordinance"
+	ListHistoryParamsEntityTypeLifeEvent        ListHistoryParamsEntityType = "life_event"
+	ListHistoryParamsEntityTypeMedia            ListHistoryParamsEntityType = "media"
+	ListHistoryParamsEntityTypeNote             ListHistoryParamsEntityType = "note"
+	ListHistoryParamsEntityTypePerson           ListHistoryParamsEntityType = "person"
+	ListHistoryParamsEntityTypeProofSummary     ListHistoryParamsEntityType = "proof_summary"
+	ListHistoryParamsEntityTypeRepository       ListHistoryParamsEntityType = "repository"
+	ListHistoryParamsEntityTypeResearchLog      ListHistoryParamsEntityType = "research_log"
+	ListHistoryParamsEntityTypeSource           ListHistoryParamsEntityType = "source"
+	ListHistoryParamsEntityTypeSubmitter        ListHistoryParamsEntityType = "submitter"
 )
 
 // Valid indicates whether the value is a known member of the ListHistoryParamsEntityType enum.
 func (e ListHistoryParamsEntityType) Valid() bool {
 	switch e {
+	case ListHistoryParamsEntityTypeAssociation:
+		return true
+	case ListHistoryParamsEntityTypeAttribute:
+		return true
 	case ListHistoryParamsEntityTypeCitation:
+		return true
+	case ListHistoryParamsEntityTypeEvidenceAnalysis:
+		return true
+	case ListHistoryParamsEntityTypeEvidenceConflict:
 		return true
 	case ListHistoryParamsEntityTypeFamily:
 		return true
+	case ListHistoryParamsEntityTypeLdsOrdinance:
+		return true
+	case ListHistoryParamsEntityTypeLifeEvent:
+		return true
+	case ListHistoryParamsEntityTypeMedia:
+		return true
+	case ListHistoryParamsEntityTypeNote:
+		return true
 	case ListHistoryParamsEntityTypePerson:
 		return true
+	case ListHistoryParamsEntityTypeProofSummary:
+		return true
+	case ListHistoryParamsEntityTypeRepository:
+		return true
+	case ListHistoryParamsEntityTypeResearchLog:
+		return true
 	case ListHistoryParamsEntityTypeSource:
+		return true
+	case ListHistoryParamsEntityTypeSubmitter:
 		return true
 	default:
 		return false
@@ -2235,37 +2331,67 @@ type CemeteryIndexResponse struct {
 
 // ChangeEntry defines model for ChangeEntry.
 type ChangeEntry struct {
+	// Action `merged` is a person merge, reported on the surviving person.
 	Action ChangeEntryAction `json:"action"`
 
-	// Changes Field-level changes for updates
-	Changes  *map[string]FieldChange `json:"changes,omitempty"`
-	EntityId openapi_types.UUID      `json:"entity_id"`
+	// Changes Field-level changes for updates and merges. `old_value` is the value
+	// the change replaced, derived from the entity's earlier events.
+	Changes *map[string]FieldChange `json:"changes,omitempty"`
 
-	// EntityName Human-readable name of the entity
-	EntityName *string               `json:"entity_name,omitempty"`
+	// EntityId The changed entity's id (its event stream). Merge exclusions and
+	// conflicts are keyed by this id.
+	EntityId openapi_types.UUID `json:"entity_id"`
+
+	// EntityName Human-readable name of the entity: a person's or family's names, a
+	// source title, a life event's or attribute's fact type and date, a
+	// note excerpt, a media title, a research log's search, an evidence
+	// analysis's or proof summary's fact type and conclusion, an
+	// association's role and people.
+	EntityName *string `json:"entity_name,omitempty"`
+
+	// EntityType The kind of entity the change is about. A person's name variants
+	// live on the person, so a name change is a `person` entry whose
+	// `changes` carry the `name`.
 	EntityType ChangeEntryEntityType `json:"entity_type"`
 	Id         openapi_types.UUID    `json:"id"`
 
 	// Origin Set only on branch-scoped entity history (`?branch=`): `branch` for
 	// the branch's own events, `main` for the mainline events its view
 	// inherits (ADR-005). Absent everywhere else.
-	Origin    *ChangeEntryOrigin `json:"origin,omitempty"`
-	Timestamp time.Time          `json:"timestamp"`
+	Origin *ChangeEntryOrigin `json:"origin,omitempty"`
+
+	// ParentEntityId The id of the entity `parent_entity_type` names.
+	ParentEntityId *openapi_types.UUID `json:"parent_entity_id,omitempty"`
+
+	// ParentEntityType For a record without a page of its own, the kind of entity whose
+	// page presents it: a life event's or LDS ordinance's person or
+	// family, an attribute's or association's person, a citation's
+	// source, a media item's owner. Absent otherwise.
+	ParentEntityType *ChangeEntryParentEntityType `json:"parent_entity_type,omitempty"`
+	Timestamp        time.Time                    `json:"timestamp"`
 
 	// UserId ID of user who made the change (null if single-user)
 	UserId *string `json:"user_id,omitempty"`
 }
 
-// ChangeEntryAction defines model for ChangeEntry.Action.
+// ChangeEntryAction `merged` is a person merge, reported on the surviving person.
 type ChangeEntryAction string
 
-// ChangeEntryEntityType defines model for ChangeEntry.EntityType.
+// ChangeEntryEntityType The kind of entity the change is about. A person's name variants
+// live on the person, so a name change is a `person` entry whose
+// `changes` carry the `name`.
 type ChangeEntryEntityType string
 
 // ChangeEntryOrigin Set only on branch-scoped entity history (`?branch=`): `branch` for
 // the branch's own events, `main` for the mainline events its view
 // inherits (ADR-005). Absent everywhere else.
 type ChangeEntryOrigin string
+
+// ChangeEntryParentEntityType For a record without a page of its own, the kind of entity whose
+// page presents it: a life event's or LDS ordinance's person or
+// family, an attribute's or association's person, a citation's
+// source, a media item's owner. Absent otherwise.
+type ChangeEntryParentEntityType string
 
 // ChangeHistoryResponse defines model for ChangeHistoryResponse.
 type ChangeHistoryResponse struct {
@@ -3263,11 +3389,9 @@ type MergeConflict struct {
 	// branch, or only as a deletion).
 	EntityName string `json:"entity_name"`
 
-	// EntityType Kind of entity the conflict is about, lower-cased to match
-	// `ChangeEntry.entity_type` - the same response carries both, so they
-	// use one vocabulary. Derived from the event store's stream type, so
-	// entities beyond the four `ChangeEntry` knows still report their real
-	// name rather than `unknown`.
+	// EntityType Kind of entity the conflict is about, in the `ChangeEntry.entity_type`
+	// vocabulary - the same response carries both, so they use one
+	// vocabulary (derived from the same event-type table).
 	EntityType string `json:"entity_type"`
 
 	// Fields The contested field names, sorted. Present for `edit_edit` only -
@@ -5038,7 +5162,9 @@ type ImportGedcomMultipartBody struct {
 
 // ListHistoryParams defines parameters for ListHistory.
 type ListHistoryParams struct {
-	// EntityType Filter by entity type
+	// EntityType Filter by entity type - the `ChangeEntry.entity_type` vocabulary.
+	// Applied in the store before pagination, so `total` counts only the
+	// matching entries.
 	EntityType *ListHistoryParamsEntityType `form:"entity_type,omitempty" json:"entity_type,omitempty"`
 
 	// From Start date/time for history (ISO 8601)

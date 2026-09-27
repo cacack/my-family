@@ -1116,3 +1116,77 @@ func TestEventStore_ReadStreamsForBranch(t *testing.T) {
 		}
 	})
 }
+
+// TestEventStore_ReadGlobalHistory pins the store-level global history filters
+// (#739): exclusion, inclusion, branch and time filters all apply before
+// pagination, so the total describes the set the page is cut from.
+func TestEventStore_ReadGlobalHistory(t *testing.T) {
+	store := memory.NewEventStore()
+
+	ctx := context.Background()
+	t0 := time.Now().UTC().Truncate(time.Second)
+	at := func(e domain.Event, offset time.Duration) domain.Event {
+		switch ev := e.(type) {
+		case domain.PersonCreated:
+			ev.Timestamp = t0.Add(offset)
+			return ev
+		case domain.PersonUpdated:
+			ev.Timestamp = t0.Add(offset)
+			return ev
+		case domain.SnapshotCreated:
+			ev.Timestamp = t0.Add(offset)
+			return ev
+		}
+		return e
+	}
+	appendAt := func(streamID uuid.UUID, streamType string, scope repository.AppendScope, e domain.Event, offset time.Duration) {
+		t.Helper()
+		if err := store.Append(ctx, streamID, streamType, []domain.Event{at(e, offset)}, -1, scope); err != nil {
+			t.Fatalf("append %s: %v", e.EventType(), err)
+		}
+	}
+	p1, p2, p3, snap := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	appendAt(p1, "Person", repository.MainScope, domain.NewPersonCreated(&domain.Person{ID: p1, GivenName: "A", Surname: "One"}), 0)
+	appendAt(snap, "snapshot", repository.MainScope, domain.SnapshotCreated{BaseEvent: domain.NewBaseEvent(), SnapshotID: snap, Name: "M"}, time.Second)
+	appendAt(p2, "Person", repository.MainScope, domain.NewPersonCreated(&domain.Person{ID: p2, GivenName: "B", Surname: "Two"}), 2*time.Second)
+	branch := domain.BranchID(uuid.New())
+	appendAt(p1, "Person", repository.AppendScope{BranchID: branch}, domain.NewPersonUpdated(p1, map[string]any{"surname": "Branch"}), 3*time.Second)
+	appendAt(p3, "Person", repository.MainScope, domain.NewPersonCreated(&domain.Person{ID: p3, GivenName: "C", Surname: "Three"}), 4*time.Second)
+
+	main := domain.MainBranchID
+	read := func(q repository.GlobalHistoryQuery) *repository.HistoryPage {
+		t.Helper()
+		page, err := store.ReadGlobalHistory(ctx, q)
+		if err != nil {
+			t.Fatalf("ReadGlobalHistory(%+v): %v", q, err)
+		}
+		return page
+	}
+	check := func(label string, page *repository.HistoryPage, total int, hasMore bool, streams ...uuid.UUID) {
+		t.Helper()
+		if page.TotalCount != total || page.HasMore != hasMore || len(page.Events) != len(streams) {
+			t.Fatalf("%s: total=%d hasMore=%v events=%d, want %d %v %d", label, page.TotalCount, page.HasMore, len(page.Events), total, hasMore, len(streams))
+		}
+		for i, s := range streams {
+			if page.Events[i].StreamID != s {
+				t.Errorf("%s: event %d stream = %s, want %s", label, i, page.Events[i].StreamID, s)
+			}
+		}
+	}
+
+	mainline := repository.GlobalHistoryQuery{ExcludeEventTypes: []string{"SnapshotCreated"}, BranchID: &main}
+	q := mainline
+	q.Limit = 2
+	check("first page", read(q), 3, true, p1, p2)
+	q.Offset = 2
+	check("last page", read(q), 3, false, p3)
+	q.Offset = 10
+	check("past the end keeps the total", read(q), 3, false)
+	q.Offset, q.Limit = 0, 0
+	check("zero limit", read(q), 3, true)
+
+	check("branch events only", read(repository.GlobalHistoryQuery{IncludeEventTypes: []string{"PersonUpdated"}, Limit: 10}), 1, false, p1)
+	check("include and exclude", read(repository.GlobalHistoryQuery{IncludeEventTypes: []string{"PersonCreated", "SnapshotCreated"}, ExcludeEventTypes: []string{"SnapshotCreated"}, Limit: 10}), 3, false, p1, p2, p3)
+	check("time window", read(repository.GlobalHistoryQuery{FromTime: t0.Add(1500 * time.Millisecond), ToTime: t0.Add(2500 * time.Millisecond), Limit: 10}), 1, false, p2)
+	check("every branch", read(repository.GlobalHistoryQuery{Limit: 10}), 5, false, p1, snap, p2, p1, p3)
+}
