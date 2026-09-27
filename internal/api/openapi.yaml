@@ -700,15 +700,14 @@ paths:
       operationId: browseCemeteries
       summary: Get cemetery/burial place index with counts
       description: |
-        Returns unique burial and cremation places with person counts. `?branch=`
-        is NOT accepted here and is silently ignored if supplied: the index is
-        aggregated from the burial and cremation life events alone, and those
-        carry no branch yet
-        ([#757](https://github.com/cacack/my-family/issues/757)), so the response
-        is always the mainline. The counts can therefore disagree with
-        `getPersonsByCemetery` on a branch, whose person side does follow the
-        branch.
+        Returns unique burial and cremation places with person counts. With
+        `?branch=` the counts are aggregated from that branch's isolated view of
+        the burial and cremation life events (a person the branch deleted takes
+        their life events with them), so they agree with `getPersonsByCemetery`
+        on the same branch; omit it for the mainline.
       tags: [browse]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Cemetery/burial place index
@@ -729,10 +728,10 @@ paths:
       operationId: getPersonsByCemetery
       summary: Get persons buried or cremated at a place
       description: |
-        Returns the people buried or cremated at the place. With `?branch=` the
-        person side follows that branch's isolated view, while the burial and
-        cremation life events matched against it are still read from the
-        mainline; omit the parameter for the mainline throughout.
+        Returns the people buried or cremated at the place. With `?branch=` both
+        the burial and cremation life events and the persons they belong to are
+        read from that branch's isolated view; omit the parameter for the
+        mainline.
       tags: [browse]
       parameters:
         - $ref: '#/components/parameters/branchScope'
@@ -3289,9 +3288,13 @@ paths:
     get:
       operationId: listAssociations
       summary: List all associations
-      description: Returns paginated list of GEDCOM ASSO (association) records
+      description: |
+        Returns paginated list of GEDCOM ASSO (association) records. With
+        `?branch=` the list is that branch's isolated view; omit it for the
+        mainline.
       tags: [associations]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/limitParam'
         - $ref: '#/components/parameters/offsetParam'
         - name: sort
@@ -3319,8 +3322,13 @@ paths:
     post:
       operationId: createAssociation
       summary: Create a new association
-      description: Create a GEDCOM ASSO association between two persons
+      description: |
+        Create a GEDCOM ASSO association between two persons. With `?branch=`
+        both persons must exist on that branch and the association is created
+        on the branch only.
       tags: [associations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -3345,6 +3353,8 @@ paths:
       operationId: getAssociation
       summary: Get an association by ID
       tags: [associations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Association details
@@ -3359,6 +3369,8 @@ paths:
       operationId: updateAssociation
       summary: Update an association
       tags: [associations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -3384,6 +3396,7 @@ paths:
       summary: Delete an association
       tags: [associations]
       parameters:
+        - $ref: '#/components/parameters/branchScope'
         - $ref: '#/components/parameters/versionParam'
       responses:
         '204':
@@ -3402,8 +3415,13 @@ paths:
     get:
       operationId: listAssociationsForPerson
       summary: List associations for a person
-      description: Returns all associations where the person is either the subject or associate
+      description: |
+        Returns all associations where the person is either the subject or
+        associate. With `?branch=` both the person and the associations are read
+        from that branch's isolated view.
       tags: [associations]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of associations

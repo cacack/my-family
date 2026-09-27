@@ -299,14 +299,45 @@ Snapshots and branch base points are the same primitive — a named pointer to a
 - **Rollback** to a snapshot is a read/compare operation over positions and, under the overlay
   model, is naturally scoped by `branch_id`.
 
-This ADR does **not** change how snapshots are created. However, it surfaces a coupling that
-**#624** must resolve: `SnapshotCreated` exists and decodes (ES-007) but is never emitted —
-`SnapshotService.CreateSnapshot` writes directly to the `SnapshotStore`, bypassing the
-event-sourced pipeline. **Recommendation for #624 (not implemented here):** route snapshot
-creation/deletion through the event pipeline (emit `SnapshotCreated`, add a projection) so
-snapshots carry the same audit-trail guarantee (ADR-001) as every other mutation, and so a
-branch-scoped snapshot is expressible as a branch-tagged event. #624 remains the issue that
-implements this decision.
+This ADR did **not** change how snapshots are created. It surfaced a coupling that **#624** had
+to resolve: `SnapshotCreated` existed and decoded (ES-007) but was never emitted —
+`SnapshotService.CreateSnapshot` wrote directly to the `SnapshotStore`, bypassing the
+event-sourced pipeline. The recommendation recorded here was to route snapshot creation and
+deletion through the event pipeline.
+
+#### Implementation Note — snapshot event model (#624, delivered)
+
+The recommendation was adopted. Snapshots are now event-sourced, exactly like the branch registry:
+
+- **`CreateSnapshot` / `DeleteSnapshot` are commands** on `command.Handler`, not query-service
+  methods. They append `SnapshotCreated` / the new `SnapshotDeleted` on the snapshot's own stream
+  (stream type `snapshot`, the snapshot id as stream id) on `repository.MainScope`.
+- **The registry is projection-written.** `projectSnapshotCreated` upserts the row and
+  `projectSnapshotDeleted` drops it, so rebuilding the projection reconstructs the registry — the
+  property a directly-written store could never have. `SnapshotStore` gained `Upsert` (all three
+  backends) for idempotent replay, and a replayed delete against a missing row is a no-op.
+- **The marker never perturbs what it marks.** `CreateSnapshot` reads the log head *before*
+  appending, so the snapshot's `Position` excludes its own creation event. This is the answer to
+  the chicken-and-egg the issue raised, and it matches how `CreateBranch` pins a base position.
+- **Snapshot events are hidden from the change log.** `mapEventTypeToEntityAndAction` skips both
+  types: they are audit records on the log, not genealogical changes, and a snapshot comparison
+  reads a range that contains one of the two markers.
+
+**Still open — branch-scoped snapshots.** The bullet above ("a snapshot taken *on a branch* points
+to `(branch_id, position)`") is **not** implemented: the `snapshots` table has no `branch_id`
+column. Rather than record a branch snapshot as if it were a mainline one, both commands refuse on
+a branch-scoped handler with `ErrSnapshotNotBranchScoped`. Closing that gap means giving the
+snapshot registry the same `branch_id` overlay treatment #676 is fanning out to the other
+read-model entities.
+
+**Still open — snapshots created before #624.** Rows written by the old direct-store path carry no
+`SnapshotCreated` event, so "the registry rebuilds from the log" holds only for snapshots created
+after this change. Nothing replays the log into a projector today, so no data is at risk yet; the
+constraint is that rebuild tooling (#680) must backfill those rows — or consciously drop them —
+rather than assume the log is complete. Deleting such a snapshot works: `DeleteSnapshot` reads the
+snapshot's stream (`ReadStream`, then `scanSnapshotStream` over its mainline events), finds version
+0 because the stream has no events, and appends the tombstone with `expectedVersion` -1 (a new
+stream).
 
 ## Entities that stay main-only
 
@@ -314,14 +345,17 @@ Branch scoping is a bounded set, not a migration in progress. Three different re
 read-model entity on `main`, and they must not be confused:
 
 - **Pending** — the entity is destined for a `branch_id` and simply has not been done yet. These are
-  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676):
-  person/family facts ([#757](https://github.com/cacack/my-family/issues/757)), evidence
+  the remaining sub-issues of [#676](https://github.com/cacack/my-family/issues/676): evidence
   ([#758](https://github.com/cacack/my-family/issues/758)), media metadata
   ([#759](https://github.com/cacack/my-family/issues/759)) and GPS artifacts
-  ([#760](https://github.com/cacack/my-family/issues/760)).
+  ([#760](https://github.com/cacack/my-family/issues/760)). Snapshots are pending too, though not
+  as a #676 sub-issue: #624 made them event-sourced, and what remains is giving the registry a
+  `branch_id` (see *Interaction with snapshots and rollback*, "Still open — branch-scoped
+  snapshots").
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
-  be answered first. This is snapshots and brick walls, both waiting on
-  [#624](https://github.com/cacack/my-family/issues/624) (below).
+  be answered first. This is brick walls, which wait on an event-sourcing decision of their own
+  (below). Snapshots were here until [#624](https://github.com/cacack/my-family/issues/624) made
+  that decision for them.
 - **Decided** — the entity will not gain a `branch_id` at all. That set is fixed here.
 
 ### The decided set
@@ -346,7 +380,7 @@ tests — for no expressible research use case.
 ordinary rather than exploratory. This section is the place to revisit it; changing it means
 amending this ADR, not silently adding a column.
 
-### Blocked on the #624 question — brick walls and snapshots
+### Blocked on an event-sourcing decision — brick walls
 
 `SetBrickWall` and `ResolveBrickWall` (`internal/repository/{postgres,sqlite,memory}/readmodel.go`)
 **write the read model directly, bypassing the event store.** There is no `BrickWallSet` event and no
@@ -357,19 +391,22 @@ ADR defines: there are no branch-tagged events to project, nothing to replay on 
 for conflict detection to compare against the base position. **Branch-scoping brick walls therefore
 means first deciding whether they become event-sourced** — the same call
 [#624](https://github.com/cacack/my-family/issues/624) must make for snapshots, and for the same
-reason (see *Interaction with snapshots and rollback*, above). This ADR records the question and its
-coupling; it does not answer it.
+reason (see *Interaction with snapshots and rollback*, above). #624 has since answered it for
+snapshots — emit the events and let a projection write the registry — and that answer is the natural
+precedent for brick walls, but applying it to them is a separate change. This ADR records the
+brick-wall question and its coupling; it does not answer it.
 
 Until then brick walls stay main-only. Sub-issue A ([#756](https://github.com/cacack/my-family/issues/756))
 applied only the *leak* fix — constraining the mainline UPDATE to mainline rows, so a mainline call
 stops mutating every branch's shadow row (BR-003) — and left the scoping question open.
 
-**Snapshots are in the same state, for the same reason.** `SnapshotService.CreateSnapshot` writes
-straight to the `SnapshotStore`, so `SnapshotCreated` decodes but is never emitted (see *Interaction
-with snapshots and rollback*, above). A snapshot therefore cannot be branch-scoped until #624
-decides whether it becomes event-sourced. Snapshot is **not** a #676 sub-issue, and
-`docs/INTEGRATION-MATRIX.md` marks its Branch column ⛔ rather than ❌ to keep it out of the pending
-bucket.
+**Snapshots were in the same state, for the same reason, until #624.** `SnapshotService.CreateSnapshot`
+used to write straight to the `SnapshotStore`, so `SnapshotCreated` decoded but was never emitted.
+#624 routed creation and deletion through the event pipeline (see *Implementation Note — snapshot
+event model*, above), which unblocks branch scoping: a snapshot now has events a `branch_id` can tag.
+Snapshots therefore moved from blocked to pending, and `docs/INTEGRATION-MATRIX.md` marks their
+Branch column ❌ rather than ⛔. They are still **not** a #676 sub-issue; the remaining work is the
+`(branch_id, position)` registry described in "Still open — branch-scoped snapshots".
 
 ## Consequences
 
@@ -801,12 +838,12 @@ The API surface is six `GET` operations carrying `?branch=` (`browseSurnames`,
 `getMapLocations`), bringing the total to 22. Omitting the parameter is byte-identical to the
 previous mainline behaviour.
 
-Two browse surfaces stayed main-only in this pass, and say so in the UI via
+Two browse surfaces stayed main-only in this pass, and said so in the UI via
 `MainlineNotice.svelte`:
 
-- **The cemetery *index*** (`browseCemeteries`) aggregates the `life_events` table, which has no
-  `branch_id` yet. Giving it one is sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)).
-  The per-cemetery *person list* is scoped, because it resolves persons through the overlay.
+- **The cemetery *index*** (`browseCemeteries`) aggregates the `life_events` table, which had no
+  `branch_id` yet. Sub-issue B ([#757](https://github.com/cacack/my-family/issues/757)) has since
+  given it one — see the next note.
 - **Brick walls** (`getBrickWalls`, `setPersonBrickWall`, `resolvePersonBrickWall`) are not
   event-sourced, so there is no branch-tagged event for BR-006 to allow and nothing for a merge to
   replay. This pass fixed only the mainline leak; the scoping question is recorded in
@@ -821,6 +858,53 @@ differently on SQLite and PostgreSQL — a pre-existing divergence, tracked as
 [#763](https://github.com/cacack/my-family/issues/763) and untouched here. Branch overlay resolution
 for the place views has cross-backend parity (`TestBranchScenario_AggregateIsolation` runs the same
 scenario on all three backends); the *place parsing underneath it* does not yet.
+
+## Implementation Note — person/family facts (#676 sub-issue B, #757, delivered)
+
+**Life events, attributes and associations own their own `branch_id`.** Unlike the aggregates they
+store rows, so each of `life_events`, `attributes` and `associations` gained the full §The model
+treatment on all three backends: a `branch_id` column, a composite `(id, branch_id)` primary key, a
+`branch_id`-leading index, a `deleted` tombstone, one set-based overlay query per read with a
+main-scope fast path, and a place in `PurgeBranch`. Their `ReadModelStore` methods take the scope the
+slice's do (an explicit `domain.BranchID`, or `ListOptions.BranchID` for the paged lists), the nine
+projection handlers write only branch-keyed rows, and the nine event types are on the BR-006
+allowlist. Each `*Created` is conflict-blind for the same reason `PersonCreated` is — a fact is its
+own aggregate, so its create opens a stream main cannot have touched — while `*Updated` and
+`*Deleted` fold into the merge conflict scan like any other entity.
+
+**Per-id overlay, including for the per-owner lists.** `ListEventsForPerson`, `ListEventsForFamily`,
+`ListAttributesForPerson` and `ListAssociationsForPerson` resolve every id the owner has on either
+side through the same per-id overlay as the single-row reads, rather than copying the owner's whole
+bucket forward the way external identifiers do. The facts have stable ids of their own, so a branch
+that edits one fact still sees main's later additions to the same person, exactly as it sees main's
+later persons. The owner filter is applied twice: once to pick the candidate ids and once to the
+*winning* row, so a branch row that re-owned a fact (the shape `PersonMerged` writes) lists under
+its new owner only.
+
+**The manual cascade grew.** `DeletePerson` removes (on main) or tombstones (on a branch) the
+person's life events and attributes and every association naming the person on either side;
+`DeleteFamily` does the same for the family's life events. On main this closes a pre-existing gap:
+a deleted person's life events used to survive as orphans, so the cemetery index kept counting
+them. Cross-backend parity is pinned by `TestReadModelStore_*Cascade*` and
+`TestBranchScenario_FactOverlay`.
+
+**The cemetery pair is now fully scoped.** `browseCemeteries` carries `?branch=` and
+`GetPersonsByCemetery` joins the `life_events` overlay to the `persons` overlay, so the index and
+its click-through list agree on every scope and the UI dropped the cemetery `MainlineNotice`. The
+association endpoints (`listAssociations`, `createAssociation`, `getAssociation`,
+`updateAssociation`, `deleteAssociation`, `listAssociationsForPerson`) carry `?branch=` too,
+bringing the total to 29. Life events and attributes have no endpoints of their own beyond the
+mainline bulk exports, which stay mainline.
+
+**Upgrading an existing database.** PostgreSQL migrates the three tables in place (the same
+per-table primary-key swap #669 used). SQLite cannot alter a primary key, so a database created
+before #757 keeps lone-id keys on these tables; `detectBranchCapable` now requires the composite key
+on `life_events`, `attributes` and `associations` as well as `persons`, and such a database refuses
+*every* branch write with `ErrBranchesUnsupported` until the read model is rebuilt (#680). Refusing
+only fact writes would be worse: a branch `DeletePerson` has to tombstone the person's facts, so a
+half-capable schema would accept branches it could not delete cleanly. The one exception is
+`PurgeBranch`: a database built between #669 and #757 may already hold branches in its slice tables,
+so purging is never refused — deleting or merging such a branch still drops its overlay rows.
 
 ## References
 

@@ -4489,6 +4489,13 @@ type GetDiscoveryFeedParams struct {
 
 // ListAssociationsParams defines parameters for ListAssociations.
 type ListAssociationsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope                 `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam                 `form:"offset,omitempty" json:"offset,omitempty"`
 	Sort   *ListAssociationsParamsSort  `form:"sort,omitempty" json:"sort,omitempty"`
@@ -4501,15 +4508,67 @@ type ListAssociationsParamsSort string
 // ListAssociationsParamsOrder defines parameters for ListAssociations.
 type ListAssociationsParamsOrder string
 
+// CreateAssociationParams defines parameters for CreateAssociation.
+type CreateAssociationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // DeleteAssociationParams defines parameters for DeleteAssociation.
 type DeleteAssociationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Version Entity version for optimistic locking
 	Version VersionParam `form:"version" json:"version"`
+}
+
+// GetAssociationParams defines parameters for GetAssociation.
+type GetAssociationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// UpdateAssociationParams defines parameters for UpdateAssociation.
+type UpdateAssociationParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetBrickWallsParams defines parameters for GetBrickWalls.
 type GetBrickWallsParams struct {
 	IncludeResolved *bool `form:"include_resolved,omitempty" json:"include_resolved,omitempty"`
+}
+
+// BrowseCemeteriesParams defines parameters for BrowseCemeteries.
+type BrowseCemeteriesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
 // GetPersonsByCemeteryParams defines parameters for GetPersonsByCemetery.
@@ -4910,6 +4969,17 @@ type GetPersonParams struct {
 
 // UpdatePersonParams defines parameters for UpdatePerson.
 type UpdatePersonParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// ListAssociationsForPersonParams defines parameters for ListAssociationsForPerson.
+type ListAssociationsForPersonParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
 	// view and writes land on the branch only (ADR-005). A malformed branch id
 	// returns 400 at parameter binding, before the operation runs. An unknown
@@ -5339,16 +5409,16 @@ type ServerInterface interface {
 	ListAssociations(ctx echo.Context, params ListAssociationsParams) error
 	// Create a new association
 	// (POST /associations)
-	CreateAssociation(ctx echo.Context) error
+	CreateAssociation(ctx echo.Context, params CreateAssociationParams) error
 	// Delete an association
 	// (DELETE /associations/{id})
 	DeleteAssociation(ctx echo.Context, id AssociationId, params DeleteAssociationParams) error
 	// Get an association by ID
 	// (GET /associations/{id})
-	GetAssociation(ctx echo.Context, id AssociationId) error
+	GetAssociation(ctx echo.Context, id AssociationId, params GetAssociationParams) error
 	// Update an association
 	// (PUT /associations/{id})
-	UpdateAssociation(ctx echo.Context, id AssociationId) error
+	UpdateAssociation(ctx echo.Context, id AssociationId, params UpdateAssociationParams) error
 	// List all branches
 	// (GET /branches)
 	ListBranches(ctx echo.Context) error
@@ -5375,7 +5445,7 @@ type ServerInterface interface {
 	GetBrickWalls(ctx echo.Context, params GetBrickWallsParams) error
 	// Get cemetery/burial place index with counts
 	// (GET /browse/cemeteries)
-	BrowseCemeteries(ctx echo.Context) error
+	BrowseCemeteries(ctx echo.Context, params BrowseCemeteriesParams) error
 	// Get persons buried or cremated at a place
 	// (GET /browse/cemeteries/{place}/persons)
 	GetPersonsByCemetery(ctx echo.Context, place string, params GetPersonsByCemeteryParams) error
@@ -5609,7 +5679,7 @@ type ServerInterface interface {
 	UpdatePerson(ctx echo.Context, id PersonId, params UpdatePersonParams) error
 	// List associations for a person
 	// (GET /persons/{id}/associations)
-	ListAssociationsForPerson(ctx echo.Context, id PersonId) error
+	ListAssociationsForPerson(ctx echo.Context, id PersonId, params ListAssociationsForPersonParams) error
 	// Resolve a brick wall (mark as broken through)
 	// (DELETE /persons/{id}/brick-wall)
 	ResolvePersonBrickWall(ctx echo.Context, id PersonId) error
@@ -5844,6 +5914,13 @@ func (w *ServerInterfaceWrapper) ListAssociations(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListAssociationsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -5881,8 +5958,17 @@ func (w *ServerInterfaceWrapper) ListAssociations(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateAssociation(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateAssociationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateAssociation(ctx)
+	err = w.Handler.CreateAssociation(ctx, params)
 	return err
 }
 
@@ -5899,6 +5985,13 @@ func (w *ServerInterfaceWrapper) DeleteAssociation(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params DeleteAssociationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Required query parameter "version" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", ctx.QueryParams(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -5922,8 +6015,17 @@ func (w *ServerInterfaceWrapper) GetAssociation(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAssociationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetAssociation(ctx, id)
+	err = w.Handler.GetAssociation(ctx, id, params)
 	return err
 }
 
@@ -5938,8 +6040,17 @@ func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateAssociationParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.UpdateAssociation(ctx, id)
+	err = w.Handler.UpdateAssociation(ctx, id, params)
 	return err
 }
 
@@ -6063,8 +6174,17 @@ func (w *ServerInterfaceWrapper) GetBrickWalls(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) BrowseCemeteries(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BrowseCemeteriesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.BrowseCemeteries(ctx)
+	err = w.Handler.BrowseCemeteries(ctx, params)
 	return err
 }
 
@@ -7676,8 +7796,17 @@ func (w *ServerInterfaceWrapper) ListAssociationsForPerson(ctx echo.Context) err
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAssociationsForPersonParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ListAssociationsForPerson(ctx, id)
+	err = w.Handler.ListAssociationsForPerson(ctx, id, params)
 	return err
 }
 
@@ -9281,7 +9410,8 @@ func (response ListAssociations400JSONResponse) VisitListAssociationsResponse(w 
 }
 
 type CreateAssociationRequestObject struct {
-	Body *CreateAssociationJSONRequestBody
+	Params CreateAssociationParams
+	Body   *CreateAssociationJSONRequestBody
 }
 
 type CreateAssociationResponseObject interface {
@@ -9376,7 +9506,8 @@ func (response DeleteAssociation409JSONResponse) VisitDeleteAssociationResponse(
 }
 
 type GetAssociationRequestObject struct {
-	Id AssociationId `json:"id"`
+	Id     AssociationId `json:"id"`
+	Params GetAssociationParams
 }
 
 type GetAssociationResponseObject interface {
@@ -9412,8 +9543,9 @@ func (response GetAssociation404JSONResponse) VisitGetAssociationResponse(w http
 }
 
 type UpdateAssociationRequestObject struct {
-	Id   AssociationId `json:"id"`
-	Body *UpdateAssociationJSONRequestBody
+	Id     AssociationId `json:"id"`
+	Params UpdateAssociationParams
+	Body   *UpdateAssociationJSONRequestBody
 }
 
 type UpdateAssociationResponseObject interface {
@@ -9942,6 +10074,7 @@ func (response GetBrickWalls200JSONResponse) VisitGetBrickWallsResponse(w http.R
 }
 
 type BrowseCemeteriesRequestObject struct {
+	Params BrowseCemeteriesParams
 }
 
 type BrowseCemeteriesResponseObject interface {
@@ -13210,7 +13343,8 @@ func (response UpdatePerson409JSONResponse) VisitUpdatePersonResponse(w http.Res
 }
 
 type ListAssociationsForPersonRequestObject struct {
-	Id PersonId `json:"id"`
+	Id     PersonId `json:"id"`
+	Params ListAssociationsForPersonParams
 }
 
 type ListAssociationsForPersonResponseObject interface {
@@ -16178,8 +16312,10 @@ func (sh *strictHandler) ListAssociations(ctx echo.Context, params ListAssociati
 }
 
 // CreateAssociation operation middleware
-func (sh *strictHandler) CreateAssociation(ctx echo.Context) error {
+func (sh *strictHandler) CreateAssociation(ctx echo.Context, params CreateAssociationParams) error {
 	var request CreateAssociationRequestObject
+
+	request.Params = params
 
 	var body CreateAssociationJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -16233,10 +16369,11 @@ func (sh *strictHandler) DeleteAssociation(ctx echo.Context, id AssociationId, p
 }
 
 // GetAssociation operation middleware
-func (sh *strictHandler) GetAssociation(ctx echo.Context, id AssociationId) error {
+func (sh *strictHandler) GetAssociation(ctx echo.Context, id AssociationId, params GetAssociationParams) error {
 	var request GetAssociationRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetAssociation(ctx.Request().Context(), request.(GetAssociationRequestObject))
@@ -16258,10 +16395,11 @@ func (sh *strictHandler) GetAssociation(ctx echo.Context, id AssociationId) erro
 }
 
 // UpdateAssociation operation middleware
-func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId) error {
+func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId, params UpdateAssociationParams) error {
 	var request UpdateAssociationRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body UpdateAssociationJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -16509,8 +16647,10 @@ func (sh *strictHandler) GetBrickWalls(ctx echo.Context, params GetBrickWallsPar
 }
 
 // BrowseCemeteries operation middleware
-func (sh *strictHandler) BrowseCemeteries(ctx echo.Context) error {
+func (sh *strictHandler) BrowseCemeteries(ctx echo.Context, params BrowseCemeteriesParams) error {
 	var request BrowseCemeteriesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.BrowseCemeteries(ctx.Request().Context(), request.(BrowseCemeteriesRequestObject))
@@ -18589,10 +18729,11 @@ func (sh *strictHandler) UpdatePerson(ctx echo.Context, id PersonId, params Upda
 }
 
 // ListAssociationsForPerson operation middleware
-func (sh *strictHandler) ListAssociationsForPerson(ctx echo.Context, id PersonId) error {
+func (sh *strictHandler) ListAssociationsForPerson(ctx echo.Context, id PersonId, params ListAssociationsForPersonParams) error {
 	var request ListAssociationsForPersonRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ListAssociationsForPerson(ctx.Request().Context(), request.(ListAssociationsForPersonRequestObject))

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	gcgedcom "github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
@@ -348,7 +349,12 @@ func (ss *StrictServer) GetPersonsBySurname(ctx context.Context, request GetPers
 
 // BrowseCemeteries implements StrictServerInterface.
 func (ss *StrictServer) BrowseCemeteries(ctx context.Context, request BrowseCemeteriesRequestObject) (BrowseCemeteriesResponseObject, error) {
-	result, err := ss.server.browseService.GetCemeteryIndex(ctx)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ss.server.browseService.GetCemeteryIndex(ctx, branchScopeID(branch))
 	if err != nil {
 		return nil, err
 	}
@@ -2999,6 +3005,22 @@ func stringFromParam(s *string) string {
 	return *s
 }
 
+// searchTextParamsError validates the free-text search parameters and returns a
+// client-facing message, or "" when they are acceptable. Control characters are
+// rejected: NUL cannot be stored in a PostgreSQL text parameter and ends an FTS5
+// string early, so it would otherwise surface as a 500 (issue #762).
+func searchTextParamsError(q, birthPlace, deathPlace string) string {
+	if q != "" && len(q) < 2 {
+		return "Search query must be at least 2 characters"
+	}
+	for _, v := range []string{q, birthPlace, deathPlace} {
+		if strings.ContainsFunc(v, unicode.IsControl) {
+			return "Search parameters must not contain control characters"
+		}
+	}
+	return ""
+}
+
 // SearchPersons implements StrictServerInterface.
 func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
 	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
@@ -3027,10 +3049,10 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 		}}, nil
 	}
 
-	if hasQuery && len(queryStr) < 2 {
+	if msg := searchTextParamsError(queryStr, birthPlace, deathPlace); msg != "" {
 		return SearchPersons400JSONResponse{BadRequestJSONResponse{
 			Code:    "bad_request",
-			Message: "Search query must be at least 2 characters",
+			Message: msg,
 		}}, nil
 	}
 
@@ -4947,9 +4969,14 @@ func (ss *StrictServer) ListAssociations(ctx context.Context, request ListAssoci
 			Message: "Invalid sort or order parameter",
 		}}, nil
 	}
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
 	opts := repository.ListOptions{
-		Limit:  20,
-		Offset: 0,
+		Limit:    20,
+		Offset:   0,
+		BranchID: branchScopeID(branch),
 	}
 	if request.Params.Limit != nil {
 		opts.Limit = *request.Params.Limit
@@ -4984,6 +5011,11 @@ func (ss *StrictServer) ListAssociations(ctx context.Context, request ListAssoci
 
 // CreateAssociation implements StrictServerInterface.
 func (ss *StrictServer) CreateAssociation(ctx context.Context, request CreateAssociationRequestObject) (CreateAssociationResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.CreateAssociationInput{
 		PersonID:    request.Body.PersonId,
 		AssociateID: request.Body.AssociateId,
@@ -5001,7 +5033,7 @@ func (ss *StrictServer) CreateAssociation(ctx context.Context, request CreateAss
 		copy(input.NoteIDs, *request.Body.NoteIds)
 	}
 
-	result, err := ss.server.commandHandler.CreateAssociation(ctx, input)
+	result, err := ss.branchWriter(branch).CreateAssociation(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrInvalidInput) {
 			return CreateAssociation400JSONResponse{BadRequestJSONResponse{
@@ -5012,9 +5044,12 @@ func (ss *StrictServer) CreateAssociation(ctx context.Context, request CreateAss
 		return nil, err
 	}
 
-	association, err := ss.server.associationService.GetAssociation(ctx, result.ID)
+	association, err := ss.server.associationService.GetAssociation(ctx, branchScopeID(branch), result.ID)
 	if err != nil {
 		return nil, err
+	}
+	if association == nil {
+		return nil, errors.New("failed to retrieve created association")
 	}
 
 	return CreateAssociation201JSONResponse(convertReadModelAssociationToGenerated(*association)), nil
@@ -5022,8 +5057,16 @@ func (ss *StrictServer) CreateAssociation(ctx context.Context, request CreateAss
 
 // GetAssociation implements StrictServerInterface.
 func (ss *StrictServer) GetAssociation(ctx context.Context, request GetAssociationRequestObject) (GetAssociationResponseObject, error) {
-	association, err := ss.server.associationService.GetAssociation(ctx, request.Id)
-	if err != nil || association == nil {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	association, err := ss.server.associationService.GetAssociation(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if association == nil {
 		return GetAssociation404JSONResponse{NotFoundJSONResponse{
 			Code:    "not_found",
 			Message: "Association not found",
@@ -5035,6 +5078,11 @@ func (ss *StrictServer) GetAssociation(ctx context.Context, request GetAssociati
 
 // UpdateAssociation implements StrictServerInterface.
 func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAssociationRequestObject) (UpdateAssociationResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	input := command.UpdateAssociationInput{
 		ID:      request.Id,
 		Version: request.Body.Version,
@@ -5055,7 +5103,7 @@ func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAss
 		input.NoteIDs = &noteIDs
 	}
 
-	_, err := ss.server.commandHandler.UpdateAssociation(ctx, input)
+	_, err = ss.branchWriter(branch).UpdateAssociation(ctx, input)
 	if err != nil {
 		if errors.Is(err, command.ErrAssociationNotFound) {
 			return UpdateAssociation404JSONResponse{NotFoundJSONResponse{
@@ -5078,9 +5126,12 @@ func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAss
 		return nil, err
 	}
 
-	association, err := ss.server.associationService.GetAssociation(ctx, request.Id)
+	association, err := ss.server.associationService.GetAssociation(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
+	}
+	if association == nil {
+		return nil, errors.New("failed to retrieve updated association")
 	}
 
 	return UpdateAssociation200JSONResponse(convertReadModelAssociationToGenerated(*association)), nil
@@ -5088,7 +5139,12 @@ func (ss *StrictServer) UpdateAssociation(ctx context.Context, request UpdateAss
 
 // DeleteAssociation implements StrictServerInterface.
 func (ss *StrictServer) DeleteAssociation(ctx context.Context, request DeleteAssociationRequestObject) (DeleteAssociationResponseObject, error) {
-	err := ss.server.commandHandler.DeleteAssociation(ctx, request.Id, request.Params.Version, "")
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ss.branchWriter(branch).DeleteAssociation(ctx, request.Id, request.Params.Version, "")
 	if err != nil {
 		if errors.Is(err, command.ErrAssociationNotFound) {
 			return DeleteAssociation404JSONResponse{NotFoundJSONResponse{
@@ -5110,16 +5166,25 @@ func (ss *StrictServer) DeleteAssociation(ctx context.Context, request DeleteAss
 
 // ListAssociationsForPerson implements StrictServerInterface.
 func (ss *StrictServer) ListAssociationsForPerson(ctx context.Context, request ListAssociationsForPersonRequestObject) (ListAssociationsForPersonResponseObject, error) {
-	// First check if person exists
-	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, request.Id)
-	if err != nil || person == nil {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	// First check the person exists on the requested scope. A store error is
+	// surfaced, not reported as a missing person.
+	person, err := ss.server.readStore.GetPerson(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		return nil, err
+	}
+	if person == nil {
 		return ListAssociationsForPerson404JSONResponse{NotFoundJSONResponse{
 			Code:    "not_found",
 			Message: "Person not found",
 		}}, nil
 	}
 
-	associations, err := ss.server.associationService.ListAssociationsForPerson(ctx, request.Id)
+	associations, err := ss.server.associationService.ListAssociationsForPerson(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		return nil, err
 	}

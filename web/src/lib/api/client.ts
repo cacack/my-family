@@ -77,6 +77,12 @@ export type MergeResolution = MergeResolutionEntry['resolution'];
  */
 export type BranchChangeEntry = components['schemas']['ChangeEntry'];
 
+// Re-export Research Snapshot types from generated file (single source of truth)
+export type Snapshot = components['schemas']['Snapshot'];
+export type SnapshotCreate = components['schemas']['SnapshotCreate'];
+export type SnapshotList = components['schemas']['SnapshotList'];
+export type SnapshotComparisonResult = components['schemas']['SnapshotComparisonResult'];
+
 const API_BASE = '/api/v1';
 
 // ---------------------------------------------------------------------------
@@ -127,15 +133,15 @@ const TEXT_SEGMENT = '[^/]+';
  * `POST /persons/merge` — cannot be mistaken for `/persons/{id}`.
  *
  * The table covers the #669 vertical slice (persons, person names, families,
- * family children, pedigree) plus the browse and map aggregates that #676
- * sub-issue A (#756) fanned out over. The aggregates own no `branch_id` of
- * their own — they read the slice's overlay — so scoping them is exactly this
- * parameter and nothing else.
+ * family children, pedigree), the browse and map aggregates that #676
+ * sub-issue A (#756) fanned out over, and the person/family facts of
+ * sub-issue B (#757): the cemetery index and the association endpoints. The
+ * aggregates own no `branch_id` of their own — they read the overlay — so
+ * scoping them is exactly this parameter and nothing else.
  *
  * Read models still answering only from the mainline, and therefore absent
- * here on purpose: the cemetery *index* (`GET /browse/cemeteries`, blocked on
- * `life_events` having no `branch_id` — #757), brick walls (not event-sourced —
- * #761), and the remaining entity read models. Those surfaces render
+ * here on purpose: brick walls (not event-sourced — #761) and the remaining
+ * entity read models. Those surfaces render
  * `MainlineNotice.svelte`. Grow this table one operation at a time as the spec
  * grows, and never by blanket-appending the parameter to every request.
  *
@@ -162,14 +168,18 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 		pattern: new RegExp(`^/families/${UUID_SEGMENT}/children/${UUID_SEGMENT}$`)
 	},
 	{ methods: ['GET'], pattern: new RegExp(`^/pedigree/${UUID_SEGMENT}$`) },
-	// Browse and map aggregates (#756). `GET /browse/cemeteries` — the index —
-	// is deliberately absent; only its per-place person list is scoped.
+	// Browse and map aggregates (#756), plus the cemetery index (#757).
 	{ methods: ['GET'], pattern: new RegExp('^/browse/surnames$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/surnames/${TEXT_SEGMENT}/persons$`) },
 	{ methods: ['GET'], pattern: new RegExp('^/browse/places$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/places/${TEXT_SEGMENT}/persons$`) },
+	{ methods: ['GET'], pattern: new RegExp('^/browse/cemeteries$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/cemeteries/${TEXT_SEGMENT}/persons$`) },
-	{ methods: ['GET'], pattern: new RegExp('^/map/locations$') }
+	{ methods: ['GET'], pattern: new RegExp('^/map/locations$') },
+	// Person/family facts (#757).
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/associations$') },
+	{ methods: ['GET', 'PUT', 'DELETE'], pattern: new RegExp(`^/associations/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/persons/${UUID_SEGMENT}/associations$`) }
 ];
 
 /**
@@ -2211,6 +2221,29 @@ class ApiClient {
 			'POST',
 			'/persons/duplicates/dismiss/batch',
 			req
+		);
+	}
+
+	// Research snapshot endpoints. A snapshot is a named marker of a mainline
+	// event-store position (a "tag"), so these are never branch-scoped —
+	// `/snapshots*` is absent from the allowlist above.
+	async listSnapshots(): Promise<SnapshotList> {
+		return this.request<SnapshotList>('GET', '/snapshots');
+	}
+
+	async createSnapshot(data: SnapshotCreate): Promise<Snapshot> {
+		return this.request<Snapshot>('POST', '/snapshots', data);
+	}
+
+	async deleteSnapshot(id: string): Promise<void> {
+		return this.request<void>('DELETE', `/snapshots/${encodeURIComponent(id)}`);
+	}
+
+	/** The mainline changes recorded between two snapshots, oldest first, whichever order they are passed in. */
+	async compareSnapshots(id1: string, id2: string): Promise<SnapshotComparisonResult> {
+		return this.request<SnapshotComparisonResult>(
+			'GET',
+			`/snapshots/${encodeURIComponent(id1)}/compare/${encodeURIComponent(id2)}`
 		);
 	}
 

@@ -19,6 +19,9 @@
  * 2. **The branch-side edit precedes the conflicting mainline edit.** Both quote
  *    the version the create returned; doing main first would move main's line
  *    on and leave the branch write quoting a stale version.
+ *
+ * Snapshots write no events, so the two that bracket everything below move no
+ * position and cannot disturb either rule.
  */
 import { API_BASE, writeSeed, type SeedData } from './seed';
 
@@ -35,6 +38,11 @@ interface CreatedFamily {
 }
 
 interface CreatedBranch {
+	id: string;
+	name: string;
+}
+
+interface CreatedSnapshot {
 	id: string;
 	name: string;
 }
@@ -62,6 +70,12 @@ function displayName(person: CreatedPerson): string {
 }
 
 export default async function globalSetup(): Promise<void> {
+	// --- Opening snapshot, on the empty store -----------------------------
+	const beforeSnapshot = await call<CreatedSnapshot>('POST', '/snapshots', {
+		name: 'E2E Before Seeding',
+		description: 'Taken on the empty store'
+	});
+
 	// --- Mainline ---------------------------------------------------------
 	const switcherPerson = await call<CreatedPerson>('POST', '/persons', {
 		given_name: 'Wilhelmina',
@@ -118,6 +132,11 @@ export default async function globalSetup(): Promise<void> {
 		version: mergePerson.version
 	});
 
+	// --- Closing snapshot, after every write above ------------------------
+	const afterSnapshot = await call<CreatedSnapshot>('POST', '/snapshots', {
+		name: 'E2E After Seeding'
+	});
+
 	const seed: SeedData = {
 		switcher: {
 			branchId: switcherBranch.id,
@@ -142,6 +161,12 @@ export default async function globalSetup(): Promise<void> {
 			familyId: family.id,
 			familyName: `${displayName(switcherPerson)} & ${displayName(mergePerson)}`,
 			familyBranchMarriagePlace
+		},
+		snapshots: {
+			beforeId: beforeSnapshot.id,
+			beforeName: beforeSnapshot.name,
+			afterId: afterSnapshot.id,
+			afterName: afterSnapshot.name
 		}
 	};
 

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
@@ -21,13 +22,20 @@ import (
 // ReadModelStore is a SQLite implementation of repository.ReadModelStore.
 type ReadModelStore struct {
 	db *sql.DB
-	// branchCapable reports whether the slice tables carry the composite
+	// branchCapable reports whether the branch-scoped tables carry the composite
 	// (id, branch_id) PRIMARY KEY that a branch's copy-on-write shadow row needs.
-	// A freshly created schema always does; a database created before #669 keeps
-	// its single-column key (SQLite cannot alter a PK in place), so branch writes
+	// A freshly created schema always does; a database created before #669 (or,
+	// for the person/family fact tables, before #757) keeps its single-column key
+	// (SQLite cannot alter a PK in place), so branch writes
 	// are refused with repository.ErrBranchesUnsupported rather than failing later
 	// on an opaque constraint violation. See detectBranchCapable and issue #680.
 	branchCapable bool
+	// fts5 reports whether both full-text tables (persons_fts, person_names_fts)
+	// were created, i.e. the linked SQLite has the FTS5 module (mattn/go-sqlite3
+	// only compiles it in under the sqlite_fts5 build tag). SearchPersons uses it
+	// to pick the FTS5 or LIKE name-matching path up front, so an FTS5 error is
+	// never mistaken for "FTS5 unavailable". See tryCreateFTS5 and issue #762.
+	fts5 bool
 }
 
 // mainBranchID is the string form of domain.MainBranchID (the all-zeros UUID),
@@ -72,14 +80,32 @@ func NewReadModelStore(db *sql.DB) (*ReadModelStore, error) {
 	return store, nil
 }
 
-// detectBranchCapable reports whether the persons table carries the composite
-// (id, branch_id) PRIMARY KEY introduced in #669. PRAGMA table_info marks each
-// primary-key column with a non-zero `pk` ordinal, so a composite key yields more
-// than one. persons is representative: every slice table gained its composite key
-// in the same schema revision. On any error it returns false (fail closed —
-// refusing a branch write is safer than attempting one the schema can't hold).
+// detectBranchCapable reports whether every table in branchKeyedTables carries a
+// composite (id, branch_id) PRIMARY KEY. persons stands for the seven #669 slice
+// tables, which all gained their composite key in the same schema revision; the
+// person/family fact tables gained theirs later (#757), so a database built
+// between the two revisions has branch-capable persons but single-key facts.
+// Such a database refuses EVERY branch write, not just fact writes: a branch
+// DeletePerson must tombstone the person's facts too, and letting half the
+// branch model write would leave branches that cannot be deleted cleanly. On any
+// error it returns false (fail closed — refusing a branch write is safer than
+// attempting one the schema can't hold).
 func (s *ReadModelStore) detectBranchCapable() bool {
-	rows, err := s.db.Query(`PRAGMA table_info(persons)`)
+	for _, table := range branchKeyedTables {
+		if !s.hasCompositeKey(table) {
+			return false
+		}
+	}
+	return true
+}
+
+// hasCompositeKey reports whether table's PRIMARY KEY spans more than one column.
+// PRAGMA table_info marks each primary-key column with a non-zero `pk` ordinal,
+// so a composite key yields more than one. table must be a package constant.
+func (s *ReadModelStore) hasCompositeKey(table string) bool {
+	// #nosec G202 -- table comes from the fixed branchKeyedTables list, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return false
 	}
@@ -442,8 +468,10 @@ func (s *ReadModelStore) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_repository_external_ids_repository ON repository_external_ids(repository_id);
 
 		-- Associations table (GEDCOM ASSO records for non-family relationships)
+		-- Branch-aware (#757): (id, branch_id) row identity + deleted tombstone.
 		CREATE TABLE IF NOT EXISTS associations (
-			id TEXT PRIMARY KEY,
+			id TEXT NOT NULL,
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			person_id TEXT NOT NULL,
 			person_name TEXT,
 			associate_id TEXT NOT NULL,
@@ -454,7 +482,9 @@ func (s *ReadModelStore) createTables() error {
 			note_ids TEXT,
 			gedcom_xref TEXT,
 			version INTEGER NOT NULL DEFAULT 1,
-			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			deleted INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (id, branch_id)
 			-- FKs to persons(id) dropped: persons is now keyed by (id, branch_id) for
 			-- branch scoping (#669), which is incompatible with a lone-id foreign key.
 			-- DeletePerson cascades associations in code to preserve mainline behavior.
@@ -466,9 +496,11 @@ func (s *ReadModelStore) createTables() error {
 
 		-- Life events table (life events for persons and families). Named life_events
 		-- rather than events so the read model can share one database with the event
-		-- log, which owns the events table (#733).
+		-- log, which owns the events table (#733). Branch-aware (#757): (id,
+		-- branch_id) row identity + deleted tombstone.
 		CREATE TABLE IF NOT EXISTS life_events (
-			id TEXT PRIMARY KEY,
+			id TEXT NOT NULL,
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			owner_type TEXT NOT NULL,
 			owner_id TEXT NOT NULL,
 			fact_type TEXT NOT NULL,
@@ -484,15 +516,19 @@ func (s *ReadModelStore) createTables() error {
 			research_status TEXT,
 			is_negated INTEGER NOT NULL DEFAULT 0,
 			version INTEGER NOT NULL DEFAULT 1,
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			deleted INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (id, branch_id)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_life_events_owner ON life_events(owner_type, owner_id);
 		CREATE INDEX IF NOT EXISTS idx_life_events_fact_type ON life_events(fact_type);
 
-		-- Attributes table (person attributes)
+		-- Attributes table (person attributes). Branch-aware (#757): (id, branch_id)
+		-- row identity + deleted tombstone.
 		CREATE TABLE IF NOT EXISTS attributes (
-			id TEXT PRIMARY KEY,
+			id TEXT NOT NULL,
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			person_id TEXT NOT NULL,
 			fact_type TEXT NOT NULL,
 			value TEXT NOT NULL DEFAULT '',
@@ -500,7 +536,9 @@ func (s *ReadModelStore) createTables() error {
 			date_sort TEXT,
 			place TEXT,
 			version INTEGER NOT NULL DEFAULT 1,
-			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			deleted INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (id, branch_id)
 			-- FK to persons(id) dropped: persons is keyed by (id, branch_id) for branch
 			-- scoping (#669). Integrity is enforced write-side; the read model is rebuildable.
 		);
@@ -678,8 +716,8 @@ func (s *ReadModelStore) runMigrations() {
 	// Add repository_id to sources for ID-based source→repository linkage (issue #525).
 	_, _ = s.db.Exec(`ALTER TABLE sources ADD COLUMN repository_id TEXT`)
 
-	// Branch scoping for the slice entities (ADR-005 / #669). Add branch_id +
-	// deleted to each of the 7 slice tables. SQLite ALTER TABLE ADD COLUMN has no
+	// Branch scoping for the slice entities (ADR-005 / #669) and the person/family
+	// facts (#757). Add branch_id + deleted to each table in branchScopedTables. SQLite ALTER TABLE ADD COLUMN has no
 	// IF NOT EXISTS, so these bare execs swallow the "duplicate column" error on
 	// databases that already have the columns (project convention).
 	//
@@ -701,10 +739,9 @@ func (s *ReadModelStore) runMigrations() {
 	// than a full-table scan; the composite PK leads with id (#669). No (id, branch_id)
 	// indexes are created: the composite PK's autoindex already covers that prefix
 	// (confirmed via EXPLAIN QUERY PLAN), so a separate one would only add write cost.
-	for _, tbl := range []string{
-		"persons", "families", "family_children", "pedigree_edges",
-		"person_names", "person_external_ids", "family_external_ids",
-	} {
+	for _, tbl := range branchScopedTables {
+		// #nosec G202 -- tbl comes from the fixed branchScopedTables list, not user input.
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		_, _ = s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_` + tbl + `_branch ON ` + tbl + `(branch_id)`)
 	}
 
@@ -738,17 +775,31 @@ func (s *ReadModelStore) runMigrations() {
 		{"idx_person_names_id_branch", "person_names", "id, branch_id"},
 		{"idx_family_children_fam_person_branch", "family_children", "family_id, person_id, branch_id"},
 		{"idx_pedigree_edges_person_branch", "pedigree_edges", "person_id, branch_id"},
+		// Person/family facts (#757): same reasoning for a database created before
+		// these tables gained their composite key.
+		{"idx_life_events_id_branch", "life_events", "id, branch_id"},
+		{"idx_attributes_id_branch", "attributes", "id, branch_id"},
+		{"idx_associations_id_branch", "associations", "id, branch_id"},
 	} {
 		// #nosec G201 -- idx fields are internal constants, never user input.
 		_, _ = s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS ` + idx.name + ` ON ` + idx.table + `(` + idx.cols + `)`)
 	}
 }
 
-// branchScopedTables are the #669 slice tables that carry branch_id/deleted.
+// branchScopedTables are every read-model table carrying branch_id/deleted: the
+// seven #669 slice tables and the three person/family fact tables (#757).
+// PurgeBranch drops a branch's rows from each, and runMigrations gives each its
+// branch_id-leading index.
 var branchScopedTables = []string{
 	"persons", "families", "family_children", "pedigree_edges",
 	"person_names", "person_external_ids", "family_external_ids",
+	"life_events", "attributes", "associations",
 }
+
+// branchKeyedTables are the branch-scoped tables whose row identity must be
+// (id, branch_id) for a branch shadow row to exist. detectBranchCapable requires
+// every one of them to carry that composite PRIMARY KEY.
+var branchKeyedTables = []string{"persons", "life_events", "attributes", "associations"}
 
 // migrateBranchColumns adds the #669 branch_id/deleted columns to any slice table
 // that predates them. SQLite has no ALTER TABLE ... ADD COLUMN IF NOT EXISTS, so
@@ -820,8 +871,9 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 	return nil
 }
 
-// tryCreateFTS5 attempts to create FTS5 virtual table for full-text search.
-// If FTS5 is not available, search will fall back to LIKE-based queries.
+// tryCreateFTS5 attempts to create FTS5 virtual table for full-text search and
+// records the outcome in s.fts5. If FTS5 is not available (mattn/go-sqlite3 built
+// without the sqlite_fts5 tag), search uses LIKE-based queries instead.
 func (s *ReadModelStore) tryCreateFTS5() {
 	// Try to create FTS5 virtual table for persons
 	_, err := s.db.Exec(`
@@ -876,7 +928,7 @@ func (s *ReadModelStore) tryCreateFTS5() {
 	`)
 
 	// Create FTS5 virtual table for person_names
-	_, _ = s.db.Exec(`
+	if _, err := s.db.Exec(`
 		CREATE VIRTUAL TABLE IF NOT EXISTS person_names_fts USING fts5(
 			given_name,
 			surname,
@@ -884,7 +936,25 @@ func (s *ReadModelStore) tryCreateFTS5() {
 			content='person_names',
 			content_rowid='rowid'
 		)
-	`)
+	`); err != nil {
+		// Without person_names_fts the FTS5 search query cannot run; leave
+		// s.fts5 false so SearchPersons takes the LIKE path.
+		return
+	}
+
+	// CREATE ... IF NOT EXISTS succeeds without loading the module when the
+	// tables already exist (a database written by an FTS5-enabled build and
+	// reopened by one without it), so probe that both tables are actually
+	// queryable before committing SearchPersons to the FTS5 path.
+	for _, probe := range []string{
+		`SELECT rowid FROM persons_fts LIMIT 0`,
+		`SELECT rowid FROM person_names_fts LIMIT 0`,
+	} {
+		if _, err := s.db.Exec(probe); err != nil {
+			return
+		}
+	}
+	s.fts5 = true
 
 	// Create triggers for person_names FTS
 	_, _ = s.db.Exec(`
@@ -1062,6 +1132,9 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		limit = 100
 	}
 
+	// Trim like the PostgreSQL and memory stores do, so a whitespace-only query is
+	// "no query" (a filters-only search) on both the FTS5 and LIKE paths.
+	opts.Query = strings.TrimSpace(opts.Query)
 	hasQuery := opts.Query != ""
 	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
 		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
@@ -1086,14 +1159,23 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return nil, nil
 }
 
-// searchPersonsFTS uses FTS5 (with LIKE fallback) combined with date/place SQL filters.
+// searchPersonsFTS matches names with FTS5 combined with date/place SQL filters.
+// It takes the LIKE path when the build has no FTS5 module, and when a fuzzy FTS5
+// search finds nothing; an FTS5 query error is returned, not masked (see
+// escapeFTS5Query for why the MATCH expression is always valid).
 func (s *ReadModelStore) searchPersonsFTS(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
 	// Build date/place filter conditions for the WHERE clause on p.*
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 
-	ftsQuery := escapeFTS5Query(opts.Query)
-	if opts.Fuzzy {
-		ftsQuery += "*"
+	if !s.fts5 {
+		return s.searchPersonsLike(ctx, opts, limit)
+	}
+
+	ftsQuery := escapeFTS5Query(opts.Query, opts.Fuzzy)
+	if ftsQuery == "" {
+		// Whitespace-only input has no token to match (FTS5 would reject an empty
+		// MATCH expression as a syntax error), so nothing can match.
+		return nil, nil
 	}
 
 	orderClause := searchOrderClause(opts, "", true)
@@ -1207,8 +1289,10 @@ func (s *ReadModelStore) searchPersonsFTS(ctx context.Context, opts repository.S
 
 	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
-		// Fallback to LIKE if FTS5 query fails (e.g., for special characters)
-		return s.searchPersonsLike(ctx, opts, limit)
+		// escapeFTS5Query always yields a syntactically valid MATCH expression, so
+		// an error here is a real failure; surface it instead of masking it as
+		// LIKE results (issue #762).
+		return nil, fmt.Errorf("search persons (fts5): %w", err)
 	}
 	defer rows.Close()
 
@@ -1689,8 +1773,8 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 // person_id and associate_id) were ON DELETE CASCADE pre-#669. attributes
 // referenced persons(id) with NO ON DELETE (RESTRICT), which would have blocked
 // the delete; blocking is not reproducible against an append-only event log, so
-// we cascade-delete orphan attributes too. associations/attributes are main-only
-// (no branch_id column).
+// we cascade-delete orphan attributes too. The person's own life events go with it
+// as well (#757).
 func (s *ReadModelStore) deletePersonMain(ctx context.Context, id uuid.UUID) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1709,8 +1793,6 @@ func (s *ReadModelStore) deletePersonMain(ctx context.Context, id uuid.UUID) err
 		// family_children referenced persons(id) ON DELETE CASCADE on the child side,
 		// so drop the deleted person from every mainline family it was a child of.
 		{"DELETE FROM family_children WHERE person_id = ? AND branch_id = ?", []any{idStr, mainBranchID}},
-		{"DELETE FROM associations WHERE person_id = ? OR associate_id = ?", []any{idStr, idStr}},
-		{"DELETE FROM attributes WHERE person_id = ?", []any{idStr}},
 		{"DELETE FROM persons WHERE id = ? AND branch_id = ?", []any{idStr, mainBranchID}},
 	}
 	for _, st := range stmts {
@@ -1718,13 +1800,16 @@ func (s *ReadModelStore) deletePersonMain(ctx context.Context, id uuid.UUID) err
 			return fmt.Errorf("delete person (main): %w", err)
 		}
 	}
+	if err := cascadePersonFacts(ctx, tx, domain.MainBranchID, id); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 // tombstonePersonBranch writes branch tombstones for a person and its branch-scoped
-// dependents (names, external IDs, pedigree edge) so the mainline fallback does not
-// resurrect the entity. associations/attributes are main-only (not branch-scoped),
-// so a branch delete does not touch them.
+// dependents (names, external IDs, pedigree edge, and the life events, attributes
+// and associations it owns or appears in) so the mainline fallback does not
+// resurrect the entity.
 func (s *ReadModelStore) tombstonePersonBranch(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1752,6 +1837,9 @@ func (s *ReadModelStore) tombstonePersonBranch(ctx context.Context, branchID dom
 		ON CONFLICT(person_id, branch_id) DO UPDATE SET deleted = 1
 	`, id.String(), branchID.String()); err != nil {
 		return fmt.Errorf("tombstone pedigree edge: %w", err)
+	}
+	if err := cascadePersonFacts(ctx, tx, branchID, id); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -2434,6 +2522,11 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// The family's own life events cascade with it on either scope (#757).
+	if err := cascadeFactRows(ctx, tx, "life_events", eventSelectCols, familyEventsFilter, branchID, id); err != nil {
+		return err
+	}
+
 	if branchID.IsMain() {
 		stmts := []struct {
 			sql  string
@@ -2716,13 +2809,17 @@ func (s *ReadModelStore) DeletePedigreeEdge(ctx context.Context, branchID domain
 	return err
 }
 
-// PurgeBranch hard-deletes every row for branchID across the seven branch-scoped
-// slice tables. It is a no-op for the mainline (domain.MainBranchID), which is
+// PurgeBranch hard-deletes every row for branchID across the branch-scoped
+// tables (branchScopedTables). It is a no-op for the mainline (domain.MainBranchID), which is
 // never purged. See ADR-005 and the branch-delete projection handler.
+//
+// Unlike every other branch-scoped write it is NOT guarded by guardBranchWrite:
+// a database built between #669 and #757 is no longer branch-capable yet may
+// already hold live branch rows in its slice tables, and those branches must
+// stay deletable and mergeable. The DELETE is safe on any schema, because
+// migrateBranchColumns gives every branchScopedTables table a branch_id column
+// and a lone-id table simply holds no rows for the branch.
 func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.BranchID) error {
-	if err := s.guardBranchWrite(branchID); err != nil {
-		return err
-	}
 	if branchID.IsMain() {
 		return nil
 	}
@@ -2734,19 +2831,9 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 	defer func() { _ = tx.Rollback() }()
 
 	branchStr := branchID.String()
-	// associations/attributes are intentionally excluded: they are main-scoped
-	// (no branch_id column), so a branch-only entity cannot own them and purging
-	// them here would delete mainline data.
-	for _, table := range []string{
-		"persons",
-		"person_names",
-		"person_external_ids",
-		"families",
-		"family_external_ids",
-		"family_children",
-		"pedigree_edges",
-	} {
-		// #nosec G202 -- table is from a hardcoded slice of slice-table names, not user input
+	for _, table := range branchScopedTables {
+		// #nosec G202 -- table is from the fixed branchScopedTables list, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE branch_id = ?", branchStr); err != nil {
 			return fmt.Errorf("purge branch %s: %w", table, err)
 		}
@@ -2921,15 +3008,56 @@ func scanFamilyRow(rows *sql.Rows) (*repository.FamilyReadModel, error) {
 	return scanFamily(rows)
 }
 
-// escapeFTS5Query escapes special characters for FTS5 queries.
-func escapeFTS5Query(query string) string {
-	// FTS5 special characters that need escaping
-	specialChars := []string{"*", "+", "-", "\"", "(", ")", ":", "^"}
-	result := query
-	for _, char := range specialChars {
-		result = strings.ReplaceAll(result, char, "\""+char+"\"")
+// escapeFTS5Query turns free-text user input into an FTS5 MATCH expression
+// that searches for the input literally (issue #762).
+//
+// Control characters (including NUL, at which FTS5 stops reading a string and
+// reports "unterminated string") are treated as whitespace, then the input is
+// split on whitespace and every token is emitted as an FTS5 string
+// ("..."), with any embedded double quote doubled ("" is FTS5's only escape
+// inside a string). Inside a string no character is an operator, so *, +, -, (,
+// ), :, ^, apostrophes and bare words such as AND/OR/NOT/NEAR are all literal
+// text; the tokenizer then splits each string into terms, so O'Brien becomes the
+// phrase "o brien" and Smith-Jones the phrase "smith jones". Tokens are joined by
+// spaces, which FTS5 treats as implicit AND. A token that holds only punctuation
+// is an empty phrase and matches nothing.
+//
+// When prefix is true (fuzzy search) the FTS5 prefix operator is appended to the
+// last token, OUTSIDE its closing quote ("Zac"* rather than "Zac*"), which keeps
+// the historical fuzzy behavior of a trailing * on the query.
+//
+// It returns "" when the input has no tokens; the caller must not pass that to
+// MATCH (an empty expression is a syntax error).
+//
+// LIKE fallback decision: because every token is quoted, the result is always a
+// valid FTS5 expression, so searchPersonsFTS no longer falls back to LIKE when
+// the MATCH query errors — such an error is a real failure and is returned. The
+// LIKE path is used only when the SQLite build has no FTS5 module (decided once
+// at startup by tryCreateFTS5), and as the existing "fuzzy found nothing"
+// fallback.
+func escapeFTS5Query(query string, prefix bool) string {
+	tokens := strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, query))
+	if len(tokens) == 0 {
+		return ""
 	}
-	return result
+	var sb strings.Builder
+	for i, tok := range tokens {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteByte('"')
+		sb.WriteString(strings.ReplaceAll(tok, `"`, `""`))
+		sb.WriteByte('"')
+	}
+	if prefix {
+		sb.WriteByte('*')
+	}
+	return sb.String()
 }
 
 // soundex computes the American Soundex code for a string.
@@ -3223,111 +3351,259 @@ func (s *ReadModelStore) DeleteCitation(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
-// GetEvent retrieves an event by ID.
-func (s *ReadModelStore) GetEvent(ctx context.Context, id uuid.UUID) (*repository.EventReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events WHERE id = ?
-	`, id.String())
+// Person/family fact tables (#757): life_events, attributes and associations are
+// branch-scoped the same way as the #669 slice (ADR-005). Each is keyed by
+// (id, branch_id) and resolves per id: the branch's row wins, else main's, and a
+// winning tombstone hides the id. The per-owner lists are resolved over every id
+// the owner has on either side, then re-filtered on the WINNING row, so a branch
+// row that re-owned an id (PersonMerged moves life events and attributes) is
+// listed under its new owner only.
 
+const (
+	// eventSelectCols is scanEvent's column order (unaliased).
+	eventSelectCols = `id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		place, place_lat, place_long, address, description, cause,
+		age, research_status, is_negated, version, created_at`
+
+	// attributeSelectCols is scanAttribute's column order (unaliased).
+	attributeSelectCols = `id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at`
+
+	// associationSelectCols is scanAssociation's column order (unaliased).
+	associationSelectCols = `id, person_id, person_name, associate_id, associate_name,
+		role, phrase, notes, note_ids, gedcom_xref, version, updated_at`
+
+	// eventOrder is the deterministic life-event order every backend returns.
+	eventOrder = `fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC`
+
+	// Per-owner filters for the fact tables; each binds the owner id once per ?.
+	personEventsFilter      = `owner_type = 'person' AND owner_id = ?`
+	familyEventsFilter      = `owner_type = 'family' AND owner_id = ?`
+	personAttributesFilter  = `person_id = ?`
+	personAssociationFilter = `(person_id = ? OR associate_id = ?)`
+)
+
+// factOverlaySubquery returns a parenthesized subquery holding branchID's
+// resolved view of an id-keyed branch-scoped table, and the args it binds in
+// order. table and filter must be package constants: nothing here is user input.
+//
+// filter optionally narrows the rows (e.g. to one owner) and binds filterArgs.
+// Off main it is applied twice: once to choose the candidate ids (any row of the
+// id on either side matches), so the ROW_NUMBER window sorts only those ids
+// rather than the whole table, and once to the winning row, so the answer is
+// decided by the row the branch actually sees. The deleted filter stays outside
+// the window so a branch tombstone suppresses the main fallback.
+//
+// Main takes the fast path (issue #669): main never shadows itself, so the plain
+// branch-filtered subquery flattens into the caller and keeps its indexes.
+func factOverlaySubquery(table, filter string, filterArgs []any, branchID domain.BranchID) (string, []any) {
+	if branchID.IsMain() {
+		// #nosec G202 -- table, cols and filter are package constants, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		sub := "(SELECT * FROM " + table + " WHERE branch_id = ? AND deleted = 0"
+		args := []any{mainBranchID}
+		if filter != "" {
+			sub += " AND " + filter
+			args = append(args, filterArgs...)
+		}
+		return sub + ")", args
+	}
+	branch := branchID.String()
+	args := []any{branch, branch, mainBranchID}
+	candidates, outer := "", ""
+	if filter != "" {
+		// #nosec G202 -- table, cols and filter are package constants, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		candidates = " AND id IN (SELECT id FROM " + table + " WHERE branch_id IN (?, ?) AND " + filter + ")"
+		outer = " AND " + filter
+		args = append(args, branch, mainBranchID)
+		args = append(args, filterArgs...)
+		args = append(args, filterArgs...)
+	}
+	// #nosec G202 -- table, cols and filter are package constants, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	return "(SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn FROM " +
+		table + " WHERE branch_id IN (?, ?)" + candidates + ") WHERE rn = 1 AND deleted = 0" + outer + ")", args
+}
+
+// factGetQuery returns the single-row overlay lookup for an id-keyed
+// branch-scoped table; bind factGetArgs. table and cols must be package constants.
+func factGetQuery(table, cols string) string {
+	// #nosec G202 -- table, cols and filter are package constants, not user input
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	return "SELECT " + cols + " FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn FROM " +
+		table + " WHERE id = ? AND branch_id IN (?, ?)) WHERE rn = 1 AND deleted = 0"
+}
+
+// factGetArgs are the args factGetQuery binds.
+func factGetArgs(branchID domain.BranchID, id uuid.UUID) []any {
+	return []any{branchID.String(), id.String(), branchID.String(), mainBranchID}
+}
+
+// sqlExecer is the ExecContext subset shared by *sql.DB and *sql.Tx.
+type sqlExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// tombstoneFactRows writes a deleted=1 shadow row on branchID for every row of
+// an id-keyed fact table that the overlay subquery sub (with its args) resolves,
+// copying the resolved row so the table's NOT NULL columns hold values. One
+// set-based statement; the WHERE true disambiguates SQLite's INSERT ... SELECT
+// ... ON CONFLICT parse. table and cols must be package constants.
+func tombstoneFactRows(ctx context.Context, db sqlExecer, table, cols string, branchID domain.BranchID, sub string, subArgs []any) error {
+	// #nosec G202 -- table, cols and sub are built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO `+table+` (`+cols+`, branch_id, deleted)
+		SELECT `+cols+`, ?, 1 FROM `+sub+` r WHERE true
+		ON CONFLICT(id, branch_id) DO UPDATE SET deleted = 1
+	`, append([]any{branchID.String()}, subArgs...)...)
+	return err
+}
+
+// deleteFactRow removes one row of an id-keyed branch-scoped fact table
+// (ADR-005): a real removal on main; on a non-main branch a tombstone copying the
+// row the branch currently resolves (with no visible row there is nothing to hide
+// and nothing is written). table and cols must be package constants.
+func (s *ReadModelStore) deleteFactRow(ctx context.Context, table, cols string, branchID domain.BranchID, id uuid.UUID) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+	if branchID.IsMain() {
+		// #nosec G202 -- table is a package constant, not user input
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		_, err := s.db.ExecContext(ctx, "DELETE FROM "+table+" WHERE id = ? AND branch_id = ?", id.String(), mainBranchID)
+		return err
+	}
+	sub, args := factOverlaySubquery(table, "id = ?", []any{id.String()}, branchID)
+	return tombstoneFactRows(ctx, s.db, table, cols, branchID, sub, args)
+}
+
+// cascadeFactRows removes, on branchID, every row of an id-keyed fact table that
+// ownerFilter selects for ownerID — the manual cascade DeletePerson/DeleteFamily
+// run now that the read-model foreign keys are gone (#669, #757). On main the rows
+// are deleted; off main each row visible on the branch is tombstoned in one
+// set-based statement. table, cols and ownerFilter must be package constants.
+func cascadeFactRows(ctx context.Context, tx *sql.Tx, table, cols, ownerFilter string, branchID domain.BranchID, ownerID uuid.UUID) error {
+	ownerArgs := make([]any, strings.Count(ownerFilter, "?"))
+	for i := range ownerArgs {
+		ownerArgs[i] = ownerID.String()
+	}
+	if branchID.IsMain() {
+		// #nosec G202 -- table and ownerFilter are package constants; values are bound ? placeholders
+		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE branch_id = ? AND "+ownerFilter,
+			append([]any{mainBranchID}, ownerArgs...)...); err != nil {
+			return fmt.Errorf("cascade delete %s: %w", table, err)
+		}
+		return nil
+	}
+	sub, args := factOverlaySubquery(table, ownerFilter, ownerArgs, branchID)
+	if err := tombstoneFactRows(ctx, tx, table, cols, branchID, sub, args); err != nil {
+		return fmt.Errorf("cascade tombstone %s: %w", table, err)
+	}
+	return nil
+}
+
+// cascadePersonFacts removes, on branchID, the person's life events and
+// attributes and every association naming the person on either side (#757).
+func cascadePersonFacts(ctx context.Context, tx *sql.Tx, branchID domain.BranchID, personID uuid.UUID) error {
+	if err := cascadeFactRows(ctx, tx, "life_events", eventSelectCols, personEventsFilter, branchID, personID); err != nil {
+		return err
+	}
+	if err := cascadeFactRows(ctx, tx, "attributes", attributeSelectCols, personAttributesFilter, branchID, personID); err != nil {
+		return err
+	}
+	return cascadeFactRows(ctx, tx, "associations", associationSelectCols, personAssociationFilter, branchID, personID)
+}
+
+// GetEvent retrieves a life event by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.EventReadModel, error) {
+	// #nosec G202 -- the query is built by factGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, factGetQuery("life_events", eventSelectCols), factGetArgs(branchID, id)...)
 	return scanEvent(row)
 }
 
-// ListEvents returns a paginated list of events.
+// ListEvents returns a paginated list of the life events visible on
+// opts.BranchID (ADR-005).
 func (s *ReadModelStore) ListEvents(ctx context.Context, opts repository.ListOptions) ([]repository.EventReadModel, int, error) {
-	// Count total
+	sub, args := factOverlaySubquery("life_events", "", nil, opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM life_events").Scan(&total)
-	if err != nil {
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" e", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count events: %w", err)
 	}
 
-	// Sort by fact_type ASC, date_sort ASC NULLS LAST, id ASC for deterministic ordering
-	query := `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events
-		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+eventSelectCols+` FROM `+sub+` e
+		ORDER BY `+eventOrder+`
 		LIMIT ? OFFSET ?
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	`, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query events: %w", err)
 	}
-	defer rows.Close()
+	events, err := scanLifeEvents(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return events, total, nil
+}
 
+// scanLifeEvents drains rows of eventSelectCols.
+func scanLifeEvents(rows *sql.Rows) ([]repository.EventReadModel, error) {
+	defer rows.Close()
 	var events []repository.EventReadModel
 	for rows.Next() {
 		event, err := scanEventRow(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		events = append(events, *event)
 	}
-
-	return events, total, rows.Err()
+	return events, rows.Err()
 }
 
-// ListEventsForPerson returns all events for a given person.
-func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.EventReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events
-		WHERE owner_type = 'person' AND owner_id = ?
-		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
-	`, personID.String())
+// listOwnerEvents returns one owner's life events visible on branchID.
+func (s *ReadModelStore) listOwnerEvents(ctx context.Context, branchID domain.BranchID, ownerFilter string, ownerID uuid.UUID) ([]repository.EventReadModel, error) {
+	sub, args := factOverlaySubquery("life_events", ownerFilter, []any{ownerID.String()}, branchID)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, `SELECT `+eventSelectCols+` FROM `+sub+` e ORDER BY `+eventOrder, args...)
+	if err != nil {
+		return nil, err
+	}
+	return scanLifeEvents(rows)
+}
+
+// ListEventsForPerson returns all life events of a person within the branch overlay.
+func (s *ReadModelStore) ListEventsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.EventReadModel, error) {
+	events, err := s.listOwnerEvents(ctx, branchID, personEventsFilter, personID)
 	if err != nil {
 		return nil, fmt.Errorf("query events for person: %w", err)
 	}
-	defer rows.Close()
-
-	var events []repository.EventReadModel
-	for rows.Next() {
-		event, err := scanEventRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, *event)
-	}
-
-	return events, rows.Err()
+	return events, nil
 }
 
-// ListEventsForFamily returns all events for a given family.
-func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, familyID uuid.UUID) ([]repository.EventReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, owner_type, owner_id, fact_type, date_raw, date_sort,
-		       place, place_lat, place_long, address, description, cause,
-		       age, research_status, is_negated, version, created_at
-		FROM life_events
-		WHERE owner_type = 'family' AND owner_id = ?
-		ORDER BY fact_type ASC, CASE WHEN date_sort IS NULL THEN 1 ELSE 0 END, date_sort ASC, id ASC
-	`, familyID.String())
+// ListEventsForFamily returns all life events of a family within the branch overlay.
+func (s *ReadModelStore) ListEventsForFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.EventReadModel, error) {
+	events, err := s.listOwnerEvents(ctx, branchID, familyEventsFilter, familyID)
 	if err != nil {
 		return nil, fmt.Errorf("query events for family: %w", err)
 	}
-	defer rows.Close()
-
-	var events []repository.EventReadModel
-	for rows.Next() {
-		event, err := scanEventRow(rows)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, *event)
-	}
-
-	return events, rows.Err()
+	return events, nil
 }
 
-// SaveEvent saves or updates an event.
-func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventReadModel) error {
+// SaveEvent saves or updates a life event on the given branch (ADR-005). The row
+// is keyed by (id, branch_id); a save always clears any prior tombstone.
+func (s *ReadModelStore) SaveEvent(ctx context.Context, branchID domain.BranchID, event *repository.EventReadModel) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+
 	var dateSort, placeLat, placeLong, addressJSON interface{}
 	var description, cause, age, researchStatus interface{}
 
@@ -3341,9 +3617,11 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 		placeLong = *event.PlaceLong
 	}
 	if event.Address != nil {
-		if data, err := json.Marshal(event.Address); err == nil {
-			addressJSON = string(data)
+		data, err := json.Marshal(event.Address)
+		if err != nil {
+			return fmt.Errorf("marshal event address: %w", err)
 		}
+		addressJSON = string(data)
 	}
 	if event.Description != "" {
 		description = event.Description
@@ -3359,11 +3637,11 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO life_events (id, owner_type, owner_id, fact_type, date_raw, date_sort,
+		INSERT INTO life_events (id, branch_id, owner_type, owner_id, fact_type, date_raw, date_sort,
 		                    place, place_lat, place_long, address, description, cause,
-		                    age, research_status, is_negated, version, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (id) DO UPDATE SET
+		                    age, research_status, is_negated, version, created_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			owner_type = excluded.owner_type,
 			owner_id = excluded.owner_id,
 			fact_type = excluded.fact_type,
@@ -3378,8 +3656,9 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 			age = excluded.age,
 			research_status = excluded.research_status,
 			is_negated = excluded.is_negated,
-			version = excluded.version
-	`, event.ID.String(), event.OwnerType, event.OwnerID.String(), string(event.FactType),
+			version = excluded.version,
+			deleted = 0
+	`, event.ID.String(), branchID.String(), event.OwnerType, event.OwnerID.String(), string(event.FactType),
 		event.DateRaw, dateSort, event.Place, placeLat, placeLong, addressJSON,
 		description, cause, age, researchStatus, event.IsNegated, event.Version,
 		formatTimestamp(event.CreatedAt))
@@ -3389,73 +3668,26 @@ func (s *ReadModelStore) SaveEvent(ctx context.Context, event *repository.EventR
 	return nil
 }
 
-// DeleteEvent deletes an event by ID.
-func (s *ReadModelStore) DeleteEvent(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM life_events WHERE id = ?", id.String())
-	if err != nil {
+// DeleteEvent removes a life event (ADR-005): a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteEvent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := s.deleteFactRow(ctx, "life_events", eventSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete event: %w", err)
 	}
 	return nil
 }
 
-// GetAttribute retrieves an attribute by ID.
-func (s *ReadModelStore) GetAttribute(ctx context.Context, id uuid.UUID) (*repository.AttributeReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
-		FROM attributes WHERE id = ?
-	`, id.String())
-
+// GetAttribute retrieves an attribute by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.AttributeReadModel, error) {
+	// #nosec G202 -- the query is built by factGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, factGetQuery("attributes", attributeSelectCols), factGetArgs(branchID, id)...)
 	return scanAttribute(row)
 }
 
-// ListAttributes returns a paginated list of attributes.
-func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
-	// Count total
-	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM attributes").Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count attributes: %w", err)
-	}
-
-	// Sort by fact_type ASC, value ASC, id ASC for deterministic ordering
-	query := `
-		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
-		FROM attributes
-		ORDER BY fact_type ASC, value ASC, id ASC
-		LIMIT ? OFFSET ?
-	`
-
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("query attributes: %w", err)
-	}
+// scanAttributes drains rows of attributeSelectCols.
+func scanAttributes(rows *sql.Rows) ([]repository.AttributeReadModel, error) {
 	defer rows.Close()
-
-	var attributes []repository.AttributeReadModel
-	for rows.Next() {
-		attr, err := scanAttributeRow(rows)
-		if err != nil {
-			return nil, 0, err
-		}
-		attributes = append(attributes, *attr)
-	}
-
-	return attributes, total, rows.Err()
-}
-
-// ListAttributesForPerson returns all attributes for a given person.
-func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at
-		FROM attributes
-		WHERE person_id = ?
-		ORDER BY fact_type ASC, value ASC, id ASC
-	`, personID.String())
-	if err != nil {
-		return nil, fmt.Errorf("query attributes for person: %w", err)
-	}
-	defer rows.Close()
-
 	var attributes []repository.AttributeReadModel
 	for rows.Next() {
 		attr, err := scanAttributeRow(rows)
@@ -3464,29 +3696,79 @@ func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, personID u
 		}
 		attributes = append(attributes, *attr)
 	}
-
 	return attributes, rows.Err()
 }
 
-// SaveAttribute saves or updates an attribute.
-func (s *ReadModelStore) SaveAttribute(ctx context.Context, attribute *repository.AttributeReadModel) error {
+// ListAttributes returns a paginated list of the attributes visible on
+// opts.BranchID (ADR-005).
+func (s *ReadModelStore) ListAttributes(ctx context.Context, opts repository.ListOptions) ([]repository.AttributeReadModel, int, error) {
+	sub, args := factOverlaySubquery("attributes", "", nil, opts.BranchID)
+
+	var total int
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" a", args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count attributes: %w", err)
+	}
+
+	// Sort by fact_type ASC, value ASC, id ASC for deterministic ordering
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+attributeSelectCols+` FROM `+sub+` a
+		ORDER BY fact_type ASC, value ASC, id ASC
+		LIMIT ? OFFSET ?
+	`, append(args, opts.Limit, opts.Offset)...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query attributes: %w", err)
+	}
+	attributes, err := scanAttributes(rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return attributes, total, nil
+}
+
+// ListAttributesForPerson returns all attributes of a person within the branch overlay.
+func (s *ReadModelStore) ListAttributesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.AttributeReadModel, error) {
+	sub, args := factOverlaySubquery("attributes", personAttributesFilter, []any{personID.String()}, branchID)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+attributeSelectCols+` FROM `+sub+` a
+		ORDER BY fact_type ASC, value ASC, id ASC
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query attributes for person: %w", err)
+	}
+	return scanAttributes(rows)
+}
+
+// SaveAttribute saves or updates an attribute on the given branch (ADR-005). A
+// save always clears any prior tombstone.
+func (s *ReadModelStore) SaveAttribute(ctx context.Context, branchID domain.BranchID, attribute *repository.AttributeReadModel) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+
 	var dateSort interface{}
 	if attribute.DateSort != nil {
 		dateSort = attribute.DateSort.Format(time.RFC3339)
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO attributes (id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO attributes (id, branch_id, person_id, fact_type, value, date_raw, date_sort, place, version, created_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			person_id = excluded.person_id,
 			fact_type = excluded.fact_type,
 			value = excluded.value,
 			date_raw = excluded.date_raw,
 			date_sort = excluded.date_sort,
 			place = excluded.place,
-			version = excluded.version
-	`, attribute.ID.String(), attribute.PersonID.String(), string(attribute.FactType),
+			version = excluded.version,
+			deleted = 0
+	`, attribute.ID.String(), branchID.String(), attribute.PersonID.String(), string(attribute.FactType),
 		attribute.Value, attribute.DateRaw, dateSort, attribute.Place,
 		attribute.Version, formatTimestamp(attribute.CreatedAt))
 	if err != nil {
@@ -3495,10 +3777,10 @@ func (s *ReadModelStore) SaveAttribute(ctx context.Context, attribute *repositor
 	return nil
 }
 
-// DeleteAttribute deletes an attribute by ID.
-func (s *ReadModelStore) DeleteAttribute(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM attributes WHERE id = ?", id.String())
-	if err != nil {
+// DeleteAttribute removes an attribute (ADR-005): a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteAttribute(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := s.deleteFactRow(ctx, "attributes", attributeSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete attribute: %w", err)
 	}
 	return nil
@@ -4357,27 +4639,22 @@ func (s *ReadModelStore) GetPersonsByPlace(ctx context.Context, place string, op
 	return persons, total, rows.Err()
 }
 
-// GetCemeteryIndex returns unique burial/cremation places with person counts.
-//
-// MAIN-ONLY carve-out (#756): it reads `life_events` alone and never touches
-// `persons`, so there is no person overlay to resolve. Making it branch-aware waits
-// on branch-scoping `life_events` itself (sub-issue B of #676, #757).
-//
-// KNOWN DIVERGENCE: these counts can disagree with GetPersonsByCemetery under a
-// branch scope. The count here is DISTINCT owner_id over `life_events` with no join
-// to `persons`, so it still counts a person the branch tombstoned; GetPersonsByCemetery
-// resolves the person side through the overlay and drops tombstones. A branch that
-// deleted a buried person therefore sees "Oak Grove - 1 person" in the index and an
-// empty list on click-through. Closing the gap needs the join to be branch-aware on
-// both sides, which waits on #757.
-func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.CemeteryEntry, error) {
+// GetCemeteryIndex returns unique burial/cremation places with person counts,
+// counted over branchID's overlay of life events (ADR-005, #757). A branch that
+// tombstoned a person also tombstoned that person's life events (DeletePerson's
+// cascade), so the counts agree with GetPersonsByCemetery on the same scope.
+func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context, branchID domain.BranchID) ([]repository.CemeteryEntry, error) {
+	sub, args := factOverlaySubquery("life_events", "fact_type IN (?, ?)",
+		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation)}, branchID)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT place, COUNT(DISTINCT owner_id) as count
-		FROM life_events
-		WHERE fact_type IN (?, ?) AND place != '' AND place IS NOT NULL
+		FROM `+sub+` e
+		WHERE place != '' AND place IS NOT NULL
 		GROUP BY place
 		ORDER BY place ASC
-	`, string(domain.FactPersonBurial), string(domain.FactPersonCremation))
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query cemetery index: %w", err)
 	}
@@ -4396,31 +4673,30 @@ func (s *ReadModelStore) GetCemeteryIndex(ctx context.Context) ([]repository.Cem
 }
 
 // GetPersonsByCemetery returns persons with burial/cremation events at the given
-// place, with the PERSON side resolved through the branch overlay carried on
-// opts.BranchID (ADR-005 / #756).
-//
-// The `life_events` side of the join stays main-scoped: that table has no branch_id
-// column yet, so a branch's burial facts are not distinguishable from main's. Branch
-// scoping person/family facts is sub-issue B of #676 (#757).
+// place. Both sides of the join resolve through opts.BranchID's overlay
+// (ADR-005): the branch-visible life events select the owners, and the persons
+// returned are the branch's view of them.
 func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string, opts repository.ListOptions) ([]repository.PersonReadModel, int, error) {
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	events, eventArgs := factOverlaySubquery("life_events", "fact_type IN (?, ?) AND LOWER(place) = LOWER(?)",
+		[]any{string(domain.FactPersonBurial), string(domain.FactPersonCremation), place}, opts.BranchID)
+	joinArgs := append(append([]any{}, overlayArgs...), eventArgs...)
 
 	// Count total distinct persons
 	var total int
-	countArgs := append(append([]any{}, overlayArgs...), string(domain.FactPersonBurial), string(domain.FactPersonCremation), place)
+	// #nosec G202 -- overlay/events are built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(DISTINCT p.id)
 		FROM `+overlay+` p
-		INNER JOIN life_events e ON e.owner_id = p.id
-		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
-	`, countArgs...).Scan(&total)
+		INNER JOIN `+events+` e ON e.owner_id = p.id
+	`, joinArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count persons by cemetery: %w", err)
 	}
 
-	queryArgs := append(append([]any{}, overlayArgs...),
-		string(domain.FactPersonBurial), string(domain.FactPersonCremation), place, opts.Limit, opts.Offset)
-	// #nosec G202 -- overlay is one of two constant subquery literals returned by personOverlaySubquery; every value is a bound ? placeholder
+	// #nosec G202 -- overlay/events are built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
@@ -4428,11 +4704,10 @@ func (s *ReadModelStore) GetPersonsByCemetery(ctx context.Context, place string,
 			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM `+overlay+` p
-		INNER JOIN life_events e ON e.owner_id = p.id
-		WHERE e.fact_type IN (?, ?) AND LOWER(e.place) = LOWER(?)
+		INNER JOIN `+events+` e ON e.owner_id = p.id
 		ORDER BY p.surname ASC, p.given_name ASC
 		LIMIT ? OFFSET ?
-	`, queryArgs...)
+	`, append(joinArgs, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query persons by cemetery: %w", err)
 	}
@@ -4570,7 +4845,8 @@ func (s *ReadModelStore) GetMapLocations(ctx context.Context, branchID domain.Br
 // so with an explicit branch_id predicate: without it the UPDATEs would rewrite every
 // branch's shadow row for the person and the SELECT would list shadows and tombstones
 // as extra people (BR-003). Whether brick walls should become branch-aware at all waits
-// on the #624 event-sourcing decision (ADR-005, "Entities that stay main-only").
+// on deciding whether they become event-sourced, as #624 did for snapshots (ADR-005,
+// "Entities that stay main-only").
 
 // SetBrickWall marks a person as a brick wall with a note (main only).
 func (s *ReadModelStore) SetBrickWall(ctx context.Context, personID uuid.UUID, note string) error {
@@ -5189,14 +5465,9 @@ func (s *ReadModelStore) DeleteRepository(ctx context.Context, id uuid.UUID) err
 	return nil
 }
 
-// GetAssociation retrieves an association by ID.
-func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*repository.AssociationReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, person_id, person_name, associate_id, associate_name,
-		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
-		FROM associations WHERE id = ?
-	`, id.String())
-
+// scanAssociation scans one associationSelectCols row. It returns (nil, nil) for
+// sql.ErrNoRows so single-row lookups report absence as nil.
+func scanAssociation(row rowScanner) (*repository.AssociationReadModel, error) {
 	var assoc repository.AssociationReadModel
 	var idStr, personIDStr, associateIDStr string
 	var personName, associateName, phrase, notes sql.NullString
@@ -5217,32 +5488,30 @@ func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*rep
 		&assoc.Version,
 		&updatedAtStr,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan association: %w", err)
 	}
-	assoc.ID, _ = uuid.Parse(idStr)
-	assoc.PersonID, _ = uuid.Parse(personIDStr)
-	assoc.AssociateID, _ = uuid.Parse(associateIDStr)
-	if personName.Valid {
-		assoc.PersonName = personName.String
+	if assoc.ID, err = uuid.Parse(idStr); err != nil {
+		return nil, fmt.Errorf("parse association id: %w", err)
 	}
-	if associateName.Valid {
-		assoc.AssociateName = associateName.String
+	if assoc.PersonID, err = uuid.Parse(personIDStr); err != nil {
+		return nil, fmt.Errorf("parse association person_id: %w", err)
 	}
-	if phrase.Valid {
-		assoc.Phrase = phrase.String
+	if assoc.AssociateID, err = uuid.Parse(associateIDStr); err != nil {
+		return nil, fmt.Errorf("parse association associate_id: %w", err)
 	}
-	if notes.Valid {
-		assoc.Notes = notes.String
-	}
-	if gedcomXref.Valid {
-		assoc.GedcomXref = gedcomXref.String
-	}
+	assoc.PersonName = personName.String
+	assoc.AssociateName = associateName.String
+	assoc.Phrase = phrase.String
+	assoc.Notes = notes.String
+	assoc.GedcomXref = gedcomXref.String
 	if noteIDsJSON.Valid && noteIDsJSON.String != "" {
-		_ = json.Unmarshal([]byte(noteIDsJSON.String), &assoc.NoteIDs)
+		if err := json.Unmarshal([]byte(noteIDsJSON.String), &assoc.NoteIDs); err != nil {
+			return nil, fmt.Errorf("decode association note_ids: %w", err)
+		}
 	}
 	if t, err := parseTimestamp(updatedAtStr); err == nil {
 		assoc.UpdatedAt = t
@@ -5250,12 +5519,37 @@ func (s *ReadModelStore) GetAssociation(ctx context.Context, id uuid.UUID) (*rep
 	return &assoc, nil
 }
 
-// ListAssociations returns a paginated list of associations.
+// scanAssociations drains rows of associationSelectCols.
+func scanAssociations(rows *sql.Rows) ([]repository.AssociationReadModel, error) {
+	defer rows.Close()
+	var associations []repository.AssociationReadModel
+	for rows.Next() {
+		assoc, err := scanAssociation(rows)
+		if err != nil {
+			return nil, err
+		}
+		associations = append(associations, *assoc)
+	}
+	return associations, rows.Err()
+}
+
+// GetAssociation retrieves an association by ID within the branch overlay (ADR-005).
+func (s *ReadModelStore) GetAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.AssociationReadModel, error) {
+	// #nosec G202 -- the query is built by factGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, factGetQuery("associations", associationSelectCols), factGetArgs(branchID, id)...)
+	return scanAssociation(row)
+}
+
+// ListAssociations returns a paginated list of the associations visible on
+// opts.BranchID (ADR-005).
 func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.ListOptions) ([]repository.AssociationReadModel, int, error) {
-	// Count total
+	sub, args := factOverlaySubquery("associations", "", nil, opts.BranchID)
+
 	var total int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM associations").Scan(&total)
-	if err != nil {
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+sub+" a", args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count associations: %w", err)
 	}
 
@@ -5269,145 +5563,50 @@ func (s *ReadModelStore) ListAssociations(ctx context.Context, opts repository.L
 		orderDir = "ASC"
 	}
 
-	// #nosec G201 -- orderColumn and orderDir are validated via switch/if above, not user input
+	// #nosec G201 G202 -- orderColumn and orderDir are validated via switch/if above; sub is internal
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	query := fmt.Sprintf(`
-		SELECT id, person_id, person_name, associate_id, associate_name,
-		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
-		FROM associations
-		ORDER BY %s %s
+		SELECT `+associationSelectCols+`
+		FROM %s a
+		ORDER BY %s %s, id ASC
 		LIMIT ? OFFSET ?
-	`, orderColumn, orderDir)
+	`, sub, orderColumn, orderDir)
 
-	rows, err := s.db.QueryContext(ctx, query, opts.Limit, opts.Offset)
+	rows, err := s.db.QueryContext(ctx, query, append(args, opts.Limit, opts.Offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("query associations: %w", err)
 	}
-	defer rows.Close()
-
-	var associations []repository.AssociationReadModel
-	for rows.Next() {
-		var assoc repository.AssociationReadModel
-		var idStr, personIDStr, associateIDStr string
-		var personName, associateName, phrase, notes sql.NullString
-		var noteIDsJSON sql.NullString
-		var gedcomXref sql.NullString
-		var updatedAtStr string
-		if err := rows.Scan(
-			&idStr,
-			&personIDStr,
-			&personName,
-			&associateIDStr,
-			&associateName,
-			&assoc.Role,
-			&phrase,
-			&notes,
-			&noteIDsJSON,
-			&gedcomXref,
-			&assoc.Version,
-			&updatedAtStr,
-		); err != nil {
-			return nil, 0, fmt.Errorf("scan association: %w", err)
-		}
-		assoc.ID, _ = uuid.Parse(idStr)
-		assoc.PersonID, _ = uuid.Parse(personIDStr)
-		assoc.AssociateID, _ = uuid.Parse(associateIDStr)
-		if personName.Valid {
-			assoc.PersonName = personName.String
-		}
-		if associateName.Valid {
-			assoc.AssociateName = associateName.String
-		}
-		if phrase.Valid {
-			assoc.Phrase = phrase.String
-		}
-		if notes.Valid {
-			assoc.Notes = notes.String
-		}
-		if gedcomXref.Valid {
-			assoc.GedcomXref = gedcomXref.String
-		}
-		if noteIDsJSON.Valid && noteIDsJSON.String != "" {
-			_ = json.Unmarshal([]byte(noteIDsJSON.String), &assoc.NoteIDs)
-		}
-		if t, err := parseTimestamp(updatedAtStr); err == nil {
-			assoc.UpdatedAt = t
-		}
-		associations = append(associations, assoc)
+	associations, err := scanAssociations(rows)
+	if err != nil {
+		return nil, 0, err
 	}
-
-	return associations, total, rows.Err()
+	return associations, total, nil
 }
 
-// ListAssociationsForPerson returns all associations for a given person.
-func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+// ListAssociationsForPerson returns all associations visible on branchID in
+// which the person is either the subject or the associate.
+func (s *ReadModelStore) ListAssociationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.AssociationReadModel, error) {
+	sub, args := factOverlaySubquery("associations", personAssociationFilter,
+		[]any{personID.String(), personID.String()}, branchID)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, person_id, person_name, associate_id, associate_name,
-		       role, phrase, notes, note_ids, gedcom_xref, version, updated_at
-		FROM associations
-		WHERE person_id = ? OR associate_id = ?
+		SELECT `+associationSelectCols+` FROM `+sub+` a
 		ORDER BY role, updated_at DESC
-	`, personID.String(), personID.String())
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query associations for person: %w", err)
 	}
-	defer rows.Close()
-
-	var associations []repository.AssociationReadModel
-	for rows.Next() {
-		var assoc repository.AssociationReadModel
-		var idStr, personIDStr, associateIDStr string
-		var personName, associateName, phrase, notes sql.NullString
-		var noteIDsJSON sql.NullString
-		var gedcomXref sql.NullString
-		var updatedAtStr string
-		if err := rows.Scan(
-			&idStr,
-			&personIDStr,
-			&personName,
-			&associateIDStr,
-			&associateName,
-			&assoc.Role,
-			&phrase,
-			&notes,
-			&noteIDsJSON,
-			&gedcomXref,
-			&assoc.Version,
-			&updatedAtStr,
-		); err != nil {
-			return nil, fmt.Errorf("scan association: %w", err)
-		}
-		assoc.ID, _ = uuid.Parse(idStr)
-		assoc.PersonID, _ = uuid.Parse(personIDStr)
-		assoc.AssociateID, _ = uuid.Parse(associateIDStr)
-		if personName.Valid {
-			assoc.PersonName = personName.String
-		}
-		if associateName.Valid {
-			assoc.AssociateName = associateName.String
-		}
-		if phrase.Valid {
-			assoc.Phrase = phrase.String
-		}
-		if notes.Valid {
-			assoc.Notes = notes.String
-		}
-		if gedcomXref.Valid {
-			assoc.GedcomXref = gedcomXref.String
-		}
-		if noteIDsJSON.Valid && noteIDsJSON.String != "" {
-			_ = json.Unmarshal([]byte(noteIDsJSON.String), &assoc.NoteIDs)
-		}
-		if t, err := parseTimestamp(updatedAtStr); err == nil {
-			assoc.UpdatedAt = t
-		}
-		associations = append(associations, assoc)
-	}
-
-	return associations, rows.Err()
+	return scanAssociations(rows)
 }
 
-// SaveAssociation saves or updates an association.
-func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.AssociationReadModel) error {
+// SaveAssociation saves or updates an association on the given branch
+// (ADR-005). A save always clears any prior tombstone.
+func (s *ReadModelStore) SaveAssociation(ctx context.Context, branchID domain.BranchID, assoc *repository.AssociationReadModel) error {
+	if err := s.guardBranchWrite(branchID); err != nil {
+		return err
+	}
+
 	var noteIDsJSON any
 	if len(assoc.NoteIDs) > 0 {
 		jsonBytes, err := json.Marshal(assoc.NoteIDs)
@@ -5435,10 +5634,10 @@ func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO associations (id, person_id, person_name, associate_id, associate_name,
-		                         role, phrase, notes, note_ids, gedcom_xref, version, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (id) DO UPDATE SET
+		INSERT INTO associations (id, branch_id, person_id, person_name, associate_id, associate_name,
+		                         role, phrase, notes, note_ids, gedcom_xref, version, updated_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+		ON CONFLICT (id, branch_id) DO UPDATE SET
 			person_id = excluded.person_id,
 			person_name = excluded.person_name,
 			associate_id = excluded.associate_id,
@@ -5449,8 +5648,9 @@ func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.
 			note_ids = excluded.note_ids,
 			gedcom_xref = excluded.gedcom_xref,
 			version = excluded.version,
-			updated_at = excluded.updated_at
-	`, assoc.ID.String(), assoc.PersonID.String(), personName, assoc.AssociateID.String(), associateName,
+			updated_at = excluded.updated_at,
+			deleted = 0
+	`, assoc.ID.String(), branchID.String(), assoc.PersonID.String(), personName, assoc.AssociateID.String(), associateName,
 		assoc.Role, phrase, notes, noteIDsJSON, gedcomXref, assoc.Version, assoc.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("save association: %w", err)
@@ -5458,10 +5658,10 @@ func (s *ReadModelStore) SaveAssociation(ctx context.Context, assoc *repository.
 	return nil
 }
 
-// DeleteAssociation deletes an association by ID.
-func (s *ReadModelStore) DeleteAssociation(ctx context.Context, id uuid.UUID) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM associations WHERE id = ?", id.String())
-	if err != nil {
+// DeleteAssociation removes an association (ADR-005): a real removal on main, a
+// tombstone on a non-main branch.
+func (s *ReadModelStore) DeleteAssociation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) error {
+	if err := s.deleteFactRow(ctx, "associations", associationSelectCols, branchID, id); err != nil {
 		return fmt.Errorf("delete association: %w", err)
 	}
 	return nil

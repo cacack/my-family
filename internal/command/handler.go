@@ -42,15 +42,13 @@ var (
 // internal/repository/projection.go, not from entity names: an event belongs
 // here only when every store call its handler makes is branch-keyed (the
 // copy-on-write overlay #669 added for persons, person names, families, family
-// children and pedigree edges).
+// children and pedigree edges, and #757 extended to life events, attributes and
+// associations).
 //
 // Deliberately excluded despite their handlers taking a branchID:
-//   - PersonMerged — branch-scoped for the slice writes, but it also rewrites
-//     citations, life events, media, attributes, evidence and research rows that
-//     are main-only, so a branch-scoped merge would mutate main.
-//   - AssociationCreated — reads persons on the branch scope to denormalize a
-//     name, but saves to a main-only table. PENDING: sub-issue B of #676 (#757)
-//     branch-scopes associations, and this entry goes away with it.
+//   - PersonMerged — branch-scoped for the slice and fact writes, but it also
+//     rewrites citations, media, evidence and research rows that are main-only,
+//     so a branch-scoped merge would mutate main.
 //   - LDSOrdinanceCreated — same shape, but PERMANENT. LDS ordinances are
 //     deliberately never branch-scoped, so this entry is not waiting on anything.
 //     See docs/adr/005-research-branch-data-model.md, "Entities that stay
@@ -72,6 +70,16 @@ var branchAwareEventTypes = map[string]struct{}{
 	"NameAdded":               {},
 	"NameUpdated":             {},
 	"NameRemoved":             {},
+	// Person/family facts (#757).
+	"LifeEventCreated":   {},
+	"LifeEventUpdated":   {},
+	"LifeEventDeleted":   {},
+	"AttributeCreated":   {},
+	"AttributeUpdated":   {},
+	"AttributeDeleted":   {},
+	"AssociationCreated": {},
+	"AssociationUpdated": {},
+	"AssociationDeleted": {},
 }
 
 // BranchAwareEventTypes returns the event types a branch-scoped handler may
@@ -104,10 +112,17 @@ type RollbackResult struct {
 // repository.MainScope, so a handler built by any constructor behaves as it did
 // before branches existed. WithBranch returns a scoped copy.
 type Handler struct {
-	eventStore      repository.EventStore
-	readStore       repository.ReadModelStore
-	branchStore     repository.BranchStore
-	positions       MaxPositionReader
+	eventStore  repository.EventStore
+	readStore   repository.ReadModelStore
+	branchStore repository.BranchStore
+
+	// snapshots is the snapshot registry. It serves two roles: the snapshot
+	// commands' registry (issue #624), and the event log's head reader, which is
+	// where CreateBranch gets a new branch's base position. Both are the same
+	// store in production, and snapshots and branch base points are the same
+	// primitive anyway — a named pointer to a global Position (ADR-005).
+	snapshots repository.SnapshotStore
+
 	projector       *repository.Projector
 	rollbackService *query.RollbackService
 
@@ -130,25 +145,26 @@ func NewHandler(eventStore repository.EventStore, readStore repository.ReadModel
 
 // NewHandlerWithBranchStore creates a command handler whose projector routes
 // branch-lifecycle events into the given branch registry store. branchStore may
-// be nil (equivalent to NewHandler). It supplies no MaxPositionReader, so
-// CreateBranch is unavailable — use NewHandlerWithBranches for that.
+// be nil (equivalent to NewHandler). It supplies no snapshot store, so
+// CreateBranch and the snapshot commands are unavailable — use
+// NewHandlerWithBranches for those.
 func NewHandlerWithBranchStore(eventStore repository.EventStore, readStore repository.ReadModelStore, branchStore repository.BranchStore) *Handler {
 	return NewHandlerWithBranches(eventStore, readStore, branchStore, nil)
 }
 
-// NewHandlerWithBranches creates a command handler wired for the full branch
-// lifecycle: branchStore is the branch registry (the projector writes it and
-// DeleteBranch reads it), and positions reports the event log's current head,
-// which becomes a new branch's base position. repository.SnapshotStore satisfies
-// MaxPositionReader. Either argument may be nil; the branch commands then return
-// a typed error rather than panicking.
-func NewHandlerWithBranches(eventStore repository.EventStore, readStore repository.ReadModelStore, branchStore repository.BranchStore, positions MaxPositionReader) *Handler {
+// NewHandlerWithBranches creates a command handler wired for the full branch and
+// snapshot lifecycle: branchStore is the branch registry (the projector writes it
+// and DeleteBranch reads it), and snapshots is the snapshot registry, which also
+// reports the event log's current head — that head becomes a new branch's base
+// position. Either argument may be nil; the affected commands then return a typed
+// error rather than panicking.
+func NewHandlerWithBranches(eventStore repository.EventStore, readStore repository.ReadModelStore, branchStore repository.BranchStore, snapshots repository.SnapshotStore) *Handler {
 	return &Handler{
 		eventStore:      eventStore,
 		readStore:       readStore,
 		branchStore:     branchStore,
-		positions:       positions,
-		projector:       repository.NewProjector(readStore, branchStore),
+		snapshots:       snapshots,
+		projector:       repository.NewProjectorWithSnapshots(readStore, branchStore, snapshots),
 		rollbackService: query.NewRollbackService(eventStore, readStore),
 		branchService:   query.NewBranchService(branchStore, eventStore, query.NewHistoryService(eventStore, readStore)),
 	}
@@ -182,11 +198,14 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 // projector would write main-only, so the branch-aware surface is exactly the
 // commands whose events are all in BranchAwareEventTypes: CreatePerson,
 // UpdatePerson, DeletePerson, AddName, UpdateName, DeleteName, CreateFamily,
-// UpdateFamily, DeleteFamily, LinkChild and UnlinkChild.
+// UpdateFamily, DeleteFamily, LinkChild, UnlinkChild, CreateAssociation,
+// UpdateAssociation and DeleteAssociation. (Life events and attributes have no
+// commands of their own yet — GEDCOM import writes them, on main — but their
+// events are allowlisted so a branch merge or a future command can carry them.)
 //
 // Every other entity command — sources, citations, media, notes, submitters,
-// repositories, associations, LDS ordinances, evidence, research logs, proof
-// summaries and MergePersons — routes through execute too, so on a branch it
+// repositories, LDS ordinances, evidence, research logs, proof summaries and
+// MergePersons — routes through execute too, so on a branch it
 // fails loudly rather than writing main. Issue #676 moves those onto the branch
 // as their projections become branch-aware.
 //

@@ -38,7 +38,7 @@ func newBranchFixture() *branchFixture {
 // seed and assert through it without going back through its own wrapper.
 type branchFixtureDeps struct {
 	wrapEvents    func(repository.EventStore) repository.EventStore
-	wrapPositions func(command.MaxPositionReader) command.MaxPositionReader
+	wrapPositions func(repository.SnapshotStore) repository.SnapshotStore
 	wrapReads     func(repository.ReadModelStore) repository.ReadModelStore
 }
 
@@ -55,7 +55,7 @@ func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
 	if deps.wrapReads != nil {
 		reads = deps.wrapReads(readStore)
 	}
-	var positions command.MaxPositionReader = memory.NewSnapshotStore(eventStore)
+	var positions repository.SnapshotStore = memory.NewSnapshotStore(eventStore)
 	if deps.wrapPositions != nil {
 		positions = deps.wrapPositions(positions)
 	}
@@ -68,8 +68,14 @@ func newBranchFixtureWith(deps branchFixtureDeps) *branchFixture {
 	}
 }
 
-// failingPositions is a MaxPositionReader that always errors.
-type failingPositions struct{ err error }
+// failingPositions is a snapshot store whose position read always errors. The
+// embedded nil interface supplies the rest of the surface: these tests only ever
+// reach GetMaxPosition, and a nil-panic on any other method is the signal that
+// assumption has broken.
+type failingPositions struct {
+	repository.SnapshotStore
+	err error
+}
 
 func (f failingPositions) GetMaxPosition(context.Context) (int64, error) { return 0, f.err }
 
@@ -363,6 +369,82 @@ func TestBranchIsolation_Family(t *testing.T) {
 	}
 	if mainFamilyEvents != 1 {
 		t.Errorf("main holds %d family events, want 1 (the original create)", mainFamilyEvents)
+	}
+}
+
+// TestBranchAssociationLifecycle is the #757 round trip through the command
+// layer: a branch-scoped handler creates, updates and deletes associations on the
+// branch only (BR-006 admits the events), a branch-only person can be associated
+// on its branch but not on main, and main's association is untouched throughout.
+func TestBranchAssociationLifecycle(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+
+	newPerson := func(h *command.Handler, given string) uuid.UUID {
+		t.Helper()
+		res, err := h.CreatePerson(ctx, command.CreatePersonInput{GivenName: given, Surname: "Tester"})
+		if err != nil {
+			t.Fatalf("CreatePerson(%s) failed: %v", given, err)
+		}
+		return res.ID
+	}
+	subject := newPerson(f.handler, "Alex")
+	associate := newPerson(f.handler, "Sam")
+	mainAssoc, err := f.handler.CreateAssociation(ctx, command.CreateAssociationInput{
+		PersonID: subject, AssociateID: associate, Role: "witness",
+	})
+	if err != nil {
+		t.Fatalf("main CreateAssociation failed: %v", err)
+	}
+
+	branch, err := f.handler.CreateBranch(ctx, "associations", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	scoped := f.handler.WithBranch(branch)
+	branchID := domain.BranchID(branch.ID)
+
+	// Update and delete the main association on the branch.
+	role := "godparent"
+	if _, err := scoped.UpdateAssociation(ctx, command.UpdateAssociationInput{ID: mainAssoc.ID, Role: &role, Version: mainAssoc.Version}); err != nil {
+		t.Fatalf("branch UpdateAssociation failed: %v", err)
+	}
+	onBranch, err := f.readStore.GetAssociation(ctx, branchID, mainAssoc.ID)
+	if err != nil || onBranch == nil || onBranch.Role != "godparent" {
+		t.Fatalf("branch GetAssociation = %+v (err=%v), want role godparent", onBranch, err)
+	}
+	onMain, err := f.readStore.GetAssociation(ctx, domain.MainBranchID, mainAssoc.ID)
+	if err != nil || onMain == nil || onMain.Role != "witness" {
+		t.Fatalf("main GetAssociation after branch update = %+v (err=%v), want role witness", onMain, err)
+	}
+	if err := scoped.DeleteAssociation(ctx, mainAssoc.ID, onBranch.Version, "branch hypothesis"); err != nil {
+		t.Fatalf("branch DeleteAssociation failed: %v", err)
+	}
+	if got, err := f.readStore.GetAssociation(ctx, branchID, mainAssoc.ID); err != nil || got != nil {
+		t.Errorf("branch GetAssociation after delete = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := f.readStore.GetAssociation(ctx, domain.MainBranchID, mainAssoc.ID); err != nil || got == nil {
+		t.Errorf("main GetAssociation after branch delete = %+v (err=%v), want it kept", got, err)
+	}
+
+	// A person created on the branch can be associated there, and only there.
+	branchOnly := newPerson(scoped, "Robin")
+	created, err := scoped.CreateAssociation(ctx, command.CreateAssociationInput{
+		PersonID: branchOnly, AssociateID: subject, Role: "mentor",
+	})
+	if err != nil {
+		t.Fatalf("branch CreateAssociation with a branch-only person failed: %v", err)
+	}
+	if got, err := f.readStore.GetAssociation(ctx, branchID, created.ID); err != nil || got == nil || got.PersonName != "Robin Tester" {
+		t.Errorf("branch GetAssociation(created) = %+v (err=%v), want the branch person's name denormalized", got, err)
+	}
+	if got, err := f.readStore.GetAssociation(ctx, domain.MainBranchID, created.ID); err != nil || got != nil {
+		t.Errorf("main GetAssociation(branch-created) = %+v (err=%v), want absent", got, err)
+	}
+	if _, err := f.handler.CreateAssociation(ctx, command.CreateAssociationInput{
+		PersonID: branchOnly, AssociateID: subject, Role: "mentor",
+	}); !errors.Is(err, command.ErrInvalidInput) {
+		t.Errorf("main CreateAssociation with a branch-only person: err = %v, want ErrInvalidInput", err)
 	}
 }
 
@@ -1073,15 +1155,19 @@ func TestRollback_RefusedOnBranchScopedHandler(t *testing.T) {
 }
 
 // driftSeed is the mainline fixture the branch-aware projection probes run
-// against: two partners, a family, a linked child and an extra name.
+// against: two partners, a family, a linked child, an extra name, and one of
+// each person/family fact (#757).
 type driftSeed struct {
-	f       *branchFixture
-	branch  *domain.Branch
-	person  uuid.UUID
-	partner uuid.UUID
-	child   uuid.UUID
-	family  uuid.UUID
-	name    uuid.UUID
+	f           *branchFixture
+	branch      *domain.Branch
+	person      uuid.UUID
+	partner     uuid.UUID
+	child       uuid.UUID
+	family      uuid.UUID
+	name        uuid.UUID
+	lifeEvent   uuid.UUID
+	attribute   uuid.UUID
+	association uuid.UUID
 }
 
 func seedDriftFixture(t *testing.T) driftSeed {
@@ -1129,6 +1215,28 @@ func seedDriftFixture(t *testing.T) driftSeed {
 		t.Fatalf("AddName failed: %v", err)
 	}
 	seed.name = name.ID
+
+	// Life events and attributes have no command of their own (GEDCOM import
+	// writes them), so seed them through the projector on main.
+	mainProjector := repository.NewProjector(f.readStore, f.branchStore)
+	burial := domain.NewLifeEvent(seed.person, domain.FactPersonBurial)
+	burial.Place = "Oak Grove"
+	if err := mainProjector.Project(ctx, domain.NewLifeEventCreatedFromModel(burial), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("seed life event failed: %v", err)
+	}
+	seed.lifeEvent = burial.ID
+	occupation := domain.NewAttribute(seed.person, domain.FactPersonOccupation, "Mathematician")
+	if err := mainProjector.Project(ctx, domain.NewAttributeCreatedFromModel(occupation), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("seed attribute failed: %v", err)
+	}
+	seed.attribute = occupation.ID
+	assoc, err := f.handler.CreateAssociation(ctx, command.CreateAssociationInput{
+		PersonID: seed.person, AssociateID: seed.partner, Role: "witness",
+	})
+	if err != nil {
+		t.Fatalf("CreateAssociation failed: %v", err)
+	}
+	seed.association = assoc.ID
 
 	branch, err := f.handler.CreateBranch(ctx, "drift-probe", "")
 	if err != nil {
@@ -1178,16 +1286,46 @@ var branchAwareProbes = map[string]func(s driftSeed) domain.Event{
 	"NameRemoved": func(s driftSeed) domain.Event {
 		return domain.NewNameRemoved(s.person, s.name)
 	},
+	"LifeEventCreated": func(s driftSeed) domain.Event {
+		return domain.NewLifeEventCreatedFromModel(domain.NewLifeEvent(s.child, domain.FactPersonBurial))
+	},
+	"LifeEventUpdated": func(s driftSeed) domain.Event {
+		return domain.NewLifeEventUpdated(s.lifeEvent, map[string]any{"place": "Kensal Green"})
+	},
+	"LifeEventDeleted": func(s driftSeed) domain.Event {
+		return domain.NewLifeEventDeleted(s.lifeEvent, "branch hypothesis")
+	},
+	"AttributeCreated": func(s driftSeed) domain.Event {
+		return domain.NewAttributeCreatedFromModel(domain.NewAttribute(s.child, domain.FactPersonOccupation, "Poet"))
+	},
+	"AttributeUpdated": func(s driftSeed) domain.Event {
+		return domain.NewAttributeUpdated(s.attribute, map[string]any{"value": "Analyst"})
+	},
+	"AttributeDeleted": func(s driftSeed) domain.Event {
+		return domain.NewAttributeDeleted(s.attribute, "branch hypothesis")
+	},
+	"AssociationCreated": func(s driftSeed) domain.Event {
+		return domain.NewAssociationCreated(domain.NewAssociation(s.child, s.partner, "godparent"))
+	},
+	"AssociationUpdated": func(s driftSeed) domain.Event {
+		return domain.NewAssociationUpdated(s.association, map[string]any{"role": "godparent"})
+	},
+	"AssociationDeleted": func(s driftSeed) domain.Event {
+		return domain.NewAssociationDeleted(s.association, "branch hypothesis")
+	},
 }
 
 // mainRows is the mainline read-model state a branch-scoped projection must
 // leave byte-identical.
 type mainRows struct {
-	Persons  []*repository.PersonReadModel
-	Names    [][]repository.PersonNameReadModel
-	Edges    []*repository.PedigreeEdge
-	Family   *repository.FamilyReadModel
-	Children []repository.FamilyChildReadModel
+	Persons      []*repository.PersonReadModel
+	Names        [][]repository.PersonNameReadModel
+	Edges        []*repository.PedigreeEdge
+	Family       *repository.FamilyReadModel
+	Children     []repository.FamilyChildReadModel
+	Events       [][]repository.EventReadModel
+	Attributes   [][]repository.AttributeReadModel
+	Associations [][]repository.AssociationReadModel
 }
 
 func readMainRows(t *testing.T, s driftSeed) mainRows {
@@ -1209,9 +1347,24 @@ func readMainRows(t *testing.T, s driftSeed) mainRows {
 		if err != nil {
 			t.Fatalf("GetPedigreeEdge(main, %s) failed: %v", id, err)
 		}
+		events, err := rs.ListEventsForPerson(ctx, domain.MainBranchID, id)
+		if err != nil {
+			t.Fatalf("ListEventsForPerson(main, %s) failed: %v", id, err)
+		}
+		attributes, err := rs.ListAttributesForPerson(ctx, domain.MainBranchID, id)
+		if err != nil {
+			t.Fatalf("ListAttributesForPerson(main, %s) failed: %v", id, err)
+		}
+		associations, err := rs.ListAssociationsForPerson(ctx, domain.MainBranchID, id)
+		if err != nil {
+			t.Fatalf("ListAssociationsForPerson(main, %s) failed: %v", id, err)
+		}
 		rows.Persons = append(rows.Persons, person)
 		rows.Names = append(rows.Names, names)
 		rows.Edges = append(rows.Edges, edge)
+		rows.Events = append(rows.Events, events)
+		rows.Attributes = append(rows.Attributes, attributes)
+		rows.Associations = append(rows.Associations, associations)
 	}
 
 	family, err := rs.GetFamily(ctx, domain.MainBranchID, s.family)
@@ -1228,8 +1381,9 @@ func readMainRows(t *testing.T, s driftSeed) mainRows {
 	return rows
 }
 
-// readMainOnlyCounts totals every read-model table that is still main-only (not
-// branch-keyed). A branch-scoped projection must not add a row to any of them —
+// readMainOnlyCounts totals every read-model table as main sees it — the
+// still-main-only tables and, for good measure, main's view of the branch-keyed
+// fact tables. A branch-scoped projection must not add a row to any of them —
 // that is precisely what disqualifies an event type from the allowlist.
 func readMainOnlyCounts(t *testing.T, s driftSeed) map[string]int {
 	t.Helper()
@@ -1339,6 +1493,12 @@ func TestBranchAwareEventTypes_LeaveMainUntouched(t *testing.T) {
 var conflictBlindEventTypes = map[string]string{
 	"PersonCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
 	"FamilyCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
+	// Person/family facts (#757): each fact is its own aggregate (the stream id is
+	// the fact's id, not its owner's), so a *Created opens a stream nothing on main
+	// can have touched.
+	"LifeEventCreated":   "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"AttributeCreated":   "opens a branch-only stream; identity collisions are the create_create scan's job",
+	"AssociationCreated": "opens a branch-only stream; identity collisions are the create_create scan's job",
 }
 
 // TestBranchAwareEventTypes_AreConflictComparable is the drift guard between the

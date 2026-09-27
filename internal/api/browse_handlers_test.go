@@ -447,7 +447,7 @@ func createCemeteryTestData(t *testing.T, readStore *memory.ReadModelStore) {
 	}
 
 	for _, e := range events {
-		if err := readStore.SaveEvent(ctx, e); err != nil {
+		if err := readStore.SaveEvent(ctx, domain.MainBranchID, e); err != nil {
 			t.Fatalf("SaveEvent() failed: %v", err)
 		}
 	}
@@ -578,7 +578,7 @@ func TestGetPersonsByCemetery_Pagination(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SavePerson() failed: %v", err)
 		}
-		err = readStore.SaveEvent(ctx, &repository.EventReadModel{
+		err = readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 			ID:        uuid.New(),
 			OwnerType: "person",
 			OwnerID:   personID,
@@ -620,9 +620,10 @@ func TestGetPersonsByCemetery_Pagination(t *testing.T) {
 // Branch scope on the browse/map reads (sub-issue A of #676, issue #756)
 // ============================================================================
 
-// browseBranchScopePaths are the six browse/map operations that accept ?branch=.
-// The four main-only ones (/browse/cemeteries, /browse/brick-walls and the two
-// brick-wall writes) are deliberately absent — see sub-issues B (#757) and F (#761).
+// browseBranchScopePaths are the seven browse/map operations that accept ?branch=
+// (six from #756, plus the cemetery index from #757). The three main-only ones
+// (/browse/brick-walls and the two brick-wall writes) are deliberately absent —
+// see sub-issue F (#761).
 func browseBranchScopePaths(branchID string) []struct {
 	name string
 	path string
@@ -635,6 +636,7 @@ func browseBranchScopePaths(branchID string) []struct {
 		{"getPersonsBySurname", "/api/v1/browse/surnames/Hopper/persons?branch=" + branchID},
 		{"browsePlaces", "/api/v1/browse/places?branch=" + branchID},
 		{"getPersonsByPlace", "/api/v1/browse/places/Ohio/persons?branch=" + branchID},
+		{"browseCemeteries", "/api/v1/browse/cemeteries?branch=" + branchID},
 		{"getPersonsByCemetery", "/api/v1/browse/cemeteries/Oak%20Grove/persons?branch=" + branchID},
 		{"getMapLocations", "/api/v1/map/locations?branch=" + branchID},
 	}
@@ -680,7 +682,7 @@ func TestBrowseSurnames_BranchScope(t *testing.T) {
 }
 
 // TestBrowseBranchScope_UnknownBranch pins the shared 404 for a branch id that
-// was never created, on every one of the six.
+// was never created, on every one of the seven.
 func TestBrowseBranchScope_UnknownBranch(t *testing.T) {
 	server := setupBranchTestServer()
 	createPerson(t, server, "Ada", "Lovelace")
@@ -727,14 +729,13 @@ func TestBrowseBranchScope_MalformedUUID(t *testing.T) {
 }
 
 // TestBrowseMainOnlyOperations_IgnoreBranch documents the current carve-out:
-// the cemetery index and the brick-wall reads take no ?branch= at all, so the
-// parameter is simply an unknown query string and the mainline answers.
+// the brick-wall reads take no ?branch= at all, so the parameter is simply an
+// unknown query string and the mainline answers.
 func TestBrowseMainOnlyOperations_IgnoreBranch(t *testing.T) {
 	server := setupBranchTestServer()
 	branchID := createBranch(t, server, "Ignored")
 
 	for _, path := range []string{
-		"/api/v1/browse/cemeteries?branch=" + branchID,
 		"/api/v1/browse/brick-walls?branch=" + branchID,
 	} {
 		rec := do(t, server, http.MethodGet, path, "")

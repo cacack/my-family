@@ -637,14 +637,14 @@ func (h *Handler) importEvent(ctx context.Context, e gedcom.EventData) error {
 
 	// Update read model with GEDCOM coordinates (not in event schema)
 	if e.PlaceLat != nil || e.PlaceLong != nil {
-		readModel, err := h.readStore.GetEvent(ctx, e.ID)
+		readModel, err := h.readStore.GetEvent(ctx, domain.MainBranchID, e.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get event read model for coordinate update: %w", err)
 		}
 		if readModel != nil {
 			readModel.PlaceLat = e.PlaceLat
 			readModel.PlaceLong = e.PlaceLong
-			if err := h.readStore.SaveEvent(ctx, readModel); err != nil {
+			if err := h.readStore.SaveEvent(ctx, domain.MainBranchID, readModel); err != nil {
 				return fmt.Errorf("failed to save event coordinates: %w", err)
 			}
 		}

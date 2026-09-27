@@ -8,9 +8,9 @@ import (
 
 // OpenDB opens a SQLite database connection with recommended settings.
 // The mattn/go-sqlite3 driver should be built with CGO_ENABLED=1.
-// FTS5 is enabled via the "fts5" build tag or when the SQLite library supports it.
+// FTS5 is compiled in only when building with the "sqlite_fts5" (or "fts5") tag
+// or when linking a system SQLite that has it; otherwise search uses LIKE.
 func OpenDB(path string) (*sql.DB, error) {
-	// Note: go-sqlite3 includes FTS5 by default when compiled with CGO
 	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=on")
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)

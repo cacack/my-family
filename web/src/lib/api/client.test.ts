@@ -70,8 +70,15 @@ describe('isBranchScopedRequest', () => {
 		['GET', '/browse/surnames/Smith/persons'],
 		['GET', '/browse/places'],
 		['GET', '/browse/places/Ohio/persons'],
+		['GET', '/browse/cemeteries'],
 		['GET', '/browse/cemeteries/Oak%20Hill%20Cemetery/persons'],
-		['GET', '/map/locations']
+		['GET', '/map/locations'],
+		['GET', '/associations'],
+		['POST', '/associations'],
+		['GET', `/associations/${PERSON_ID}`],
+		['PUT', `/associations/${PERSON_ID}`],
+		['DELETE', `/associations/${PERSON_ID}`],
+		['GET', `/persons/${PERSON_ID}/associations`]
 	])('allows %s %s', (method, path) => {
 		expect(isBranchScopedRequest(method, path)).toBe(true);
 	});
@@ -99,10 +106,8 @@ describe('isBranchScopedRequest', () => {
 	});
 
 	it('leaves the main-only browse operations unscoped', () => {
-		// The cemetery index aggregates `life_events`, which has no `branch_id`
-		// yet (#757); brick walls are not event-sourced (#761). Sending
-		// `?branch=` on these would imply a scoping the server does not apply.
-		expect(isBranchScopedRequest('GET', '/browse/cemeteries')).toBe(false);
+		// Brick walls are not event-sourced (#761). Sending `?branch=` on these
+		// would imply a scoping the server does not apply.
 		expect(isBranchScopedRequest('GET', '/browse/brick-walls')).toBe(false);
 		expect(isBranchScopedRequest('PUT', `/persons/${PERSON_ID}/brick-wall`)).toBe(false);
 		expect(isBranchScopedRequest('DELETE', `/persons/${PERSON_ID}/brick-wall`)).toBe(false);
@@ -185,6 +190,49 @@ describe('branch scope threading', () => {
 		setClientBranch(BRANCH_ID);
 		await api.listBranches();
 		expect(requestedUrl()).toBe('/api/v1/branches');
+	});
+
+	it('never scopes the snapshot endpoints - a snapshot marks a mainline position', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.listSnapshots();
+		await api.compareSnapshots('a/b', 'c d');
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			'/api/v1/snapshots',
+			// Ids are path-encoded, so a malformed one cannot reshape the route.
+			'/api/v1/snapshots/a%2Fb/compare/c%20d'
+		]);
+	});
+});
+
+describe('snapshot endpoints', () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json: async () => ({}) });
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('creates with a JSON body', async () => {
+		fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => ({ id: 'x' }) });
+		await api.createSnapshot({ name: 'Pre-DNA results', description: 'Before the kit' });
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('/api/v1/snapshots');
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(init.body as string)).toEqual({
+			name: 'Pre-DNA results',
+			description: 'Before the kit'
+		});
+	});
+
+	it('deletes by encoded id', async () => {
+		await api.deleteSnapshot('x/y');
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('/api/v1/snapshots/x%2Fy');
+		expect(init.method).toBe('DELETE');
 	});
 });
 

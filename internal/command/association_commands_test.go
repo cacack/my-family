@@ -148,7 +148,7 @@ func TestCreateAssociation(t *testing.T) {
 				}
 
 				// Verify association in read model
-				assoc, _ := readStore.GetAssociation(ctx, result.ID)
+				assoc, _ := readStore.GetAssociation(ctx, domain.MainBranchID, result.ID)
 				if assoc == nil {
 					t.Fatal("Association not found in read model")
 				}
@@ -205,7 +205,7 @@ func TestCreateAssociation_WithNoteIDs(t *testing.T) {
 	}
 
 	// Verify note IDs in read model
-	assoc, _ := readStore.GetAssociation(ctx, result.ID)
+	assoc, _ := readStore.GetAssociation(ctx, domain.MainBranchID, result.ID)
 	if len(assoc.NoteIDs) != 2 {
 		t.Errorf("Expected 2 note IDs, got %d", len(assoc.NoteIDs))
 	}
@@ -320,7 +320,7 @@ func TestUpdateAssociation_AllFields(t *testing.T) {
 	}
 
 	// Verify changes in read model
-	assoc, _ := readStore.GetAssociation(ctx, createResult.ID)
+	assoc, _ := readStore.GetAssociation(ctx, domain.MainBranchID, createResult.ID)
 	if assoc.Role != newRole {
 		t.Errorf("Role = %s, want %s", assoc.Role, newRole)
 	}
@@ -458,7 +458,7 @@ func TestDeleteAssociation(t *testing.T) {
 	}
 
 	// Verify deleted from read model
-	assoc, _ := readStore.GetAssociation(ctx, createResult.ID)
+	assoc, _ := readStore.GetAssociation(ctx, domain.MainBranchID, createResult.ID)
 	if assoc != nil {
 		t.Error("Association should be deleted from read model")
 	}
@@ -556,7 +556,7 @@ func TestUpdateAssociation_NoteIDs(t *testing.T) {
 	}
 
 	// Verify note IDs in read model
-	assoc, _ := readStore.GetAssociation(ctx, createResult.ID)
+	assoc, _ := readStore.GetAssociation(ctx, domain.MainBranchID, createResult.ID)
 	if len(assoc.NoteIDs) != 2 {
 		t.Errorf("Expected 2 note IDs, got %d", len(assoc.NoteIDs))
 	}
