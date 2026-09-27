@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -1333,6 +1334,109 @@ func TestProjector_MediaUpdated(t *testing.T) {
 	}
 	if retrieved.CropLeft == nil || *retrieved.CropLeft != 10 {
 		t.Error("CropLeft not set correctly")
+	}
+}
+
+// TestProjector_MediaUpdated_DecodedFromStore projects a MediaUpdated that
+// went through the event store's JSON codec, as a merge replay or resume
+// repair does: numbers arrive as float64 and structured values as generic
+// JSON, and every change must still land (#759).
+func TestProjector_MediaUpdated_DecodedFromStore(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+
+	media := domain.NewMedia("Original", "person", uuid.New())
+	if err := projector.Project(ctx, domain.NewMediaCreated(media), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project MediaCreated: %v", err)
+	}
+
+	changes := map[string]any{
+		"crop_left":    10,
+		"crop_top":     20,
+		"crop_width":   30,
+		"crop_height":  40,
+		"files":        []domain.MediaFile{{Path: "a.jpg", Format: "image/jpeg"}},
+		"translations": []string{"Titel"},
+	}
+	stored, err := repository.EncodeEvent(media.ID, "Media", domain.NewMediaUpdated(media.ID, changes), 2, 2)
+	if err != nil {
+		t.Fatalf("EncodeEvent: %v", err)
+	}
+	decoded, err := stored.DecodeEvent()
+	if err != nil {
+		t.Fatalf("DecodeEvent: %v", err)
+	}
+	if err := projector.Project(ctx, decoded, 2, domain.MainBranchID); err != nil {
+		t.Fatalf("Project decoded MediaUpdated: %v", err)
+	}
+
+	got, err := readStore.GetMedia(ctx, domain.MainBranchID, media.ID)
+	if err != nil || got == nil {
+		t.Fatalf("GetMedia: %v, %v", got, err)
+	}
+	for name, pair := range map[string]struct {
+		got  *int
+		want int
+	}{
+		"CropLeft": {got.CropLeft, 10}, "CropTop": {got.CropTop, 20},
+		"CropWidth": {got.CropWidth, 30}, "CropHeight": {got.CropHeight, 40},
+	} {
+		if pair.got == nil || *pair.got != pair.want {
+			t.Errorf("%s = %v, want %d", name, pair.got, pair.want)
+		}
+	}
+	if len(got.Files) != 1 || got.Files[0].Path != "a.jpg" || got.Files[0].Format != "image/jpeg" {
+		t.Errorf("Files = %+v, want one a.jpg image/jpeg", got.Files)
+	}
+	if len(got.Translations) != 1 || got.Translations[0] != "Titel" {
+		t.Errorf("Translations = %v, want [Titel]", got.Translations)
+	}
+}
+
+// TestProjector_MediaUpdated_CropValues covers the accepted and rejected
+// shapes of a crop change value.
+func TestProjector_MediaUpdated_CropValues(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name    string
+		value   any
+		want    *int
+		wantErr bool
+	}{
+		{"int64", int64(7), intPtr(7), false},
+		{"int32", int32(7), intPtr(7), false},
+		{"json.Number", json.Number("7"), intPtr(7), false},
+		{"nil clears", nil, nil, false},
+		{"fractional float", 7.5, nil, true},
+		{"bad json.Number", json.Number("x"), nil, true},
+		{"string", "7", nil, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			readStore := memory.NewReadModelStore()
+			projector := repository.NewProjector(readStore, nil)
+			media := domain.NewMedia("M", "person", uuid.New())
+			start := 3
+			media.CropLeft = &start
+			if err := projector.Project(ctx, domain.NewMediaCreated(media), 1, domain.MainBranchID); err != nil {
+				t.Fatalf("Project MediaCreated: %v", err)
+			}
+			err := projector.Project(ctx, domain.NewMediaUpdated(media.ID, map[string]any{"crop_left": tc.value}), 2, domain.MainBranchID)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected an error for an unsupported crop value")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Project: %v", err)
+			}
+			got, _ := readStore.GetMedia(ctx, domain.MainBranchID, media.ID)
+			if (got.CropLeft == nil) != (tc.want == nil) || (tc.want != nil && *got.CropLeft != *tc.want) {
+				t.Errorf("CropLeft = %v, want %v", got.CropLeft, tc.want)
+			}
+		})
 	}
 }
 
@@ -4902,3 +5006,5 @@ func TestProjector_SnapshotLifecycleNilStore(t *testing.T) {
 		t.Errorf("SnapshotDeleted with nil store should no-op, got %v", err)
 	}
 }
+
+func intPtr(v int) *int { return &v }

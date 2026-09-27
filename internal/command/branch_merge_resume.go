@@ -438,7 +438,7 @@ func (h *Handler) resumeReplayGroups(ctx context.Context, branch *domain.Branch,
 	// therefore continues the original order, and the remaining citations
 	// find their sources on main and leave a doomed source before its delete
 	// cascades.
-	return orderEvidenceForReplay(groupEventsByStream(replaySet.ReplayEvents)), nil
+	return orderEvidenceForReplay(groupEventsByStream(replaySet.ReplayEvents))
 }
 
 // resumableMerge reads the branch's own stream for its merge claim and any

@@ -1505,7 +1505,28 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 		}
 	}
 	s.media[key] = row
+	if branchID == domain.MainBranchID {
+		s.releaseBranchMediaBytes(media.ID, row)
+	}
 	return nil
+}
+
+// releaseBranchMediaBytes clears the byte columns of every branch row of id
+// once main's row holds the same bytes — a branch upload merged into main —
+// so the bytes are stored exactly once and the branch reads them through the
+// main fallback (#759). Callers hold s.mu.
+func (s *ReadModelStore) releaseBranchMediaBytes(id uuid.UUID, main *mediaRow) {
+	for k, r := range s.media {
+		if k.id != id || k.branch == domain.MainBranchID {
+			continue
+		}
+		if main.m.FileData != nil {
+			r.m.FileData = nil
+		}
+		if main.m.ThumbnailData != nil {
+			r.m.ThumbnailData = nil
+		}
+	}
 }
 
 // DeleteMedia removes a media item on the given branch (ADR-005, #759): a

@@ -105,7 +105,12 @@ func citedSource(evt repository.StoredEvent) (sourceID uuid.UUID, sets bool, err
 // branch's ErrSourceHasCitations guard ensure), and all other streams keep
 // their relative first-touch order in between. Sources do not reference any
 // other replayed aggregate, so moving them cannot break another ordering.
-func orderEvidenceForReplay(groups []streamGroup) []streamGroup {
+//
+// Media gets the same treatment for its person and family owners (#759): a
+// media upload whose owner's stream deletes that owner is moved to just
+// before the owner's stream (see moveMediaBeforeOwnerDelete), so the upload
+// lands before the delete that cascades it away — as it did on the branch.
+func orderEvidenceForReplay(groups []streamGroup) ([]streamGroup, error) {
 	ordered := make([]streamGroup, 0, len(groups))
 	var middle, last []streamGroup
 	for _, group := range groups {
@@ -118,8 +123,66 @@ func orderEvidenceForReplay(groups []streamGroup) []streamGroup {
 			ordered = append(ordered, group)
 		}
 	}
+	middle, err := moveMediaBeforeOwnerDelete(middle)
+	if err != nil {
+		return nil, err
+	}
 	ordered = append(ordered, middle...)
-	return append(ordered, last...)
+	return append(ordered, last...), nil
+}
+
+// moveMediaBeforeOwnerDelete moves each media stream that uploads an item to
+// a person or family whose own stream (also in groups) deletes it to just
+// before that owner stream, keeping every other stream's relative order.
+//
+// First-touch order can put the owner first: a branch that creates (or edits)
+// a person, uploads a photo of them, then deletes them touches the person
+// before the photo, so the person's delete would replay before the upload and
+// the upload would land on a person main no longer has — the media-owner rule
+// refuses that. On the branch the delete came after the upload and cascaded
+// it, so replaying the upload first reproduces the branch's result. A media
+// stream references nothing but its owner, so moving it earlier cannot break
+// another ordering; and an owner that is merged away rather than deleted
+// (PersonMerged lands on the survivor's stream) is not moved around.
+func moveMediaBeforeOwnerDelete(groups []streamGroup) ([]streamGroup, error) {
+	pos := make(map[uuid.UUID]int, len(groups))
+	for i, group := range groups {
+		pos[group.streamID] = i
+	}
+	// before[i] lists the media streams to emit just ahead of groups[i].
+	before := map[int][]int{}
+	moved := map[int]bool{}
+	for i, group := range groups {
+		if !isMediaStream(group.streamType) {
+			continue
+		}
+		entityType, ownerID, ok, err := mediaUploadOf(group)
+		if err != nil {
+			return nil, err
+		}
+		if !ok || (entityType != "person" && entityType != "family") {
+			continue
+		}
+		ownerPos, replayed := pos[ownerID]
+		if !replayed || ownerPos > i || !groupDeletes(groups[ownerPos], mediaOwnerDeleteEvents[entityType]) {
+			continue
+		}
+		before[ownerPos] = append(before[ownerPos], i)
+		moved[i] = true
+	}
+	if len(moved) == 0 {
+		return groups, nil
+	}
+	ordered := make([]streamGroup, 0, len(groups))
+	for i, group := range groups {
+		for _, m := range before[i] {
+			ordered = append(ordered, groups[m])
+		}
+		if !moved[i] {
+			ordered = append(ordered, group)
+		}
+	}
+	return ordered, nil
 }
 
 // isSourceStream reports whether a stream type is a source's. Source streams
@@ -205,7 +268,9 @@ type evidencePlan struct {
 //   - A replayed media upload whose owner (person, family or source) will not
 //     exist on main when the upload lands (#759) — deleted on main after the
 //     fork, excluded by a "main" resolution, or deleted by the branch itself in
-//     a stream that replays first. The projection saves the media row without
+//     a stream that still replays first (a person or family owner's delete
+//     does not: moveMediaBeforeOwnerDelete puts the upload ahead of it). The
+//     projection saves the media row without
 //     checking its owner, so main would gain an orphaned media item.
 //
 // All are refused before the claim, like the dangling child link. ResumeMerge

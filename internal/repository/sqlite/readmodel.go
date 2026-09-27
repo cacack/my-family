@@ -4317,9 +4317,15 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 		return fmt.Errorf("marshal translations: %w", err)
 	}
 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	// Numbered parameters: ?1 id, ?2 branch, ?3 main, ?4 file bytes, ?5 thumbnail
 	// bytes, then the metadata columns in order.
-	_, err = s.db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO media (id, branch_id, file_data, thumbnail_data,
 						  entity_type, entity_id, title, description, mime_type, media_type,
 						  filename, file_size,
@@ -4369,8 +4375,28 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 	if err != nil {
 		return fmt.Errorf("save media: %w", err)
 	}
+	if branchID.IsMain() {
+		// A branch upload merged into main: main's row now holds the bytes, so
+		// the branch's origin row becomes a shadow and drops its copy (#759).
+		if _, err := tx.ExecContext(ctx, releaseBranchMediaBytes, media.ID.String(), mainBranchID); err != nil {
+			return fmt.Errorf("release branch media bytes: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit save media: %w", err)
+	}
 	return nil
 }
+
+// releaseBranchMediaBytes clears, on every non-main row of media ?1, each byte
+// column main's row (?2) now also holds, so an item's bytes are stored exactly
+// once (ADR-005, #759).
+const releaseBranchMediaBytes = `UPDATE media SET
+		file_data = CASE WHEN EXISTS (SELECT 1 FROM media m WHERE m.id = ?1 AND m.branch_id = ?2 AND m.file_data IS NOT NULL)
+			THEN NULL ELSE file_data END,
+		thumbnail_data = CASE WHEN EXISTS (SELECT 1 FROM media m WHERE m.id = ?1 AND m.branch_id = ?2 AND m.thumbnail_data IS NOT NULL)
+			THEN NULL ELSE thumbnail_data END
+	WHERE id = ?1 AND branch_id <> ?2 AND (file_data IS NOT NULL OR thumbnail_data IS NOT NULL)`
 
 // DeleteMedia removes a media item on the given branch (ADR-005, #759). On a
 // non-main branch it writes a metadata-only tombstone and never touches main's

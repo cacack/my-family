@@ -40,15 +40,17 @@ import (
 // transfer the person merge would have made is not in the media stream to
 // replay. Unless the survivor (followed through any later merges) has itself
 // been deleted, which removes the item either way, the resume refuses such a
-// landed stream with errMediaRepairUnsound before writing anything.
+// landed stream with ErrMergeResumeRepairUnsound before writing anything.
 
-// errMediaRepairUnsound is returned when an already-replayed media stream's
-// main row is missing and its owner was merged into a person main still has,
-// so re-projecting the stream would attach the item to the merged-away person
-// (see the note above). Nothing has been written by the refusing call. Main's
-// read model needs a rebuild from the log (#680) to repair the item; resuming
-// again will refuse the same way.
-var errMediaRepairUnsound = errors.New("an already-replayed media item cannot be repaired from its own stream")
+// ErrMergeResumeRepairUnsound is returned when an already-replayed media
+// stream's main row is missing and its owner was merged into a person main
+// still has, so re-projecting the stream would attach the item to the
+// merged-away person (see the note above). Nothing has been written by the
+// refusing call. The refusal is permanent for this state: main's read model
+// needs a rebuild from the log (#680) to repair the item, and resuming again
+// will refuse the same way (the API reports it as 409
+// merge_resume_repair_unsound).
+var ErrMergeResumeRepairUnsound = errors.New("an already-replayed media item cannot be repaired from its own stream")
 
 // mediaOwner names the entity a media item is attached to.
 type mediaOwner struct {
@@ -81,7 +83,7 @@ func lastMediaOwner(events []repository.StoredEvent) (owner mediaOwner, found bo
 //
 // refuse names the candidates that are already on main by payload id: for
 // those, an owner merged into a person main still has is refused with
-// errMediaRepairUnsound instead of being left to a re-projection that would
+// ErrMergeResumeRepairUnsound instead of being left to a re-projection that would
 // orphan the item. A candidate not in refuse is simply reported as not
 // removed; a resume's replay of its (metadata-only) events onto a missing row
 // is a projection no-op.
@@ -138,7 +140,7 @@ func (h *Handler) missingMediaCascadedAway(
 				"%w: media %s is on main in the log but missing from main's read model, and its owner person %s "+
 					"was merged into person %s since; re-projecting it would attach it to the merged-away person. "+
 					"Nothing has been written; rebuild main's read model from the log to repair it",
-				errMediaRepairUnsound, group.streamID, owner.id, final)
+				ErrMergeResumeRepairUnsound, group.streamID, owner.id, final)
 		}
 	}
 	return cascaded, nil

@@ -528,6 +528,11 @@ type ReadModelStore interface {
 	//     byte columns are NULL. SaveMedia on a non-main branch stores no bytes for
 	//     such an id even when handed some, and no SaveMedia ever clears bytes
 	//     already stored (nil bytes mean "keep").
+	//   - Merging a branch upload replays its MediaCreated onto main, so main's
+	//     row takes the bytes and the branch's origin row becomes such a shadow:
+	//     a mainline SaveMedia clears, on every branch row of that id, each byte
+	//     column main's row now holds. The bytes are then stored once, on main,
+	//     and the branch reads them through the fallback below.
 	//   - GetMedia and ListMediaForEntity never read the byte columns.
 	//     GetMediaWithData and GetMediaThumbnail resolve the metadata through the
 	//     overlay (so a tombstone hides the bytes too) and read the bytes from the

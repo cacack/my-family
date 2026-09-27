@@ -1468,4 +1468,37 @@ func runBranchMediaScenario(t *testing.T, readStore repository.ReadModelStore, b
 	if got := listIDs(branchID, alex.ID); len(got) != 1 || !got[portrait.ID] {
 		t.Errorf("purged branch ListMediaForEntity(alex) = %v, want main's portrait only", got)
 	}
+
+	// --- Step 9: merging a branch upload into main stores its bytes once. The
+	// merge replays MediaCreated onto main, whose row takes the bytes; the
+	// branch's origin row becomes a shadow and releases its copy, reading main's
+	// through the fallback. ---
+	merging, err := domain.NewBranch("media-merge", "uploads a scan main merges", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create merging branch", main, domain.NewBranchCreated(merging))
+	mergingID := domain.BranchID(merging.ID)
+	merged := newMedia("merged", alex.ID, "MERGED-FILE", "MERGED-THUMB")
+	project("merging branch upload", mergingID, domain.NewMediaCreated(merged))
+	if file, _, present := stored(t, mergingID, merged.ID); !present || string(file) != "MERGED-FILE" {
+		t.Fatalf("merging branch upload row stores %q (present=%v), want its own bytes", file, present)
+	}
+	project("merge upload into main", main, domain.NewMediaCreated(merged))
+	if file, thumb, present := stored(t, main, merged.ID); !present || string(file) != "MERGED-FILE" || string(thumb) != "MERGED-THUMB" {
+		t.Errorf("main row after merge stores %q/%q (present=%v), want the merged bytes", file, thumb, present)
+	}
+	wantNoCopy("merged branch origin row", mergingID, merged.ID)
+	wantBytes("main merged upload", main, merged.ID, "MERGED-FILE", "MERGED-THUMB")
+	wantBytes("merging branch merged upload", mergingID, merged.ID, "MERGED-FILE", "MERGED-THUMB")
+
+	// The branch row still shows the item, so a main delete keeps main's row
+	// (and the bytes the branch now borrows) as a tombstone until the purge.
+	project("main delete merged", main, domain.NewMediaDeleted(merged.ID, "mainline cleanup"))
+	wantGone("main merged after delete", main, merged.ID)
+	wantBytes("merging branch after main delete", mergingID, merged.ID, "MERGED-FILE", "MERGED-THUMB")
+	project("delete merging branch", main, domain.NewBranchDeleted(merging.ID))
+	if _, _, present := stored(t, main, merged.ID); present {
+		t.Errorf("main merged tombstone survived the purge of the branch that needed it")
+	}
 }

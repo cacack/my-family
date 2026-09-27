@@ -659,15 +659,17 @@ never the bytes. The read-model repair follows the version rule — every media 
 row, version included, in one save — and cannot copy or lose file bytes: it projects `main`'s own
 events onto `main` only, the only event carrying bytes is `MediaCreated` (whose bytes are `main`'s
 own, in `main`'s log), `MediaUpdated` re-saves metadata with nil bytes (which keep what is stored),
-and no branch row is ever written. A missing media row counts as removed for a reason the log
+and no branch row is written beyond the byte release every mainline save of a merged upload makes
+(the branch's origin row drops its now-duplicate copy; see the media note below). A missing media row counts as removed for a reason the log
 explains when its owner's `main` stream ends in a delete (the owner→media cascade writes nothing to
 the media stream), following a person owner through any person merges `main` recorded since; a
 pending edit of such an item resolves only to `main`, and a landed upload is not resurrected. One
 case is refused rather than repaired: a landed upload whose projection failed and whose owner
 person `main` then merged into a person it still has. `PersonMerged` would have moved the item to
 the survivor, and that transfer is not in the media stream, so re-projecting it would attach it to
-the merged-away person; the resume says so and writes nothing, and repairing that item needs a
-read-model rebuild from the log (#680).
+the merged-away person; the resume says so (`409 merge_resume_repair_unsound`) and writes nothing,
+and repairing that item needs a read-model rebuild from the log (#680) — resuming again refuses the
+same way until then.
 
 A claim written before #685 has no plan, so its first resume must decide every stream not yet on
 `main` — including, for a merge that in fact finished with claim-time `main` resolutions, streams
@@ -1139,6 +1141,12 @@ The first was chosen because it keeps the invariant both simpler and directly te
   NULL. `SaveMedia` enforces this in the statement itself: on a non-main branch, an id with a main
   row gets NULL bytes whatever the caller passes; and no save ever clears bytes already stored
   (nil means "keep").
+- A merge turns an origin row into such a shadow: replaying a branch upload's `MediaCreated` onto
+  main gives main's row the bytes, so a mainline `SaveMedia` clears, on every branch row of that id,
+  each byte column main's row now holds. The bytes stay stored once — on main — and the merged
+  branch reads them through the fallback below; a later mainline delete keeps main's row as a
+  tombstone while that branch still shows the item (the rule under "Deletes never lose shared
+  bytes").
 - `GetMedia` and `ListMediaForEntity` never read the byte columns (their overlay projects an
   explicit metadata column list, so even the SQLite `ROW_NUMBER` window never carries a blob).
   `GetMediaWithData` and `GetMediaThumbnail` resolve the winning row by `(id, branch_id)` alone,
@@ -1170,7 +1178,12 @@ each item's *winning* row, like the life-event lists, so a branch that re-links 
 (`PersonMerged` moves a merged person's media to the survivor) lists it under its new owner only.
 
 **BR-006 and merge.** `MediaCreated`, `MediaUpdated` and `MediaDeleted` join the allowlist;
-`MediaCreated` is conflict-blind like the other per-entity creates. A merge interrupted mid-replay
+`MediaCreated` is conflict-blind like the other per-entity creates. The replay moves a media
+upload whose person or family owner is deleted by its own replayed stream to just before that
+stream (`moveMediaBeforeOwnerDelete`), so a branch that creates or edits a person, photographs them
+and then deletes them merges the way it happened — the upload lands, and the owner's delete
+cascades it — instead of tripping the media-owner rule because the owner was touched first. A
+media stream references nothing but its owner, so the move is safe. A merge interrupted mid-replay
 resumes media streams like any other (#685): the media-owner rule applies with resume's pending
 semantics, and the read-model repair never copies or drops shared bytes — see *Media on resume*.
 `PersonMerged` stays off the allowlist: its media transfer is now branch-scoped, but it still

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cacack/my-family/internal/command"
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/repository"
 )
 
 func (e evidenceFixture) upload(t *testing.T, h *command.Handler, entityType string, owner uuid.UUID) uuid.UUID {
@@ -103,9 +104,10 @@ func TestMergeBranch_MediaOfMainDeletedFamilyIsRefused(t *testing.T) {
 }
 
 // A branch creates a person, uploads a photo of them, then deletes them. The
-// person's stream is touched first, so its delete would replay before the
-// upload and the upload would land on a person main no longer has.
-func TestMergeBranch_MediaOfPersonDeletedEarlierInReplayIsRefused(t *testing.T) {
+// person's stream is touched first, but the replay moves the upload ahead of
+// the person's delete — as it happened on the branch — so the delete cascades
+// it on main and the self-cancelling branch merges cleanly with nothing left.
+func TestMergeBranch_MediaOfPersonCreatedAndDeletedOnBranchMerges(t *testing.T) {
 	e := newEvidenceFixture(t)
 	ctx := context.Background()
 	scoped := e.f.handler.WithBranch(e.branch)
@@ -118,8 +120,69 @@ func TestMergeBranch_MediaOfPersonDeletedEarlierInReplayIsRefused(t *testing.T) 
 	mediaID := e.upload(t, scoped, "person", p.ID)
 	e.deletePerson(t, scoped, branchID, p.ID)
 
-	_, err = e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: e.branch.ID})
-	e.assertRefusedBeforeClaim(t, err)
+	if _, err := e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: e.branch.ID}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	if got, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, p.ID); err != nil || got != nil {
+		t.Errorf("main person = %v (err=%v), want absent", got, err)
+	}
+	e.assertNoMainMedia(t, mediaID)
+}
+
+// Same shape with main's person, edited on the branch before the upload so
+// its stream is touched first, then deleted on the branch.
+func TestMergeBranch_MediaOfMainPersonEditedThenDeletedOnBranchMerges(t *testing.T) {
+	e := newEvidenceFixture(t)
+	ctx := context.Background()
+	scoped := e.f.handler.WithBranch(e.branch)
+	branchID := domain.BranchID(e.branch.ID)
+
+	current, err := e.f.readStore.GetPerson(ctx, branchID, e.person)
+	if err != nil || current == nil {
+		t.Fatalf("GetPerson = %v, %v", current, err)
+	}
+	surname := "Revised"
+	if _, err := scoped.UpdatePerson(ctx, command.UpdatePersonInput{ID: e.person, Surname: &surname, Version: current.Version}); err != nil {
+		t.Fatalf("UpdatePerson failed: %v", err)
+	}
+	mediaID := e.upload(t, scoped, "person", e.person)
+	e.deletePerson(t, scoped, branchID, e.person)
+
+	if _, err := e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: e.branch.ID}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	if got, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, e.person); err != nil || got != nil {
+		t.Errorf("main person = %v (err=%v), want deleted by the merge", got, err)
+	}
+	e.assertNoMainMedia(t, mediaID)
+}
+
+// Same shape with a family the branch creates, photographs and deletes.
+func TestMergeBranch_MediaOfFamilyCreatedAndDeletedOnBranchMerges(t *testing.T) {
+	e := newEvidenceFixture(t)
+	ctx := context.Background()
+	scoped := e.f.handler.WithBranch(e.branch)
+	branchID := domain.BranchID(e.branch.ID)
+
+	fam, err := scoped.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &e.person})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	mediaID := e.upload(t, scoped, "family", fam.ID)
+	f, err := e.f.readStore.GetFamily(ctx, branchID, fam.ID)
+	if err != nil || f == nil {
+		t.Fatalf("GetFamily = %v, %v", f, err)
+	}
+	if err := scoped.DeleteFamily(ctx, command.DeleteFamilyInput{ID: fam.ID, Version: f.Version}); err != nil {
+		t.Fatalf("DeleteFamily failed: %v", err)
+	}
+
+	if _, err := e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: e.branch.ID}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	if got, err := e.f.readStore.GetFamily(ctx, domain.MainBranchID, fam.ID); err != nil || got != nil {
+		t.Errorf("main family = %v (err=%v), want absent", got, err)
+	}
 	e.assertNoMainMedia(t, mediaID)
 }
 
@@ -156,4 +219,64 @@ func TestMergeBranch_MediaOfLiveOwnerMerges(t *testing.T) {
 	if err != nil || got == nil || len(got.FileData) == 0 {
 		t.Fatalf("main GetMediaWithData = %+v (err=%v), want the merged upload with its bytes", got, err)
 	}
+}
+
+// cropMedia sets a crop box (and a new title) on a media item through h.
+func cropMedia(t *testing.T, h *command.Handler, current *repository.MediaReadModel, title string, crop int) {
+	t.Helper()
+	if _, err := h.UpdateMedia(context.Background(), command.UpdateMediaInput{
+		ID: current.ID, Title: &title, Version: current.Version,
+		CropLeft: &crop, CropTop: &crop, CropWidth: &crop, CropHeight: &crop,
+	}); err != nil {
+		t.Fatalf("UpdateMedia(%s) failed: %v", current.ID, err)
+	}
+}
+
+// assertCrop checks every crop field of m equals want.
+func assertCrop(t *testing.T, m *repository.MediaReadModel, want int) {
+	t.Helper()
+	if m == nil {
+		t.Fatal("media missing")
+	}
+	for name, got := range map[string]*int{"CropLeft": m.CropLeft, "CropTop": m.CropTop, "CropWidth": m.CropWidth, "CropHeight": m.CropHeight} {
+		if got == nil || *got != want {
+			t.Errorf("%s = %v, want %d", name, got, want)
+		}
+	}
+}
+
+// A branch crop edit reaches main through the merge. The merge projects the
+// event decoded from its stored JSON, where the crop numbers are float64, so
+// this guards against the projection dropping them (#759).
+func TestMergeBranch_MediaCropEditMerges(t *testing.T) {
+	e := newEvidenceFixture(t)
+	ctx := context.Background()
+	mediaID := e.upload(t, e.f.handler, "source", e.source)
+	branch, err := e.f.handler.CreateBranch(ctx, "crop", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	scope := domain.BranchID(branch.ID)
+	current, err := e.f.readStore.GetMedia(ctx, scope, mediaID)
+	if err != nil || current == nil {
+		t.Fatalf("branch GetMedia = %v, %v", current, err)
+	}
+	cropMedia(t, e.f.handler.WithBranch(branch), current, "Cropped", 10)
+	onBranch, err := e.f.readStore.GetMedia(ctx, scope, mediaID)
+	if err != nil {
+		t.Fatalf("branch GetMedia failed: %v", err)
+	}
+	assertCrop(t, onBranch, 10)
+
+	if _, err := e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	onMain, err := e.f.readStore.GetMedia(ctx, domain.MainBranchID, mediaID)
+	if err != nil {
+		t.Fatalf("main GetMedia failed: %v", err)
+	}
+	if onMain == nil || onMain.Title != "Cropped" {
+		t.Fatalf("main media = %+v, want the merged title", onMain)
+	}
+	assertCrop(t, onMain, 10)
 }

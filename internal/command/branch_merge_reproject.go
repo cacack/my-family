@@ -64,7 +64,7 @@ type readModelState struct {
 // writes the row, version included, in one save (or deletes it). The repair
 // projects onto main only and never copies bytes: see
 // branch_merge_resume_media.go, including the owner-merged case it refuses
-// (errMediaRepairUnsound) rather than repair.
+// (ErrMergeResumeRepairUnsound) rather than repair.
 //
 // Source, citation and note streams (#758) are covered by the same version
 // rule: each of their projections writes the row, version included, in one
@@ -266,7 +266,7 @@ func (h *Handler) streamsBehindOnMain(ctx context.Context, groups []streamGroup,
 // across all the missing streams, never a scan per stream.
 //
 // landed names the streams already on main by payload id; a landed media
-// stream whose repair would be unsound is refused (errMediaRepairUnsound, see
+// stream whose repair would be unsound is refused (ErrMergeResumeRepairUnsound, see
 // missingMediaCascadedAway).
 func (h *Handler) missingRowsRemovedElsewhere(
 	ctx context.Context,

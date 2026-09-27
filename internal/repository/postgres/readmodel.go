@@ -3916,8 +3916,26 @@ func (s *ReadModelStore) SaveMedia(ctx context.Context, branchID domain.BranchID
 	if err != nil {
 		return fmt.Errorf("save media: %w", err)
 	}
+	if branchID.IsMain() {
+		// A branch upload merged into main: main's row now holds the bytes, so
+		// the branch's origin row becomes a shadow and drops its copy (#759).
+		if _, err := tx.ExecContext(ctx, releaseBranchMediaBytes, media.ID, domain.MainBranchID.UUID()); err != nil {
+			return fmt.Errorf("release branch media bytes: %w", err)
+		}
+	}
 	return tx.Commit()
 }
+
+// releaseBranchMediaBytes clears, on every non-main row of media $1, each byte
+// column main's row ($2) now also holds, so an item's bytes are stored exactly
+// once (ADR-005, #759).
+const releaseBranchMediaBytes = `UPDATE media b SET
+		file_data = CASE WHEN m.file_data IS NOT NULL THEN NULL ELSE b.file_data END,
+		thumbnail_data = CASE WHEN m.thumbnail_data IS NOT NULL THEN NULL ELSE b.thumbnail_data END
+	FROM media m
+	WHERE b.id = $1 AND b.branch_id <> $2 AND m.id = $1 AND m.branch_id = $2
+		AND ((b.file_data IS NOT NULL AND m.file_data IS NOT NULL)
+			OR (b.thumbnail_data IS NOT NULL AND m.thumbnail_data IS NOT NULL))`
 
 // DeleteMedia removes a media item on the given branch (ADR-005, #759). On a
 // non-main branch it writes a metadata-only tombstone and never touches main's

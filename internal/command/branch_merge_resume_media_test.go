@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -198,6 +197,33 @@ func TestResumeMerge_RepairsMediaEditProjection(t *testing.T) {
 	assertResumeNoop(t, e.resume(t, branch.ID, nil))
 }
 
+// The crop edit's append lands but its projection fails. The repair
+// re-projects the event decoded from main's log, where the crop numbers are
+// float64, and must still land the crop box on main (#759).
+func TestResumeMerge_RepairsMediaCropProjection(t *testing.T) {
+	e := newEvidenceResume(t)
+	photo := e.upload(t, e.f.handler, e.person, "Portrait")
+	branch, scoped := e.branch(t, "crop")
+	scope := domain.BranchID(branch.ID)
+	cropMedia(t, scoped, e.media(t, scope, photo), "Portrait (cropped)", 12)
+
+	e.failProjection(t, branch, photo)
+	if got := e.media(t, domain.MainBranchID, photo); got == nil || got.CropLeft != nil {
+		t.Fatalf("main photo after the failed projection = %+v, want it still uncropped", got)
+	}
+
+	res := e.resume(t, branch.ID, nil)
+	if !slices.Equal(res.ReprojectedStreamIDs, []uuid.UUID{photo}) {
+		t.Errorf("ReprojectedStreamIDs = %v, want [%s]", res.ReprojectedStreamIDs, photo)
+	}
+	got := e.media(t, domain.MainBranchID, photo)
+	if got == nil || got.Title != "Portrait (cropped)" {
+		t.Fatalf("main photo = %+v, want the repaired edit", got)
+	}
+	assertCrop(t, got, 12)
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
+}
+
 // The upload's append lands but its projection fails: main has the item in
 // its log and no row. The resume re-projects MediaCreated from main's own log,
 // bytes included, without appending anything.
@@ -350,7 +376,7 @@ func TestResumeMerge_MediaOfMergedAwayOwnerIsRefused(t *testing.T) {
 	before := e.mainEventCount(t)
 
 	_, err = e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
-	if err == nil || !strings.Contains(err.Error(), "cannot be repaired from its own stream") {
+	if !errors.Is(err, command.ErrMergeResumeRepairUnsound) {
 		t.Fatalf("ResumeMerge error = %v, want the unsound-repair refusal", err)
 	}
 	if got := e.mainEventCount(t); got != before {
@@ -365,4 +391,45 @@ func TestResumeMerge_MediaOfMergedAwayOwnerIsRefused(t *testing.T) {
 	if len(res.ReprojectedStreamIDs) != 0 || e.media(t, domain.MainBranchID, scan) != nil {
 		t.Errorf("resume re-projected %v; want the cascaded media left gone", res.ReprojectedStreamIDs)
 	}
+}
+
+// A branch creates a person, uploads a photo of them and deletes them. The
+// replay moves the upload ahead of the person's stream; the merge is
+// interrupted after the upload lands, so main briefly holds a photo of a
+// person it does not have yet. The resume replays the person's create and
+// delete, whose cascade removes the photo, and ends with neither on main.
+func TestResumeMerge_MediaBeforeOwnerDeleteFinishes(t *testing.T) {
+	e := newEvidenceResume(t)
+	ctx := context.Background()
+	branch, scoped := e.branch(t, "self-cancelling")
+	scope := domain.BranchID(branch.ID)
+	p, err := scoped.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Brief", Surname: "Hypothesis"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	scan := e.upload(t, scoped, p.ID, "Portrait of Brief")
+	current, err := e.f.readStore.GetPerson(ctx, scope, p.ID)
+	if err != nil || current == nil {
+		t.Fatalf("GetPerson = %v, %v", current, err)
+	}
+	if err := scoped.DeletePerson(ctx, command.DeletePersonInput{ID: p.ID, Version: current.Version, Reason: "theory"}); err != nil {
+		t.Fatalf("DeletePerson failed: %v", err)
+	}
+
+	e.interrupt(t, branch, 2)
+	if e.media(t, domain.MainBranchID, scan) == nil {
+		t.Fatalf("main lacks the upload after the interruption; want it replayed first")
+	}
+
+	res := e.resume(t, branch.ID, nil)
+	if !slices.Equal(res.AlreadyReplayedStreamIDs, []uuid.UUID{scan}) {
+		t.Errorf("AlreadyReplayedStreamIDs = %v, want [%s]", res.AlreadyReplayedStreamIDs, scan)
+	}
+	if got, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, p.ID); err != nil || got != nil {
+		t.Errorf("main person = %v (err=%v), want absent", got, err)
+	}
+	if e.media(t, domain.MainBranchID, scan) != nil {
+		t.Errorf("main still has the photo after its owner's delete replayed")
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
 }

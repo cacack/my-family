@@ -122,6 +122,7 @@ const (
 	ResumeDanglingReference BranchMergeResumeErrorCode = "merge_dangling_reference"
 	ResumeMergeNotClaimed   BranchMergeResumeErrorCode = "merge_not_claimed"
 	ResumeNeedsResolution   BranchMergeResumeErrorCode = "merge_resume_needs_resolution"
+	ResumeRepairUnsound     BranchMergeResumeErrorCode = "merge_resume_repair_unsound"
 )
 
 // Valid indicates whether the value is a known member of the BranchMergeResumeErrorCode enum.
@@ -136,6 +137,8 @@ func (e BranchMergeResumeErrorCode) Valid() bool {
 	case ResumeMergeNotClaimed:
 		return true
 	case ResumeNeedsResolution:
+		return true
+	case ResumeRepairUnsound:
 		return true
 	default:
 		return false

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -1038,33 +1039,36 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 			if v, ok := value.(string); ok {
 				media.MediaType = domain.MediaType(v)
 			}
-		case "crop_left":
-			if v, ok := value.(int); ok {
-				media.CropLeft = &v
+		case "crop_left", "crop_top", "crop_width", "crop_height":
+			var crop *int
+			if value != nil {
+				v, ok := changeInt(value)
+				if !ok {
+					return fmt.Errorf("media %s change %q: unsupported value %v (%T)", e.MediaID, key, value, value)
+				}
+				crop = &v
 			}
-		case "crop_top":
-			if v, ok := value.(int); ok {
-				media.CropTop = &v
-			}
-		case "crop_width":
-			if v, ok := value.(int); ok {
-				media.CropWidth = &v
-			}
-		case "crop_height":
-			if v, ok := value.(int); ok {
-				media.CropHeight = &v
+			switch key {
+			case "crop_left":
+				media.CropLeft = crop
+			case "crop_top":
+				media.CropTop = crop
+			case "crop_width":
+				media.CropWidth = crop
+			default:
+				media.CropHeight = crop
 			}
 		case "files":
-			if v, ok := value.([]domain.MediaFile); ok {
-				media.Files = v
+			if err := decodeChangeValue(value, &media.Files); err != nil {
+				return fmt.Errorf("media %s change %q: %w", e.MediaID, key, err)
 			}
 		case "format":
 			if v, ok := value.(string); ok {
 				media.Format = v
 			}
 		case "translations":
-			if v, ok := value.([]string); ok {
-				media.Translations = v
+			if err := decodeChangeValue(value, &media.Translations); err != nil {
+				return fmt.Errorf("media %s change %q: %w", e.MediaID, key, err)
 			}
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "MediaUpdated", "key", key)
@@ -1075,6 +1079,60 @@ func (p *Projector) projectMediaUpdated(ctx context.Context, e domain.MediaUpdat
 	media.UpdatedAt = e.OccurredAt()
 
 	return p.readStore.SaveMedia(ctx, branchID, media)
+}
+
+// changeInt reads an integer change value. A command projects its in-memory
+// event, where the value is an int; a merge replay or resume repair projects
+// the event decoded from its stored JSON, where the same value arrives as a
+// float64 (or json.Number). Both must yield the same read-model row.
+func changeInt(value any) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case float64:
+		if v != math.Trunc(v) || v > math.MaxInt32 || v < math.MinInt32 {
+			return 0, false
+		}
+		return int(v), true
+	case json.Number:
+		n, err := v.Int64()
+		if err != nil || n > math.MaxInt32 || n < math.MinInt32 {
+			return 0, false
+		}
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
+
+// decodeChangeValue fills dst from a structured change value. The value is
+// either already dst's type (in-memory event) or its generic JSON form
+// ([]any / map[string]any after a stored event is decoded), so it is
+// round-tripped through JSON; nil clears dst.
+func decodeChangeValue[T any](value any, dst *T) error {
+	var zero T
+	if value == nil {
+		*dst = zero
+		return nil
+	}
+	if v, ok := value.(T); ok {
+		*dst = v
+		return nil
+	}
+	b, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("marshal change value: %w", err)
+	}
+	decoded := zero
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		return fmt.Errorf("decode change value: %w", err)
+	}
+	*dst = decoded
+	return nil
 }
 
 func (p *Projector) projectMediaDeleted(ctx context.Context, e domain.MediaDeleted, branchID domain.BranchID) error {
