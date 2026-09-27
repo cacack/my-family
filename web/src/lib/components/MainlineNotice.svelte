@@ -26,6 +26,8 @@
 	 * - `/search` — advanced search
 	 * - `/sources` — sources and citations
 	 * - `/history` — the global change feed
+	 * - `/snapshots` and `/snapshots/compare` — a snapshot marks a mainline
+	 *   position and its comparison lists mainline events only
 	 * - `/ahnentafel/{id}` — the ancestor report
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
 	 * - `/browse/cemeteries` — the *index* only; it aggregates `life_events`,

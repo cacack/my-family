@@ -77,19 +77,26 @@ func (s *SnapshotService) CompareSnapshots(ctx context.Context, id1, id2 uuid.UU
 		olderFirst = false
 	}
 
-	// Read events between the two positions
-	// We read from fromSnapshot.Position (exclusive) to toSnapshot.Position (inclusive)
-	events, err := s.eventStore.ReadAll(ctx, fromSnapshot.Position, maxComparisonEvents)
+	// Read the MAINLINE's events after the older position. Snapshots mark
+	// positions in the shared log (ADR-005), and that log also carries every
+	// research branch's deltas; a branch's unmerged edits are not part of the
+	// mainline's history between two milestones, so reading ReadAll here would
+	// report them as if they had happened on main.
+	events, err := s.eventStore.ReadBranch(ctx, domain.MainBranchID, fromSnapshot.Position, maxComparisonEvents)
 	if err != nil {
 		return nil, fmt.Errorf("read events: %w", err)
 	}
 
-	// Filter to only events up to toSnapshot.Position
-	var filteredEvents []repository.StoredEvent
+	// Keep only events up to the newer position (inclusive). The read above is
+	// bounded by count, not by position, so it can run past toSnapshot.
+	filteredEvents := make([]repository.StoredEvent, 0, len(events))
+	reachedEnd := false
 	for _, evt := range events {
-		if evt.Position <= toSnapshot.Position {
-			filteredEvents = append(filteredEvents, evt)
+		if evt.Position > toSnapshot.Position {
+			reachedEnd = true
+			break
 		}
+		filteredEvents = append(filteredEvents, evt)
 	}
 
 	// Transform to ChangeEntry format using the HistoryService
@@ -98,7 +105,11 @@ func (s *SnapshotService) CompareSnapshots(ctx context.Context, id1, id2 uuid.UU
 		return nil, fmt.Errorf("transform events: %w", err)
 	}
 
-	hasMore := len(events) >= maxComparisonEvents
+	// The window was truncated only if the read hit its cap before it reached
+	// the newer snapshot. Once an event at or past that position was seen,
+	// every event in range is already in hand, however full the read was.
+	hasMore := !reachedEnd && len(events) >= maxComparisonEvents &&
+		events[len(events)-1].Position < toSnapshot.Position
 
 	return &SnapshotComparisonResult{
 		Snapshot1:  snapshot1,
