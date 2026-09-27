@@ -185,6 +185,49 @@ describe('branch scope threading', () => {
 		await api.listBranches();
 		expect(requestedUrl()).toBe('/api/v1/branches');
 	});
+
+	it('never scopes the snapshot endpoints - a snapshot marks a mainline position', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.listSnapshots();
+		await api.compareSnapshots('a/b', 'c d');
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			'/api/v1/snapshots',
+			// Ids are path-encoded, so a malformed one cannot reshape the route.
+			'/api/v1/snapshots/a%2Fb/compare/c%20d'
+		]);
+	});
+});
+
+describe('snapshot endpoints', () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204, json: async () => ({}) });
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('creates with a JSON body', async () => {
+		fetchMock.mockResolvedValue({ ok: true, status: 201, json: async () => ({ id: 'x' }) });
+		await api.createSnapshot({ name: 'Pre-DNA results', description: 'Before the kit' });
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('/api/v1/snapshots');
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(init.body as string)).toEqual({
+			name: 'Pre-DNA results',
+			description: 'Before the kit'
+		});
+	});
+
+	it('deletes by encoded id', async () => {
+		await api.deleteSnapshot('x/y');
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('/api/v1/snapshots/x%2Fy');
+		expect(init.method).toBe('DELETE');
+	});
 });
 
 describe('mergeBranch', () => {

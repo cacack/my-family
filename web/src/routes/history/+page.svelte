@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChangeHistory from '$lib/components/ChangeHistory.svelte';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
+	import { Button } from '$lib/components/ui/button';
 </script>
 
 <svelte:head>
@@ -13,8 +14,11 @@
 		detail="Changes made on a research branch do not appear here until the branch is merged."
 	/>
 	<header class="page-header">
-		<h1>Change History</h1>
-		<p class="subtitle">Complete audit trail of all changes to your family tree</p>
+		<div>
+			<h1>Change History</h1>
+			<p class="subtitle">Complete audit trail of all changes to your family tree</p>
+		</div>
+		<Button variant="outline" size="sm" href="/snapshots">Research snapshots</Button>
 	</header>
 
 	<ChangeHistory />
@@ -28,6 +32,11 @@
 	}
 
 	.page-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
 		margin-bottom: 1.5rem;
 	}
 
