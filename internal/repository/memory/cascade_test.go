@@ -15,7 +15,8 @@ import (
 // TestReadModelStore_DeletePersonCascade verifies that deleting a person on main
 // removes every dependent the pre-#669 ON DELETE CASCADE foreign keys used to
 // clean up: person_names, person_external_ids, pedigree_edges, associations (both
-// the person_id and associate_id sides) and attributes. The assertions are kept
+// the person_id and associate_id sides) and attributes — plus the person's own life
+// events, which #757 added to the cascade. The assertions are kept
 // byte-for-byte identical across the memory/sqlite/postgres backends to enforce
 // DB-001 parity and would have caught the incomplete/divergent manual cascade.
 func TestReadModelStore_DeletePersonCascade(t *testing.T) {
@@ -48,17 +49,26 @@ func TestReadModelStore_DeletePersonCascade(t *testing.T) {
 	}
 	// Association where the deleted person is the subject (person_id side).
 	assocSubject := &repository.AssociationReadModel{ID: uuid.New(), PersonID: personID, AssociateID: uuid.New(), Role: "witness", Version: 1}
-	if err := store.SaveAssociation(ctx, assocSubject); err != nil {
+	if err := store.SaveAssociation(ctx, domain.MainBranchID, assocSubject); err != nil {
 		t.Fatalf("SaveAssociation subject: %v", err)
 	}
 	// Association where the deleted person is the associate (associate_id side).
 	assocAssociate := &repository.AssociationReadModel{ID: uuid.New(), PersonID: uuid.New(), AssociateID: personID, Role: "godparent", Version: 1}
-	if err := store.SaveAssociation(ctx, assocAssociate); err != nil {
+	if err := store.SaveAssociation(ctx, domain.MainBranchID, assocAssociate); err != nil {
 		t.Fatalf("SaveAssociation associate: %v", err)
 	}
 	attr := &repository.AttributeReadModel{ID: uuid.New(), PersonID: personID, FactType: domain.FactPersonOccupation, Value: "Mathematician", Version: 1, CreatedAt: time.Now()}
-	if err := store.SaveAttribute(ctx, attr); err != nil {
+	if err := store.SaveAttribute(ctx, domain.MainBranchID, attr); err != nil {
 		t.Fatalf("SaveAttribute: %v", err)
+	}
+	burial := &repository.EventReadModel{ID: uuid.New(), OwnerType: "person", OwnerID: personID, FactType: domain.FactPersonBurial, Place: "Restland", Version: 1, CreatedAt: time.Now()}
+	if err := store.SaveEvent(ctx, main, burial); err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+	// A bystander's life event must survive the cascade.
+	bystander := &repository.EventReadModel{ID: uuid.New(), OwnerType: "person", OwnerID: uuid.New(), FactType: domain.FactPersonBurial, Place: "Restland", Version: 1, CreatedAt: time.Now()}
+	if err := store.SaveEvent(ctx, main, bystander); err != nil {
+		t.Fatalf("SaveEvent bystander: %v", err)
 	}
 
 	if err := store.DeletePerson(ctx, main, personID); err != nil {
@@ -97,39 +107,61 @@ func TestReadModelStore_DeletePersonCascade(t *testing.T) {
 			t.Errorf("family_children not cascaded: deleted person still a child of %s", childFamilyID)
 		}
 	}
-	a, err := store.GetAssociation(ctx, assocSubject.ID)
+	a, err := store.GetAssociation(ctx, domain.MainBranchID, assocSubject.ID)
 	if err != nil {
 		t.Fatalf("GetAssociation subject: %v", err)
 	}
 	if a != nil {
 		t.Errorf("association (person_id side) not cascaded: got %+v", a)
 	}
-	a2, err := store.GetAssociation(ctx, assocAssociate.ID)
+	a2, err := store.GetAssociation(ctx, domain.MainBranchID, assocAssociate.ID)
 	if err != nil {
 		t.Fatalf("GetAssociation associate: %v", err)
 	}
 	if a2 != nil {
 		t.Errorf("association (associate_id side) not cascaded: got %+v", a2)
 	}
-	listed, err := store.ListAssociationsForPerson(ctx, personID)
+	listed, err := store.ListAssociationsForPerson(ctx, domain.MainBranchID, personID)
 	if err != nil {
 		t.Fatalf("ListAssociationsForPerson: %v", err)
 	}
 	if len(listed) != 0 {
 		t.Errorf("associations still listed for person: got %d", len(listed))
 	}
-	at, err := store.GetAttribute(ctx, attr.ID)
+	at, err := store.GetAttribute(ctx, domain.MainBranchID, attr.ID)
 	if err != nil {
 		t.Fatalf("GetAttribute: %v", err)
 	}
 	if at != nil {
 		t.Errorf("attributes not cascaded: got %+v", at)
 	}
+	ev, err := store.GetEvent(ctx, main, burial.ID)
+	if err != nil {
+		t.Fatalf("GetEvent: %v", err)
+	}
+	if ev != nil {
+		t.Errorf("life_events not cascaded: got %+v", ev)
+	}
+	kept, err := store.GetEvent(ctx, main, bystander.ID)
+	if err != nil {
+		t.Fatalf("GetEvent bystander: %v", err)
+	}
+	if kept == nil {
+		t.Error("cascade removed another person's life event")
+	}
+	cemeteries, err := store.GetCemeteryIndex(ctx, main)
+	if err != nil {
+		t.Fatalf("GetCemeteryIndex: %v", err)
+	}
+	if len(cemeteries) != 1 || cemeteries[0].Count != 1 {
+		t.Errorf("cemetery index still counts the deleted person: got %+v", cemeteries)
+	}
 }
 
 // TestReadModelStore_DeleteFamilyCascade verifies that deleting a family on main
-// removes its dependents: family_external_ids and family_children. (pedigree_edges
-// is keyed by person, not family, so it is deliberately not asserted here.)
+// removes its dependents: family_external_ids, family_children and the family's
+// own life events (#757). (pedigree_edges is keyed by person, not family, so it is
+// deliberately not asserted here.)
 func TestReadModelStore_DeleteFamilyCascade(t *testing.T) {
 	store := memory.NewReadModelStore()
 	ctx := context.Background()
@@ -145,6 +177,10 @@ func TestReadModelStore_DeleteFamilyCascade(t *testing.T) {
 	}
 	if err := store.SaveFamilyChild(ctx, main, &repository.FamilyChildReadModel{FamilyID: familyID, PersonID: uuid.New(), RelationshipType: domain.ChildBiological}); err != nil {
 		t.Fatalf("SaveFamilyChild: %v", err)
+	}
+	marriage := &repository.EventReadModel{ID: uuid.New(), OwnerType: "family", OwnerID: familyID, FactType: domain.FactFamilyMarriage, Place: "Chapel", Version: 1, CreatedAt: time.Now()}
+	if err := store.SaveEvent(ctx, main, marriage); err != nil {
+		t.Fatalf("SaveEvent: %v", err)
 	}
 
 	if err := store.DeleteFamily(ctx, main, familyID); err != nil {
@@ -164,5 +200,154 @@ func TestReadModelStore_DeleteFamilyCascade(t *testing.T) {
 	}
 	if len(kids) != 0 {
 		t.Errorf("family_children not cascaded: got %d", len(kids))
+	}
+	events, err := store.ListEventsForFamily(ctx, main, familyID)
+	if err != nil {
+		t.Fatalf("ListEventsForFamily: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("family life_events not cascaded: got %d", len(events))
+	}
+}
+
+// TestReadModelStore_BranchDeleteCascadesFacts verifies the branch half of the
+// #757 cascade: deleting a person or family ON A BRANCH tombstones, on that branch
+// only, every life event, attribute and association the owner has — including rows
+// that exist only on main and rows the branch itself added — while main keeps all of
+// them. The assertions are byte-for-byte identical across backends (DB-001).
+func TestReadModelStore_BranchDeleteCascadesFacts(t *testing.T) {
+	store := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	main := domain.MainBranchID
+	branch := domain.BranchID(uuid.New())
+	personID, otherID, familyID := uuid.New(), uuid.New(), uuid.New()
+	now := time.Now()
+
+	for _, p := range []*repository.PersonReadModel{
+		{ID: personID, GivenName: "Ada", Surname: "Lovelace", Version: 1},
+		{ID: otherID, GivenName: "Sam", Surname: "Steady", Version: 1},
+	} {
+		if err := store.SavePerson(ctx, main, p); err != nil {
+			t.Fatalf("SavePerson: %v", err)
+		}
+	}
+	if err := store.SaveFamily(ctx, main, &repository.FamilyReadModel{ID: familyID, Partner1ID: &personID, RelationshipType: domain.RelationMarriage, Version: 1}); err != nil {
+		t.Fatalf("SaveFamily: %v", err)
+	}
+	mainEvent := &repository.EventReadModel{ID: uuid.New(), OwnerType: "person", OwnerID: personID, FactType: domain.FactPersonBurial, Place: "Restland", Version: 1, CreatedAt: now}
+	familyEvent := &repository.EventReadModel{ID: uuid.New(), OwnerType: "family", OwnerID: familyID, FactType: domain.FactFamilyMarriage, Place: "Chapel", Version: 1, CreatedAt: now}
+	for _, e := range []*repository.EventReadModel{mainEvent, familyEvent} {
+		if err := store.SaveEvent(ctx, main, e); err != nil {
+			t.Fatalf("SaveEvent main: %v", err)
+		}
+	}
+	attr := &repository.AttributeReadModel{ID: uuid.New(), PersonID: personID, FactType: domain.FactPersonOccupation, Value: "Mathematician", Version: 1, CreatedAt: now}
+	if err := store.SaveAttribute(ctx, main, attr); err != nil {
+		t.Fatalf("SaveAttribute main: %v", err)
+	}
+	assoc := &repository.AssociationReadModel{ID: uuid.New(), PersonID: otherID, AssociateID: personID, Role: "witness", Version: 1, UpdatedAt: now}
+	if err := store.SaveAssociation(ctx, main, assoc); err != nil {
+		t.Fatalf("SaveAssociation main: %v", err)
+	}
+	// A branch-only life event for the person, and a branch shadow of the main one.
+	branchEvent := &repository.EventReadModel{ID: uuid.New(), OwnerType: "person", OwnerID: personID, FactType: domain.FactPersonBaptism, Place: "Font", Version: 1, CreatedAt: now}
+	if err := store.SaveEvent(ctx, branch, branchEvent); err != nil {
+		t.Fatalf("SaveEvent branch: %v", err)
+	}
+	shadow := *mainEvent
+	shadow.Place = "Westland"
+	if err := store.SaveEvent(ctx, branch, &shadow); err != nil {
+		t.Fatalf("SaveEvent branch shadow: %v", err)
+	}
+
+	if err := store.DeletePerson(ctx, branch, personID); err != nil {
+		t.Fatalf("DeletePerson branch: %v", err)
+	}
+	if err := store.DeleteFamily(ctx, branch, familyID); err != nil {
+		t.Fatalf("DeleteFamily branch: %v", err)
+	}
+
+	// The branch sees none of the owners' facts.
+	branchEvents, err := store.ListEventsForPerson(ctx, branch, personID)
+	if err != nil {
+		t.Fatalf("ListEventsForPerson branch: %v", err)
+	}
+	if len(branchEvents) != 0 {
+		t.Errorf("branch person life events not tombstoned: got %+v", branchEvents)
+	}
+	branchFamilyEvents, err := store.ListEventsForFamily(ctx, branch, familyID)
+	if err != nil {
+		t.Fatalf("ListEventsForFamily branch: %v", err)
+	}
+	if len(branchFamilyEvents) != 0 {
+		t.Errorf("branch family life events not tombstoned: got %+v", branchFamilyEvents)
+	}
+	for _, id := range []uuid.UUID{mainEvent.ID, familyEvent.ID, branchEvent.ID} {
+		got, err := store.GetEvent(ctx, branch, id)
+		if err != nil {
+			t.Fatalf("GetEvent branch: %v", err)
+		}
+		if got != nil {
+			t.Errorf("GetEvent(branch, %s) = %+v, want tombstoned", id, got)
+		}
+	}
+	branchAttr, err := store.GetAttribute(ctx, branch, attr.ID)
+	if err != nil {
+		t.Fatalf("GetAttribute branch: %v", err)
+	}
+	if branchAttr != nil {
+		t.Errorf("branch attribute not tombstoned: got %+v", branchAttr)
+	}
+	branchAssocs, err := store.ListAssociationsForPerson(ctx, branch, otherID)
+	if err != nil {
+		t.Fatalf("ListAssociationsForPerson branch: %v", err)
+	}
+	if len(branchAssocs) != 0 {
+		t.Errorf("branch association (associate_id side) not tombstoned: got %+v", branchAssocs)
+	}
+	branchCemeteries, err := store.GetCemeteryIndex(ctx, branch)
+	if err != nil {
+		t.Fatalf("GetCemeteryIndex branch: %v", err)
+	}
+	if len(branchCemeteries) != 0 {
+		t.Errorf("branch cemetery index still counts the deleted person: got %+v", branchCemeteries)
+	}
+
+	// Main keeps every row, with main's values.
+	mainEvents, err := store.ListEventsForPerson(ctx, main, personID)
+	if err != nil {
+		t.Fatalf("ListEventsForPerson main: %v", err)
+	}
+	if len(mainEvents) != 1 || mainEvents[0].Place != "Restland" {
+		t.Errorf("main person life events changed by a branch delete: got %+v", mainEvents)
+	}
+	mainFamilyEvents, err := store.ListEventsForFamily(ctx, main, familyID)
+	if err != nil {
+		t.Fatalf("ListEventsForFamily main: %v", err)
+	}
+	if len(mainFamilyEvents) != 1 {
+		t.Errorf("main family life events changed by a branch delete: got %+v", mainFamilyEvents)
+	}
+	mainAttr, err := store.GetAttribute(ctx, main, attr.ID)
+	if err != nil {
+		t.Fatalf("GetAttribute main: %v", err)
+	}
+	if mainAttr == nil || mainAttr.Value != "Mathematician" {
+		t.Errorf("main attribute changed by a branch delete: got %+v", mainAttr)
+	}
+	mainAssocs, err := store.ListAssociationsForPerson(ctx, main, otherID)
+	if err != nil {
+		t.Fatalf("ListAssociationsForPerson main: %v", err)
+	}
+	if len(mainAssocs) != 1 {
+		t.Errorf("main association changed by a branch delete: got %+v", mainAssocs)
+	}
+	mainCemeteries, err := store.GetCemeteryIndex(ctx, main)
+	if err != nil {
+		t.Fatalf("GetCemeteryIndex main: %v", err)
+	}
+	if len(mainCemeteries) != 1 || mainCemeteries[0].Place != "Restland" || mainCemeteries[0].Count != 1 {
+		t.Errorf("main cemetery index changed by a branch delete: got %+v", mainCemeteries)
 	}
 }

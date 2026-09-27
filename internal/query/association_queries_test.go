@@ -83,7 +83,7 @@ func TestGetAssociation(t *testing.T) {
 	person1ID, person2ID, _, assoc1ID, _ := setupAssociationTestData(t, cmdHandler, ctx)
 
 	// Get association
-	assoc, err := queryService.GetAssociation(ctx, assoc1ID)
+	assoc, err := queryService.GetAssociation(ctx, domain.MainBranchID, assoc1ID)
 	if err != nil {
 		t.Fatalf("GetAssociation failed: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestGetAssociation_NotFound(t *testing.T) {
 	queryService := query.NewAssociationService(readStore)
 	ctx := context.Background()
 
-	assoc, err := queryService.GetAssociation(ctx, uuid.New())
+	assoc, err := queryService.GetAssociation(ctx, domain.MainBranchID, uuid.New())
 	if err != nil {
 		t.Fatalf("GetAssociation should not error, got: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestListAssociationsForPerson(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			associations, err := queryService.ListAssociationsForPerson(ctx, tt.personID)
+			associations, err := queryService.ListAssociationsForPerson(ctx, domain.MainBranchID, tt.personID)
 			if err != nil {
 				t.Fatalf("ListAssociationsForPerson failed: %v", err)
 			}
@@ -321,7 +321,7 @@ func TestListAssociationsForPerson_BothDirections(t *testing.T) {
 	})
 
 	// Alice should have 2 associations: one where she is PersonID, one where she is AssociateID
-	associations, err := queryService.ListAssociationsForPerson(ctx, person1Result.ID)
+	associations, err := queryService.ListAssociationsForPerson(ctx, domain.MainBranchID, person1Result.ID)
 	if err != nil {
 		t.Fatalf("ListAssociationsForPerson failed: %v", err)
 	}
@@ -331,13 +331,13 @@ func TestListAssociationsForPerson_BothDirections(t *testing.T) {
 	}
 
 	// Bob should have 1 association (as associate)
-	bobAssocs, _ := queryService.ListAssociationsForPerson(ctx, person2Result.ID)
+	bobAssocs, _ := queryService.ListAssociationsForPerson(ctx, domain.MainBranchID, person2Result.ID)
 	if len(bobAssocs) != 1 {
 		t.Errorf("Expected Bob to have 1 association, got %d", len(bobAssocs))
 	}
 
 	// Carol should have 1 association (as person)
-	carolAssocs, _ := queryService.ListAssociationsForPerson(ctx, person3Result.ID)
+	carolAssocs, _ := queryService.ListAssociationsForPerson(ctx, domain.MainBranchID, person3Result.ID)
 	if len(carolAssocs) != 1 {
 		t.Errorf("Expected Carol to have 1 association, got %d", len(carolAssocs))
 	}

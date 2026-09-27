@@ -102,7 +102,7 @@ func TestReadModelStore_MigratesLegacyEventsTable(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	got, err := store.GetEvent(ctx, eventID)
+	got, err := store.GetEvent(ctx, domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("get migrated event: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestReadModelStore_MigratesWithinCurrentSchemaOnly(t *testing.T) {
 		t.Errorf("expected primary key life_events_pkey, got %s", pk)
 	}
 
-	got, err := store.GetEvent(context.Background(), eventID)
+	got, err := store.GetEvent(context.Background(), domain.MainBranchID, eventID)
 	if err != nil {
 		t.Fatalf("get migrated event: %v", err)
 	}
@@ -430,7 +430,7 @@ func TestStores_ShareSingleDatabase(t *testing.T) {
 				Version:   1,
 				CreatedAt: time.Now().Truncate(time.Microsecond),
 			}
-			if err := readModel.SaveEvent(ctx, lifeEvent); err != nil {
+			if err := readModel.SaveEvent(ctx, domain.MainBranchID, lifeEvent); err != nil {
 				t.Fatalf("save life event: %v", err)
 			}
 
@@ -442,7 +442,7 @@ func TestStores_ShareSingleDatabase(t *testing.T) {
 				t.Errorf("event log round-trip failed: %+v", stream)
 			}
 
-			got, err := readModel.GetEvent(ctx, lifeEvent.ID)
+			got, err := readModel.GetEvent(ctx, domain.MainBranchID, lifeEvent.ID)
 			if err != nil {
 				t.Fatalf("get life event: %v", err)
 			}

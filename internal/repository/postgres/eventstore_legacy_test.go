@@ -141,7 +141,7 @@ func TestEventStore_AfterReadModelMigratesLegacyTable(t *testing.T) {
 	ctx := context.Background()
 
 	// The migrated life event survived and is still queryable.
-	got, err := readModel.GetEvent(ctx, lifeEventID)
+	got, err := readModel.GetEvent(ctx, domain.MainBranchID, lifeEventID)
 	if err != nil {
 		t.Fatalf("get migrated life event: %v", err)
 	}

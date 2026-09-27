@@ -207,6 +207,7 @@ type mainAggregateSnapshot struct {
 	byPlaceN    int
 	byCemetery  []repository.PersonReadModel
 	byCemeteryN int
+	cemeteries  []repository.CemeteryEntry
 	brickWalls  []repository.BrickWallEntry
 }
 
@@ -224,10 +225,11 @@ type mainAggregateSnapshot struct {
 //     was before the branch rows existed -- the leak regression, and the point of #756;
 //  2. the branch-scoped reads show the shadow's surname and place, not main's, and omit
 //     the tombstoned person entirely;
-//  3. GetPersonsByCemetery -- the one aggregate where a branch-scoped `persons` side
-//     joins a mainline `life_events` side -- resolves the person through the overlay:
-//     with real burial rows on both sides of the join, the branch sees the shadow's
-//     surname and not the mainline spelling, and the tombstoned person disappears;
+//  3. GetPersonsByCemetery -- where the `persons` overlay joins the `life_events`
+//     overlay (#757) -- resolves the person through the overlay: with real burial rows
+//     on both sides of the join, the branch sees the shadow's surname and not the
+//     mainline spelling, and the tombstoned person disappears, as they do from the
+//     branch's cemetery index (their burial was tombstoned by the DeletePerson cascade);
 //  4. SetBrickWall / ResolveBrickWall are main-pinned: they leave the shadow alone.
 //
 // Deliberately NOT asserted: GetPlaceHierarchy below the top level. The memory backend
@@ -265,11 +267,11 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 			t.Fatalf("seed main person %s: %v", p.Surname, err)
 		}
 	}
-	// Both are buried in the same cemetery. `life_events` has no branch_id yet
-	// (sub-issue B of #676, #757), so these rows are the permanently-mainline half of
-	// the GetPersonsByCemetery join and give it a non-empty source to resolve against.
+	// Both are buried in the same cemetery, on main. The branch never edits these
+	// rows directly; the tombstone in step 3 hides the second one through the
+	// DeletePerson cascade (#757).
 	for _, p := range []*repository.PersonReadModel{shadowed, tombstoned} {
-		if err := readStore.SaveEvent(ctx, &repository.EventReadModel{
+		if err := readStore.SaveEvent(ctx, domain.MainBranchID, &repository.EventReadModel{
 			ID:        uuid.New(),
 			OwnerType: "person",
 			OwnerID:   p.ID,
@@ -318,6 +320,9 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		}
 		if s.byCemetery, s.byCemeteryN, err = readStore.GetPersonsByCemetery(ctx, cemetery, mainOpts); err != nil {
 			t.Fatalf("%s: main GetPersonsByCemetery: %v", label, err)
+		}
+		if s.cemeteries, err = readStore.GetCemeteryIndex(ctx, domain.MainBranchID); err != nil {
+			t.Fatalf("%s: main GetCemeteryIndex: %v", label, err)
 		}
 		if s.brickWalls, err = readStore.GetBrickWalls(ctx, true); err != nil {
 			t.Fatalf("%s: main GetBrickWalls: %v", label, err)
@@ -397,6 +402,7 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		{"GetPersonsByPlace total", before.byPlaceN, after.byPlaceN},
 		{"GetPersonsByCemetery rows", before.byCemetery, after.byCemetery},
 		{"GetPersonsByCemetery total", before.byCemeteryN, after.byCemeteryN},
+		{"GetCemeteryIndex", before.cemeteries, after.cemeteries},
 		{"GetBrickWalls", before.brickWalls, after.brickWalls},
 	} {
 		if !reflect.DeepEqual(c.before, c.after) {
@@ -478,11 +484,21 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 		}
 	}
 
-	// --- Step 6: the cross-scope join. GetPersonsByCemetery reads `life_events` on
-	// main (no branch_id there yet, #757) but resolves the PERSON through the overlay.
-	// Under branch scope the branch must therefore see the shadow's surname -- showing
-	// the mainline spelling here is the regression a user would notice -- and must not
-	// see the person the branch tombstoned. ---
+	// --- Step 6: the cemetery pair. GetPersonsByCemetery joins the `life_events`
+	// overlay to the `persons` overlay (#757). Under branch scope the branch must see
+	// the shadow's surname -- showing the mainline spelling here is the regression a
+	// user would notice -- and must not see the person the branch tombstoned; the
+	// cemetery index must count the same single person. ---
+	if want, got := []repository.CemeteryEntry{{Place: cemetery, Count: 2}}, before.cemeteries; !reflect.DeepEqual(got, want) {
+		t.Errorf("main GetCemeteryIndex = %+v, want %+v", got, want)
+	}
+	branchIndex, err := readStore.GetCemeteryIndex(ctx, branchID)
+	if err != nil {
+		t.Fatalf("branch GetCemeteryIndex: %v", err)
+	}
+	if want := []repository.CemeteryEntry{{Place: cemetery, Count: 1}}; !reflect.DeepEqual(branchIndex, want) {
+		t.Errorf("branch GetCemeteryIndex = %+v, want %+v (the tombstoned person's burial must not count)", branchIndex, want)
+	}
 	branchCemetery, branchCemeteryN, err := readStore.GetPersonsByCemetery(ctx, cemetery, branchOpts)
 	if err != nil {
 		t.Fatalf("branch GetPersonsByCemetery: %v", err)
@@ -555,5 +571,303 @@ func runBranchAggregateScenario(t *testing.T, readStore repository.ReadModelStor
 	}
 	if shadowPerson.BrickWallResolvedAt != nil {
 		t.Errorf("ResolveBrickWall wrote the branch shadow row: resolved_at = %v", shadowPerson.BrickWallResolvedAt)
+	}
+}
+
+// TestBranchScenario_FactOverlay drives the ADR-005 copy-on-write overlay through
+// the person/family fact tables (sub-issue B of #676, #757) — life events,
+// attributes, associations and the cemetery index — against the postgres backend. The
+// scenario body (runBranchFactScenario) is an identical copy of the other
+// backends' so all three prove the same behavior (DB-001). Fixtures use neutral
+// placeholder names and invented places only (public repo — no real PII).
+func TestBranchScenario_FactOverlay(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	readStore, err := pgstore.NewReadModelStore(db)
+	if err != nil {
+		t.Fatalf("create read model store: %v", err)
+	}
+	branchStore, err := pgstore.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("create branch store: %v", err)
+	}
+	runBranchFactScenario(t, readStore, branchStore)
+}
+
+// runBranchFactScenario is the backend-agnostic person/family fact scenario for
+// sub-issue B of #676 (#757). Each backend package carries an identical copy
+// (there is no shared test harness in this repo); keeping the assertions
+// byte-identical is the DB-001 parity guarantee.
+//
+// Shape: two persons and their family on main, each fact table seeded through the
+// projector. A branch then edits, deletes and adds a row of each, re-owns an
+// attribute, and deletes one person and the family. Every step asserts that main
+// is untouched, that the branch resolves shadow-over-main with tombstones
+// honoured (single-row, per-owner and paged reads, and the cemetery index), and,
+// last, that deleting the branch purges its fact rows so the branch id resolves
+// to main again.
+func runBranchFactScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
+	t.Helper()
+	ctx := context.Background()
+	projector := repository.NewProjector(readStore, branchStore)
+	main := domain.MainBranchID
+	mainOpts := repository.ListOptions{Limit: 100, BranchID: main}
+
+	project := func(label string, branchID domain.BranchID, events ...domain.Event) {
+		t.Helper()
+		for i, ev := range events {
+			if err := projector.Project(ctx, ev, int64(i+2), branchID); err != nil {
+				t.Fatalf("%s: project %s: %v", label, ev.EventType(), err)
+			}
+		}
+	}
+
+	// --- Step 1: seed main. ---
+	subject := domain.NewPerson("Alex", "Original")
+	partner := domain.NewPerson("Sam", "Steady")
+	family := domain.NewFamilyWithPartners(&subject.ID, &partner.ID)
+	birth := domain.NewLifeEvent(subject.ID, domain.FactPersonBirth)
+	birth.Place = "Northland"
+	burial := domain.NewLifeEvent(subject.ID, domain.FactPersonBurial)
+	burial.Place = "Restland Cemetery"
+	marriage := domain.NewFamilyLifeEvent(family.ID, domain.FactFamilyMarriage)
+	marriage.Place = "Chapel"
+	occupation := domain.NewAttribute(subject.ID, domain.FactPersonOccupation, "Farmer")
+	witness := domain.NewAssociation(subject.ID, partner.ID, "witness")
+	project("seed main", main,
+		domain.NewPersonCreated(subject),
+		domain.NewPersonCreated(partner),
+		domain.NewFamilyCreated(family),
+		domain.NewLifeEventCreatedFromModel(birth),
+		domain.NewLifeEventCreatedFromModel(burial),
+		domain.NewLifeEventCreatedFromModel(marriage),
+		domain.NewAttributeCreatedFromModel(occupation),
+		domain.NewAssociationCreated(witness),
+	)
+
+	branch, err := domain.NewBranch("fact-scope", "person and family facts must fork", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create branch", main, domain.NewBranchCreated(branch))
+	branchID := domain.BranchID(branch.ID)
+	branchOpts := repository.ListOptions{Limit: 100, BranchID: branchID}
+
+	// mainView asserts main's facts are exactly what step 1 seeded.
+	mainView := func(label string) {
+		t.Helper()
+		if got, err := readStore.GetEvent(ctx, main, birth.ID); err != nil || got == nil || got.Place != "Northland" {
+			t.Errorf("%s: main GetEvent(birth) = %+v (err=%v), want place Northland", label, got, err)
+		}
+		if got, err := readStore.ListEventsForPerson(ctx, main, subject.ID); err != nil || len(got) != 2 {
+			t.Errorf("%s: main ListEventsForPerson(subject) = %d rows (err=%v), want 2", label, len(got), err)
+		}
+		if got, err := readStore.ListEventsForPerson(ctx, main, partner.ID); err != nil || len(got) != 0 {
+			t.Errorf("%s: main ListEventsForPerson(partner) = %d rows (err=%v), want 0", label, len(got), err)
+		}
+		if got, err := readStore.ListEventsForFamily(ctx, main, family.ID); err != nil || len(got) != 1 {
+			t.Errorf("%s: main ListEventsForFamily = %d rows (err=%v), want 1", label, len(got), err)
+		}
+		if _, total, err := readStore.ListEvents(ctx, mainOpts); err != nil || total != 3 {
+			t.Errorf("%s: main ListEvents total = %d (err=%v), want 3", label, total, err)
+		}
+		if got, err := readStore.GetAttribute(ctx, main, occupation.ID); err != nil || got == nil || got.Value != "Farmer" || got.PersonID != subject.ID {
+			t.Errorf("%s: main GetAttribute = %+v (err=%v), want the subject's Farmer", label, got, err)
+		}
+		if got, err := readStore.ListAttributesForPerson(ctx, main, partner.ID); err != nil || len(got) != 0 {
+			t.Errorf("%s: main ListAttributesForPerson(partner) = %d rows (err=%v), want 0", label, len(got), err)
+		}
+		if _, total, err := readStore.ListAttributes(ctx, mainOpts); err != nil || total != 1 {
+			t.Errorf("%s: main ListAttributes total = %d (err=%v), want 1", label, total, err)
+		}
+		if got, err := readStore.GetAssociation(ctx, main, witness.ID); err != nil || got == nil || got.Role != "witness" {
+			t.Errorf("%s: main GetAssociation = %+v (err=%v), want role witness", label, got, err)
+		}
+		if got, err := readStore.ListAssociationsForPerson(ctx, main, subject.ID); err != nil || len(got) != 1 {
+			t.Errorf("%s: main ListAssociationsForPerson(subject) = %d rows (err=%v), want 1", label, len(got), err)
+		}
+		if _, total, err := readStore.ListAssociations(ctx, mainOpts); err != nil || total != 1 {
+			t.Errorf("%s: main ListAssociations total = %d (err=%v), want 1", label, total, err)
+		}
+		want := []repository.CemeteryEntry{{Place: "Restland Cemetery", Count: 1}}
+		if got, err := readStore.GetCemeteryIndex(ctx, main); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: main GetCemeteryIndex = %+v (err=%v), want %+v", label, got, err, want)
+		}
+	}
+	mainView("baseline")
+
+	// Before the branch writes anything it resolves entirely to main.
+	if got, err := readStore.GetEvent(ctx, branchID, birth.ID); err != nil || got == nil || got.Place != "Northland" {
+		t.Fatalf("fresh branch GetEvent(birth) = %+v (err=%v), want main's row", got, err)
+	}
+
+	// --- Step 2: the branch edits, deletes and adds one row of each fact table. ---
+	baptism := domain.NewLifeEvent(partner.ID, domain.FactPersonBaptism)
+	baptism.Place = "Font"
+	trade := domain.NewAttribute(partner.ID, domain.FactPersonOccupation, "Smith")
+	mentor := domain.NewAssociation(partner.ID, subject.ID, "mentor")
+	project("branch edits", branchID,
+		domain.NewLifeEventUpdated(birth.ID, map[string]any{"place": "Westland"}),
+		domain.NewLifeEventDeleted(burial.ID, "branch hypothesis"),
+		domain.NewLifeEventCreatedFromModel(baptism),
+		domain.NewAttributeUpdated(occupation.ID, map[string]any{"value": "Miller"}),
+		domain.NewAttributeCreatedFromModel(trade),
+		domain.NewAssociationUpdated(witness.ID, map[string]any{"role": "godparent"}),
+		domain.NewAssociationCreated(mentor),
+	)
+	mainView("after branch edits")
+
+	// Life events: shadow wins, tombstone hides, branch-only row appears, the
+	// untouched family event falls back to main.
+	if got, err := readStore.GetEvent(ctx, branchID, birth.ID); err != nil || got == nil || got.Place != "Westland" {
+		t.Errorf("branch GetEvent(birth) = %+v (err=%v), want the shadow's Westland", got, err)
+	}
+	if got, err := readStore.GetEvent(ctx, branchID, burial.ID); err != nil || got != nil {
+		t.Errorf("branch GetEvent(burial) = %+v (err=%v), want tombstoned", got, err)
+	}
+	if got, err := readStore.GetEvent(ctx, main, baptism.ID); err != nil || got != nil {
+		t.Errorf("main GetEvent(branch-only baptism) = %+v (err=%v), want absent", got, err)
+	}
+	if got, err := readStore.ListEventsForPerson(ctx, branchID, subject.ID); err != nil || len(got) != 1 || got[0].ID != birth.ID || got[0].Place != "Westland" {
+		t.Errorf("branch ListEventsForPerson(subject) = %+v (err=%v), want only the Westland birth", got, err)
+	}
+	if got, err := readStore.ListEventsForPerson(ctx, branchID, partner.ID); err != nil || len(got) != 1 || got[0].ID != baptism.ID {
+		t.Errorf("branch ListEventsForPerson(partner) = %+v (err=%v), want the branch-only baptism", got, err)
+	}
+	if got, err := readStore.ListEventsForFamily(ctx, branchID, family.ID); err != nil || len(got) != 1 || got[0].ID != marriage.ID {
+		t.Errorf("branch ListEventsForFamily = %+v (err=%v), want main's marriage via fallback", got, err)
+	}
+	if rows, total, err := readStore.ListEvents(ctx, branchOpts); err != nil || total != 3 || len(rows) != 3 {
+		t.Errorf("branch ListEvents = total %d, %d rows (err=%v), want 3 (shadowed birth, marriage, baptism)", total, len(rows), err)
+	}
+	if got, err := readStore.GetCemeteryIndex(ctx, branchID); err != nil || len(got) != 0 {
+		t.Errorf("branch GetCemeteryIndex = %+v (err=%v), want empty (the burial is tombstoned)", got, err)
+	}
+	// Paging walks the branch view without repeating or dropping a row.
+	page1, _, err := readStore.ListEvents(ctx, repository.ListOptions{Limit: 2, BranchID: branchID})
+	if err != nil {
+		t.Fatalf("branch ListEvents page 1: %v", err)
+	}
+	page2, _, err := readStore.ListEvents(ctx, repository.ListOptions{Limit: 2, Offset: 2, BranchID: branchID})
+	if err != nil {
+		t.Fatalf("branch ListEvents page 2: %v", err)
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, e := range append(page1, page2...) {
+		seen[e.ID] = true
+	}
+	if len(page1) != 2 || len(page2) != 1 || len(seen) != 3 {
+		t.Errorf("branch ListEvents paging = %d + %d rows, %d distinct, want 2 + 1 covering 3", len(page1), len(page2), len(seen))
+	}
+
+	// Attributes.
+	if got, err := readStore.GetAttribute(ctx, branchID, occupation.ID); err != nil || got == nil || got.Value != "Miller" {
+		t.Errorf("branch GetAttribute(occupation) = %+v (err=%v), want the shadow's Miller", got, err)
+	}
+	if got, err := readStore.ListAttributesForPerson(ctx, branchID, partner.ID); err != nil || len(got) != 1 || got[0].ID != trade.ID {
+		t.Errorf("branch ListAttributesForPerson(partner) = %+v (err=%v), want the branch-only Smith", got, err)
+	}
+	if _, total, err := readStore.ListAttributes(ctx, branchOpts); err != nil || total != 2 {
+		t.Errorf("branch ListAttributes total = %d (err=%v), want 2", total, err)
+	}
+
+	// Associations: the subject appears in both, as subject and as associate.
+	if got, err := readStore.GetAssociation(ctx, branchID, witness.ID); err != nil || got == nil || got.Role != "godparent" {
+		t.Errorf("branch GetAssociation(witness) = %+v (err=%v), want the shadow's godparent", got, err)
+	}
+	if got, err := readStore.ListAssociationsForPerson(ctx, branchID, subject.ID); err != nil || len(got) != 2 {
+		t.Errorf("branch ListAssociationsForPerson(subject) = %d rows (err=%v), want 2", len(got), err)
+	}
+	if rows, total, err := readStore.ListAssociations(ctx, branchOpts); err != nil || total != 2 || len(rows) != 2 {
+		t.Errorf("branch ListAssociations = total %d, %d rows (err=%v), want 2", total, len(rows), err)
+	}
+
+	// --- Step 3: re-own an attribute on the branch (the shape PersonMerged
+	// writes). The per-owner list must follow the WINNING row: the subject loses it
+	// on the branch while main still lists it under the subject. ---
+	moved, err := readStore.GetAttribute(ctx, branchID, occupation.ID)
+	if err != nil || moved == nil {
+		t.Fatalf("branch GetAttribute before re-own: %+v (err=%v)", moved, err)
+	}
+	moved.PersonID = partner.ID
+	if err := readStore.SaveAttribute(ctx, branchID, moved); err != nil {
+		t.Fatalf("branch SaveAttribute re-own: %v", err)
+	}
+	if got, err := readStore.ListAttributesForPerson(ctx, branchID, subject.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch ListAttributesForPerson(subject) after re-own = %+v (err=%v), want none", got, err)
+	}
+	if got, err := readStore.ListAttributesForPerson(ctx, branchID, partner.ID); err != nil || len(got) != 2 {
+		t.Errorf("branch ListAttributesForPerson(partner) after re-own = %d rows (err=%v), want 2", len(got), err)
+	}
+	mainView("after re-own")
+
+	// A save after a delete clears the tombstone.
+	mainBurial, err := readStore.GetEvent(ctx, main, burial.ID)
+	if err != nil || mainBurial == nil {
+		t.Fatalf("main GetEvent(burial): %+v (err=%v)", mainBurial, err)
+	}
+	if err := readStore.SaveEvent(ctx, branchID, mainBurial); err != nil {
+		t.Fatalf("branch SaveEvent over tombstone: %v", err)
+	}
+	if got, err := readStore.GetEvent(ctx, branchID, burial.ID); err != nil || got == nil {
+		t.Errorf("branch GetEvent(burial) after re-save = %+v (err=%v), want it back", got, err)
+	}
+	want := []repository.CemeteryEntry{{Place: "Restland Cemetery", Count: 1}}
+	if got, err := readStore.GetCemeteryIndex(ctx, branchID); err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("branch GetCemeteryIndex after re-save = %+v (err=%v), want %+v", got, err, want)
+	}
+
+	// --- Step 4: cascade. Deleting the partner and the family on the branch
+	// tombstones every fact they own or appear in, on the branch only. ---
+	project("branch deletes", branchID,
+		domain.NewPersonDeleted(partner.ID, "branch hypothesis"),
+		domain.NewFamilyDeleted(family.ID, "branch hypothesis"),
+	)
+	mainView("after branch deletes")
+	if got, err := readStore.ListEventsForPerson(ctx, branchID, partner.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch ListEventsForPerson(deleted partner) = %+v (err=%v), want none", got, err)
+	}
+	if got, err := readStore.ListAttributesForPerson(ctx, branchID, partner.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch ListAttributesForPerson(deleted partner) = %+v (err=%v), want none (including the re-owned one)", got, err)
+	}
+	if got, err := readStore.ListAssociationsForPerson(ctx, branchID, subject.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch ListAssociationsForPerson(subject) after partner delete = %+v (err=%v), want none", got, err)
+	}
+	if got, err := readStore.ListEventsForFamily(ctx, branchID, family.ID); err != nil || len(got) != 0 {
+		t.Errorf("branch ListEventsForFamily(deleted family) = %+v (err=%v), want none", got, err)
+	}
+	if got, err := readStore.ListEventsForPerson(ctx, branchID, subject.ID); err != nil || len(got) != 2 {
+		t.Errorf("branch ListEventsForPerson(subject) after partner delete = %d rows (err=%v), want 2 (untouched)", len(got), err)
+	}
+
+	// --- Step 5: deleting the branch purges its fact rows; the branch id then
+	// resolves to main exactly. ---
+	project("delete branch", main, domain.NewBranchDeleted(branch.ID))
+	mainView("after purge")
+	if got, err := readStore.GetEvent(ctx, branchID, birth.ID); err != nil || got == nil || got.Place != "Northland" {
+		t.Errorf("purged branch GetEvent(birth) = %+v (err=%v), want main's Northland", got, err)
+	}
+	if got, err := readStore.GetEvent(ctx, branchID, baptism.ID); err != nil || got != nil {
+		t.Errorf("purged branch GetEvent(baptism) = %+v (err=%v), want absent", got, err)
+	}
+	if _, total, err := readStore.ListEvents(ctx, branchOpts); err != nil || total != 3 {
+		t.Errorf("purged branch ListEvents total = %d (err=%v), want main's 3", total, err)
+	}
+	if got, err := readStore.GetAttribute(ctx, branchID, occupation.ID); err != nil || got == nil || got.Value != "Farmer" {
+		t.Errorf("purged branch GetAttribute = %+v (err=%v), want main's Farmer", got, err)
+	}
+	if _, total, err := readStore.ListAttributes(ctx, branchOpts); err != nil || total != 1 {
+		t.Errorf("purged branch ListAttributes total = %d (err=%v), want main's 1", total, err)
+	}
+	if got, err := readStore.GetAssociation(ctx, branchID, witness.ID); err != nil || got == nil || got.Role != "witness" {
+		t.Errorf("purged branch GetAssociation = %+v (err=%v), want main's witness", got, err)
+	}
+	if _, total, err := readStore.ListAssociations(ctx, branchOpts); err != nil || total != 1 {
+		t.Errorf("purged branch ListAssociations total = %d (err=%v), want main's 1", total, err)
 	}
 }

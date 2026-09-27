@@ -56,8 +56,10 @@ func (h *Handler) CreateAssociation(ctx context.Context, input CreateAssociation
 		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 
-	// Verify that PersonID and AssociateID exist
-	person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.PersonID)
+	// Verify that PersonID and AssociateID exist on the handler's branch scope, so
+	// a branch can associate a person that exists only on that branch (and cannot
+	// associate one the branch deleted).
+	person, err := h.readStore.GetPerson(ctx, h.branchID, input.PersonID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify person: %w", err)
 	}
@@ -65,7 +67,7 @@ func (h *Handler) CreateAssociation(ctx context.Context, input CreateAssociation
 		return nil, fmt.Errorf("%w: person %s not found", ErrInvalidInput, input.PersonID)
 	}
 
-	associate, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.AssociateID)
+	associate, err := h.readStore.GetPerson(ctx, h.branchID, input.AssociateID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify associate: %w", err)
 	}
@@ -106,7 +108,7 @@ type UpdateAssociationResult struct {
 // UpdateAssociation updates an existing association record.
 func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociationInput) (*UpdateAssociationResult, error) {
 	// Get current association from read model
-	current, err := h.readStore.GetAssociation(ctx, input.ID)
+	current, err := h.readStore.GetAssociation(ctx, h.branchID, input.ID)
 	if err != nil {
 		return nil, fmt.Errorf("getting association: %w", err)
 	}
@@ -172,7 +174,7 @@ func (h *Handler) UpdateAssociation(ctx context.Context, input UpdateAssociation
 // DeleteAssociation deletes an association record.
 func (h *Handler) DeleteAssociation(ctx context.Context, id uuid.UUID, version int64, reason string) error {
 	// Get current association from read model
-	current, err := h.readStore.GetAssociation(ctx, id)
+	current, err := h.readStore.GetAssociation(ctx, h.branchID, id)
 	if err != nil {
 		return fmt.Errorf("getting association: %w", err)
 	}
