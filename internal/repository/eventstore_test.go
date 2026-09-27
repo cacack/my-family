@@ -537,7 +537,7 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 		{
 			name: "SnapshotDeleted",
 			event: func() domain.Event {
-				return domain.NewSnapshotDeleted(snapshotDeleteID)
+				return domain.NewSnapshotDeleted(snapshotDeleteID, domain.MainBranchID)
 			}(),
 			eventType: "SnapshotDeleted",
 			validate: func(t *testing.T, decoded domain.Event) {

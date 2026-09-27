@@ -2620,9 +2620,15 @@ paths:
   /snapshots:
     get:
       operationId: listSnapshots
-      summary: List all snapshots
-      description: Returns all research milestone snapshots ordered by creation date (newest first)
+      summary: List the snapshots of the mainline or a branch
+      description: |
+        Returns the research milestone snapshots marked on the requested scope,
+        newest first. A snapshot marks `(branch_id, position)` (ADR-005): the
+        mainline's list holds mainline snapshots only, and a branch's list holds
+        that branch's snapshots only.
       tags: [snapshots]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: List of snapshots
@@ -2630,12 +2636,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SnapshotList'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
     post:
       operationId: createSnapshot
       summary: Create a new snapshot
-      description: Creates a snapshot capturing the current position in the event store
+      description: |
+        Creates a snapshot marking the current position of the event log in the
+        requested scope's view: on the mainline by default, or on the branch
+        named by `?branch=`.
       tags: [snapshots]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -2654,6 +2667,10 @@ paths:
                 $ref: '#/components/schemas/Snapshot'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /snapshots/{id}:
     parameters:
@@ -2662,7 +2679,10 @@ paths:
     get:
       operationId: getSnapshot
       summary: Get a snapshot by ID
+      description: A snapshot marked on another branch than the requested scope is not found.
       tags: [snapshots]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Snapshot details
@@ -2676,13 +2696,53 @@ paths:
     delete:
       operationId: deleteSnapshot
       summary: Delete a snapshot
-      description: Removes the snapshot record (events in the store remain untouched)
+      description: |
+        Removes the snapshot record (events in the store remain untouched). A
+        snapshot marked on another branch than the requested scope is not found.
       tags: [snapshots]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '204':
           description: Snapshot deleted
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /snapshots/{id}/compare-current:
+    parameters:
+      - $ref: '#/components/parameters/snapshotId'
+
+    get:
+      operationId: compareSnapshotToCurrent
+      summary: Compare a snapshot to the current state
+      description: |
+        Returns the changes recorded between the snapshot's position and the
+        current head of the event log ("what changed since this milestone?"),
+        in the requested scope's view: the mainline's own changes, or on a
+        branch the branch's view (its own changes plus the mainline changes it
+        inherits, each labelled with `origin` — ADR-005). The snapshot must be
+        marked on the requested scope; one marked on another branch is refused
+        with 409 `snapshot_branch_mismatch`.
+      tags: [snapshots]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
+      responses:
+        '200':
+          description: Comparison result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotCurrentComparisonResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The snapshot is marked on another branch (`snapshot_branch_mismatch`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /snapshots/{id1}/compare/{id2}:
     parameters:
@@ -2704,8 +2764,17 @@ paths:
     get:
       operationId: compareSnapshots
       summary: Compare two snapshots
-      description: Returns the list of changes (events) between two snapshot positions
+      description: |
+        Returns the list of changes (events) between two snapshot positions, in
+        the requested scope's view: the mainline's own changes, or on a branch
+        the branch's view (its own changes plus the mainline changes it
+        inherits, each labelled with `origin` — ADR-005). Both snapshots must be
+        marked on the requested scope; comparing snapshots from different
+        branches is refused with 409 `snapshot_branch_mismatch`. To compare a
+        snapshot with the current state, use `/snapshots/{id}/compare-current`.
       tags: [snapshots]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       responses:
         '200':
           description: Comparison result
@@ -2715,6 +2784,12 @@ paths:
                 $ref: '#/components/schemas/SnapshotComparisonResult'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: The snapshots are marked on different branches (`snapshot_branch_mismatch`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   # Branch endpoints (ADR-005)
 
@@ -5539,9 +5614,10 @@ components:
           type: string
           enum: [main, branch]
           description: |
-            Set only on branch-scoped entity history (`?branch=`): `branch` for
-            the branch's own events, `main` for the mainline events its view
-            inherits (ADR-005). Absent everywhere else.
+            Set only on branch-scoped entity history and branch-scoped snapshot
+            comparisons (`?branch=`): `branch` for the branch's own events,
+            `main` for the mainline events its view inherits (ADR-005). Absent
+            everywhere else.
 
     FieldChange:
       type: object
@@ -6928,6 +7004,12 @@ components:
           format: int64
           description: Event store position captured by this snapshot
           example: 42
+        branch_id:
+          type: string
+          format: uuid
+          description: |
+            The research branch whose view this snapshot marks. Absent for a
+            mainline snapshot.
         created_at:
           type: string
           format: date-time
@@ -6981,6 +7063,30 @@ components:
         older_first:
           type: boolean
           description: True if snapshot1 is the older (lower position) snapshot
+
+    SnapshotCurrentComparisonResult:
+      type: object
+      required: [snapshot, head_position, changes, total_count, has_more]
+      properties:
+        snapshot:
+          $ref: '#/components/schemas/Snapshot'
+        head_position:
+          type: integer
+          format: int64
+          description: |
+            The event log head the comparison ran to — the position a snapshot
+            taken now would mark.
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChangeEntry'
+          description: Changes recorded after the snapshot, oldest first
+        total_count:
+          type: integer
+          description: Number of changes listed
+        has_more:
+          type: boolean
+          description: Whether there are more changes beyond the limit
 
     Branch:
       type: object

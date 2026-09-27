@@ -35,8 +35,6 @@
 	 * - `/quality` — validation issues and duplicate pairs
 	 * - `/search` — advanced search
 	 * - `/history` — the global change feed
-	 * - `/snapshots` and `/snapshots/compare` — a snapshot marks a mainline
-	 *   position and its comparison lists mainline events only
 	 * - `/ahnentafel/{id}` — the ancestor report
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
 	 * - `/repositories` (list and detail, including its edit form) —
@@ -56,7 +54,9 @@
 	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
 	 * and per-place list), `/browse/cemeteries` (index and per-cemetery list,
 	 * since #757), `/map`, `/sources` (list and detail, since #758) and
-	 * `/evidence` with its research-log and proof-summary pages (since #760). The
+	 * `/evidence` with its research-log and proof-summary pages (since #760), and
+	 * `/snapshots` with `/snapshots/compare` (since #839: a snapshot marks a
+	 * position in one branch's view, and its comparison reads that view). The
 	 * media gallery on person detail pages follows the branch too (since #759),
 	 * and so does the evidence panel (since #760).
 	 *

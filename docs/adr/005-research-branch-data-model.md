@@ -295,7 +295,8 @@ Snapshots and branch base points are the same primitive — a named pointer to a
 — so they compose cleanly:
 
 - A snapshot taken *on a branch* points to `(branch_id, position)`; on `main` it points to
-  `(main, position)`, i.e. today's behavior.
+  `(main, position)`, i.e. today's behavior. (Delivered by #839 — see *Implementation Note —
+  branch-scoped snapshots and compare to now* below.)
 - **Rollback** to a snapshot is a read/compare operation over positions and, under the overlay
   model, is naturally scoped by `branch_id`. *Entity* rollback (restore points and
   `Rollback*`) is nevertheless kept **mainline-only** — see *Implementation Note — entity history
@@ -325,12 +326,12 @@ The recommendation was adopted. Snapshots are now event-sourced, exactly like th
   types: they are audit records on the log, not genealogical changes, and a snapshot comparison
   reads a range that contains one of the two markers.
 
-**Still open — branch-scoped snapshots.** The bullet above ("a snapshot taken *on a branch* points
-to `(branch_id, position)`") is **not** implemented: the `snapshots` table has no `branch_id`
-column. Rather than record a branch snapshot as if it were a mainline one, both commands refuse on
-a branch-scoped handler with `ErrSnapshotNotBranchScoped`. Closing that gap means giving the
-snapshot registry the same `branch_id` overlay treatment #676 is fanning out to the other
-read-model entities.
+**Branch-scoped snapshots — delivered by #839.** Until #839 the bullet above ("a snapshot taken *on
+a branch* points to `(branch_id, position)`") was not implemented: the `snapshots` table had no
+`branch_id` column, and both commands refused on a branch-scoped handler with
+`ErrSnapshotNotBranchScoped` rather than record a branch snapshot as a mainline one. The registry
+now carries the branch and that refusal is gone; see *Implementation Note — branch-scoped
+snapshots and compare to now*.
 
 **Still open — snapshots created before #624.** Rows written by the old direct-store path carry no
 `SnapshotCreated` event, so "the registry rebuilds from the log" holds only for snapshots created
@@ -351,9 +352,9 @@ read-model entity on `main`, and they must not be confused:
   ([#760](https://github.com/cacack/my-family/issues/760)), is delivered, so no #676 entity is
   pending. (Media metadata, [#759](https://github.com/cacack/my-family/issues/759), is delivered
   too; its file bytes are shared by design, not pending — see the implementation note below.)
-  Snapshots are pending, though not as a #676 sub-issue: #624 made them event-sourced, and what
-  remains is giving the registry a `branch_id` (see *Interaction with snapshots and rollback*,
-  "Still open — branch-scoped snapshots").
+  Snapshots were the last pending entity, though not as a #676 sub-issue: #624 made them
+  event-sourced, and #839 gave the registry its `branch_id` (see *Implementation Note —
+  branch-scoped snapshots and compare to now*). Nothing is pending now.
 - **Blocked** — branch scoping is neither scheduled nor ruled out, because a prior question has to
   be answered first. This is brick walls, which wait on an event-sourcing decision of their own
   (below). Snapshots were here until [#624](https://github.com/cacack/my-family/issues/624) made
@@ -406,9 +407,8 @@ stops mutating every branch's shadow row (BR-003) — and left the scoping quest
 used to write straight to the `SnapshotStore`, so `SnapshotCreated` decoded but was never emitted.
 #624 routed creation and deletion through the event pipeline (see *Implementation Note — snapshot
 event model*, above), which unblocks branch scoping: a snapshot now has events a `branch_id` can tag.
-Snapshots therefore moved from blocked to pending, and `docs/INTEGRATION-MATRIX.md` marks their
-Branch column ❌ rather than ⛔. They are still **not** a #676 sub-issue; the remaining work is the
-`(branch_id, position)` registry described in "Still open — branch-scoped snapshots".
+Snapshots therefore moved from blocked to pending, and #839 then delivered the `(branch_id,
+position)` registry, so `docs/INTEGRATION-MATRIX.md` now marks their Branch column ✅.
 
 ## Consequences
 
@@ -1425,6 +1425,84 @@ With the two history reads that is ten more operations carrying `?branch=`, 86 i
 Verified by `TestGetEntityHistoryOn_AllBackends` (`internal/query`, memory/SQLite/PostgreSQL),
 `TestPersonHistory_*`, `TestFamilyHistory_*`, `TestRollback_RefusedOnBranch` (`internal/api`), the
 person and family page tests, and `e2e/branch-entity-pages.spec.ts`.
+
+## Implementation Note — branch-scoped snapshots and compare to now (#839, delivered)
+
+A snapshot is now the pair `(branch_id, position)` this ADR described, and any snapshot can be
+compared with the current state.
+
+**Registry.** The `snapshots` table carries `branch_id` on PostgreSQL and SQLite (and the memory
+store keeps it on the row). Existing databases are migrated in place: PostgreSQL adds the column
+with `ADD COLUMN IF NOT EXISTS … DEFAULT <main>`, SQLite checks `pragma_table_info` and adds it with
+the same default, so every row that predates the column becomes a mainline snapshot — which is what
+it always was. A `(branch_id, created_at)` index serves the per-branch list. `SnapshotStore.List`
+takes the branch; `Get` stays by id and returns the row's branch, so the caller decides what "not
+in this scope" means.
+
+**Commands and events.** `CreateSnapshot` no longer refuses on a branch-scoped handler
+(`ErrSnapshotNotBranchScoped` is removed): it reads the log head, exactly as on the mainline, and
+records it with the handler's branch. `SnapshotCreated` and `SnapshotDeleted` carry `branch_id` in
+their **payload**; an event written before #839 has no such field and decodes to `uuid.Nil`, the
+mainline, so old logs replay unchanged (ES-007). The **envelope stays on the mainline** for a branch
+snapshot too. The registry is not an overlay entity — a snapshot id is unique and has no shadow row
+— and a branch-tagged envelope would put a lifecycle marker into the branch's own event set, which
+merge replay, conflict detection and the branch compare read. That is the same shape as the branch
+lifecycle events: mainline records naming a branch in their payload. `DeleteSnapshot` deletes only a
+snapshot of the handler's branch; one from another scope is "not found", as the scoped list and get
+say.
+
+**What a comparison reads.** A comparison reads the requesting scope's view of the log in the
+position range `(older, newer]`:
+
+- **On the mainline**, the mainline's own events (unchanged). Research branches' deltas share the
+  log but are not the mainline's history.
+- **On a branch**, the branch's view as defined for entity history (#824, above): the branch's own
+  events in the range (`origin: branch`), plus the mainline events in the range the branch's view
+  inherits (`origin: main`) — an event on an entity the branch had **not yet written** when the event
+  happened. The overlay is live, so until the branch's first write to an entity a branch read shows
+  the mainline's current row; a mainline edit after that write is not in the branch's data and is
+  left out (it surfaces in the branch compare and at merge instead). Other branches' events never
+  appear. Whether the branch had written an entity before the range starts is answered by one
+  set-based read (`ReadStreamsForBranch`, paged) over the streams the mainline touched — never a
+  query per entity.
+
+A branch snapshot is taken after its branch forked, so both ends of a branch range lie at or after
+`base_position`: nothing before the fork is ever in range, and "the branch's view" of the range needs
+no pre-fork history. Each source read is capped (`maxComparisonEvents`); the window ends where the
+first capped read ran out, and `has_more` says so.
+
+**Scopes do not mix.** Both snapshots of a comparison must belong to the requesting scope. A
+snapshot from another branch — or two snapshots from different branches — is refused with 409
+`snapshot_branch_mismatch`: the range between positions in two different views is not a history
+anyone saw, so the server answers from neither view rather than silently picking one. List, get
+and delete simply do not see another scope's snapshots (404).
+
+**Compare to now.** `GET /snapshots/{id}/compare-current` compares a snapshot with the **current log
+head** — the position a snapshot taken now would mark — in the requesting scope's view, on the
+mainline or a branch. It is a separate operation rather than a reserved `{id2}` value such as
+`current`, so the two-snapshot path keeps a strict UUID contract and "now" has its own response
+shape (`snapshot`, `head_position`, `changes`, `total_count`, `has_more`). The merge safety net
+(#833) can use it for a snapshot-to-current diff.
+
+**API and UI.** `listSnapshots`, `createSnapshot`, `getSnapshot`, `deleteSnapshot`,
+`compareSnapshots` and `compareSnapshotToCurrent` declare `branchScope` (six more operations, 92 in
+all), with the standard scope errors (unknown branch 404; a create or delete naming a terminal branch
+409, a read of one 404). A branch snapshot's API form carries `branch_id`; a mainline one omits it.
+The web client's allowlist forwards the scope on all six, so `/snapshots` and `/snapshots/compare`
+follow the active branch: the page lists the branch's snapshots, takes new ones on the branch,
+labels each change of a branch comparison as the branch's own or inherited, and no longer shows the
+mainline notice. Every snapshot has a "Compare to now" action, and the compare form offers
+"Now (current state)" as its "To".
+
+Snapshots of a merged or archived branch stay in the registry — a marker is never deleted by a
+lifecycle change — but are unreachable over the API, since reads of a terminal branch 404.
+
+Verified by `TestSnapshotComparison_Branch_AllBackends` (`internal/query`, memory/SQLite/PostgreSQL),
+`TestSnapshotStore_BranchScoped` / `TestSQLiteSnapshotStore_BranchScoped` and the two
+`…MigratesBranchID` tests, `TestSnapshotCommands_OnBranch`,
+`TestSnapshotEvents_PreBranchPayloadDecodesAsMainline`, `TestSnapshots_OnBranch` and
+`TestSnapshots_BranchScopeErrors` (`internal/api`), the snapshot page tests, and
+`e2e/snapshots.spec.ts`.
 
 ## References
 

@@ -13,8 +13,17 @@ type RouteValue = { url: URL };
 
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
-const { compareSnapshots, routeState } = vi.hoisted(() => ({
+const { compareSnapshots, compareSnapshotToCurrent, routeState, branchState } = vi.hoisted(() => ({
 	compareSnapshots: vi.fn(),
+	compareSnapshotToCurrent: vi.fn(),
+	branchState: {
+		activeBranch: {
+			id: null as string | null,
+			branch: null as { name: string } | null,
+			revalidating: false,
+			notice: null
+		}
+	},
 	// A soft navigation between two comparisons reuses the component, so the
 	// route store has to be drivable rather than fixed.
 	routeState: {
@@ -28,7 +37,8 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	return {
 		...actual,
 		api: {
-			compareSnapshots: (a: string, b: string) => compareSnapshots(a, b)
+			compareSnapshots: (a: string, b: string) => compareSnapshots(a, b),
+			compareSnapshotToCurrent: (id: string) => compareSnapshotToCurrent(id)
 		}
 	};
 });
@@ -43,9 +53,7 @@ vi.mock('$app/stores', () => ({
 	}
 }));
 
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
-	activeBranch: { id: null, branch: null, revalidating: false, notice: null }
-}));
+vi.mock('$lib/stores/activeBranch.svelte', () => branchState);
 
 function navigateTo(query: string) {
 	// A fresh object: Svelte's store bridge dedupes on identity.
@@ -125,6 +133,8 @@ function comparison(overrides: Partial<SnapshotComparisonResult> = {}): Snapshot
 describe('Snapshot comparison page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		branchState.activeBranch.id = null;
+		branchState.activeBranch.branch = null;
 		navigateTo(`?from=${OLDER_ID}&to=${NEWER_ID}`);
 		compareSnapshots.mockResolvedValue(comparison());
 	});
@@ -287,5 +297,85 @@ describe('Snapshot comparison page', () => {
 
 		expect(screen.getByText('Third')).toBeDefined();
 		expect(screen.queryByText('Post-DNA results')).toBeNull();
+	});
+
+	describe('compare to now', () => {
+		const branchEdit = { ...personUpdate, id: 'e5', origin: 'branch' } as BranchChangeEntry;
+		const inherited = { ...familyCreate, id: 'e6', origin: 'main' } as BranchChangeEntry;
+
+		beforeEach(() => {
+			navigateTo(`?from=${OLDER_ID}&to=current`);
+			compareSnapshotToCurrent.mockResolvedValue({
+				snapshot: older,
+				head_position: 120,
+				changes: [personUpdate],
+				total_count: 1,
+				has_more: false
+			});
+		});
+
+		it('asks for the changes since the snapshot, not for a pair', async () => {
+			render(Page);
+
+			await screen.findByText('Pre-DNA results');
+			expect(compareSnapshotToCurrent).toHaveBeenCalledWith(OLDER_ID);
+			expect(compareSnapshots).not.toHaveBeenCalled();
+			expect(screen.getByText('Now')).toBeDefined();
+			expect(screen.getByText('The current state of your research')).toBeDefined();
+			expect(screen.getByText('1 change: 0 created, 1 updated, 0 deleted.')).toBeDefined();
+			expect(screen.getByText('Franklin County, Ohio')).toBeDefined();
+		});
+
+		it('says so when nothing changed since the snapshot', async () => {
+			compareSnapshotToCurrent.mockResolvedValue({
+				snapshot: older,
+				head_position: 42,
+				changes: [],
+				total_count: 0,
+				has_more: false
+			});
+
+			render(Page);
+
+			expect(
+				await screen.findByText(
+					'No changes to people, families, sources or citations since this snapshot.'
+				)
+			).toBeDefined();
+		});
+
+		it("labels a branch's own changes and the mainline changes it inherits", async () => {
+			branchState.activeBranch.id = '44444444-4444-4444-4444-444444444444';
+			branchState.activeBranch.branch = { name: 'Maternal line' };
+			compareSnapshotToCurrent.mockResolvedValue({
+				snapshot: older,
+				head_position: 120,
+				changes: [branchEdit, inherited],
+				total_count: 2,
+				has_more: false
+			});
+
+			render(Page);
+
+			const list = await screen.findByRole('list', { name: 'Changes, oldest first' });
+			const items = within(list).getAllByRole('listitem');
+			expect(within(items[0]).getByText('This branch')).toBeDefined();
+			expect(within(items[1]).getByText('Mainline')).toBeDefined();
+			expect(screen.queryByText(/always shows mainline data/)).toBeNull();
+			expect(screen.getByRole('note').textContent).toMatch(/Maternal line/);
+		});
+
+		it('explains snapshots from another branch', async () => {
+			compareSnapshotToCurrent.mockRejectedValue({
+				status: 409,
+				code: 'snapshot_branch_mismatch',
+				message: 'Snapshots can only be compared within the branch they were taken on'
+			});
+
+			render(Page);
+
+			expect(await screen.findByText('Snapshots from another branch')).toBeDefined();
+			expect(screen.getByRole('link', { name: 'choose snapshots from this one' })).toBeDefined();
+		});
 	});
 });

@@ -275,14 +275,32 @@ describe('branch scope threading', () => {
 		expect(requestedUrl()).toBe('/api/v1/branches');
 	});
 
-	it('never scopes the snapshot endpoints - a snapshot marks a mainline position', async () => {
+	it('scopes the snapshot endpoints - a snapshot marks a position in the branch view', async () => {
 		setClientBranch(BRANCH_ID);
 		await api.listSnapshots();
+		await api.createSnapshot({ name: 'On the branch' });
+		await api.deleteSnapshot(NAME_ID);
+		await api.compareSnapshots(NAME_ID, PERSON_ID);
+		await api.compareSnapshotToCurrent(NAME_ID);
+		// Ids are path-encoded, so a malformed one cannot reshape the route; it is
+		// not a snapshot id either, so it is not scoped.
 		await api.compareSnapshots('a/b', 'c d');
 		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-			'/api/v1/snapshots',
-			// Ids are path-encoded, so a malformed one cannot reshape the route.
+			`/api/v1/snapshots?branch=${BRANCH_ID}`,
+			`/api/v1/snapshots?branch=${BRANCH_ID}`,
+			`/api/v1/snapshots/${NAME_ID}?branch=${BRANCH_ID}`,
+			`/api/v1/snapshots/${NAME_ID}/compare/${PERSON_ID}?branch=${BRANCH_ID}`,
+			`/api/v1/snapshots/${NAME_ID}/compare-current?branch=${BRANCH_ID}`,
 			'/api/v1/snapshots/a%2Fb/compare/c%20d'
+		]);
+	});
+
+	it('leaves the snapshot endpoints unscoped on the mainline', async () => {
+		await api.listSnapshots();
+		await api.compareSnapshotToCurrent(NAME_ID);
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			'/api/v1/snapshots',
+			`/api/v1/snapshots/${NAME_ID}/compare-current`
 		]);
 	});
 });

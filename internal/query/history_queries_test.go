@@ -1398,7 +1398,7 @@ func TestSnapshotEventsAreSkipped(t *testing.T) {
 	snapshot, err := domain.NewSnapshot("Pre-DNA results", "before", 1)
 	require.NoError(t, err)
 	createdData, _ := json.Marshal(domain.NewSnapshotCreated(snapshot))
-	deletedData, _ := json.Marshal(domain.NewSnapshotDeleted(snapshot.ID))
+	deletedData, _ := json.Marshal(domain.NewSnapshotDeleted(snapshot.ID, domain.MainBranchID))
 
 	service := NewHistoryService(&mockEventStore{}, &mockReadModelStore{})
 
