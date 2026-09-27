@@ -280,3 +280,137 @@ func TestMergeBranch_MediaCropEditMerges(t *testing.T) {
 	}
 	assertCrop(t, onMain, 10)
 }
+
+func (e evidenceFixture) assertMainMedia(t *testing.T, mediaID uuid.UUID) {
+	t.Helper()
+	got, err := e.f.readStore.GetMedia(context.Background(), domain.MainBranchID, mediaID)
+	if err != nil {
+		t.Fatalf("GetMedia failed: %v", err)
+	}
+	if got == nil {
+		t.Errorf("main lost media %s; want it kept", mediaID)
+	}
+}
+
+// mainFamilyBranch creates a main family of the fixture's person and re-forks
+// the branch so it sees the family.
+func (e *evidenceFixture) mainFamilyBranch(t *testing.T) uuid.UUID {
+	t.Helper()
+	ctx := context.Background()
+	fam, err := e.f.handler.CreateFamily(ctx, command.CreateFamilyInput{Partner1ID: &e.person})
+	if err != nil {
+		t.Fatalf("CreateFamily failed: %v", err)
+	}
+	branch, err := e.f.handler.CreateBranch(ctx, "family-theory", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	e.branch = branch
+	return fam.ID
+}
+
+func (e evidenceFixture) deleteFamily(t *testing.T, h *command.Handler, branchID domain.BranchID, familyID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	f, err := e.f.readStore.GetFamily(ctx, branchID, familyID)
+	if err != nil || f == nil {
+		t.Fatalf("GetFamily(%s) = %v, %v", familyID, f, err)
+	}
+	if err := h.DeleteFamily(ctx, command.DeleteFamilyInput{ID: familyID, Version: f.Version}); err != nil {
+		t.Fatalf("DeleteFamily failed: %v", err)
+	}
+}
+
+// The branch deletes an owner; main then uploads media to that owner. The
+// branch never saw the upload, so replaying its delete would cascade the item
+// away on main with no MediaDeleted and no conflict shown. The merge refuses,
+// for every owner type the cascade covers, and main keeps the item.
+func TestMergeBranch_OwnerDeleteOntoLaterMainMediaIsRefused(t *testing.T) {
+	cases := []struct {
+		entityType string
+		setup      func(t *testing.T, e *evidenceFixture) uuid.UUID
+		deleteOn   func(t *testing.T, e evidenceFixture, owner uuid.UUID)
+	}{
+		{"person", func(_ *testing.T, e *evidenceFixture) uuid.UUID { return e.person },
+			func(t *testing.T, e evidenceFixture, owner uuid.UUID) {
+				e.deletePerson(t, e.f.handler.WithBranch(e.branch), domain.BranchID(e.branch.ID), owner)
+			}},
+		{"source", func(_ *testing.T, e *evidenceFixture) uuid.UUID { return e.source },
+			func(t *testing.T, e evidenceFixture, owner uuid.UUID) {
+				e.deleteSource(t, e.f.handler.WithBranch(e.branch), domain.BranchID(e.branch.ID), owner)
+			}},
+		{"family", func(t *testing.T, e *evidenceFixture) uuid.UUID { return e.mainFamilyBranch(t) },
+			func(t *testing.T, e evidenceFixture, owner uuid.UUID) {
+				e.deleteFamily(t, e.f.handler.WithBranch(e.branch), domain.BranchID(e.branch.ID), owner)
+			}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.entityType, func(t *testing.T) {
+			e := newEvidenceFixture(t)
+			owner := tc.setup(t, &e)
+			tc.deleteOn(t, e, owner)
+			scan := e.upload(t, e.f.handler, tc.entityType, owner)
+
+			_, err := e.f.handler.MergeBranch(context.Background(), command.MergeBranchInput{BranchID: e.branch.ID})
+			e.assertRefusedBeforeClaim(t, err)
+			e.assertMainMedia(t, scan)
+		})
+	}
+}
+
+// Main edits an item after the branch's delete of its owner cascaded it on the
+// branch. The branch deleted the version it saw, not main's edit, so the merge
+// refuses rather than cascade the edited item away.
+func TestMergeBranch_OwnerDeleteOntoLaterMainMediaEditIsRefused(t *testing.T) {
+	e := newEvidenceFixture(t)
+	ctx := context.Background()
+	scan := e.upload(t, e.f.handler, "person", e.person)
+	branch, err := e.f.handler.CreateBranch(ctx, "late-edit", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	e.branch = branch
+	e.deletePerson(t, e.f.handler.WithBranch(branch), domain.BranchID(branch.ID), e.person)
+	current, err := e.f.readStore.GetMedia(ctx, domain.MainBranchID, scan)
+	if err != nil || current == nil {
+		t.Fatalf("GetMedia = %v, %v", current, err)
+	}
+	cropMedia(t, e.f.handler, current, "Retitled on main", 5)
+
+	_, err = e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	e.assertRefusedBeforeClaim(t, err)
+	e.assertMainMedia(t, scan)
+}
+
+// Main's items the branch DID see — uploaded before the fork, or after it but
+// before the branch's delete (the overlay shows main's later rows) — were
+// cascaded on the branch by its own delete. Replaying the delete reproduces
+// the branch's result: the merge succeeds and cascades them on main.
+func TestMergeBranch_OwnerDeleteCascadesMainMediaTheBranchSaw(t *testing.T) {
+	e := newEvidenceFixture(t)
+	ctx := context.Background()
+	early := e.upload(t, e.f.handler, "person", e.person)
+	branch, err := e.f.handler.CreateBranch(ctx, "saw-it", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	e.branch = branch
+	branchID := domain.BranchID(branch.ID)
+	afterFork := e.upload(t, e.f.handler, "person", e.person)
+	e.deletePerson(t, e.f.handler.WithBranch(branch), branchID, e.person)
+	for _, id := range []uuid.UUID{early, afterFork} {
+		if got, err := e.f.readStore.GetMedia(ctx, branchID, id); err != nil || got != nil {
+			t.Fatalf("branch still shows media %s (err=%v) after deleting its owner", id, err)
+		}
+	}
+
+	res, err := e.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: branch.ID})
+	if err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	if len(res.Conflicts) != 0 {
+		t.Fatalf("Conflicts = %v, want none", res.Conflicts)
+	}
+	e.assertNoMainMedia(t, early)
+	e.assertNoMainMedia(t, afterFork)
+}

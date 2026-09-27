@@ -433,3 +433,56 @@ func TestResumeMerge_MediaBeforeOwnerDeleteFinishes(t *testing.T) {
 	}
 	assertResumeNoop(t, e.resume(t, branch.ID, nil))
 }
+
+// The branch deletes a person; the replay stops before that delete lands, and
+// main then uploads a photo of the person. Replaying the delete would cascade
+// the photo away on main with no record, so the delete is pending, "branch" is
+// refused as a dangling reference, and "main" keeps both.
+func TestResumeMerge_OwnerDeleteOntoLaterMainMediaIsPending(t *testing.T) {
+	e := newEvidenceResume(t)
+	ctx := context.Background()
+	owner := e.mainPerson(t, "Owen")
+	branch, scoped := e.branch(t, "tidy-owner")
+	scope := domain.BranchID(branch.ID)
+	e.renameOnBranch(t, scoped, scope, e.person)
+	current, err := e.f.readStore.GetPerson(ctx, scope, owner)
+	if err != nil || current == nil {
+		t.Fatalf("GetPerson = %v, %v", current, err)
+	}
+	if err := scoped.DeletePerson(ctx, command.DeletePersonInput{ID: owner, Version: current.Version, Reason: "theory"}); err != nil {
+		t.Fatalf("branch DeletePerson failed: %v", err)
+	}
+
+	e.interrupt(t, branch, 2)
+	scan := e.upload(t, e.f.handler, owner, "Portrait of Owen")
+	before := e.mainEventCount(t)
+
+	res, err := e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: branch.ID})
+	if !errors.Is(err, command.ErrMergeResumeNeedsResolution) {
+		t.Fatalf("ResumeMerge error = %v, want ErrMergeResumeNeedsResolution", err)
+	}
+	if res == nil || !slices.Equal(res.PendingStreamIDs, []uuid.UUID{owner}) {
+		t.Fatalf("PendingStreamIDs = %v, want [%s]", res, owner)
+	}
+	_, err = e.f.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID: branch.ID, Resolutions: map[uuid.UUID]command.MergeResolution{owner: command.ResolveBranch},
+	})
+	if !errors.Is(err, command.ErrMergeDanglingReference) {
+		t.Fatalf("branch resolution error = %v, want ErrMergeDanglingReference", err)
+	}
+	if got := e.mainEventCount(t); got != before {
+		t.Fatalf("refused resumes wrote %d event(s) to main", got-before)
+	}
+
+	done := e.resume(t, branch.ID, map[uuid.UUID]command.MergeResolution{owner: command.ResolveMain})
+	if !slices.Equal(done.SkippedStreamIDs, []uuid.UUID{owner}) {
+		t.Errorf("SkippedStreamIDs = %v, want [%s]", done.SkippedStreamIDs, owner)
+	}
+	if e.media(t, domain.MainBranchID, scan) == nil {
+		t.Error("main lost the photo to a delete the resume rolled forward without")
+	}
+	if p, err := e.f.readStore.GetPerson(ctx, domain.MainBranchID, owner); err != nil || p == nil {
+		t.Errorf("main person = %v (err=%v), want kept", p, err)
+	}
+	assertResumeNoop(t, e.resume(t, branch.ID, nil))
+}

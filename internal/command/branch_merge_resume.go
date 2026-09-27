@@ -52,7 +52,10 @@ var (
 	//   - the same for media (#759): the stream uploads a media item whose
 	//     owner (person, family or source) main will not have when it lands —
 	//     main deleted it after the claim, this call resolves the stream that
-	//     creates it to main, or a stream already on main deleted it.
+	//     creates it to main, or a stream already on main deleted it — or it
+	//     deletes a media owner while main has an item of that owner it wrote
+	//     to after the branch's delete (typically an upload made during the
+	//     interruption).
 	//
 	// The streams are listed on ResumeMergeResult.PendingStreamIDs. Inspect them
 	// with GET /branches/{id}/compare, then resume again with a resolution for
@@ -239,7 +242,8 @@ type resumeDecision struct {
 // (orderEvidenceForReplay), and the evidence rules MergeBranch checks before
 // its claim (checkEvidence: a citation must end up citing a source main will
 // have; a source delete must not cascade onto a citation main keeps; and,
-// since #759, a media upload must land on an owner main will have) are
+// since #759, a media upload must land on an owner main will have and an
+// owner delete must not cascade onto media the branch never saw) are
 // applied exactly as the person-reference rules are — an auto-planned stream
 // that breaks one is pending, and the final decision is checked again.
 //
@@ -320,7 +324,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 			"%w: %d stream(s) still to replay for branch %s cannot be replayed on the recorded plan "+
 				"(main moved on them since it was recorded, main removed the entity, the claim recorded no plan, "+
 				"or replaying them would leave main referencing a person, source or media owner it no longer has, or cascade onto "+
-				"a citation it still has). Nothing has been written; "+
+				"a citation or media item it still has). Nothing has been written; "+
 				"review them with GET /branches/{id}/compare and resume again with a resolution for each: %v",
 			ErrMergeResumeNeedsResolution, len(result.PendingStreamIDs), branch.ID, result.PendingStreamIDs)
 	}
@@ -704,7 +708,8 @@ func refuseUndecidableResolutions(resolutions map[uuid.UUID]MergeResolution, dec
 // auto-planned citation whose final source main will not have, or an
 // auto-planned source delete that would cascade onto a citation main still
 // has, is flagged too, as is an auto-planned media upload whose owner main
-// will not have when it lands (#759). For them a stream counts as replayed on
+// will not have when it lands, or an auto-planned owner delete that would
+// cascade onto an item main wrote to after the branch's delete (#759). For them a stream counts as replayed on
 // the same terms — already on main, or planned and not resolved to main by
 // this call — and a source or media owner main removed since the claim does
 // not count as one main will have. An owner-deleting stream already on main

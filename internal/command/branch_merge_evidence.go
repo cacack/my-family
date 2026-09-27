@@ -251,7 +251,7 @@ type evidencePlan struct {
 // validateNoDanglingReferences (#758, #759). A citation lives on its own
 // stream and names a source on another, and a media item names its owner on
 // another, so per-aggregate resolutions and per-aggregate conflict detection
-// all miss three shapes:
+// all miss four shapes:
 //
 //   - A replayed citation that ends up citing a source main will not have —
 //     deleted on main after the fork, or excluded by a "main" resolution. The
@@ -272,6 +272,12 @@ type evidencePlan struct {
 //     does not: moveMediaBeforeOwnerDelete puts the upload ahead of it). The
 //     projection saves the media row without
 //     checking its owner, so main would gain an orphaned media item.
+//
+//   - A replayed PersonDeleted, FamilyDeleted or SourceDeleted while main has a
+//     media item of that owner it wrote to after the branch's delete (#759) —
+//     typically an upload the branch never saw. The store's owner→media
+//     cascade would delete it from main with no MediaDeleted event and no
+//     conflict shown (checkOwnerDeleteOrphansNoMedia).
 //
 // All are refused before the claim, like the dangling child link. ResumeMerge
 // applies the same rules through checkEvidence (see
@@ -305,7 +311,7 @@ func replayOrder(groups []streamGroup) map[uuid.UUID]int {
 }
 
 // checkEvidence applies the evidence rules — the two citation/source rules
-// (#758) and the media-owner rule (#759) — to one stream the replay will
+// (#758) and the two media-owner rules (#759) — to one stream the replay will
 // append. A refusal wraps ErrMergeDanglingReference; any other error is a
 // failure to check.
 func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evidencePlan) error {
@@ -313,6 +319,9 @@ func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evi
 		return err
 	}
 	if err := h.checkSourceDeleteOrphansNothing(ctx, group, plan.replayed); err != nil {
+		return err
+	}
+	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, group, plan.replayed); err != nil {
 		return err
 	}
 	return h.checkMediaOwnerSurvives(ctx, group, plan)
@@ -515,6 +524,92 @@ func (h *Handler) checkSourceDeleteOrphansNothing(ctx context.Context, group str
 			"%w: the branch deletes source %s, but main's citation %s still cites it; "+
 				"merging would delete that citation from main with no record",
 			ErrMergeDanglingReference, group.streamID, citation.ID)
+	}
+	return nil
+}
+
+// mediaPageSize is the page size checkOwnerDeleteOrphansNoMedia lists an
+// owner's main media with.
+const mediaPageSize = 500
+
+// ownerDeleteOf reports the media-owner entity type a stream's replay deletes
+// and the log position at which the branch deleted it. ok is false for a
+// stream that deletes no media owner.
+func ownerDeleteOf(group streamGroup) (entityType string, deletedAt int64, ok bool) {
+	for entity, deleteEvent := range mediaOwnerDeleteEvents {
+		if !strings.EqualFold(group.streamType, entity) {
+			continue
+		}
+		for _, evt := range group.events {
+			if evt.EventType == deleteEvent {
+				return entity, evt.Position, true
+			}
+		}
+	}
+	return "", 0, false
+}
+
+// checkOwnerDeleteOrphansNoMedia refuses a replayed PersonDeleted,
+// FamilyDeleted or SourceDeleted while main has a media item of that owner
+// that the branch never saw when it deleted the owner (#759). The store's
+// owner→media cascade deletes the owner's media without writing to the media
+// streams, so replaying the delete would remove such an item from main with
+// no MediaDeleted event and no conflict shown — the media counterpart of
+// checkSourceDeleteOrphansNothing.
+//
+// Unlike a source's citations, an owner's media has no delete guard: the
+// branch's own delete cascades every item the branch sees, and the branch
+// sees main's items through the overlay, including ones main added after the
+// fork. So what the branch accounted for is decided by the log: an item main
+// wrote to (uploaded, edited) only BEFORE the branch's delete event was in
+// the branch's view and was cascaded there too, and replaying the delete
+// reproduces that. An item main wrote to after it — typically an upload the
+// branch never saw — is refused. Items whose media stream the replay itself
+// carries are the branch's own business and skipped; a person main merged
+// into the owner after the branch's delete wrote PersonMerged to the owner's
+// stream, which the merge's conflict detection (or, on resume, the plan's
+// staleness pin) already puts in front of the caller.
+//
+// The work is one media listing per owner-deleting stream and one set-based
+// scan of the listed items' main streams — never a read per item.
+func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup) error {
+	entityType, deletedAt, ok := ownerDeleteOf(group)
+	if !ok {
+		return nil
+	}
+	var candidates []uuid.UUID
+	for offset := 0; ; offset += mediaPageSize {
+		page, total, err := h.readStore.ListMediaForEntity(ctx, entityType, group.streamID,
+			repository.ListOptions{Limit: mediaPageSize, Offset: offset, BranchID: domain.MainBranchID})
+		if err != nil {
+			return fmt.Errorf("checking media of %s %s on main: %w", entityType, group.streamID, err)
+		}
+		for i := range page {
+			if _, ours := replayed[page[i].ID]; !ours {
+				candidates = append(candidates, page[i].ID)
+			}
+		}
+		if len(page) == 0 || offset+len(page) >= total {
+			break
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	events, err := h.readMainStreams(ctx, candidates)
+	if err != nil {
+		return err
+	}
+	for _, mediaID := range candidates {
+		for _, evt := range events[mediaID] {
+			if evt.Position <= deletedAt {
+				continue
+			}
+			return fmt.Errorf(
+				"%w: the branch deletes %s %s, but main's media %s attached to it changed after that delete "+
+					"(%s at position %d), so the branch never saw it; merging would delete it from main with no record",
+				ErrMergeDanglingReference, entityType, group.streamID, mediaID, evt.EventType, evt.Position)
+		}
 	}
 	return nil
 }
