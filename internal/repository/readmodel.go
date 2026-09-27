@@ -425,6 +425,13 @@ type ReadModelStore interface {
 	// an explicit branchID; list/search carry it on the options struct. A zero
 	// branchID (domain.MainBranchID) reproduces pre-branch, main-only behavior.
 	GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*PersonReadModel, error)
+	// GetPersonsByIDs is GetPerson for many ids at once: ONE set-based read that
+	// resolves the branch overlay for every id (a branch row wins, a branch
+	// tombstone hides the main row, otherwise main's row) — the same answer N
+	// GetPerson calls would give, without N round trips (#697). Ids with no
+	// visible row are simply absent; duplicates are collapsed. The result is
+	// ordered by id. An empty ids slice returns nil without touching the store.
+	GetPersonsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]PersonReadModel, error)
 	ListPersons(ctx context.Context, opts ListOptions) ([]PersonReadModel, int, error)
 	SearchPersons(ctx context.Context, opts SearchOptions) ([]PersonReadModel, error)
 	SavePerson(ctx context.Context, branchID domain.BranchID, person *PersonReadModel) error
@@ -442,6 +449,8 @@ type ReadModelStore interface {
 
 	// Family operations (branch-scoped slice entity)
 	GetFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*FamilyReadModel, error)
+	// GetFamiliesByIDs is the batched GetFamily; see GetPersonsByIDs (#697).
+	GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]FamilyReadModel, error)
 	ListFamilies(ctx context.Context, opts ListOptions) ([]FamilyReadModel, int, error)
 	GetFamiliesForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]FamilyReadModel, error)
 	SaveFamily(ctx context.Context, branchID domain.BranchID, family *FamilyReadModel) error
@@ -488,6 +497,8 @@ type ReadModelStore interface {
 	// cascades to the source's external identifiers and citations on the same
 	// branch (and only that branch).
 	GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*SourceReadModel, error)
+	// GetSourcesByIDs is the batched GetSource; see GetPersonsByIDs (#697).
+	GetSourcesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]SourceReadModel, error)
 	ListSources(ctx context.Context, opts ListOptions) ([]SourceReadModel, int, error)
 	SearchSources(ctx context.Context, branchID domain.BranchID, query string, limit int) ([]SourceReadModel, error)
 	SaveSource(ctx context.Context, branchID domain.BranchID, source *SourceReadModel) error
@@ -502,6 +513,8 @@ type ReadModelStore interface {
 	// per-source/per-person/per-fact lists resolve every citation through the
 	// per-id overlay and re-apply their filter to the winning row.
 	GetCitation(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*CitationReadModel, error)
+	// GetCitationsByIDs is the batched GetCitation; see GetPersonsByIDs (#697).
+	GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]CitationReadModel, error)
 	ListCitations(ctx context.Context, opts ListOptions) ([]CitationReadModel, int, error)
 	GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]CitationReadModel, error)
 	GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]CitationReadModel, error)

@@ -430,6 +430,10 @@ invariants, cited by ADRs rather than restated in them).
     in a single statement, e.g. `SELECT DISTINCT ON (id) * … WHERE branch_id IN (:branch, :main)
     ORDER BY id, (branch_id = :branch) DESC` on Postgres, with an equivalent window-function /
     correlated-subquery form on SQLite. Both backends require a composite index `(id, branch_id)`.
+    The same holds for a known *set* of ids: `GetPersonsByIDs`, `GetFamiliesByIDs`,
+    `GetSourcesByIDs` and `GetCitationsByIDs` resolve the overlay for every id in one statement
+    (the id set bound as a single `uuid[]` / JSON-array parameter), so a response that names many
+    entities — history, branch compare, merge conflicts — pays one query per entity type (#697).
   - **Caching cannot mask overlay cost.** Because the overlay is *live* (§The model), any `main`
     write can change any open branch's read of an untouched entity, so branch views are not
     cache-stable; the SQL path itself must be fast per request. Don't invest in a read-through
@@ -542,7 +546,8 @@ definition exists to prevent. Three pieces close that:
   and `replayStream` skip it, since branch events that are never replayed cannot override a
   mainline write. The passes that do happen are inherent, not waste: the pre-claim check exists
   precisely to observe a version *fresher* than the capture, so it cannot reuse it. Batching each
-  pass into one set-based read is #697's business, not this guard's. The capture is deliberately not exposed on `CompareBranch`'s response, and
+  pass into one set-based read needs a batched stream-version read on the event store; #697 batched
+  only the read-model name lookups, so that remains separate work, not this guard's. The capture is deliberately not exposed on `CompareBranch`'s response, and
   `CompareBranch` does not pay for it: it is merge-plan internals with no meaning in a read-only
   diff.
 

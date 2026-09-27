@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -95,6 +96,62 @@ func (m *mockReadModelStore) GetCitation(ctx context.Context, branchID domain.Br
 		return m.getCitationFunc(ctx, id)
 	}
 	return nil, repository.ErrStreamNotFound
+}
+
+// The batched lookups delegate to the per-id funcs so every test that stubs a
+// single-row getter also stubs its batch. ErrStreamNotFound means "absent".
+func (m *mockReadModelStore) GetPersonsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.PersonReadModel, error) {
+	return mockBatch(ctx, branchID, ids, m.GetPerson)
+}
+
+func (m *mockReadModelStore) GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.FamilyReadModel, error) {
+	return mockBatch(ctx, branchID, ids, m.GetFamily)
+}
+
+func (m *mockReadModelStore) GetSourcesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.SourceReadModel, error) {
+	return mockBatch(ctx, branchID, ids, m.GetSource)
+}
+
+func (m *mockReadModelStore) GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.CitationReadModel, error) {
+	return mockBatch(ctx, branchID, ids, m.GetCitation)
+}
+
+func mockBatch[T any](ctx context.Context, branchID domain.BranchID, ids []uuid.UUID, get func(context.Context, domain.BranchID, uuid.UUID) (*T, error)) ([]T, error) {
+	var rows []T
+	for _, id := range ids {
+		row, err := get(ctx, branchID, id)
+		if errors.Is(err, repository.ErrStreamNotFound) || (err == nil && row == nil) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, *row)
+	}
+	return rows, nil
+}
+
+// resolveName resolves one entity's display name through the batched path the
+// production code uses.
+func resolveName(t *testing.T, service *HistoryService, entityType string, id uuid.UUID, evt *repository.StoredEvent) string {
+	t.Helper()
+	refs := newEntityRefs()
+	refs.addEvent(entityType, id, evt)
+	names, err := service.resolveEntityNames(context.Background(), refs)
+	require.NoError(t, err)
+	return names.name(entityType, id, evt)
+}
+
+// extractChangesResolved runs extractChanges with the names evt references
+// resolved first, as transformStoredEvents does.
+func extractChangesResolved(t *testing.T, service *HistoryService, evt repository.StoredEvent) (map[string]FieldChange, error) {
+	t.Helper()
+	entityType, _ := service.mapEventTypeToEntityAndAction(evt.EventType)
+	refs := newEntityRefs()
+	refs.addEvent(entityType, evt.StreamID, &evt)
+	names, err := service.resolveEntityNames(context.Background(), refs)
+	require.NoError(t, err)
+	return service.extractChanges(evt, names)
 }
 
 // Stub methods for other ReadModelStore methods
@@ -811,7 +868,7 @@ func TestExtractChanges(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			changes, err := service.extractChanges(context.Background(), tt.event)
+			changes, err := extractChangesResolved(t, service, tt.event)
 			require.NoError(t, err)
 
 			if tt.wantChanges {
@@ -924,7 +981,7 @@ func TestGetEntityName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			name := service.getEntityName(context.Background(), tt.entityType, tt.entityID, tt.event)
+			name := resolveName(t, service, tt.entityType, tt.entityID, tt.event)
 			if tt.wantName != "" {
 				assert.Equal(t, tt.wantName, name)
 			} else {
@@ -959,7 +1016,7 @@ func TestGetPersonNameFallback(t *testing.T) {
 		evt := &repository.StoredEvent{
 			EventType: "PersonCreated",
 		}
-		name := service.getPersonName(context.Background(), personID, evt)
+		name := resolveName(t, service, "person", personID, evt)
 		assert.Equal(t, "John Smith", name)
 	})
 
@@ -972,7 +1029,7 @@ func TestGetPersonNameFallback(t *testing.T) {
 				Surname:   "Doe",
 			}),
 		}
-		name := service.getPersonName(context.Background(), deletedPersonID, evt)
+		name := resolveName(t, service, "person", deletedPersonID, evt)
 		assert.Equal(t, "Jane Doe", name)
 	})
 
@@ -980,7 +1037,7 @@ func TestGetPersonNameFallback(t *testing.T) {
 		evt := &repository.StoredEvent{
 			EventType: "PersonDeleted",
 		}
-		name := service.getPersonName(context.Background(), deletedPersonID, evt)
+		name := resolveName(t, service, "person", deletedPersonID, evt)
 		assert.Equal(t, deletedPersonID.String(), name)
 	})
 }
@@ -1044,7 +1101,7 @@ func TestGetFamilyNameVariations(t *testing.T) {
 
 			service := NewHistoryService(&mockEventStore{}, readStore)
 			evt := &repository.StoredEvent{EventType: "FamilyCreated"}
-			name := service.getFamilyName(context.Background(), familyID, evt)
+			name := resolveName(t, service, "family", familyID, evt)
 			assert.Equal(t, tt.wantName, name)
 		})
 	}
@@ -1074,7 +1131,7 @@ func TestGetSourceNameFallback(t *testing.T) {
 		evt := &repository.StoredEvent{
 			EventType: "SourceCreated",
 		}
-		name := service.getSourceName(context.Background(), sourceID, evt)
+		name := resolveName(t, service, "source", sourceID, evt)
 		assert.Equal(t, "1900 Census", name)
 	})
 
@@ -1086,7 +1143,7 @@ func TestGetSourceNameFallback(t *testing.T) {
 				Title:    "1920 Census",
 			}),
 		}
-		name := service.getSourceName(context.Background(), deletedSourceID, evt)
+		name := resolveName(t, service, "source", deletedSourceID, evt)
 		assert.Equal(t, "1920 Census", name)
 	})
 
@@ -1094,7 +1151,7 @@ func TestGetSourceNameFallback(t *testing.T) {
 		evt := &repository.StoredEvent{
 			EventType: "SourceDeleted",
 		}
-		name := service.getSourceName(context.Background(), deletedSourceID, evt)
+		name := resolveName(t, service, "source", deletedSourceID, evt)
 		assert.Equal(t, deletedSourceID.String(), name)
 	})
 }
@@ -1367,7 +1424,7 @@ func TestGetFamilyNameFallbackFromCreationEvent(t *testing.T) {
 				Partner2ID: &partner2ID,
 			}),
 		}
-		name := service.getFamilyName(context.Background(), familyID, evt)
+		name := resolveName(t, service, "family", familyID, evt)
 		assert.Equal(t, "John Smith & Jane Doe", name)
 	})
 
@@ -1379,7 +1436,7 @@ func TestGetFamilyNameFallbackFromCreationEvent(t *testing.T) {
 				Partner1ID: &partner1ID,
 			}),
 		}
-		name := service.getFamilyName(context.Background(), familyID, evt)
+		name := resolveName(t, service, "family", familyID, evt)
 		assert.Equal(t, "John Smith", name)
 	})
 
@@ -1390,7 +1447,7 @@ func TestGetFamilyNameFallbackFromCreationEvent(t *testing.T) {
 				FamilyID: familyID,
 			}),
 		}
-		name := service.getFamilyName(context.Background(), familyID, evt)
+		name := resolveName(t, service, "family", familyID, evt)
 		assert.Equal(t, familyID.String(), name)
 	})
 }

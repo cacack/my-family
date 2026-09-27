@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -40,6 +41,26 @@ func resolveRow[T any](m map[branchKey]*T, branch domain.BranchID, id uuid.UUID)
 		}
 	}
 	return nil, false
+}
+
+// resolveRowsByIDs is resolveRow for many ids: copies of the rows visible on
+// branch for ids, deduplicated and ordered by id (the order the SQL backends
+// return their batched lookups in, #697). Ids with no visible row — never
+// written, or hidden by a branch tombstone — are absent.
+func resolveRowsByIDs[T any](m map[branchKey]*T, branch domain.BranchID, ids []uuid.UUID) []T {
+	if len(ids) == 0 {
+		return nil
+	}
+	sorted := slices.Clone(ids)
+	slices.SortFunc(sorted, func(a, b uuid.UUID) int { return strings.Compare(a.String(), b.String()) })
+	sorted = slices.Compact(sorted)
+	var rows []T
+	for _, id := range sorted {
+		if row, _ := resolveRow(m, branch, id); row != nil {
+			rows = append(rows, *row)
+		}
+	}
+	return rows
 }
 
 // resolveAllRows returns the overlay-resolved rows for a single-row slice entity
@@ -207,6 +228,13 @@ func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID
 	// Return a copy
 	result := *p
 	return &result, nil
+}
+
+// GetPersonsByIDs retrieves every visible person among ids on branchID (#697).
+func (s *ReadModelStore) GetPersonsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.PersonReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.persons, branchID, ids), nil
 }
 
 // matchesResearchStatusFilter checks if a person matches the research status filter.
@@ -834,6 +862,13 @@ func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID
 	return &result, nil
 }
 
+// GetFamiliesByIDs retrieves every visible family among ids on branchID (#697).
+func (s *ReadModelStore) GetFamiliesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.FamilyReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.families, branchID, ids), nil
+}
+
 // ListFamilies returns a paginated list of families for the requested branch.
 func (s *ReadModelStore) ListFamilies(ctx context.Context, opts repository.ListOptions) ([]repository.FamilyReadModel, int, error) {
 	s.mu.RLock()
@@ -1138,6 +1173,13 @@ func (s *ReadModelStore) GetSource(ctx context.Context, branchID domain.BranchID
 	return &result, nil
 }
 
+// GetSourcesByIDs retrieves every visible source among ids on branchID (#697).
+func (s *ReadModelStore) GetSourcesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.SourceReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.sources, branchID, ids), nil
+}
+
 // compareSources orders sources by title, then id — the order the SQL backends
 // return them in.
 func compareSources(a, b *repository.SourceReadModel) int {
@@ -1234,6 +1276,13 @@ func (s *ReadModelStore) GetCitation(ctx context.Context, branchID domain.Branch
 	}
 	result := *cit
 	return &result, nil
+}
+
+// GetCitationsByIDs retrieves every visible citation among ids on branchID (#697).
+func (s *ReadModelStore) GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return resolveRowsByIDs(s.citations, branchID, ids), nil
 }
 
 // compareCitations orders citations by source title, then fact type, then id —

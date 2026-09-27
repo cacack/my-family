@@ -1079,19 +1079,9 @@ func personOverlayCTE(branchID domain.BranchID) (withClause, src string, cteArgs
 
 // GetPerson retrieves a person by ID within the branch overlay.
 func (s *ReadModelStore) GetPerson(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.PersonReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-			   version, updated_at
-		FROM (
-			SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
-			FROM persons
-			WHERE id = ? AND branch_id IN (?, ?)
-		)
-		WHERE rn = 1 AND deleted = 0
-	`, branchID.String(), id.String(), branchID.String(), mainBranchID)
+	// #nosec G202 -- the query is built by factGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, factGetQuery("persons", personSelectCols), factGetArgs(branchID, id)...)
 
 	return scanPerson(row)
 }
@@ -2398,19 +2388,9 @@ func familyOverlaySubquery(branchID domain.BranchID) (string, []any) {
 
 // GetFamily retrieves a family by ID within the branch overlay.
 func (s *ReadModelStore) GetFamily(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.FamilyReadModel, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, partner1_id, partner1_given_name, partner1_surname,
-			   partner2_id, partner2_given_name, partner2_surname,
-			   relationship_type, marriage_date_raw, marriage_date_sort, marriage_place,
-			   marriage_place_lat, marriage_place_long,
-			   child_count, version, updated_at
-		FROM (
-			SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
-			FROM families
-			WHERE id = ? AND branch_id IN (?, ?)
-		)
-		WHERE rn = 1 AND deleted = 0
-	`, branchID.String(), id.String(), branchID.String(), mainBranchID)
+	// #nosec G202 -- the query is built by factGetQuery from package constants; every value is a bound placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	row := s.db.QueryRowContext(ctx, factGetQuery("families", familySelectCols), factGetArgs(branchID, id)...)
 
 	return scanFamily(row)
 }
