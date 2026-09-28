@@ -106,10 +106,10 @@ func TestGetEntityHistoryOn_AllBackends(t *testing.T) {
 			// The branch's own edit, another branch's edit, then a mainline edit.
 			require.NoError(t, es.Append(ctx, person.ID, "Person",
 				[]domain.Event{domain.NewPersonUpdated(person.ID, map[string]any{"surname": "Byron"})},
-				2, repository.AppendScope{BranchID: branch, BasePosition: base}))
+				2, repository.AppendScope{BranchID: branch}))
 			require.NoError(t, es.Append(ctx, person.ID, "Person",
 				[]domain.Event{domain.NewPersonUpdated(person.ID, map[string]any{"surname": "Other"})},
-				2, repository.AppendScope{BranchID: other, BasePosition: base}))
+				2, repository.AppendScope{BranchID: other}))
 			mainUpdate(2, "Later")
 
 			res, err = service.GetEntityHistoryOn(ctx, branch, "person", person.ID, 20, 0)

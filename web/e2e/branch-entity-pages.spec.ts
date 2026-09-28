@@ -122,3 +122,44 @@ test('a mainline person on a branch shows inherited history and no rollback', as
 	await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
 	await expect(page.getByText('Mainline', { exact: true }).first()).toBeVisible();
 });
+
+test('a mainline person corrected after the fork saves on the branch (#844)', async ({
+	page,
+	request
+}) => {
+	const branchName = `Post-fork correction ${Date.now()}`;
+	const person = await post<{ id: string }>(request, '/persons', {
+		given_name: 'Corrected',
+		surname: 'Elder',
+		gender: 'unknown'
+	});
+	const personURL = `${API_BASE}/persons/${person.id}`;
+	const putMain = async (data: Record<string, unknown>) => {
+		const { version } = (await (await request.get(personURL)).json()) as { version: number };
+		const response = await request.put(personURL, { data: { ...data, version } });
+		expect(response.status(), `PUT main: ${await response.text()}`).toBe(200);
+	};
+
+	await putMain({ birth_place: 'Oldtown' });
+	const branch = await post<{ id: string }>(request, '/branches', { name: branchName });
+	// The mainline corrects the person AFTER the fork. The branch has not
+	// touched it, so the branch shows, and must accept, the corrected version.
+	await putMain({ surname: 'Elderly' });
+
+	await switchTo(page, branchName);
+	await page.goto(`/persons/${person.id}`);
+	await expect(page.getByRole('heading', { level: 1, name: 'Corrected Elderly' })).toBeVisible();
+	await page.locator('header.page-header').getByRole('button', { name: 'Edit', exact: true }).click();
+	await page.getByLabel('Birth Place').fill('Newtown');
+	await page.getByRole('button', { name: 'Save Changes' }).click();
+	// This save used to fail with "Version conflict".
+	await expect(page.getByRole('button', { name: 'Save Changes' })).toHaveCount(0);
+	await expect(page.getByText('Newtown')).toBeVisible();
+
+	// The save landed on the branch, on top of the mainline's correction.
+	const onBranch = await (await request.get(`${personURL}?branch=${branch.id}`)).json();
+	expect(onBranch.birth_place).toBe('Newtown');
+	expect(onBranch.surname).toBe('Elderly');
+	const onMain = await (await request.get(personURL)).json();
+	expect(onMain.birth_place).toBe('Oldtown');
+});

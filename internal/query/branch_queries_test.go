@@ -52,7 +52,7 @@ func (f *branchTestFixture) appendMain(t *testing.T, streamID uuid.UUID, events 
 // appendBranch appends events to a stream on a branch.
 func (f *branchTestFixture) appendBranch(t *testing.T, branch *domain.Branch, streamID uuid.UUID, streamType string, events ...domain.Event) {
 	t.Helper()
-	scope := repository.AppendScope{BranchID: domain.BranchID(branch.ID), BasePosition: branch.BasePosition}
+	scope := repository.AppendScope{BranchID: domain.BranchID(branch.ID)}
 	require.NoError(t, f.eventStore.Append(f.ctx, streamID, streamType, events, anyVersion, scope))
 }
 

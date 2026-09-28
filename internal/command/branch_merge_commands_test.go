@@ -528,10 +528,7 @@ func TestMergeBranch_ConcurrentClaimLoses(t *testing.T) {
 	// store, so our claim's expected version is stale by the time it lands.
 	racing.rival = func() {
 		rivalEvent := domain.NewBranchMerged(branch.ID, branch.BasePosition, branch.BasePosition, "rival", nil)
-		if err := inner.Append(ctx, branch.ID, "branch", []domain.Event{rivalEvent}, 1, repository.AppendScope{
-			BranchID:     domain.BranchID(branch.ID),
-			BasePosition: branch.BasePosition,
-		}); err != nil {
+		if err := inner.Append(ctx, branch.ID, "branch", []domain.Event{rivalEvent}, 1, repository.AppendScope{BranchID: domain.BranchID(branch.ID)}); err != nil {
 			t.Errorf("rival claim failed: %v", err)
 		}
 	}
@@ -576,10 +573,7 @@ func TestMergeBranch_TooLargeRefuses(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		events = append(events, domain.NewPersonUpdated(streamID, map[string]any{"surname": "Byron"}))
 	}
-	if err := f.eventStore.Append(ctx, streamID, "Person", events, -1, repository.AppendScope{
-		BranchID:     domain.BranchID(branch.ID),
-		BasePosition: branch.BasePosition,
-	}); err != nil {
+	if err := f.eventStore.Append(ctx, streamID, "Person", events, -1, repository.AppendScope{BranchID: domain.BranchID(branch.ID)}); err != nil {
 		t.Fatalf("seeding an over-cap branch failed: %v", err)
 	}
 
@@ -999,7 +993,7 @@ func TestMergeBranch_InterruptedClaimIsNotReplayedTwice(t *testing.T) {
 	// Reproduce the interrupted claim: the event lands, the projection doesn't.
 	orphaned := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, s.branch.BasePosition, "interrupted", nil)
 	if err := s.f.eventStore.Append(ctx, s.branch.ID, "branch", []domain.Event{orphaned}, 1,
-		repository.AppendScope{BranchID: domain.BranchID(s.branch.ID), BasePosition: s.branch.BasePosition}); err != nil {
+		repository.AppendScope{BranchID: domain.BranchID(s.branch.ID)}); err != nil {
 		t.Fatalf("seeding the interrupted claim failed: %v", err)
 	}
 

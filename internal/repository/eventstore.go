@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,38 +24,73 @@ var (
 // branch-related arguments into one value so Append's positional list stays
 // readable as branching grows.
 //
-// BranchID names the branch the appended events belong to. BasePosition is the
-// main Position the branch forked from; it matters only for a branch's FIRST
-// write to a given aggregate, where the branch seeds its version line from that
-// aggregate's main version as of BasePosition so the branch continues the
-// aggregate's numbering instead of restarting at 1. It is ignored on the
-// mainline.
+// BranchID names the branch the appended events belong to.
+//
+// A branch's FIRST write to an aggregate that already exists on main seeds the
+// branch's version line from the version the branch's READ shows for that
+// aggregate, so the branch continues the aggregate's numbering instead of
+// restarting at 1 and the expected version a branch append accepts is exactly
+// the version a branch read displayed (#844). Until the branch appends to an
+// aggregate's stream, the read model serves one of two rows for it:
+//
+//   - main's CURRENT row, through the live copy-on-write overlay (ADR-005 §The
+//     model). This is the usual case, and the seed is main's current stream
+//     version, which the store reads inside the append itself. It is not main's
+//     version as of the branch's fork point: seeding from the fork point made
+//     every aggregate main edited after the fork uneditable from the branch.
+//   - the branch's OWN shadow row, written by the projection of an event on
+//     ANOTHER stream (a cross-stream shadow: a branch citation bumps its source's
+//     citation count by saving a branch copy of the source row). That copy keeps
+//     the version the source had when it was copied, and it keeps shadowing main
+//     after main edits the source again. Only the read model knows it exists, so
+//     the caller reports its version in OverlayVersion.
+//
+// OverlayVersion is therefore the version of the branch's cross-stream shadow
+// row for the stream, or 0 when the branch reads the stream from main. It is
+// consulted only for the branch's first append to the stream (see
+// BranchSeedVersion); once the branch has appended, its own version line
+// governs. Main's post-fork events still sit after the branch's base position,
+// so the merge compare classifies them as main changes exactly as before.
+// Nothing in the append depends on the fork point, so the scope carries none.
 //
 // The ZERO VALUE IS MainScope, and deliberately so: domain.MainBranchID is the
 // zero UUID (ADR-005 §Sub-decision 3), so a forgotten scope argument falls back
 // to the mainline rather than to an arbitrary branch. Code that must be
 // branch-scoped therefore fails loudly (writes land on main) instead of
 // silently corrupting some other branch's overlay.
-//
-// INVARIANT: a non-main scope must carry the branch's real
-// domain.Branch.BasePosition. A branch scope built with BasePosition left at
-// zero seeds its version line from "main as of position 0" — i.e. version 0 —
-// so the branch's first write to an already-existing aggregate restarts that
-// aggregate's numbering at 1 instead of continuing main's. This is NOT checked
-// at runtime: BasePosition 0 is legitimate for a branch forked off an empty
-// log, so the zero value is indistinguishable from a genuine fork point.
-// Construct branch scopes from a loaded domain.Branch, never by hand.
 type AppendScope struct {
-	BranchID     domain.BranchID
-	BasePosition int64
+	BranchID       domain.BranchID
+	OverlayVersion int64
 }
 
-// MainScope is the mainline append scope: the reserved main branch, forked from
-// nothing. Every non-branch call site passes this. Struct values can't be const,
-// so this is a var — treat it as immutable. It is spelled out rather than left
-// implicit even though AppendScope{} equals it (see the type's doc comment),
-// because an explicit MainScope at a call site states intent.
-var MainScope = AppendScope{BranchID: domain.MainBranchID, BasePosition: 0}
+// ErrInvalidOverlayVersion is returned by a branch's first append to a stream
+// when the scope's OverlayVersion names a version main's stream never reached.
+// A cross-stream shadow row copies a row main served, so its version can never
+// be ahead of main's; one that is signals a caller bug, not a stale client.
+var ErrInvalidOverlayVersion = errors.New("overlay version is ahead of the stream's main version")
+
+// BranchSeedVersion is the version a branch's FIRST append to a stream continues
+// from, given main's current version of that stream (0 when main has none). It
+// is the one seeding rule every EventStore backend applies (DB-001), so the
+// backends differ only in how they read mainVersion: the branch's cross-stream
+// shadow row version when scope reports one, otherwise main's current version —
+// in both cases the version the branch's read shows (see AppendScope).
+func BranchSeedVersion(mainVersion int64, scope AppendScope) (int64, error) {
+	if scope.OverlayVersion <= 0 {
+		return mainVersion, nil
+	}
+	if scope.OverlayVersion > mainVersion {
+		return 0, fmt.Errorf("%w: overlay version %d, main version %d", ErrInvalidOverlayVersion, scope.OverlayVersion, mainVersion)
+	}
+	return scope.OverlayVersion, nil
+}
+
+// MainScope is the mainline append scope: the reserved main branch. Every
+// non-branch call site passes this. Struct values can't be const, so this is a
+// var — treat it as immutable. It is spelled out rather than left implicit even
+// though AppendScope{} equals it (see the type's doc comment), because an
+// explicit MainScope at a call site states intent.
+var MainScope = AppendScope{BranchID: domain.MainBranchID}
 
 // EventStore provides append-only storage for domain events.
 type EventStore interface {
@@ -64,8 +100,7 @@ type EventStore interface {
 	// prior events for the stream on that branch.
 	//
 	// scope (last param, matching Projector.Project's branch-last convention) tags
-	// every appended event with its branch and carries the branch's base position;
-	// pass MainScope for the mainline. Versioning is per-(streamID, branch): a
+	// every appended event with its branch; pass MainScope for the mainline. Versioning is per-(streamID, branch): a
 	// branch append never contends with main, and main never contends with a
 	// branch. Divergence surfaces at merge time, not at write time (ADR-005).
 	Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope AppendScope) error
