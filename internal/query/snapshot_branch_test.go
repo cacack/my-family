@@ -62,13 +62,11 @@ func snapshotBackends() []snapshotBackend {
 
 // logWriter appends person events on the mainline or a branch, tracking the
 // per-(stream, branch) versions the event store expects. A branch's first
-// write to a stream seeds from the mainline's version at the branch's base.
+// write to a stream seeds from the mainline's current version of it (#844).
 type logWriter struct {
 	t        *testing.T
 	es       repository.EventStore
-	base     int64
 	versions map[string]int64
-	atBase   map[uuid.UUID]int64
 }
 
 func (w *logWriter) key(stream uuid.UUID, branch domain.BranchID) string {
@@ -85,11 +83,11 @@ func (w *logWriter) append(branch domain.BranchID, stream uuid.UUID, event domai
 	case branch.IsMain():
 		expected = -1
 	default:
-		expected = w.atBase[stream]
+		expected = w.versions[w.key(stream, domain.MainBranchID)]
 	}
 	scope := repository.MainScope
 	if !branch.IsMain() {
-		scope = repository.AppendScope{BranchID: branch, BasePosition: w.base}
+		scope = repository.AppendScope{BranchID: branch}
 	}
 	require.NoError(w.t, w.es.Append(ctx, stream, "Person", []domain.Event{event}, expected, scope))
 	if expected < 0 {
@@ -124,12 +122,11 @@ func TestSnapshotComparison_Branch_AllBackends(t *testing.T) {
 			ctx := context.Background()
 			es, rs, ss := backend.open(t)
 			service := NewSnapshotService(ss, es, NewHistoryService(es, rs))
-			w := &logWriter{t: t, es: es, versions: map[string]int64{}, atBase: map[uuid.UUID]int64{}}
+			w := &logWriter{t: t, es: es, versions: map[string]int64{}}
 
 			newPerson := func(given string) uuid.UUID {
 				p := domain.NewPerson(given, "Lovelace")
 				w.append(domain.MainBranchID, p.ID, domain.NewPersonCreated(p))
-				w.atBase[p.ID] = 1
 				return p.ID
 			}
 			mark := func(branch domain.BranchID, name string) *domain.Snapshot {
@@ -144,9 +141,6 @@ func TestSnapshotComparison_Branch_AllBackends(t *testing.T) {
 			touchedEarly := newPerson("Early") // branch writes it before the first snapshot
 			edited := newPerson("Ada")         // branch writes it inside the range
 			untouched := newPerson("Bob")      // branch writes it only after the range
-			base, err := ss.GetMaxPosition(ctx)
-			require.NoError(t, err)
-			w.base = base
 
 			branch := domain.BranchID(uuid.New())
 			other := domain.BranchID(uuid.New())
@@ -253,12 +247,10 @@ func TestSnapshotComparison_Branch_Truncation(t *testing.T) {
 	es := memory.NewEventStore()
 	ss := memory.NewSnapshotStore(es)
 	service := NewSnapshotService(ss, es, NewHistoryService(es, memory.NewReadModelStore()))
-	w := &logWriter{t: t, es: es, versions: map[string]int64{}, atBase: map[uuid.UUID]int64{}}
+	w := &logWriter{t: t, es: es, versions: map[string]int64{}}
 
 	busy := domain.NewPerson("Busy", "Branch")
 	w.append(domain.MainBranchID, busy.ID, domain.NewPersonCreated(busy))
-	w.atBase[busy.ID] = 1
-	w.base = 1
 	branch := domain.BranchID(uuid.New())
 
 	// More branch writes to one stream before the range than one page holds.
