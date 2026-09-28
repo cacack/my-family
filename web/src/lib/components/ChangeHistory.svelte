@@ -3,6 +3,12 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import DiffView from './DiffView.svelte';
+	import {
+		CHANGE_ENTITY_TYPES,
+		ENTITY_TYPE_LABELS,
+		changeEntryLink,
+		entityTypeLabel
+	} from '$lib/utils/changeEntries';
 
 	interface Props {
 		entityType?: string;
@@ -43,25 +49,15 @@
 				return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
 			case 'updated':
 				return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+			case 'merged':
+				return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
 			default:
 				return '';
 		}
 	}
 
 	function getEntityLink(entry: ChangeEntry): string | null {
-		if (entry.action === 'deleted') {
-			return null;
-		}
-		switch (entry.entity_type) {
-			case 'person':
-				return `/persons/${entry.entity_id}`;
-			case 'family':
-				return `/families/${entry.entity_id}`;
-			case 'source':
-				return `/sources/${entry.entity_id}`;
-			default:
-				return null;
-		}
+		return changeEntryLink(entry);
 	}
 
 	function toggleExpanded(id: string) {
@@ -156,10 +152,9 @@
 				Entity Type
 				<select bind:value={filterEntityType} onchange={handleFilterChange}>
 					<option value="">All</option>
-					<option value="person">Person</option>
-					<option value="family">Family</option>
-					<option value="source">Source</option>
-					<option value="citation">Citation</option>
+					{#each CHANGE_ENTITY_TYPES as type (type)}
+						<option value={type}>{ENTITY_TYPE_LABELS[type]}</option>
+					{/each}
 				</select>
 			</label>
 		</div>
@@ -187,15 +182,15 @@
 						{/if}
 					</div>
 					<div class="entry-body">
-						<span class="entity-type">{entry.entity_type}</span>
+						<span class="entity-type">{entityTypeLabel(entry.entity_type)}</span>
 						{#if link}
 							<a href={link} class="entity-name">{entry.entity_name}</a>
 						{:else}
-							<span class="entity-name deleted">{entry.entity_name}</span>
+							<span class="entity-name" class:deleted={entry.action === 'deleted'}>{entry.entity_name}</span>
 						{/if}
 					</div>
 
-					{#if hasChanges && entry.action === 'updated'}
+					{#if hasChanges && (entry.action === 'updated' || entry.action === 'merged')}
 						<button class="toggle-changes" onclick={() => toggleExpanded(entry.id)}>
 							{isExpanded ? 'Hide changes' : 'Show changes'}
 							<span class="toggle-icon">{isExpanded ? '−' : '+'}</span>

@@ -417,13 +417,20 @@ func TestBranchService_CompareBranch_MainSideOrderedByPosition(t *testing.T) {
 // countingEventStore records how many reads the main side of a comparison makes.
 type countingEventStore struct {
 	repository.EventStore
-	setReads int
-	lastCap  int
+	setReads   int
+	stateReads int
+	lastCap    int
 }
 
 func (s *countingEventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]repository.StoredEvent, error) {
-	s.setReads++
-	s.lastCap = limit
+	// The main-side tail read starts after the fork; describing the entries
+	// (describeEvents) reads each side's streams from the start, once per side.
+	if branchID.IsMain() && fromPosition > 0 {
+		s.setReads++
+		s.lastCap = limit
+	} else {
+		s.stateReads++
+	}
 	return s.EventStore.ReadStreamsForBranch(ctx, streamIDs, branchID, fromPosition, limit)
 }
 
@@ -455,6 +462,11 @@ func TestBranchService_CompareBranch_MainSideIsOneSetRead(t *testing.T) {
 
 	assert.Equal(t, 1, counting.setReads, "main side must be a single set-based read")
 	assert.Equal(t, maxComparisonEvents, counting.lastCap, "the cap must be pushed into the store")
+	// Describing the entries is set-based too, never one read per entity:
+	// the branch side and the conflict names each read main's and the
+	// branch's streams once, the main side main's once — 5 reads for 25
+	// streams.
+	assert.LessOrEqual(t, counting.stateReads, 5, "describing entries must not read per stream")
 	assert.Len(t, result.MainChanges, len(streamIDs))
 	assert.Len(t, result.OverlappingStreamIDs, len(streamIDs))
 }

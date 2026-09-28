@@ -20,6 +20,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Label } from '$lib/components/ui/label';
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group';
+	import { entityTypeLabel } from '$lib/utils/changeEntries';
 
 	interface Props {
 		conflicts: MergeConflict[];
@@ -81,7 +82,7 @@
 			<li class="conflict" class:undecided={!decided}>
 				<div class="conflict-head">
 					<h3 class="conflict-title" id={headingId(conflict.stream_id)}>
-						<span class="entity-type">{conflict.entity_type}</span>
+						<span class="entity-type">{entityTypeLabel(conflict.entity_type)}</span>
 						<span class="conflict-name">{conflict.entity_name || 'Unnamed entity'}</span>
 					</h3>
 					<Badge variant="destructive">{conflictLabel(conflict.kind)}</Badge>

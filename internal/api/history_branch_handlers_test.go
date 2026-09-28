@@ -13,12 +13,12 @@ import (
 // ============================================================================
 
 // historyPage fetches an entity history and returns its total and the
-// (action, origin) pairs of its items, failing the test on a non-200.
+// (action, origin) pairs of its items, failing the test on a non-200 or on an
+// item outside the ChangeEntry contract.
 //
-// Items whose action is "unknown" are dropped: creating a person also records
-// its primary name on the person's stream, an event type the change log does
-// not map yet and renders as "unknown" (pre-existing, tracked in #739). They
-// still count toward total, on the mainline and on a branch alike.
+// Creating a person also records its primary name on the person's stream
+// (NameAdded), which the change log reports as an "updated" entry carrying
+// the name (#739).
 func historyPage(t *testing.T, server *api.Server, path string) (total int, entries [][2]string) {
 	t.Helper()
 	rec := do(t, server, http.MethodGet, path, "")
@@ -32,8 +32,8 @@ func historyPage(t *testing.T, server *api.Server, path string) (total int, entr
 		item, _ := raw.(map[string]any)
 		action, _ := item["action"].(string)
 		origin, _ := item["origin"].(string)
-		if action == "unknown" {
-			continue
+		if action == "unknown" || item["entity_type"] == "unknown" {
+			t.Fatalf("GET %s: item outside the ChangeEntry contract: %v", path, item)
 		}
 		entries = append(entries, [2]string{action, origin})
 	}
@@ -93,7 +93,7 @@ func TestPersonHistory_BranchOnlyPerson(t *testing.T) {
 	updateSurname(t, server, personID, onBranch, "Forebear")
 
 	_, entries := historyPage(t, server, "/api/v1/persons/"+personID+"/history"+onBranch)
-	assertEntries(t, "branch history", entries, [][2]string{{"created", "branch"}, {"updated", "branch"}})
+	assertEntries(t, "branch history", entries, [][2]string{{"created", "branch"}, {"updated", "branch"}, {"updated", "branch"}})
 
 	if rec := do(t, server, http.MethodGet, "/api/v1/persons/"+personID+"/history", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("Mainline history of a branch-only person: status = %d, want 404", rec.Code)
@@ -119,7 +119,7 @@ func TestPersonHistory_BranchInheritsMainline(t *testing.T) {
 	// live overlay shows it on the branch, so the branch history inherits it.
 	updateSurname(t, server, untouchedID, "", "Murray")
 	untouchedTotal, entries := historyPage(t, server, "/api/v1/persons/"+untouchedID+"/history"+onBranch)
-	assertEntries(t, "untouched person", entries, [][2]string{{"created", "main"}, {"updated", "main"}})
+	assertEntries(t, "untouched person", entries, [][2]string{{"created", "main"}, {"updated", "main"}, {"updated", "main"}})
 	if mainTotal, _ := historyPage(t, server, "/api/v1/persons/"+untouchedID+"/history"); mainTotal != untouchedTotal {
 		t.Errorf("Untouched person branch history total = %d, want the mainline's %d", untouchedTotal, mainTotal)
 	}
@@ -136,7 +136,7 @@ func TestPersonHistory_BranchInheritsMainline(t *testing.T) {
 		t.Errorf("Branch history total = %d, want %d", total, inherited+1)
 	}
 	assertEntries(t, "branch after own edit", entries, [][2]string{
-		{"created", "main"}, {"updated", "main"}, {"updated", "branch"},
+		{"created", "main"}, {"updated", "main"}, {"updated", "main"}, {"updated", "branch"},
 	})
 
 	// The mainline history is unchanged by any branch and carries no origin.
@@ -145,7 +145,7 @@ func TestPersonHistory_BranchInheritsMainline(t *testing.T) {
 		t.Errorf("Mainline history total = %d, want %d", mainTotal, inherited+1)
 	}
 	assertEntries(t, "mainline", entries, [][2]string{
-		{"created", ""}, {"updated", ""}, {"updated", ""},
+		{"created", ""}, {"updated", ""}, {"updated", ""}, {"updated", ""},
 	})
 
 	// Pagination is applied after the branch filter.
