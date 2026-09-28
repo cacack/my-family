@@ -2948,10 +2948,26 @@ export interface components {
             marriage_place?: string;
         };
         FamilyUpdate: {
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Set partner 1 to this person. Omit to leave partner 1 unchanged.
+             */
             partner1_id?: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description Set partner 2 to this person. Omit to leave partner 2 unchanged.
+             */
             partner2_id?: string;
+            /**
+             * @description Remove partner 1 from the family. Cannot be combined with partner1_id.
+             * @default false
+             */
+            clear_partner1: boolean;
+            /**
+             * @description Remove partner 2 from the family. Cannot be combined with partner2_id.
+             * @default false
+             */
+            clear_partner2: boolean;
             /** @enum {string} */
             relationship_type?: "marriage" | "partnership" | "unknown";
             marriage_date?: string;

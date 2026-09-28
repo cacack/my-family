@@ -27,9 +27,22 @@ func putFamily(t *testing.T, server *api.Server, id string, body map[string]any)
 	return rec
 }
 
+// decodeBody parses a JSON object response, failing the test on a bad body.
+func decodeBody(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response %q: %v", rec.Body.String(), err)
+	}
+	return out
+}
+
 func createFamilyOf(t *testing.T, server *api.Server, partner1, partner2 string) string {
 	t.Helper()
-	raw, _ := json.Marshal(map[string]any{"partner1_id": partner1, "partner2_id": partner2, "relationship_type": "marriage"})
+	raw, err := json.Marshal(map[string]any{"partner1_id": partner1, "partner2_id": partner2, "relationship_type": "marriage"})
+	if err != nil {
+		t.Fatalf("marshal family: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -37,9 +50,12 @@ func createFamilyOf(t *testing.T, server *api.Server, partner1, partner2 string)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create family: %d %s", rec.Code, rec.Body.String())
 	}
-	var created map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &created)
-	return created["id"].(string)
+	created := decodeBody(t, rec)
+	id, ok := created["id"].(string)
+	if !ok {
+		t.Fatalf("create family: no id in %s", rec.Body.String())
+	}
+	return id
 }
 
 // TestUpdateFamily_PartnersTypeAndDate is the API face of issue #848: the PUT
@@ -59,8 +75,7 @@ func TestUpdateFamily_PartnersTypeAndDate(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT family: %d %s", rec.Code, rec.Body.String())
 	}
-	var got map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	got := decodeBody(t, rec)
 	if got["partner1_id"] != p3 || got["partner2_id"] != p1 {
 		t.Errorf("partners = %v / %v, want %s / %s", got["partner1_id"], got["partner2_id"], p3, p1)
 	}
@@ -68,8 +83,7 @@ func TestUpdateFamily_PartnersTypeAndDate(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/families/"+familyID, http.NoBody)
 	detailRec := httptest.NewRecorder()
 	server.Echo().ServeHTTP(detailRec, req)
-	var detail map[string]any
-	_ = json.Unmarshal(detailRec.Body.Bytes(), &detail)
+	detail := decodeBody(t, detailRec)
 	if partner1, _ := detail["partner1"].(map[string]any); partner1 == nil || partner1["given_name"] != "Cameron" {
 		t.Errorf("partner1 = %v, want Cameron", detail["partner1"])
 	}
@@ -88,7 +102,10 @@ func TestUpdateFamily_PartnerValidation(t *testing.T) {
 	child := createTestPerson(t, server, "Casey", "Placeholder")["id"].(string)
 	familyID := createFamilyOf(t, server, p1, p2)
 
-	link, _ := json.Marshal(map[string]any{"person_id": child})
+	link, err := json.Marshal(map[string]any{"person_id": child})
+	if err != nil {
+		t.Fatalf("marshal link: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/families/%s/children", familyID), bytes.NewReader(link))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -111,6 +128,83 @@ func TestUpdateFamily_PartnerValidation(t *testing.T) {
 			tt.body["version"] = 2 // the create plus the child link
 			if rec := putFamily(t, server, familyID, tt.body); rec.Code != tt.want {
 				t.Errorf("status = %d, want %d: %s", rec.Code, tt.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestUpdateFamily_ClearPartner (#826): the PUT removes a partner with
+// clear_partner1/clear_partner2, and refuses setting and clearing the same one.
+func TestUpdateFamily_ClearPartner(t *testing.T) {
+	server := setupFamilyTestServer(t)
+	p1 := createTestPerson(t, server, "Avery", "Placeholder")["id"].(string)
+	p2 := createTestPerson(t, server, "Blake", "Sample")["id"].(string)
+	familyID := createFamilyOf(t, server, p1, p2)
+
+	rec := putFamily(t, server, familyID, map[string]any{"version": 1, "partner1_id": p2, "clear_partner1": true})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("set+clear partner1: %d %s, want 400", rec.Code, rec.Body.String())
+	}
+
+	rec = putFamily(t, server, familyID, map[string]any{"version": 1, "clear_partner2": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear partner2: %d %s", rec.Code, rec.Body.String())
+	}
+	got := decodeBody(t, rec)
+	if _, ok := got["partner2_id"]; ok {
+		t.Errorf("partner2_id = %v, want absent after clearing", got["partner2_id"])
+	}
+	if got["partner1_id"] != p1 {
+		t.Errorf("partner1_id = %v, want %s", got["partner1_id"], p1)
+	}
+}
+
+// TestUpdateFamily_KeepsAtLeastOnePartner (#826): a PUT that would leave a
+// family with no partners — clearing both at once, or clearing the last one —
+// is a 400 VALIDATION error, matching the create-time rule.
+func TestUpdateFamily_KeepsAtLeastOnePartner(t *testing.T) {
+	server := setupFamilyTestServer(t)
+	p1 := createTestPerson(t, server, "Avery", "Placeholder")["id"].(string)
+	p2 := createTestPerson(t, server, "Blake", "Sample")["id"].(string)
+	familyID := createFamilyOf(t, server, p1, p2)
+
+	rec := putFamily(t, server, familyID, map[string]any{"version": 1, "clear_partner1": true, "clear_partner2": true})
+	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["code"] != "VALIDATION_ERROR" {
+		t.Fatalf("clear both: %d %s, want 400 VALIDATION_ERROR", rec.Code, rec.Body.String())
+	}
+
+	if rec = putFamily(t, server, familyID, map[string]any{"version": 1, "clear_partner2": true}); rec.Code != http.StatusOK {
+		t.Fatalf("clear partner2: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = putFamily(t, server, familyID, map[string]any{"version": 2, "clear_partner1": true})
+	if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["code"] != "VALIDATION_ERROR" {
+		t.Fatalf("clear last partner: %d %s, want 400 VALIDATION_ERROR", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCreateFamily_ValidationIs400 (#826): creating a family with no partners,
+// or with an unknown one, is a 400 VALIDATION error, not a generic 500.
+func TestCreateFamily_ValidationIs400(t *testing.T) {
+	server := setupFamilyTestServer(t)
+	for _, tc := range []struct {
+		name string
+		body map[string]any
+	}{
+		{"no partners", map[string]any{"relationship_type": "marriage"}},
+		{"unknown partner1", map[string]any{"partner1_id": uuid.NewString()}},
+		{"unknown partner2", map[string]any{"partner2_id": uuid.NewString()}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(tc.body)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/families", bytes.NewReader(raw))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			server.Echo().ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["code"] != "VALIDATION_ERROR" {
+				t.Fatalf("status = %d %s, want 400 VALIDATION_ERROR", rec.Code, rec.Body.String())
 			}
 		})
 	}

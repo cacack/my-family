@@ -1,15 +1,37 @@
 <script lang="ts">
-	import { api, type SearchResult, type Person, formatPersonName, formatLifespan } from '$lib/api/client';
+	import {
+		api,
+		type SearchResult,
+		type PersonSummary,
+		formatPersonName,
+		formatLifespan
+	} from '$lib/api/client';
 
 	interface Props {
 		label: string;
-		selectedPerson?: Person | SearchResult | null;
+		selectedPerson?: PersonSummary | null;
 		onSelect?: (person: SearchResult | null) => void;
 		placeholder?: string;
 		disabled?: boolean;
+		/** People who may not be picked here (e.g. the other partner); hidden from the results. */
+		excludeIds?: readonly string[];
 	}
 
-	let { label, selectedPerson = null, onSelect, placeholder = 'Search for a person...', disabled = false }: Props = $props();
+	let {
+		label,
+		selectedPerson = null,
+		onSelect,
+		placeholder = 'Search for a person...',
+		disabled = false,
+		excludeIds = []
+	}: Props = $props();
+
+	// Several selectors can share a page (two partner pickers, a child picker),
+	// so every id the ARIA wiring references is unique to this instance.
+	const uid = $props.id();
+	const listboxId = `person-selector-listbox-${uid}`;
+	const labelId = `person-selector-label-${uid}`;
+	const optionId = (index: number) => `person-selector-result-${uid}-${index}`;
 
 	let query = $state('');
 	let results: SearchResult[] = $state([]);
@@ -22,7 +44,7 @@
 
 	// Computed aria-activedescendant value
 	let activeDescendant = $derived(
-		highlightedIndex >= 0 ? `person-selector-result-${highlightedIndex}` : undefined
+		highlightedIndex >= 0 ? optionId(highlightedIndex) : undefined
 	);
 
 	// Reset highlighted index when results change
@@ -34,8 +56,8 @@
 	// Scroll highlighted item into view
 	$effect(() => {
 		if (highlightedIndex >= 0 && dropdownRef) {
-			const highlightedEl = dropdownRef.querySelector(`#person-selector-result-${highlightedIndex}`);
-			highlightedEl?.scrollIntoView({ block: 'nearest' });
+			const highlightedEl = document.getElementById(optionId(highlightedIndex));
+			highlightedEl?.scrollIntoView?.({ block: 'nearest' });
 		}
 	});
 
@@ -52,7 +74,8 @@
 				fuzzy: true,
 				limit: 8
 			});
-			results = response.items;
+			const excluded = new Set(excludeIds);
+			results = response.items.filter((person) => !excluded.has(person.id));
 		} catch {
 			results = [];
 		} finally {
@@ -109,6 +132,8 @@
 		// Handle Escape
 		if (e.key === 'Escape') {
 			e.preventDefault();
+			// Closing an open result list must not also close a dialog around it.
+			if (showDropdown) e.stopPropagation();
 			showDropdown = false;
 			highlightedIndex = -1;
 			return;
@@ -152,11 +177,11 @@
 </script>
 
 <div class="person-selector">
-	<span class="selector-label" id="person-selector-label-{label.replace(/\s+/g, '-').toLowerCase()}">{label}</span>
+	<span class="selector-label" id={labelId}>{label}</span>
 
 	{#if selectedPerson}
 		<!-- Selected person display -->
-		<div class="selected-person" data-gender={selectedPerson.gender}>
+		<div class="selected-person" data-gender={selectedPerson.gender} role="group" aria-labelledby={labelId}>
 			<div class="person-avatar {getGenderBgClass(selectedPerson.gender)}">
 				<svg viewBox="0 0 24 24" fill="currentColor">
 					<path d="M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM6 8a6 6 0 1 1 12 0A6 6 0 0 1 6 8zm2 10a3 3 0 0 0-3 3 1 1 0 1 1-2 0 5 5 0 0 1 5-5h8a5 5 0 0 1 5 5 1 1 0 1 1-2 0 3 3 0 0 0-3-3H8z" />
@@ -170,7 +195,7 @@
 				type="button"
 				class="clear-btn"
 				onclick={handleClear}
-				aria-label="Clear selection"
+				aria-label="Clear {label}: {formatPersonName(selectedPerson)}"
 				{disabled}
 			>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -198,7 +223,7 @@
 				aria-label={label}
 				aria-expanded={showDropdown}
 				aria-haspopup="listbox"
-				aria-controls="person-selector-listbox"
+				aria-controls={listboxId}
 				aria-autocomplete="list"
 				aria-activedescendant={activeDescendant}
 				role="combobox"
@@ -223,7 +248,7 @@
 				bind:this={dropdownRef}
 				class="dropdown"
 				role="listbox"
-				id="person-selector-listbox"
+				id={listboxId}
 				aria-label="Search results"
 			>
 				{#if results.length === 0}
@@ -231,7 +256,7 @@
 				{:else}
 					{#each results as person, index}
 						<button
-							id="person-selector-result-{index}"
+							id={optionId(index)}
 							type="button"
 							class="result-item"
 							class:highlighted={index === highlightedIndex}

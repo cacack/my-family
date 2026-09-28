@@ -203,6 +203,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **DI-002** | Date ordering enforced (death >= birth) where applicable | Validation tests |
 | **DI-003** | GEDCOM import/export is lossless for supported entities | Round-trip test |
 | **DI-004** | No data loss on standard operations | Event sourcing ensures (ES-001, ES-002) |
+| **DI-005** | A family always has at least one partner: `CreateFamily` and `UpdateFamily` (including `clear_partnerN`) both refuse a partnerless result with `ErrInvalidFamilyInput` (400) | `TestUpdateFamily_CannotClearLastPartner`, `TestCreateFamily_ValidationErrorsWrapSentinel` |
 
 ### API Invariants (API) - Source: [CONVENTIONS.md](./CONVENTIONS.md)
 
@@ -241,10 +242,10 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | ADR-003 (Sync Projections) | PR-001 through PR-005 | 5 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
-| ETHOS.md | DM-001 through DM-006, DI-001 through DI-004, QA-001 through QA-003 | 13 |
+| ETHOS.md | DM-001 through DM-006, DI-001 through DI-005, QA-001 through QA-003 | 14 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **50** |
+| **Total** | | **51** |
 
 ---
 
