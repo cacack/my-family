@@ -950,18 +950,13 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 	return nil
 }
 
-// GetFamilyChildren returns all children for a family within the branch overlay.
+// GetFamilyChildren returns all children for a family within the branch overlay
+// (ADR-005). It is GetFamilyChildrenByFamilyIDs for one family, so the family
+// group sheet and the descendancy walk always list siblings in the same order
+// (sequence with unsequenced children last, then bytewise surname, given name
+// and person id) on every backend.
 func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	children, ok := resolveBucket(s.familyChildren, branchID, familyID)
-	if !ok || len(children) == 0 {
-		return nil, nil
-	}
-	result := make([]repository.FamilyChildReadModel, len(children))
-	copy(result, children)
-	return result, nil
+	return s.GetFamilyChildrenByFamilyIDs(ctx, branchID, []uuid.UUID{familyID})
 }
 
 // GetChildrenOfFamily returns person read models for all children in a family,

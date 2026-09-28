@@ -69,9 +69,15 @@ func (ss *StrictServer) GetAhnentafel(ctx context.Context, request GetAhnentafel
 		}
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := ss.server.ahnentafelService.GetAhnentafel(ctx, query.GetAhnentafelInput{
 		PersonID:       request.Id,
 		MaxGenerations: maxGen,
+		BranchID:       branchScopeID(branch),
 	})
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
@@ -1197,10 +1203,15 @@ func (ss *StrictServer) ListFamilies(ctx context.Context, request ListFamiliesRe
 		offset = *request.Params.Offset
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := ss.server.familyService.ListFamilies(ctx, query.ListFamiliesInput{
 		Limit:    limit,
 		Offset:   offset,
-		BranchID: domain.MainBranchID,
+		BranchID: branchScopeID(branch),
 	})
 	if err != nil {
 		return nil, err
@@ -1437,7 +1448,12 @@ func (ss *StrictServer) RemoveChildFromFamily(ctx context.Context, request Remov
 
 // GetFamilyGroupSheet implements StrictServerInterface.
 func (ss *StrictServer) GetFamilyGroupSheet(ctx context.Context, request GetFamilyGroupSheetRequestObject) (GetFamilyGroupSheetResponseObject, error) {
-	gs, err := ss.server.familyService.GetGroupSheet(ctx, domain.MainBranchID, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	gs, err := ss.server.familyService.GetGroupSheet(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetFamilyGroupSheet404JSONResponse{NotFoundJSONResponse{
@@ -1998,9 +2014,15 @@ func (ss *StrictServer) GetDescendancy(ctx context.Context, request GetDescendan
 		maxGen = *request.Params.Generations
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
 	result, err := ss.server.descendancyService.GetDescendancy(ctx, query.GetDescendancyInput{
 		PersonID:       request.Id,
 		MaxGenerations: maxGen,
+		BranchID:       branchScopeID(branch),
 	})
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
@@ -3201,79 +3223,62 @@ func searchTextParamsError(q, birthPlace, deathPlace string) string {
 	return ""
 }
 
-// SearchPersons implements StrictServerInterface.
-func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
-	if !validEnumParam(request.Params.Sort) || !validEnumParam(request.Params.Order) {
-		return SearchPersons400JSONResponse{BadRequestJSONResponse{
-			Code:    "invalid_parameter",
-			Message: "Invalid sort or order parameter",
-		}}, nil
-	}
-	queryStr := stringFromParam(request.Params.Q)
-	birthPlace := stringFromParam(request.Params.BirthPlace)
-	deathPlace := stringFromParam(request.Params.DeathPlace)
+// searchPersonsBadRequest is the 400 answer SearchPersons gives for msg.
+func searchPersonsBadRequest(code, msg string) *SearchPersons400JSONResponse {
+	return &SearchPersons400JSONResponse{BadRequestJSONResponse{Code: code, Message: msg}}
+}
 
-	birthDateFrom := dateFromParam(request.Params.BirthDateFrom)
-	birthDateTo := dateFromParam(request.Params.BirthDateTo)
-	deathDateFrom := dateFromParam(request.Params.DeathDateFrom)
-	deathDateTo := dateFromParam(request.Params.DeathDateTo)
+// searchPersonsInput validates the search parameters and builds the service
+// input from them (on the mainline; the caller sets the scope). A non-nil
+// response is the 400 to return instead. Split out of SearchPersons to keep its
+// complexity down (#764).
+func searchPersonsInput(params SearchPersonsParams) (query.SearchPersonsInput, *SearchPersons400JSONResponse) {
+	if !validEnumParam(params.Sort) || !validEnumParam(params.Order) {
+		return query.SearchPersonsInput{}, searchPersonsBadRequest("invalid_parameter", "Invalid sort or order parameter")
+	}
+
+	input := query.SearchPersonsInput{
+		Query:         stringFromParam(params.Q),
+		Fuzzy:         params.Fuzzy != nil && *params.Fuzzy,
+		Soundex:       params.Soundex != nil && *params.Soundex,
+		BirthDateFrom: dateFromParam(params.BirthDateFrom),
+		BirthDateTo:   dateFromParam(params.BirthDateTo),
+		DeathDateFrom: dateFromParam(params.DeathDateFrom),
+		DeathDateTo:   dateFromParam(params.DeathDateTo),
+		BirthPlace:    stringFromParam(params.BirthPlace),
+		DeathPlace:    stringFromParam(params.DeathPlace),
+		Limit:         20,
+	}
 
 	// Validate: at least one search criterion must be provided
-	hasQuery := queryStr != ""
-	hasDateRange := birthDateFrom != nil || birthDateTo != nil || deathDateFrom != nil || deathDateTo != nil
-	hasPlace := birthPlace != "" || deathPlace != ""
+	hasQuery := input.Query != ""
+	hasDateRange := input.BirthDateFrom != nil || input.BirthDateTo != nil || input.DeathDateFrom != nil || input.DeathDateTo != nil
+	hasPlace := input.BirthPlace != "" || input.DeathPlace != ""
 	if !hasQuery && !hasDateRange && !hasPlace {
-		return SearchPersons400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: "At least one search criterion is required: query, date range, or place",
-		}}, nil
+		return query.SearchPersonsInput{}, searchPersonsBadRequest("bad_request",
+			"At least one search criterion is required: query, date range, or place")
 	}
 
-	if msg := searchTextParamsError(queryStr, birthPlace, deathPlace); msg != "" {
-		return SearchPersons400JSONResponse{BadRequestJSONResponse{
-			Code:    "bad_request",
-			Message: msg,
-		}}, nil
+	if msg := searchTextParamsError(input.Query, input.BirthPlace, input.DeathPlace); msg != "" {
+		return query.SearchPersonsInput{}, searchPersonsBadRequest("bad_request", msg)
 	}
 
-	fuzzy := request.Params.Fuzzy != nil && *request.Params.Fuzzy
-	soundex := request.Params.Soundex != nil && *request.Params.Soundex
-
-	sortField := ""
-	if request.Params.Sort != nil {
-		sortField = string(*request.Params.Sort)
+	if params.Sort != nil {
+		input.Sort = string(*params.Sort)
 	}
-	order := ""
-	if request.Params.Order != nil {
-		order = string(*request.Params.Order)
+	if params.Order != nil {
+		input.Order = string(*params.Order)
 	}
-
-	limit := 20
-	if request.Params.Limit != nil {
-		limit = *request.Params.Limit
+	if params.Limit != nil {
+		input.Limit = *params.Limit
 	}
+	return input, nil
+}
 
-	result, err := ss.server.personService.SearchPersons(ctx, query.SearchPersonsInput{
-		Query:         queryStr,
-		Fuzzy:         fuzzy,
-		Soundex:       soundex,
-		BirthDateFrom: birthDateFrom,
-		BirthDateTo:   birthDateTo,
-		DeathDateFrom: deathDateFrom,
-		DeathDateTo:   deathDateTo,
-		BirthPlace:    birthPlace,
-		DeathPlace:    deathPlace,
-		Sort:          sortField,
-		Order:         order,
-		Limit:         limit,
-		BranchID:      domain.MainBranchID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]SearchResult, len(result.Items))
-	for i, r := range result.Items {
+// convertSearchResults converts the service's search hits to the API shape.
+func convertSearchResults(results []query.SearchResult) []SearchResult {
+	items := make([]SearchResult, len(results))
+	for i, r := range results {
 		score := float32(r.Score)
 		items[i] = SearchResult{
 			Id:        r.ID,
@@ -3288,10 +3293,33 @@ func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersons
 			items[i].DeathDate = convertDomainGenDateToGenerated(r.DeathDate)
 		}
 	}
+	return items
+}
+
+// SearchPersons implements StrictServerInterface.
+//
+// With ?branch= the search runs over the branch's resolved view (#829): a
+// person created on the branch is found and a branch-deleted one is not.
+func (ss *StrictServer) SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error) {
+	input, badRequest := searchPersonsInput(request.Params)
+	if badRequest != nil {
+		return *badRequest, nil
+	}
+
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+	input.BranchID = branchScopeID(branch)
+
+	result, err := ss.server.personService.SearchPersons(ctx, input)
+	if err != nil {
+		return nil, err
+	}
 
 	resultQuery := result.Query
 	return SearchPersons200JSONResponse{
-		Items: items,
+		Items: convertSearchResults(result.Items),
 		Total: result.Total,
 		Query: &resultQuery,
 	}, nil
@@ -4494,7 +4522,12 @@ func convertMediaReadModelToGenerated(m repository.MediaReadModel) Media {
 
 // GetRelationship implements StrictServerInterface.
 func (ss *StrictServer) GetRelationship(ctx context.Context, request GetRelationshipRequestObject) (GetRelationshipResponseObject, error) {
-	result, err := ss.server.relationshipService.GetRelationship(ctx, request.PersonId1, request.PersonId2)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ss.server.relationshipService.GetRelationship(ctx, branchScopeID(branch), request.PersonId1, request.PersonId2)
 	if err != nil {
 		if errors.Is(err, query.ErrNotFound) {
 			return GetRelationship404JSONResponse{

@@ -3,7 +3,6 @@
 	import QualityScore from '$lib/components/QualityScore.svelte';
 	import QualityChart from '$lib/components/QualityChart.svelte';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 
 	interface PersonWithScore extends Person {
 		qualityScore: number;
@@ -209,15 +208,6 @@
 </svelte:head>
 
 <div class="analytics-page">
-	<!--
-		People (and so every score, issue count and research-status figure) come
-		from the branch-scoped persons list; families come from the families list,
-		which is still mainline until #829. Only the family-derived figures are
-		mainline, so the notice names them rather than the whole page.
-	-->
-	<MainlineNotice
-		message={`On a research branch, people and their quality scores follow your branch, but families still come from the mainline: the family count and the "No family connections" check reflect mainline families, not your branch's.`}
-	/>
 	<header class="page-header">
 		<h1>Data Quality</h1>
 	</header>

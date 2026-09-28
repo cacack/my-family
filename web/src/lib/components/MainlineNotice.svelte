@@ -4,7 +4,7 @@
 	 * research branch is active.
 	 *
 	 * The `?branch=` parameter is declared on the #669 vertical slice — persons,
-	 * person names, families (detail, not list), family children and pedigree —
+	 * person names, families, family children and pedigree —
 	 * on the browse and map aggregates that read that slice's overlay (#676
 	 * sub-issue A, #756), on the person/family facts of sub-issue B (#757):
 	 * the cemetery index and the association endpoints, on the evidence of
@@ -12,7 +12,9 @@
 	 * sub-issue D (#759): metadata, person media lists, content and thumbnails
 	 * (the file bytes themselves are shared with the mainline), and on the GPS
 	 * artifacts of sub-issue E (#760): evidence analyses, evidence conflicts,
-	 * research logs and proof summaries. The remaining surfaces — aggregates
+	 * research logs and proof summaries, and on search, the families list, the
+	 * group sheet, the Ahnentafel, descendancy and the relationship calculator
+	 * (#829). The remaining surfaces — aggregates
 	 * computed over the mainline, history, and the entities that stay main-only
 	 * by decision (ADR-005) — still answer from the mainline. Rendering one of
 	 * them unlabelled beneath the branch banner would be the UI quietly lying
@@ -25,19 +27,13 @@
 	 * surfaces whose content is most easily mistaken for branch content.
 	 *
 	 * Placed:
-	 * - `/` (dashboard) — the family count, recent families and research
-	 *   suggestions (discovery feed) come from the mainline while the people
-	 *   count and recent people follow the branch; the notice says which is which
-	 * - `/analytics` — people and their scores follow the branch, but families
-	 *   (the family count and the "no family connections" check) are mainline
-	 *   until #829 scopes the families list; the notice says exactly that
-	 * - `/families` (list only; family *detail* is branch-scoped)
+	 * - `/` (dashboard) — the research suggestions (discovery feed) come from
+	 *   the mainline while the people and family counts and the recent people
+	 *   and families follow the branch; the notice says which is which
 	 * - `/quality` — validation issues and duplicate pairs
-	 * - `/search` — advanced search
 	 * - `/history` — the global change feed
 	 * - `/snapshots` and `/snapshots/compare` — a snapshot marks a mainline
 	 *   position and its comparison lists mainline events only
-	 * - `/ahnentafel/{id}` — the ancestor report
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
 	 * - `/repositories` (list and detail, including its edit form) —
 	 *   repositories are main-only by decision (ADR-005), so creating, editing
@@ -58,10 +54,12 @@
 	 * since #757), `/map`, `/sources` (list and detail, since #758) and
 	 * `/evidence` with its research-log and proof-summary pages (since #760). The
 	 * media gallery on person detail pages follows the branch too (since #759),
-	 * and so does the evidence panel (since #760).
+	 * and so does the evidence panel (since #760). Since #829 so do `/search`
+	 * and every other search surface (the header SearchBox and PersonSelector),
+	 * `/families` (the list), `/analytics`, the family group sheet,
+	 * `/ahnentafel/{id}`, `/descendancy/{id}` and `/relationship`.
 	 *
-	 * Known gaps still open: `/descendancy/{id}` and `/relationship` (#829).
-	 * Both answer from the mainline today; neither says so.
+	 * Known gaps still open: none among the per-person and per-family reads.
 	 *
 	 * The history panels on person and family detail pages follow the branch
 	 * (#824), labelling each entry as the branch's own or inherited from the
@@ -74,8 +72,8 @@
 		/** What this page shows, e.g. "Sources". Used in the sentence. */
 		surface?: string;
 		/**
-		 * Replaces the default explanation. The families *list* needs its own,
-		 * because family detail pages are branch-scoped while the list is not.
+		 * Replaces the default explanation, for a surface that needs to say more
+		 * precisely which of its parts are mainline.
 		 */
 		detail?: string;
 		/**
@@ -89,7 +87,7 @@
 	let {
 		surface = 'This page',
 		message,
-		detail = 'Branch scoping currently covers people, families, pedigrees, sources, citations, notes, media and the browse and map views.'
+		detail = 'Branch scoping currently covers people, families, pedigrees, descendancy, relationships, search, sources, citations, notes, media and the browse and map views.'
 	}: Props = $props();
 </script>
 

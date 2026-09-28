@@ -160,8 +160,16 @@ describe('isBranchScopedRequest', () => {
 		expect(isBranchScopedRequest('DELETE', `/persons/${PERSON_ID}/brick-wall`)).toBe(false);
 	});
 
-	it('does not allow GET /families - listFamilies has no branch parameter', () => {
-		expect(isBranchScopedRequest('GET', '/families')).toBe(false);
+	it('scopes search, the families list and the kinship reads (#829)', () => {
+		expect(isBranchScopedRequest('GET', '/search?q=Ada&limit=10')).toBe(true);
+		expect(isBranchScopedRequest('GET', '/families')).toBe(true);
+		expect(isBranchScopedRequest('GET', '/families?limit=20&offset=40')).toBe(true);
+		expect(isBranchScopedRequest('GET', `/families/${FAMILY_ID}/group-sheet`)).toBe(true);
+		expect(isBranchScopedRequest('GET', `/ahnentafel/${PERSON_ID}?generations=5`)).toBe(true);
+		expect(isBranchScopedRequest('GET', `/descendancy/${PERSON_ID}`)).toBe(true);
+		expect(isBranchScopedRequest('GET', `/relationship/${PERSON_ID}/${NAME_ID}`)).toBe(true);
+		// Only the two-person form exists.
+		expect(isBranchScopedRequest('GET', `/relationship/${PERSON_ID}`)).toBe(false);
 	});
 
 	it('matches on method, not just path', () => {
@@ -183,7 +191,6 @@ describe('isBranchScopedRequest', () => {
 		// GET /citations has no list operation, and /sources/search takes no writes.
 		expect(isBranchScopedRequest('GET', '/citations')).toBe(false);
 		expect(isBranchScopedRequest('POST', '/sources/search')).toBe(false);
-		expect(isBranchScopedRequest('GET', `/families/${FAMILY_ID}/group-sheet`)).toBe(false);
 		// Media history and rollback stay mainline (#759 scopes the metadata, not
 		// its audit trail), and the content/thumbnail reads take no writes.
 		expect(isBranchScopedRequest('GET', `/media/${NAME_ID}/history`)).toBe(false);
@@ -254,8 +261,27 @@ describe('branch scope threading', () => {
 
 	it('leaves non-allowlisted requests untouched while a branch is active', async () => {
 		setClientBranch(BRANCH_ID);
+		await api.listRepositories();
+		expect(requestedUrl()).toBe('/api/v1/repositories');
+	});
+
+	it('scopes search and the families list, which every search surface and list page share (#829)', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.searchPersons({ q: 'Ada', limit: 10 });
 		await api.listFamilies({ limit: 20 });
-		expect(requestedUrl()).toBe('/api/v1/families?limit=20');
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			`/api/v1/search?q=Ada&limit=10&branch=${BRANCH_ID}`,
+			`/api/v1/families?limit=20&branch=${BRANCH_ID}`
+		]);
+	});
+
+	it('scopes the text Ahnentafel, which bypasses request() (#829)', async () => {
+		fetchMock.mockResolvedValueOnce(new Response('AHNENTAFEL REPORT', { status: 200 }));
+		setClientBranch(BRANCH_ID);
+		await expect(api.getAhnentafelText(PERSON_ID, 3)).resolves.toBe('AHNENTAFEL REPORT');
+		expect(requestedUrl()).toBe(
+			`/api/v1/ahnentafel/${PERSON_ID}?format=text&generations=3&branch=${BRANCH_ID}`
+		);
 	});
 
 	it('scopes the media URL builders and the multipart upload, which bypass request()', async () => {
