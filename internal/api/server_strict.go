@@ -1305,6 +1305,14 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		Version: request.Body.Version,
 	}
 
+	if request.Body.Partner1Id != nil {
+		id := *request.Body.Partner1Id
+		input.Partner1ID = &id
+	}
+	if request.Body.Partner2Id != nil {
+		id := *request.Body.Partner2Id
+		input.Partner2ID = &id
+	}
 	if request.Body.MarriageDate != nil {
 		input.MarriageDate = request.Body.MarriageDate
 	}
