@@ -68,13 +68,16 @@ func (s *SnapshotStore) Get(_ context.Context, id uuid.UUID) (*domain.Snapshot, 
 	return &copied, nil
 }
 
-// List retrieves all snapshots ordered by created_at DESC.
-func (s *SnapshotStore) List(_ context.Context) ([]*domain.Snapshot, error) {
+// List retrieves the snapshots marked on branchID, ordered by created_at DESC.
+func (s *SnapshotStore) List(_ context.Context, branchID domain.BranchID) ([]*domain.Snapshot, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	result := make([]*domain.Snapshot, 0, len(s.snapshots))
 	for _, snapshot := range s.snapshots {
+		if snapshot.BranchID != branchID {
+			continue
+		}
 		// Make a copy
 		copied := *snapshot
 		result = append(result, &copied)

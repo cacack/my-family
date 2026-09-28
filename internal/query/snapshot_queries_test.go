@@ -44,7 +44,7 @@ func (m *mockSnapshotStore) Get(ctx context.Context, id uuid.UUID) (*domain.Snap
 	return nil, repository.ErrSnapshotNotFound
 }
 
-func (m *mockSnapshotStore) List(ctx context.Context) ([]*domain.Snapshot, error) {
+func (m *mockSnapshotStore) List(ctx context.Context, _ domain.BranchID) ([]*domain.Snapshot, error) {
 	if m.listFunc != nil {
 		return m.listFunc(ctx)
 	}
@@ -108,7 +108,7 @@ func TestSnapshotService_ListSnapshots(t *testing.T) {
 	}
 
 	service := NewSnapshotService(snapshotStore, &mockEventStore{}, &HistoryService{})
-	result, err := service.ListSnapshots(context.Background())
+	result, err := service.ListSnapshots(context.Background(), domain.MainBranchID)
 
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(result))
@@ -141,13 +141,13 @@ func TestSnapshotService_GetSnapshot(t *testing.T) {
 	service := NewSnapshotService(snapshotStore, &mockEventStore{}, &HistoryService{})
 
 	t.Run("found", func(t *testing.T) {
-		result, err := service.GetSnapshot(context.Background(), snapshotID)
+		result, err := service.GetSnapshot(context.Background(), domain.MainBranchID, snapshotID)
 		require.NoError(t, err)
 		assert.Equal(t, snapshot, result)
 	})
 
 	t.Run("not found", func(t *testing.T) {
-		_, err := service.GetSnapshot(context.Background(), uuid.New())
+		_, err := service.GetSnapshot(context.Background(), domain.MainBranchID, uuid.New())
 		assert.ErrorIs(t, err, repository.ErrSnapshotNotFound)
 	})
 }
@@ -318,7 +318,7 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 	service := NewSnapshotService(snapshotStore, eventStore, historyService)
 
 	t.Run("compare two snapshots", func(t *testing.T) {
-		result, err := service.CompareSnapshots(context.Background(), snapshot1ID, snapshot2ID)
+		result, err := service.CompareSnapshots(context.Background(), domain.MainBranchID, snapshot1ID, snapshot2ID)
 
 		require.NoError(t, err)
 		assert.Equal(t, snapshot1, result.Snapshot1)
@@ -331,7 +331,7 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 	})
 
 	t.Run("compare in reverse order", func(t *testing.T) {
-		result, err := service.CompareSnapshots(context.Background(), snapshot2ID, snapshot1ID)
+		result, err := service.CompareSnapshots(context.Background(), domain.MainBranchID, snapshot2ID, snapshot1ID)
 
 		require.NoError(t, err)
 		assert.Equal(t, snapshot2, result.Snapshot1)
@@ -340,7 +340,7 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 	})
 
 	t.Run("excludes research branch events and events past the newer snapshot", func(t *testing.T) {
-		result, err := service.CompareSnapshots(context.Background(), snapshot1ID, snapshot2ID)
+		result, err := service.CompareSnapshots(context.Background(), domain.MainBranchID, snapshot1ID, snapshot2ID)
 
 		require.NoError(t, err)
 		require.Len(t, result.Changes, 1)
@@ -355,7 +355,7 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 			},
 		}
 		svc := NewSnapshotService(snapshotStore, failing, historyService)
-		_, err := svc.CompareSnapshots(context.Background(), snapshot1ID, snapshot2ID)
+		_, err := svc.CompareSnapshots(context.Background(), domain.MainBranchID, snapshot1ID, snapshot2ID)
 		assert.ErrorIs(t, err, assert.AnError)
 	})
 
@@ -366,7 +366,7 @@ func TestSnapshotService_CompareSnapshots(t *testing.T) {
 			},
 		}
 		svc := NewSnapshotService(snapshotStoreNotFound, eventStore, historyService)
-		_, err := svc.CompareSnapshots(context.Background(), uuid.New(), snapshot2ID)
+		_, err := svc.CompareSnapshots(context.Background(), domain.MainBranchID, uuid.New(), snapshot2ID)
 		assert.Error(t, err)
 	})
 }
@@ -402,7 +402,7 @@ func TestSnapshotService_CompareSnapshots_HasMore(t *testing.T) {
 		t.Helper()
 		eventStore := &mockEventStoreExt{readBranchFunc: branchReader(log)}
 		service := NewSnapshotService(snapshotStore, eventStore, NewHistoryService(eventStore, &mockReadModelStore{}))
-		result, err := service.CompareSnapshots(context.Background(), from.ID, to.ID)
+		result, err := service.CompareSnapshots(context.Background(), domain.MainBranchID, from.ID, to.ID)
 		require.NoError(t, err)
 		return result
 	}

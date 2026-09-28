@@ -4968,7 +4968,7 @@ func TestProjector_SnapshotLifecycleRegistry(t *testing.T) {
 	if err := projector.Project(ctx, created, 1, domain.MainBranchID); err != nil {
 		t.Fatalf("replaying SnapshotCreated failed: %v", err)
 	}
-	all, err := snapshotStore.List(ctx)
+	all, err := snapshotStore.List(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
@@ -4977,7 +4977,7 @@ func TestProjector_SnapshotLifecycleRegistry(t *testing.T) {
 	}
 
 	// SnapshotDeleted -> row gone.
-	deleted := domain.NewSnapshotDeleted(snapshot.ID)
+	deleted := domain.NewSnapshotDeleted(snapshot.ID, domain.MainBranchID)
 	if err := projector.Project(ctx, deleted, 2, domain.MainBranchID); err != nil {
 		t.Fatalf("Project SnapshotDeleted failed: %v", err)
 	}
@@ -5002,9 +5002,78 @@ func TestProjector_SnapshotLifecycleNilStore(t *testing.T) {
 	if err := projector.Project(ctx, domain.NewSnapshotCreated(snapshot), 1, domain.MainBranchID); err != nil {
 		t.Errorf("SnapshotCreated with nil store should no-op, got %v", err)
 	}
-	if err := projector.Project(ctx, domain.NewSnapshotDeleted(snapshot.ID), 2, domain.MainBranchID); err != nil {
+	if err := projector.Project(ctx, domain.NewSnapshotDeleted(snapshot.ID, domain.MainBranchID), 2, domain.MainBranchID); err != nil {
 		t.Errorf("SnapshotDeleted with nil store should no-op, got %v", err)
 	}
 }
 
 func intPtr(v int) *int { return &v }
+
+// TestSnapshotEvents_PreBranchPayloadDecodesAsMainline: SnapshotCreated and
+// SnapshotDeleted written before issue #839 carry no branch_id. They must still
+// decode (ES-007), and a replayed pre-#839 SnapshotCreated must project as a
+// mainline snapshot — which is what every snapshot was then.
+func TestSnapshotEvents_PreBranchPayloadDecodesAsMainline(t *testing.T) {
+	ctx := context.Background()
+	snapshotID := uuid.New()
+	legacyCreated := `{"id":"` + uuid.New().String() + `","timestamp":"2026-01-02T03:04:05Z",` +
+		`"snapshot_id":"` + snapshotID.String() + `","name":"Legacy","position":9}`
+	stored := repository.StoredEvent{
+		ID: uuid.New(), StreamID: snapshotID, StreamType: "snapshot",
+		EventType: "SnapshotCreated", Data: json.RawMessage(legacyCreated), Version: 1, Position: 10,
+	}
+	decoded, err := stored.DecodeEvent()
+	if err != nil {
+		t.Fatalf("DecodeEvent(legacy SnapshotCreated) failed: %v", err)
+	}
+	created, ok := decoded.(domain.SnapshotCreated)
+	if !ok || created.BranchID != uuid.Nil {
+		t.Fatalf("decoded = %+v, want a SnapshotCreated on the mainline", decoded)
+	}
+
+	snapshotStore := memory.NewSnapshotStore(memory.NewEventStore())
+	projector := repository.NewProjectorWithSnapshots(memory.NewReadModelStore(), nil, snapshotStore)
+	if err := projector.Project(ctx, created, 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project failed: %v", err)
+	}
+	mainList, err := snapshotStore.List(ctx, domain.MainBranchID)
+	if err != nil || len(mainList) != 1 || mainList[0].Position != 9 {
+		t.Fatalf("mainline list = %+v, %v; want the legacy snapshot", mainList, err)
+	}
+
+	legacyDeleted := `{"id":"` + uuid.New().String() + `","timestamp":"2026-01-02T03:04:05Z",` +
+		`"snapshot_id":"` + snapshotID.String() + `"}`
+	stored.EventType = "SnapshotDeleted"
+	stored.Data = json.RawMessage(legacyDeleted)
+	decoded, err = stored.DecodeEvent()
+	if err != nil {
+		t.Fatalf("DecodeEvent(legacy SnapshotDeleted) failed: %v", err)
+	}
+	if deleted, ok := decoded.(domain.SnapshotDeleted); !ok || deleted.BranchID != uuid.Nil || deleted.SnapshotID != snapshotID {
+		t.Fatalf("decoded = %+v, want a mainline SnapshotDeleted", decoded)
+	}
+}
+
+// TestProjector_BranchSnapshotKeepsBranch: SnapshotCreated's payload branch is
+// what the registry row records (issue #839).
+func TestProjector_BranchSnapshotKeepsBranch(t *testing.T) {
+	ctx := context.Background()
+	snapshotStore := memory.NewSnapshotStore(memory.NewEventStore())
+	projector := repository.NewProjectorWithSnapshots(memory.NewReadModelStore(), nil, snapshotStore)
+
+	branch := domain.BranchID(uuid.New())
+	snapshot, err := domain.NewSnapshotOn(branch, "On a branch", "", 12)
+	if err != nil {
+		t.Fatalf("NewSnapshotOn failed: %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewSnapshotCreated(snapshot), 1, domain.MainBranchID); err != nil {
+		t.Fatalf("Project failed: %v", err)
+	}
+	got, err := snapshotStore.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if got.BranchID != branch {
+		t.Errorf("BranchID = %v, want %v", got.BranchID, branch)
+	}
+}

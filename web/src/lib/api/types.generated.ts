@@ -1650,14 +1650,19 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List all snapshots
-         * @description Returns all research milestone snapshots ordered by creation date (newest first)
+         * List the snapshots of the mainline or a branch
+         * @description Returns the research milestone snapshots marked on the requested scope,
+         *     newest first. A snapshot marks `(branch_id, position)` (ADR-005): the
+         *     mainline's list holds mainline snapshots only, and a branch's list holds
+         *     that branch's snapshots only.
          */
         get: operations["listSnapshots"];
         put?: never;
         /**
          * Create a new snapshot
-         * @description Creates a snapshot capturing the current position in the event store
+         * @description Creates a snapshot marking the current position of the event log in the
+         *     requested scope's view: on the mainline by default, or on the branch
+         *     named by `?branch=`.
          */
         post: operations["createSnapshot"];
         delete?: never;
@@ -1676,15 +1681,48 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get a snapshot by ID */
+        /**
+         * Get a snapshot by ID
+         * @description A snapshot marked on another branch than the requested scope is not found.
+         */
         get: operations["getSnapshot"];
         put?: never;
         post?: never;
         /**
          * Delete a snapshot
-         * @description Removes the snapshot record (events in the store remain untouched)
+         * @description Removes the snapshot record (events in the store remain untouched). A
+         *     snapshot marked on another branch than the requested scope is not found.
          */
         delete: operations["deleteSnapshot"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/snapshots/{id}/compare-current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Snapshot UUID */
+                id: components["parameters"]["snapshotId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Compare a snapshot to the current state
+         * @description Returns the changes recorded between the snapshot's position and the
+         *     current head of the event log ("what changed since this milestone?"),
+         *     in the requested scope's view: the mainline's own changes, or on a
+         *     branch the branch's view (its own changes plus the mainline changes it
+         *     inherits, each labelled with `origin` — ADR-005). The snapshot must be
+         *     marked on the requested scope; one marked on another branch is refused
+         *     with 409 `snapshot_branch_mismatch`.
+         */
+        get: operations["compareSnapshotToCurrent"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1704,7 +1742,13 @@ export interface paths {
         };
         /**
          * Compare two snapshots
-         * @description Returns the list of changes (events) between two snapshot positions
+         * @description Returns the list of changes (events) between two snapshot positions, in
+         *     the requested scope's view: the mainline's own changes, or on a branch
+         *     the branch's view (its own changes plus the mainline changes it
+         *     inherits, each labelled with `origin` — ADR-005). Both snapshots must be
+         *     marked on the requested scope; comparing snapshots from different
+         *     branches is refused with 409 `snapshot_branch_mismatch`. To compare a
+         *     snapshot with the current state, use `/snapshots/{id}/compare-current`.
          */
         get: operations["compareSnapshots"];
         put?: never;
@@ -3198,9 +3242,10 @@ export interface components {
             /** @description ID of user who made the change (null if single-user) */
             user_id?: string;
             /**
-             * @description Set only on branch-scoped entity history (`?branch=`): `branch` for
-             *     the branch's own events, `main` for the mainline events its view
-             *     inherits (ADR-005). Absent everywhere else.
+             * @description Set only on branch-scoped entity history and branch-scoped snapshot
+             *     comparisons (`?branch=`): `branch` for the branch's own events,
+             *     `main` for the mainline events its view inherits (ADR-005). Absent
+             *     everywhere else.
              * @enum {string}
              */
             origin?: "main" | "branch";
@@ -4051,6 +4096,12 @@ export interface components {
              */
             position: number;
             /**
+             * Format: uuid
+             * @description The research branch whose view this snapshot marks. Absent for a
+             *     mainline snapshot.
+             */
+            branch_id?: string;
+            /**
              * Format: date-time
              * @description When the snapshot was created
              */
@@ -4078,6 +4129,21 @@ export interface components {
             has_more: boolean;
             /** @description True if snapshot1 is the older (lower position) snapshot */
             older_first: boolean;
+        };
+        SnapshotCurrentComparisonResult: {
+            snapshot: components["schemas"]["Snapshot"];
+            /**
+             * Format: int64
+             * @description The event log head the comparison ran to — the position a snapshot
+             *     taken now would mark.
+             */
+            head_position: number;
+            /** @description Changes recorded after the snapshot, oldest first */
+            changes: components["schemas"]["ChangeEntry"][];
+            /** @description Number of changes listed */
+            total_count: number;
+            /** @description Whether there are more changes beyond the limit */
+            has_more: boolean;
         };
         Branch: {
             /** Format: uuid */
@@ -8141,7 +8207,17 @@ export interface operations {
     };
     listSnapshots: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8157,11 +8233,22 @@ export interface operations {
                     "application/json": components["schemas"]["SnapshotList"];
                 };
             };
+            404: components["responses"]["NotFound"];
         };
     };
     createSnapshot: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8188,11 +8275,23 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getSnapshot: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Snapshot UUID */
@@ -8216,7 +8315,17 @@ export interface operations {
     };
     deleteSnapshot: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description Snapshot UUID */
@@ -8234,11 +8343,65 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    compareSnapshotToCurrent: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
+            header?: never;
+            path: {
+                /** @description Snapshot UUID */
+                id: components["parameters"]["snapshotId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comparison result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotCurrentComparisonResult"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The snapshot is marked on another branch (`snapshot_branch_mismatch`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     compareSnapshots: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path: {
                 /** @description First snapshot ID */
@@ -8260,6 +8423,15 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            /** @description The snapshots are marked on different branches (`snapshot_branch_mismatch`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listBranches: {

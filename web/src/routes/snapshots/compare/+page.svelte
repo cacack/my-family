@@ -1,12 +1,19 @@
 <script lang="ts">
 	/**
-	 * Compare two research snapshots: every mainline change recorded between
-	 * their positions, oldest first.
+	 * Compare two research snapshots - or a snapshot with the current state
+	 * ("compare to now", #839): every change recorded between the two points,
+	 * oldest first.
 	 *
-	 * The two ids come from `?from=&to=` (see `snapshotCompareHref`). The server
-	 * orders the pair itself - `older_first` says whether `snapshot1` is the
-	 * older one - so the page always presents "older -> newer" whichever order
-	 * the ids were given in.
+	 * Comparisons follow the active branch. On the mainline they list mainline
+	 * changes; on a branch they list the branch's view (its own changes plus
+	 * the mainline changes it inherits, each labelled), and only that branch's
+	 * snapshots can be compared - the server refuses snapshots from another
+	 * branch with 409 `snapshot_branch_mismatch`.
+	 *
+	 * The two ids come from `?from=&to=` (see `snapshotCompareHref`); `to` is
+	 * `CURRENT_STATE` for "now". The server orders a pair itself - `older_first`
+	 * says whether `snapshot1` is the older one - so the page always presents
+	 * "older -> newer" whichever order the ids were given in.
 	 *
 	 * Only person, family, source and citation changes are itemized; the
 	 * server labels any other event type `unknown` (sub-records such as names or
@@ -15,21 +22,29 @@
 	 * not more.
 	 */
 	import { page } from '$app/stores';
-	import {
-		api,
-		type ApiError,
-		type BranchChangeEntry,
-		type Snapshot,
-		type SnapshotComparisonResult
-	} from '$lib/api/client';
+	import { api, type ApiError, type BranchChangeEntry, type Snapshot } from '$lib/api/client';
 	import DiffView from '$lib/components/DiffView.svelte';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Label } from '$lib/components/ui/label';
-	import { snapshotCompareHref } from '$lib/utils/snapshots';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import { CURRENT_STATE, snapshotCompareHref } from '$lib/utils/snapshots';
 
 	type EntityType = BranchChangeEntry['entity_type'];
 	type EntityFilter = EntityType | 'all';
+	type ChangeItem = BranchChangeEntry & { origin?: 'main' | 'branch' };
+
+	/**
+	 * One comparison, whichever endpoint answered it: `newer` is null when the
+	 * comparison runs to the current state.
+	 */
+	interface ComparisonView {
+		older: Snapshot;
+		newer: Snapshot | null;
+		changes: ChangeItem[];
+		hasMore: boolean;
+		/** The ids arrived newest first, so the page reordered them. */
+		reordered: boolean;
+	}
 
 	const ENTITY_LABELS: Record<EntityType, string> = {
 		person: 'Person',
@@ -41,11 +56,14 @@
 
 	const fromId = $derived($page.url.searchParams.get('from') ?? '');
 	const toId = $derived($page.url.searchParams.get('to') ?? '');
+	const toNow = $derived(toId === CURRENT_STATE);
 
-	let comparison = $state<SnapshotComparisonResult | null>(null);
+	let comparison = $state<ComparisonView | null>(null);
 	let loading = $state(true);
 	let error: string | null = $state(null);
 	let notFound = $state(false);
+	/** The snapshots belong to another branch than the active one. */
+	let otherBranch = $state(false);
 	let entityFilter = $state<EntityFilter>('all');
 	let announcement = $state('');
 
@@ -58,12 +76,8 @@
 				: null
 	);
 
-	const older: Snapshot | null = $derived(
-		comparison ? (comparison.older_first ? comparison.snapshot1 : comparison.snapshot2) : null
-	);
-	const newer: Snapshot | null = $derived(
-		comparison ? (comparison.older_first ? comparison.snapshot2 : comparison.snapshot1) : null
-	);
+	const older: Snapshot | null = $derived(comparison?.older ?? null);
+	const newer: Snapshot | null = $derived(comparison?.newer ?? null);
 	const itemized = $derived(
 		(comparison?.changes ?? []).filter((entry) => ITEMIZED.has(entry.entity_type))
 	);
@@ -89,7 +103,9 @@
 
 	const summary = $derived(
 		itemized.length === 0
-			? 'No changes to people, families, sources or citations between these snapshots.'
+			? comparison?.newer === null
+				? 'No changes to people, families, sources or citations since this snapshot.'
+				: 'No changes to people, families, sources or citations between these snapshots.'
 			: `${plural(itemized.length, 'change')}: ${counts.created} created, ${counts.updated} updated, ${counts.deleted} deleted.`
 	);
 
@@ -129,14 +145,36 @@
 	// (the same pattern as the branch comparison page).
 	let comparisonRequest = 0;
 
+	async function fetchComparison(a: string, b: string): Promise<ComparisonView> {
+		if (b === CURRENT_STATE) {
+			const result = await api.compareSnapshotToCurrent(a);
+			return {
+				older: result.snapshot,
+				newer: null,
+				changes: result.changes as ChangeItem[],
+				hasMore: result.has_more,
+				reordered: false
+			};
+		}
+		const result = await api.compareSnapshots(a, b);
+		return {
+			older: result.older_first ? result.snapshot1 : result.snapshot2,
+			newer: result.older_first ? result.snapshot2 : result.snapshot1,
+			changes: result.changes as ChangeItem[],
+			hasMore: result.has_more,
+			reordered: !result.older_first
+		};
+	}
+
 	async function loadComparison(a: string, b: string) {
 		const request = ++comparisonRequest;
 		loading = true;
 		error = null;
 		notFound = false;
+		otherBranch = false;
 		entityFilter = 'all';
 		try {
-			const result = await api.compareSnapshots(a, b);
+			const result = await fetchComparison(a, b);
 			if (request !== comparisonRequest) return;
 			comparison = result;
 		} catch (e) {
@@ -144,6 +182,8 @@
 			const apiError = e as ApiError;
 			if (apiError.status === 404) {
 				notFound = true;
+			} else if (apiError.status === 409 && apiError.code === 'snapshot_branch_mismatch') {
+				otherBranch = true;
 			} else if (apiError.status === 400) {
 				error = 'These snapshot links are malformed. Choose the snapshots again.';
 			} else {
@@ -180,7 +220,9 @@
 
 <svelte:head>
 	<title>
-		{older && newer ? `${older.name} to ${newer.name} | Snapshots` : 'Snapshot Comparison'} | My Family
+		{older
+			? `${older.name} to ${newer ? newer.name : 'now'} | Snapshots`
+			: 'Snapshot Comparison'} | My Family
 	</title>
 </svelte:head>
 
@@ -205,12 +247,14 @@
 <div class="compare-page">
 	<a href="/snapshots" class="back-link">&larr; All snapshots</a>
 
-	<MainlineNotice
-		surface="Snapshot comparison"
-		detail="Snapshot comparisons list mainline changes only. Branch edits appear once the branch is merged."
-	/>
-
 	<h1>Snapshot comparison</h1>
+	{#if activeBranch.id}
+		<p class="scope-note" role="note">
+			Showing the changes as the research branch
+			{activeBranch.branch ? activeBranch.branch.name : ''} sees them: its own edits, and the
+			mainline edits it inherits.
+		</p>
+	{/if}
 
 	{#if invalidReason}
 		<div class="state empty">
@@ -222,17 +266,36 @@
 	{:else if notFound}
 		<div class="state empty">
 			<h2>Snapshot not found</h2>
-			<p>One of these snapshots may have been deleted. <a href="/snapshots">Choose again</a>.</p>
+			<p>
+				{toNow ? 'This snapshot' : 'One of these snapshots'} may have been deleted, or taken on another
+				research branch. <a href="/snapshots">Choose again</a>.
+			</p>
+		</div>
+	{:else if otherBranch}
+		<div class="state empty" role="alert">
+			<h2>Snapshots from another branch</h2>
+			<p>
+				Snapshots can only be compared on the branch they were taken on. Switch to that branch (or
+				the mainline), or <a href="/snapshots">choose snapshots from this one</a>.
+			</p>
 		</div>
 	{:else if error}
 		<div class="state error" role="alert">{error}</div>
-	{:else if comparison && older && newer}
+	{:else if comparison && older}
 		<div class="endpoints">
 			{@render snapshotCard('From (older)', older)}
 			<span class="endpoint-arrow" aria-hidden="true">&rarr;</span>
-			{@render snapshotCard('To (newer)', newer)}
+			{#if newer}
+				{@render snapshotCard('To (newer)', newer)}
+			{:else}
+				<div class="endpoint">
+					<span class="endpoint-label">To</span>
+					<span class="endpoint-name">Now</span>
+					<span class="endpoint-description">The current state of your research</span>
+				</div>
+			{/if}
 		</div>
-		{#if !comparison.older_first}
+		{#if comparison.reordered && newer}
 			<p class="note">
 				Listed oldest first, so {older.name} is shown as the starting point.
 				<a href={snapshotCompareHref(older.id, newer.id)}>Link to this order</a>
@@ -246,7 +309,7 @@
 				with a person) that are not itemized here.
 			</p>
 		{/if}
-		{#if comparison.has_more}
+		{#if comparison.hasMore}
 			<p class="truncated" role="note">
 				This range holds more changes than can be compared at once, so only the earliest ones are
 				shown. Compare snapshots that are closer together to see the rest.
@@ -283,6 +346,11 @@
 							>
 								{entry.action}
 							</Badge>
+							{#if entry.origin === 'branch'}
+								<Badge variant="outline" title="Made on this research branch">This branch</Badge>
+							{:else if entry.origin === 'main'}
+								<Badge variant="outline" title="Inherited from the mainline">Mainline</Badge>
+							{/if}
 						</div>
 						<div class="change-body">
 							<span class="entity-type">{ENTITY_LABELS[entry.entity_type]}</span>
@@ -327,6 +395,12 @@
 		margin: 0 0 1rem;
 		font-size: 1.5rem;
 		color: #1e293b;
+	}
+
+	.scope-note {
+		margin: -0.5rem 0 1rem;
+		font-size: 0.8125rem;
+		color: #475569;
 	}
 
 	.endpoints {

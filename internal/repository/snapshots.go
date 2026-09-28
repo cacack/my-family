@@ -23,6 +23,10 @@ var (
 // are the same primitive, a named pointer to a global Position (ADR-005
 // §"Interaction with snapshots and rollback").
 //
+// Each row carries the branch_id whose view it marks (issue #839): a snapshot
+// is the pair (branch_id, position). Rows that predate the column are
+// migrated to the mainline, which is what they always were.
+//
 // CAVEAT — rows predating #624. Snapshots created before this store became
 // projection-written were inserted directly and have NO event on their stream,
 // so a rebuild would not reconstruct them. Nothing replays the log into a
@@ -39,11 +43,15 @@ type SnapshotStore interface {
 	// the same ID. Used by the projection, which may replay events idempotently.
 	Upsert(ctx context.Context, snapshot *domain.Snapshot) error
 
-	// Get retrieves a snapshot by ID.
+	// Get retrieves a snapshot by ID, whichever branch it belongs to. The
+	// returned BranchID says which; callers scoped to a branch compare it
+	// against their scope (a snapshot on another branch is not theirs).
 	Get(ctx context.Context, id uuid.UUID) (*domain.Snapshot, error)
 
-	// List retrieves all snapshots ordered by created_at DESC.
-	List(ctx context.Context) ([]*domain.Snapshot, error)
+	// List retrieves the snapshots marked on branchID (issue #839), ordered by
+	// created_at DESC. The mainline's list never contains a branch's snapshots,
+	// and a branch's list never contains the mainline's or another branch's.
+	List(ctx context.Context, branchID domain.BranchID) ([]*domain.Snapshot, error)
 
 	// Delete removes a snapshot by ID.
 	Delete(ctx context.Context, id uuid.UUID) error

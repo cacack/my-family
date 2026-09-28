@@ -2246,9 +2246,10 @@ type ChangeEntry struct {
 	EntityType ChangeEntryEntityType `json:"entity_type"`
 	Id         openapi_types.UUID    `json:"id"`
 
-	// Origin Set only on branch-scoped entity history (`?branch=`): `branch` for
-	// the branch's own events, `main` for the mainline events its view
-	// inherits (ADR-005). Absent everywhere else.
+	// Origin Set only on branch-scoped entity history and branch-scoped snapshot
+	// comparisons (`?branch=`): `branch` for the branch's own events,
+	// `main` for the mainline events its view inherits (ADR-005). Absent
+	// everywhere else.
 	Origin    *ChangeEntryOrigin `json:"origin,omitempty"`
 	Timestamp time.Time          `json:"timestamp"`
 
@@ -2262,9 +2263,10 @@ type ChangeEntryAction string
 // ChangeEntryEntityType defines model for ChangeEntry.EntityType.
 type ChangeEntryEntityType string
 
-// ChangeEntryOrigin Set only on branch-scoped entity history (`?branch=`): `branch` for
-// the branch's own events, `main` for the mainline events its view
-// inherits (ADR-005). Absent everywhere else.
+// ChangeEntryOrigin Set only on branch-scoped entity history and branch-scoped snapshot
+// comparisons (`?branch=`): `branch` for the branch's own events,
+// `main` for the mainline events its view inherits (ADR-005). Absent
+// everywhere else.
 type ChangeEntryOrigin string
 
 // ChangeHistoryResponse defines model for ChangeHistoryResponse.
@@ -4113,6 +4115,10 @@ type SearchResults struct {
 
 // Snapshot defines model for Snapshot.
 type Snapshot struct {
+	// BranchId The research branch whose view this snapshot marks. Absent for a
+	// mainline snapshot.
+	BranchId *openapi_types.UUID `json:"branch_id,omitempty"`
+
 	// CreatedAt When the snapshot was created
 	CreatedAt time.Time `json:"created_at"`
 
@@ -4151,6 +4157,23 @@ type SnapshotCreate struct {
 
 	// Name Name of the research milestone
 	Name string `json:"name"`
+}
+
+// SnapshotCurrentComparisonResult defines model for SnapshotCurrentComparisonResult.
+type SnapshotCurrentComparisonResult struct {
+	// Changes Changes recorded after the snapshot, oldest first
+	Changes []ChangeEntry `json:"changes"`
+
+	// HasMore Whether there are more changes beyond the limit
+	HasMore bool `json:"has_more"`
+
+	// HeadPosition The event log head the comparison ran to — the position a snapshot
+	// taken now would mark.
+	HeadPosition int64    `json:"head_position"`
+	Snapshot     Snapshot `json:"snapshot"`
+
+	// TotalCount Number of changes listed
+	TotalCount int `json:"total_count"`
 }
 
 // SnapshotList defines model for SnapshotList.
@@ -5744,6 +5767,72 @@ type SearchPersonsParamsSort string
 // SearchPersonsParamsOrder defines parameters for SearchPersons.
 type SearchPersonsParamsOrder string
 
+// ListSnapshotsParams defines parameters for ListSnapshots.
+type ListSnapshotsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// CreateSnapshotParams defines parameters for CreateSnapshot.
+type CreateSnapshotParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// CompareSnapshotsParams defines parameters for CompareSnapshots.
+type CompareSnapshotsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// DeleteSnapshotParams defines parameters for DeleteSnapshot.
+type DeleteSnapshotParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetSnapshotParams defines parameters for GetSnapshot.
+type GetSnapshotParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// CompareSnapshotToCurrentParams defines parameters for CompareSnapshotToCurrent.
+type CompareSnapshotToCurrentParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // ListSourcesParams defines parameters for ListSources.
 type ListSourcesParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -6419,21 +6508,24 @@ type ServerInterface interface {
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx echo.Context, params SearchPersonsParams) error
-	// List all snapshots
+	// List the snapshots of the mainline or a branch
 	// (GET /snapshots)
-	ListSnapshots(ctx echo.Context) error
+	ListSnapshots(ctx echo.Context, params ListSnapshotsParams) error
 	// Create a new snapshot
 	// (POST /snapshots)
-	CreateSnapshot(ctx echo.Context) error
+	CreateSnapshot(ctx echo.Context, params CreateSnapshotParams) error
 	// Compare two snapshots
 	// (GET /snapshots/{id1}/compare/{id2})
-	CompareSnapshots(ctx echo.Context, id1 openapi_types.UUID, id2 openapi_types.UUID) error
+	CompareSnapshots(ctx echo.Context, id1 openapi_types.UUID, id2 openapi_types.UUID, params CompareSnapshotsParams) error
 	// Delete a snapshot
 	// (DELETE /snapshots/{id})
-	DeleteSnapshot(ctx echo.Context, id SnapshotId) error
+	DeleteSnapshot(ctx echo.Context, id SnapshotId, params DeleteSnapshotParams) error
 	// Get a snapshot by ID
 	// (GET /snapshots/{id})
-	GetSnapshot(ctx echo.Context, id SnapshotId) error
+	GetSnapshot(ctx echo.Context, id SnapshotId, params GetSnapshotParams) error
+	// Compare a snapshot to the current state
+	// (GET /snapshots/{id}/compare-current)
+	CompareSnapshotToCurrent(ctx echo.Context, id SnapshotId, params CompareSnapshotToCurrentParams) error
 	// List all sources
 	// (GET /sources)
 	ListSources(ctx echo.Context, params ListSourcesParams) error
@@ -9734,8 +9826,17 @@ func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ListSnapshots(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSnapshotsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ListSnapshots(ctx)
+	err = w.Handler.ListSnapshots(ctx, params)
 	return err
 }
 
@@ -9743,8 +9844,17 @@ func (w *ServerInterfaceWrapper) ListSnapshots(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) CreateSnapshot(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSnapshotParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CreateSnapshot(ctx)
+	err = w.Handler.CreateSnapshot(ctx, params)
 	return err
 }
 
@@ -9767,8 +9877,17 @@ func (w *ServerInterfaceWrapper) CompareSnapshots(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id2: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompareSnapshotsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.CompareSnapshots(ctx, id1, id2)
+	err = w.Handler.CompareSnapshots(ctx, id1, id2, params)
 	return err
 }
 
@@ -9783,8 +9902,17 @@ func (w *ServerInterfaceWrapper) DeleteSnapshot(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteSnapshotParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.DeleteSnapshot(ctx, id)
+	err = w.Handler.DeleteSnapshot(ctx, id, params)
 	return err
 }
 
@@ -9799,8 +9927,42 @@ func (w *ServerInterfaceWrapper) GetSnapshot(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSnapshotParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetSnapshot(ctx, id)
+	err = w.Handler.GetSnapshot(ctx, id, params)
+	return err
+}
+
+// CompareSnapshotToCurrent converts echo context to params.
+func (w *ServerInterfaceWrapper) CompareSnapshotToCurrent(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id SnapshotId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompareSnapshotToCurrentParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CompareSnapshotToCurrent(ctx, id, params)
 	return err
 }
 
@@ -10406,6 +10568,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/snapshots/:id1/compare/:id2", wrapper.CompareSnapshots, options.OperationMiddlewares["compareSnapshots"]...)
 	router.DELETE(options.BaseURL+"/snapshots/:id", wrapper.DeleteSnapshot, options.OperationMiddlewares["deleteSnapshot"]...)
 	router.GET(options.BaseURL+"/snapshots/:id", wrapper.GetSnapshot, options.OperationMiddlewares["getSnapshot"]...)
+	router.GET(options.BaseURL+"/snapshots/:id/compare-current", wrapper.CompareSnapshotToCurrent, options.OperationMiddlewares["compareSnapshotToCurrent"]...)
 	router.GET(options.BaseURL+"/sources", wrapper.ListSources, options.OperationMiddlewares["listSources"]...)
 	router.POST(options.BaseURL+"/sources", wrapper.CreateSource, options.OperationMiddlewares["createSource"]...)
 	router.GET(options.BaseURL+"/sources/search", wrapper.SearchSources, options.OperationMiddlewares["searchSources"]...)
@@ -16128,6 +16291,7 @@ func (response SearchPersons400JSONResponse) VisitSearchPersonsResponse(w http.R
 }
 
 type ListSnapshotsRequestObject struct {
+	Params ListSnapshotsParams
 }
 
 type ListSnapshotsResponseObject interface {
@@ -16148,8 +16312,23 @@ func (response ListSnapshots200JSONResponse) VisitListSnapshotsResponse(w http.R
 	return err
 }
 
+type ListSnapshots404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListSnapshots404JSONResponse) VisitListSnapshotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSnapshotRequestObject struct {
-	Body *CreateSnapshotJSONRequestBody
+	Params CreateSnapshotParams
+	Body   *CreateSnapshotJSONRequestBody
 }
 
 type CreateSnapshotResponseObject interface {
@@ -16184,9 +16363,38 @@ func (response CreateSnapshot400JSONResponse) VisitCreateSnapshotResponse(w http
 	return err
 }
 
+type CreateSnapshot404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateSnapshot404JSONResponse) VisitCreateSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSnapshot409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateSnapshot409JSONResponse) VisitCreateSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CompareSnapshotsRequestObject struct {
-	Id1 openapi_types.UUID `json:"id1"`
-	Id2 openapi_types.UUID `json:"id2"`
+	Id1    openapi_types.UUID `json:"id1"`
+	Id2    openapi_types.UUID `json:"id2"`
+	Params CompareSnapshotsParams
 }
 
 type CompareSnapshotsResponseObject interface {
@@ -16221,8 +16429,23 @@ func (response CompareSnapshots404JSONResponse) VisitCompareSnapshotsResponse(w 
 	return err
 }
 
+type CompareSnapshots409JSONResponse Error
+
+func (response CompareSnapshots409JSONResponse) VisitCompareSnapshotsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteSnapshotRequestObject struct {
-	Id SnapshotId `json:"id"`
+	Id     SnapshotId `json:"id"`
+	Params DeleteSnapshotParams
 }
 
 type DeleteSnapshotResponseObject interface {
@@ -16251,8 +16474,23 @@ func (response DeleteSnapshot404JSONResponse) VisitDeleteSnapshotResponse(w http
 	return err
 }
 
+type DeleteSnapshot409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteSnapshot409JSONResponse) VisitDeleteSnapshotResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetSnapshotRequestObject struct {
-	Id SnapshotId `json:"id"`
+	Id     SnapshotId `json:"id"`
+	Params GetSnapshotParams
 }
 
 type GetSnapshotResponseObject interface {
@@ -16283,6 +16521,57 @@ func (response GetSnapshot404JSONResponse) VisitGetSnapshotResponse(w http.Respo
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareSnapshotToCurrentRequestObject struct {
+	Id     SnapshotId `json:"id"`
+	Params CompareSnapshotToCurrentParams
+}
+
+type CompareSnapshotToCurrentResponseObject interface {
+	VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error
+}
+
+type CompareSnapshotToCurrent200JSONResponse SnapshotCurrentComparisonResult
+
+func (response CompareSnapshotToCurrent200JSONResponse) VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareSnapshotToCurrent404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CompareSnapshotToCurrent404JSONResponse) VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareSnapshotToCurrent409JSONResponse Error
+
+func (response CompareSnapshotToCurrent409JSONResponse) VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -17394,7 +17683,7 @@ type StrictServerInterface interface {
 	// Search for persons
 	// (GET /search)
 	SearchPersons(ctx context.Context, request SearchPersonsRequestObject) (SearchPersonsResponseObject, error)
-	// List all snapshots
+	// List the snapshots of the mainline or a branch
 	// (GET /snapshots)
 	ListSnapshots(ctx context.Context, request ListSnapshotsRequestObject) (ListSnapshotsResponseObject, error)
 	// Create a new snapshot
@@ -17409,6 +17698,9 @@ type StrictServerInterface interface {
 	// Get a snapshot by ID
 	// (GET /snapshots/{id})
 	GetSnapshot(ctx context.Context, request GetSnapshotRequestObject) (GetSnapshotResponseObject, error)
+	// Compare a snapshot to the current state
+	// (GET /snapshots/{id}/compare-current)
+	CompareSnapshotToCurrent(ctx context.Context, request CompareSnapshotToCurrentRequestObject) (CompareSnapshotToCurrentResponseObject, error)
 	// List all sources
 	// (GET /sources)
 	ListSources(ctx context.Context, request ListSourcesRequestObject) (ListSourcesResponseObject, error)
@@ -20996,8 +21288,10 @@ func (sh *strictHandler) SearchPersons(ctx echo.Context, params SearchPersonsPar
 }
 
 // ListSnapshots operation middleware
-func (sh *strictHandler) ListSnapshots(ctx echo.Context) error {
+func (sh *strictHandler) ListSnapshots(ctx echo.Context, params ListSnapshotsParams) error {
 	var request ListSnapshotsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ListSnapshots(ctx.Request().Context(), request.(ListSnapshotsRequestObject))
@@ -21019,8 +21313,10 @@ func (sh *strictHandler) ListSnapshots(ctx echo.Context) error {
 }
 
 // CreateSnapshot operation middleware
-func (sh *strictHandler) CreateSnapshot(ctx echo.Context) error {
+func (sh *strictHandler) CreateSnapshot(ctx echo.Context, params CreateSnapshotParams) error {
 	var request CreateSnapshotRequestObject
+
+	request.Params = params
 
 	var body CreateSnapshotJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -21048,11 +21344,12 @@ func (sh *strictHandler) CreateSnapshot(ctx echo.Context) error {
 }
 
 // CompareSnapshots operation middleware
-func (sh *strictHandler) CompareSnapshots(ctx echo.Context, id1 openapi_types.UUID, id2 openapi_types.UUID) error {
+func (sh *strictHandler) CompareSnapshots(ctx echo.Context, id1 openapi_types.UUID, id2 openapi_types.UUID, params CompareSnapshotsParams) error {
 	var request CompareSnapshotsRequestObject
 
 	request.Id1 = id1
 	request.Id2 = id2
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.CompareSnapshots(ctx.Request().Context(), request.(CompareSnapshotsRequestObject))
@@ -21074,10 +21371,11 @@ func (sh *strictHandler) CompareSnapshots(ctx echo.Context, id1 openapi_types.UU
 }
 
 // DeleteSnapshot operation middleware
-func (sh *strictHandler) DeleteSnapshot(ctx echo.Context, id SnapshotId) error {
+func (sh *strictHandler) DeleteSnapshot(ctx echo.Context, id SnapshotId, params DeleteSnapshotParams) error {
 	var request DeleteSnapshotRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteSnapshot(ctx.Request().Context(), request.(DeleteSnapshotRequestObject))
@@ -21099,10 +21397,11 @@ func (sh *strictHandler) DeleteSnapshot(ctx echo.Context, id SnapshotId) error {
 }
 
 // GetSnapshot operation middleware
-func (sh *strictHandler) GetSnapshot(ctx echo.Context, id SnapshotId) error {
+func (sh *strictHandler) GetSnapshot(ctx echo.Context, id SnapshotId, params GetSnapshotParams) error {
 	var request GetSnapshotRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetSnapshot(ctx.Request().Context(), request.(GetSnapshotRequestObject))
@@ -21117,6 +21416,32 @@ func (sh *strictHandler) GetSnapshot(ctx echo.Context, id SnapshotId) error {
 		return err
 	} else if validResponse, ok := response.(GetSnapshotResponseObject); ok {
 		return validResponse.VisitGetSnapshotResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// CompareSnapshotToCurrent operation middleware
+func (sh *strictHandler) CompareSnapshotToCurrent(ctx echo.Context, id SnapshotId, params CompareSnapshotToCurrentParams) error {
+	var request CompareSnapshotToCurrentRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CompareSnapshotToCurrent(ctx.Request().Context(), request.(CompareSnapshotToCurrentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompareSnapshotToCurrent")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CompareSnapshotToCurrentResponseObject); ok {
+		return validResponse.VisitCompareSnapshotToCurrentResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

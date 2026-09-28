@@ -27,10 +27,17 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 
 vi.mock('$app/navigation', () => ({ goto: (href: string) => goto(href) }));
 
-// The notice reads the active branch; the mainline is the default here.
-vi.mock('$lib/stores/activeBranch.svelte', () => ({
-	activeBranch: { id: null, branch: null, revalidating: false, notice: null }
+// The page reads the active branch; the mainline is the default here, and the
+// branch tests below point it at a branch.
+const branchState = vi.hoisted(() => ({
+	activeBranch: {
+		id: null as string | null,
+		branch: null as { name: string } | null,
+		revalidating: false,
+		notice: null
+	}
 }));
+vi.mock('$lib/stores/activeBranch.svelte', () => branchState);
 
 // Newest first, as the API returns them.
 const courthouse: Snapshot = {
@@ -59,6 +66,8 @@ const baseline: Snapshot = {
 describe('Snapshots page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		branchState.activeBranch.id = null;
+		branchState.activeBranch.branch = null;
 		listSnapshots.mockResolvedValue({ items: [courthouse, dna, baseline], total: 3 });
 		createSnapshot.mockResolvedValue(courthouse);
 		deleteSnapshot.mockResolvedValue(undefined);
@@ -94,14 +103,39 @@ describe('Snapshots page', () => {
 		expect(screen.getByRole('button', { name: /new snapshot/i })).toBeDefined();
 	});
 
-	it('offers no compare form for a single snapshot', async () => {
+	it('offers a single snapshot a comparison with now, and nothing previous', async () => {
 		listSnapshots.mockResolvedValue({ items: [baseline], total: 1 });
 
 		render(Page);
 
 		await screen.findByRole('heading', { name: 'Pre-DNA results' });
-		expect(screen.queryByLabelText('From')).toBeNull();
+		expect((screen.getByLabelText('From') as HTMLSelectElement).value).toBe(baseline.id);
+		expect((screen.getByLabelText('To') as HTMLSelectElement).value).toBe('current');
+		expect(screen.getByText('Lists every change since the snapshot, up to now.')).toBeDefined();
+		await fireEvent.click(screen.getByRole('button', { name: /^Compare$/ }));
+		expect(goto).toHaveBeenCalledWith(`/snapshots/compare?from=${baseline.id}&to=current`);
 		expect(screen.queryByRole('link', { name: /^Compare with previous/ })).toBeNull();
+	});
+
+	it('shows no mainline notice on a branch, and says whose snapshots these are', async () => {
+		branchState.activeBranch.id = '44444444-4444-4444-4444-444444444444';
+		branchState.activeBranch.branch = { name: 'Maternal line' };
+
+		render(Page);
+
+		await screen.findByRole('heading', { name: 'Pre-DNA results' });
+		expect(screen.queryByText(/always shows mainline data/)).toBeNull();
+		const note = screen.getByRole('note');
+		expect(note.textContent).toMatch(/snapshots taken on the research branch\s+Maternal line/);
+		await fireEvent.click(screen.getByRole('button', { name: /new snapshot/i }));
+		expect(await screen.findByText(/on this research branch/)).toBeDefined();
+	});
+
+	it('says nothing about branches on the mainline', async () => {
+		render(Page);
+
+		await screen.findByRole('heading', { name: 'Pre-DNA results' });
+		expect(screen.queryByRole('note')).toBeNull();
 	});
 
 	it('surfaces a load failure', async () => {
@@ -349,6 +383,28 @@ describe('Snapshots page', () => {
 			expect(screen.getByText('Choose two different snapshots.')).toBeDefined();
 			await fireEvent.submit(compare.closest('form')!);
 			expect(goto).not.toHaveBeenCalled();
+		});
+
+		it('can compare the chosen snapshot with now', async () => {
+			render(Page);
+			await screen.findByRole('heading', { name: 'Pre-DNA results' });
+
+			await fireEvent.change(screen.getByLabelText('From'), { target: { value: baseline.id } });
+			await fireEvent.change(screen.getByLabelText('To'), { target: { value: 'current' } });
+			await fireEvent.click(screen.getByRole('button', { name: /^Compare$/ }));
+
+			expect(goto).toHaveBeenCalledWith(`/snapshots/compare?from=${baseline.id}&to=current`);
+		});
+
+		it('links every snapshot to a comparison with now', async () => {
+			render(Page);
+			await screen.findByRole('heading', { name: 'Pre-DNA results' });
+
+			const links = screen.getAllByRole('link', { name: /^Compare to now: / });
+			expect(links).toHaveLength(3);
+			const link = screen.getByRole('link', { name: 'Compare to now: Pre-DNA results' });
+			expect(link.textContent?.trim()).toBe('Compare to now');
+			expect(link.getAttribute('href')).toBe(`/snapshots/compare?from=${baseline.id}&to=current`);
 		});
 
 		it('links each snapshot to a comparison with the one before it', async () => {

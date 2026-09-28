@@ -18,11 +18,10 @@ import (
 //
 // Membership matters beyond replay: two classifiers in merge_conflicts.go key
 // off the "Created"/"Deleted" suffix, so an omission here would see
-// SnapshotDeleted as a genealogy delete. Snapshot events cannot reach those
-// classifiers today (the snapshot commands refuse on a branch scope, so no
-// snapshot event lands on a branch stream), but they will the moment ADR-005's
-// branch-scoped snapshots land — so they are listed now rather than left as a
-// trap for that change.
+// SnapshotDeleted as a genealogy delete. Snapshot events do not reach those
+// classifiers today: branch-scoped snapshots (#839) carry their branch in the
+// payload and append on the mainline envelope, so no snapshot event lands on a
+// branch's own event set. They stay listed as a guard should that ever change.
 var researchMetadataEventTypes = map[string]bool{
 	"BranchCreated":   true,
 	"BranchDeleted":   true,

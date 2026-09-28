@@ -174,7 +174,7 @@ func TestSQLiteSnapshotStore_List(t *testing.T) {
 	}
 
 	// List should return snapshots ordered by created_at DESC
-	list, err := store.List(ctx)
+	list, err := store.List(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -205,7 +205,7 @@ func TestSQLiteSnapshotStore_List_Empty(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	list, err := store.List(ctx)
+	list, err := store.List(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -378,11 +378,112 @@ func TestSQLiteSnapshotStore_Upsert(t *testing.T) {
 		t.Errorf("description = %q, want it cleared by the overwrite", retrieved.Description)
 	}
 
-	all, err := store.List(ctx)
+	all, err := store.List(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 	if len(all) != 1 {
 		t.Errorf("List() returned %d snapshots, want 1", len(all))
+	}
+}
+
+// TestSQLiteSnapshotStore_BranchScoped: a snapshot keeps its branch, and List
+// answers one scope at a time (issue #839).
+func TestSQLiteSnapshotStore_BranchScoped(t *testing.T) {
+	db := setupSnapshotTestDB(t)
+	defer db.Close()
+	store, err := sqlite.NewSnapshotStore(db)
+	if err != nil {
+		t.Fatalf("NewSnapshotStore() error = %v", err)
+	}
+	ctx := context.Background()
+	branch := domain.BranchID(uuid.New())
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	mainSnap := &domain.Snapshot{ID: uuid.New(), Name: "Mainline", Position: 5, CreatedAt: now}
+	branchSnap := &domain.Snapshot{ID: uuid.New(), BranchID: branch, Name: "On branch", Position: 7, CreatedAt: now.Add(time.Second)}
+	if err := store.Create(ctx, mainSnap); err != nil {
+		t.Fatalf("Create(main) error = %v", err)
+	}
+	if err := store.Upsert(ctx, branchSnap); err != nil {
+		t.Fatalf("Upsert(branch) error = %v", err)
+	}
+
+	got, err := store.Get(ctx, branchSnap.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got.BranchID != branch || got.Position != 7 {
+		t.Errorf("Get() = (%v, %d), want (%v, 7)", got.BranchID, got.Position, branch)
+	}
+	got, err = store.Get(ctx, mainSnap.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !got.BranchID.IsMain() {
+		t.Errorf("mainline snapshot BranchID = %v, want main", got.BranchID)
+	}
+
+	for _, tc := range []struct {
+		scope domain.BranchID
+		want  uuid.UUID
+	}{{domain.MainBranchID, mainSnap.ID}, {branch, branchSnap.ID}} {
+		list, err := store.List(ctx, tc.scope)
+		if err != nil {
+			t.Fatalf("List(%v) error = %v", tc.scope, err)
+		}
+		if len(list) != 1 || list[0].ID != tc.want {
+			t.Errorf("List(%v) = %v, want only %v", tc.scope, list, tc.want)
+		}
+	}
+	if list, err := store.List(ctx, domain.BranchID(uuid.New())); err != nil || len(list) != 0 {
+		t.Errorf("List(unknown branch) = %v, %v; want empty", list, err)
+	}
+
+	// An upsert replay keeps the branch.
+	branchSnap.Name = "Renamed"
+	if err := store.Upsert(ctx, branchSnap); err != nil {
+		t.Fatalf("Upsert(replay) error = %v", err)
+	}
+	if got, err := store.Get(ctx, branchSnap.ID); err != nil || got.BranchID != branch || got.Name != "Renamed" {
+		t.Errorf("after replay Get() = %+v, %v", got, err)
+	}
+}
+
+// TestSQLiteSnapshotStore_MigratesBranchID: a snapshots table from before #839
+// gains branch_id, and its existing rows become mainline snapshots. Opening the
+// store again is a no-op.
+func TestSQLiteSnapshotStore_MigratesBranchID(t *testing.T) {
+	db := setupSnapshotTestDB(t)
+	defer db.Close()
+	ctx := context.Background()
+
+	if _, err := db.Exec(`
+		CREATE TABLE snapshots (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			description TEXT,
+			position INTEGER NOT NULL,
+			created_at TEXT NOT NULL
+		)`); err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+	legacyID := uuid.New()
+	if _, err := db.Exec(`INSERT INTO snapshots (id, name, position, created_at) VALUES (?, ?, ?, ?)`,
+		legacyID.String(), "Legacy", 3, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+
+	for range 2 {
+		store, err := sqlite.NewSnapshotStore(db)
+		if err != nil {
+			t.Fatalf("NewSnapshotStore() error = %v", err)
+		}
+		list, err := store.List(ctx, domain.MainBranchID)
+		if err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+		if len(list) != 1 || list[0].ID != legacyID || !list[0].BranchID.IsMain() {
+			t.Fatalf("List(main) = %+v, want the legacy row as a mainline snapshot", list)
+		}
 	}
 }

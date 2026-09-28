@@ -82,6 +82,8 @@ export type Snapshot = components['schemas']['Snapshot'];
 export type SnapshotCreate = components['schemas']['SnapshotCreate'];
 export type SnapshotList = components['schemas']['SnapshotList'];
 export type SnapshotComparisonResult = components['schemas']['SnapshotComparisonResult'];
+export type SnapshotCurrentComparisonResult =
+	components['schemas']['SnapshotCurrentComparisonResult'];
 
 const API_BASE = '/api/v1';
 
@@ -141,7 +143,9 @@ const TEXT_SEGMENT = '[^/]+';
  * Restore points and rollback carry the scope only to be refused: rollback is
  * mainline-only for every entity (ADR-005). Search, the families list, the
  * group sheet, the Ahnentafel, descendancy and the relationship calculator
- * follow the branch too (#829). The
+ * follow the branch too (#829), and so do research snapshots (#839): a
+ * snapshot marks a position in one branch's view, so the list, create,
+ * delete and both comparisons carry the scope. The
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
@@ -246,6 +250,16 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{
 		methods: ['POST'],
 		pattern: new RegExp(`^/(persons|families|sources|citations)/${UUID_SEGMENT}/rollback$`)
+	},
+	// Research snapshots (#839): a snapshot marks (branch, position), so every
+	// snapshot operation answers for the active branch's snapshots only, and a
+	// comparison reads the branch's view of the log.
+	{ methods: ['GET', 'POST'], pattern: new RegExp('^/snapshots$') },
+	{ methods: ['GET', 'DELETE'], pattern: new RegExp(`^/snapshots/${UUID_SEGMENT}$`) },
+	{ methods: ['GET'], pattern: new RegExp(`^/snapshots/${UUID_SEGMENT}/compare-current$`) },
+	{
+		methods: ['GET'],
+		pattern: new RegExp(`^/snapshots/${UUID_SEGMENT}/compare/${UUID_SEGMENT}$`)
 	}
 ];
 
@@ -2324,9 +2338,10 @@ class ApiClient {
 		);
 	}
 
-	// Research snapshot endpoints. A snapshot is a named marker of a mainline
-	// event-store position (a "tag"), so these are never branch-scoped —
-	// `/snapshots*` is absent from the allowlist above.
+	// Research snapshot endpoints. A snapshot is a named marker ("tag") of an
+	// event-store position in one branch's view, so these follow the active
+	// branch (#839, see the allowlist above): the list, create and delete act on
+	// the active branch's snapshots, and comparisons read its view of the log.
 	async listSnapshots(): Promise<SnapshotList> {
 		return this.request<SnapshotList>('GET', '/snapshots');
 	}
@@ -2339,11 +2354,23 @@ class ApiClient {
 		return this.request<void>('DELETE', `/snapshots/${encodeURIComponent(id)}`);
 	}
 
-	/** The mainline changes recorded between two snapshots, oldest first, whichever order they are passed in. */
+	/**
+	 * The changes recorded between two snapshots in the active branch's view,
+	 * oldest first, whichever order they are passed in. Snapshots from
+	 * different branches are refused (409 `snapshot_branch_mismatch`).
+	 */
 	async compareSnapshots(id1: string, id2: string): Promise<SnapshotComparisonResult> {
 		return this.request<SnapshotComparisonResult>(
 			'GET',
 			`/snapshots/${encodeURIComponent(id1)}/compare/${encodeURIComponent(id2)}`
+		);
+	}
+
+	/** The changes recorded since a snapshot, up to the current state, in the active branch's view. */
+	async compareSnapshotToCurrent(id: string): Promise<SnapshotCurrentComparisonResult> {
+		return this.request<SnapshotCurrentComparisonResult>(
+			'GET',
+			`/snapshots/${encodeURIComponent(id)}/compare-current`
 		);
 	}
 
