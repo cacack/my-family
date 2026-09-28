@@ -1426,6 +1426,28 @@ Verified by `TestGetEntityHistoryOn_AllBackends` (`internal/query`, memory/SQLit
 `TestPersonHistory_*`, `TestFamilyHistory_*`, `TestRollback_RefusedOnBranch` (`internal/api`), the
 person and family page tests, and `e2e/branch-entity-pages.spec.ts`.
 
+## Implementation note — search and kinship reads on a branch (#829, delivered)
+
+Six reads still answered from the mainline while a branch was active, most with no notice:
+`searchPersons`, `listFamilies`, `getFamilyGroupSheet`, `getAhnentafel`, `getDescendancy` and
+`getRelationship`. Each now declares `branchScope` and resolves it as a read, 92 operations in all.
+
+- **Search and the families list** already had branch-aware services and stores; only the handlers
+  dropped the scope. The place filter of the advanced search was already scoped, so that page no
+  longer mixes scopes.
+- **Ahnentafel** reuses the branch-aware pedigree walk.
+- **Descendancy and the relationship calculator** walk the tree one generation at a time through
+  three set-based overlay reads added to `ReadModelStore` — `GetFamiliesForPersons`,
+  `GetFamilyChildrenByFamilyIDs` and `GetPedigreeEdgesByPersonIDs` — plus `GetPersonsByIDs` (#697).
+  Each resolves the overlay in one statement per call, so a generation costs a fixed number of
+  statements whatever its width. Breadth-first order also records each ancestor at its shortest
+  distance and each descendant at the shallowest generation that reaches it.
+
+Verified by `TestKinshipLookup_Parity` (memory/SQLite/PostgreSQL), `TestKinshipReads_FollowTheBranch`
+and `TestKinshipReads_SQLStatementCountDoesNotScale` (`internal/query`),
+`TestBranchReads_KinshipAndSearch` (`internal/integration`, all three backends),
+`TestKinshipReads_BranchScope` (`internal/api`), and `e2e/branch-kinship-reads.spec.ts`.
+
 ## References
 
 - [ADR-001: Event Sourcing with CQRS-lite](./001-event-sourcing-cqrs.md)

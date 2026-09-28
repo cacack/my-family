@@ -2628,53 +2628,12 @@ func (s *ReadModelStore) DeleteFamily(ctx context.Context, branchID domain.Branc
 }
 
 // GetFamilyChildren returns all children for a family within the branch overlay
-// (each (family_id, person_id) resolves to the branch's row if present, else the
-// mainline; tombstones excluded).
+// (ADR-005). It is GetFamilyChildrenByFamilyIDs for one family, so the family
+// group sheet and the descendancy walk always list siblings in the same order
+// (sequence with unsequenced children last, then bytewise surname, given name
+// and person id) on every backend.
 func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence
-		FROM (
-			SELECT *, ROW_NUMBER() OVER (PARTITION BY family_id, person_id ORDER BY (branch_id = ?) DESC) AS rn
-			FROM family_children WHERE family_id = ? AND branch_id IN (?, ?)
-		)
-		WHERE rn = 1 AND deleted = 0
-		ORDER BY sequence, person_surname, person_given_name
-	`, branchID.String(), familyID.String(), branchID.String(), mainBranchID)
-	if err != nil {
-		return nil, fmt.Errorf("query family children: %w", err)
-	}
-	defer rows.Close()
-
-	var children []repository.FamilyChildReadModel
-	for rows.Next() {
-		var (
-			familyIDStr, personIDStr, relType string
-			personGivenName, personSurname    sql.NullString
-			sequence                          sql.NullInt64
-		)
-		err := rows.Scan(&familyIDStr, &personIDStr, &personGivenName, &personSurname, &relType, &sequence)
-		if err != nil {
-			return nil, fmt.Errorf("scan family child: %w", err)
-		}
-
-		fID, _ := uuid.Parse(familyIDStr)
-		pID, _ := uuid.Parse(personIDStr)
-
-		child := repository.FamilyChildReadModel{
-			FamilyID:         fID,
-			PersonID:         pID,
-			PersonGivenName:  personGivenName.String,
-			PersonSurname:    personSurname.String,
-			RelationshipType: domain.ChildRelationType(relType),
-		}
-		if sequence.Valid {
-			seq := int(sequence.Int64)
-			child.Sequence = &seq
-		}
-		children = append(children, child)
-	}
-
-	return children, rows.Err()
+	return s.GetFamilyChildrenByFamilyIDs(ctx, branchID, []uuid.UUID{familyID})
 }
 
 // GetChildrenOfFamily returns person read models for all children in a family,

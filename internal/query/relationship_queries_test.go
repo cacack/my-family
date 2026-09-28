@@ -51,7 +51,7 @@ func TestGetRelationship_SamePerson(t *testing.T) {
 
 	person := createPerson(t, ctx, store, "John", "Doe", domain.GenderMale)
 
-	result, err := svc.GetRelationship(ctx, person, person)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, person, person)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,13 +79,13 @@ func TestGetRelationship_PersonNotFound(t *testing.T) {
 	nonExistent := uuid.New()
 
 	// Test when first person doesn't exist
-	_, err := svc.GetRelationship(ctx, nonExistent, person)
+	_, err := svc.GetRelationship(ctx, domain.MainBranchID, nonExistent, person)
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound for non-existent person A, got %v", err)
 	}
 
 	// Test when second person doesn't exist
-	_, err = svc.GetRelationship(ctx, person, nonExistent)
+	_, err = svc.GetRelationship(ctx, domain.MainBranchID, person, nonExistent)
 	if err != query.ErrNotFound {
 		t.Errorf("Expected ErrNotFound for non-existent person B, got %v", err)
 	}
@@ -99,7 +99,7 @@ func TestGetRelationship_Unrelated(t *testing.T) {
 	personA := createPerson(t, ctx, store, "John", "Doe", domain.GenderMale)
 	personB := createPerson(t, ctx, store, "Jane", "Smith", domain.GenderFemale)
 
-	result, err := svc.GetRelationship(ctx, personA, personB)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, personA, personB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestGetRelationship_ParentChild(t *testing.T) {
 	createParentChild(t, ctx, store, child, &father, nil, "John Doe", "")
 
 	// Test child to parent
-	result, err := svc.GetRelationship(ctx, child, father)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child, father)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestGetRelationship_ParentChild(t *testing.T) {
 	}
 
 	// Test parent to child
-	result2, err := svc.GetRelationship(ctx, father, child)
+	result2, err := svc.GetRelationship(ctx, domain.MainBranchID, father, child)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestGetRelationship_Grandparent(t *testing.T) {
 	createParentChild(t, ctx, store, child, &father, nil, "John Doe", "")
 
 	// Test child to grandparent
-	result, err := svc.GetRelationship(ctx, child, grandfather)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child, grandfather)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestGetRelationship_Grandparent(t *testing.T) {
 	}
 
 	// Test grandparent to child
-	result2, err := svc.GetRelationship(ctx, grandfather, child)
+	result2, err := svc.GetRelationship(ctx, domain.MainBranchID, grandfather, child)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestGetRelationship_GreatGrandparent(t *testing.T) {
 	createParentChild(t, ctx, store, father, &grandfather, nil, "George Doe", "")
 	createParentChild(t, ctx, store, child, &father, nil, "John Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child, greatGrandfather)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child, greatGrandfather)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestGetRelationship_Siblings(t *testing.T) {
 	createParentChild(t, ctx, store, child1, &father, &mother, "John Doe", "Jane Doe")
 	createParentChild(t, ctx, store, child2, &father, &mother, "John Doe", "Jane Doe")
 
-	result, err := svc.GetRelationship(ctx, child1, child2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child1, child2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestGetRelationship_FirstCousins(t *testing.T) {
 	createParentChild(t, ctx, store, child1, &father, nil, "John Doe", "")
 	createParentChild(t, ctx, store, child2, &uncle, nil, "James Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child1, child2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child1, child2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestGetRelationship_FirstCousinOnceRemoved(t *testing.T) {
 	createParentChild(t, ctx, store, cousin2, &uncle, nil, "James Doe", "")
 	createParentChild(t, ctx, store, grandchild1, &child1, nil, "Alice Doe", "")
 
-	result, err := svc.GetRelationship(ctx, grandchild1, cousin2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, grandchild1, cousin2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestGetRelationship_SecondCousins(t *testing.T) {
 	createParentChild(t, ctx, store, child1, &father1, nil, "John1 Doe", "")
 	createParentChild(t, ctx, store, child2, &father2, nil, "John2 Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child1, child2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child1, child2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +429,7 @@ func TestGetRelationship_UncleNiece(t *testing.T) {
 	createParentChild(t, ctx, store, niece, &father, nil, "John Doe", "")
 
 	// Test niece to uncle
-	result, err := svc.GetRelationship(ctx, niece, uncle)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, niece, uncle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestGetRelationship_UncleNiece(t *testing.T) {
 	}
 
 	// Test uncle to niece
-	result2, err := svc.GetRelationship(ctx, uncle, niece)
+	result2, err := svc.GetRelationship(ctx, domain.MainBranchID, uncle, niece)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +486,7 @@ func TestGetRelationship_MultiplePaths(t *testing.T) {
 	createParentChild(t, ctx, store, child1, &father, &mother, "John Doe", "Jane Doe")
 	createParentChild(t, ctx, store, child2, &father, &mother, "John Doe", "Jane Doe")
 
-	result, err := svc.GetRelationship(ctx, child1, child2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child1, child2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +515,7 @@ func TestGetRelationship_CycleDetection(t *testing.T) {
 	createParentChild(t, ctx, store, person2, &person1, nil, "Person1 Test", "")
 
 	// Should not infinite loop
-	result, err := svc.GetRelationship(ctx, person1, person2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, person1, person2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +543,7 @@ func TestGetRelationship_GreatGreatGrandparent(t *testing.T) {
 	createParentChild(t, ctx, store, gen1, &gen2, nil, "Gen2 Doe", "")
 	createParentChild(t, ctx, store, gen0, &gen1, nil, "Gen1 Doe", "")
 
-	result, err := svc.GetRelationship(ctx, gen0, gen4)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, gen0, gen4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +585,7 @@ func TestGetRelationship_ThirdCousins(t *testing.T) {
 	createParentChild(t, ctx, store, child1, &father1, nil, "F1 Doe", "")
 	createParentChild(t, ctx, store, child2, &father2, nil, "F2 Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child1, child2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child1, child2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +633,7 @@ func TestGetRelationship_FirstCousinTwiceRemoved(t *testing.T) {
 	createParentChild(t, ctx, store, grandchild, &child, nil, "C Doe", "")
 	createParentChild(t, ctx, store, greatGrandchild, &grandchild, nil, "GC Doe", "")
 
-	result, err := svc.GetRelationship(ctx, greatGrandchild, cousin)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, greatGrandchild, cousin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,7 +672,7 @@ func TestGetRelationship_GrandUncle(t *testing.T) {
 	createParentChild(t, ctx, store, father, &grandfather, nil, "GF Doe", "")
 	createParentChild(t, ctx, store, child, &father, nil, "F Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child, grandUncle)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child, grandUncle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -713,7 +713,7 @@ func TestGetRelationship_GreatGrandUncle(t *testing.T) {
 	createParentChild(t, ctx, store, father, &grandfather, nil, "GF Doe", "")
 	createParentChild(t, ctx, store, child, &father, nil, "F Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child, greatGrandUncle)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child, greatGrandUncle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,7 +753,7 @@ func TestGetRelationship_GrandNephew(t *testing.T) {
 	createParentChild(t, ctx, store, father, &grandfather, nil, "GF Doe", "")
 	createParentChild(t, ctx, store, child, &father, nil, "F Doe", "")
 
-	result, err := svc.GetRelationship(ctx, grandUncle, child)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, grandUncle, child)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -814,7 +814,7 @@ func TestRelationshipService_OrdinalNumbers(t *testing.T) {
 	createParentChild(t, ctx, store, right4, &right3, nil, "R3 Doe", "")
 	createParentChild(t, ctx, store, right5, &right4, nil, "R4 Doe", "")
 
-	result, err := svc.GetRelationship(ctx, left5, right5)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, left5, right5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -848,7 +848,7 @@ func TestGetRelationship_SummaryWithMultiplePaths(t *testing.T) {
 	createParentChild(t, ctx, store, child1, &father, &mother, "Father Doe", "Mother Doe")
 	createParentChild(t, ctx, store, child2, &father, &mother, "Father Doe", "Mother Doe")
 
-	result, err := svc.GetRelationship(ctx, child1, child2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child1, child2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -871,7 +871,7 @@ func TestGetRelationship_PathContainsCorrectIDs(t *testing.T) {
 	createParentChild(t, ctx, store, father, &grandfather, nil, "GF Doe", "")
 	createParentChild(t, ctx, store, child, &father, nil, "F Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child, grandfather)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child, grandfather)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -931,7 +931,7 @@ func TestGetRelationship_CommonAncestorField(t *testing.T) {
 	createParentChild(t, ctx, store, child1, &father, nil, "John Doe", "")
 	createParentChild(t, ctx, store, child2, &uncle, nil, "James Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child1, child2)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child1, child2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -960,7 +960,7 @@ func TestGetRelationship_PersonAAndBFields(t *testing.T) {
 	personA := createPerson(t, ctx, store, "Alice", "Doe", domain.GenderFemale)
 	personB := createPerson(t, ctx, store, "Bob", "Smith", domain.GenderMale)
 
-	result, err := svc.GetRelationship(ctx, personA, personB)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, personA, personB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1006,7 +1006,7 @@ func TestGetRelationship_3rdGreatGrandparent(t *testing.T) {
 	createParentChild(t, ctx, store, gen1, &gen2, nil, "Gen2 Doe", "")
 	createParentChild(t, ctx, store, gen0, &gen1, nil, "Gen1 Doe", "")
 
-	result, err := svc.GetRelationship(ctx, gen0, gen5)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, gen0, gen5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1019,7 +1019,7 @@ func TestGetRelationship_3rdGreatGrandparent(t *testing.T) {
 	}
 
 	// Test reverse direction (3rd great-grandchild)
-	result2, err := svc.GetRelationship(ctx, gen5, gen0)
+	result2, err := svc.GetRelationship(ctx, domain.MainBranchID, gen5, gen0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1053,7 +1053,7 @@ func TestGetRelationship_1stCousinThreeTimesRemoved(t *testing.T) {
 	createParentChild(t, ctx, store, greatGrandchild, &grandchild, nil, "GC Doe", "")
 	createParentChild(t, ctx, store, ggGreatGrandchild, &greatGrandchild, nil, "GGC Doe", "")
 
-	result, err := svc.GetRelationship(ctx, ggGreatGrandchild, cousin)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, ggGreatGrandchild, cousin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1098,7 +1098,7 @@ func TestGetRelationship_1stCousinFourTimesRemoved(t *testing.T) {
 	createParentChild(t, ctx, store, ggGreatGrandchild, &greatGrandchild, nil, "GGC Doe", "")
 	createParentChild(t, ctx, store, gggGreatGrandchild, &ggGreatGrandchild, nil, "GGGC Doe", "")
 
-	result, err := svc.GetRelationship(ctx, gggGreatGrandchild, cousin)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, gggGreatGrandchild, cousin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1141,7 +1141,7 @@ func TestGetRelationship_2ndGreatGrandUncle(t *testing.T) {
 	createParentChild(t, ctx, store, father, &grandfather, nil, "GF Doe", "")
 	createParentChild(t, ctx, store, child, &father, nil, "F Doe", "")
 
-	result, err := svc.GetRelationship(ctx, child, ggGrandUncle)
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, child, ggGrandUncle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1197,7 +1197,7 @@ func TestGetRelationship_OrdinalEdgeCases(t *testing.T) {
 		createParentChild(t, ctx, store, rightBranch[i], &rightBranch[i-1], nil, "R"+string(rune('0'+i-1))+" Doe", "")
 	}
 
-	result, err := svc.GetRelationship(ctx, leftBranch[5], rightBranch[5])
+	result, err := svc.GetRelationship(ctx, domain.MainBranchID, leftBranch[5], rightBranch[5])
 	if err != nil {
 		t.Fatal(err)
 	}

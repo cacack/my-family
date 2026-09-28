@@ -4501,6 +4501,14 @@ type NotFound = Error
 
 // GetAhnentafelParams defines parameters for GetAhnentafel.
 type GetAhnentafelParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Generations Number of ancestor generations to include (1-10)
 	Generations *int `form:"generations,omitempty" json:"generations,omitempty"`
 
@@ -4764,6 +4772,14 @@ type RollbackCitationParams struct {
 
 // GetDescendancyParams defines parameters for GetDescendancy.
 type GetDescendancyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Generations Number of descendant generations to include
 	Generations *int `form:"generations,omitempty" json:"generations,omitempty"`
 }
@@ -4903,6 +4919,13 @@ type ResolveEvidenceConflictParams struct {
 
 // ListFamiliesParams defines parameters for ListFamilies.
 type ListFamiliesParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 	Limit  *LimitParam  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *OffsetParam `form:"offset,omitempty" json:"offset,omitempty"`
 }
@@ -4964,6 +4987,17 @@ type AddChildToFamilyParams struct {
 
 // RemoveChildFromFamilyParams defines parameters for RemoveChildFromFamily.
 type RemoveChildFromFamilyParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// GetFamilyGroupSheetParams defines parameters for GetFamilyGroupSheet.
+type GetFamilyGroupSheetParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
 	// view and writes land on the branch only (ADR-005). A malformed branch id
 	// returns 400 at parameter binding, before the operation runs. An unknown
@@ -5549,6 +5583,17 @@ type GetValidationIssuesParams struct {
 // GetValidationIssuesParamsSeverity defines parameters for GetValidationIssues.
 type GetValidationIssuesParamsSeverity string
 
+// GetRelationshipParams defines parameters for GetRelationship.
+type GetRelationshipParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // ListRepositoriesParams defines parameters for ListRepositories.
 type ListRepositoriesParams struct {
 	Limit  *LimitParam                  `form:"limit,omitempty" json:"limit,omitempty"`
@@ -5650,6 +5695,14 @@ type UpdateResearchLogParams struct {
 
 // SearchPersonsParams defines parameters for SearchPersons.
 type SearchPersonsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
 	// Q Search query (name)
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
@@ -6149,7 +6202,7 @@ type ServerInterface interface {
 	RemoveChildFromFamily(ctx echo.Context, id FamilyId, personId openapi_types.UUID, params RemoveChildFromFamilyParams) error
 	// Get family group sheet data
 	// (GET /families/{id}/group-sheet)
-	GetFamilyGroupSheet(ctx echo.Context, id FamilyId) error
+	GetFamilyGroupSheet(ctx echo.Context, id FamilyId, params GetFamilyGroupSheetParams) error
 	// Get change history for a family
 	// (GET /families/{id}/history)
 	GetFamilyHistory(ctx echo.Context, id FamilyId, params GetFamilyHistoryParams) error
@@ -6329,7 +6382,7 @@ type ServerInterface interface {
 	GetValidationIssues(ctx echo.Context, params GetValidationIssuesParams) error
 	// Calculate relationship between two people
 	// (GET /relationship/{personId1}/{personId2})
-	GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID) error
+	GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID, params GetRelationshipParams) error
 	// List all repositories
 	// (GET /repositories)
 	ListRepositories(ctx echo.Context, params ListRepositoriesParams) error
@@ -6449,6 +6502,13 @@ func (w *ServerInterfaceWrapper) GetAhnentafel(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetAhnentafelParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "generations" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "generations", ctx.QueryParams(), &params.Generations, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -7185,6 +7245,13 @@ func (w *ServerInterfaceWrapper) GetDescendancy(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetDescendancyParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "generations" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "generations", ctx.QueryParams(), &params.Generations, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -7567,6 +7634,13 @@ func (w *ServerInterfaceWrapper) ListFamilies(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListFamiliesParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", ctx.QueryParams(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -7748,8 +7822,17 @@ func (w *ServerInterfaceWrapper) GetFamilyGroupSheet(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFamilyGroupSheetParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetFamilyGroupSheet(ctx, id)
+	err = w.Handler.GetFamilyGroupSheet(ctx, id, params)
 	return err
 }
 
@@ -9255,8 +9338,17 @@ func (w *ServerInterfaceWrapper) GetRelationship(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter personId2: %s", err))
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRelationshipParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetRelationship(ctx, personId1, personId2)
+	err = w.Handler.GetRelationship(ctx, personId1, personId2, params)
 	return err
 }
 
@@ -9542,6 +9634,13 @@ func (w *ServerInterfaceWrapper) SearchPersons(ctx echo.Context) error {
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params SearchPersonsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// ------------- Optional query parameter "q" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", ctx.QueryParams(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -12730,7 +12829,8 @@ func (response RemoveChildFromFamily409JSONResponse) VisitRemoveChildFromFamilyR
 }
 
 type GetFamilyGroupSheetRequestObject struct {
-	Id FamilyId `json:"id"`
+	Id     FamilyId `json:"id"`
+	Params GetFamilyGroupSheetParams
 }
 
 type GetFamilyGroupSheetResponseObject interface {
@@ -15466,6 +15566,7 @@ func (response GetValidationIssues200JSONResponse) VisitGetValidationIssuesRespo
 type GetRelationshipRequestObject struct {
 	PersonId1 openapi_types.UUID `json:"personId1"`
 	PersonId2 openapi_types.UUID `json:"personId2"`
+	Params    GetRelationshipParams
 }
 
 type GetRelationshipResponseObject interface {
@@ -18898,10 +18999,11 @@ func (sh *strictHandler) RemoveChildFromFamily(ctx echo.Context, id FamilyId, pe
 }
 
 // GetFamilyGroupSheet operation middleware
-func (sh *strictHandler) GetFamilyGroupSheet(ctx echo.Context, id FamilyId) error {
+func (sh *strictHandler) GetFamilyGroupSheet(ctx echo.Context, id FamilyId, params GetFamilyGroupSheetParams) error {
 	var request GetFamilyGroupSheetRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetFamilyGroupSheet(ctx.Request().Context(), request.(GetFamilyGroupSheetRequestObject))
@@ -20540,11 +20642,12 @@ func (sh *strictHandler) GetValidationIssues(ctx echo.Context, params GetValidat
 }
 
 // GetRelationship operation middleware
-func (sh *strictHandler) GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID) error {
+func (sh *strictHandler) GetRelationship(ctx echo.Context, personId1 openapi_types.UUID, personId2 openapi_types.UUID, params GetRelationshipParams) error {
 	var request GetRelationshipRequestObject
 
 	request.PersonId1 = personId1
 	request.PersonId2 = personId2
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.GetRelationship(ctx.Request().Context(), request.(GetRelationshipRequestObject))

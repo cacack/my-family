@@ -47,17 +47,17 @@ func NewAhnentafelService(pedigreeService *PedigreeService) *AhnentafelService {
 // GetAhnentafelInput contains options for retrieving an Ahnentafel report.
 type GetAhnentafelInput struct {
 	PersonID       uuid.UUID
-	MaxGenerations int // Maximum generations to include (default 5)
+	MaxGenerations int             // Maximum generations to include (default 5)
+	BranchID       domain.BranchID // Branch scope; zero value = MainBranchID (main line)
 }
 
 // GetAhnentafel returns the Ahnentafel (numbered ancestor list) for a person.
 // Missing ancestors result in gaps in the numbering, which is standard and expected.
 func (s *AhnentafelService) GetAhnentafel(ctx context.Context, input GetAhnentafelInput) (*AhnentafelResult, error) {
 	// Get the pedigree tree from the pedigree service
-	pedigreeResult, err := s.pedigreeService.GetPedigree(ctx, GetPedigreeInput{
-		PersonID:       input.PersonID,
-		MaxGenerations: input.MaxGenerations,
-	})
+	// The two inputs carry the same fields: the report is the pedigree walk,
+	// numbered.
+	pedigreeResult, err := s.pedigreeService.GetPedigree(ctx, GetPedigreeInput(input))
 	if err != nil {
 		return nil, err
 	}

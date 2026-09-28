@@ -82,7 +82,8 @@ describe('Dashboard', () => {
 		render(DashboardPage);
 		await waitFor(() => expect(screen.getByText('Recent People')).toBeTruthy());
 		const note = screen.getByRole('note');
-		expect(note.textContent).toContain('recent families and research suggestions still come from the mainline');
+		expect(note.textContent).toContain('recent people and families follow your branch');
+		expect(note.textContent).toContain('research suggestions still come from the mainline');
 	});
 
 	it('shows no mainline notice on the mainline', async () => {
