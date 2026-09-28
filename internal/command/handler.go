@@ -306,6 +306,19 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 		}
 	}
 
+	// Give every changes map the shape it will have once decoded from the log,
+	// so the synchronous projection below sees exactly what a replay or merge
+	// will see (issue #848). A copy, so the caller's slice is left untouched.
+	canonical := make([]domain.Event, len(events))
+	for i, event := range events {
+		c, err := repository.CanonicalizeChanges(event)
+		if err != nil {
+			return 0, err
+		}
+		canonical[i] = c
+	}
+	events = canonical
+
 	// Append events to the event store on the handler's branch scope. A branch
 	// append that checks a version also reports the branch's cross-stream shadow
 	// row version, if any, so a first branch write expects exactly the version the
