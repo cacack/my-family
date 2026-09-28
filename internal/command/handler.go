@@ -152,9 +152,8 @@ type RollbackResult struct {
 // Handler processes commands and returns resulting domain events.
 //
 // A Handler carries a branch scope (ADR-005). Its zero value is the mainline:
-// branchID is domain.MainBranchID and basePosition is 0, which is exactly
-// repository.MainScope, so a handler built by any constructor behaves as it did
-// before branches existed. WithBranch returns a scoped copy.
+// branchID is domain.MainBranchID, which is exactly repository.MainScope, so a
+// handler built by any constructor behaves as it did before branches existed. WithBranch returns a scoped copy.
 type Handler struct {
 	eventStore  repository.EventStore
 	readStore   repository.ReadModelStore
@@ -176,8 +175,7 @@ type Handler struct {
 	branchService *query.BranchService
 
 	// Branch scope applied to every append and projection made through execute.
-	branchID     domain.BranchID
-	basePosition int64
+	branchID domain.BranchID
 }
 
 // NewHandler creates a new command handler. Its projector has no branch registry
@@ -281,14 +279,13 @@ func (h *Handler) WithBranch(b *domain.Branch) *Handler {
 	}
 	scoped := *h
 	scoped.branchID = domain.BranchID(b.ID)
-	scoped.basePosition = b.BasePosition
 	return &scoped
 }
 
 // appendScope is the handler's branch scope in event-store form. For an
 // unscoped handler this equals repository.MainScope.
 func (h *Handler) appendScope() repository.AppendScope {
-	return repository.AppendScope{BranchID: h.branchID, BasePosition: h.basePosition}
+	return repository.AppendScope{BranchID: h.branchID}
 }
 
 // execute is a helper that appends events, projects them, and returns the new version.
@@ -309,8 +306,32 @@ func (h *Handler) execute(ctx context.Context, streamID string, streamType strin
 		}
 	}
 
-	// Append events to the event store on the handler's branch scope.
-	if err := h.eventStore.Append(ctx, id, streamType, events, expectedVersion, h.appendScope()); err != nil {
+	// Give every changes map the shape it will have once decoded from the log,
+	// so the synchronous projection below sees exactly what a replay or merge
+	// will see (issue #848). A copy, so the caller's slice is left untouched.
+	canonical := make([]domain.Event, len(events))
+	for i, event := range events {
+		c, err := repository.CanonicalizeChanges(event)
+		if err != nil {
+			return 0, err
+		}
+		canonical[i] = c
+	}
+	events = canonical
+
+	// Append events to the event store on the handler's branch scope. A branch
+	// append that checks a version also reports the branch's cross-stream shadow
+	// row version, if any, so a first branch write expects exactly the version the
+	// branch's read showed (#844; see repository.AppendScope).
+	scope := h.appendScope()
+	if !h.branchID.IsMain() && expectedVersion >= 0 {
+		overlay, err := h.branchOverlayVersion(ctx, streamType, id)
+		if err != nil {
+			return 0, err
+		}
+		scope.OverlayVersion = overlay
+	}
+	if err := h.eventStore.Append(ctx, id, streamType, events, expectedVersion, scope); err != nil {
 		return 0, err
 	}
 

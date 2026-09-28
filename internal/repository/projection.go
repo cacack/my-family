@@ -478,18 +478,23 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 			family.Partner2GivenName = given
 			family.Partner2Surname = surname
 		case "relationship_type":
-			if v, ok := value.(string); ok {
+			switch v := value.(type) {
+			case string:
 				family.RelationshipType = domain.RelationType(v)
+			case domain.RelationType:
+				family.RelationshipType = v
 			}
 		case "marriage_date":
-			if v, ok := value.(string); ok {
-				family.MarriageDateRaw = v
-				gd := domain.ParseGenDate(v)
-				t := gd.ToTime()
-				if !t.IsZero() {
+			raw, ok := genDateChange(value)
+			if !ok {
+				return fmt.Errorf("family %s change %q: unsupported value %v (%T)", e.FamilyID, key, value, value)
+			}
+			family.MarriageDateRaw = raw
+			family.MarriageDateSort = nil
+			if raw != "" {
+				gd := domain.ParseGenDate(raw)
+				if t := gd.ToTime(); !t.IsZero() {
 					family.MarriageDateSort = &t
-				} else {
-					family.MarriageDateSort = nil
 				}
 			}
 		case "marriage_place":
@@ -507,11 +512,6 @@ func (p *Projector) projectFamilyUpdated(ctx context.Context, e domain.FamilyUpd
 	return p.readStore.SaveFamily(ctx, branchID, family)
 }
 
-// resolvePartnerChange resolves a partner_id value from a FamilyUpdated.Changes
-// map into the new partner ID and split name fields. Values arrive as untyped
-// JSON: a string UUID for a swap, nil/empty to clear. Unknown person IDs leave
-// the names empty rather than failing — the name will be backfilled the next
-// time the projection sees the person.
 // parseOptionalUUID coerces a change-map value into an optional UUID. Values may
 // arrive as a string (the JSON-decoded form after event replay), a uuid.UUID, or a
 // *uuid.UUID (freshly built in-memory). A nil, empty, or unparseable value yields
@@ -539,20 +539,51 @@ func parseOptionalUUID(value any) *uuid.UUID {
 	}
 }
 
+// resolvePartnerChange resolves a partner_id value from a FamilyUpdated.Changes
+// map into the new partner ID and split name fields. Values arrive as untyped
+// JSON: a string UUID for a swap, nil/empty to clear. Unknown person IDs leave
+// the names empty rather than failing — the name will be backfilled the next
+// time the projection sees the person.
 func (p *Projector) resolvePartnerChange(ctx context.Context, branchID domain.BranchID, value any) (*uuid.UUID, string, string) {
-	s, ok := value.(string)
-	if !ok || s == "" {
+	parsed := parseOptionalUUID(value)
+	if parsed == nil {
 		return nil, "", ""
 	}
-	parsed, err := uuid.Parse(s)
-	if err != nil {
-		return nil, "", ""
-	}
-	person, _ := p.readStore.GetPerson(ctx, branchID, parsed)
+	person, _ := p.readStore.GetPerson(ctx, branchID, *parsed)
 	if person == nil {
-		return &parsed, "", ""
+		return parsed, "", ""
 	}
-	return &parsed, person.GivenName, person.Surname
+	return parsed, person.GivenName, person.Surname
+}
+
+// genDateChange reads a date change value as its raw text. The canonical form
+// is the raw string (nil or "" clears the date), which is what UpdateFamily and
+// the rollback service write. FamilyUpdated events stored before issue #848
+// carry the date as a serialized domain.GenDate object instead; that decodes to
+// a map here and is read through its raw text (or its formatted parts), so an
+// existing log still replays to the date it recorded.
+func genDateChange(value any) (string, bool) {
+	switch v := value.(type) {
+	case nil:
+		return "", true
+	case string:
+		return v, true
+	case *domain.GenDate:
+		if v == nil {
+			return "", true
+		}
+		return v.String(), true
+	case domain.GenDate:
+		return v.String(), true
+	case map[string]any:
+		var gd domain.GenDate
+		if err := decodeChangeValue(v, &gd); err != nil {
+			return "", false
+		}
+		return gd.String(), true
+	default:
+		return "", false
+	}
 }
 
 func (p *Projector) projectChildLinked(ctx context.Context, e domain.ChildLinkedToFamily, version int64, branchID domain.BranchID) error {
@@ -1252,19 +1283,9 @@ func (p *Projector) projectLifeEventUpdated(ctx context.Context, e domain.LifeEv
 				event.Place = v
 			}
 		case "address":
-			if value == nil {
-				event.Address = nil
-			} else {
-				switch v := value.(type) {
-				case *domain.Address:
-					event.Address = v
-				case map[string]any:
-					b, _ := json.Marshal(v)
-					var addr domain.Address
-					if json.Unmarshal(b, &addr) == nil {
-						event.Address = &addr
-					}
-				}
+			// A map in the stored (and canonicalized live) event; nil clears.
+			if err := decodeChangeValue(value, &event.Address); err != nil {
+				return fmt.Errorf("life event %s change %q: %w", e.EventID, key, err)
 			}
 		case "description":
 			if v, ok := value.(string); ok {
@@ -1384,22 +1405,11 @@ func (p *Projector) projectRepositoryUpdated(ctx context.Context, e domain.Repos
 				repo.Name = v
 			}
 		case "address":
-			// On replay the event is decoded from JSON, so the address arrives
-			// as map[string]any rather than *domain.Address. Handle both, plus
-			// nil to clear. Mirrors projectLifeEventUpdated.
-			if value == nil {
-				repo.Address = nil
-			} else {
-				switch v := value.(type) {
-				case *domain.Address:
-					repo.Address = v
-				case map[string]any:
-					b, _ := json.Marshal(v)
-					var addr domain.Address
-					if json.Unmarshal(b, &addr) == nil {
-						repo.Address = &addr
-					}
-				}
+			// The address arrives as map[string]any (the stored JSON shape,
+			// which the live event is canonicalized to), or nil to clear.
+			// Mirrors projectLifeEventUpdated.
+			if err := decodeChangeValue(value, &repo.Address); err != nil {
+				return fmt.Errorf("repository %s change %q: %w", e.RepositoryID, key, err)
 			}
 		case "notes":
 			if v, ok := value.(string); ok {
@@ -1897,26 +1907,27 @@ func (p *Projector) projectSubmitterUpdated(ctx context.Context, e domain.Submit
 			if v, ok := value.(string); ok {
 				submitter.Name = v
 			}
+		// The structured values arrive in their JSON shape (a map, a []any, a
+		// string ID) — the live event is canonicalized to what a replay decodes
+		// (issue #848) — so each is decoded rather than type-asserted.
 		case "address":
-			if v, ok := value.(*domain.Address); ok {
-				submitter.Address = v
+			if err := decodeChangeValue(value, &submitter.Address); err != nil {
+				return fmt.Errorf("submitter %s change %q: %w", e.SubmitterID, key, err)
 			}
 		case "phone":
-			if v, ok := value.([]string); ok {
-				submitter.Phone = v
+			if err := decodeChangeValue(value, &submitter.Phone); err != nil {
+				return fmt.Errorf("submitter %s change %q: %w", e.SubmitterID, key, err)
 			}
 		case "email":
-			if v, ok := value.([]string); ok {
-				submitter.Email = v
+			if err := decodeChangeValue(value, &submitter.Email); err != nil {
+				return fmt.Errorf("submitter %s change %q: %w", e.SubmitterID, key, err)
 			}
 		case "language":
 			if v, ok := value.(string); ok {
 				submitter.Language = v
 			}
 		case "media_id":
-			if v, ok := value.(*uuid.UUID); ok {
-				submitter.MediaID = v
-			}
+			submitter.MediaID = parseOptionalUUID(value)
 		default:
 			slog.Warn("projection: ignoring unknown change key", "event", "SubmitterUpdated", "key", key)
 		}

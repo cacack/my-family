@@ -268,15 +268,21 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 		return fmt.Errorf("get current version: %w", err)
 	}
 
-	// A branch's first write to an existing aggregate continues main's version line
-	// as of the branch's base position rather than restarting at 1 (ADR-005).
+	// A branch's first write to an existing aggregate continues the version line
+	// the branch's read shows rather than restarting at 1: main's CURRENT version,
+	// or the branch's cross-stream shadow row version when the caller reports one
+	// (repository.BranchSeedVersion; ADR-005, #844).
 	if currentVersion == 0 && !scope.BranchID.IsMain() {
 		err = tx.QueryRowContext(ctx,
-			"SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = ? AND branch_id = ? AND position <= ?",
-			streamID.String(), domain.MainBranchID.String(), scope.BasePosition,
+			"SELECT COALESCE(MAX(version), 0) FROM events WHERE stream_id = ? AND branch_id = ?",
+			streamID.String(), domain.MainBranchID.String(),
 		).Scan(&currentVersion)
 		if err != nil {
 			return fmt.Errorf("seed branch version: %w", err)
+		}
+		currentVersion, err = repository.BranchSeedVersion(currentVersion, scope)
+		if err != nil {
+			return err
 		}
 	}
 

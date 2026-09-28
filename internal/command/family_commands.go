@@ -142,23 +142,29 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 		return nil, ErrFamilyNotFound
 	}
 
-	// Build changes map
+	if err := h.validateFamilyUpdate(ctx, family, input); err != nil {
+		return nil, err
+	}
+
+	// Build changes map. Values are written in their JSON shape — the form
+	// every reader of the stored event decodes (issue #848): IDs and the
+	// relationship type as strings, the marriage date as its raw text (nil
+	// clears it), matching how PersonUpdated carries birth_date.
 	changes := make(map[string]any)
 	if input.Partner1ID != nil {
-		changes["partner1_id"] = input.Partner1ID
+		changes["partner1_id"] = input.Partner1ID.String()
 	}
 	if input.Partner2ID != nil {
-		changes["partner2_id"] = input.Partner2ID
+		changes["partner2_id"] = input.Partner2ID.String()
 	}
 	if input.RelationshipType != nil {
-		changes["relationship_type"] = domain.RelationType(*input.RelationshipType)
+		changes["relationship_type"] = *input.RelationshipType
 	}
 	if input.MarriageDate != nil {
 		if *input.MarriageDate == "" {
 			changes["marriage_date"] = nil
 		} else {
-			md := domain.ParseGenDate(*input.MarriageDate)
-			changes["marriage_date"] = &md
+			changes["marriage_date"] = *input.MarriageDate
 		}
 	}
 	if input.MarriagePlace != nil {
@@ -184,6 +190,67 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	return &UpdateFamilyResult{
 		Version: version,
 	}, nil
+}
+
+// validateFamilyUpdate checks an update against the family it changes: a new
+// partner must exist on the handler's scope, the two partners must differ once
+// the update is applied, a new partner must not be one of the family's
+// children or their descendant (the same circular-ancestry rule LinkChild
+// enforces from the other side), and the relationship type must be known.
+func (h *Handler) validateFamilyUpdate(ctx context.Context, family *repository.FamilyReadModel, input UpdateFamilyInput) error {
+	if input.RelationshipType != nil && !domain.RelationType(*input.RelationshipType).IsValid() {
+		return fmt.Errorf("%w: invalid relationship_type %q", ErrInvalidFamilyInput, *input.RelationshipType)
+	}
+
+	partner1, partner2 := family.Partner1ID, family.Partner2ID
+	if input.Partner1ID != nil {
+		partner1 = input.Partner1ID
+	}
+	if input.Partner2ID != nil {
+		partner2 = input.Partner2ID
+	}
+	if partner1 != nil && partner2 != nil && *partner1 == *partner2 {
+		return fmt.Errorf("%w: partner1 and partner2 must be different people", ErrInvalidFamilyInput)
+	}
+
+	for _, change := range []struct {
+		field string
+		id    *uuid.UUID
+	}{{"partner1_id", input.Partner1ID}, {"partner2_id", input.Partner2ID}} {
+		if change.id == nil {
+			continue
+		}
+		person, err := h.readStore.GetPerson(ctx, h.branchID, *change.id)
+		if err != nil {
+			return fmt.Errorf("getting %s: %w", change.field, err)
+		}
+		if person == nil {
+			return fmt.Errorf("%w: %s not found", ErrInvalidFamilyInput, change.field)
+		}
+		if err := h.checkPartnerNotDescendant(ctx, family.ID, *change.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkPartnerNotDescendant refuses a partner who is one of the family's
+// children or descends from one: they would become their own ancestor.
+func (h *Handler) checkPartnerNotDescendant(ctx context.Context, familyID, partnerID uuid.UUID) error {
+	children, err := h.readStore.GetChildrenOfFamily(ctx, h.branchID, familyID)
+	if err != nil {
+		return fmt.Errorf("getting children of family: %w", err)
+	}
+	for _, child := range children {
+		isAncestor, err := h.isAncestor(ctx, child.ID, partnerID)
+		if err != nil {
+			return fmt.Errorf("checking circular ancestry: %w", err)
+		}
+		if isAncestor {
+			return ErrCircularAncestry
+		}
+	}
+	return nil
 }
 
 // DeleteFamilyInput contains the data for deleting a family.

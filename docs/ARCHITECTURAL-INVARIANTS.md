@@ -48,6 +48,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **PR-002** | Read model version matches event stream version | Version consistency test |
 | **PR-003** | Deleted entities removed from read model | Deletion projection test |
 | **PR-004** | New event types have corresponding projection handlers | Projection coverage check |
+| **PR-005** | A live (synchronous) projection sees the same event a replay decodes: `Handler.execute` canonicalizes every `*Updated` changes map to its JSON shape (`repository.CanonicalizeChanges`) before append and projection, so projections read change values only in their decoded form (strings, `float64`, `[]any`, `map[string]any`, nil to clear) (#848) | `TestUpdatedCommands_LiveProjectionMatchesReplay` in `internal/integration/` (every `*Updated` command, all backends) |
 
 ### Deployment Invariants (DP) - Source: [ADR-004](./adr/004-single-binary-deployment.md)
 
@@ -65,7 +66,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **BR-002** | Branch events append to the shared global log, never a separate store (upholds ES-002) | Code review: one `EventStore.Append` path taking a `repository.AppendScope`; `ReadBranch` filters the shared log by `branch_id` — no per-branch store type exists |
 | **BR-003** | Read-model rows carry `branch_id`; queries default to `main`, branch rows shadow `main` (copy-on-write overlay), deletes write tombstone rows. A branch's overlay is purged when the branch reaches a terminal status — `merged` or `archived` — so no terminal branch retains an isolated view | `internal/repository/{memory,sqlite,postgres}/branch_scenario_test.go` (overlay, tombstone, `PurgeBranch` on `BranchDeleted`); `TestProjector_BranchMergedPurgesOverlay` (`internal/repository`) for the merge purge; `TestBranchIsolation*` in `internal/command` and `internal/api`; `TestBranchLifecycle_EndToEnd` (`internal/integration`) asserts branch isolation on every backend, and that a merged branch is no longer readable — note it does **not** prove the purge itself, since the API refuses a terminal branch by status before reaching the read model; cross-backend purge-on-merge coverage is still a gap |
 | **BR-004** | A merge re-appends only a branch's entity/domain mutation events onto `main` (excluding branch-lifecycle events and the `BranchMerged` marker) and records a single `BranchMerged` event; history is never rewritten | `TestMergeBranch_AppendOnly` (`internal/command`): the branch's own stored events are byte-identical after the merge and `main` gains only new events at new positions. `TestBranchService_PlanMerge_ReplaySetExcludesLifecycleEvents` (`internal/query`) pins the replay set to mutation events only; `TestMergeBranch_PreservesProvenance` (`internal/command`) pins the replayed payload and `OccurredAt` to the originals; `TestMergeBranch_SecondMergeIsRefused` and `TestMergeBranch_ConcurrentClaimLoses` pin the single `BranchMerged`. `TestBranchLifecycle_EndToEnd` and `TestBranchConflict_*` (`internal/integration`) re-verify the replay and both conflict-resolution directions against memory, SQLite and PostgreSQL |
-| **BR-005** | Optimistic versioning is per-`(stream_id, branch_id)`. A branch's first write to an aggregate that exists on `main` seeds its version from that aggregate's `main` version at the branch's `base_position`, then increments within the branch; concurrent branches never contend at write time | `runBranchVersioningScenario` — identical copies in `internal/repository/eventstore_test.go` (memory), `sqlite/eventstore_test.go`, `postgres/eventstore_test.go` (DB-001 parity); exercised end-to-end by `TestBranchLifecycle_EndToEnd` (`internal/integration`), whose branch edits seed from `main` versions on every backend |
+| **BR-005** | Optimistic versioning is per-`(stream_id, branch_id)`. A branch's first write to an aggregate that exists on `main` seeds its version from the version the branch's read shows (#844) — that aggregate's **current** `main` version through the live overlay, or the version of the branch's own cross-stream shadow row (e.g. a source whose citation count a branch citation changed), reported by the command handler as `AppendScope.OverlayVersion` — then increments within the branch; concurrent branches never contend at write time | `runBranchVersioningScenario` — identical copies in `internal/repository/eventstore_test.go` (memory), `sqlite/eventstore_test.go`, `postgres/eventstore_test.go` (DB-001 parity); `TestBranchEditAfterMainCorrection` (`internal/repository/{memory,sqlite,postgres}`) for an aggregate `main` edited after the fork, including one the branch shadows cross-stream; `TestBranchOverlayStreams_*`/`TestBranchOverlayVersion` (`internal/command`) for the overlay-version resolvers; exercised end-to-end by `TestBranchLifecycle_EndToEnd` (`internal/integration`), whose branch edits seed from `main` versions on every backend |
 | **BR-006** | A branch-scoped write is legal only for event types whose projection handler writes exclusively branch-keyed rows; any other event type is rejected before the append (`command.ErrEventTypeNotBranchAware`) | `TestExecute_RejectsNonBranchAwareEvent` (`internal/command`); the allowed set in `internal/command/handler.go` is derived from `internal/repository/projection.go`, and `TestBranchAwareEventTypes_LeaveMainUntouched` projects one probe per allowlisted type on a branch and asserts main is unchanged |
 
 > **Implementation status (#669):** BR-003 and the branch-lifecycle side of PR-004 are
@@ -237,13 +238,13 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 |-----------------|---------------|-------|
 | ADR-001 (Event Sourcing) | ES-001 through ES-007 | 7 |
 | ADR-002 (Dual Database) | DB-001 through DB-008 | 8 |
-| ADR-003 (Sync Projections) | PR-001 through PR-004 | 4 |
+| ADR-003 (Sync Projections) | PR-001 through PR-005 | 5 |
 | ADR-004 (Single Binary) | DP-001 through DP-003 | 3 |
 | ADR-005 (Research Branches) | BR-001 through BR-006 | 6 |
 | ETHOS.md | DM-001 through DM-006, DI-001 through DI-004, QA-001 through QA-003 | 13 |
 | CONVENTIONS.md | API-001 through API-005 | 5 |
 | CONTRIBUTING.md | TS-001 through TS-003 | 3 |
-| **Total** | | **49** |
+| **Total** | | **50** |
 
 ---
 

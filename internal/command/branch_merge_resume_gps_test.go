@@ -457,7 +457,7 @@ func TestResumeMerge_LegacyClaimRefusesExcludingALandedLogsSubject(t *testing.T)
 		BasePosition:     branch.BasePosition,
 		MergedAtPosition: logHead(t, f),
 	}
-	scope := repository.AppendScope{BranchID: domain.BranchID(branch.ID), BasePosition: branch.BasePosition}
+	scope := repository.AppendScope{BranchID: domain.BranchID(branch.ID)}
 	version, err := f.eventStore.GetStreamVersion(ctx, branch.ID, scope.BranchID)
 	if err != nil {
 		t.Fatalf("GetStreamVersion failed: %v", err)

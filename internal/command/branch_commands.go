@@ -117,10 +117,7 @@ func (h *Handler) DeleteBranch(ctx context.Context, branchID uuid.UUID) error {
 }
 
 // branchScope is the append scope of a branch's own lifecycle events: the
-// branch's identity as a scope, anchored at the branch's base position.
+// branch's identity as a scope.
 func branchScope(b *domain.Branch) repository.AppendScope {
-	return repository.AppendScope{
-		BranchID:     domain.BranchID(b.ID),
-		BasePosition: b.BasePosition,
-	}
+	return repository.AppendScope{BranchID: domain.BranchID(b.ID)}
 }

@@ -203,6 +203,7 @@ Quick reference for which tests verify which invariants.
 | PR-002 | `internal/repository/projection_test.go` - version check | Automated |
 | PR-003 | `internal/repository/projection_test.go` - deletion | Automated |
 | PR-004 | Projection coverage check | Code review |
+| PR-005 | `internal/integration/updated_projection_parity_test.go` - live projection equals replay on every backend | Automated |
 | BR-001 | `internal/command/branch_commands_test.go`, per-backend `branch_scenario_test.go` | Automated |
 | BR-002 | Single `Append` path taking `repository.AppendScope` | Code review |
 | BR-003 | Overlay/tombstone/purge-on-delete: per-backend `branch_scenario_test.go`. Purge-on-merge: `TestProjector_BranchMergedPurgesOverlay` (memory only — **gap** on SQL backends). Isolation: `internal/integration/branch_lifecycle_test.go` | Partial |

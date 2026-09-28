@@ -853,9 +853,6 @@ func runBranchVersioningScenario(t *testing.T, store repository.EventStore) {
 	if len(all) != 3 {
 		t.Fatalf("ReadAll after seeding returned %d events, want 3", len(all))
 	}
-	basePosition := all[len(all)-1].Position
-	branchA.BasePosition = basePosition
-	branchB.BasePosition = basePosition
 
 	// --- Seeding: a branch's first write continues main's version line at 4. ---
 	branchEdit := domain.NewPersonUpdated(streamID, map[string]any{"surname": "Revised-A"})
@@ -893,6 +890,55 @@ func runBranchVersioningScenario(t *testing.T, store repository.EventStore) {
 	}
 	if v, err := store.GetStreamVersion(ctx, streamID, branchA.BranchID); err != nil || v != 4 {
 		t.Fatalf("branch A version after main advanced = %d (err %v), want 4 (unchanged)", v, err)
+	}
+
+	// --- An untouched stream seeds from main's CURRENT version (#844): a branch
+	// forked when main was at 3 that first writes after main reached 4 must accept
+	// the version its live-overlay read shows (4), and refuse the as-of-fork 3. ---
+	branchC := repository.AppendScope{BranchID: domain.BranchID(uuid.New())}
+	err = store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "as-of-fork"})}, 3, branchC)
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("branch C append at the as-of-fork version: want ErrConcurrencyConflict, got %v", err)
+	}
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "live overlay"})}, 4, branchC); err != nil {
+		t.Fatalf("branch C append at main's current version: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchC.BranchID); err != nil || v != 5 {
+		t.Fatalf("branch C version = %d (err %v), want 5 (continuing main's current line)", v, err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, domain.MainBranchID); err != nil || v != 4 {
+		t.Fatalf("main version after branch C write = %d (err %v), want 4 (unchanged)", v, err)
+	}
+
+	// --- A stream the branch reads through its own cross-stream shadow row
+	// (#844): the caller reports that row's version as OverlayVersion, and the
+	// branch's first write seeds from it instead of main's current version. ---
+	branchD := repository.AppendScope{BranchID: domain.BranchID(uuid.New()), OverlayVersion: 9}
+	err = store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "ahead of main"})}, 9, branchD)
+	if !errors.Is(err, repository.ErrInvalidOverlayVersion) {
+		t.Fatalf("branch D append with an overlay version ahead of main: want ErrInvalidOverlayVersion, got %v", err)
+	}
+	branchD.OverlayVersion = 3
+	err = store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "main current"})}, 4, branchD)
+	if !errors.Is(err, repository.ErrConcurrencyConflict) {
+		t.Fatalf("branch D append at main's version past its shadow: want ErrConcurrencyConflict, got %v", err)
+	}
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "shadow"})}, 3, branchD); err != nil {
+		t.Fatalf("branch D append at its shadow row's version: %v", err)
+	}
+	// Once the branch has appended, its own line governs; OverlayVersion is ignored.
+	branchD.OverlayVersion = 2
+	if err := store.Append(ctx, streamID, "Person",
+		[]domain.Event{domain.NewPersonUpdated(streamID, map[string]any{"notes": "own line"})}, 4, branchD); err != nil {
+		t.Fatalf("branch D second append on its own line: %v", err)
+	}
+	if v, err := store.GetStreamVersion(ctx, streamID, branchD.BranchID); err != nil || v != 5 {
+		t.Fatalf("branch D version = %d (err %v), want 5 (continuing its shadow's line)", v, err)
 	}
 
 	// --- Optimistic concurrency still bites WITHIN a branch. ---
@@ -984,7 +1030,7 @@ func TestEventStore_ReadByStream_BranchScoped(t *testing.T) {
 		t.Fatalf("Append() main failed: %v", err)
 	}
 
-	branchScope := repository.AppendScope{BranchID: branchID, BasePosition: 2}
+	branchScope := repository.AppendScope{BranchID: branchID}
 	branchEvents := []domain.Event{
 		domain.NewPersonUpdated(streamID, map[string]any{"notes": "branch edit 1"}),
 		domain.NewPersonUpdated(streamID, map[string]any{"notes": "branch edit 2"}),
@@ -1063,7 +1109,7 @@ func TestEventStore_ReadStreamsForBranch(t *testing.T) {
 	seed(second, repository.MainScope, "post-1")    // position 3
 	seed(first, repository.MainScope, "post-2")     // position 4
 	seed(unrelated, repository.MainScope, "post-3") // position 5
-	seed(first, repository.AppendScope{BranchID: branchID, BasePosition: basePosition}, "branch")
+	seed(first, repository.AppendScope{BranchID: branchID}, "branch")
 
 	t.Run("empty stream set reads nothing", func(t *testing.T) {
 		events, err := store.ReadStreamsForBranch(ctx, nil, domain.MainBranchID, 0, 100)
