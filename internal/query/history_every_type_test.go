@@ -101,7 +101,7 @@ func writeEveryTypeFixture(t *testing.T, ctx context.Context, es repository.Even
 	require.NoError(t, err)
 	require.NoError(t, branches.Create(ctx, branch))
 	f.branch = branch
-	scope := repository.AppendScope{BranchID: domain.BranchID(branch.ID), BasePosition: branch.BasePosition}
+	scope := repository.AppendScope{BranchID: domain.BranchID(branch.ID)}
 	onBranch := func(streamID uuid.UUID, streamType string, events ...domain.Event) {
 		t.Helper()
 		write(streamID, streamType, scope, events)
