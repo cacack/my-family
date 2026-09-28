@@ -109,10 +109,10 @@ type entityNames struct {
 	citations map[uuid.UUID]*repository.CitationReadModel
 }
 
-// resolveEntityNames resolves names against main — the scope of the history
-// endpoints and snapshot compare, which take no ?branch= parameter, so an
-// entry is labelled with the mainline's current name (ADR-005). See
-// resolveEntityNamesOn.
+// resolveEntityNames resolves names against main — the scope of the global
+// history feed and of mainline entity history and snapshot compare, so an
+// entry is labelled with the mainline's current name (ADR-005). Their branch
+// counterparts resolve through the branch's overlay: see resolveEntityNamesOn.
 func (s *HistoryService) resolveEntityNames(ctx context.Context, refs entityRefs) (*entityNames, error) {
 	return s.resolveEntityNamesOn(ctx, domain.MainBranchID, refs)
 }

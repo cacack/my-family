@@ -251,7 +251,9 @@ func (p *Projector) projectBranchMerged(ctx context.Context, e domain.BranchMerg
 // mirroring a direct store write, so a projection rebuild reconstructs it.
 //
 // e.Position is the log head captured before this event was appended, so the
-// reconstructed snapshot marks the same range it originally did.
+// reconstructed snapshot marks the same range it originally did. e.BranchID is
+// the branch whose view it marks; an event from before #839 carries none and
+// projects as a mainline snapshot.
 func (p *Projector) projectSnapshotCreated(ctx context.Context, e domain.SnapshotCreated) error {
 	if p.snapshotStore == nil {
 		slog.Warn("projection: dropping snapshot lifecycle event, no SnapshotStore wired",
@@ -260,6 +262,7 @@ func (p *Projector) projectSnapshotCreated(ctx context.Context, e domain.Snapsho
 	}
 	snapshot := &domain.Snapshot{
 		ID:          e.SnapshotID,
+		BranchID:    domain.BranchID(e.BranchID),
 		Name:        e.Name,
 		Description: e.Description,
 		Position:    e.Position,

@@ -4,17 +4,44 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
+
 	"github.com/cacack/my-family/internal/domain"
+	"github.com/cacack/my-family/internal/query"
 	"github.com/cacack/my-family/internal/repository"
 )
 
 // ============================================================================
 // Snapshot endpoints
+//
+// Every snapshot operation is branch-scoped (issue #839): a snapshot marks
+// (branch_id, position) in ADR-005's model, so the list, get and delete answer
+// only for the requested scope's snapshots, creation marks the scope's view,
+// and a comparison reads the scope's view of the log. Comparing snapshots from
+// different branches is refused with 409 snapshot_branch_mismatch.
 // ============================================================================
 
+// errSnapshotBranchMismatch is the body of a refused cross-branch comparison.
+var errSnapshotBranchMismatch = Error{
+	Code: "snapshot_branch_mismatch",
+	Message: "Snapshots can only be compared within the branch they were taken on; " +
+		"switch to that branch (or the mainline) to compare them",
+}
+
+// snapshotNotFound is the standard 404 body for an unknown (or out-of-scope) snapshot.
+var snapshotNotFound = NotFoundJSONResponse{
+	Code:    "not_found",
+	Message: "Snapshot not found",
+}
+
 // ListSnapshots implements StrictServerInterface.
-func (ss *StrictServer) ListSnapshots(ctx context.Context, _ ListSnapshotsRequestObject) (ListSnapshotsResponseObject, error) {
-	snapshots, err := ss.server.snapshotService.ListSnapshots(ctx)
+func (ss *StrictServer) ListSnapshots(ctx context.Context, request ListSnapshotsRequestObject) (ListSnapshotsResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshots, err := ss.server.snapshotService.ListSnapshots(ctx, branchScopeID(branch))
 	if err != nil {
 		return nil, err
 	}
@@ -39,6 +66,11 @@ func (ss *StrictServer) CreateSnapshot(ctx context.Context, request CreateSnapsh
 		}}, nil
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	name := request.Body.Name
 	description := ""
 	if request.Body.Description != nil {
@@ -46,8 +78,9 @@ func (ss *StrictServer) CreateSnapshot(ctx context.Context, request CreateSnapsh
 	}
 
 	// Snapshot creation is a command, not a query: it appends SnapshotCreated and
-	// the projection writes the registry row (issue #624).
-	snapshot, err := ss.server.commandHandler.CreateSnapshot(ctx, name, description)
+	// the projection writes the registry row (issue #624). On a branch the
+	// snapshot marks the branch's view (issue #839).
+	snapshot, err := ss.branchWriter(branch).CreateSnapshot(ctx, name, description)
 	if err != nil {
 		// Check for validation errors
 		if errors.Is(err, domain.ErrSnapshotNameRequired) ||
@@ -66,13 +99,15 @@ func (ss *StrictServer) CreateSnapshot(ctx context.Context, request CreateSnapsh
 
 // GetSnapshot implements StrictServerInterface.
 func (ss *StrictServer) GetSnapshot(ctx context.Context, request GetSnapshotRequestObject) (GetSnapshotResponseObject, error) {
-	snapshot, err := ss.server.snapshotService.GetSnapshot(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	snapshot, err := ss.server.snapshotService.GetSnapshot(ctx, branchScopeID(branch), request.Id)
 	if err != nil {
 		if errors.Is(err, repository.ErrSnapshotNotFound) {
-			return GetSnapshot404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Snapshot not found",
-			}}, nil
+			return GetSnapshot404JSONResponse{snapshotNotFound}, nil
 		}
 		return nil, err
 	}
@@ -82,15 +117,17 @@ func (ss *StrictServer) GetSnapshot(ctx context.Context, request GetSnapshotRequ
 
 // DeleteSnapshot implements StrictServerInterface.
 func (ss *StrictServer) DeleteSnapshot(ctx context.Context, request DeleteSnapshotRequestObject) (DeleteSnapshotResponseObject, error) {
-	// Deletion is a command too: it appends SnapshotDeleted and the projection
-	// drops the registry row. The events the snapshot marked are untouched.
-	err := ss.server.commandHandler.DeleteSnapshot(ctx, request.Id)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
 	if err != nil {
+		return nil, err
+	}
+
+	// Deletion is a command too: it appends SnapshotDeleted and the projection
+	// drops the registry row. The events the snapshot marked are untouched. A
+	// snapshot on another branch is not found in this scope.
+	if err := ss.branchWriter(branch).DeleteSnapshot(ctx, request.Id); err != nil {
 		if errors.Is(err, repository.ErrSnapshotNotFound) {
-			return DeleteSnapshot404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Snapshot not found",
-			}}, nil
+			return DeleteSnapshot404JSONResponse{snapshotNotFound}, nil
 		}
 		return nil, err
 	}
@@ -100,34 +137,70 @@ func (ss *StrictServer) DeleteSnapshot(ctx context.Context, request DeleteSnapsh
 
 // CompareSnapshots implements StrictServerInterface.
 func (ss *StrictServer) CompareSnapshots(ctx context.Context, request CompareSnapshotsRequestObject) (CompareSnapshotsResponseObject, error) {
-	result, err := ss.server.snapshotService.CompareSnapshots(ctx, request.Id1, request.Id2)
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
 	if err != nil {
-		if errors.Is(err, repository.ErrSnapshotNotFound) {
-			return CompareSnapshots404JSONResponse{NotFoundJSONResponse{
-				Code:    "not_found",
-				Message: "Snapshot not found",
-			}}, nil
-		}
 		return nil, err
 	}
 
-	// Convert changes to generated type
-	changes := make([]ChangeEntry, len(result.Changes))
-	for i, c := range result.Changes {
-		changes[i] = convertQueryChangeEntryToGenerated(c)
+	result, err := ss.server.snapshotService.CompareSnapshots(ctx, branchScopeID(branch), request.Id1, request.Id2)
+	if err != nil {
+		if errors.Is(err, repository.ErrSnapshotNotFound) {
+			return CompareSnapshots404JSONResponse{snapshotNotFound}, nil
+		}
+		if errors.Is(err, query.ErrSnapshotBranchMismatch) {
+			return CompareSnapshots409JSONResponse(errSnapshotBranchMismatch), nil
+		}
+		return nil, err
 	}
 
 	return CompareSnapshots200JSONResponse{
 		Snapshot1:  convertDomainSnapshotToGenerated(result.Snapshot1),
 		Snapshot2:  convertDomainSnapshotToGenerated(result.Snapshot2),
-		Changes:    changes,
+		Changes:    convertQueryChangeEntries(result.Changes),
 		TotalCount: result.TotalCount,
 		HasMore:    result.HasMore,
 		OlderFirst: result.OlderFirst,
 	}, nil
 }
 
-// convertDomainSnapshotToGenerated converts a domain.Snapshot to the generated Snapshot type.
+// CompareSnapshotToCurrent implements StrictServerInterface.
+func (ss *StrictServer) CompareSnapshotToCurrent(ctx context.Context, request CompareSnapshotToCurrentRequestObject) (CompareSnapshotToCurrentResponseObject, error) {
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeRead)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ss.server.snapshotService.CompareSnapshotToCurrent(ctx, branchScopeID(branch), request.Id)
+	if err != nil {
+		if errors.Is(err, repository.ErrSnapshotNotFound) {
+			return CompareSnapshotToCurrent404JSONResponse{snapshotNotFound}, nil
+		}
+		if errors.Is(err, query.ErrSnapshotBranchMismatch) {
+			return CompareSnapshotToCurrent409JSONResponse(errSnapshotBranchMismatch), nil
+		}
+		return nil, err
+	}
+
+	return CompareSnapshotToCurrent200JSONResponse{
+		Snapshot:     convertDomainSnapshotToGenerated(result.Snapshot),
+		HeadPosition: result.HeadPosition,
+		Changes:      convertQueryChangeEntries(result.Changes),
+		TotalCount:   result.TotalCount,
+		HasMore:      result.HasMore,
+	}, nil
+}
+
+// convertQueryChangeEntries converts comparison change entries to the generated type.
+func convertQueryChangeEntries(entries []query.ChangeEntry) []ChangeEntry {
+	changes := make([]ChangeEntry, len(entries))
+	for i, c := range entries {
+		changes[i] = convertQueryChangeEntryToGenerated(c)
+	}
+	return changes
+}
+
+// convertDomainSnapshotToGenerated converts a domain.Snapshot to the generated
+// Snapshot type. branch_id is set only for a branch snapshot.
 func convertDomainSnapshotToGenerated(s *domain.Snapshot) Snapshot {
 	snapshot := Snapshot{
 		Id:        s.ID,
@@ -137,6 +210,10 @@ func convertDomainSnapshotToGenerated(s *domain.Snapshot) Snapshot {
 	}
 	if s.Description != "" {
 		snapshot.Description = &s.Description
+	}
+	if !s.BranchID.IsMain() {
+		branchID := uuid.UUID(s.BranchID)
+		snapshot.BranchId = &branchID
 	}
 	return snapshot
 }

@@ -293,7 +293,7 @@ func TestSnapshotRegistryRebuildsFromEvents(t *testing.T) {
 		t.Errorf("rebuilt registry Get(deleted snapshot) = %v, want ErrSnapshotNotFound", err)
 	}
 
-	remaining, err := rebuilt.List(ctx)
+	remaining, err := rebuilt.List(ctx, domain.MainBranchID)
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestDeleteSnapshot_ConvergesOnAnExistingTombstone(t *testing.T) {
 
 	// Tombstone on the log, registry row still present: append it behind the
 	// handler's back, exactly as a failed projection would leave things.
-	tombstone := domain.NewSnapshotDeleted(snapshot.ID)
+	tombstone := domain.NewSnapshotDeleted(snapshot.ID, domain.MainBranchID)
 	if err := f.eventStore.Append(ctx, snapshot.ID, "snapshot",
 		[]domain.Event{tombstone}, 1, repository.MainScope); err != nil {
 		t.Fatalf("seeding the tombstone failed: %v", err)
@@ -454,7 +454,7 @@ func TestDeleteSnapshot_LosesRaceToRivalDelete(t *testing.T) {
 	// handler has read version 1, so the handler's append at 1 conflicts.
 	racing.beforeAppend = func(ctx context.Context, streamID uuid.UUID) {
 		if err := f.eventStore.Append(ctx, streamID, "snapshot",
-			[]domain.Event{domain.NewSnapshotDeleted(streamID)}, 1, repository.MainScope); err != nil {
+			[]domain.Event{domain.NewSnapshotDeleted(streamID, domain.MainBranchID)}, 1, repository.MainScope); err != nil {
 			t.Fatalf("rival tombstone append failed: %v", err)
 		}
 	}
@@ -510,28 +510,132 @@ func TestDeleteSnapshot_ConflictWithoutTombstoneFails(t *testing.T) {
 	}
 }
 
-// TestSnapshotCommands_RefuseOnBranch guards the gap ADR-005 leaves open: a
-// branch snapshot needs a (branch_id, position) pointer the registry cannot yet
-// hold, so recording one as mainline would be wrong.
-func TestSnapshotCommands_RefuseOnBranch(t *testing.T) {
+// TestSnapshotCommands_OnBranch covers issue #839: a snapshot taken on a
+// branch marks (branch_id, position), lives only in that branch's list, and can
+// be deleted only from that branch. Its lifecycle events carry the branch in
+// their payload and stay on the mainline envelope.
+func TestSnapshotCommands_OnBranch(t *testing.T) {
 	f := newSnapshotFixture()
 	ctx := context.Background()
+	f.seedPerson(t, "Ada")
 
 	branch, err := domain.NewBranch("maternal-line", "", 0)
 	if err != nil {
 		t.Fatalf("NewBranch failed: %v", err)
 	}
+	other, err := domain.NewBranch("paternal-line", "", 0)
+	if err != nil {
+		t.Fatalf("NewBranch failed: %v", err)
+	}
 	scoped := f.handler.WithBranch(branch)
+	branchID := domain.BranchID(branch.ID)
 
-	if _, err := scoped.CreateSnapshot(ctx, "on a branch", ""); !errors.Is(err, command.ErrSnapshotNotBranchScoped) {
-		t.Errorf("CreateSnapshot on a branch = %v, want ErrSnapshotNotBranchScoped", err)
-	}
-	if err := scoped.DeleteSnapshot(ctx, uuid.New()); !errors.Is(err, command.ErrSnapshotNotBranchScoped) {
-		t.Errorf("DeleteSnapshot on a branch = %v, want ErrSnapshotNotBranchScoped", err)
+	head, err := f.snapshotStore.GetMaxPosition(ctx)
+	if err != nil {
+		t.Fatalf("GetMaxPosition failed: %v", err)
 	}
 
-	if events := f.snapshotEvents(t); len(events) != 0 {
-		t.Errorf("snapshot events = %d, want 0 after refused branch-scoped commands", len(events))
+	snapshot, err := scoped.CreateSnapshot(ctx, "Pre-DNA results", "")
+	if err != nil {
+		t.Fatalf("CreateSnapshot on a branch failed: %v", err)
+	}
+	if snapshot.BranchID != branchID {
+		t.Errorf("BranchID = %v, want the branch %v", snapshot.BranchID, branchID)
+	}
+	if snapshot.Position != head {
+		t.Errorf("Position = %d, want the log head %d", snapshot.Position, head)
+	}
+
+	events := f.snapshotEvents(t)
+	if len(events) != 1 {
+		t.Fatalf("snapshot events = %d, want 1", len(events))
+	}
+	if events[0].BranchID != domain.MainBranchID {
+		t.Errorf("SnapshotCreated envelope branch = %v, want the mainline", events[0].BranchID)
+	}
+	decoded, err := events[0].DecodeEvent()
+	if err != nil {
+		t.Fatalf("DecodeEvent failed: %v", err)
+	}
+	if created, ok := decoded.(domain.SnapshotCreated); !ok || created.BranchID != branch.ID {
+		t.Errorf("SnapshotCreated payload = %+v, want branch_id %v", decoded, branch.ID)
+	}
+
+	// Lists are per scope.
+	if mainList, _ := f.snapshotStore.List(ctx, domain.MainBranchID); len(mainList) != 0 {
+		t.Errorf("mainline list = %d snapshots, want 0", len(mainList))
+	}
+	if branchList, _ := f.snapshotStore.List(ctx, branchID); len(branchList) != 1 {
+		t.Errorf("branch list = %d snapshots, want 1", len(branchList))
+	}
+
+	// The mainline and another branch cannot delete it: not found in their scope.
+	if err := f.handler.DeleteSnapshot(ctx, snapshot.ID); !errors.Is(err, repository.ErrSnapshotNotFound) {
+		t.Errorf("mainline DeleteSnapshot of a branch snapshot = %v, want ErrSnapshotNotFound", err)
+	}
+	if err := f.handler.WithBranch(other).DeleteSnapshot(ctx, snapshot.ID); !errors.Is(err, repository.ErrSnapshotNotFound) {
+		t.Errorf("other-branch DeleteSnapshot = %v, want ErrSnapshotNotFound", err)
+	}
+	if n := len(f.snapshotEvents(t)); n != 1 {
+		t.Errorf("snapshot events = %d after refused deletes, want 1", n)
+	}
+
+	// Its own branch deletes it, and the tombstone names the branch.
+	if err := scoped.DeleteSnapshot(ctx, snapshot.ID); err != nil {
+		t.Fatalf("branch DeleteSnapshot failed: %v", err)
+	}
+	if _, err := f.snapshotStore.Get(ctx, snapshot.ID); !errors.Is(err, repository.ErrSnapshotNotFound) {
+		t.Errorf("Get after delete = %v, want ErrSnapshotNotFound", err)
+	}
+	events = f.snapshotEvents(t)
+	if len(events) != 2 {
+		t.Fatalf("snapshot events = %d, want 2", len(events))
+	}
+	decoded, err = events[1].DecodeEvent()
+	if err != nil {
+		t.Fatalf("DecodeEvent failed: %v", err)
+	}
+	if deleted, ok := decoded.(domain.SnapshotDeleted); !ok || deleted.BranchID != branch.ID {
+		t.Errorf("SnapshotDeleted payload = %+v, want branch_id %v", decoded, branch.ID)
+	}
+}
+
+// TestSnapshotCommands_BranchSnapshotRebuilds: replaying the log into a fresh
+// registry reconstructs a branch snapshot WITH its branch, so the pair
+// (branch_id, position) survives a projection rebuild.
+func TestSnapshotCommands_BranchSnapshotRebuilds(t *testing.T) {
+	f := newSnapshotFixture()
+	ctx := context.Background()
+	f.seedPerson(t, "Ada")
+
+	branch, err := domain.NewBranch("maternal-line", "", 0)
+	if err != nil {
+		t.Fatalf("NewBranch failed: %v", err)
+	}
+	snapshot, err := f.handler.WithBranch(branch).CreateSnapshot(ctx, "On the branch", "")
+	if err != nil {
+		t.Fatalf("CreateSnapshot failed: %v", err)
+	}
+
+	rebuilt := memory.NewSnapshotStore(f.eventStore)
+	projector := repository.NewProjectorWithSnapshots(memory.NewReadModelStore(), nil, rebuilt)
+	for _, e := range f.snapshotEvents(t) {
+		decoded, err := e.DecodeEvent()
+		if err != nil {
+			t.Fatalf("DecodeEvent failed: %v", err)
+		}
+		if err := projector.Project(ctx, decoded, e.Version, e.BranchID); err != nil {
+			t.Fatalf("Project failed: %v", err)
+		}
+	}
+
+	got, err := rebuilt.Get(ctx, snapshot.ID)
+	if err != nil {
+		t.Fatalf("rebuilt Get failed: %v", err)
+	}
+	if got.BranchID != domain.BranchID(branch.ID) || got.Position != snapshot.Position {
+		t.Errorf("rebuilt snapshot = (%v, %d), want (%v, %d)",
+			got.BranchID, got.Position, domain.BranchID(branch.ID), snapshot.Position)
 	}
 }
 

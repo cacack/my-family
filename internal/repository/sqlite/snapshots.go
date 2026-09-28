@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -29,11 +30,15 @@ func NewSnapshotStore(db *sql.DB) (*SnapshotStore, error) {
 	return store, nil
 }
 
-// createTables creates the snapshots table if it doesn't exist.
+// createTables creates the snapshots table if it doesn't exist, and migrates a
+// table that predates branch-scoped snapshots (issue #839): the branch_id
+// column is added with the mainline id as its default, so every existing row
+// becomes a mainline snapshot — which is what it always was.
 func (s *SnapshotStore) createTables() error {
-	_, err := s.db.Exec(`
+	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS snapshots (
 			id TEXT PRIMARY KEY,
+			branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
 			name TEXT NOT NULL,
 			description TEXT,
 			position INTEGER NOT NULL,
@@ -41,17 +46,45 @@ func (s *SnapshotStore) createTables() error {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_snapshots_created_at ON snapshots(created_at DESC);
-	`)
+	`); err != nil {
+		return err
+	}
+	if err := s.migrateBranchID(); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_snapshots_branch_created_at ON snapshots(branch_id, created_at DESC)`)
 	return err
+}
+
+// migrateBranchID adds the branch_id column to a snapshots table created before
+// #839. SQLite has no ADD COLUMN IF NOT EXISTS, so the column's presence is
+// checked first rather than swallowing a duplicate-column error.
+func (s *SnapshotStore) migrateBranchID() error {
+	var present int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('snapshots') WHERE name = 'branch_id'`,
+	).Scan(&present); err != nil {
+		return fmt.Errorf("inspect snapshots table: %w", err)
+	}
+	if present > 0 {
+		return nil
+	}
+	if _, err := s.db.Exec(
+		`ALTER TABLE snapshots ADD COLUMN branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'`,
+	); err != nil {
+		return fmt.Errorf("add snapshots.branch_id: %w", err)
+	}
+	return nil
 }
 
 // Create stores a new snapshot.
 func (s *SnapshotStore) Create(ctx context.Context, snapshot *domain.Snapshot) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO snapshots (id, name, description, position, created_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO snapshots (id, branch_id, name, description, position, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`,
 		snapshot.ID.String(),
+		snapshot.BranchID.String(),
 		snapshot.Name,
 		nullableString(snapshot.Description),
 		snapshot.Position,
@@ -67,15 +100,17 @@ func (s *SnapshotStore) Create(ctx context.Context, snapshot *domain.Snapshot) e
 // same ID. The projection uses this so replaying SnapshotCreated is idempotent.
 func (s *SnapshotStore) Upsert(ctx context.Context, snapshot *domain.Snapshot) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO snapshots (id, name, description, position, created_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO snapshots (id, branch_id, name, description, position, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
+			branch_id = excluded.branch_id,
 			name = excluded.name,
 			description = excluded.description,
 			position = excluded.position,
 			created_at = excluded.created_at
 	`,
 		snapshot.ID.String(),
+		snapshot.BranchID.String(),
 		snapshot.Name,
 		nullableString(snapshot.Description),
 		snapshot.Position,
@@ -87,30 +122,25 @@ func (s *SnapshotStore) Upsert(ctx context.Context, snapshot *domain.Snapshot) e
 	return nil
 }
 
-// Get retrieves a snapshot by ID.
-func (s *SnapshotStore) Get(ctx context.Context, id uuid.UUID) (*domain.Snapshot, error) {
+// scanSnapshot reads one snapshot row selected as
+// (id, branch_id, name, description, position, created_at).
+func scanSnapshot(row rowScanner) (*domain.Snapshot, error) {
 	var (
-		idStr, name, createdAtStr string
-		description               sql.NullString
-		position                  int64
+		idStr, branchStr, name, createdAtStr string
+		description                          sql.NullString
+		position                             int64
 	)
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, description, position, created_at
-		FROM snapshots
-		WHERE id = ?
-	`, id.String()).Scan(&idStr, &name, &description, &position, &createdAtStr)
-
-	if err == sql.ErrNoRows {
-		return nil, repository.ErrSnapshotNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("query snapshot: %w", err)
+	if err := row.Scan(&idStr, &branchStr, &name, &description, &position, &createdAtStr); err != nil {
+		return nil, err
 	}
 
 	parsedID, err := uuid.Parse(idStr)
 	if err != nil {
 		return nil, fmt.Errorf("parse snapshot id: %w", err)
+	}
+	branchID, err := uuid.Parse(branchStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse snapshot branch id: %w", err)
 	}
 
 	createdAt, err := parseTimestamp(createdAtStr)
@@ -120,75 +150,53 @@ func (s *SnapshotStore) Get(ctx context.Context, id uuid.UUID) (*domain.Snapshot
 
 	snapshot := &domain.Snapshot{
 		ID:        parsedID,
+		BranchID:  domain.BranchID(branchID),
 		Name:      name,
 		Position:  position,
 		CreatedAt: createdAt,
 	}
-
 	if description.Valid {
 		snapshot.Description = description.String
 	}
-
 	return snapshot, nil
 }
 
-// List retrieves all snapshots ordered by created_at DESC.
-func (s *SnapshotStore) List(ctx context.Context) ([]*domain.Snapshot, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, description, position, created_at
-		FROM snapshots
-		ORDER BY created_at DESC
-	`)
+// Get retrieves a snapshot by ID, whichever branch it belongs to.
+func (s *SnapshotStore) Get(ctx context.Context, id uuid.UUID) (*domain.Snapshot, error) {
+	snapshot, err := scanSnapshot(s.db.QueryRowContext(ctx,
+		`SELECT id, branch_id, name, description, position, created_at FROM snapshots WHERE id = ?`,
+		id.String()))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, repository.ErrSnapshotNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query snapshot: %w", err)
+	}
+	return snapshot, nil
+}
+
+// List retrieves the snapshots marked on branchID, ordered by created_at DESC.
+func (s *SnapshotStore) List(ctx context.Context, branchID domain.BranchID) ([]*domain.Snapshot, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, branch_id, name, description, position, created_at
+		 FROM snapshots WHERE branch_id = ? ORDER BY created_at DESC`,
+		branchID.String())
 	if err != nil {
 		return nil, fmt.Errorf("query snapshots: %w", err)
 	}
 	defer rows.Close()
 
-	var snapshots []*domain.Snapshot
+	snapshots := []*domain.Snapshot{}
 	for rows.Next() {
-		var (
-			idStr, name, createdAtStr string
-			description               sql.NullString
-			position                  int64
-		)
-
-		if err := rows.Scan(&idStr, &name, &description, &position, &createdAtStr); err != nil {
+		snapshot, err := scanSnapshot(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan snapshot: %w", err)
 		}
-
-		parsedID, err := uuid.Parse(idStr)
-		if err != nil {
-			return nil, fmt.Errorf("parse snapshot id: %w", err)
-		}
-
-		createdAt, err := parseTimestamp(createdAtStr)
-		if err != nil {
-			createdAt = time.Now().UTC()
-		}
-
-		snapshot := &domain.Snapshot{
-			ID:        parsedID,
-			Name:      name,
-			Position:  position,
-			CreatedAt: createdAt,
-		}
-
-		if description.Valid {
-			snapshot.Description = description.String
-		}
-
 		snapshots = append(snapshots, snapshot)
 	}
-
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate snapshots: %w", err)
 	}
-
-	// Return empty slice instead of nil
-	if snapshots == nil {
-		snapshots = []*domain.Snapshot{}
-	}
-
 	return snapshots, nil
 }
 

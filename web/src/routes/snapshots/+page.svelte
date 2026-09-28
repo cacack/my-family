@@ -1,22 +1,32 @@
 <script lang="ts">
 	/**
-	 * Research snapshots: named markers ("tags") on the mainline's event history,
-	 * e.g. "Pre-DNA results" or "After courthouse trip".
+	 * Research snapshots: named markers ("tags") on the event history, e.g.
+	 * "Pre-DNA results" or "After courthouse trip".
 	 *
 	 * A snapshot records nothing but a position, so creating or deleting one never
-	 * touches research data. Two snapshots can be compared to see every mainline
-	 * change recorded between them (`/snapshots/compare`).
+	 * touches research data. Two snapshots can be compared to see every change
+	 * recorded between them, and one snapshot can be compared with the current
+	 * state ("compare to now") - both on `/snapshots/compare`.
+	 *
+	 * The page follows the active branch (#839): a snapshot marks a position in
+	 * one branch's view, so on a research branch the list holds that branch's
+	 * snapshots only, a new snapshot is taken on the branch, and comparisons read
+	 * the branch's view. The mainline's snapshots are listed on the mainline.
 	 */
 	import { goto } from '$app/navigation';
 	import { api, type ApiError, type Snapshot } from '$lib/api/client';
-	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
+	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { snapshotCompareHref } from '$lib/utils/snapshots';
+	import {
+		CURRENT_STATE,
+		snapshotCompareHref,
+		snapshotCompareToNowHref
+	} from '$lib/utils/snapshots';
 
 	// Mirrors the maxLength on SnapshotCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;
@@ -52,7 +62,8 @@
 	let deleting = $state(false);
 	let deleteError: string | null = $state(null);
 
-	// Compare form: ids of the two snapshots to compare.
+	// Compare form: ids of the two snapshots to compare. `compareTo` may also be
+	// CURRENT_STATE, to compare with the current state.
 	let compareFrom = $state('');
 	let compareTo = $state('');
 
@@ -96,12 +107,18 @@
 
 	/**
 	 * Keep the compare selection pointing at snapshots that still exist, and
-	 * default it to the two most recent (older -> newer) when it does not.
+	 * default it to the two most recent (older -> newer) when it does not - or,
+	 * with a single snapshot, to that snapshot compared with now.
 	 */
 	function syncCompareSelection() {
 		const ids = new Set(snapshots.map((s) => s.id));
+		if (snapshots.length === 1) {
+			if (!ids.has(compareFrom)) compareFrom = snapshots[0].id;
+			if (compareTo !== CURRENT_STATE) compareTo = CURRENT_STATE;
+			return;
+		}
 		if (!ids.has(compareFrom)) compareFrom = snapshots[1]?.id ?? '';
-		if (!ids.has(compareTo)) compareTo = snapshots[0]?.id ?? '';
+		if (!ids.has(compareTo) && compareTo !== CURRENT_STATE) compareTo = snapshots[0]?.id ?? '';
 	}
 
 	async function loadSnapshots() {
@@ -211,19 +228,21 @@
 </div>
 
 <div class="snapshots-page">
-	<MainlineNotice
-		surface="Snapshots"
-		detail="A snapshot marks a point in the mainline's history, and comparisons list mainline changes only. Branch edits appear once the branch is merged."
-	/>
-
 	<header class="page-header">
 		<div>
 			<h1 bind:this={headingEl} tabindex="-1">Research Snapshots</h1>
 			<p class="description">
 				Mark milestones in your research, like "Pre-DNA results" or "After courthouse trip", then
-				compare two of them to see everything that changed in between. A snapshot is only a
-				marker: creating or deleting one never changes your data.
+				compare two of them, or one with now, to see everything that changed in between. A snapshot
+				is only a marker: creating or deleting one never changes your data.
 			</p>
+			{#if activeBranch.id}
+				<p class="scope-note" role="note">
+					Showing the snapshots taken on the research branch
+					{activeBranch.branch ? activeBranch.branch.name : ''}. New snapshots are taken on this
+					branch, and comparisons show the branch's view. Mainline snapshots are listed on the mainline.
+				</p>
+			{/if}
 		</div>
 		<Button onclick={openCreate}>New snapshot</Button>
 	</header>
@@ -238,9 +257,9 @@
 			<p>Create one to mark where your research stands today.</p>
 		</div>
 	{:else}
-		{#if snapshots.length >= 2}
+		{#if snapshots.length >= 1}
 			<section class="compare-panel" aria-labelledby="compare-heading">
-				<h2 id="compare-heading">Compare two snapshots</h2>
+				<h2 id="compare-heading">Compare snapshots</h2>
 				<form class="compare-form" onsubmit={handleCompare}>
 					<div class="compare-field">
 						<Label for="compare-from">From</Label>
@@ -253,6 +272,7 @@
 					<div class="compare-field">
 						<Label for="compare-to">To</Label>
 						<select id="compare-to" class="native-select" bind:value={compareTo}>
+							<option value={CURRENT_STATE}>Now (current state)</option>
 							{#each snapshots as snapshot (snapshot.id)}
 								<option value={snapshot.id}>{optionLabel(snapshot)}</option>
 							{/each}
@@ -265,6 +285,8 @@
 				<p id="compare-hint" class="compare-hint">
 					{#if compareFrom !== '' && compareFrom === compareTo}
 						Choose two different snapshots.
+					{:else if compareTo === CURRENT_STATE}
+						Lists every change since the snapshot, up to now.
 					{:else}
 						Changes are listed oldest first, whichever order you pick.
 					{/if}
@@ -279,6 +301,14 @@
 					<div class="snapshot-head">
 						<h2 class="snapshot-name">{snapshot.name}</h2>
 						<div class="snapshot-actions">
+							<Button
+								variant="outline"
+								size="sm"
+								href={snapshotCompareToNowHref(snapshot.id)}
+								aria-label="Compare to now: {snapshot.name}"
+							>
+								Compare to now
+							</Button>
 							{#if previous}
 								<Button
 									variant="outline"
@@ -325,8 +355,9 @@
 		<Dialog.Header>
 			<Dialog.Title>New snapshot</Dialog.Title>
 			<Dialog.Description>
-				Marks the current point in your research history. You can compare it with another snapshot
-				later to see what changed.
+				Marks the current point in your research history{activeBranch.id
+					? ' on this research branch'
+					: ''}. You can compare it with another snapshot, or with now, later to see what changed.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -446,6 +477,13 @@
 		margin: 0.25rem 0 0;
 		font-size: 0.875rem;
 		color: #64748b;
+		max-width: 46rem;
+	}
+
+	.scope-note {
+		margin: 0.5rem 0 0;
+		font-size: 0.8125rem;
+		color: #475569;
 		max-width: 46rem;
 	}
 

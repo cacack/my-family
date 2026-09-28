@@ -835,9 +835,16 @@ func NewNameRemoved(personID, nameID uuid.UUID) NameRemoved {
 // snapshot never includes its own creation event in the range it marks. That
 // ordering is what makes the event safe: emitting it moves the head, but not
 // the position the snapshot points at.
+//
+// BranchID is the branch whose view the snapshot marks (issue #839). Events
+// written before #839 have no branch_id field and decode to uuid.Nil, which is
+// the mainline — exactly what every snapshot was before branches could take
+// them. Like the branch lifecycle events, the payload carries a plain uuid.UUID;
+// wrap it as domain.BranchID(e.BranchID) to use it as a scope.
 type SnapshotCreated struct {
 	BaseEvent
 	SnapshotID  uuid.UUID `json:"snapshot_id"`
+	BranchID    uuid.UUID `json:"branch_id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
 	Position    int64     `json:"position"`
@@ -851,6 +858,7 @@ func NewSnapshotCreated(s *Snapshot) SnapshotCreated {
 	return SnapshotCreated{
 		BaseEvent:   NewBaseEvent(),
 		SnapshotID:  s.ID,
+		BranchID:    s.BranchID.UUID(),
 		Name:        s.Name,
 		Description: s.Description,
 		Position:    s.Position,
@@ -860,19 +868,25 @@ func NewSnapshotCreated(s *Snapshot) SnapshotCreated {
 // SnapshotDeleted event is emitted when a snapshot marker is removed. The events
 // the snapshot pointed at are untouched — the log is append-only (ES-002) and a
 // snapshot is only a named pointer into it.
+//
+// BranchID records the branch the deleted snapshot belonged to, for the audit
+// trail (issue #839); the projection deletes by SnapshotID alone. Events written
+// before #839 decode it as uuid.Nil, the mainline.
 type SnapshotDeleted struct {
 	BaseEvent
 	SnapshotID uuid.UUID `json:"snapshot_id"`
+	BranchID   uuid.UUID `json:"branch_id"`
 }
 
 func (e SnapshotDeleted) EventType() string      { return "SnapshotDeleted" }
 func (e SnapshotDeleted) AggregateID() uuid.UUID { return e.SnapshotID }
 
-// NewSnapshotDeleted creates a SnapshotDeleted event.
-func NewSnapshotDeleted(snapshotID uuid.UUID) SnapshotDeleted {
+// NewSnapshotDeleted creates a SnapshotDeleted event for a snapshot on branchID.
+func NewSnapshotDeleted(snapshotID uuid.UUID, branchID BranchID) SnapshotDeleted {
 	return SnapshotDeleted{
 		BaseEvent:  NewBaseEvent(),
 		SnapshotID: snapshotID,
+		BranchID:   branchID.UUID(),
 	}
 }
 

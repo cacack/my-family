@@ -17,13 +17,6 @@ var (
 	// handler built without a snapshot registry store. The event would append but
 	// the registry row would never appear, so fail loudly instead.
 	ErrSnapshotStoreRequired = errors.New("snapshot registry store is not configured")
-
-	// ErrSnapshotNotBranchScoped is returned when a snapshot command runs on a
-	// branch-scoped handler. ADR-005 §"Interaction with snapshots and rollback"
-	// defines a branch snapshot as a pointer to (branch_id, position), but the
-	// registry has no branch_id column yet, so a branch-scoped snapshot would be
-	// indistinguishable from a mainline one. Refuse rather than record it wrong.
-	ErrSnapshotNotBranchScoped = errors.New("snapshots are not supported on a branch-scoped handler")
 )
 
 // snapshotStreamType is the event-store stream type for snapshot lifecycle
@@ -31,7 +24,10 @@ var (
 const snapshotStreamType = "snapshot"
 
 // CreateSnapshot marks the event log's current head with a named snapshot
-// (issue #624). The registry row is written by the projection of the
+// (issue #624) on the handler's branch: a snapshot is the pair
+// (branch_id, position) of ADR-005, so one taken on a branch marks the log head
+// in that branch's view, and one on the mainline marks it in the mainline's
+// (issue #839). The registry row is written by the projection of the
 // SnapshotCreated event, never by a direct SnapshotStore call, so rebuilding the
 // projection reconstructs the registry.
 //
@@ -43,16 +39,13 @@ func (h *Handler) CreateSnapshot(ctx context.Context, name, description string) 
 	if h.snapshots == nil {
 		return nil, ErrSnapshotStoreRequired
 	}
-	if !h.branchID.IsMain() {
-		return nil, ErrSnapshotNotBranchScoped
-	}
 
 	position, err := h.snapshots.GetMaxPosition(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting max event position: %w", err)
 	}
 
-	snapshot, err := domain.NewSnapshot(name, description, position)
+	snapshot, err := domain.NewSnapshotOn(h.branchID, name, description, position)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +53,16 @@ func (h *Handler) CreateSnapshot(ctx context.Context, name, description string) 
 	event := domain.NewSnapshotCreated(snapshot)
 
 	// The snapshot's own stream, expectedVersion -1: this is its first event.
+	//
+	// The branch travels in the event payload, and the envelope stays on the
+	// mainline even for a branch snapshot. The registry is not an overlay
+	// entity — a snapshot id is unique and has no shadow row — and a
+	// branch-tagged envelope would put a lifecycle marker into the branch's own
+	// event set, which merge replay, conflict detection and branch compare read.
+	// This is deliberately unlike the branch lifecycle events, which are
+	// appended on the branch's own envelope: a snapshot marker is kept off it so
+	// that merge replay, the conflict classifiers and ReadBranch(branch) never
+	// carry it.
 	if err := h.eventStore.Append(ctx, snapshot.ID, snapshotStreamType, []domain.Event{event}, -1, repository.MainScope); err != nil {
 		return nil, fmt.Errorf("appending snapshot created event: %w", err)
 	}
@@ -81,18 +84,23 @@ func (h *Handler) CreateSnapshot(ctx context.Context, name, description string) 
 // DeleteSnapshot removes a snapshot marker. The events it pointed at are
 // untouched — the log is append-only (ES-002) and a snapshot is only a named
 // pointer into it. The registry row is dropped by the projection, not here.
+//
+// Only a snapshot on the handler's branch can be deleted: one marked on another
+// branch (or on the mainline, from a branch) is not found in this scope, the
+// same answer the scoped list and get give (issue #839).
 func (h *Handler) DeleteSnapshot(ctx context.Context, snapshotID uuid.UUID) error {
 	if h.snapshots == nil {
 		return ErrSnapshotStoreRequired
 	}
-	if !h.branchID.IsMain() {
-		return ErrSnapshotNotBranchScoped
-	}
 
 	// Existence check first, so deleting an unknown snapshot 404s instead of
 	// appending a tombstone event for a snapshot that never existed.
-	if _, err := h.snapshots.Get(ctx, snapshotID); err != nil {
+	existing, err := h.snapshots.Get(ctx, snapshotID)
+	if err != nil {
 		return err // includes repository.ErrSnapshotNotFound
+	}
+	if existing.BranchID != h.branchID {
+		return repository.ErrSnapshotNotFound
 	}
 
 	// One read of the stream answers both questions the append needs: is there
@@ -123,7 +131,7 @@ func (h *Handler) DeleteSnapshot(ctx context.Context, snapshotID uuid.UUID) erro
 		expectedVersion = -1
 	}
 
-	event := domain.NewSnapshotDeleted(snapshotID)
+	event := domain.NewSnapshotDeleted(snapshotID, existing.BranchID)
 	if err := h.eventStore.Append(ctx, snapshotID, snapshotStreamType, []domain.Event{event}, expectedVersion, repository.MainScope); err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			// A rival delete read the same version and appended first. Its
@@ -173,9 +181,11 @@ func (h *Handler) reprojectSnapshotTombstone(ctx context.Context, tombstone *rep
 }
 
 // scanSnapshotStream reports the snapshot's tombstone, if the stream carries one,
-// and the stream's current version. Only mainline events count: snapshots cannot
-// be created on a branch, so a branch-tagged event on a snapshot stream is not
-// something this command should reason about.
+// and the stream's current version. Only mainline-enveloped events count: every
+// snapshot lifecycle event is appended on the mainline envelope, a branch
+// snapshot's included (its branch is in the payload — see CreateSnapshot), so a
+// branch-tagged event on a snapshot stream is not something this command
+// should reason about.
 func scanSnapshotStream(stored []repository.StoredEvent) (tombstone *repository.StoredEvent, currentVersion int64) {
 	for i := range stored {
 		if stored[i].BranchID != domain.MainBranchID {
