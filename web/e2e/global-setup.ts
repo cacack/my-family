@@ -5,17 +5,19 @@
  * finds a real stack already holding real data, so the setup uses the same
  * endpoints the app does and no others.
  *
- * The binary wires in-memory stores unconditionally (`cmd/myfamily/main.go`), so
- * every boot is an empty database. That is what makes this setup safe to write
+ * The Playwright config boots the binary on a SQLite file created fresh for
+ * each run (`SQLITE_PATH` in `playwright.config.ts`), so every run starts from
+ * an empty database. That is what makes this setup safe to write
  * unconditionally - there is nothing to clean up and nothing to collide with.
  *
  * Two ordering rules are load-bearing:
  *
  * 1. **Every mainline entity is created before either branch is.** A branch's
  *    first write to a stream continues main's version line *as of its base
- *    position* (`memory.EventStore.seedVersion`). An entity created after the
- *    fork seeds at version 0, so a branch-scoped update quoting the version the
- *    create returned is refused with a version conflict.
+ *    position* (ADR-005; every event store backend does this). An entity
+ *    created after the fork seeds at version 0, so a branch-scoped update
+ *    quoting the version the create returned is refused with a version
+ *    conflict.
  * 2. **The branch-side edit precedes the conflicting mainline edit.** Both quote
  *    the version the create returned; doing main first would move main's line
  *    on and leave the branch write quoting a stale version.

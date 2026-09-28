@@ -19,6 +19,11 @@ vendor/
 *.db
 *.sqlite
 *.sqlite3
+# SQLite's write-ahead log and shared-memory sidecars (e.g. ./myfamily.db-wal
+# from `make run`, which persists to ./myfamily.db by default)
+*.db-wal
+*.db-shm
+*.db-journal
 
 # Node.js / Frontend
 node_modules/

@@ -2,6 +2,8 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -259,9 +261,16 @@ func (s *Server) Start() error {
 	return s.echo.Start(addr)
 }
 
-// Shutdown gracefully shuts down the server.
-func (s *Server) Shutdown() error {
-	return s.echo.Close()
+// Shutdown gracefully shuts down the server: it stops accepting connections
+// and waits for in-flight requests to finish, so a caller that closes the
+// stores afterwards never pulls the database out from under a running write.
+// If ctx expires first, the remaining connections are closed forcibly and the
+// context error is returned (joined with any error from the forced close).
+func (s *Server) Shutdown(ctx context.Context) error {
+	if err := s.echo.Shutdown(ctx); err != nil {
+		return errors.Join(fmt.Errorf("graceful shutdown: %w", err), s.echo.Close())
+	}
+	return nil
 }
 
 // Echo returns the underlying Echo instance (for testing).

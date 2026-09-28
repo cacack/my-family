@@ -103,9 +103,10 @@ internal/
 ├── media/          # Thumbnail generation
 ├── query/          # Query services (CQRS read side)
 ├── repository/     # Interfaces (EventStore, ReadModelStore) + shared code
-│   ├── memory/     # In-memory implementation (tests)
+│   ├── memory/     # In-memory implementation (tests, demo mode)
 │   ├── postgres/   # PostgreSQL implementation
 │   └── sqlite/     # SQLite implementation
+├── storage/        # Backend selection: config -> memory/SQLite/PostgreSQL stores (ADR-002)
 └── web/            # Embedded frontend assets
 ```
 
