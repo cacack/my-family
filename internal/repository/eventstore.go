@@ -132,6 +132,21 @@ type EventStore interface {
 	// a non-positive limit, yields no events and issues no query.
 	ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.UUID, branchID domain.BranchID, fromPosition int64, limit int) ([]StoredEvent, error)
 
+	// CountMainDrift reports, for each scope in ONE set-based query, how far main
+	// has moved underneath a branch since it forked (ADR-005 §Consequences: the
+	// live overlay means main's later edits show through, so the UI surfaces how
+	// much has moved). For each scope it counts main's events with position >
+	// scope.BasePosition, and the subset of those on streams the branch itself
+	// wrote. Events whose type is in excludeEventTypes are ignored on both sides
+	// (research metadata such as BranchCreated is not a genealogy change).
+	//
+	// Both counts are capped at limit PER SCOPE, applied by the store, so the
+	// work is bounded however long main's tail grows; a count equal to limit
+	// means "at least limit". The result has one entry per distinct scope
+	// BranchID; a branch named twice is answered from its smallest base. An empty scopes, or a non-positive limit, yields an empty map and
+	// issues no query.
+	CountMainDrift(ctx context.Context, scopes []DriftScope, excludeEventTypes []string, limit int) (map[domain.BranchID]DriftCount, error)
+
 	// GetStreamVersion returns the current version of a stream on a branch —
 	// the max version for that (streamID, branchID) pair, or 0 if the branch has
 	// no events for the stream. Pass domain.MainBranchID for the mainline.
@@ -190,6 +205,23 @@ type GlobalHistoryQuery struct {
 	// Limit caps the page (non-positive yields an empty page); Offset skips.
 	Limit  int
 	Offset int
+}
+
+// DriftScope names one branch for EventStore.CountMainDrift: the branch whose
+// own writes define "touched" streams, and the main position it forked from.
+type DriftScope struct {
+	BranchID     domain.BranchID
+	BasePosition int64
+}
+
+// DriftCount is how far main has moved under one branch; see
+// EventStore.CountMainDrift. Each field is capped at the call's limit.
+type DriftCount struct {
+	// MainChanges is main's event count after the branch's base position.
+	MainChanges int
+	// MainChangesOnBranchStreams is the subset of MainChanges on streams the
+	// branch itself wrote — the main edits that can diverge from the branch.
+	MainChangesOnBranchStreams int
 }
 
 // StoredEvent represents an event as stored in the event store.

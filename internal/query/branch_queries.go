@@ -4,6 +4,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/google/uuid"
 
@@ -451,4 +452,101 @@ func overlappingStreamIDs(branchEvents, mainEvents []repository.StoredEvent) []u
 		}
 	}
 	return overlapping
+}
+
+// maxDriftCount caps each "main moved" count. The counts are a cheap
+// at-a-glance indicator, not a diff, so past this the UI says "N+" rather than
+// scanning main's whole tail.
+const maxDriftCount = 10000
+
+// BranchDrift reports how far main has moved underneath a branch since it
+// forked. Branches are live overlays (ADR-005 §The model): main's later edits
+// show through for every entity the branch has not touched, so this is the
+// cheap indicator the branch UI shows without running a full compare.
+type BranchDrift struct {
+	BranchID     uuid.UUID `json:"branch_id"`
+	BasePosition int64     `json:"base_position"`
+
+	// MainChangeCount is main's genealogy changes since the fork, on any entity.
+	MainChangeCount int `json:"main_change_count"`
+
+	// MainChangeCountOnBranchEntities is the subset of MainChangeCount on
+	// entities the branch itself changed: the main events CompareBranch draws
+	// its MainChanges from, counted rather than loaded and transformed.
+	MainChangeCountOnBranchEntities int `json:"main_change_count_on_branch_entities"`
+
+	// HasMore reports that a count hit maxDriftCount and is a lower bound.
+	HasMore bool `json:"has_more"`
+}
+
+// GetBranchDrift returns the "main moved" counts for one branch, returning
+// repository.ErrBranchNotFound when it does not exist.
+func (s *BranchService) GetBranchDrift(ctx context.Context, id uuid.UUID) (*BranchDrift, error) {
+	branch, err := s.branchStore.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get branch: %w", err)
+	}
+
+	drifts, err := s.BranchDrifts(ctx, []*domain.Branch{branch})
+	if err != nil {
+		return nil, err
+	}
+	drift := drifts[branch.ID]
+	return &drift, nil
+}
+
+// BranchDrifts returns the "main moved" counts for every given branch with a
+// single event-store query, however many branches there are, keyed by branch
+// ID. Every given branch has an entry.
+func (s *BranchService) BranchDrifts(ctx context.Context, branches []*domain.Branch) (map[uuid.UUID]BranchDrift, error) {
+	result := make(map[uuid.UUID]BranchDrift, len(branches))
+	if len(branches) == 0 {
+		return result, nil
+	}
+
+	scopes := make([]repository.DriftScope, len(branches))
+	for i, b := range branches {
+		scopes[i] = repository.DriftScope{BranchID: domain.BranchID(b.ID), BasePosition: b.BasePosition}
+	}
+
+	counts, err := s.eventStore.CountMainDrift(ctx, scopes, driftExcludedEventTypeList(), maxDriftCount)
+	if err != nil {
+		return nil, fmt.Errorf("count main drift: %w", err)
+	}
+
+	for _, b := range branches {
+		count := counts[domain.BranchID(b.ID)]
+		result[b.ID] = BranchDrift{
+			BranchID:                        b.ID,
+			BasePosition:                    b.BasePosition,
+			MainChangeCount:                 count.MainChanges,
+			MainChangeCountOnBranchEntities: count.MainChangesOnBranchStreams,
+			HasMore:                         count.MainChanges >= maxDriftCount || count.MainChangesOnBranchStreams >= maxDriftCount,
+		}
+	}
+	return result, nil
+}
+
+// driftExcludedEventTypes are the main events the drift counts skip:
+// research metadata, plus GedcomImported — the import's own summary record, on
+// its own stream, alongside the per-entity events that carry the actual changes.
+// History (and so compare) drops it as a non-change, so counting it would make
+// a 500-person import on main read as 501 changes.
+var driftExcludedEventTypes = func() map[string]bool {
+	excluded := map[string]bool{"GedcomImported": true}
+	for t := range researchMetadataEventTypes {
+		excluded[t] = true
+	}
+	return excluded
+}()
+
+// driftExcludedEventTypeList is driftExcludedEventTypes as a sorted slice, for
+// stores that filter on it in the query itself.
+func driftExcludedEventTypeList() []string {
+	types := make([]string, 0, len(driftExcludedEventTypes))
+	for t := range driftExcludedEventTypes {
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	return types
 }

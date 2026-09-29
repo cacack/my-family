@@ -48,6 +48,10 @@ func (m *mockEventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []u
 	return nil, nil
 }
 
+func (m *mockEventStore) CountMainDrift(ctx context.Context, scopes []repository.DriftScope, excludeEventTypes []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	return map[domain.BranchID]repository.DriftCount{}, nil
+}
+
 func (m *mockEventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
 	m.lastReadByStreamScope = branchID
 	if m.readByStreamFunc != nil {

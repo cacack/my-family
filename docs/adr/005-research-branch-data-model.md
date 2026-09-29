@@ -460,8 +460,15 @@ position)` registry, so `docs/INTEGRATION-MATRIX.md` now marks their Branch colu
   - Mitigation: the tombstone shape is specified above (a branch shadow row with `deleted = true`);
     treat it as a first-class projection case (parallels PR-003).
 - **Live-overlay semantics can surprise** a user who expects a frozen snapshot of `main`.
-  - Mitigation: the semantic is documented here and should surface in the branch UI (#94); the
-    `base_position` remains available for explicit as-of comparison.
+  - Mitigation: the semantic is documented here and surfaces in the branch UI (#94, delivered in
+    #837): the create dialog, the branches page and the branch banner's help explain it, and the
+    banner and each active branch card show how far `main` has moved since the fork ("main changed
+    N times, K on entities this branch touched", linking to compare). The counts come from
+    `GET /branches/{id}/drift` and `GET /branches?include_drift=true`, backed by one set-based,
+    capped `EventStore.CountMainDrift` query rather than a full compare. Like compare and history,
+    the counts skip research metadata (branch and snapshot events) and the `GedcomImported` summary
+    record. The banner re-reads them after each successful write to the branch and when the tab
+    regains focus. The `base_position` remains available for explicit as-of comparison.
 
 ### Neutral
 
@@ -1462,7 +1469,8 @@ rebuilt (#680), while its mainline GPS artifacts keep working.
 `/persons/merge/batch` with `?branch=` — works on a branch. "These two records are the same person"
 is a classic hypothesis, exactly what a branch is for. It was the last genealogy-data command a
 branch refused that is not main-only by decision (rollback, GEDCOM import and the main-only
-entities stay refused).
+entities stay refused). The two operations declare `branchScope`: with #829's six reads and #839's
+six snapshot operations that is 100 operations carrying `?branch=` in all.
 
 **The projection.** Every step already wrote through the overlay after #757–#760; the audit for
 this issue found two gaps and one ordering hazard, all fixed on every backend:

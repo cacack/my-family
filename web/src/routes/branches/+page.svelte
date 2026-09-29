@@ -19,6 +19,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { branchMergeSummary, isIncompleteMerge } from '$lib/utils/mergeState';
+	import BranchDriftIndicator from '$lib/components/BranchDriftIndicator.svelte';
 
 	// Mirrors the maxLength on BranchCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;
@@ -88,7 +89,8 @@
 		error = null;
 		unavailable = false;
 		try {
-			const result = await api.listBranches();
+			// Drift rides on the list: one server-side query covers every card.
+			const result = await api.listBranches({ includeDrift: true });
 			branches = result.items;
 		} catch (e) {
 			const apiError = e as ApiError;
@@ -275,6 +277,12 @@
 			</p>
 		{/if}
 
+		{#if branch.status === 'active' && branch.drift}
+			<p class="branch-drift">
+				<BranchDriftIndicator drift={branch.drift} />
+			</p>
+		{/if}
+
 		{#if branch.merge_note}
 			<p class="merge-note"><span class="merge-note-label">Merge note</span> {branch.merge_note}</p>
 		{/if}
@@ -288,6 +296,11 @@
 			<p class="description">
 				Explore a line of research in isolation, then compare it against the mainline. Branch
 				scoping covers people, families and pedigrees.
+			</p>
+			<p class="description">
+				A branch is a live view over the mainline, not a frozen copy: records you haven't edited
+				on it always show the mainline's current data, so there is nothing to rebase. Each active
+				branch below says how far the mainline has moved since it was created.
 			</p>
 		</div>
 		{#if !unavailable}
@@ -392,6 +405,11 @@
 				The branch forks from the current mainline position. Changes made on it stay isolated
 				until it is merged.
 			</Dialog.Description>
+			<p class="dialog-note" data-testid="live-overlay-note">
+				Branches are live, not frozen: records you don't edit on the branch keep showing the
+				mainline's current data, including mainline edits made after you branch, so you never
+				need to rebase. Only the records you edit on the branch are held apart from the mainline.
+			</p>
 		</Dialog.Header>
 
 		<form onsubmit={handleCreate}>
@@ -617,6 +635,17 @@
 		margin: 0;
 		font-size: 0.8125rem;
 		color: #475569;
+	}
+
+	.branch-drift {
+		margin: 0.75rem 0 0;
+		color: #475569;
+	}
+
+	.dialog-note {
+		margin: 0;
+		font-size: 0.8125rem;
+		color: #64748b;
 	}
 
 	.merge-note {

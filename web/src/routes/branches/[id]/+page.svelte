@@ -38,6 +38,7 @@
 	 * issues and possible duplicates it introduces over the mainline. Each loads
 	 * its own data and never holds the merge.
 	 */
+	import { tick } from 'svelte';
 	import { page } from '$app/stores';
 	import {
 		api,
@@ -547,6 +548,22 @@
 				loading = false;
 			}
 		}
+		if (request === comparisonRequest && comparison) {
+			await revealHashTarget();
+		}
+	}
+
+	/**
+	 * The "main moved" indicator (banner, branch cards) links to a section of
+	 * this page by fragment - `#main-changes`. That section only exists once the
+	 * comparison has loaded, so the browser's own jump to the fragment, made on
+	 * navigation, found nothing. Make it again now the target is rendered.
+	 */
+	async function revealHashTarget() {
+		const hash = window.location.hash.slice(1);
+		if (!hash) return;
+		await tick();
+		document.getElementById(decodeURIComponent(hash))?.scrollIntoView?.({ block: 'start' });
 	}
 
 	$effect(() => {
@@ -1119,11 +1136,17 @@
 				<p class="side-count">{comparison.branch_change_count} change{comparison.branch_change_count === 1 ? '' : 's'} since the fork</p>
 				{@render changeList(comparison.branch_changes, 'No changes on this branch yet.', true)}
 			</div>
-			<div class="side" data-testid="main-changes">
+			<!-- `id` is the target of the banner's and branch cards' "main moved"
+			     link (#837). -->
+			<div class="side" id="main-changes" data-testid="main-changes">
 				<h2>On the mainline</h2>
 				<p class="side-count">
 					{comparison.main_change_count} change{comparison.main_change_count === 1 ? '' : 's'} to the
 					same entities since the fork
+				</p>
+				<p class="side-hint">
+					Only entities this branch changed are listed. Every other mainline change since the fork
+					already shows through on the branch - branches are live, not frozen.
 				</p>
 				{#if replayedCopies > 0}
 					<p class="side-count replayed-note" data-testid="replayed-note">
@@ -1520,6 +1543,16 @@
 		margin: 0 0 0.75rem;
 		font-size: 0.8125rem;
 		color: #64748b;
+	}
+
+	.side-hint {
+		margin: -0.5rem 0 0.75rem;
+		font-size: 0.75rem;
+		color: #94a3b8;
+	}
+
+	#main-changes {
+		scroll-margin-top: 1rem;
 	}
 
 	.side-empty {

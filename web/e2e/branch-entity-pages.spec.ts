@@ -29,8 +29,9 @@ async function expectBranchHistoryWithoutRollback(page: Page) {
 	await expect(page.getByText(/Restore points and rollback work on the mainline only/)).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Restore', exact: true })).toHaveCount(0);
 	// The change log is the branch's own: both the create and the edit were
-	// made on the branch.
-	await expect(page.getByText('This branch').first()).toBeVisible();
+	// made on the branch. Exact, so it finds the origin badge and not the
+	// branch banner's prose, which also says "this branch".
+	await expect(page.getByText('This branch', { exact: true }).first()).toBeVisible();
 	await expect(page.getByText('updated', { exact: true }).first()).toBeVisible();
 }
 
