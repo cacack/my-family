@@ -41,6 +41,8 @@ const STORAGE_KEY = 'active-branch';
  * outlive the tab.
  */
 const NOTICE_KEY = 'active-branch-notice';
+/** Where the notice's follow-up link (if any) waits out the reload with it. */
+const NOTICE_HREF_KEY = 'active-branch-notice-href';
 
 interface ActiveBranchState {
 	/** Branch id the API client is scoping to; null means the mainline. */
@@ -57,6 +59,11 @@ interface ActiveBranchState {
 	unconfirmed: boolean;
 	/** Why a persisted branch was dropped, for the banner to explain. */
 	notice: string | null;
+	/**
+	 * Where the notice's follow-up action lives, when it has one: the page of
+	 * a merged branch whose merge did not finish (#830).
+	 */
+	noticeHref: string | null;
 }
 
 const state = $state<ActiveBranchState>({
@@ -64,7 +71,8 @@ const state = $state<ActiveBranchState>({
 	branch: null,
 	revalidating: false,
 	unconfirmed: false,
-	notice: null
+	notice: null,
+	noticeHref: null
 });
 
 function readStoredBranchId(): string | null {
@@ -98,12 +106,17 @@ function persistBranchId(id: string | null): boolean {
 	}
 }
 
-function persistNotice(notice: string): void {
+function persistNotice(notice: string, href: string | null): void {
 	if (typeof window === 'undefined') {
 		return;
 	}
 	try {
 		sessionStorage.setItem(NOTICE_KEY, notice);
+		if (href === null) {
+			sessionStorage.removeItem(NOTICE_HREF_KEY);
+		} else {
+			sessionStorage.setItem(NOTICE_HREF_KEY, href);
+		}
 	} catch {
 		// Storage full or unavailable - the in-memory notice still shows if the
 		// reload never happens.
@@ -111,16 +124,18 @@ function persistNotice(notice: string): void {
 }
 
 /** Read the pending notice and clear it, so it is shown exactly once. */
-function takePersistedNotice(): string | null {
+function takePersistedNotice(): { notice: string | null; href: string | null } {
 	if (typeof window === 'undefined') {
-		return null;
+		return { notice: null, href: null };
 	}
 	try {
 		const stored = sessionStorage.getItem(NOTICE_KEY);
+		const href = sessionStorage.getItem(NOTICE_HREF_KEY);
 		sessionStorage.removeItem(NOTICE_KEY);
-		return stored ? stored : null;
+		sessionStorage.removeItem(NOTICE_HREF_KEY);
+		return stored ? { notice: stored, href: href || null } : { notice: null, href: null };
 	} catch {
-		return null;
+		return { notice: null, href: null };
 	}
 }
 
@@ -131,7 +146,9 @@ if (storedBranchId !== null) {
 	setClientBranch(storedBranchId);
 }
 // Pick up a notice left by the reload that dropped the branch (note 3).
-state.notice = takePersistedNotice();
+const persistedNotice = takePersistedNotice();
+state.notice = persistedNotice.notice;
+state.noticeHref = persistedNotice.href;
 
 /**
  * Fall back to the mainline, explaining why, and reload.
@@ -146,14 +163,15 @@ state.notice = takePersistedNotice();
  * same dead branch and drop it again — an endless reload. In that case the
  * in-memory fallback and the notice stand on their own.
  */
-function dropStaleBranch(notice: string): void {
+function dropStaleBranch(notice: string, href: string | null = null): void {
 	state.id = null;
 	state.branch = null;
 	state.unconfirmed = false;
 	setClientBranch(null);
 	const cleared = persistBranchId(null);
 	state.notice = notice;
-	persistNotice(notice);
+	state.noticeHref = href;
+	persistNotice(notice, href);
 	if (cleared && typeof window !== 'undefined') {
 		window.location.reload();
 	}
@@ -186,6 +204,16 @@ export async function revalidateActiveBranch(): Promise<void> {
 		if (branch.status === 'active') {
 			state.branch = branch;
 			state.unconfirmed = false;
+		} else if (branch.status === 'merged' && (branch.merge_state === 'incomplete' || branch.merge_state === 'unknown')) {
+			// The merge stopped partway (#830): say so, and where to finish it.
+			// An unreadable state (`unknown`) is not known to be unfinished,
+			// so it is not claimed to be; the branch page can check it.
+			dropStaleBranch(
+				branch.merge_state === 'unknown'
+					? `Research branch "${branch.name}" is merged, but its merge may not have finished. You are back on the mainline; check it from the branch's page.`
+					: `Research branch "${branch.name}" is merged, but its merge did not finish, so only part of its research is on the mainline. You are back on the mainline; finish the merge from the branch's page.`,
+				`/branches/${encodeURIComponent(branch.id)}`
+			);
 		} else {
 			dropStaleBranch(
 				`Research branch "${branch.name}" is ${branch.status} and accepts no further changes. You are back on the mainline.`
@@ -249,6 +277,7 @@ export function returnToMainline(): void {
 /** Dismiss the stale-branch notice once the user has read it. */
 export function dismissBranchNotice(): void {
 	state.notice = null;
+	state.noticeHref = null;
 }
 
 /**
@@ -274,5 +303,8 @@ export const activeBranch: Readonly<ActiveBranchState> = {
 	},
 	get notice() {
 		return state.notice;
+	},
+	get noticeHref() {
+		return state.noticeHref;
 	}
 };

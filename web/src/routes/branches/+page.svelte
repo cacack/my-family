@@ -8,6 +8,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import { branchMergeSummary, isIncompleteMerge } from '$lib/utils/mergeState';
 
 	// Mirrors the maxLength on BranchCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;
@@ -156,6 +157,9 @@
 				{#if activeBranch.id === branch.id}
 					<Badge class="bg-violet-100 text-violet-800">Current</Badge>
 				{/if}
+				{#if isIncompleteMerge(branch)}
+					<Badge variant="outline" class="border-orange-500 text-orange-800">Merge unfinished</Badge>
+				{/if}
 			</div>
 			<div class="branch-actions">
 				{#if branch.status === 'active'}
@@ -171,6 +175,9 @@
 					<Button variant="destructive" size="sm" onclick={() => openDelete(branch)}>
 						Delete
 					</Button>
+				{/if}
+				{#if isIncompleteMerge(branch)}
+					<Button size="sm" href="/branches/{branch.id}">Finish merge</Button>
 				{/if}
 				<Button variant="ghost" size="sm" href="/branches/{branch.id}">Compare</Button>
 			</div>
@@ -196,6 +203,12 @@
 				</div>
 			{/if}
 		</dl>
+
+		{#if isIncompleteMerge(branch)}
+			<p class="merge-unfinished" role="note">
+				Its merge did not finish. {branchMergeSummary(branch)}
+			</p>
+		{/if}
 
 		{#if branch.merge_note}
 			<p class="merge-note"><span class="merge-note-label">Merge note</span> {branch.merge_note}</p>
@@ -348,6 +361,16 @@
 </AlertDialog.Root>
 
 <style>
+	.merge-unfinished {
+		margin: 0.5rem 0 0;
+		padding: 0.5rem 0.75rem;
+		background: #fff7ed;
+		border: 1px solid #fb923c;
+		border-radius: 6px;
+		color: #7c2d12;
+		font-size: 0.8125rem;
+	}
+
 	.branches-page {
 		max-width: 1000px;
 		margin: 0 auto;

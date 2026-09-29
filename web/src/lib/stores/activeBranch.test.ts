@@ -212,6 +212,52 @@ describe('activeBranch store', () => {
 		expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
 	});
 
+	it('points a merge whose state could not be read at the branch page (#830)', async () => {
+		getBranchMock.mockResolvedValue({ ...activeBranchFixture, status: 'merged', merge_state: 'unknown' });
+		const { store } = await loadStore(BRANCH_ID);
+
+		await store.revalidateActiveBranch();
+
+		expect(store.activeBranch.id).toBeNull();
+		expect(store.activeBranch.notice).toContain('its merge may not have finished');
+		expect(store.activeBranch.noticeHref).toBe(`/branches/${BRANCH_ID}`);
+	});
+
+	it('points an unfinished merge at the branch page, across the reload (#830)', async () => {
+		getBranchMock.mockResolvedValue({
+			...activeBranchFixture,
+			status: 'merged',
+			merge_state: 'incomplete',
+			merge_pending: []
+		});
+		const { store } = await loadStore(BRANCH_ID);
+
+		await store.revalidateActiveBranch();
+
+		expect(store.activeBranch.id).toBeNull();
+		expect(store.activeBranch.notice).toContain('its merge did not finish');
+		expect(store.activeBranch.noticeHref).toBe(`/branches/${BRANCH_ID}`);
+		expect(sessionStorage.getItem('active-branch-notice-href')).toBe(`/branches/${BRANCH_ID}`);
+
+		// The next load shows the notice and its link once, then clears both.
+		vi.resetModules();
+		const reloaded = await import('./activeBranch.svelte');
+		expect(reloaded.activeBranch.noticeHref).toBe(`/branches/${BRANCH_ID}`);
+		expect(sessionStorage.getItem('active-branch-notice-href')).toBeNull();
+		reloaded.dismissBranchNotice();
+		expect(reloaded.activeBranch.noticeHref).toBeNull();
+	});
+
+	it('gives a finished merge the plain terminal notice, with no link', async () => {
+		getBranchMock.mockResolvedValue({ ...activeBranchFixture, status: 'merged', merge_state: 'complete' });
+		const { store } = await loadStore(BRANCH_ID);
+
+		await store.revalidateActiveBranch();
+
+		expect(store.activeBranch.notice).toContain('is merged and accepts no further changes');
+		expect(store.activeBranch.noticeHref).toBeNull();
+	});
+
 	it('does nothing on the mainline', async () => {
 		const { store } = await loadStore(null);
 

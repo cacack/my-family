@@ -87,3 +87,43 @@ func (s *ReadModelStore) GetSourcesByIDs(ctx context.Context, branchID domain.Br
 func (s *ReadModelStore) GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.CitationReadModel, error) {
 	return queryByIDs(ctx, s, "citations", citationSelectCols, branchID, ids, scanCitations)
 }
+
+// sourceSetFilter narrows the citations overlay to the sources in one bound
+// uuid[]; %[1]d is its placeholder number (see idSetFilter).
+const sourceSetFilter = `source_id = ANY($%[1]d::uuid[])`
+
+// CountCitationsBySource counts the visible citations of each of sourceIDs on
+// branchID in one grouped statement (see the interface).
+func (s *ReadModelStore) CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	counts := make(map[uuid.UUID]int)
+	if len(sourceIDs) == 0 {
+		return counts, nil
+	}
+	strs := make([]string, len(sourceIDs))
+	for i, id := range sourceIDs {
+		strs[i] = id.String()
+	}
+	args, n := overlayArgs(branchID)
+	src := overlaySrc("citations", "id, source_id", fmt.Sprintf(sourceSetFilter, n), branchID)
+	// #nosec G202 -- src is built from package constants carrying only $-placeholders
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, "SELECT source_id, COUNT(*) FROM "+src+" c GROUP BY source_id", append(args, pq.Array(strs))...)
+	if err != nil {
+		return nil, fmt.Errorf("count citations by source: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			sourceID uuid.UUID
+			count    int
+		)
+		if err := rows.Scan(&sourceID, &count); err != nil {
+			return nil, fmt.Errorf("scan citation count: %w", err)
+		}
+		counts[sourceID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("count citations by source: %w", err)
+	}
+	return counts, nil
+}

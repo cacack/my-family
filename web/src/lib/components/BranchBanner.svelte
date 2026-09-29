@@ -29,6 +29,11 @@
 {#if activeBranch.notice}
 	<div class="branch-notice" role="alert">
 		<span class="notice-text">{activeBranch.notice}</span>
+		{#if activeBranch.noticeHref}
+			<a class="notice-action" href={activeBranch.noticeHref} onclick={dismissBranchNotice}>
+				Finish merge
+			</a>
+		{/if}
 		<button class="notice-dismiss" onclick={dismissBranchNotice}>Dismiss</button>
 	</div>
 {/if}
@@ -151,7 +156,8 @@
 		min-width: 12rem;
 	}
 
-	.notice-dismiss {
+	.notice-dismiss,
+	.notice-action {
 		padding: 0.25rem 0.75rem;
 		border: 1px solid #d97706;
 		border-radius: 4px;
@@ -163,7 +169,13 @@
 		white-space: nowrap;
 	}
 
-	:global(body.high-contrast) .notice-dismiss {
+	.notice-action {
+		text-decoration: none;
+		font-weight: 600;
+	}
+
+	:global(body.high-contrast) .notice-dismiss,
+	:global(body.high-contrast) .notice-action {
 		background: #451a03;
 		border-color: #f59e0b;
 		color: #fef3c7;

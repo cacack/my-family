@@ -1342,6 +1342,27 @@ func (s *ReadModelStore) GetCitationsForSource(ctx context.Context, branchID dom
 	}), nil
 }
 
+// CountCitationsBySource counts the visible citations of each of sourceIDs on
+// branchID (see the interface).
+func (s *ReadModelStore) CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	counts := make(map[uuid.UUID]int)
+	if len(sourceIDs) == 0 {
+		return counts, nil
+	}
+	wanted := make(map[uuid.UUID]bool, len(sourceIDs))
+	for _, id := range sourceIDs {
+		wanted[id] = true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, cit := range resolveAllRows(s.citations, branchID) {
+		if wanted[cit.SourceID] {
+			counts[cit.SourceID]++
+		}
+	}
+	return counts, nil
+}
+
 // GetCitationsForPerson returns all citations of a person's facts within the
 // branch overlay.
 func (s *ReadModelStore) GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.CitationReadModel, error) {

@@ -91,6 +91,64 @@ func (h *Handler) missingCitationsCascadedAway(
 // read-model reads per distinct source; nothing is written for a source whose
 // count already agrees, so a resume of a completed merge writes nothing.
 func (h *Handler) reconcileCitationCounts(ctx context.Context, groups []streamGroup, onMain map[uuid.UUID]bool) ([]uuid.UUID, error) {
+	sources, namedBy, err := h.citedSourcesOnMain(ctx, groups, onMain)
+	if err != nil {
+		return nil, err
+	}
+	var corrected []uuid.UUID
+	for _, sourceID := range sources {
+		changed, err := h.reconcileCitationCount(ctx, sourceID)
+		if err != nil {
+			return nil, err
+		}
+		if !changed {
+			continue
+		}
+		corrected = appendUnique(corrected, namedBy[sourceID]...)
+	}
+	return corrected, nil
+}
+
+// citationCountsOff is the read half of reconcileCitationCounts: the streams
+// whose sources' citation counts a resume would correct. It WRITES NOTHING,
+// so the merge-completeness read (MergeCompleteness, #830) shares it. Unlike
+// the recount, which reads and writes one source at a time, it reads every
+// cited source and every count in two batched statements whatever the number
+// of sources, because it runs on every uncached read of a merged branch.
+func (h *Handler) citationCountsOff(ctx context.Context, groups []streamGroup, onMain map[uuid.UUID]bool) ([]uuid.UUID, error) {
+	sources, namedBy, err := h.citedSourcesOnMain(ctx, groups, onMain)
+	if err != nil || len(sources) == 0 {
+		return nil, err
+	}
+	rows, err := h.readStore.GetSourcesByIDs(ctx, domain.MainBranchID, sources)
+	if err != nil {
+		return nil, fmt.Errorf("reading main sources: %w", err)
+	}
+	recorded := make(map[uuid.UUID]int, len(rows))
+	for i := range rows {
+		recorded[rows[i].ID] = rows[i].CitationCount
+	}
+	counts, err := h.readStore.CountCitationsBySource(ctx, domain.MainBranchID, sources)
+	if err != nil {
+		return nil, fmt.Errorf("counting main citations of the merge's sources: %w", err)
+	}
+	var off []uuid.UUID
+	for _, sourceID := range sources {
+		count, present := recorded[sourceID]
+		if !present {
+			continue // main has no such source: nothing to count
+		}
+		if count != counts[sourceID] {
+			off = appendUnique(off, namedBy[sourceID]...)
+		}
+	}
+	return off, nil
+}
+
+// citedSourcesOnMain lists, in first-seen order, every source whose citation
+// count reconcileCitationCounts checks (see there), with the replay-set
+// streams that name each one.
+func (h *Handler) citedSourcesOnMain(ctx context.Context, groups []streamGroup, onMain map[uuid.UUID]bool) ([]uuid.UUID, map[uuid.UUID][]uuid.UUID, error) {
 	var (
 		sources     []uuid.UUID
 		namedBy     = make(map[uuid.UUID][]uuid.UUID)
@@ -121,13 +179,13 @@ func (h *Handler) reconcileCitationCounts(ctx context.Context, groups []streamGr
 		// BEFORE the branch touched it.
 		mainEvents, err := h.readMainStreams(ctx, citationIDs)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, citationID := range citationIDs {
 			for _, evt := range mainEvents[citationID] {
 				sourceID, sets, err := citedSource(evt)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if sets {
 					addSource(sourceID, citationID)
@@ -135,19 +193,7 @@ func (h *Handler) reconcileCitationCounts(ctx context.Context, groups []streamGr
 			}
 		}
 	}
-
-	var corrected []uuid.UUID
-	for _, sourceID := range sources {
-		changed, err := h.reconcileCitationCount(ctx, sourceID)
-		if err != nil {
-			return nil, err
-		}
-		if !changed {
-			continue
-		}
-		corrected = appendUnique(corrected, namedBy[sourceID]...)
-	}
-	return corrected, nil
+	return sources, namedBy, nil
 }
 
 // reconcileCitationCount sets one main source's citation_count to the number of

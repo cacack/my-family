@@ -83,6 +83,34 @@ type readModelState struct {
 // lookup; main's events are read, in one set-based paged scan, only for the
 // streams found behind.
 func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGroup, landed map[uuid.UUID]bool, mainVersions map[uuid.UUID]int64) ([]uuid.UUID, error) {
+	repairs, err := h.planReadModelRepair(ctx, groups, landed, mainVersions)
+	if err != nil {
+		return nil, err
+	}
+	var repaired []uuid.UUID
+	for _, repair := range repairs {
+		if err := h.reprojectStream(ctx, repair.group, repair.events, repair.relink); err != nil {
+			return nil, err
+		}
+		repaired = append(repaired, repair.group.streamID)
+	}
+	return repaired, nil
+}
+
+// streamRepair is one landed stream whose main read model is behind main's
+// log for no reason the log explains, with main's events for it and the
+// transfer its re-projection must be followed by, if any.
+type streamRepair struct {
+	group  streamGroup
+	events []repository.StoredEvent
+	relink *mergeRelink
+}
+
+// planReadModelRepair is the read half of reprojectLandedStreams: which of the
+// landed streams a resume would re-project, in replay order. It WRITES
+// NOTHING, so the merge-completeness read (MergeCompleteness, #830) shares it
+// and reports exactly the streams a resume would repair.
+func (h *Handler) planReadModelRepair(ctx context.Context, groups []streamGroup, landed map[uuid.UUID]bool, mainVersions map[uuid.UUID]int64) ([]streamRepair, error) {
 	behind, states, err := h.streamsBehindOnMain(ctx, groups, landed, mainVersions)
 	if err != nil || len(behind) == 0 {
 		return nil, err
@@ -101,7 +129,7 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 		return nil, err
 	}
 
-	var repaired []uuid.UUID
+	var repairs []streamRepair
 	for _, group := range behind {
 		events := mainEvents[group.streamID]
 		if len(events) == 0 {
@@ -116,16 +144,13 @@ func (h *Handler) reprojectLandedStreams(ctx context.Context, groups []streamGro
 				continue // nothing to repair
 			}
 		}
-		var move *mergeRelink
+		repair := streamRepair{group: group, events: events}
 		if m, ok := relink[group.streamID]; ok {
-			move = &m
+			repair.relink = &m
 		}
-		if err := h.reprojectStream(ctx, group, events, move); err != nil {
-			return nil, err
-		}
-		repaired = append(repaired, group.streamID)
+		repairs = append(repairs, repair)
 	}
-	return repaired, nil
+	return repairs, nil
 }
 
 // goneForLoggedReason reports whether a stream's missing main read-model row is

@@ -104,3 +104,50 @@ func (s *ReadModelStore) GetSourcesByIDs(ctx context.Context, branchID domain.Br
 func (s *ReadModelStore) GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.CitationReadModel, error) {
 	return queryByIDs(ctx, s, "citations", citationSelectCols, branchID, ids, scanCitations)
 }
+
+// sourceSetFilter narrows the citations overlay to the sources in one bound
+// JSON array (see idSetFilter).
+const sourceSetFilter = `source_id IN (SELECT value FROM json_each(?))`
+
+// CountCitationsBySource counts the visible citations of each of sourceIDs on
+// branchID in one grouped statement (see the interface).
+func (s *ReadModelStore) CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	counts := make(map[uuid.UUID]int)
+	if len(sourceIDs) == 0 {
+		return counts, nil
+	}
+	strs := make([]string, len(sourceIDs))
+	for i, id := range sourceIDs {
+		strs[i] = id.String()
+	}
+	idsJSON, err := json.Marshal(strs)
+	if err != nil {
+		return nil, fmt.Errorf("encode source ids: %w", err)
+	}
+	sub, args := overlayColsSubquery("citations", "id, source_id", sourceSetFilter, []any{string(idsJSON)}, branchID)
+	// #nosec G202 -- sub is built from package constants; every value is a bound ? placeholder
+	// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
+	rows, err := s.db.QueryContext(ctx, "SELECT source_id, COUNT(*) FROM "+sub+" c GROUP BY source_id", args...)
+	if err != nil {
+		return nil, fmt.Errorf("count citations by source: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			raw   string
+			count int
+		)
+		if err := rows.Scan(&raw, &count); err != nil {
+			return nil, fmt.Errorf("scan citation count: %w", err)
+		}
+		sourceID, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, fmt.Errorf("parse citation source id %q: %w", raw, err)
+		}
+		counts[sourceID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("count citations by source: %w", err)
+	}
+	return counts, nil
+}

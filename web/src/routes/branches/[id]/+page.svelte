@@ -40,6 +40,8 @@
 		type BranchComparisonResult,
 		type BranchMergeRefusal,
 		type BranchMergeResult,
+		type BranchMergeResumeRequest,
+		type BranchMergeResumeResult,
 		type MergeBlocker,
 		type MergeConflict,
 		type MergeRecord,
@@ -49,6 +51,8 @@
 	import { activeBranch, returnToMainline, switchBranch } from '$lib/stores/activeBranch.svelte';
 	import ConflictValues from '$lib/components/ConflictValues.svelte';
 	import DiffView from '$lib/components/DiffView.svelte';
+	import FinishMergeDialog from '$lib/components/FinishMergeDialog.svelte';
+	import IncompleteMergeCallout from '$lib/components/IncompleteMergeCallout.svelte';
 	import MergeBlockersPanel from '$lib/components/MergeBlockersPanel.svelte';
 	import MergeConflictResolver from '$lib/components/MergeConflictResolver.svelte';
 	import MergeConfirmDialog, {
@@ -64,6 +68,7 @@
 		unnamedEntityLabel
 	} from '$lib/utils/changeEntries';
 	import { blockedEntityIds, blockerFix } from '$lib/utils/mergeBlockers';
+	import { isIncompleteMerge, isUnreadableMerge, pendingEntities } from '$lib/utils/mergeState';
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);
@@ -95,6 +100,10 @@
 	let excluded: Set<string> = $state(new Set());
 	let merging = $state(false);
 	let confirmOpen = $state(false);
+	/** The finish-merge dialog for an interrupted merge (#830). */
+	let finishOpen = $state(false);
+	/** Set once a finish succeeded, so closing the dialog refreshes the page. */
+	let finished = $state(false);
 
 	/**
 	 * What the last precheck (or a `409 merge_dangling_reference`) said the
@@ -412,6 +421,8 @@
 		rationales = new Map();
 		excluded = new Set();
 		confirmOpen = false;
+		finishOpen = false;
+		finished = false;
 		// Blockers describe one comparison's decisions, like the decisions do;
 		// bumping the token drops any check still in flight for the old one.
 		precheckRequest++;
@@ -489,6 +500,41 @@
 		} finally {
 			merging = false;
 		}
+	}
+
+	/**
+	 * Finishes an interrupted merge (#830). Resolves with the result and throws
+	 * the refusal, the contract `FinishMergeDialog` renders its outcome from.
+	 */
+	async function performResume(request: BranchMergeResumeRequest): Promise<BranchMergeResumeResult> {
+		const token = comparisonRequest;
+		const result = await api.resumeBranchMerge(branchId, request);
+		if (token === comparisonRequest && comparison) {
+			// The result's branch carries merge_state: complete, so the flag and
+			// the action go away behind the still-open summary.
+			comparison = { ...comparison, branch: result.branch };
+			finished = true;
+		}
+		return result;
+	}
+
+	function closeFinish() {
+		finishOpen = false;
+		// The merge record gained the resume's decisions; read it again.
+		if (finished) loadComparison(branchId);
+	}
+
+	/**
+	 * The merge dialog's "Finish merge" after a partial failure: the branch is
+	 * merged now, so read it again for what is pending, then open the flow.
+	 * It opens for any merged branch, not only one that reads as unfinished:
+	 * the resume is safe to run on a finished merge (it replays nothing and
+	 * repairs only what is behind), so the button the user pressed always
+	 * leads somewhere, even if another tab finished the merge meanwhile.
+	 */
+	async function startFinishMerge() {
+		await loadComparison(branchId);
+		if (comparison?.branch.status === 'merged') finishOpen = true;
 	}
 
 	/**
@@ -730,6 +776,9 @@
 					<Badge variant={comparison.branch.status === 'active' ? 'default' : 'secondary'} class="capitalize">
 						{comparison.branch.status}
 					</Badge>
+					{#if isIncompleteMerge(comparison.branch)}
+						<Badge variant="outline" class="border-orange-500 text-orange-800">Merge unfinished</Badge>
+					{/if}
 				</div>
 				{#if comparison.branch.description}
 					<p class="description">{comparison.branch.description}</p>
@@ -769,6 +818,14 @@
 				{/if}
 			</div>
 		</header>
+
+		{#if isIncompleteMerge(comparison.branch)}
+			<IncompleteMergeCallout
+				pending={pendingEntities(comparison.branch)}
+				unreadable={isUnreadableMerge(comparison.branch)}
+				onfinish={() => (finishOpen = true)}
+			/>
+		{/if}
 
 		{#if comparison.has_more}
 			<div class="truncation" role="note">
@@ -942,7 +999,18 @@
 			onrefused={handleRefused}
 			onrecompare={() => loadComparison(branchId)}
 			onreturntomainline={returnToMainline}
+			onfinishmerge={startFinishMerge}
 		/>
+
+		{#if comparison.branch.status === 'merged'}
+			<FinishMergeDialog
+				open={finishOpen}
+				branch={comparison.branch}
+				onresume={performResume}
+				onclose={closeFinish}
+				onrefresh={() => loadComparison(branchId)}
+			/>
+		{/if}
 	{/if}
 </div>
 
