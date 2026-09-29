@@ -15,9 +15,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	moderncsqlite "modernc.org/sqlite"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"
@@ -144,7 +144,7 @@ func openCountedSQLite(t *testing.T) (repository.ReadModelStore, *statementCount
 	t.Helper()
 	counter := &statementCounter{}
 	dsn := filepath.Join(t.TempDir(), "names.db") + "?_foreign_keys=on&_busy_timeout=5000"
-	db := sql.OpenDB(&countingConnector{drv: &sqlite3.SQLiteDriver{}, dsn: dsn, counter: counter})
+	db := sql.OpenDB(&countingConnector{drv: &moderncsqlite.Driver{}, dsn: dsn, counter: counter})
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	store, err := sqlite.NewReadModelStore(db)

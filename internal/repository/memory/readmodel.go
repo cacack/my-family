@@ -344,6 +344,8 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		return nil, nil
 	}
 
+	// Trim like the SQL stores, so "  O'Brien  " is a search for O'Brien.
+	opts.Query = strings.TrimSpace(opts.Query)
 	queryLower := strings.ToLower(opts.Query)
 	foundIDs := make(map[uuid.UUID]bool)
 	var results []repository.PersonReadModel
@@ -353,7 +355,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		if !s.matchesSearchFilters(p, opts) {
 			continue
 		}
-		if s.personMatchesQuery(p, queryLower, opts.Soundex) && !foundIDs[p.ID] {
+		if s.personMatchesQuery(p, queryLower, opts) && !foundIDs[p.ID] {
 			results = append(results, *p)
 			foundIDs[p.ID] = true
 		}
@@ -376,10 +378,17 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 }
 
 // personMatchesQuery checks if a person matches the text query (or returns true if no query).
-func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, queryLower string, soundex bool) bool {
+// A fuzzy query is trigram similarity, as PostgreSQL's pg_trgm `%` (DB-005).
+func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, queryLower string, opts repository.SearchOptions) bool {
 	if queryLower == "" {
 		return true
 	}
+	if opts.Fuzzy {
+		return repository.TrigramMatch(queryLower, p.GivenName) ||
+			repository.TrigramMatch(queryLower, p.Surname) ||
+			repository.TrigramMatch(queryLower, p.FullName)
+	}
+	soundex := opts.Soundex
 	if strings.Contains(strings.ToLower(p.FullName), queryLower) ||
 		strings.Contains(strings.ToLower(p.GivenName), queryLower) ||
 		strings.Contains(strings.ToLower(p.Surname), queryLower) {
@@ -405,7 +414,7 @@ func (s *ReadModelStore) searchAlternateNames(branchID domain.BranchID, queryLow
 			continue
 		}
 		for _, name := range names {
-			if altNameMatches(name, queryLower, opts.Soundex) {
+			if altNameMatches(name, queryLower, opts) {
 				if p, ok := resolveRow(s.persons, branchID, personID); ok && p != nil && !foundIDs[personID] && s.matchesSearchFilters(p, opts) {
 					*results = append(*results, *p)
 					foundIDs[personID] = true
@@ -416,8 +425,16 @@ func (s *ReadModelStore) searchAlternateNames(branchID domain.BranchID, queryLow
 	}
 }
 
-// altNameMatches checks if a PersonNameReadModel matches via substring or Soundex.
-func altNameMatches(name repository.PersonNameReadModel, queryLower string, soundex bool) bool {
+// altNameMatches checks if a PersonNameReadModel matches via substring, trigram
+// similarity (fuzzy) or Soundex.
+func altNameMatches(name repository.PersonNameReadModel, queryLower string, opts repository.SearchOptions) bool {
+	if opts.Fuzzy {
+		return repository.TrigramMatch(queryLower, name.GivenName) ||
+			repository.TrigramMatch(queryLower, name.Surname) ||
+			repository.TrigramMatch(queryLower, name.FullName) ||
+			repository.TrigramMatch(queryLower, name.Nickname)
+	}
+	soundex := opts.Soundex
 	if nameMatchesQuery(name, queryLower) {
 		return true
 	}

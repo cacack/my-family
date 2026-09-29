@@ -35,7 +35,7 @@ func historyBackends() []historyBackend {
 
 func openHistorySQLite(t *testing.T) (repository.EventStore, repository.ReadModelStore) {
 	t.Helper()
-	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "history.db")+"?_foreign_keys=on&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "history.db")+"?_foreign_keys=on&_busy_timeout=5000")
 	require.NoError(t, err)
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })

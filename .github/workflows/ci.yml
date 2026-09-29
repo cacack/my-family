@@ -166,10 +166,11 @@ jobs:
           fi
           go test -race -coverprofile=coverage.out $COVERAGE_PKGS
 
-      - name: Run SQLite FTS5 search tests
-        # mattn/go-sqlite3 compiles in FTS5 only under the sqlite_fts5 tag; the
-        # run above covers the LIKE path, this one asserts the FTS5 path (#762).
-        run: make test-fts5
+      - name: Verify release builds run on SQLite
+        # Releases are built with CGO_ENABLED=0; this builds the binary the same
+        # way, serves from a fresh SQLite file, and cross-compiles every release
+        # target, so a release that cannot open SQLite fails here (#822).
+        run: make check-release-sqlite
 
       - name: Check coverage threshold
         run: |

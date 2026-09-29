@@ -4,14 +4,33 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	// modernc.org/sqlite is a pure-Go SQLite (no cgo), so every build —
+	// including the CGO_ENABLED=0 release binaries — can open a database
+	// (ADR-002, #822). It registers itself as the "sqlite" driver.
+	_ "modernc.org/sqlite"
 )
 
+// DriverName is the database/sql driver name the SQLite stores run on.
+const DriverName = "sqlite"
+
+// dsnParams are applied by the driver to every new connection. Pragmas such
+// as foreign_keys and busy_timeout are per-connection, so they belong in the
+// DSN rather than in a one-off Exec on whichever connection the pool hands out.
+// _time_format=sqlite writes any bound time.Time in SQLite's own date format
+// rather than Go's time.String layout.
+const dsnParams = "_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=on&_time_format=sqlite"
+
+// DSN returns the connection string OpenDB uses for the database file at path.
+// The path is a plain file name, not a "file:" URI, so the driver strips the
+// query before opening it and a path is never percent-decoded.
+func DSN(path string) string {
+	return path + "?" + dsnParams
+}
+
 // OpenDB opens a SQLite database connection with recommended settings.
-// The mattn/go-sqlite3 driver should be built with CGO_ENABLED=1.
-// FTS5 is compiled in only when building with the "sqlite_fts5" (or "fts5") tag
-// or when linking a system SQLite that has it; otherwise search uses LIKE.
 func OpenDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=on")
+	db, err := sql.Open(DriverName, DSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}

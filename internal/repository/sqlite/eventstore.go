@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/cacack/my-family/internal/domain"
 	"github.com/cacack/my-family/internal/repository"

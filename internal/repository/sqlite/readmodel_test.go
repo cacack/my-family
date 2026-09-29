@@ -289,24 +289,20 @@ func TestReadModelStore_SearchPersons(t *testing.T) {
 		t.Fatalf("search persons: %v", err)
 	}
 
-	// FTS5 matches whole tokens (John Doe, John Smith); the LIKE path used when
-	// the build has no FTS5 is a substring match and also finds Alice Johnson.
-	wantJohn := 3
-	if store.FTS5Enabled() {
-		wantJohn = 2
-	}
-	if len(results) != wantJohn {
-		t.Errorf("expected %d results for 'John', got %d", wantJohn, len(results))
+	// A substring match: John Doe, John Smith and Alice Johnson.
+	if len(results) != 3 {
+		t.Errorf("expected 3 results for 'John', got %d", len(results))
 	}
 
-	// Fuzzy search (prefix matching)
+	// Fuzzy search (trigram similarity)
 	results, err = store.SearchPersons(ctx, repository.SearchOptions{Query: "Jo", Fuzzy: true, Limit: 10})
 	if err != nil {
 		t.Fatalf("fuzzy search persons: %v", err)
 	}
 
-	if len(results) != 3 { // John Doe, John Smith, Alice Johnson
-		t.Errorf("expected 3 results for fuzzy 'Jo', got %d", len(results))
+	// "Jo" is similar to John (0.33) but not to Johnson (0.22).
+	if len(results) != 2 { // John Doe, John Smith
+		t.Errorf("expected 2 results for fuzzy 'Jo', got %d", len(results))
 	}
 }
 
@@ -918,23 +914,17 @@ func TestReadModelStore_SearchPersons_SpecialCharacters(t *testing.T) {
 	}
 	store.SavePerson(ctx, domain.MainBranchID, person)
 
-	// Special FTS5 characters are searched literally (issue #762). Hyphen and
-	// apostrophe names match on both paths; quote/paren-wrapped input matches on
-	// the FTS5 path (the tokenizer drops the punctuation) but not on the LIKE
-	// substring path. Full tables: search_fts5_test.go.
-	fts5 := store.FTS5Enabled()
-	wantWrapped := 0
-	if fts5 {
-		wantWrapped = 1
-	}
+	// Punctuation is searched literally (issue #762): the substring match finds
+	// hyphen and apostrophe names, not quote/paren-wrapped input. Full tables:
+	// search_test.go.
 	testQueries := []struct {
 		query string
 		want  int
 	}{
 		{`Mary-Ann`, 1},
 		{`O'Brien`, 1},
-		{`"Mary-Ann"`, wantWrapped},
-		{`(Mary)`, wantWrapped},
+		{`"Mary-Ann"`, 0},
+		{`(Mary)`, 0},
 	}
 
 	for _, tc := range testQueries {
@@ -943,7 +933,7 @@ func TestReadModelStore_SearchPersons_SpecialCharacters(t *testing.T) {
 			t.Fatalf("search with query %q failed: %v", tc.query, err)
 		}
 		if len(results) != tc.want {
-			t.Errorf("query %q (fts5=%v): expected %d results, got %d", tc.query, fts5, tc.want, len(results))
+			t.Errorf("query %q: expected %d results, got %d", tc.query, tc.want, len(results))
 		}
 	}
 }

@@ -1,7 +1,7 @@
 # ADR-002: Dual Database Strategy (PostgreSQL + SQLite)
 
 **Status:** Accepted — implemented (wired into `serve` in #735)
-**Date:** 2025-12-07 (implementation notes updated 2026-09 for #735)
+**Date:** 2025-12-07 (implementation notes updated 2026-09 for #735 and #822)
 **Decision Makers:** Chris
 **Related Features:** 001-genealogy-mvp
 
@@ -100,7 +100,7 @@ The repository layer abstracts database differences behind interfaces (`EventSto
 - Two implementations of persistence layer
 - Mitigation: Interface-based design; shared tests verify both implementations
 - Feature differences between databases
-- Mitigation: Document clearly; SQLite uses application-level fuzzy matching vs pg_trgm
+- Mitigation: Document clearly; SQLite ports pg_trgm's fuzzy matching to Go, and a cross-backend search test pins the results (see Name Search below)
 - Larger test matrix
 - Mitigation: testcontainers for PostgreSQL; in-memory/file SQLite for fast tests
 
@@ -128,9 +128,8 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   startup brings the schema up to date; the read model is constructed first
   (DB-007).
 - **No silent fallback (DB-008).** If the selected backend cannot be opened —
-  PostgreSQL unreachable, the SQLite file's directory missing, or SQLite
-  selected in a binary built without cgo — `serve` exits non-zero with the
-  reason. It never quietly runs in memory and drops every write on restart.
+  PostgreSQL unreachable, or the SQLite file's directory missing — `serve`
+  exits non-zero with the reason. It never quietly runs in memory and drops every write on restart.
 - **Memory is demo-only.** The in-memory stores are reachable only through
   `DEMO_MODE` (which overrides `DATABASE_URL`/`SQLITE_PATH`). There is no other
   opt-in: tests construct memory stores directly, and the E2E suite points
@@ -156,20 +155,63 @@ Implemented in `internal/storage` (`storage.Open`), which `serve` calls at start
   projection failures fail the command, or adding a rebuild, is tracked in
   [#845](https://github.com/cacack/my-family/issues/845).
 
-### Build Implications (cgo)
+### SQLite Driver and Builds
 
-The SQLite driver, `github.com/mattn/go-sqlite3`, is a cgo package; built with
-`CGO_ENABLED=0` it is a stub that cannot open any database. The PostgreSQL
-driver (`github.com/lib/pq`) is pure Go.
+The SQLite driver is `modernc.org/sqlite`, a pure-Go translation of SQLite: it
+needs no cgo and no C toolchain, so every build can open a SQLite database. The
+PostgreSQL driver (`github.com/lib/pq`) is also pure Go.
 
 | Build | cgo | SQLite | PostgreSQL | Demo |
 |-------|-----|--------|------------|------|
-| Docker image (`Dockerfile`) | on | yes (default, `/data/myfamily.db`) | yes | yes |
-| `go build` / `make binary` on a machine with a C toolchain | on | yes | yes | yes |
-| Release archives (`.goreleaser.yaml`, `CGO_ENABLED=0`) | off | **no** — `serve` refuses to start and says why | yes | yes |
+| Docker image (`Dockerfile`) | off | yes (default, `/data/myfamily.db`) | yes | yes |
+| `go build` / `make binary` | either | yes | yes | yes |
+| Release archives (`.goreleaser.yaml`) | off | yes | yes | yes |
 
-Release binaries therefore need `DATABASE_URL` (or `DEMO_MODE`) until the
-SQLite/cgo build question is settled (#822, which also covers FTS5).
+Until #822 the driver was `github.com/mattn/go-sqlite3`, a cgo package: the
+`CGO_ENABLED=0` release archives could not open SQLite at all, and FTS5 was only
+compiled in under a build tag no shipped build set. `make check-release-sqlite`
+(run in CI) builds the binary the way releases are built, serves from a fresh
+SQLite file, and cross-compiles every release target, so that cannot regress
+silently.
+
+### Name Search
+
+Decided in #822. Both databases find the same people for the same query
+(DB-005); they get there differently.
+
+| Query | PostgreSQL | SQLite |
+|-------|------------|--------|
+| Plain (`q=`) | tsvector match **or** `full_name ILIKE '%q%'` (and alternate names/nicknames) | case-insensitive substring (`LIKE '%q%'`) of the person's names and alternate names/nicknames — a scan, no index |
+| Fuzzy (`fuzzy=true`) | pg_trgm `%` (similarity ≥ 0.3) on given name, surname, full name and alternate names/nicknames | the same similarity, computed in Go (`repository.TrigramSimilarity`, a port of pg_trgm tested against it) over every person that passes the date/place filters |
+
+SQLite does **not** use FTS5. Plain FTS5 matches whole words, so `John` would not
+find `Johnson`, which makes it stricter than PostgreSQL's substring arm; adding a
+substring arm back brings the full scan back with it. For the tree sizes
+genealogy databases reach, a scan of short name strings is fast enough, and one
+search strategy is simpler than two. Earlier versions could create FTS5 tables
+(`persons_fts`, `person_names_fts`) and triggers; the read model drops them on
+startup so saves stop maintaining an index nothing reads.
+
+Revisit if search on large SQLite trees is measurably slow (#14, #489): FTS5 is
+built into `modernc.org/sqlite`, and its `trigram` tokenizer can serve substring
+queries of three or more characters from an index.
+
+`internal/integration/search_parity_test.go` runs the #822 query set (`John`,
+`Joh`, `O'Brien`, `Smith-Jones`, a multi-word query, fuzzy and plain) through the
+HTTP API on memory, SQLite and PostgreSQL and requires identical results.
+
+Known differences that remain:
+
+- **Word order and stemming.** PostgreSQL's tsvector arm also matches the words
+  of a multi-word query in any order (`Smith John`) and English stems; SQLite
+  matches the query as one substring.
+- **Non-ASCII case folding.** SQLite's `LIKE`/`LOWER` fold only ASCII, so a plain
+  `müller` query does not find `Müller` there; PostgreSQL's `ILIKE` does. Fuzzy
+  search folds case the same on both.
+- **Soundex.** PostgreSQL uses `difference() >= 3`; SQLite and memory require
+  equal Soundex codes.
+- **Result order.** Plain searches order by relevance (`ts_rank`) on PostgreSQL
+  and by name on SQLite; the set of people found is the same.
 
 ### Repository Interfaces
 
@@ -182,15 +224,15 @@ internal/repository/
 │   └── readmodel.go      # PostgreSQL ReadModelStore (tsvector, pg_trgm)
 └── sqlite/
     ├── eventstore.go     # SQLite EventStore
-    └── readmodel.go      # SQLite ReadModelStore (FTS5)
+    └── readmodel.go      # SQLite ReadModelStore (substring + trigram search)
 ```
 
 ### Feature Differences
 
 | Feature | PostgreSQL | SQLite |
 |---------|------------|--------|
-| Full-text search | tsvector + GIN index | FTS5 virtual table |
-| Fuzzy matching | pg_trgm extension | Application-level Levenshtein |
+| Name search | tsvector + GIN index, `ILIKE` substring | `LIKE` substring scan (no FTS5) |
+| Fuzzy matching | pg_trgm extension | pg_trgm similarity ported to Go |
 | JSON storage | Native JSONB | TEXT with JSON encoding |
 | Future: Vector search | pgvector extension | Not available |
 | Future: Geography | PostGIS extension | Not available |

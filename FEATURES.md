@@ -68,8 +68,9 @@ Completed features in my-family genealogy software.
 
 ## Search
 
-- **Full-Text Search** - Fast name search with FTS5 (SQLite) or tsvector (PostgreSQL)
-- **Partial Matching** - Find people with partial name searches
+- **Name Search** - Search names and alternate names; the same query finds the same people on SQLite and PostgreSQL
+- **Partial Matching** - Find people with partial name searches (`Joh` finds John and Johnson)
+- **Fuzzy Matching** - Find spelling variants (`Smyth` finds Smith) with trigram similarity
 
 ## API & Architecture
 

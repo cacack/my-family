@@ -51,9 +51,6 @@ Prerequisites:
 - Go 1.26+
 - Node.js 24 (`nvm use` reads the repo's `.nvmrc`). The app itself also runs on 22.22.2+ and 26+
   (see `web/package.json` `engines`), but the test suite is held at 24 — see below.
-- A C toolchain (gcc or clang) with cgo enabled, for the default SQLite storage — the SQLite
-  driver is a cgo package. A binary built with `CGO_ENABLED=0` can still use PostgreSQL
-  (`DATABASE_URL`) or demo mode, but refuses to start on SQLite.
 
 ```bash
 # Install dependencies
@@ -102,9 +99,9 @@ database, and the schema is created or migrated automatically at startup. If the
 cannot be opened, the server exits with an error instead of falling back to memory. Back up a
 SQLite deployment by copying the database file while the server is stopped (it also keeps
 `-wal`/`-shm` sidecar files while running). See
-[ADR-002](./docs/adr/002-dual-database-strategy.md) for the design, including which builds
-include SQLite support: the Docker image does; the prebuilt release archives are currently built
-without cgo and need `DATABASE_URL` (or `DEMO_MODE`).
+[ADR-002](./docs/adr/002-dual-database-strategy.md) for the design. The SQLite driver is pure Go,
+so the Docker image, the prebuilt release archives and a plain `go build` all run on SQLite with
+no C toolchain.
 
 ## API Endpoints
 

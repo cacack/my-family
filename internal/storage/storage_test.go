@@ -145,21 +145,6 @@ func TestSQLite_Restart(t *testing.T) {
 	assertSurvivesRestart(t, cfg)
 }
 
-func TestOpenSQLite_WithoutCgo(t *testing.T) {
-	prev := sqliteAvailable
-	sqliteAvailable = false
-	t.Cleanup(func() { sqliteAvailable = prev })
-
-	path := filepath.Join(t.TempDir(), "myfamily.db")
-	_, err := Open(&config.Config{SQLitePath: path})
-	if !errors.Is(err, ErrSQLiteUnavailable) {
-		t.Fatalf("Open without cgo: err = %v, want ErrSQLiteUnavailable", err)
-	}
-	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
-		t.Errorf("a refused open must not create %s (stat err = %v)", path, statErr)
-	}
-}
-
 func TestOpenSQLite_EmptyPath(t *testing.T) {
 	if _, err := OpenSQLite("  "); err == nil || !strings.Contains(err.Error(), "SQLITE_PATH") {
 		t.Fatalf("OpenSQLite(\"  \"): err = %v, want an error naming SQLITE_PATH", err)
@@ -181,7 +166,7 @@ func TestOpenSQLite_MissingDirectory(t *testing.T) {
 // Open must report which store failed and must not leave the database open.
 func TestOpenSQLite_SchemaFailureClosesDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "myfamily.db")
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -356,7 +341,7 @@ func TestBuild_ClosesDatabaseOnEachFailure(t *testing.T) {
 	stages := []string{"read model", "event", "snapshot", "branch"}
 	for i, stage := range stages {
 		t.Run(stage, func(t *testing.T) {
-			db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "x.db"))
+			db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "x.db"))
 			if err != nil {
 				t.Fatalf("open: %v", err)
 			}
