@@ -33,7 +33,8 @@
 	// Every other write on this page goes through a branch-scoped operation, but
 	// `PUT`/`DELETE /persons/{id}/brick-wall` declare no `branch` parameter, so
 	// they would land on the mainline while the banner promises the opposite.
-	// The controls are therefore withdrawn on a branch until #676 scopes them.
+	// The controls are therefore withdrawn on a branch; whether brick walls
+	// become event-sourced, and so branch-scoped, is #802.
 	const brickWallOnMainlineOnly = $derived(activeBranch.id !== null);
 	const BRICK_WALL_MAINLINE_ONLY =
 		'Brick walls are recorded on the mainline only, so they cannot be changed while a research branch is active.';

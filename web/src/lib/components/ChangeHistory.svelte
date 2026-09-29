@@ -207,7 +207,7 @@
 								<DiffView changes={entry.changes} />
 							</div>
 						{/if}
-					{:else if hasChanges && entry.action === 'created' && entry.changes}
+					{:else if hasChanges && (entry.action === 'created' || (entry.action === 'deleted' && entry.entity_type === 'branch')) && entry.changes}
 						<div class="changes-container">
 							<DiffView changes={entry.changes} />
 						</div>

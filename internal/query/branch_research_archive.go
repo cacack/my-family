@@ -83,9 +83,9 @@ type archiveArtifact struct {
 // ones: an active branch's artifacts can also be read live through its
 // overlay.
 //
-// The reconstruction replays events through the real projector into a
-// throwaway in-memory read model, so the result is exactly what the branch's
-// overlay held:
+// The reconstruction replays the artifacts' own events through the real
+// projector into a throwaway in-memory read model, so each artifact reads as
+// the branch recorded it on its own stream:
 //
 //  1. The branch's own events are read in position order and the streams of
 //     its GPS artifacts collected.
@@ -99,6 +99,15 @@ type archiveArtifact struct {
 // Only the touched streams are loaded: two set-based reads (the branch's
 // events, main's events for the edited streams), each bounded by
 // maxComparisonEvents, whatever the number of artifacts.
+//
+// A person merge on the branch (#834) is deliberately not replayed. On the
+// overlay it re-points an artifact's subject to the survivor without an event
+// on the artifact's stream; the archive keeps the subject the artifact was
+// recorded about instead. A closed branch's person merge is part of the
+// hypothesis it did not establish, and main never merged those persons, so
+// the recorded subject is the one that is true on main — and the one a
+// promotion must use (a log about a branch-only person merged away is then
+// skipped as subject_not_on_main rather than attached to the survivor).
 func (s *BranchService) BranchResearchArchive(ctx context.Context, branchID uuid.UUID) (*BranchResearchArchive, error) {
 	branch, err := s.branchStore.Get(ctx, branchID)
 	if err != nil {

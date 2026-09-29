@@ -25,7 +25,7 @@ describe('MainlineNotice', () => {
 		render(MainlineNotice, { props: { surface: 'Quality' } });
 		const note = screen.getByRole('note');
 		expect(note.textContent).toContain('Quality always shows mainline data');
-		expect(note.textContent).toContain('Branch scoping currently covers');
+		expect(note.textContent).toContain('A branch covers people, families, sources');
 	});
 
 	it('uses a custom message verbatim, replacing the default sentence', () => {

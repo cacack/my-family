@@ -182,10 +182,13 @@ const TEXT_SEGMENT = '[^/]+';
  * aggregates own no `branch_id` of their own — they read the overlay — so
  * scoping them is exactly this parameter and nothing else.
  *
- * Read models still answering only from the mainline, and therefore absent
- * here on purpose: brick walls (not event-sourced — #761) and the remaining
- * entity read models. Those surfaces render
- * `MainlineNotice.svelte`. Grow this table one operation at a time as the spec
+ * Read models and operations still answering only from the mainline, and
+ * therefore absent here on purpose: brick walls (not event-sourced — #761;
+ * whether they become event-sourced is #802), the entities that stay main-only
+ * by decision (submitters, repositories, LDS ordinances — ADR-005), GEDCOM
+ * import and export, the JSON/CSV exports, the global and source history, and
+ * the quality, statistics and discovery checks computed over the mainline.
+ * Pages showing them render `MainlineNotice.svelte` or withdraw the control. Grow this table one operation at a time as the spec
  * grows, and never by blanket-appending the parameter to every request.
  *
  * `client.test.ts` parses `openapi.yaml` and fails if the two disagree in

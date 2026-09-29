@@ -39,16 +39,28 @@ Completed features in my-family genealogy software.
 
 ## Research Branches
 
-- **Research Branches** - Explore an unproven hypothesis on an isolated branch off the main tree; edits on a branch stay invisible to the mainline until you promote them
-- **Branch Comparison** - See exactly what a branch changed, alongside what the mainline changed underneath it since the branch forked
+- **Research Branches** - Explore an unproven hypothesis on an isolated branch off the main tree; edits on a branch stay invisible to the mainline until you promote them. A branch covers people, families, partner and child links, names, sources, citations, notes, media, associations, evidence analyses, evidence conflicts, research logs and proof summaries, and person merges. Search, browse, the map, the pedigree, descendancy, Ahnentafel, family group sheet and relationship calculator, the history panels and snapshots all follow the active branch; pages that stay mainline-only (quality checks, research suggestions, the global history, brick walls, repositories, exports) say so, and GEDCOM import and rollback are withdrawn while a branch is active
+- **Live Overlay** - A branch is a live view over the mainline, not a frozen copy: records it has not changed show the mainline's current data, and each branch shows how far the mainline has moved since it was created
+- **Research Record** - Each branch carries the research question it tests, the people and families it is about, the proof summaries that argue it, and an outcome (open, proved, disproved, inconclusive, superseded, abandoned)
+- **Close with an Outcome** - Close a branch without merging and record why; its research logs, evidence analyses and proof summaries stay readable, and its research logs (including searches that found nothing) can be copied to the mainline
+- **Branch Comparison** - See what a branch changed for every kind of record it can write, alongside what the mainline changed underneath it since the branch forked
 - **Conflict Detection** - Classifies genuine divergence (both sides editing the same field, one side deleting what the other edited, colliding creates) and distinguishes it from harmless overlap where the two sides agree
-- **Merge with Review** - Promote a branch back to the mainline with a per-entity decision on every conflict and a merge note explaining why. The original research keeps its own timestamps in the audit trail, and nothing is ever rewritten
-- **Merge History** - A merged branch records when it was merged and the reasoning behind it
+- **Merge with Review** - Promote a branch back to the mainline with a per-entity decision on every conflict, the branch, mainline and fork-point values shown side by side, bulk decisions, and a merge note explaining why. Any record can be left out. The original research keeps its own timestamps in the audit trail, and nothing is ever rewritten
+- **Pre-Merge Checks** - Before merging, the review lists every reference the merge would break (with a one-step fix for each), warns about changed facts the branch has not documented with evidence, and shows the validation issues, quality issues and duplicates the branch would introduce
+- **Merge Safety Net** - Take a snapshot of the mainline just before merging, then open exactly what the merge changed
+- **Resumable Merge** - A merge interrupted partway is flagged in the branch list and on the branch, and can be finished from the UI
+- **Merge Record** - A merged branch records when it was merged, the reasoning behind it and every decision the review made; changes a merge brought in are marked in the change history
+
+## History & Snapshots
+
+- **Change History** - Browse every change to the tree, or to one person or family: what changed and when, field by field
+- **Snapshots (Tags)** - Mark research milestones ("Pre-DNA results", "After courthouse trip") on the mainline or on a branch, and compare two snapshots or a snapshot with the current state
+- **Restore Points and Rollback** - Roll a person or family back to an earlier version from its history panel (the API also covers sources and citations); rollback works on the mainline only
 
 ## Data Validation & Cleanup
 
 - **Duplicate Detection** - Find potential duplicate persons with configurable confidence thresholds
-- **Person Merge** - Safely merge duplicate records, consolidating data with field-level resolution
+- **Person Merge** - Safely merge duplicate records, consolidating data with field-level resolution; on a research branch the merge stays on the branch until the branch is merged
 - **Batch Operations** - Merge multiple duplicate pairs or dismiss false positives in bulk
 - **Date Validation** - Detect logical inconsistencies (death before birth, child older than parent)
 - **Orphan Detection** - Identify records with broken references

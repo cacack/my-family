@@ -1772,8 +1772,9 @@ and, when the branch serves a row whose version differs from `main`'s, passes th
 event stores apply: `OverlayVersion` when set (refused with `ErrInvalidOverlayVersion` if it is
 ahead of `main`'s version, which no copy of a `main` row can be), else `main`'s current version. It
 is consulted only for the branch's first append to the stream; after that the branch's own line
-governs. `PersonMerged` also writes cross-stream rows, but it is not branch-aware (BR-006), so it
-never writes them on a branch. The shadow also keeps the copy's *data*: a source a branch cited
+governs. Since #834, `PersonMerged` is branch-aware and also writes cross-stream shadow rows on a branch
+(family partner re-links, citation and media re-owning, GPS subject re-pointing, each keeping the
+row's version); those are ordinary cross-stream shadows and seed the same way. The shadow also keeps the copy's *data*: a source a branch cited
 shows the branch the source as it was when cited, not `main`'s later correction — ordinary
 copy-on-write, now with a version that agrees with it.
 
@@ -1903,10 +1904,18 @@ merged, not closed. The reason is free text, at most 2000 characters.
   history note (#823) uses, because the overlay seeds a shadow from main's row as it stands at the
   branch's first write. Using the real projector means the archive cannot drift from what the
   overlay showed. The reads are two set-based queries (the branch's events; main's events for the
-  edited streams), each capped at the comparison cap, with `truncated` reported past it. Subjects
+  edited streams), each capped at the comparison cap, with `truncated` reported past it. Only the
+  artifacts' own streams are replayed, so a person merge on the branch (#834) — which re-points an
+  artifact's subject on the overlay without writing to the artifact's stream — is deliberately not
+  reflected: the archive keeps the subject each artifact was recorded about. A closed branch's
+  merge is part of the hypothesis it did not establish and main never merged those persons, so
+  the recorded subject is the one that holds on main and the one promotion must use (a log about a
+  branch-only person merged away is skipped as `subject_not_on_main`, never attached to the
+  survivor). Subjects
   are named through the mainline, or, for a person the branch created, from its `PersonCreated`.
   Artifacts the branch deleted are counted, not listed. The archive works for any status — for an
-  active branch it matches the overlay, for a merged one it shows what the branch contributed.
+  active branch it matches the overlay (apart from subjects re-pointed by a branch person merge,
+  above), for a merged one it shows what the branch contributed.
   The hypothesis record itself needs no reconstruction: the registry keeps it.
 - **(a) Promoting research logs to main.** `POST /branches/{id}/research-logs/promote`
   (`Handler.PromoteBranchResearchLogs`) copies a closed branch's research logs to the mainline as
@@ -1935,7 +1944,9 @@ date, and filters by status (all / active / merged / closed) and by outcome.
 
 Verified by `TestBranchClose_ResearchRetained` (`internal/integration`, memory/SQLite/PostgreSQL):
 close as disproved, overlay purged, archive rebuilt (negative search, branch-only subject, edit of
-a mainline log, a deleted log), promotion and re-promotion; the store close contract
+a mainline log, a deleted log), promotion and re-promotion;
+`TestBranchResearchArchive_KeepsSubjectAcrossBranchPersonMerge` (`internal/query`: the recorded
+subject survives a branch person merge, in the archive and in promotion); the store close contract
 (`runBranchCloseContract`, one copy per backend) and pre-#836 migrations; command, query and API
 unit tests; and `e2e/branch-close.spec.ts` (close a branch as disproved, then read its research
 log).

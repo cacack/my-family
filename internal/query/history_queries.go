@@ -467,7 +467,8 @@ func applyEventMetadata(entry *ChangeEntry, evt *repository.StoredEvent) {
 // branchLifecycleEntries describes branch lifecycle events (#832): a branch
 // created, merged into the mainline, or deleted (archived). The branch is
 // named from the registry, read once for the whole batch, falling back to the
-// name its BranchCreated event recorded. A merge carries its note as a change.
+// name its BranchCreated event recorded. A merge carries its note as a change,
+// and a close (#836) its outcome and reason.
 func (s *HistoryService) branchLifecycleEntries(ctx context.Context, events []repository.StoredEvent) ([]ChangeEntry, error) {
 	names := make(map[uuid.UUID]string)
 	if s.branchStore != nil {
@@ -488,6 +489,8 @@ func (s *HistoryService) branchLifecycleEntries(ctx context.Context, events []re
 			Name        string `json:"name"`
 			Description string `json:"description"`
 			Note        string `json:"note"`
+			Outcome     string `json:"outcome"`
+			Reason      string `json:"reason"`
 		}
 		if err := json.Unmarshal(evt.Data, &payload); err != nil {
 			return nil, fmt.Errorf("decoding %s %s: %w", evt.EventType, evt.ID, err)
@@ -513,9 +516,29 @@ func (s *HistoryService) branchLifecycleEntries(ctx context.Context, events []re
 			if payload.Note != "" {
 				entry.Changes = map[string]FieldChange{"merge_note": {NewValue: payload.Note}}
 			}
+		case "BranchDeleted":
+			// A close (#836) records its outcome and reason; a delete
+			// written before #836 has neither and carries no changes.
+			entry.Changes = branchCloseChanges(payload.Outcome, payload.Reason)
 		}
 		applyEventMetadata(&entry, evt)
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// branchCloseChanges returns the changes a BranchDeleted entry carries: the
+// close outcome and reason when recorded, nil for a pre-#836 delete.
+func branchCloseChanges(outcome, reason string) map[string]FieldChange {
+	if outcome == "" && reason == "" {
+		return nil
+	}
+	changes := make(map[string]FieldChange, 2)
+	if outcome != "" {
+		changes["outcome"] = FieldChange{NewValue: outcome}
+	}
+	if reason != "" {
+		changes["close_reason"] = FieldChange{NewValue: reason}
+	}
+	return changes
 }
