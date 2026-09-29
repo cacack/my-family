@@ -3245,8 +3245,8 @@ func stringFromParam(s *string) string {
 
 // searchTextParamsError validates the free-text search parameters and returns a
 // client-facing message, or "" when they are acceptable. Control characters are
-// rejected: NUL cannot be stored in a PostgreSQL text parameter and ends an FTS5
-// string early, so it would otherwise surface as a 500 (issue #762).
+// rejected: NUL cannot be stored in a PostgreSQL text parameter, so it would
+// otherwise surface as a 500 (issue #762).
 func searchTextParamsError(q, birthPlace, deathPlace string) string {
 	if q != "" && len(q) < 2 {
 		return "Search query must be at least 2 characters"

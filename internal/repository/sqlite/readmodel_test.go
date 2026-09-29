@@ -704,7 +704,7 @@ func TestReadModelStore_ListFamilies(t *testing.T) {
 	}
 }
 
-func TestReadModelStore_SearchPersons_FTS5Error(t *testing.T) {
+func TestReadModelStore_SearchPersons_OperatorSyntaxIsLiteral(t *testing.T) {
 	store, cleanup := setupTestReadModelDB(t)
 	defer cleanup()
 
@@ -722,10 +722,9 @@ func TestReadModelStore_SearchPersons_FTS5Error(t *testing.T) {
 	}
 	store.SavePerson(ctx, domain.MainBranchID, person)
 
-	// FTS5 operator syntax in user input is searched literally (issue #762): on
-	// the FTS5 path every token is quoted, so AND is a term no name contains; on
-	// the LIKE path the whole string is a substring no name contains. Either way
-	// the query neither errors nor matches.
+	// Search-operator syntax in user input is searched literally (issue #762):
+	// the whole string is a substring no name contains, so the query neither
+	// errors nor matches.
 	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: `"John" AND "Doe"`, Limit: 10})
 	if err != nil {
 		t.Fatalf("search persons: %v", err)
@@ -783,8 +782,7 @@ func TestReadModelStore_SearchPersons_FuzzyFallback(t *testing.T) {
 	}
 	store.SavePerson(ctx, domain.MainBranchID, person)
 
-	// Fuzzy search with prefix that might not match in FTS5
-	// This tests the fuzzy fallback path
+	// A fuzzy prefix query matches by trigram similarity ("Zac" vs "Zachary").
 	results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Zac", Fuzzy: true, Limit: 10})
 	if err != nil {
 		t.Fatalf("fuzzy search persons: %v", err)

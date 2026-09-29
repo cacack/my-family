@@ -1212,12 +1212,22 @@ func searchPersonsLikeSQL(opts repository.SearchOptions, limit int) (string, []a
 
 // personNamesOverlaySubquery resolves person_names for a branch (partition by
 // name id, branch row wins, tombstones excluded) so a branch-overridden name
-// does not also match its shadowed mainline value. The three placeholders bind
-// (branch, branch, main).
+// does not also match its shadowed mainline value. Off main the three
+// placeholders bind (branch, branch, main); on main the one placeholder binds
+// main.
 func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
+	if branchID.IsMain() {
+		// Main fast path, as personOverlaySubquery (#669): main never shadows
+		// itself, so person_names holds one row per id and the ROW_NUMBER window
+		// over the whole table is unnecessary.
+		return `(
+			SELECT person_id, full_name, given_name, surname, nickname, is_primary
+			FROM person_names WHERE branch_id = ? AND deleted = 0
+		)`, []any{mainBranchID}
+	}
 	return `(
-			SELECT person_id, full_name, given_name, surname, nickname FROM (
-				SELECT person_id, full_name, given_name, surname, nickname, deleted,
+			SELECT person_id, full_name, given_name, surname, nickname, is_primary FROM (
+				SELECT person_id, full_name, given_name, surname, nickname, is_primary, deleted,
 					   ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rrn
 				FROM person_names WHERE branch_id IN (?, ?)
 			) WHERE rrn = 1 AND deleted = 0
@@ -1246,7 +1256,7 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 	args := append(append([]any{}, overlayArgs...), namesArgs...)
 	sb.WriteString(`
 		SELECT p.id, p.given_name, p.surname, p.full_name, p.birth_date_sort, p.death_date_sort,
-			   pn.given_name, pn.surname, pn.full_name, pn.nickname
+			   pn.given_name, pn.surname, pn.full_name, pn.nickname, pn.is_primary
 		FROM ` + overlay + ` p
 		LEFT JOIN ` + namesOverlay + ` pn ON p.id = pn.person_id`)
 	if filterSQL != "" {
@@ -1301,12 +1311,15 @@ type fuzzyMatch struct {
 
 // scoreFuzzyRows reads searchPersonsFuzzy's rows (id, given name, surname, full
 // name, birth and death sort dates, then one alternate name's given name,
-// surname, full name and nickname, NULL when the person has none) and returns
-// the people who match, in first-seen order.
+// surname, full name, nickname and primary flag, NULL when the person has none)
+// and returns the people who match, in first-seen order.
 //
 // A person with several alternate names spans several rows; they are merged.
-// The score follows PostgreSQL's dedup: a direct match on the person's own names
-// wins over any alternate-name score.
+// The score follows PostgreSQL's dedup (DISTINCT ON (id) ORDER BY is_primary
+// DESC, rank_score DESC), where the direct match on the person's own names
+// counts as primary: the best score among the direct match and the primary
+// alternate names, and only when none of those match, the best score among the
+// non-primary alternate names.
 func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch, error) {
 	best := func(names ...string) (float64, bool) {
 		top, hit := 0.0, false
@@ -1328,9 +1341,12 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 		return &t
 	}
 
+	// Each person keeps a score per tier: primary (the direct match and primary
+	// alternate names) and other (non-primary alternate names).
 	type entry struct {
 		fuzzyMatch
-		direct, match bool
+		primary, other       float64
+		primaryHit, otherHit bool
 	}
 	byID := make(map[string]*entry)
 	var order []*entry
@@ -1339,9 +1355,10 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 			idStr, given, surname, full          string
 			birthSort, deathSort                 sql.NullString
 			altGiven, altSurname, altFull, altNk sql.NullString
+			altPrimary                           sql.NullBool
 		)
 		if err := rows.Scan(&idStr, &given, &surname, &full, &birthSort, &deathSort,
-			&altGiven, &altSurname, &altFull, &altNk); err != nil {
+			&altGiven, &altSurname, &altFull, &altNk, &altPrimary); err != nil {
 			return nil, err
 		}
 		e, seen := byID[idStr]
@@ -1354,16 +1371,24 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 				ID: id, GivenName: given, Surname: surname, FullName: full,
 				BirthDateSort: parseSortDate(birthSort), DeathDateSort: parseSortDate(deathSort),
 			}}}
-			e.score, e.direct = best(given, surname, full)
-			e.match = e.direct
+			e.primary, e.primaryHit = best(given, surname, full)
 			byID[idStr] = e
 			order = append(order, e)
 		}
-		if e.direct || !altGiven.Valid {
+		if !altGiven.Valid {
 			continue
 		}
-		if sim, hit := best(altGiven.String, altSurname.String, altFull.String, altNk.String); hit {
-			e.match, e.score = true, max(e.score, sim)
+		isPrimary := altPrimary.Valid && altPrimary.Bool
+		if !isPrimary && e.primaryHit {
+			continue // a primary-tier match already decides the score
+		}
+		sim, hit := best(altGiven.String, altSurname.String, altFull.String, altNk.String)
+		switch {
+		case !hit:
+		case isPrimary:
+			e.primaryHit, e.primary = true, max(e.primary, sim)
+		default:
+			e.otherHit, e.other = true, max(e.other, sim)
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -1372,9 +1397,15 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 
 	var matched []fuzzyMatch
 	for _, e := range order {
-		if e.match {
-			matched = append(matched, e.fuzzyMatch)
+		switch {
+		case e.primaryHit:
+			e.score = e.primary
+		case e.otherHit:
+			e.score = e.other
+		default:
+			continue
 		}
+		matched = append(matched, e.fuzzyMatch)
 	}
 	return matched, nil
 }

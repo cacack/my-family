@@ -35,6 +35,7 @@ func runSearchParity(t *testing.T, server *api.Server) {
 		{"Zachary", "Thompson"},
 		{"Edmund", "Blackwood"},
 		{"Ana", "ÑÚÑEZ"},
+		{"Ed", "Snead"}, // same Soundex code as Smyth (S530), not trigram-similar
 	} {
 		ids[p.given] = createPerson(t, server, p.given, p.surname)
 	}
@@ -115,6 +116,15 @@ func runSearchParity(t *testing.T, server *api.Server) {
 		// trailing "on " trigram counts. A prefix rule would get this backwards.
 		{"Jon", true, "", []string{"Alice"}},
 		{"xyzzy", true, "", nil},
+		// The #822 queries, fuzzy.
+		{"John", true, "", []string{"John", "Alice", "Hans"}},
+		{"Joh", true, "", []string{"John", "Alice", "Hans"}}, // Johann
+		{"O'Brien", true, "", []string{"Patrick"}},
+		{"Smith-Jones", true, "", []string{"Mary", "John"}},
+		{"John Smith", true, "", []string{"John", "Mary"}},
+		// Fuzzy takes precedence over Soundex, as on PostgreSQL: Snead shares
+		// Smyth's Soundex code but is not trigram-similar, so it is left out.
+		{"Smyth", true, "&soundex=true", []string{"John"}},
 	}
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("%s/fuzzy=%v%s", tt.query, tt.fuzzy, tt.extra), func(t *testing.T) {
@@ -163,6 +173,63 @@ func TestSearchParity_FuzzyLimit(t *testing.T) {
 			want := []string{ids["John"], ids["Johny"], ids["Johnx"], ids["Johnw"], ids["Johnv"]}
 			if !slices.Equal(got, want) {
 				t.Errorf("fuzzy John, limit 5 = %v, want [John Johny Johnx Johnw Johnv]", namesOf(ids, got))
+			}
+		})
+	}
+}
+
+// TestSearchParity_FuzzyPrimaryName checks fuzzy ranking when people have
+// alternate names, on both SQL backends. PostgreSQL scores a person by its
+// dedup (DISTINCT ON (id) ORDER BY is_primary DESC, rank_score DESC): the
+// direct match on the person's own names and their primary alternate name rank
+// together, and a non-primary alternate name counts only when neither matches,
+// even if it scores higher. A primary name's nickname (GEDCOM NICK) therefore
+// counts toward the score, and a better non-primary name does not.
+func TestSearchParity_FuzzyPrimaryName(t *testing.T) {
+	for _, b := range backends {
+		if b.name == "Memory" {
+			continue
+		}
+		t.Run(b.name, func(t *testing.T) {
+			server := newServer(t, b.setup(t))
+			addName := func(id, body string) {
+				mustDo(t, server, http.MethodPost, "/api/v1/persons/"+id+"/names", body, http.StatusCreated)
+			}
+			ids := map[string]string{
+				"Bobby":  createPerson(t, server, "Bobby", "Adams"),
+				"Bob":    createPerson(t, server, "Bob", "Zed"),
+				"Robert": createPerson(t, server, "Robert", "Aaron"),
+				"Pat":    createPerson(t, server, "Pat", "Qqq"),
+				"Johnn":  createPerson(t, server, "Johnn", "Rrr"),
+			}
+			// Bobby's direct score (0.44) is raised by his primary nickname Bob (1).
+			addName(ids["Bobby"], `{"given_name":"Bobby","surname":"Adams","nickname":"Bob","name_type":"birth","is_primary":true}`)
+			// Robert matches only through alternate names: the primary one
+			// (nickname Bobby, 0.44) decides, not the non-primary Bob Aaron (1).
+			addName(ids["Robert"], `{"given_name":"Robert","surname":"Aaron","nickname":"Bobby","name_type":"birth","is_primary":true}`)
+			addName(ids["Robert"], `{"given_name":"Bob","surname":"Aaron","name_type":"aka"}`)
+			// Pat: primary Johnny Qqq (0.5) decides over non-primary John Qqq (1).
+			addName(ids["Pat"], `{"given_name":"Johnny","surname":"Qqq","name_type":"birth","is_primary":true}`)
+			addName(ids["Pat"], `{"given_name":"John","surname":"Qqq","name_type":"aka"}`)
+
+			for _, tt := range []struct {
+				path string
+				want []string
+			}{
+				// Bobby and Bob both score 1; the tie goes to surname Adams.
+				{"q=Bob", []string{"Bobby", "Bob", "Robert"}},
+				{"q=Bob&limit=1", []string{"Bobby"}},
+				{"q=John", []string{"Johnn", "Pat"}},
+				{"q=John&limit=1", []string{"Johnn"}},
+			} {
+				got := itemIDs(t, mustDo(t, server, http.MethodGet, "/api/v1/search?fuzzy=true&"+tt.path, "", http.StatusOK))
+				want := make([]string, 0, len(tt.want))
+				for _, given := range tt.want {
+					want = append(want, ids[given])
+				}
+				if !slices.Equal(got, want) {
+					t.Errorf("fuzzy %s = %v, want %v", tt.path, namesOf(ids, got), tt.want)
+				}
 			}
 		})
 	}

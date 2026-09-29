@@ -210,8 +210,8 @@ is quadratic (about 10 s at 10,000 people, over 90 s at 100,000), and
 
 | People | Plain | Fuzzy |
 |--------|-------|-------|
-| 20,000 | ~0.1 s | ~0.5 s |
-| 100,000 | ~0.5 s | ~3 s |
+| 20,000 | ~0.05 s | ~0.35 s |
+| 100,000 | ~0.25 s | ~2 s |
 
 Fuzzy search costs more because every name is scored in Go. Revisit if search on
 large SQLite trees is measurably slow for users (#14, #489): FTS5 is built into
@@ -232,18 +232,28 @@ Known differences that remain:
   order (`Smith John`), English stems, and queries wrapped in punctuation
   (`(Mary)` and `"Mary-Ann"` find Mary-Ann O'Brien). SQLite matches the query as
   one literal substring and finds nobody for those.
-- **Case folding depends on PostgreSQL's locale.** SQLite and memory fold every
-  letter (Go's `unicode.ToLower`), as `ILIKE` does in a UTF-8 locale; a
-  PostgreSQL database created with the `C` ctype folds only ASCII.
+- **Case folding and word characters depend on PostgreSQL's locale.** SQLite
+  and memory fold every letter (Go's `unicode.ToLower`), as `ILIKE` does in a
+  UTF-8 locale; a PostgreSQL database created with the `C` ctype folds only
+  ASCII. Likewise, fuzzy search splits names into words where glibc's UTF-8
+  locales do: word characters are Unicode's Alphabetic property plus digits, so
+  Indic vowel signs, Arabic harakat and letter numbers stay inside a word
+  (`repository.TrigramSimilarity` agrees with pg_trgm on every code point
+  PostgreSQL 16 on `C.UTF-8` treats as a word character). Under the `C` ctype
+  pg_trgm treats every non-ASCII character as a separator.
 - **Soundex.** PostgreSQL uses `difference() >= 3`; SQLite and memory require
   equal Soundex codes.
 - **Which matches fill the limit.** Search returns at most `limit` people (20 by
   default, at most 100). Plain searches order by relevance (`ts_rank`) on
   PostgreSQL and by name on SQLite, so when more people match than the limit,
   the two return different subsets of the same match set. Fuzzy searches order
-  by similarity on both, ties broken by surname, given name and id, so they
-  return the same people in the same order (`TestSearchParity_FuzzyLimit`) as
-  long as PostgreSQL's collation orders names by code point, as the `C` and
+  by similarity on both, scoring each person as PostgreSQL's `DISTINCT ON (id)
+  ORDER BY is_primary DESC, rank_score DESC` does: the best of their own names
+  and their primary alternate name (its nickname included), or, only when none
+  of those match, the best of their other alternate names
+  (`TestSearchParity_FuzzyPrimaryName`). Ties are broken by surname, given
+  name and id, so both return the same people in the same order
+  (`TestSearchParity_FuzzyLimit`) as long as PostgreSQL's collation orders names by code point, as the `C` and
   `C.UTF-8` collations do. The in-memory demo store keeps relevance results in
   the order it finds them.
 

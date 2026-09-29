@@ -13,8 +13,8 @@ const TrigramThreshold = 0.3
 type trigram [3]rune
 
 // trigrams returns the set of trigrams pg_trgm extracts from s: the string is
-// lower-cased and split into words of letters and digits (every other rune is a
-// separator), each word is padded with two spaces in front and one behind, and
+// lower-cased and split into words of word characters (see isTrigramWordRune;
+// every other rune is a separator), each word is padded with two spaces in front and one behind, and
 // every run of three consecutive runes of a padded word is a trigram. Duplicates
 // collapse, so the result is a set.
 func trigrams(s string) map[trigram]struct{} {
@@ -34,7 +34,7 @@ func trigrams(s string) map[trigram]struct{} {
 		word = word[:0]
 	}
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+		if isTrigramWordRune(r) {
 			word = append(word, unicode.ToLower(r))
 			continue
 		}
@@ -44,10 +44,22 @@ func trigrams(s string) map[trigram]struct{} {
 	return set
 }
 
+// isTrigramWordRune reports whether pg_trgm treats r as part of a word. pg_trgm
+// asks the database ctype (iswalnum); under glibc's UTF-8 locales, the ones
+// PostgreSQL deployments use, that is Unicode's Alphabetic property plus
+// digits: letters, letter numbers (Ⅻ) and the Other_Alphabetic marks and
+// symbols, such as Indic vowel signs (the ा in शर्मा) and circled letters.
+// Checked against every code point PostgreSQL 16 on C.UTF-8 accepts; runes
+// newer than Go's Unicode tables are the only ones left out.
+func isTrigramWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) ||
+		unicode.Is(unicode.Nl, r) || unicode.Is(unicode.Other_Alphabetic, r)
+}
+
 // TrigramSimilarity reports how similar a and b are, from 0 (no trigram in
 // common) to 1 (the same trigram sets), matching PostgreSQL pg_trgm's
 // similarity(): shared trigrams divided by the size of the union. A string with
-// no letters or digits has no trigrams and is similar to nothing.
+// no word characters has no trigrams and is similar to nothing.
 func TrigramSimilarity(a, b string) float64 {
 	return NewTrigramQuery(a).Similarity(b)
 }
