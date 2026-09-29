@@ -125,11 +125,12 @@
 		<span class="branch-label">Research Branch</span>
 		<span class="branch-text">
 			{#if activeBranch.branch}
-				Working on <strong>{activeBranch.branch.name}</strong>. Changes to people, families and
-				pedigrees are isolated to this branch.
+				Working on <strong>{activeBranch.branch.name}</strong>. Changes to people, families,
+				sources, media and evidence are isolated to this branch; pages that stay on the mainline say
+				so.
 			{:else}
-				Working on a research branch. Changes to people, families and pedigrees are isolated to
-				this branch.
+				Working on a research branch. Changes to people, families, sources, media and evidence are
+				isolated to this branch; pages that stay on the mainline say so.
 			{/if}
 			{#if activeBranch.branch}
 				<span class="branch-research" data-testid="banner-research">

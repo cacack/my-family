@@ -17,7 +17,8 @@ A genealogy platform designed for research rigor and data ownership.
 - **Flexible date handling** - Supports exact, approximate, ranges, and "before/after"
 - **Historical calendars** - Parses, displays, and round-trips Julian, Hebrew, and French Republican dates, with optional Gregorian conversion for comparison
 - **Family relationships** - Biological, adopted, step, and foster qualifiers
-- **Research branches** - Explore an unproven hypothesis in isolation, then compare it against the mainline before promoting it (covers people, families, and pedigrees)
+- **Research branches** - Explore an unproven hypothesis in isolation, record the question it tests and the outcome it reached, then review the diff against the mainline and merge it with a per-conflict decision. A branch covers people, families, sources, citations, notes, media, associations, facts, evidence analyses, research logs and proof summaries, and search, browse, the map, the charts and reports all follow it
+- **Snapshots, history and rollback** - Tag research milestones and compare them with each other or with the current state, browse the change history of the whole tree or of one record, and roll a person, family, source or citation back to an earlier version
 - **Geographic heat map** - Interactive world map showing family locations with zoom/pan
 - **Interactive pedigree chart** - D3.js visualization with pan/zoom and keyboard navigation
 - **Full-text search** - Fast fuzzy matching with keyboard-navigable results
@@ -120,13 +121,30 @@ without cgo and need `DATABASE_URL` (or `DEMO_MODE`).
 - `POST /api/v1/families/{id}/children` - Add child to family
 - `DELETE /api/v1/families/{id}/children/{personId}` - Remove child
 - `GET /api/v1/pedigree/{id}` - Get pedigree chart data
+- `GET /api/v1/history` - Global change history of the mainline
+- `GET /api/v1/{persons,families,sources}/{id}/history` - Change history of one record
+- `GET /api/v1/{persons,families,sources,citations}/{id}/restore-points` - List the versions a record can be rolled back to
+- `POST /api/v1/{persons,families,sources,citations}/{id}/rollback` - Roll a record back to an earlier version (mainline only)
+- `GET /api/v1/snapshots` / `POST /api/v1/snapshots` - List or create research snapshots (tags)
+- `GET /api/v1/snapshots/{id}` / `DELETE /api/v1/snapshots/{id}` - Get or delete a snapshot
+- `GET /api/v1/snapshots/{id1}/compare/{id2}` - Changes between two snapshots
+- `GET /api/v1/snapshots/{id}/compare-current` - Changes since a snapshot
 - `GET /api/v1/branches` - List research branches
-- `POST /api/v1/branches` - Create a research branch
-- `GET /api/v1/branches/{id}` - Get a branch
-- `DELETE /api/v1/branches/{id}` - Discard (archive) a branch; its events are retained
+- `POST /api/v1/branches` - Create a research branch, optionally with its research question, subjects and outcome
+- `GET /api/v1/branches/{id}` - Get a branch with its research record
+- `PATCH /api/v1/branches/{id}` - Edit a branch's description and research record
+- `POST /api/v1/branches/{id}/close` - Close a branch without merging, recording its outcome and why; its events are retained
+- `DELETE /api/v1/branches/{id}` - Close (archive) a branch without recording why; its events are retained
+- `GET /api/v1/branches/{id}/research` - A branch's research logs, evidence analyses and proof summaries, rebuilt from its events (works on a closed branch)
+- `POST /api/v1/branches/{id}/research-logs/promote` - Copy a closed branch's research logs to the mainline
+- `GET /api/v1/branches/{id}/drift` - How far the mainline has moved under a branch
 - `GET /api/v1/branches/{id}/compare` - Compare a branch against the mainline, with the conflict verdict
+- `GET /api/v1/branches/{id}/evidence-coverage` - Facts a branch changed without documenting them
+- `GET /api/v1/branches/{id}/health` - Validation issues, quality issues and duplicates a branch introduces
+- `POST /api/v1/branches/{id}/merge/precheck` - List what would block a merge, writing nothing
 - `POST /api/v1/branches/{id}/merge` - Merge a branch into the mainline
-- Person, family, and pedigree reads and writes accept an optional `?branch={id}` scope; omit it for the mainline
+- `POST /api/v1/branches/{id}/merge/resume` - Finish a merge whose replay onto the mainline was interrupted
+- Most genealogy reads and writes (people, families, sources, citations, notes, media, associations, evidence, search, browse, map, charts, reports, snapshots and person merges) accept an optional `?branch={id}` scope; omit it for the mainline. `openapi.yaml` marks exactly which operations take it
 - `GET /api/v1/map/locations` - Get geographic locations for map
 - `GET /api/v1/search?q=...` - Search persons
 - `POST /api/v1/gedcom/import` - Import GEDCOM file

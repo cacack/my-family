@@ -150,3 +150,86 @@ func TestBranchResearchArchive_EmptyBranch(t *testing.T) {
 		t.Errorf("empty branch archive = %+v", archive)
 	}
 }
+
+// TestBranchResearchArchive_KeepsSubjectAcrossBranchPersonMerge pins the
+// archive's deliberate divergence from the live overlay after a person merge
+// on the branch (#834): the overlay re-points a GPS artifact's subject to the
+// survivor without an event on the artifact's stream, but the archive keeps
+// the subject the artifact was recorded about. A closed branch's person merge
+// is part of the hypothesis it did not establish, so the archive — and a
+// promotion from it — must not assert that identity on main.
+func TestBranchResearchArchive_KeepsSubjectAcrossBranchPersonMerge(t *testing.T) {
+	ctx := context.Background()
+	f := newArchiveFixture()
+	h := f.handler
+
+	survivor := mustOK(h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Survivor", Surname: "Kept"}))
+	merged := mustOK(h.CreatePerson(ctx, command.CreatePersonInput{GivenName: "MergedAway", Surname: "Duplicate"}))
+
+	branch := mustOK(h.CreateBranch(ctx, "same-person", "Survivor and MergedAway are one person"))
+	onBranch := h.WithBranch(branch)
+
+	branchOnly := mustOK(onBranch.CreatePerson(ctx, command.CreatePersonInput{GivenName: "BranchOnly", Surname: "Duplicate"}))
+	searchDate := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	mainSubjectLog := mustOK(onBranch.CreateResearchLog(ctx, command.CreateResearchLogInput{
+		SubjectID: merged.ID, SubjectType: "person", Repository: "Parish", SearchDescription: "Baptisms",
+		Outcome: string(domain.ResearchOutcomeNotFound), SearchDate: searchDate,
+	}))
+	branchSubjectLog := mustOK(onBranch.CreateResearchLog(ctx, command.CreateResearchLogInput{
+		SubjectID: branchOnly.ID, SubjectType: "person", Repository: "Census", SearchDescription: "1850",
+		Outcome: string(domain.ResearchOutcomeNotFound), SearchDate: searchDate,
+	}))
+
+	s := mustOK(onBranch.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: merged.ID, SurvivorVersion: survivor.Version, MergedVersion: merged.Version,
+	}))
+	mustOK(onBranch.MergePersons(ctx, command.MergePersonsInput{
+		SurvivorID: survivor.ID, MergedID: branchOnly.ID, SurvivorVersion: s.Version, MergedVersion: branchOnly.Version,
+	}))
+
+	// The live overlay follows the merges.
+	scope := domain.BranchID(branch.ID)
+	for _, id := range []uuid.UUID{mainSubjectLog.ID, branchSubjectLog.ID} {
+		live := mustOK(f.reads.GetResearchLog(ctx, scope, id))
+		if live == nil || live.SubjectID != survivor.ID {
+			t.Fatalf("overlay research log %s = %+v, want subject re-pointed to the survivor", id, live)
+		}
+	}
+
+	if err := h.CloseBranch(ctx, branch.ID, domain.BranchOutcomeDisproved, "different parents"); err != nil {
+		t.Fatalf("CloseBranch: %v", err)
+	}
+
+	archive, err := f.service.BranchResearchArchive(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("BranchResearchArchive: %v", err)
+	}
+	subjects := map[uuid.UUID]query.ArchivedResearchLog{}
+	for _, entry := range archive.ResearchLogs {
+		subjects[entry.ID] = entry
+	}
+	if got := subjects[mainSubjectLog.ID]; got.SubjectID != merged.ID || got.SubjectName != "MergedAway Duplicate" {
+		t.Errorf("archived log about a mainline person = subject %s %q, want the recorded subject %s", got.SubjectID, got.SubjectName, merged.ID)
+	}
+	if got := subjects[branchSubjectLog.ID]; got.SubjectID != branchOnly.ID || got.SubjectName != "BranchOnly Duplicate" {
+		t.Errorf("archived log about a branch-only person = subject %s %q, want the recorded subject %s", got.SubjectID, got.SubjectName, branchOnly.ID)
+	}
+
+	// Promotion keeps the recorded subject: the log about the mainline person
+	// lands on them (main never merged them away), the one about the
+	// branch-only person has no subject on main.
+	result, err := h.PromoteBranchResearchLogs(ctx, branch.ID, nil)
+	if err != nil {
+		t.Fatalf("PromoteBranchResearchLogs: %v", err)
+	}
+	if len(result.Promoted) != 1 || result.Promoted[0] != mainSubjectLog.ID {
+		t.Errorf("promoted = %v, want only %s", result.Promoted, mainSubjectLog.ID)
+	}
+	if len(result.Skipped) != 1 || result.Skipped[0].ID != branchSubjectLog.ID || result.Skipped[0].Reason != command.PromoteSkipSubjectNotOnMain {
+		t.Errorf("skipped = %+v, want %s as %s", result.Skipped, branchSubjectLog.ID, command.PromoteSkipSubjectNotOnMain)
+	}
+	promoted := mustOK(f.reads.GetResearchLog(ctx, domain.MainBranchID, mainSubjectLog.ID))
+	if promoted == nil || promoted.SubjectID != merged.ID {
+		t.Errorf("promoted log on main = %+v, want subject %s", promoted, merged.ID)
+	}
+}

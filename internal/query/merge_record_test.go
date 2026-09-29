@@ -288,6 +288,52 @@ func TestHistory_LifecycleWithoutRegistry(t *testing.T) {
 	assert.Equal(t, "", page.Entries[1].EntityName)
 }
 
+// A close (#836) shows in the global history with its outcome and reason; a
+// delete written before #836 carries no changes.
+func TestHistory_BranchCloseCarriesOutcomeAndReason(t *testing.T) {
+	f := newBranchTestFixture(t)
+	closed := f.forkBranch(t, "Byron theory")
+	legacy := f.forkBranch(t, "Clairmont line")
+	closeEvt := domain.NewBranchClosed(closed.ID, domain.BranchOutcomeDisproved, "The will names other heirs")
+	closeEvt.Timestamp = time.Now().UTC().Add(time.Hour)
+	reasonless := domain.NewBranchClosed(legacy.ID, domain.BranchOutcomeDisproved, "")
+	reasonless.Timestamp = closeEvt.Timestamp.Add(time.Minute)
+	require.NoError(t, f.eventStore.Append(f.ctx, closed.ID, "branch", []domain.Event{domain.NewBranchCreated(closed), closeEvt}, anyVersion,
+		repository.AppendScope{BranchID: domain.BranchID(closed.ID)}))
+	require.NoError(t, f.eventStore.Append(f.ctx, legacy.ID, "branch", []domain.Event{domain.NewBranchCreated(legacy), domain.NewBranchDeleted(legacy.ID), reasonless}, anyVersion,
+		repository.AppendScope{BranchID: domain.BranchID(legacy.ID)}))
+
+	history := f.service.historyService
+	history.UseBranchStore(f.branchStore)
+	page, err := history.GetGlobalHistory(f.ctx, GetGlobalHistoryInput{EventTypes: []string{"BranchDeleted"}, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, page.Entries, 3)
+	byName := map[string][]ChangeEntry{}
+	for _, e := range page.Entries {
+		assert.Equal(t, actionDeleted, e.Action)
+		byName[e.EntityName] = append(byName[e.EntityName], e)
+	}
+	require.Len(t, byName["Byron theory"], 1)
+	changes := byName["Byron theory"][0].Changes
+	assert.Equal(t, string(domain.BranchOutcomeDisproved), changes["outcome"].NewValue)
+	assert.Equal(t, "The will names other heirs", changes["close_reason"].NewValue)
+
+	require.Len(t, byName["Clairmont line"], 2)
+	var sawLegacy, sawReasonless bool
+	for _, e := range byName["Clairmont line"] {
+		if e.Changes == nil {
+			sawLegacy = true
+			continue
+		}
+		sawReasonless = true
+		assert.Equal(t, string(domain.BranchOutcomeDisproved), e.Changes["outcome"].NewValue)
+		_, hasReason := e.Changes["close_reason"]
+		assert.False(t, hasReason, "no reason given, no reason change")
+	}
+	assert.True(t, sawLegacy, "a pre-#836 delete carries no changes")
+	assert.True(t, sawReasonless)
+}
+
 func TestIsReplayedCopy_MetadataDecides(t *testing.T) {
 	branchID := uuid.New()
 	original := domain.NewPersonUpdated(uuid.New(), map[string]any{"surname": "Byron"})

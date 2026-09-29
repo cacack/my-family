@@ -388,12 +388,17 @@ name still resolves. A drift test in `web/src/lib/api/client.test.ts` parses `op
 fails in **both** directions, so the allowlist cannot silently fall behind the spec.
 
 Branch scoping is no longer confined to the seven-type slice, so "everything else is main-only" is
-not the rule. The surfaces that *are* still mainline-only while a branch is active render
-`MainlineNotice.svelte`, so the UI never presents mainline data as branch data. Within browse and
-map that is now exactly one: brick walls (not event-sourced, so branch-scoping them means first
-deciding whether they become event-sourced —
+not the rule. The pages that *are* still mainline-only while a branch is active render
+`MainlineNotice.svelte` or withdraw their mainline-only controls (the component's header lists
+each one). With #824, #825 and #829 delivered, no page shows mainline-only data unlabelled on a
+branch. One field still can: the brick-wall flag on a person page is stored on the person's row,
+which a branch copies the first time it writes that person, so for a person the branch has edited
+it shows the flag as it stood then rather than a later mainline change. Within browse and
+map the only mainline-only surface is brick walls (not event-sourced, so branch-scoping them means
+first deciding whether they become event-sourced —
 [ADR-005, "Entities that stay main-only"](./adr/005-research-branch-data-model.md#entities-that-stay-main-only),
-[#761](https://github.com/cacack/my-family/issues/761)). The surname index and per-surname list,
+[#761](https://github.com/cacack/my-family/issues/761); the decision is
+[#802](https://github.com/cacack/my-family/issues/802)). The surname index and per-surname list,
 the place index and per-place list, the cemetery index and per-cemetery person list, and the map
 all follow the active branch, and so do the source list and source detail pages (#758), the
 person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). Since #829
@@ -450,7 +455,12 @@ staleness (see ADR-005, "Implementation Note — person merge on a branch").
 Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
 delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI
 ([#95](https://github.com/cacack/my-family/issues/95)) drives it from `/branches/{id}` — resolve
-each conflict, or leave a whole entity behind as a `main` resolution. A merge interrupted mid-replay
+each conflict (branch, mainline and fork-point values side by side, [#828](https://github.com/cacack/my-family/issues/828)),
+or leave a whole entity behind as a `main` resolution. The review pre-checks the references a merge
+would break (`POST /branches/{id}/merge/precheck`, [#831](https://github.com/cacack/my-family/issues/831)),
+warns about undocumented facts and the findings a branch introduces (#838), and can take a
+pre-merge snapshot (#833); the merged branch keeps its merge record, with every decision, and
+merged changes carry `merged_from` in the history ([#832](https://github.com/cacack/my-family/issues/832)). A merge interrupted mid-replay
 is finished with `POST /branches/{id}/merge/resume` ([#685](https://github.com/cacack/my-family/issues/685);
 surfaced in the UI by [#830](https://github.com/cacack/my-family/issues/830): `GET /branches`,
 `GET /branches/{id}` and the comparison report `merge_state: incomplete` with the named pending

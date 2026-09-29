@@ -294,8 +294,10 @@
 		<div>
 			<h1>Research Branches</h1>
 			<p class="description">
-				Explore a line of research in isolation, then compare it against the mainline. Branch
-				scoping covers people, families and pedigrees.
+				Explore a line of research in isolation, then compare it against the mainline. A branch
+				covers people, families, sources, citations, notes, media, associations and your evidence
+				and research, and search, browse, the map, charts and reports follow it. Brick walls,
+				repositories, quality checks and exports stay on the mainline, and those pages say so.
 			</p>
 			<p class="description">
 				A branch is a live view over the mainline, not a frozen copy: records you haven't edited

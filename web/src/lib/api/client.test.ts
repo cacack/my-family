@@ -715,7 +715,7 @@ describe('isBranchMergeRefusal', () => {
 
 /**
  * The allowlist in client.ts is hand-maintained; `internal/api/openapi.yaml` is
- * the source of truth. #676 will add `branchScope` to more operations, and
+ * the source of truth. When `branchScope` is added to another operation,
  * without this test that addition is invisible here — the UI would keep reading
  * the mainline for an operation its author believes is scoped.
  *

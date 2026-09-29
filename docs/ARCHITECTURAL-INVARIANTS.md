@@ -92,7 +92,8 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > `web/src/lib/api/client.test.ts`. Still main-only, deliberately: brick walls, which are not
 > event-sourced and so cannot be branch-scoped until they get the event-sourcing decision
 > [#624](https://github.com/cacack/my-family/issues/624) made for snapshots
-> ([#761](https://github.com/cacack/my-family/issues/761)).
+> ([#761](https://github.com/cacack/my-family/issues/761); the decision is
+> [#802](https://github.com/cacack/my-family/issues/802)).
 >
 > **Implementation status (#676 sub-issue B, [#757](https://github.com/cacack/my-family/issues/757)):**
 > BR-003 now also covers the person/family facts — LifeEvent, Attribute and Association — on all

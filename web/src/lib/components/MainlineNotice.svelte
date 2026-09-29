@@ -3,30 +3,23 @@
 	 * Inline notice for surfaces that are NOT branch-scoped, shown only while a
 	 * research branch is active.
 	 *
-	 * The `?branch=` parameter is declared on the #669 vertical slice — persons,
-	 * person names, families, family children and pedigree —
-	 * on the browse and map aggregates that read that slice's overlay (#676
-	 * sub-issue A, #756), on the person/family facts of sub-issue B (#757):
-	 * the cemetery index and the association endpoints, on the evidence of
-	 * sub-issue C (#758): sources, citations and notes, on the media of
-	 * sub-issue D (#759): metadata, person media lists, content and thumbnails
-	 * (the file bytes themselves are shared with the mainline), and on the GPS
-	 * artifacts of sub-issue E (#760): evidence analyses, evidence conflicts,
-	 * research logs and proof summaries, and on search, the families list, the
-	 * group sheet, the Ahnentafel, descendancy and the relationship calculator
-	 * (#829). The remaining surfaces — aggregates
-	 * computed over the mainline, history, and the entities that stay main-only
-	 * by decision (ADR-005) — still answer from the mainline. Rendering one of
-	 * them unlabelled beneath the branch banner would be the UI quietly lying
-	 * about what the user is looking at.
+	 * `?branch=` covers the genealogy data and the research on it (ADR-005):
+	 * persons, names, families and their children, pedigree, the browse and map
+	 * aggregates (#756), the cemetery index and associations (#757), sources,
+	 * citations and notes (#758), media (#759), the GPS artifacts (#760), search,
+	 * the families list, the group sheet, the Ahnentafel, descendancy and the
+	 * relationship calculator (#829), person and family history (#824),
+	 * snapshots (#839) and person merges (#834). `BRANCH_SCOPED_OPERATIONS` in
+	 * `$lib/api/client.ts` is the exact list. The remaining surfaces — checks and
+	 * suggestions computed over the mainline, the global history, brick walls,
+	 * and the entities that stay main-only by decision (ADR-005) — still answer
+	 * from the mainline. Rendering one of them unlabelled beneath the branch
+	 * banner would be the UI quietly lying about what the user is looking at.
 	 *
-	 * ## Where it is placed, and where it deliberately is not
+	 * ## Where it is placed
 	 *
-	 * Roughly twenty surfaces read mainline-only data while a branch is active.
-	 * Labelling all of them would be noise, so this is a chosen subset: the
-	 * surfaces whose content is most easily mistaken for branch content.
-	 *
-	 * Placed:
+	 * Every page that reads mainline-only data while a branch is active renders
+	 * this notice or withdraws the mainline-only controls:
 	 * - `/` (dashboard) — the research suggestions (discovery feed) come from
 	 *   the mainline while the people and family counts and the recent people
 	 *   and families follow the branch; the notice says which is which
@@ -36,38 +29,37 @@
 	 *   follows the branch (#834): it shows the two persons as the branch sees
 	 *   them and merges them on the branch only
 	 * - `/history` — the global change feed
-	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
+	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761; whether
+	 *   they become event-sourced is #802)
 	 * - `/repositories` (list and detail, including its edit form) —
 	 *   repositories are main-only by decision (ADR-005), so creating, editing
 	 *   or deleting one writes the mainline and every branch sees it
 	 * - `/import`, export section — JSON, CSV and GEDCOM exports cover the
 	 *   mainline
 	 *
-	 * GEDCOM import is not labelled but withdrawn: it always writes the mainline,
+	 * Withdrawn rather than labelled: GEDCOM import always writes the mainline,
 	 * so `/import` and the onboarding wizard's import step replace their upload
-	 * controls with `BranchImportBlocked` while a branch is active, and the API refuses an
-	 * import that carries `?branch=`. The onboarding wizard itself is suppressed
-	 * on a branch, so an empty branch view never offers to "start" a tree.
+	 * controls with `BranchImportBlocked` while a branch is active, and the API
+	 * refuses an import that carries `?branch=`. The onboarding wizard itself is
+	 * suppressed on a branch, so an empty branch view never offers to "start" a
+	 * tree. The person page withdraws its brick-wall controls with a note, and
+	 * the person and family pages withdraw their Restore tab and rollback
+	 * dialog, since rollback is mainline-only (#824).
 	 *
-	 * Deliberately not placed, because these surfaces now follow the branch:
-	 * `/browse/surnames` (index and per-surname list), `/browse/places` (index
-	 * and per-place list), `/browse/cemeteries` (index and per-cemetery list,
-	 * since #757), `/map`, `/sources` (list and detail, since #758) and
-	 * `/evidence` with its research-log and proof-summary pages (since #760), and
-	 * `/snapshots` with `/snapshots/compare` (since #839: a snapshot marks a
-	 * position in one branch's view, and its comparison reads that view). The
-	 * media gallery on person detail pages follows the branch too (since #759),
-	 * and so does the evidence panel (since #760). Since #829 so do `/search`
+	 * Not placed, because these surfaces follow the branch: `/browse/surnames`,
+	 * `/browse/places` and `/browse/cemeteries` (indexes and per-entry lists),
+	 * `/map`, `/sources`, `/evidence` with its analysis, conflict, research-log
+	 * and proof-summary pages, `/snapshots` with `/snapshots/compare`, `/search`
 	 * and every other search surface (the header SearchBox and PersonSelector),
-	 * `/families` (the list), `/analytics`, the family group sheet,
-	 * `/ahnentafel/{id}`, `/descendancy/{id}` and `/relationship`.
+	 * `/families`, `/analytics`, the family group sheet, `/pedigree/{id}`,
+	 * `/ahnentafel/{id}`, `/descendancy/{id}`, `/relationship`, the person
+	 * merge page, and the media gallery, evidence panel and history panels on
+	 * person and family pages.
 	 *
-	 * Known gaps still open: none among the per-person and per-family reads.
-	 *
-	 * The history panels on person and family detail pages follow the branch
-	 * (#824), labelling each entry as the branch's own or inherited from the
-	 * mainline. Restore points and rollback are mainline-only (ADR-005), so those
-	 * pages withdraw them on a branch rather than labelling them.
+	 * Known gap: the brick-wall flag shown on a person page is part of the
+	 * person's row, which a branch copies the first time it writes that person.
+	 * For a person the branch has edited it therefore shows the flag as it stood
+	 * then, not a later mainline change (#802).
 	 */
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 
@@ -90,7 +82,7 @@
 	let {
 		surface = 'This page',
 		message,
-		detail = 'Branch scoping currently covers people, families, pedigrees, descendancy, relationships, search, sources, citations, notes, media and the browse and map views.'
+		detail = 'A branch covers people, families, sources, citations, notes, media, associations, evidence and research logs, snapshots, search, charts and reports, and the browse and map views.'
 	}: Props = $props();
 </script>
 

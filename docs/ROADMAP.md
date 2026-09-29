@@ -32,9 +32,37 @@ Features and capabilities are organized into phases to focus effort. **Phase 1 i
 - **Full audit trail** - Who changed what, when, and why `Phase 1`
 - **Tags/snapshots** - Mark milestones ("Pre-DNA results", "After courthouse trip") `Phase 1`
 - **Rollback capability** - Mistakes are recoverable `Phase 1`
-- **Research branches** - Explore hypotheses without polluting main tree `Phase 2`
-- **Merge with review** - Bring proven research into main tree with diff view `Phase 2`
+- **Research branches** - Explore hypotheses without polluting main tree `Phase 1` (delivered in v0.12)
+- **Merge with review** - Bring proven research into main tree with diff view `Phase 1` (delivered in v0.12)
 - **Collaborative forks** - Others can propose changes via pull request workflow `Phase 3`
+
+Research branches and merge with review were planned as Phase 2 and brought forward into Phase 1:
+they are the flagship differentiator, and [ADR-005](./adr/005-research-branch-data-model.md) settles
+their data model as Phase 1 work.
+
+#### What v0.12 (Git Workflow, [#54](https://github.com/cacack/my-family/issues/54)) shipped
+
+- **Research branches** as live overlays over the mainline, covering people, families, partner and
+  child links, sources, citations, notes, media, associations, life events and attributes, and the
+  GPS artifacts (evidence analyses, conflicts, research logs, proof summaries). Search, browse, the
+  map, the charts and reports, history panels, snapshots and person merges follow the active branch;
+  mainline-only surfaces are labelled, and GEDCOM import and rollback are withdrawn on a branch.
+- **A research record per branch**: the question it tests, its subjects, linked proof summaries
+  and an outcome; closing a branch without merging records why and keeps its negative research
+  reachable, with its research logs promotable to the mainline.
+- **Merge with review**: a comparison covering every record type a branch can write, conflicts
+  with branch, mainline and fork-point values side by side, per-entity and bulk decisions, merge
+  blockers pre-checked with a suggested fix, evidence-coverage and branch-health warnings, an
+  optional pre-merge snapshot, a persisted merge record, and a resumable merge that the UI can
+  finish after an interruption.
+- **Snapshots** on the mainline or a branch, compared with each other or with the current state,
+  and a change history that covers every event type.
+- **Persistence**: `serve` stores everything in SQLite or PostgreSQL.
+
+Still open after v0.12: partial merge ([#684](https://github.com/cacack/my-family/issues/684)),
+reverting a merge ([#842](https://github.com/cacack/my-family/issues/842)), comparing two branches
+([#841](https://github.com/cacack/my-family/issues/841)), and whether brick walls become
+event-sourced so they can follow a branch ([#802](https://github.com/cacack/my-family/issues/802)).
 
 ### Bringing History to Life
 

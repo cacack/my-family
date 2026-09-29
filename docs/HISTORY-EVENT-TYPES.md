@@ -47,7 +47,7 @@ mapped or not exercised by the every-type compare fixture
 | `EvidenceConflictDetected` / `EvidenceConflictResolved` | `evidence_conflict` | created / updated | "Fact: description" | conflict page |
 | `ResearchLogCreated` / `ResearchLogUpdated` / `ResearchLogDeleted` | `research_log` | created / updated / deleted | "search description (repository)" | research log page |
 | `ProofSummaryCreated` / `ProofSummaryUpdated` / `ProofSummaryDeleted` | `proof_summary` | created / updated / deleted | "Fact: conclusion" | proof summary page |
-| `BranchCreated` / `BranchMerged` / `BranchDeleted` | `branch` | created / merged / deleted (archived) | branch name (registry, else the `BranchCreated` payload); `changes.merge_note` on a merge, `changes.description` on a creation | branch page |
+| `BranchCreated` / `BranchMerged` / `BranchDeleted` | `branch` | created / merged / deleted (closed and archived) | branch name (registry, else the `BranchCreated` payload); `changes.merge_note` on a merge, `changes.description` on a creation, `changes.outcome` and `changes.close_reason` on a close (#836; a `BranchDeleted` written before #836 has none) | branch page |
 
 Updates (and merges) carry field-level `changes` with **both** `old_value` and `new_value`. The
 old value is derived from the entity's earlier events as the scope sees them (the mainline, or a

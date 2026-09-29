@@ -8,44 +8,46 @@
  * `Record` over the generated enum makes a new server-side type a type error
  * here until it has a label.
  */
-import type { components } from '$lib/api/types.generated';
+import type { components } from "$lib/api/types.generated";
 
-type Entry = components['schemas']['ChangeEntry'];
-export type ChangeEntityType = Entry['entity_type'];
+type Entry = components["schemas"]["ChangeEntry"];
+export type ChangeEntityType = Entry["entity_type"];
 
 /** Human-readable label per entity type, in the order filters offer them. */
 export const ENTITY_TYPE_LABELS: Record<ChangeEntityType, string> = {
-	person: 'Person',
-	family: 'Family',
-	source: 'Source',
-	citation: 'Citation',
-	life_event: 'Life event',
-	attribute: 'Attribute',
-	association: 'Association',
-	note: 'Note',
-	media: 'Media',
-	repository: 'Repository',
-	submitter: 'Submitter',
-	lds_ordinance: 'LDS ordinance',
-	evidence_analysis: 'Evidence analysis',
-	evidence_conflict: 'Evidence conflict',
-	research_log: 'Research log',
-	proof_summary: 'Proof summary',
-	branch: 'Research branch'
+  person: "Person",
+  family: "Family",
+  source: "Source",
+  citation: "Citation",
+  life_event: "Life event",
+  attribute: "Attribute",
+  association: "Association",
+  note: "Note",
+  media: "Media",
+  repository: "Repository",
+  submitter: "Submitter",
+  lds_ordinance: "LDS ordinance",
+  evidence_analysis: "Evidence analysis",
+  evidence_conflict: "Evidence conflict",
+  research_log: "Research log",
+  proof_summary: "Proof summary",
+  branch: "Research branch",
 };
 
 /** Every entity type, in label order. */
-export const CHANGE_ENTITY_TYPES = Object.keys(ENTITY_TYPE_LABELS) as ChangeEntityType[];
+export const CHANGE_ENTITY_TYPES = Object.keys(
+  ENTITY_TYPE_LABELS,
+) as ChangeEntityType[];
 
 /**
  * The label for an entity type. Also accepts the free-form strings merge
  * conflicts carry, falling back to a readable form of the raw value.
  */
 export function entityTypeLabel(entityType: string): string {
-	const known = ENTITY_TYPE_LABELS[entityType as ChangeEntityType];
-	if (known) return known;
-	const words = entityType.replace(/_/g, ' ').trim();
-	return words ? words.charAt(0).toUpperCase() + words.slice(1) : 'Entity';
+  const known = ENTITY_TYPE_LABELS[entityType as ChangeEntityType];
+  if (known) return known;
+  const words = entityType.replace(/_/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "Entity";
 }
 
 /**
@@ -53,41 +55,41 @@ export function entityTypeLabel(entityType: string): string {
  * type, never a bare "Unnamed entity" (#828).
  */
 export function unnamedEntityLabel(entityType: string): string {
-	const label = entityTypeLabel(entityType);
-	// Keep an acronym ("LDS ordinance") as it is; lower-case an ordinary word.
-	const acronym = /^[A-Z]{2,}\b/.test(label);
-	return `Unnamed ${acronym ? label : label.charAt(0).toLowerCase() + label.slice(1)}`;
+  const label = entityTypeLabel(entityType);
+  // Keep an acronym ("LDS ordinance") as it is; lower-case an ordinary word.
+  const acronym = /^[A-Z]{2,}\b/.test(label);
+  return `Unnamed ${acronym ? label : label.charAt(0).toLowerCase() + label.slice(1)}`;
 }
 
 /** The page of an entity that has one of its own. */
 function pageOf(entityType: string, id: string): string | null {
-	switch (entityType) {
-		case 'person':
-			return `/persons/${id}`;
-		case 'family':
-			return `/families/${id}`;
-		case 'source':
-			return `/sources/${id}`;
-		case 'repository':
-			return `/repositories/${id}`;
-		case 'evidence_analysis':
-			return `/evidence/analyses/${id}`;
-		case 'evidence_conflict':
-			return `/evidence/conflicts/${id}`;
-		case 'research_log':
-			return `/evidence/research-logs/${id}`;
-		case 'proof_summary':
-			return `/evidence/proof-summaries/${id}`;
-		case 'branch':
-			return `/branches/${id}`;
-		default:
-			return null;
-	}
+  switch (entityType) {
+    case "person":
+      return `/persons/${id}`;
+    case "family":
+      return `/families/${id}`;
+    case "source":
+      return `/sources/${id}`;
+    case "repository":
+      return `/repositories/${id}`;
+    case "evidence_analysis":
+      return `/evidence/analyses/${id}`;
+    case "evidence_conflict":
+      return `/evidence/conflicts/${id}`;
+    case "research_log":
+      return `/evidence/research-logs/${id}`;
+    case "proof_summary":
+      return `/evidence/proof-summaries/${id}`;
+    case "branch":
+      return `/branches/${id}`;
+    default:
+      return null;
+  }
 }
 
-type LinkableEntry = Pick<Entry, 'entity_type' | 'entity_id' | 'action'> & {
-	parent_entity_type?: string;
-	parent_entity_id?: string;
+type LinkableEntry = Pick<Entry, "entity_type" | "entity_id" | "action"> & {
+  parent_entity_type?: string;
+  parent_entity_id?: string;
 };
 
 /**
@@ -97,35 +99,40 @@ type LinkableEntry = Pick<Entry, 'entity_type' | 'entity_id' | 'action'> & {
  * does. Null when there is nowhere to go (a note, a submitter).
  */
 export function changeEntryLink(entry: LinkableEntry): string | null {
-	// A deleted branch is archived, not gone: its page is its record.
-	if (entry.action !== 'deleted' || entry.entity_type === 'branch') {
-		const own = pageOf(entry.entity_type, entry.entity_id);
-		if (own) return own;
-	}
-	if (entry.parent_entity_type && entry.parent_entity_id) {
-		return pageOf(entry.parent_entity_type, entry.parent_entity_id);
-	}
-	return null;
+  // A deleted branch is archived, not gone: its page is its record.
+  if (entry.action !== "deleted" || entry.entity_type === "branch") {
+    const own = pageOf(entry.entity_type, entry.entity_id);
+    if (own) return own;
+  }
+  if (entry.parent_entity_type && entry.parent_entity_id) {
+    return pageOf(entry.parent_entity_type, entry.parent_entity_id);
+  }
+  return null;
 }
 
 /**
  * The action as the entry's reader would say it. A deleted research branch is
- * archived (its events and record are kept); everything else reads as the
- * server's action.
+ * closed when the event recorded a close outcome (#836), else archived (its
+ * events and record are kept); everything else reads as the server's action.
  */
-export function changeActionLabel(entry: Pick<Entry, 'entity_type' | 'action'>): string {
-	if (entry.entity_type === 'branch' && entry.action === 'deleted') return 'archived';
-	return entry.action;
+export function changeActionLabel(
+  entry: Pick<Entry, "entity_type" | "action"> & { changes?: Entry["changes"] },
+): string {
+  if (entry.entity_type === "branch" && entry.action === "deleted") {
+    // A close (#836) records its outcome; a delete from before it does not.
+    return entry.changes?.outcome ? "closed" : "archived";
+  }
+  return entry.action;
 }
 
-type MergeOrigin = components['schemas']['MergeOrigin'];
+type MergeOrigin = components["schemas"]["MergeOrigin"];
 
 /**
  * The provenance chip of a change a merge brought onto the mainline (#832):
  * "via merge of <branch>", then the merge note when there is one.
  */
 export function mergedFromLabel(origin: MergeOrigin): string {
-	const via = `via merge of ${origin.branch_name || 'a research branch'}`;
-	const note = origin.note?.trim();
-	return note ? `${via}: ${note}` : via;
+  const via = `via merge of ${origin.branch_name || "a research branch"}`;
+  const note = origin.note?.trim();
+  return note ? `${via}: ${note}` : via;
 }
