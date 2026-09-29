@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -38,12 +39,18 @@ func NewHistoryService(eventStore repository.EventStore, readStore repository.Re
 type ChangeEntry struct {
 	ID         uuid.UUID              `json:"id"`
 	Timestamp  time.Time              `json:"timestamp"`
-	EntityType string                 `json:"entity_type"` // "person", "family", "source", "citation"
+	EntityType string                 `json:"entity_type"` // see historyEventCatalog for the vocabulary
 	EntityID   uuid.UUID              `json:"entity_id"`
-	EntityName string                 `json:"entity_name"` // e.g., "John Smith"
-	Action     string                 `json:"action"`      // "created", "updated", "deleted"
+	EntityName string                 `json:"entity_name"` // e.g., "John Smith", "Birth, 1 JAN 1850"
+	Action     string                 `json:"action"`      // "created", "updated", "deleted", "merged"
 	Changes    map[string]FieldChange `json:"changes,omitempty"`
 	UserID     *string                `json:"user_id,omitempty"`
+	// ParentEntityType and ParentEntityID name the entity whose page presents
+	// a sub-record that has no page of its own: a life event's or LDS
+	// ordinance's person or family, an attribute's or association's person, a
+	// citation's source, a media item's owner. Empty otherwise.
+	ParentEntityType string     `json:"parent_entity_type,omitempty"`
+	ParentEntityID   *uuid.UUID `json:"parent_entity_id,omitempty"`
 	// Origin is set only by branch-scoped entity history (GetEntityHistoryOn
 	// with a non-main branch): ChangeOriginBranch for the branch's own events,
 	// ChangeOriginMain for the mainline events its view inherits. Empty
@@ -236,8 +243,20 @@ func (s *HistoryService) GetGlobalHistory(ctx context.Context, input GetGlobalHi
 		input.Offset = 0
 	}
 
-	// Read events from event store
-	page, err := s.eventStore.ReadGlobalByTime(ctx, input.FromTime, input.ToTime, input.EventTypes, input.Limit, input.Offset)
+	// Every filter is applied in the store, before pagination, so the page
+	// and its total describe the same set (#739): the event types no
+	// change-log view shows are excluded there rather than skipped here, and
+	// only the mainline's own events are read — a research branch's edits are
+	// not part of the mainline's history until a merge replays them (ADR-005).
+	page, err := s.eventStore.ReadGlobalHistory(ctx, repository.GlobalHistoryQuery{
+		FromTime:          input.FromTime,
+		ToTime:            input.ToTime,
+		IncludeEventTypes: input.EventTypes,
+		ExcludeEventTypes: HistoryExcludedEventTypes(),
+		BranchID:          &domain.MainBranchID,
+		Limit:             input.Limit,
+		Offset:            input.Offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("reading global history: %w", err)
 	}
@@ -257,60 +276,67 @@ func (s *HistoryService) GetGlobalHistory(ctx context.Context, input GetGlobalHi
 	}, nil
 }
 
-// transformStoredEvents converts raw StoredEvents to user-friendly ChangeEntries.
+// transformStoredEvents converts raw StoredEvents to user-friendly ChangeEntries,
+// described as the mainline sees them.
 //
-// Entity names are resolved in two passes (#697): the first registers every
-// entity the entries will name, one batched read-model lookup per entity type
-// resolves them all, and the second builds the entries from that result — so
-// the read-model query count does not grow with the number of events.
+// Every event is classified by historyEventCatalog: a mapped event becomes one
+// entry, an excluded one (a snapshot marker, an import record, a branch
+// lifecycle event) none. Names, old values and parent links are resolved for
+// the whole batch at once by describeEvents, so the query count does not grow
+// with the number of events (#697).
 func (s *HistoryService) transformStoredEvents(ctx context.Context, events []repository.StoredEvent) ([]ChangeEntry, error) {
 	return s.transformStoredEventsOn(ctx, domain.MainBranchID, events)
 }
 
-// transformStoredEventsOn is transformStoredEvents with entity names resolved
-// through branchID's overlay (resolveEntityNamesOn): CompareBranch names the
-// branch's own changes as the branch sees them, so an entity the branch
-// created or renamed is labelled with its branch name rather than its id or
-// main's stale name.
+// transformStoredEventsOn is transformStoredEvents as branchID sees the data:
+// names resolve through the branch's overlay (resolveEntityNamesOn) and prior
+// values come from the branch's view of each stream (branchVisibleStreamEvents),
+// so an entity the branch created or renamed is labelled with its branch name
+// and an update shows what it replaced on the branch.
 func (s *HistoryService) transformStoredEventsOn(ctx context.Context, branchID domain.BranchID, events []repository.StoredEvent) ([]ChangeEntry, error) {
-	refs := newEntityRefs()
+	shown := make([]repository.StoredEvent, 0, len(events))
 	for i := range events {
-		entityType, _ := s.mapEventTypeToEntityAndAction(events[i].EventType)
-		refs.addEvent(entityType, events[i].StreamID, &events[i])
+		class, ok := classifyHistoryEvent(events[i].EventType)
+		if !ok {
+			// Unreachable for any type the store can decode:
+			// TestHistoryCatalog_CoversEveryEventType fails first. Dropped rather
+			// than reported as "unknown", which the ChangeEntry contract forbids.
+			slog.Warn("history: event type missing from the history catalog", "event_type", events[i].EventType)
+			continue
+		}
+		if class.Excluded() {
+			continue
+		}
+		shown = append(shown, events[i])
 	}
-	names, err := s.resolveEntityNamesOn(ctx, branchID, refs)
+	if len(shown) == 0 {
+		return []ChangeEntry{}, nil
+	}
+
+	desc, err := s.describeEvents(ctx, branchID, shown)
 	if err != nil {
 		return nil, err
 	}
 
-	entries := make([]ChangeEntry, 0, len(events))
-
-	for i := range events {
-		evt := &events[i]
-
-		// Map event type to entity type and action
-		entityType, action := s.mapEventTypeToEntityAndAction(evt.EventType)
-
-		// Skip events that don't map to valid OpenAPI entity types (e.g., GedcomImported)
-		if entityType == "skip" {
-			continue
-		}
+	entries := make([]ChangeEntry, 0, len(shown))
+	for i := range shown {
+		evt := &shown[i]
+		class, _ := classifyHistoryEvent(evt.EventType)
 
 		entry := ChangeEntry{
-			ID:        evt.ID,
-			Timestamp: evt.Timestamp,
-			EntityID:  evt.StreamID,
+			ID:         evt.ID,
+			Timestamp:  evt.Timestamp,
+			EntityType: class.EntityType,
+			EntityID:   evt.StreamID,
+			Action:     class.Action,
+			EntityName: desc.name(class.EntityType, evt.StreamID, evt),
 		}
-
-		entry.EntityType = entityType
-		entry.Action = action
-
-		// Extract changes for update events
-		if action == "updated" {
-			changes, err := s.extractChanges(*evt, names)
-			if err == nil && len(changes) > 0 {
-				entry.Changes = changes
-			}
+		if changes := desc.entryChanges(evt); len(changes) > 0 {
+			entry.Changes = changes
+		}
+		if parentType, parentID, ok := desc.parent(class.EntityType, evt.StreamID); ok {
+			entry.ParentEntityType = parentType
+			entry.ParentEntityID = &parentID
 		}
 
 		// Extract user ID from metadata if present
@@ -321,113 +347,30 @@ func (s *HistoryService) transformStoredEventsOn(ctx context.Context, branchID d
 			}
 		}
 
-		// Enrich with the entity name resolved above
-		entry.EntityName = names.name(entityType, evt.StreamID, evt)
-
 		entries = append(entries, entry)
 	}
 
 	return entries, nil
 }
 
-// mapEventTypeToEntityAndAction maps domain event types to entity types and actions.
-func (s *HistoryService) mapEventTypeToEntityAndAction(eventType string) (entityType, action string) {
-	switch eventType {
-	case "PersonCreated":
-		return "person", "created"
-	case "PersonUpdated":
-		return "person", "updated"
-	case "PersonDeleted":
-		return "person", "deleted"
-	case "FamilyCreated":
-		return "family", "created"
-	case "FamilyUpdated":
-		return "family", "updated"
-	case "FamilyDeleted":
-		return "family", "deleted"
-	case "ChildLinkedToFamily":
-		return "family", "updated"
-	case "ChildUnlinkedFromFamily":
-		return "family", "updated"
-	case "SourceCreated":
-		return "source", "created"
-	case "SourceUpdated":
-		return "source", "updated"
-	case "SourceDeleted":
-		return "source", "deleted"
-	case "CitationCreated":
-		return "citation", "created"
-	case "CitationUpdated":
-		return "citation", "updated"
-	case "CitationDeleted":
-		return "citation", "deleted"
-	case "GedcomImported":
-		return "skip", ""
-	case "SnapshotCreated", "SnapshotDeleted":
-		// Snapshot markers are event-sourced for the audit trail (issue #624) but
-		// are not genealogical changes: showing "a snapshot was taken" inside the
-		// diff BETWEEN two snapshots is noise. The audit record remains in the
-		// event log; only this change-log view skips it.
-		//
-		// KNOWN LIMITATION: skipping happens after the store paginates, so a
-		// skipped event still counts toward TotalCount and still consumes a slot
-		// in the page — global history under-fills and over-reports. That is
-		// pre-existing (GedcomImported does the same) but snapshot create/delete
-		// is a routine action where an import is not, so it is now easy to hit.
-		// The real fix is shared with the ~30 event types that have no case here
-		// and render as "unknown" in violation of the ChangeEntry enum; both want
-		// one authoritative event-type table used to filter AT the store. Tracked
-		// in issue #739 — do not fix piecemeal.
-		return "skip", ""
-	default:
-		return "unknown", "unknown"
-	}
-}
-
-// extractChanges extracts field-level changes from update events. names must
-// hold the entities evt references (entityRefs.addEvent registers them).
-func (s *HistoryService) extractChanges(evt repository.StoredEvent, names *entityNames) (map[string]FieldChange, error) {
-	// Decode the event to access its Changes field
-	domainEvent, err := evt.DecodeEvent()
-	if err != nil {
-		return nil, err
-	}
-
-	// Extract changes based on event type
-	switch e := domainEvent.(type) {
-	case domain.PersonUpdated:
-		return s.convertChangesMap(e.Changes), nil
-	case domain.FamilyUpdated:
-		return s.convertChangesMap(e.Changes), nil
-	case domain.SourceUpdated:
-		return s.convertChangesMap(e.Changes), nil
-	case domain.CitationUpdated:
-		return s.convertChangesMap(e.Changes), nil
-	case domain.ChildLinkedToFamily:
-		childName := names.personName(e.PersonID, nil)
+// entryChanges returns an entry's field-level changes: the stream-derived
+// before/after values, or for a child link/unlink the child it names.
+func (d *historyDescription) entryChanges(evt *repository.StoredEvent) map[string]FieldChange {
+	switch evt.EventType {
+	case "ChildLinkedToFamily", "ChildUnlinkedFromFamily":
+		var link struct {
+			PersonID uuid.UUID `json:"person_id"`
+		}
+		if err := json.Unmarshal(evt.Data, &link); err != nil {
+			return nil
+		}
+		verb := "linked"
+		if evt.EventType == "ChildUnlinkedFromFamily" {
+			verb = "unlinked"
+		}
 		return map[string]FieldChange{
-			"children": {NewValue: fmt.Sprintf("Child linked: %s", childName)},
-		}, nil
-	case domain.ChildUnlinkedFromFamily:
-		childName := names.personName(e.PersonID, nil)
-		return map[string]FieldChange{
-			"children": {NewValue: fmt.Sprintf("Child unlinked: %s", childName)},
-		}, nil
-	default:
-		return nil, nil
-	}
-}
-
-// convertChangesMap converts domain event changes to FieldChange map.
-func (s *HistoryService) convertChangesMap(changes map[string]any) map[string]FieldChange {
-	result := make(map[string]FieldChange)
-	for field, value := range changes {
-		// Handle different change representations
-		// For now, we assume the value is the new value
-		// A more sophisticated implementation would track old/new pairs
-		result[field] = FieldChange{
-			NewValue: value,
+			"children": {NewValue: fmt.Sprintf("Child %s: %s", verb, d.personLabel(link.PersonID))},
 		}
 	}
-	return result
+	return d.changes[evt.ID]
 }

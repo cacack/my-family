@@ -22,13 +22,10 @@ import (
 // twice that for a branch scope, see resolveEntityNamesOn), not by the number
 // of entries.
 
-// Entity-type vocabulary shared with ChangeEntry.EntityType.
-const (
-	entityTypePerson   = "person"
-	entityTypeFamily   = "family"
-	entityTypeSource   = "source"
-	entityTypeCitation = "citation"
-)
+// The entity-type vocabulary shared with ChangeEntry.EntityType lives in
+// history_catalog.go. Only the four types below have a read-model display
+// name; every other type is named from its folded event stream
+// (history_describe.go).
 
 // entityRefs collects, per entity type, the ids whose display names a batch of
 // entries needs.
@@ -295,11 +292,11 @@ func (n *entityNames) sourceName(sourceID uuid.UUID, evt *repository.StoredEvent
 	return sourceID.String()
 }
 
-// citationName returns "<source title> (<fact type>)" from the read model, else
+// citationName returns "<source title> (<fact>)" from the read model, else
 // the citation's id.
 func (n *entityNames) citationName(citationID uuid.UUID) string {
 	if citation := n.citations[citationID]; citation != nil {
-		return fmt.Sprintf("%s (%s)", citation.SourceTitle, citation.FactType)
+		return fmt.Sprintf("%s (%s)", citation.SourceTitle, factLabel(string(citation.FactType)))
 	}
 	return citationID.String()
 }

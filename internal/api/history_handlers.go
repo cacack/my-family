@@ -19,6 +19,12 @@ func convertQueryChangeEntryToGenerated(entry query.ChangeEntry) ChangeEntry {
 		Action:     ChangeEntryAction(entry.Action),
 		UserId:     entry.UserID,
 	}
+	if entry.ParentEntityType != "" && entry.ParentEntityID != nil {
+		parentType := ChangeEntryParentEntityType(entry.ParentEntityType)
+		parentID := *entry.ParentEntityID
+		resp.ParentEntityType = &parentType
+		resp.ParentEntityId = &parentID
+	}
 	if entry.Origin != "" {
 		origin := ChangeEntryOrigin(entry.Origin)
 		resp.Origin = &origin
@@ -38,18 +44,10 @@ func convertQueryChangeEntryToGenerated(entry query.ChangeEntry) ChangeEntry {
 	return resp
 }
 
-// mapEntityTypeToEventTypes maps an entity type to its corresponding event types.
+// mapEntityTypeToEventTypes maps an entity type to the event types whose
+// change entries report it, from the history's authoritative event-type table
+// (query.HistoryEventTypesForEntity), so the entity_type filter and the
+// entries it returns can never disagree.
 func mapEntityTypeToEventTypes(entityType string) []string {
-	switch entityType {
-	case "person":
-		return []string{"PersonCreated", "PersonUpdated", "PersonDeleted"}
-	case "family":
-		return []string{"FamilyCreated", "FamilyUpdated", "FamilyDeleted", "ChildLinkedToFamily", "ChildUnlinkedFromFamily"}
-	case "source":
-		return []string{"SourceCreated", "SourceUpdated", "SourceDeleted"}
-	case "citation":
-		return []string{"CitationCreated", "CitationUpdated", "CitationDeleted"}
-	default:
-		return nil
-	}
+	return query.HistoryEventTypesForEntity(entityType)
 }

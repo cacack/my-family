@@ -4,8 +4,8 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -251,50 +251,56 @@ func (s *EventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branc
 	}, nil
 }
 
-// ReadGlobalByTime returns paginated events filtered by time range and optional event types.
-func (s *EventStore) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
+// ReadGlobalHistory returns one page of the global history with every filter
+// applied before pagination (see repository.GlobalHistoryQuery), ordered by
+// timestamp then position like the SQL stores.
+func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Build a set of event types for fast lookup
-	typeFilter := make(map[string]bool)
-	for _, t := range eventTypes {
-		typeFilter[t] = true
+	include := make(map[string]bool, len(q.IncludeEventTypes))
+	for _, t := range q.IncludeEventTypes {
+		include[t] = true
 	}
-	filterByType := len(eventTypes) > 0
+	exclude := make(map[string]bool, len(q.ExcludeEventTypes))
+	for _, t := range q.ExcludeEventTypes {
+		exclude[t] = true
+	}
 
-	// Filter events by time and optionally by type
-	var filtered []repository.StoredEvent
-	for _, event := range s.events {
-		if event.Timestamp.Before(fromTime) || event.Timestamp.After(toTime) {
+	filtered := make([]repository.StoredEvent, 0, len(s.events))
+	for i := range s.events {
+		event := s.events[i]
+		if !q.FromTime.IsZero() && event.Timestamp.Before(q.FromTime) {
 			continue
 		}
-		if filterByType && !typeFilter[event.EventType] {
+		if !q.ToTime.IsZero() && event.Timestamp.After(q.ToTime) {
+			continue
+		}
+		if len(include) > 0 && !include[event.EventType] {
+			continue
+		}
+		if exclude[event.EventType] {
+			continue
+		}
+		if q.BranchID != nil && event.BranchID != *q.BranchID {
 			continue
 		}
 		filtered = append(filtered, event)
 	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		if !filtered[i].Timestamp.Equal(filtered[j].Timestamp) {
+			return filtered[i].Timestamp.Before(filtered[j].Timestamp)
+		}
+		return filtered[i].Position < filtered[j].Position
+	})
 
-	totalCount := len(filtered)
-
-	// Apply offset and limit
-	start := offset
-	if start > totalCount {
-		start = totalCount
-	}
-	end := start + limit
-	if end > totalCount {
-		end = totalCount
-	}
-
-	result := filtered[start:end]
-	if result == nil {
-		result = []repository.StoredEvent{}
-	}
+	total := len(filtered)
+	start := min(max(q.Offset, 0), total)
+	end := min(start+max(q.Limit, 0), total)
 
 	return &repository.HistoryPage{
-		Events:     result,
-		TotalCount: totalCount,
-		HasMore:    end < totalCount,
+		Events:     append([]repository.StoredEvent{}, filtered[start:end]...),
+		TotalCount: total,
+		HasMore:    end < total,
 	}, nil
 }
