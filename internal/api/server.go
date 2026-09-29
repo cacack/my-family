@@ -174,6 +174,8 @@ func NewServer(
 	// Branch queries are only meaningful with a registry to read; the handlers
 	// return 503 while this is nil.
 	if server.branchStore != nil {
+		// The history names branches in their lifecycle entries (#832).
+		historySvc.UseBranchStore(server.branchStore)
 		server.branchService = query.NewBranchService(server.branchStore, eventStore, historySvc)
 	}
 	server.validationService = validationSvc

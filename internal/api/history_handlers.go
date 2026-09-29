@@ -30,6 +30,20 @@ func convertQueryChangeEntryToGenerated(entry query.ChangeEntry) ChangeEntry {
 		resp.Origin = &origin
 	}
 
+	if origin := entry.MergedFrom; origin != nil {
+		mergedFrom := MergeOrigin{
+			BranchId:          origin.BranchID,
+			BranchName:        origin.BranchName,
+			MergedAt:          origin.MergedAt,
+			OriginalTimestamp: origin.OriginalTimestamp,
+		}
+		if origin.Note != "" {
+			note := origin.Note
+			mergedFrom.Note = &note
+		}
+		resp.MergedFrom = &mergedFrom
+	}
+
 	if len(entry.Changes) > 0 {
 		changes := make(map[string]FieldChange)
 		for field, change := range entry.Changes {

@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
 	CHANGE_ENTITY_TYPES,
+	changeActionLabel,
 	changeEntryLink,
 	entityTypeLabel,
+	mergedFromLabel,
 	unnamedEntityLabel
 } from './changeEntries';
 
@@ -18,7 +20,8 @@ describe('changeEntryLink', () => {
 		['evidence_analysis', `/evidence/analyses/${ID}`],
 		['evidence_conflict', `/evidence/conflicts/${ID}`],
 		['research_log', `/evidence/research-logs/${ID}`],
-		['proof_summary', `/evidence/proof-summaries/${ID}`]
+		['proof_summary', `/evidence/proof-summaries/${ID}`],
+		['branch', `/branches/${ID}`]
 	] as const)('links a %s to its own page', (entityType, href) => {
 		expect(
 			changeEntryLink({
@@ -67,7 +70,7 @@ describe('changeEntryLink', () => {
 
 describe('entityTypeLabel', () => {
 	it('labels every entity type', () => {
-		expect(CHANGE_ENTITY_TYPES).toHaveLength(16);
+		expect(CHANGE_ENTITY_TYPES).toHaveLength(17);
 		for (const type of CHANGE_ENTITY_TYPES) {
 			expect(entityTypeLabel(type)).not.toBe(type);
 		}
@@ -86,5 +89,31 @@ describe('unnamedEntityLabel', () => {
 		expect(unnamedEntityLabel('life_event')).toBe('Unnamed life event');
 		expect(unnamedEntityLabel('lds_ordinance')).toBe('Unnamed LDS ordinance');
 		expect(unnamedEntityLabel('')).toBe('Unnamed entity');
+	});
+});
+
+describe('branch lifecycle and merge provenance (#832)', () => {
+	it('links an archived branch to its page, and calls its deletion archiving', () => {
+		const archived = { entity_type: 'branch' as const, entity_id: ID, action: 'deleted' as const };
+		expect(changeEntryLink(archived)).toBe(`/branches/${ID}`);
+		expect(changeActionLabel(archived)).toBe('archived');
+		expect(changeActionLabel({ entity_type: 'branch', action: 'merged' })).toBe('merged');
+		expect(changeActionLabel({ entity_type: 'person', action: 'deleted' })).toBe('deleted');
+	});
+
+	it('reads a merge origin as "via merge of <branch>: <note>"', () => {
+		const origin = {
+			branch_id: ID,
+			branch_name: 'Byron theory',
+			merged_at: '2026-02-01T09:00:00Z',
+			original_timestamp: '2026-01-20T09:00:00Z'
+		};
+		expect(mergedFromLabel(origin)).toBe('via merge of Byron theory');
+		expect(mergedFromLabel({ ...origin, note: '  register  ' })).toBe(
+			'via merge of Byron theory: register'
+		);
+		expect(mergedFromLabel({ ...origin, branch_name: '' })).toBe(
+			'via merge of a research branch'
+		);
 	});
 });

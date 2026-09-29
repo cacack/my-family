@@ -92,6 +92,17 @@ type BranchComparisonResult struct {
 	// changes, classified per ADR-005 §Conflict definition. Empty means the
 	// branch merges cleanly.
 	Conflicts []MergeConflict `json:"conflicts"`
+
+	// ReplayedChangeCount is, for a merged branch, how many of main's events
+	// on the branch's entities are the merge's replay of the branch's own
+	// changes (#832). They are left out of MainChanges, OverlappingStreamIDs
+	// and Conflicts, which therefore describe the mainline's independent
+	// changes only. Zero for any other branch.
+	ReplayedChangeCount int `json:"replayed_change_count"`
+
+	// MergeRecord is the merged branch's record of its merge (#832): nil for
+	// a branch that was never merged.
+	MergeRecord *MergeRecord `json:"merge_record,omitempty"`
 }
 
 // CompareBranch returns a structured diff of a branch against main.
@@ -104,12 +115,31 @@ type BranchComparisonResult struct {
 // Merged and archived branches are still comparable. The event log is
 // append-only (ES-002), so a terminal branch retains everything it changed and
 // this call reports it as a historical diff. For a merged branch the main side
-// will normally include main's replayed copies of the branch's own changes,
-// which is exactly what the merge did.
+// would include main's replayed copies of the branch's own changes; they are
+// left out and counted instead (ReplayedChangeCount), and the merge's own
+// record is attached (MergeRecord), so the page shows what was decided rather
+// than a verdict recomputed against a main the merge itself changed (#832).
 func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (*BranchComparisonResult, error) {
 	diff, err := s.loadBranchDiff(ctx, branchID)
 	if err != nil {
 		return nil, err
+	}
+
+	var (
+		record   *MergeRecord
+		replayed int
+	)
+	if diff.branch.Status == domain.BranchStatusMerged {
+		diff.mainEvents, replayed = withoutReplayedCopies(diff.branch.ID, diff.branchEvents, diff.mainEvents)
+		markers, claimed, err := s.readMergeMarkers(ctx, diff.branch.ID)
+		if err != nil {
+			return nil, err
+		}
+		if claimed {
+			if record, err = s.buildMergeRecord(ctx, diff.branch, markers, diff.branchEvents); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Each side is named as it sees itself: the branch's changes through the
@@ -145,6 +175,8 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 		HasMore:              diff.branchTruncated || diff.mainTruncated || tailTruncated,
 		OverlappingStreamIDs: overlappingStreamIDs(diff.branchEvents, diff.mainEvents),
 		Conflicts:            conflicts,
+		ReplayedChangeCount:  replayed,
+		MergeRecord:          record,
 	}, nil
 }
 

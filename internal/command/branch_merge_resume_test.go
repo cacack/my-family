@@ -1303,3 +1303,37 @@ func TestResumeMerge_RationaleWithoutResolutionRefused(t *testing.T) {
 		t.Errorf("got %d BranchMergeResumed records, want none from a refused resume", got)
 	}
 }
+
+// A resume stamps the events it replays exactly as the merge stamped the ones
+// it replayed (#832): the provenance comes from the claim, not the request.
+func TestResumeMerge_StampsProvenanceLikeTheMerge(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.interruptSecondStream(t, command.MergeBranchInput{BranchID: s.branch.ID, Note: "both are Byrons"})
+
+	if _, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID}); err != nil {
+		t.Fatalf("ResumeMerge failed: %v", err)
+	}
+
+	byMerge := branchEventsFor(t, s.f, s.first, domain.MainBranchID)
+	byResume := branchEventsFor(t, s.f, s.second, domain.MainBranchID)
+	fromMerge := replayProvenance(t, byMerge[len(byMerge)-1])
+	fromResume := replayProvenance(t, byResume[len(byResume)-1])
+	if fromMerge == nil || fromResume == nil {
+		t.Fatalf("provenance missing: merge %+v, resume %+v", fromMerge, fromResume)
+	}
+	if !fromMerge.MergedAt.Equal(fromResume.MergedAt) {
+		t.Errorf("merged_at differs: merge %s, resume %s", fromMerge.MergedAt, fromResume.MergedAt)
+	}
+	fromResume.MergedAt = fromMerge.MergedAt
+	if *fromMerge != *fromResume {
+		t.Errorf("resume stamped %+v, the merge stamped %+v", *fromResume, *fromMerge)
+	}
+	if fromResume.Note != "both are Byrons" || fromResume.BranchName != s.branch.Name {
+		t.Errorf("resume provenance = %+v, want the merge's note and branch name", *fromResume)
+	}
+	if !byResume[len(byResume)-1].Timestamp.Equal(byMerge[len(byMerge)-1].Timestamp) {
+		t.Errorf("resumed event recorded at %s, the merge's at %s: want both at the merge",
+			byResume[len(byResume)-1].Timestamp, byMerge[len(byMerge)-1].Timestamp)
+	}
+}

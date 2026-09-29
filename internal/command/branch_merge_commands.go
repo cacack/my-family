@@ -298,21 +298,22 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, fmt.Errorf("getting max event position: %w", err)
 	}
 
-	// Deliberately the LAST thing before the claim: every read above can only
-	// widen the window between this check and the replay, so the check goes as
-	// late as it can while still being a refusal rather than a half-merge.
-	if err := h.validatePlanNotStale(ctx, plan, groups, input.Resolutions); err != nil {
+	// The claim, merge record included, is built before the staleness check:
+	// naming the record's exclusions reads the read model, and that read must
+	// not sit between the check and the claim.
+	claim, err := h.buildMergeClaim(ctx, branch, mergedAtPosition, input, plan, groups, rationales)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := h.claimMerge(ctx, branch, mergedAtPosition, input.Note, replayPlan(groups, plan.MainStreamVersions, input.Resolutions), rationales); err != nil {
+	if err := h.claimFreshMerge(ctx, branch, claim, plan, groups, input.Resolutions); err != nil {
 		return nil, err
 	}
 
 	// Past this point the branch is already merged, so a replay failure is not
 	// "nothing happened" — it is the partially-applied state, and the caller
 	// has to be able to tell the two apart.
-	replayed, skipped, err := h.replayOntoMain(ctx, branch, groups, plan.MainStreamVersions, input.Resolutions)
+	replayed, skipped, err := h.replayOntoMain(ctx, branch, claim, groups, plan.MainStreamVersions, input.Resolutions)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMergePartiallyApplied, err)
 	}
@@ -328,6 +329,25 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		ReplayedEventCount: replayed,
 		SkippedStreamIDs:   skipped,
 	}, nil
+}
+
+// claimFreshMerge runs the staleness check and, only if main has not moved,
+// claims the merge. The check is deliberately the LAST thing before the claim:
+// every read before it can only widen the window between the check and the
+// replay, so it goes as late as it can while still being a refusal rather than
+// a half-merge. Nothing may read between the two.
+func (h *Handler) claimFreshMerge(
+	ctx context.Context,
+	branch *domain.Branch,
+	claim domain.BranchMerged,
+	plan *query.MergePlan,
+	groups []streamGroup,
+	resolutions map[uuid.UUID]MergeResolution,
+) error {
+	if err := h.validatePlanNotStale(ctx, plan, groups, resolutions); err != nil {
+		return err
+	}
+	return h.claimMerge(ctx, branch, claim)
 }
 
 // refuseUnmergeablePlan refuses a plan no resolution can make mergeable: one
@@ -433,9 +453,10 @@ func (h *Handler) validatePlanNotStale(
 // BranchStore.MarkMerged call — the same rule CreateBranch and DeleteBranch
 // follow, so a projection rebuild reconstructs the merge record.
 //
-// replayVersions is the replay plan recorded on the claim — see
-// domain.BranchMerged.ReplayStreamVersions and ResumeMerge.
-func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedAtPosition int64, note string, replayVersions map[uuid.UUID]int64, rationales map[uuid.UUID]string) error {
+// event is the claim itself, carrying the replay plan (see
+// domain.BranchMerged.ReplayStreamVersions and ResumeMerge) and the merge
+// record (#832).
+func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, event domain.BranchMerged) error {
 	scope := branchScope(branch)
 
 	currentVersion, err := h.eventStore.GetStreamVersion(ctx, branch.ID, scope.BranchID)
@@ -481,8 +502,6 @@ func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedA
 			"the registry has been repaired — finish that merge with POST /branches/{id}/merge/resume", ErrMergeAlreadyClaimed, branch.ID)
 	}
 
-	event := domain.NewBranchMerged(branch.ID, branch.BasePosition, mergedAtPosition, note, replayVersions)
-	event.ResolutionRationales = rationales
 	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, currentVersion, scope); err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return fmt.Errorf("%w: %s", ErrMergeAlreadyClaimed, branch.ID)
@@ -538,6 +557,7 @@ func (h *Handler) branchAlreadyClaimed(ctx context.Context, branch *domain.Branc
 func (h *Handler) replayOntoMain(
 	ctx context.Context,
 	branch *domain.Branch,
+	claim domain.BranchMerged,
 	groups []streamGroup,
 	plannedVersions map[uuid.UUID]int64,
 	resolutions map[uuid.UUID]MergeResolution,
@@ -549,6 +569,7 @@ func (h *Handler) replayOntoMain(
 		streamsToReplay int
 		skipped         []uuid.UUID
 	)
+	provenance := mergeProvenance(branch, claim)
 	// Denominators first, so the failure message below compares like with like.
 	for _, group := range groups {
 		if resolutions[group.streamID] == ResolveMain {
@@ -574,7 +595,7 @@ func (h *Handler) replayOntoMain(
 				"merging branch %s: stream %s: %w", branch.ID, group.streamID, ErrMergePlanIncomplete)
 		}
 
-		appended, err := h.replayStream(ctx, group, plannedVersion)
+		appended, err := h.replayStream(ctx, group, plannedVersion, provenance)
 		replayed += appended
 		if err != nil {
 			// Both units, each against its own total: an earlier form divided an
@@ -604,10 +625,13 @@ func (h *Handler) replayOntoMain(
 // when projection then fails, so the caller's error can say how far the merge
 // got.
 //
-// The originals are re-appended DECODED, never rebuilt: EventStore.Append
-// stamps the stored timestamp from event.OccurredAt(), so a decoded branch
-// event lands on main with the branch's original payload and timestamp. That is
-// ADR-005's provenance requirement, met with no special handling.
+// The originals are re-appended DECODED, never rebuilt, so a branch event
+// lands on main with its original payload — its id and OccurredAt included.
+// That is ADR-005's provenance requirement. Each one is stamped (#832) with
+// the merge's provenance: the envelope metadata names the branch, the claim
+// and the note, and the store records the event at the merge's time, so the
+// mainline's history shows it when it reached the mainline. The payload is
+// untouched by the stamp.
 //
 // plannedVersion is main's version for this stream when the plan was built, and
 // is asserted against the version read below. That read is one this function
@@ -623,14 +647,17 @@ func (h *Handler) replayOntoMain(
 // The cost of a false positive is one re-plan, after which conflict detection
 // has run against the new main and the retry succeeds. The cost of proceeding
 // silently is the overwritten mainline edit that is the bug being fixed.
-func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVersion int64) (int, error) {
+func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVersion int64, provenance *domain.MergeProvenance) (int, error) {
 	events := make([]domain.Event, 0, len(group.events))
+	stamped := make([]domain.Event, 0, len(group.events))
 	for i := range group.events {
 		decoded, err := group.events[i].DecodeEvent()
 		if err != nil {
 			return 0, fmt.Errorf("decoding %s event: %w", group.events[i].EventType, err)
 		}
 		events = append(events, decoded)
+		stamped = append(stamped, domain.Stamp(decoded,
+			domain.EventMetadata{MergedFromBranch: provenance}, provenance.MergedAt))
 	}
 
 	currentVersion, err := h.eventStore.GetStreamVersion(ctx, group.streamID, domain.MainBranchID)
@@ -651,7 +678,7 @@ func (h *Handler) replayStream(ctx context.Context, group streamGroup, plannedVe
 	// streams main has never seen — and two concurrent ResumeMerge calls (#685)
 	// would then both append the branch's creation onto main. 0 asserts "main
 	// has no events for this stream", which is the claim being made.
-	if err := h.eventStore.Append(ctx, group.streamID, group.streamType, events, currentVersion, repository.MainScope); err != nil {
+	if err := h.eventStore.Append(ctx, group.streamID, group.streamType, stamped, currentVersion, repository.MainScope); err != nil {
 		return 0, fmt.Errorf("appending replayed events to main: %w", err)
 	}
 

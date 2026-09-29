@@ -1129,30 +1129,42 @@ func TestEventStore_ReadGlobalHistory(t *testing.T) {
 }
 
 // TestEventStore_ReadGlobalHistory_UsesIndex pins that the global history
-// page walks idx_events_branch_julian_position in order rather than scanning
-// the mainline log and sorting it, and that the count needs no table rows.
+// page walks an index in order rather than scanning the mainline log and
+// sorting it, and that the count needs no table rows. The mainline alone walks
+// idx_events_branch_julian_position; with the branch lifecycle kept from every
+// branch (#832) it walks idx_events_julian_position_branch, filtering the
+// branch as it goes, rather than OR-ing two index searches and sorting.
 func TestEventStore_ReadGlobalHistory_UsesIndex(t *testing.T) {
 	store, cleanup := setupTestDB(t)
 	defer cleanup()
 
 	main := domain.MainBranchID
-	queries := map[string]repository.GlobalHistoryQuery{
-		"mainline": {ExcludeEventTypes: []string{"SnapshotCreated", "GedcomImported"}, BranchID: &main, Limit: 20},
-		"time window": {
+	type planCase struct {
+		query repository.GlobalHistoryQuery
+		index string
+	}
+	queries := map[string]planCase{
+		"mainline": {repository.GlobalHistoryQuery{ExcludeEventTypes: []string{"SnapshotCreated", "GedcomImported"}, BranchID: &main, Limit: 20},
+			"idx_events_branch_julian_position"},
+		"time window": {repository.GlobalHistoryQuery{
 			FromTime: time.Now().Add(-time.Hour), ToTime: time.Now(),
 			IncludeEventTypes: []string{"PersonCreated"}, ExcludeEventTypes: []string{"SnapshotCreated"}, BranchID: &main, Limit: 20,
-		},
+		}, "idx_events_branch_julian_position"},
+		"mainline with branch lifecycle": {repository.GlobalHistoryQuery{
+			ExcludeEventTypes: []string{"SnapshotCreated", "GedcomImported"}, BranchID: &main,
+			AnyBranchEventTypes: []string{"BranchCreated", "BranchMerged", "BranchDeleted"}, Limit: 20,
+		}, "idx_events_julian_position_branch"},
 	}
-	for name, q := range queries {
-		page, count, err := store.GlobalHistoryPlan(q)
+	for name, c := range queries {
+		page, count, err := store.GlobalHistoryPlan(c.query)
 		if err != nil {
 			t.Fatalf("%s: explain: %v", name, err)
 		}
 		pagePlan, countPlan := strings.Join(page, " | "), strings.Join(count, " | ")
-		if !strings.Contains(pagePlan, "idx_events_branch_julian_position") || strings.Contains(pagePlan, "TEMP B-TREE") {
-			t.Errorf("%s: page plan %q, want an ordered walk of idx_events_branch_julian_position", name, pagePlan)
+		if !strings.Contains(pagePlan, c.index) || strings.Contains(pagePlan, "TEMP B-TREE") {
+			t.Errorf("%s: page plan %q, want an ordered walk of %s", name, pagePlan, c.index)
 		}
-		if !strings.Contains(countPlan, "COVERING INDEX idx_events_branch_julian_position") {
+		if !strings.Contains(countPlan, "COVERING INDEX "+c.index) {
 			t.Errorf("%s: count plan %q, want a covering index", name, countPlan)
 		}
 	}

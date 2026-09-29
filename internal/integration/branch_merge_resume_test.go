@@ -131,6 +131,14 @@ func runBranchMergeResume(t *testing.T, server *api.Server, events repository.Ev
 	if got := mainEventCount(t, ctx, events, landed); got != landedBefore {
 		t.Errorf("landed entity has %d main events after resume, want %d (no duplicate replay)", got, landedBefore)
 	}
+	// The merge and the resume stamped their replays identically (#832).
+	fromMerge := lastMergedFrom(t, server, landed)
+	fromResume := lastMergedFrom(t, server, pending)
+	for _, key := range []string{"branch_id", "branch_name", "merged_at"} {
+		if fromMerge[key] != fromResume[key] || fromMerge[key] == nil {
+			t.Errorf("merged_from.%s: merge stamped %v, resume stamped %v", key, fromMerge[key], fromResume[key])
+		}
+	}
 
 	// --- A second resume is a no-op, down to the log. ---
 	mainBefore := readBranchEvents(t, ctx, events, domain.MainBranchID)

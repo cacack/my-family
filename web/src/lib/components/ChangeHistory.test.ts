@@ -147,6 +147,103 @@ describe('ChangeHistory global log (#739)', () => {
 		const values = [...select.querySelectorAll('option')].map((o) => o.getAttribute('value'));
 		expect(values).toContain('life_event');
 		expect(values).toContain('research_log');
-		expect(values).toHaveLength(17);
+		expect(values).toContain('branch');
+		expect(values).toHaveLength(18);
+	});
+});
+
+describe('ChangeHistory merge provenance and branch lifecycle (#832)', () => {
+	const BRANCH_ID = '66666666-6666-6666-6666-666666666666';
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('marks a merged change with the branch and note it came from', async () => {
+		vi.mocked(apiModule.api.getPersonHistory).mockResolvedValue({
+			items: [
+				entry({ action: 'created' }),
+				entry({
+					merged_from: {
+						branch_id: BRANCH_ID,
+						branch_name: 'Byron theory',
+						note: 'Baptism register settles it',
+						merged_at: '2026-02-01T09:00:00Z',
+						original_timestamp: '2026-01-20T09:00:00Z'
+					}
+				})
+			],
+			total: 2,
+			limit: 20,
+			offset: 0,
+			has_more: false
+		});
+
+		render(ChangeHistory, { entityType: 'person', entityId: PERSON_ID });
+
+		const chip = await screen.findByRole('link', {
+			name: 'via merge of Byron theory: Baptism register settles it'
+		});
+		expect(chip.getAttribute('href')).toBe(`/branches/${BRANCH_ID}`);
+		expect(chip.getAttribute('title')).toMatch(/Made on the branch Jan 20, 2026/);
+		expect(screen.getAllByTestId('merged-from')).toHaveLength(1);
+	});
+
+	it('names a merge without a note by its branch alone', async () => {
+		vi.mocked(apiModule.api.getPersonHistory).mockResolvedValue({
+			items: [
+				entry({
+					merged_from: {
+						branch_id: BRANCH_ID,
+						branch_name: 'Byron theory',
+						merged_at: '2026-02-01T09:00:00Z',
+						original_timestamp: '2026-01-20T09:00:00Z'
+					}
+				})
+			],
+			total: 1,
+			limit: 20,
+			offset: 0,
+			has_more: false
+		});
+
+		render(ChangeHistory, { entityType: 'person', entityId: PERSON_ID });
+
+		expect(await screen.findByRole('link', { name: 'via merge of Byron theory' })).toBeDefined();
+	});
+
+	it('renders the branch lifecycle, linking to the branch even once archived', async () => {
+		vi.mocked(apiModule.api.getGlobalHistory).mockResolvedValue({
+			items: [
+				entry({ id: 'c', entity_type: 'branch', entity_id: BRANCH_ID, entity_name: 'Byron theory', action: 'created' }),
+				entry({
+					id: 'm',
+					entity_type: 'branch',
+					entity_id: BRANCH_ID,
+					entity_name: 'Byron theory',
+					action: 'merged',
+					changes: { merge_note: { new_value: 'Baptism register settles it' } }
+				}),
+				entry({ id: 'd', entity_type: 'branch', entity_id: '77777777-7777-7777-7777-777777777777', entity_name: 'Dead end', action: 'deleted' })
+			],
+			total: 3,
+			limit: 20,
+			offset: 0,
+			has_more: false
+		});
+
+		render(ChangeHistory);
+
+		const links = await screen.findAllByRole('link', { name: 'Byron theory' });
+		expect(links.map((l) => l.getAttribute('href'))).toEqual([
+			`/branches/${BRANCH_ID}`,
+			`/branches/${BRANCH_ID}`
+		]);
+		expect(screen.getAllByText('Research branch', { selector: '.entity-type' })).toHaveLength(3);
+		expect(screen.getByText('archived')).toBeDefined();
+		expect(screen.getByRole('link', { name: 'Dead end' }).getAttribute('href')).toBe(
+			'/branches/77777777-7777-7777-7777-777777777777'
+		);
+		expect(screen.getByRole('button', { name: /Show changes/ })).toBeDefined();
 	});
 });

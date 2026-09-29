@@ -190,8 +190,8 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 
 	// Append events
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO events (stream_id, stream_type, branch_id, version, event_type, data, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO events (stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`)
 	if err != nil {
 		return fmt.Errorf("prepare statement: %w", err)
@@ -201,9 +201,15 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 	for _, event := range events {
 		currentVersion++
 
-		data, err := json.Marshal(event)
+		// The payload is the event's own; a stamp's metadata and record time
+		// (a merge's provenance, #832) go in their own columns.
+		data, metadata, recordedAt, err := domain.EncodeForStore(event)
 		if err != nil {
 			return fmt.Errorf("marshal event: %w", err)
+		}
+		var metadataArg any
+		if metadata != nil {
+			metadataArg = string(metadata)
 		}
 
 		_, err = stmt.ExecContext(ctx,
@@ -213,7 +219,8 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 			currentVersion,
 			event.EventType(),
 			data,
-			event.OccurredAt(),
+			metadataArg,
+			recordedAt,
 		)
 		if err != nil {
 			return fmt.Errorf("insert event: %w", err)
@@ -390,6 +397,9 @@ const (
 	globalHistoryInclude  = "event_type = ANY($%d)"
 	globalHistoryExclude  = "NOT (event_type = ANY($%d))"
 	globalHistoryBranch   = "branch_id = $%d"
+	// globalHistoryBranchOr keeps the branch's events and, from any branch,
+	// the types in the array (GlobalHistoryQuery.AnyBranchEventTypes).
+	globalHistoryBranchOr = "(branch_id = $%d OR event_type = ANY($%d))"
 )
 
 // ReadGlobalHistory returns one page of the global history with every filter
@@ -415,7 +425,11 @@ func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalH
 	if len(q.ExcludeEventTypes) > 0 {
 		add(globalHistoryExclude, pq.Array(q.ExcludeEventTypes))
 	}
-	if q.BranchID != nil {
+	switch {
+	case q.BranchID != nil && len(q.AnyBranchEventTypes) > 0:
+		args = append(args, q.BranchID.UUID(), pq.Array(q.AnyBranchEventTypes))
+		where = append(where, fmt.Sprintf(globalHistoryBranchOr, len(args)-1, len(args)))
+	case q.BranchID != nil:
 		add(globalHistoryBranch, q.BranchID.UUID())
 	}
 	whereClause := ""

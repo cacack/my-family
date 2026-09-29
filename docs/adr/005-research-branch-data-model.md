@@ -254,7 +254,10 @@ implements these):
 - **Provenance is preserved.** A replayed `main` event carries the *original* branch event's
   `OccurredAt` and originating actor — the audit trail must reflect when the research was actually
   done, not when it was promoted. The merge timestamp lives on the `BranchMerged` event, not on
-  the replayed events.
+  the replayed events' payloads. *(#832 refinement: the replayed event's **envelope** also links
+  it to its merge — `metadata.merged_from_branch` names the branch, the claim and the note — and
+  the store records it at the merge's time, so the mainline's history orders and windows it by
+  when it reached the mainline. The payload, and so `OccurredAt`, is untouched.)*
 - **Merge is idempotent, and the guard is atomic.** A read-then-act check (`status != merged`
   before replaying) is not enough — two concurrent merge requests can both observe `active` and
   each append the branch's changes. The `active → merged` transition must be an **atomic
@@ -1655,3 +1658,35 @@ and `TestBranchOverlayVersion` (`internal/command`, every resolver and the error
 - [ARCHITECTURAL-INVARIANTS.md](../ARCHITECTURAL-INVARIANTS.md)
 - [ETHOS.md - Git-Inspired Workflow](../ETHOS.md)
 - Epic #54 (git-inspired research workflow); depends: #669, #670, #55; coordinates: #624, #680
+
+## Implementation Note — merge record and provenance (#832, delivered)
+
+**The claim is the merge record.** `BranchMerged` gained optional, additive fields: `resolutions`
+(each conflict decision with the conflict's kind, fields and deleting side, the chosen side, the
+rationale, and the entity's type and name as the branch saw it), `exclusions` (entities changed
+without conflict but left behind, named the same way), `replayed_event_count` and
+`skipped_stream_ids`. They are written before the claim, while the branch overlay can still name an
+entity that exists only on the branch — after the merge the overlay is purged. A claim written
+before #832 omits them all and decodes unchanged (`HasRecord` tells the two apart);
+`resolution_rationales` stays the complete rationale map. `GET /branches/{id}/compare` on a merged
+branch returns `merge_record`, read from the claim and any `BranchMergeResumed` records (a resume's
+decisions supersede the claim's for the same entity); a pre-#832 claim's record is derived from its
+replay plan and named from the log.
+
+**Replayed copies are not mainline changes.** A merged branch's compare drops main's replay of the
+branch's own events from the main side (recognised by provenance, or by payload id for a pre-#832
+merge — the same test resume uses) and reports how many as `replayed_change_count`, so the diff and
+the recomputed conflicts describe only the mainline's independent changes.
+
+**Provenance travels in the envelope.** Every replayed event is appended as a `domain.StampedEvent`:
+its metadata carries `merged_from_branch` (branch id and name, claim id, merged-at position and
+time, note), and the store records it at the claim's time. All three event stores persist the
+metadata column on append (it existed but was never written) and `DecodeEvent` ignores it, so
+events without metadata — every event written before #832 — read exactly as before. The provenance
+is built from the branch and the claim alone, so a resume stamps what the merge would have.
+
+**Lifecycle in the mainline's history.** `BranchCreated`, `BranchMerged` and `BranchDeleted` are
+mapped to `branch` entries in the history catalog (`BranchMergeResumed` stays excluded, as part of
+the merge it finishes). They live on each branch's own scope, so the global history keeps them from
+every branch (`GlobalHistoryQuery.AnyBranchEventTypes`); SQLite answers that page with an ordered
+walk of `idx_events_julian_position_branch`. See docs/HISTORY-EVENT-TYPES.md.

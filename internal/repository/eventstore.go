@@ -158,7 +158,10 @@ type EventStore interface {
 	// every filter it needs applied IN THE STORE, before pagination, so the page and
 	// its TotalCount/HasMore are computed over the same set of events (#739).
 	// See GlobalHistoryQuery for the filters. Results are ordered by timestamp,
-	// then position, ascending.
+	// then position, ascending. The timestamp is the event's record time: its
+	// OccurredAt, except for a merge's replayed event, which is recorded at the
+	// merge (domain.MergeProvenance), so it sorts and filters by when it
+	// reached the mainline.
 	ReadGlobalHistory(ctx context.Context, q GlobalHistoryQuery) (*HistoryPage, error)
 }
 
@@ -178,6 +181,12 @@ type GlobalHistoryQuery struct {
 	// &domain.MainBranchID for the mainline's history (ADR-005). Nil reads
 	// every branch.
 	BranchID *domain.BranchID
+	// AnyBranchEventTypes are kept whatever branch they are on, even when
+	// BranchID narrows the rest to one branch: the branch lifecycle events,
+	// which live on each branch's own scope but belong in the mainline's
+	// history (#832). Ignored when BranchID is nil. The type filters above
+	// still apply to them.
+	AnyBranchEventTypes []string
 	// Limit caps the page (non-positive yields an empty page); Offset skips.
 	Limit  int
 	Offset int

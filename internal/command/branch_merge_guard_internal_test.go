@@ -96,7 +96,7 @@ func TestReplayOntoMain_MissingPinIsRefusedBeforeAppending(t *testing.T) {
 		}},
 	}}
 
-	_, _, err = h.replayOntoMain(ctx, branch, groups, map[uuid.UUID]int64{}, nil)
+	_, _, err = h.replayOntoMain(ctx, branch, domain.BranchMerged{}, groups, map[uuid.UUID]int64{}, nil)
 	if !errors.Is(err, ErrMergePlanIncomplete) {
 		t.Fatalf("replayOntoMain = %v, want ErrMergePlanIncomplete", err)
 	}

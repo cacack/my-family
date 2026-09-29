@@ -242,7 +242,67 @@ func (ss *StrictServer) CompareBranch(ctx context.Context, request CompareBranch
 		HasMore:              result.HasMore,
 		OverlappingStreamIds: overlapping,
 		Conflicts:            convertQueryMergeConflictsToGenerated(result.Conflicts),
+		ReplayedChangeCount:  &result.ReplayedChangeCount,
+		MergeRecord:          convertQueryMergeRecordToGenerated(result.MergeRecord),
 	}, nil
+}
+
+// convertQueryMergeRecordToGenerated converts a merged branch's merge record
+// (#832); nil for a branch that was never merged.
+func convertQueryMergeRecordToGenerated(record *query.MergeRecord) *MergeRecord {
+	if record == nil {
+		return nil
+	}
+	out := &MergeRecord{
+		ClaimId:            record.ClaimID,
+		MergedAt:           record.MergedAt,
+		MergedAtPosition:   record.MergedAtPosition,
+		Recorded:           record.Recorded,
+		ReplayedEventCount: record.ReplayedEventCount,
+		ResumeCount:        record.ResumeCount,
+		SkippedStreamIds:   append([]openapi_types.UUID{}, record.SkippedStreamIDs...),
+		Decisions:          make([]MergeRecordDecision, 0, len(record.Decisions)),
+		Exclusions:         make([]MergeRecordExclusion, 0, len(record.Exclusions)),
+	}
+	if record.Note != "" {
+		note := record.Note
+		out.Note = &note
+	}
+	for _, d := range record.Decisions {
+		decision := MergeRecordDecision{
+			StreamId:   d.StreamID,
+			EntityType: d.EntityType,
+			EntityName: d.EntityName,
+			Resolution: MergeRecordDecisionResolution(d.Resolution),
+			DecidedAt:  MergeRecordDecisionDecidedAt(d.DecidedAt),
+		}
+		if d.Kind != "" {
+			kind := MergeRecordDecisionKind(d.Kind)
+			decision.Kind = &kind
+		}
+		if len(d.Fields) > 0 {
+			fields := append([]string{}, d.Fields...)
+			decision.Fields = &fields
+		}
+		if d.DeletedBy != "" {
+			deletedBy := MergeRecordDecisionDeletedBy(d.DeletedBy)
+			decision.DeletedBy = &deletedBy
+		}
+		if d.Rationale != "" {
+			rationale := d.Rationale
+			decision.Rationale = &rationale
+		}
+		out.Decisions = append(out.Decisions, decision)
+	}
+	for _, e := range record.Exclusions {
+		exclusion := MergeRecordExclusion{StreamId: e.StreamID, EntityType: e.EntityType, EntityName: e.EntityName}
+		if e.Rationale != "" {
+			rationale := e.Rationale
+			exclusion.Rationale = &rationale
+		}
+		out.Exclusions = append(out.Exclusions, exclusion)
+	}
+	return out
 }
 
 // MergeBranch implements StrictServerInterface. The merge is all-or-nothing and

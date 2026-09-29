@@ -25,6 +25,9 @@ const maxComparisonEvents = 1000
 type HistoryService struct {
 	eventStore repository.EventStore
 	readStore  repository.ReadModelStore
+	// branchStore names the branches in lifecycle entries (#832). Optional:
+	// without it a branch is named only by its BranchCreated event.
+	branchStore repository.BranchStore
 }
 
 // NewHistoryService creates a new history query service.
@@ -33,6 +36,12 @@ func NewHistoryService(eventStore repository.EventStore, readStore repository.Re
 		eventStore: eventStore,
 		readStore:  readStore,
 	}
+}
+
+// UseBranchStore lets the service name research branches in the history's
+// branch lifecycle entries (#832).
+func (s *HistoryService) UseBranchStore(store repository.BranchStore) {
+	s.branchStore = store
 }
 
 // ChangeEntry represents a user-friendly change record in the system's history.
@@ -56,6 +65,21 @@ type ChangeEntry struct {
 	// ChangeOriginMain for the mainline events its view inherits. Empty
 	// everywhere else.
 	Origin string `json:"origin,omitempty"`
+	// MergedFrom is set on a mainline change a merge replayed from a research
+	// branch (#832): the branch, the merge note and when the change was
+	// originally made there. Timestamp is when it reached the mainline.
+	MergedFrom *MergeOrigin `json:"merged_from,omitempty"`
+}
+
+// MergeOrigin says which merge brought a change onto the mainline (#832).
+type MergeOrigin struct {
+	BranchID   uuid.UUID `json:"branch_id"`
+	BranchName string    `json:"branch_name"`
+	Note       string    `json:"note,omitempty"`
+	MergedAt   time.Time `json:"merged_at"`
+	// OriginalTimestamp is when the change was made on the branch — the
+	// replayed payload's own timestamp. Zero when the payload has none.
+	OriginalTimestamp time.Time `json:"original_timestamp"`
 }
 
 // Origins of a branch-scoped history entry (ChangeEntry.Origin).
@@ -254,8 +278,12 @@ func (s *HistoryService) GetGlobalHistory(ctx context.Context, input GetGlobalHi
 		IncludeEventTypes: input.EventTypes,
 		ExcludeEventTypes: HistoryExcludedEventTypes(),
 		BranchID:          &domain.MainBranchID,
-		Limit:             input.Limit,
-		Offset:            input.Offset,
+		// A branch's lifecycle is written on its own scope but is part of
+		// the mainline's story: when research forked off, and when it came
+		// back (#832).
+		AnyBranchEventTypes: HistoryBranchLifecycleEventTypes(),
+		Limit:               input.Limit,
+		Offset:              input.Offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading global history: %w", err)
@@ -295,6 +323,7 @@ func (s *HistoryService) transformStoredEvents(ctx context.Context, events []rep
 // and an update shows what it replaced on the branch.
 func (s *HistoryService) transformStoredEventsOn(ctx context.Context, branchID domain.BranchID, events []repository.StoredEvent) ([]ChangeEntry, error) {
 	shown := make([]repository.StoredEvent, 0, len(events))
+	var lifecycle []repository.StoredEvent
 	for i := range events {
 		class, ok := classifyHistoryEvent(events[i].EventType)
 		if !ok {
@@ -307,12 +336,45 @@ func (s *HistoryService) transformStoredEventsOn(ctx context.Context, branchID d
 		if class.Excluded() {
 			continue
 		}
+		if class.EntityType == entityTypeBranch {
+			// A branch is not genealogy data: it has no read-model row or
+			// field state to describe, so it is described on its own.
+			lifecycle = append(lifecycle, events[i])
+			continue
+		}
 		shown = append(shown, events[i])
 	}
-	if len(shown) == 0 {
+	if len(shown) == 0 && len(lifecycle) == 0 {
 		return []ChangeEntry{}, nil
 	}
 
+	entries := make([]ChangeEntry, 0, len(shown)+len(lifecycle))
+	if len(shown) > 0 {
+		genealogy, err := s.genealogyEntries(ctx, branchID, shown)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, genealogy...)
+	}
+	if len(lifecycle) > 0 {
+		branches, err := s.branchLifecycleEntries(ctx, lifecycle)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, branches...)
+		// Back into the order the store returned them in.
+		order := make(map[uuid.UUID]int, len(events))
+		for i := range events {
+			order[events[i].ID] = i
+		}
+		sort.SliceStable(entries, func(i, j int) bool { return order[entries[i].ID] < order[entries[j].ID] })
+	}
+	return entries, nil
+}
+
+// genealogyEntries describes a batch of genealogy events (every mapped type
+// but the branch lifecycle) as branchID sees them.
+func (s *HistoryService) genealogyEntries(ctx context.Context, branchID domain.BranchID, shown []repository.StoredEvent) ([]ChangeEntry, error) {
 	desc, err := s.describeEvents(ctx, branchID, shown)
 	if err != nil {
 		return nil, err
@@ -339,14 +401,7 @@ func (s *HistoryService) transformStoredEventsOn(ctx context.Context, branchID d
 			entry.ParentEntityID = &parentID
 		}
 
-		// Extract user ID from metadata if present
-		if len(evt.Metadata) > 0 {
-			var metadata domain.EventMetadata
-			if err := json.Unmarshal(evt.Metadata, &metadata); err == nil && metadata.UserID != "" {
-				entry.UserID = &metadata.UserID
-			}
-		}
-
+		applyEventMetadata(&entry, evt)
 		entries = append(entries, entry)
 	}
 
@@ -373,4 +428,94 @@ func (d *historyDescription) entryChanges(evt *repository.StoredEvent) map[strin
 		}
 	}
 	return d.changes[evt.ID]
+}
+
+// applyEventMetadata copies what an entry reports from its event's envelope
+// metadata: the user, and for a merge's replayed event the merge it came with
+// (#832). Metadata that does not decode is logged and ignored, as absent
+// metadata is: it annotates an entry, it never decides whether it is shown.
+func applyEventMetadata(entry *ChangeEntry, evt *repository.StoredEvent) {
+	if len(evt.Metadata) == 0 {
+		return
+	}
+	var metadata domain.EventMetadata
+	if err := json.Unmarshal(evt.Metadata, &metadata); err != nil {
+		slog.Warn("history: event metadata does not decode", "event_id", evt.ID, "error", err)
+		return
+	}
+	if metadata.UserID != "" {
+		entry.UserID = &metadata.UserID
+	}
+	if prov := metadata.MergedFromBranch; prov != nil {
+		var payload struct {
+			Timestamp time.Time `json:"timestamp"`
+		}
+		// A payload without a timestamp leaves the original zero.
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			slog.Warn("history: replayed payload does not decode", "event_id", evt.ID, "error", err)
+		}
+		entry.MergedFrom = &MergeOrigin{
+			BranchID:          prov.BranchID,
+			BranchName:        prov.BranchName,
+			Note:              prov.Note,
+			MergedAt:          prov.MergedAt,
+			OriginalTimestamp: payload.Timestamp,
+		}
+	}
+}
+
+// branchLifecycleEntries describes branch lifecycle events (#832): a branch
+// created, merged into the mainline, or deleted (archived). The branch is
+// named from the registry, read once for the whole batch, falling back to the
+// name its BranchCreated event recorded. A merge carries its note as a change.
+func (s *HistoryService) branchLifecycleEntries(ctx context.Context, events []repository.StoredEvent) ([]ChangeEntry, error) {
+	names := make(map[uuid.UUID]string)
+	if s.branchStore != nil {
+		branches, err := s.branchStore.List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("naming branches: %w", err)
+		}
+		for _, b := range branches {
+			names[b.ID] = b.Name
+		}
+	}
+
+	entries := make([]ChangeEntry, 0, len(events))
+	for i := range events {
+		evt := &events[i]
+		class, _ := classifyHistoryEvent(evt.EventType)
+		var payload struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Note        string `json:"note"`
+		}
+		if err := json.Unmarshal(evt.Data, &payload); err != nil {
+			return nil, fmt.Errorf("decoding %s %s: %w", evt.EventType, evt.ID, err)
+		}
+		name := names[evt.StreamID]
+		if name == "" {
+			name = payload.Name
+		}
+		entry := ChangeEntry{
+			ID:         evt.ID,
+			Timestamp:  evt.Timestamp,
+			EntityType: class.EntityType,
+			EntityID:   evt.StreamID,
+			EntityName: name,
+			Action:     class.Action,
+		}
+		switch evt.EventType {
+		case "BranchCreated":
+			if payload.Description != "" {
+				entry.Changes = map[string]FieldChange{"description": {NewValue: payload.Description}}
+			}
+		case "BranchMerged":
+			if payload.Note != "" {
+				entry.Changes = map[string]FieldChange{"merge_note": {NewValue: payload.Note}}
+			}
+		}
+		applyEventMetadata(&entry, evt)
+		entries = append(entries, entry)
+	}
+	return entries, nil
 }

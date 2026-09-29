@@ -3,7 +3,6 @@ package memory
 
 import (
 	"context"
-	"encoding/json"
 	"sort"
 	"sync"
 
@@ -67,7 +66,9 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 		s.position++
 		currentVersion++
 
-		data, err := json.Marshal(event)
+		// The payload is the event's own; a stamp's metadata and record time
+		// (a merge's provenance, #832) are kept beside it, as the SQL stores do.
+		data, metadata, recordedAt, err := domain.EncodeForStore(event)
 		if err != nil {
 			return err
 		}
@@ -79,9 +80,10 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 			BranchID:   scope.BranchID,
 			EventType:  event.EventType(),
 			Data:       data,
+			Metadata:   metadata,
 			Version:    currentVersion,
 			Position:   s.position,
-			Timestamp:  event.OccurredAt(),
+			Timestamp:  recordedAt,
 		}
 
 		s.events = append(s.events, stored)
@@ -267,6 +269,11 @@ func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalH
 		exclude[t] = true
 	}
 
+	anyBranch := make(map[string]bool, len(q.AnyBranchEventTypes))
+	for _, t := range q.AnyBranchEventTypes {
+		anyBranch[t] = true
+	}
+
 	filtered := make([]repository.StoredEvent, 0, len(s.events))
 	for i := range s.events {
 		event := s.events[i]
@@ -282,7 +289,7 @@ func (s *EventStore) ReadGlobalHistory(ctx context.Context, q repository.GlobalH
 		if exclude[event.EventType] {
 			continue
 		}
-		if q.BranchID != nil && event.BranchID != *q.BranchID {
+		if q.BranchID != nil && event.BranchID != *q.BranchID && !anyBranch[event.EventType] {
 			continue
 		}
 		filtered = append(filtered, event)

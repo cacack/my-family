@@ -135,6 +135,7 @@ const eventsIndexDDL = `
 	CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type, timestamp);
 	CREATE INDEX IF NOT EXISTS idx_events_timestamp_position ON events(timestamp, position);
 	CREATE INDEX IF NOT EXISTS idx_events_branch_julian_position ON events(branch_id, julianday(timestamp), position, event_type);
+	CREATE INDEX IF NOT EXISTS idx_events_julian_position_branch ON events(julianday(timestamp), position, branch_id, event_type);
 	CREATE INDEX IF NOT EXISTS idx_events_branch ON events(branch_id);
 	CREATE INDEX IF NOT EXISTS idx_events_stream_branch ON events(stream_id, branch_id);
 `
@@ -315,8 +316,8 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 
 	// Append events
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO events (id, stream_id, stream_type, branch_id, version, event_type, data, timestamp, position)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO events (id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return fmt.Errorf("prepare statement: %w", err)
@@ -327,9 +328,15 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 		maxPosition++
 		currentVersion++
 
-		data, err := json.Marshal(event)
+		// The payload is the event's own; a stamp's metadata and record time
+		// (a merge's provenance, #832) go in their own columns.
+		data, metadata, recordedAt, err := domain.EncodeForStore(event)
 		if err != nil {
 			return fmt.Errorf("marshal event: %w", err)
+		}
+		var metadataArg any
+		if metadata != nil {
+			metadataArg = string(metadata)
 		}
 
 		_, err = stmt.ExecContext(ctx,
@@ -340,7 +347,8 @@ func (s *EventStore) Append(ctx context.Context, streamID uuid.UUID, streamType 
 			currentVersion,
 			event.EventType(),
 			string(data),
-			event.OccurredAt().Format("2006-01-02T15:04:05.999999999Z07:00"),
+			metadataArg,
+			recordedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
 			maxPosition,
 		)
 		if err != nil {
@@ -637,6 +645,12 @@ const (
 	globalHistoryInclude  = "event_type IN (%s)"
 	globalHistoryExclude  = "event_type NOT IN (%s)"
 	globalHistoryBranch   = "branch_id = ?"
+	// globalHistoryBranchOr keeps the branch's events and, from any branch,
+	// the types in the list (GlobalHistoryQuery.AnyBranchEventTypes). The
+	// unary + keeps the planner from OR-ing two index searches and sorting
+	// the union: it walks idx_events_julian_position_branch in order instead,
+	// testing both columns from the index.
+	globalHistoryBranchOr = "(+branch_id = ? OR +event_type IN (%s))"
 	globalHistoryCount    = "SELECT COUNT(*) FROM events"
 	globalHistorySelect   = "SELECT id, stream_id, stream_type, branch_id, version, event_type, data, metadata, timestamp, position FROM events"
 	globalHistoryOrder    = " ORDER BY julianday(timestamp) ASC, position ASC LIMIT ? OFFSET ?"
@@ -668,7 +682,11 @@ func globalHistorySQL(q repository.GlobalHistoryQuery) (countQuery, pageQuery st
 	if len(q.ExcludeEventTypes) > 0 {
 		inList(globalHistoryExclude, q.ExcludeEventTypes)
 	}
-	if q.BranchID != nil {
+	switch {
+	case q.BranchID != nil && len(q.AnyBranchEventTypes) > 0:
+		args = append(args, q.BranchID.String())
+		inList(globalHistoryBranchOr, q.AnyBranchEventTypes)
+	case q.BranchID != nil:
 		where = append(where, globalHistoryBranch)
 		args = append(args, q.BranchID.String())
 	}
