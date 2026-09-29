@@ -214,7 +214,7 @@ func (m *mockEventStoreExt) ReadByStream(ctx context.Context, streamID uuid.UUID
 	return &repository.HistoryPage{}, nil
 }
 
-func (m *mockEventStoreExt) ReadGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
+func (m *mockEventStoreExt) readGlobalByTime(ctx context.Context, fromTime, toTime time.Time, eventTypes []string, limit, offset int) (*repository.HistoryPage, error) {
 	if m.readGlobalByTimeFunc != nil {
 		return m.readGlobalByTimeFunc(ctx, fromTime, toTime, eventTypes, limit, offset)
 	}
@@ -387,13 +387,13 @@ func TestSnapshotService_CompareSnapshots_HasMore(t *testing.T) {
 		},
 	}
 
-	// A mainline log of `n` events at positions 1..n. The event type is not one
-	// the history transform decodes, which keeps the fixture cheap: only the
+	// A mainline log of `n` events at positions 1..n. The event type is one the
+	// history catalog excludes, which keeps the fixture cheap: only the
 	// positions matter to HasMore.
 	logOf := func(n int) []repository.StoredEvent {
 		log := make([]repository.StoredEvent, n)
 		for i := range log {
-			log[i] = repository.StoredEvent{ID: uuid.New(), EventType: "Unmapped", Position: int64(i + 1)}
+			log[i] = repository.StoredEvent{ID: uuid.New(), EventType: "SnapshotCreated", Position: int64(i + 1)}
 		}
 		return log
 	}
@@ -434,4 +434,8 @@ func TestSnapshotService_CompareSnapshots_HasMore(t *testing.T) {
 		result := compare(t, logOf(3), older, newer)
 		assert.False(t, result.HasMore)
 	})
+}
+
+func (m *mockEventStoreExt) ReadGlobalHistory(ctx context.Context, q repository.GlobalHistoryQuery) (*repository.HistoryPage, error) {
+	return m.readGlobalByTime(ctx, q.FromTime, q.ToTime, q.IncludeEventTypes, q.Limit, q.Offset)
 }

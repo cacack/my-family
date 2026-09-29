@@ -1081,12 +1081,19 @@ export interface FieldChange {
 export interface ChangeEntry {
 	id: string;
 	timestamp: string;
-	entity_type: string;
+	/** The `ChangeEntry.entity_type` vocabulary (see `$lib/utils/changeEntries`). */
+	entity_type: components['schemas']['ChangeEntry']['entity_type'];
 	entity_id: string;
 	entity_name: string;
-	action: 'created' | 'updated' | 'deleted';
+	action: 'created' | 'updated' | 'deleted' | 'merged';
 	changes?: Record<string, FieldChange>;
 	user_id?: string;
+	/**
+	 * For a record without a page of its own (a life event, citation, media
+	 * item, ...), the entity whose page presents it.
+	 */
+	parent_entity_type?: 'person' | 'family' | 'source';
+	parent_entity_id?: string;
 	/**
 	 * Set only on branch-scoped person/family history: `branch` for the branch's
 	 * own events, `main` for the mainline events its view inherits.

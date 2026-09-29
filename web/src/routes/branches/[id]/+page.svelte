@@ -40,6 +40,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { changeEntryLink, entityTypeLabel } from '$lib/utils/changeEntries';
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);
@@ -195,18 +196,9 @@
 		});
 	}
 
+	/** Every branch-aware entity links to its page, or to the page that presents it. */
 	function entityLink(entry: BranchChangeEntry): string | null {
-		if (entry.action === 'deleted') return null;
-		switch (entry.entity_type) {
-			case 'person':
-				return `/persons/${entry.entity_id}`;
-			case 'family':
-				return `/families/${entry.entity_id}`;
-			case 'source':
-				return `/sources/${entry.entity_id}`;
-			default:
-				return null;
-		}
+		return changeEntryLink(entry);
 	}
 
 	function conflictLabel(kind: MergeConflict['kind']): string {
@@ -369,11 +361,11 @@
 						{/if}
 					</div>
 					<div class="change-body">
-						<span class="entity-type">{entry.entity_type}</span>
+						<span class="entity-type">{entityTypeLabel(entry.entity_type)}</span>
 						{#if link}
 							<a href={link} class="entity-name">{entry.entity_name || 'Unnamed'}</a>
 						{:else}
-							<span class="entity-name deleted">{entry.entity_name || 'Unnamed'}</span>
+							<span class="entity-name" class:deleted={entry.action === 'deleted'}>{entry.entity_name || 'Unnamed'}</span>
 						{/if}
 					</div>
 					{#if entry.changes && Object.keys(entry.changes).length > 0}
@@ -395,7 +387,11 @@
 								disabled={merging}
 								aria-label="Leave out of the merge: {entry.entity_name || 'unnamed entity'}"
 							/>
-							<span class="exclude-text">Leave out of the merge</span>
+							<span class="exclude-text">
+								Leave out of the merge: <span class="exclude-name"
+									>{entry.entity_name || 'unnamed entity'}</span
+								>
+							</span>
 						</div>
 					{/if}
 				</li>
@@ -494,7 +490,7 @@
 					{#each conflicts as conflict (conflict.stream_id)}
 						<li class="conflict">
 							<div class="conflict-head">
-								<span class="entity-type">{conflict.entity_type}</span>
+								<span class="entity-type">{entityTypeLabel(conflict.entity_type)}</span>
 								<span class="conflict-name">{conflict.entity_name || 'Unnamed entity'}</span>
 								<Badge variant="destructive">{conflictLabel(conflict.kind)}</Badge>
 							</div>
@@ -805,6 +801,11 @@
 	.exclude-text {
 		font-size: 0.8125rem;
 		color: #475569;
+	}
+
+	.exclude-name {
+		font-weight: 500;
+		color: #1e293b;
 	}
 
 	.change-head {

@@ -26,6 +26,7 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 | **ES-005** | Events implement `Event` interface (`EventType()`, `AggregateID()`, `OccurredAt()`) | Compile-time interface satisfaction |
 | **ES-006** | Event factories use `NewBaseEvent()` for consistent timestamps | Code review; factory tests |
 | **ES-007** | `DecodeEvent()` handles all event types | Integration test with all event types |
+| **ES-008** | Every event type is classified in the history catalog — mapped to a `ChangeEntry` type and action, or explicitly excluded — and the global history filters exclusions in the store, before pagination ([HISTORY-EVENT-TYPES.md](./HISTORY-EVENT-TYPES.md)) | `TestHistoryCatalog_CoversEveryEventType`, `TestGetGlobalHistory_PaginatesOverShownEntries` (`internal/query`, all backends) |
 
 ### Database Invariants (DB) - Source: [ADR-002](./adr/002-dual-database-strategy.md)
 
