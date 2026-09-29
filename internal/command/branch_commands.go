@@ -37,6 +37,14 @@ const branchStreamType = "branch"
 // of the BranchCreated event, never by a direct BranchStore call, so rebuilding
 // the projection reconstructs the registry.
 func (h *Handler) CreateBranch(ctx context.Context, name, description string) (*domain.Branch, error) {
+	return h.CreateBranchWithResearch(ctx, CreateBranchInput{Name: name, Description: description})
+}
+
+// CreateBranchWithResearch is CreateBranch with the branch's research record
+// (#835): hypothesis, subjects, outcome and proof summaries. A new branch's
+// view is main at the current head, so its subjects and proof summaries must
+// exist on main.
+func (h *Handler) CreateBranchWithResearch(ctx context.Context, input CreateBranchInput) (*domain.Branch, error) {
 	if h.branchStore == nil {
 		return nil, ErrBranchStoreRequired
 	}
@@ -49,8 +57,11 @@ func (h *Handler) CreateBranch(ctx context.Context, name, description string) (*
 		return nil, fmt.Errorf("getting max event position: %w", err)
 	}
 
-	branch, err := domain.NewBranch(name, description, basePosition)
+	branch, err := domain.NewBranchWithResearch(input.Name, input.Description, basePosition, input.Research)
 	if err != nil {
+		return nil, err
+	}
+	if err := h.checkBranchReferences(ctx, domain.MainBranchID, branch.Subjects, branch.ProofSummaryIDs); err != nil {
 		return nil, err
 	}
 

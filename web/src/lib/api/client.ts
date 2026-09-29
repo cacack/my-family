@@ -54,6 +54,12 @@ export type Address = components['schemas']['Address'];
 // Re-export Research Branch types from generated file (single source of truth)
 export type Branch = components['schemas']['Branch'];
 export type BranchCreate = components['schemas']['BranchCreate'];
+export type BranchUpdate = components['schemas']['BranchUpdate'];
+/** The verdict a line of research reached (#835); independent of `status`. */
+export type BranchOutcome = components['schemas']['BranchOutcome'];
+export type BranchSubject = components['schemas']['BranchSubject'];
+export type BranchSubjectInput = components['schemas']['BranchSubjectInput'];
+export type BranchProofSummaryRef = components['schemas']['BranchProofSummaryRef'];
 export type BranchList = components['schemas']['BranchList'];
 export type BranchComparisonResult = components['schemas']['BranchComparisonResult'];
 export type MergeConflict = components['schemas']['MergeConflict'];
@@ -305,6 +311,11 @@ export function isBranchScopedRequest(method: string, path: string): boolean {
  */
 function withBranchScope(method: string, path: string): string {
 	if (activeBranchId === null || !isBranchScopedRequest(method, path)) {
+		return path;
+	}
+	// A caller that names a branch explicitly (e.g. the branch page reading the
+	// branch it shows, whichever one is active) keeps its own scope.
+	if (/[?&]branch=/.test(path)) {
 		return path;
 	}
 	const separator = path.includes('?') ? '&' : '?';
@@ -1251,9 +1262,15 @@ class ApiClient {
 		return this.request<PersonList>('GET', `/persons${query ? `?${query}` : ''}`);
 	}
 
-	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
-	async getPerson(id: string): Promise<PersonDetail> {
-		return this.request<PersonDetail>('GET', `/persons/${id}`);
+	/**
+	 * Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`),
+	 * unless `options.branch` names the branch to read instead - the branch
+	 * research editor reads people as the branch it edits sees them, whichever
+	 * branch is active.
+	 */
+	async getPerson(id: string, options?: { branch?: string }): Promise<PersonDetail> {
+		const query = options?.branch ? `?branch=${encodeURIComponent(options.branch)}` : '';
+		return this.request<PersonDetail>('GET', `/persons/${id}${query}`);
 	}
 
 	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
@@ -2265,8 +2282,15 @@ class ApiClient {
 		offset?: number;
 		sort?: string;
 		order?: 'asc' | 'desc';
+		/**
+		 * Read this branch's view instead of the active scope - the branch page
+		 * lists the proof summaries of the branch it shows, which need not be
+		 * the active one.
+		 */
+		branch?: string;
 	}): Promise<ProofSummaryListResponse> {
 		const searchParams = new URLSearchParams();
+		if (params?.branch) searchParams.set('branch', params.branch);
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
 		if (params?.offset) searchParams.set('offset', params.offset.toString());
 		if (params?.sort) searchParams.set('sort', params.sort);
@@ -2425,7 +2449,7 @@ class ApiClient {
 
 	// Research branch endpoints. These manage the branches themselves, so they
 	// are never branch-scoped — `/branches*` is absent from the allowlist above.
-	// All six answer 503 when the branch registry is not configured.
+	// All of them answer 503 when the branch registry is not configured.
 	async listBranches(): Promise<BranchList> {
 		return this.request<BranchList>('GET', '/branches');
 	}
@@ -2442,6 +2466,17 @@ class ApiClient {
 	 * Delete a branch: its events are retained, its overlay rows are purged and
 	 * its status becomes `archived`. Answers 409 if the branch is not active.
 	 */
+	/**
+	 * Partial edit of a branch's description and research record (#835). An
+	 * active branch takes every field; a merged one only `outcome` (409
+	 * `branch_field_locked` otherwise); an archived one nothing (409
+	 * `branch_not_active`). Added subjects and proof summaries must exist on
+	 * the branch (400 `invalid_reference`).
+	 */
+	async updateBranch(id: string, data: BranchUpdate): Promise<Branch> {
+		return this.request<Branch>('PATCH', `/branches/${encodeURIComponent(id)}`, data);
+	}
+
 	async deleteBranch(id: string): Promise<void> {
 		return this.request<void>('DELETE', `/branches/${encodeURIComponent(id)}`);
 	}

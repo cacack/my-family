@@ -23,15 +23,16 @@ var errInjectedReplayFailure = errors.New("injected storage failure during repla
 // is armed, so the count covers only the merge's replay (the claim is on the
 // branch's own scope and is never counted).
 //
-// raceResumeRecord makes the next append of a BranchMergeResumed decision
-// record lose its optimistic-concurrency check, as if a rival resume had
-// recorded first.
+// beforeResumeRecord, when set, runs once just before the next append of a
+// BranchMergeResumed decision record reaches the store — after the resume read
+// the branch stream's version — so a rival write can land in between and make
+// that append lose its optimistic-concurrency check for real.
 type faultyReplayStore struct {
 	repository.EventStore
-	armed            bool
-	failAt           int
-	mainAppends      int
-	raceResumeRecord bool
+	armed              bool
+	failAt             int
+	mainAppends        int
+	beforeResumeRecord func()
 
 	// afterMainScan, when set, runs once right after a set-based read of
 	// main's streams returns — the point where a rival resume can act behind
@@ -62,9 +63,9 @@ func (s *faultyReplayStore) ReadStreamsForBranch(ctx context.Context, streamIDs 
 }
 
 func (s *faultyReplayStore) Append(ctx context.Context, streamID uuid.UUID, streamType string, events []domain.Event, expectedVersion int64, scope repository.AppendScope) error {
-	if s.raceResumeRecord && len(events) == 1 && events[0].EventType() == "BranchMergeResumed" {
-		s.raceResumeRecord = false
-		return repository.ErrConcurrencyConflict
+	if hook := s.beforeResumeRecord; hook != nil && len(events) == 1 && events[0].EventType() == "BranchMergeResumed" {
+		s.beforeResumeRecord = nil
+		hook()
 	}
 	if s.armed && scope.BranchID.IsMain() {
 		s.mainAppends++
@@ -925,7 +926,18 @@ func TestResumeMerge_ConcurrentDecisionRecordLoses(t *testing.T) {
 	s.makeSecondStreamStale(t)
 
 	head := logHead(t, s.f)
-	s.faulty.raceResumeRecord = true
+	s.faulty.beforeResumeRecord = func() {
+		// The rival resume records its own decisions first.
+		scope := repository.AppendScope{BranchID: domain.BranchID(s.branch.ID)}
+		version, err := s.f.eventStore.GetStreamVersion(ctx, s.branch.ID, scope.BranchID)
+		if err != nil {
+			t.Fatalf("GetStreamVersion failed: %v", err)
+		}
+		rival := domain.NewBranchMergeResumed(s.branch.ID, 0, map[uuid.UUID]int64{}, map[uuid.UUID]string{})
+		if err := s.f.eventStore.Append(ctx, s.branch.ID, "branch", []domain.Event{rival}, version, scope); err != nil {
+			t.Fatalf("appending rival resume record failed: %v", err)
+		}
+	}
 	_, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
 		BranchID:    s.branch.ID,
 		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch},
@@ -933,11 +945,56 @@ func TestResumeMerge_ConcurrentDecisionRecordLoses(t *testing.T) {
 	if !errors.Is(err, command.ErrMergeResumeConcurrent) {
 		t.Fatalf("error = %v, want ErrMergeResumeConcurrent", err)
 	}
-	if got := logHead(t, s.f); got != head {
-		t.Errorf("losing resume wrote to the log (%d -> %d)", head, got)
+	if got := logHead(t, s.f); got != head+1 {
+		t.Errorf("log head = %d, want %d: only the rival's record, nothing from the losing resume", got, head+1)
 	}
 	if got := mainSurnameOf(t, s.f, s.second); got != "Hopper" {
 		t.Errorf("second stream surname = %q, want nothing replayed", got)
+	}
+}
+
+// TestResumeMerge_OutcomeEditRaceIsNotBlamedOnAResume: a merged branch still
+// accepts an outcome edit (#835). One landing between a resume reading the
+// plan and recording its decisions refuses the record, but it is reported as
+// the branch changing, not as a rival resume — and resuming again works.
+func TestResumeMerge_OutcomeEditRaceIsNotBlamedOnAResume(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.makeSecondStreamStale(t)
+
+	proved := domain.BranchOutcomeProved
+	s.faulty.beforeResumeRecord = func() {
+		if _, err := s.handler.UpdateBranch(ctx, command.UpdateBranchInput{BranchID: s.branch.ID, Outcome: &proved}); err != nil {
+			t.Fatalf("UpdateBranch outcome failed: %v", err)
+		}
+	}
+	resolutions := map[uuid.UUID]command.MergeResolution{s.second: command.ResolveBranch}
+	_, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID, Resolutions: resolutions})
+	if !errors.Is(err, command.ErrMergeResumeBranchChanged) {
+		t.Fatalf("error = %v, want ErrMergeResumeBranchChanged", err)
+	}
+	if errors.Is(err, command.ErrMergeResumeConcurrent) {
+		t.Errorf("error = %v blames a rival resume that never ran", err)
+	}
+	if got := len(resumeRecords(t, s)); got != 0 {
+		t.Errorf("got %d BranchMergeResumed records, want none", got)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Hopper" {
+		t.Errorf("second stream surname = %q, want nothing replayed", got)
+	}
+
+	if _, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{BranchID: s.branch.ID, Resolutions: resolutions}); err != nil {
+		t.Fatalf("retried ResumeMerge failed: %v", err)
+	}
+	if got := mainSurnameOf(t, s.f, s.second); got != "Byron" {
+		t.Errorf("second stream surname = %q, want the branch's edit replayed", got)
+	}
+	branch, err := s.f.branchStore.Get(ctx, s.branch.ID)
+	if err != nil {
+		t.Fatalf("Get branch failed: %v", err)
+	}
+	if branch.Outcome != domain.BranchOutcomeProved {
+		t.Errorf("outcome = %q, want the edit kept", branch.Outcome)
 	}
 }
 

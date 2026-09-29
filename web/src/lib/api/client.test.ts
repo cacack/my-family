@@ -258,6 +258,13 @@ describe('branch scope threading', () => {
 		expect(requestedUrl()).toBe(`/api/v1/persons/${PERSON_ID}?branch=${BRANCH_ID}`);
 	});
 
+	it('keeps an explicit branch on getPerson instead of the active one', async () => {
+		setClientBranch(BRANCH_ID);
+		const OTHER = '22222222-2222-2222-2222-222222222222';
+		await api.getPerson(PERSON_ID, { branch: OTHER });
+		expect(requestedUrl()).toBe(`/api/v1/persons/${PERSON_ID}?branch=${OTHER}`);
+	});
+
 	it('joins with & when the path already carries a query string', async () => {
 		setClientBranch(BRANCH_ID);
 		await api.listPersons({ limit: 20, offset: 40 });
@@ -304,6 +311,21 @@ describe('branch scope threading', () => {
 		setClientBranch(BRANCH_ID);
 		await api.listBranches();
 		expect(requestedUrl()).toBe('/api/v1/branches');
+	});
+
+	it('keeps an explicit branch parameter instead of adding the active one', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.listProofSummaries({ branch: 'other-branch', limit: 100 });
+		expect(requestedUrl()).toBe('/api/v1/proof-summaries?branch=other-branch&limit=100');
+	});
+
+	it('PATCHes a branch unscoped, with the id encoded', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.updateBranch('a/b', { outcome: 'proved' });
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe('/api/v1/branches/a%2Fb');
+		expect(init.method).toBe('PATCH');
+		expect(JSON.parse(init.body as string)).toEqual({ outcome: 'proved' });
 	});
 
 	it('scopes the snapshot endpoints - a snapshot marks a position in the branch view', async () => {
@@ -383,7 +405,10 @@ describe('mergeBranch', () => {
 			name: 'census-1881',
 			base_position: 12,
 			status: 'merged',
-			created_at: '2026-01-01T00:00:00Z'
+			created_at: '2026-01-01T00:00:00Z',
+			outcome: 'open',
+			subjects: [],
+			proof_summary_ids: []
 		},
 		merged_at_position: 128,
 		replayed_event_count: 7,
@@ -471,7 +496,10 @@ describe('resumeBranchMerge', () => {
 			name: 'census-1881',
 			base_position: 12,
 			status: 'merged',
-			created_at: '2026-01-01T00:00:00Z'
+			created_at: '2026-01-01T00:00:00Z',
+			outcome: 'open',
+			subjects: [],
+			proof_summary_ids: []
 		},
 		merged_at_position: 128,
 		replayed_event_count: 1,

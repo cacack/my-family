@@ -43,6 +43,16 @@ var (
 	// ErrResolutionRationaleTooLong is returned for a merge resolution whose
 	// rationale exceeds MaxResolutionRationaleLength characters.
 	ErrResolutionRationaleTooLong = errors.New("merge resolution rationale must be 1000 characters or less")
+
+	// Research-record errors (#835).
+	ErrBranchHypothesisTooLong     = errors.New("branch hypothesis must be 2000 characters or less")
+	ErrBranchInvalidOutcome        = errors.New("branch outcome must be one of open, proved, disproved, inconclusive, superseded")
+	ErrBranchTooManySubjects       = errors.New("a branch may name at most 50 subjects")
+	ErrBranchInvalidSubject        = errors.New("branch subject must be a person or family with an id")
+	ErrBranchDuplicateSubject      = errors.New("branch subjects must not repeat")
+	ErrBranchTooManyProofSummaries = errors.New("a branch may link at most 20 proof summaries")
+	ErrBranchInvalidProofSummaryID = errors.New("branch proof summary ids must be non-empty")
+	ErrBranchDuplicateProofSummary = errors.New("branch proof summary ids must not repeat")
 )
 
 // MaxResolutionRationaleLength bounds the optional rationale a merge records
@@ -68,6 +78,85 @@ func NormalizeResolutionRationales(rationales map[uuid.UUID]string) (map[uuid.UU
 		out[streamID] = rationale
 	}
 	return out, nil
+}
+
+// Research-record limits (#835). Lengths are counted in characters (runes),
+// not bytes, so a hypothesis written in any script gets the same budget.
+const (
+	MaxBranchHypothesisLength = 2000
+	MaxBranchSubjects         = 50
+	MaxBranchProofSummaries   = 20
+)
+
+// BranchOutcome is the verdict a line of research reached (#835). It is kept
+// independent of BranchStatus on purpose: status is the branch's lifecycle
+// (can it still take writes?), outcome is what the research concluded. A
+// merged branch is usually "proved", but a branch can be merged as
+// "inconclusive" or archived as "disproved", and #836 reuses this same enum
+// when a branch is closed without merging.
+type BranchOutcome string
+
+const (
+	// BranchOutcomeOpen is the default: the question is still being worked.
+	BranchOutcomeOpen         BranchOutcome = "open"
+	BranchOutcomeProved       BranchOutcome = "proved"
+	BranchOutcomeDisproved    BranchOutcome = "disproved"
+	BranchOutcomeInconclusive BranchOutcome = "inconclusive"
+	// BranchOutcomeSuperseded marks a question overtaken by other research.
+	BranchOutcomeSuperseded BranchOutcome = "superseded"
+)
+
+// BranchOutcomes lists every valid outcome in display order.
+func BranchOutcomes() []BranchOutcome {
+	return []BranchOutcome{
+		BranchOutcomeOpen,
+		BranchOutcomeProved,
+		BranchOutcomeDisproved,
+		BranchOutcomeInconclusive,
+		BranchOutcomeSuperseded,
+	}
+}
+
+// IsValid checks if the outcome value is one of the defined outcomes.
+func (o BranchOutcome) IsValid() bool {
+	switch o {
+	case BranchOutcomeOpen, BranchOutcomeProved, BranchOutcomeDisproved,
+		BranchOutcomeInconclusive, BranchOutcomeSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// OrDefault returns the outcome, or BranchOutcomeOpen when it is empty. A
+// branch created before #835 carries no outcome in its event or its registry
+// row; it is read as "open".
+func (o BranchOutcome) OrDefault() BranchOutcome {
+	if o == "" {
+		return BranchOutcomeOpen
+	}
+	return o
+}
+
+// BranchSubjectType names the kind of record a branch's hypothesis concerns.
+type BranchSubjectType string
+
+const (
+	BranchSubjectPerson BranchSubjectType = "person"
+	BranchSubjectFamily BranchSubjectType = "family"
+)
+
+// IsValid checks if the subject type is person or family.
+func (t BranchSubjectType) IsValid() bool {
+	return t == BranchSubjectPerson || t == BranchSubjectFamily
+}
+
+// BranchSubject is one person or family a branch's hypothesis is about. The
+// type travels with the id so a subject can be linked and resolved without
+// probing both tables.
+type BranchSubject struct {
+	Type BranchSubjectType `json:"type"`
+	ID   uuid.UUID         `json:"id"`
 }
 
 // BranchStatus represents the lifecycle state of a branch.
@@ -116,6 +205,85 @@ type Branch struct {
 	// "never merged" is distinguishable from the zero time.
 	MergedAt  *time.Time `json:"merged_at,omitempty"`
 	MergeNote string     `json:"merge_note,omitempty"`
+
+	// The research record (#835): the question the branch explores, the
+	// persons/families it concerns, the verdict it reached and the proof
+	// summaries that argue that verdict. Set at creation and edited through
+	// BranchUpdated; Outcome is never empty on a validated branch.
+	Hypothesis      string          `json:"hypothesis,omitempty"`
+	Subjects        []BranchSubject `json:"subjects,omitempty"`
+	Outcome         BranchOutcome   `json:"outcome"`
+	ProofSummaryIDs []uuid.UUID     `json:"proof_summary_ids,omitempty"`
+}
+
+// BranchResearch is the editable research record of a branch (#835), bundled
+// so the create command, the update event and the registry write carry the
+// same shape.
+type BranchResearch struct {
+	Hypothesis      string
+	Subjects        []BranchSubject
+	Outcome         BranchOutcome
+	ProofSummaryIDs []uuid.UUID
+}
+
+// Research returns the branch's research record. The slices are copied so a
+// caller cannot mutate the branch through the result.
+func (b *Branch) Research() BranchResearch {
+	return BranchResearch{
+		Hypothesis:      b.Hypothesis,
+		Subjects:        append([]BranchSubject(nil), b.Subjects...),
+		Outcome:         b.Outcome,
+		ProofSummaryIDs: append([]uuid.UUID(nil), b.ProofSummaryIDs...),
+	}
+}
+
+// ApplyResearch overwrites the branch's research record with r, copying its
+// slices. An empty outcome becomes BranchOutcomeOpen.
+func (b *Branch) ApplyResearch(r BranchResearch) {
+	b.Hypothesis = r.Hypothesis
+	b.Subjects = append([]BranchSubject(nil), r.Subjects...)
+	b.Outcome = r.Outcome.OrDefault()
+	b.ProofSummaryIDs = append([]uuid.UUID(nil), r.ProofSummaryIDs...)
+}
+
+// Validate checks the research record's field values: the hypothesis length,
+// the outcome, and that subjects and proof summary ids are well formed, within
+// their caps and free of repeats. It does not check that the referenced
+// records exist — that needs the read model and is the command's job.
+func (r BranchResearch) Validate() error {
+	if utf8.RuneCountInString(r.Hypothesis) > MaxBranchHypothesisLength {
+		return ErrBranchHypothesisTooLong
+	}
+	if !r.Outcome.IsValid() {
+		return ErrBranchInvalidOutcome
+	}
+	if len(r.Subjects) > MaxBranchSubjects {
+		return ErrBranchTooManySubjects
+	}
+	seenSubjects := make(map[BranchSubject]struct{}, len(r.Subjects))
+	for _, subject := range r.Subjects {
+		if !subject.Type.IsValid() || subject.ID == uuid.Nil {
+			return ErrBranchInvalidSubject
+		}
+		if _, dup := seenSubjects[subject]; dup {
+			return ErrBranchDuplicateSubject
+		}
+		seenSubjects[subject] = struct{}{}
+	}
+	if len(r.ProofSummaryIDs) > MaxBranchProofSummaries {
+		return ErrBranchTooManyProofSummaries
+	}
+	seenProofs := make(map[uuid.UUID]struct{}, len(r.ProofSummaryIDs))
+	for _, id := range r.ProofSummaryIDs {
+		if id == uuid.Nil {
+			return ErrBranchInvalidProofSummaryID
+		}
+		if _, dup := seenProofs[id]; dup {
+			return ErrBranchDuplicateProofSummary
+		}
+		seenProofs[id] = struct{}{}
+	}
+	return nil
 }
 
 // NewBranch creates a new active Branch with validation.
@@ -126,6 +294,7 @@ func NewBranch(name, description string, basePosition int64) (*Branch, error) {
 		Description:  description,
 		BasePosition: basePosition,
 		Status:       BranchStatusActive,
+		Outcome:      BranchOutcomeOpen,
 		CreatedAt:    time.Now().UTC(),
 	}
 
@@ -136,22 +305,41 @@ func NewBranch(name, description string, basePosition int64) (*Branch, error) {
 	return b, nil
 }
 
-// Validate checks that the branch has valid field values.
+// Validate checks that the branch has valid field values. Text limits count
+// characters (runes), not bytes, matching the API's maxLength and the
+// PostgreSQL VARCHAR columns.
 func (b *Branch) Validate() error {
 	if b.Name == "" {
 		return ErrBranchNameRequired
 	}
-	if len(b.Name) > 100 {
+	if utf8.RuneCountInString(b.Name) > 100 {
 		return ErrBranchNameTooLong
 	}
-	if len(b.Description) > 500 {
+	if utf8.RuneCountInString(b.Description) > 500 {
 		return ErrBranchDescTooLong
 	}
 	if !b.Status.IsValid() {
 		return ErrBranchInvalidStatus
 	}
-	if len(b.MergeNote) > 1000 {
+	if utf8.RuneCountInString(b.MergeNote) > 1000 {
 		return ErrBranchMergeNoteTooLong
 	}
-	return nil
+	// An empty outcome is a pre-#835 branch and reads as open.
+	research := b.Research()
+	research.Outcome = research.Outcome.OrDefault()
+	return research.Validate()
+}
+
+// NewBranchWithResearch creates a new active Branch carrying a research record
+// (#835). An empty outcome defaults to open.
+func NewBranchWithResearch(name, description string, basePosition int64, research BranchResearch) (*Branch, error) {
+	b, err := NewBranch(name, description, basePosition)
+	if err != nil {
+		return nil, err
+	}
+	b.ApplyResearch(research)
+	if err := b.Validate(); err != nil {
+		return nil, err
+	}
+	return b, nil
 }

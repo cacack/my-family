@@ -571,6 +571,29 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 			},
 		},
 		{
+			name: "BranchUpdated",
+			event: domain.NewBranchUpdated(&domain.Branch{
+				ID:              uuid.New(),
+				Description:     "desc",
+				Hypothesis:      "Was Mary the daughter of John?",
+				Subjects:        []domain.BranchSubject{{Type: domain.BranchSubjectPerson, ID: uuid.Nil}},
+				Outcome:         domain.BranchOutcomeProved,
+				ProofSummaryIDs: []uuid.UUID{uuid.Nil},
+			}, []string{"outcome"}),
+			eventType: "BranchUpdated",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BranchUpdated)
+				if !ok {
+					t.Fatalf("Expected BranchUpdated, got %T", decoded)
+				}
+				if e.Hypothesis != "Was Mary the daughter of John?" || e.Outcome != domain.BranchOutcomeProved ||
+					e.Description != "desc" || len(e.Subjects) != 1 || len(e.ProofSummaryIDs) != 1 ||
+					len(e.ChangedFields) != 1 || e.ChangedFields[0] != "outcome" {
+					t.Errorf("decoded = %+v", e)
+				}
+			},
+		},
+		{
 			name:      "BranchDeleted",
 			event:     domain.NewBranchDeleted(uuid.New()),
 			eventType: "BranchDeleted",
@@ -1009,7 +1032,7 @@ func TestStoredEvent_DecodeEvent_InvalidJSON_AllTypes(t *testing.T) {
 		"MediaCreated", "MediaUpdated", "MediaDeleted",
 		"NameAdded", "NameUpdated", "NameRemoved",
 		"SnapshotCreated", "SnapshotDeleted", "PersonMerged",
-		"BranchCreated", "BranchDeleted", "BranchMerged", "BranchMergeResumed",
+		"BranchCreated", "BranchUpdated", "BranchDeleted", "BranchMerged", "BranchMergeResumed",
 		"NoteCreated", "NoteUpdated", "NoteDeleted",
 		"SubmitterCreated", "SubmitterUpdated", "SubmitterDeleted",
 		"AssociationCreated", "AssociationUpdated", "AssociationDeleted",

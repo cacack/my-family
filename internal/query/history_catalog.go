@@ -81,6 +81,7 @@ const (
 	reasonImport   = "import audit record: the persons, families and sources it created each have their own events"
 	reasonSnapshot = "research-artifact marker (#624): a snapshot names a position in the log, it changes no genealogical data"
 	reasonResume   = "merge resume record (#685): part of the merge it finishes, which the history shows once as BranchMerged; its decisions are on the branch's merge record"
+	reasonResearch = "research-record edit (#835): a branch's hypothesis, subjects and outcome describe the research, shown on the branch itself; it changes no genealogical data"
 )
 
 // historyEventCatalog is the table itself. Keep it in the order of
@@ -118,6 +119,7 @@ var historyEventCatalog = map[string]historyEventClass{
 	"BranchDeleted":            mapped(entityTypeBranch, actionDeleted),
 	"BranchMerged":             mapped(entityTypeBranch, actionMerged),
 	"BranchMergeResumed":       excluded(reasonResume),
+	"BranchUpdated":            excluded(reasonResearch),
 	"PersonMerged":             mapped(entityTypePerson, actionMerged),
 	"NoteCreated":              mapped(entityTypeNote, actionCreated),
 	"NoteUpdated":              mapped(entityTypeNote, actionUpdated),

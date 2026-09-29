@@ -274,6 +274,19 @@ export function returnToMainline(): void {
 	switchBranch(null);
 }
 
+/**
+ * Adopt a fresher copy of the active branch's record - e.g. after its
+ * research record was edited - so the banner shows what was just saved. A
+ * no-op for any branch other than the active one, and it never changes the
+ * scope: the id and the API client are untouched, and no reload happens.
+ */
+export function refreshActiveBranch(branch: Branch): void {
+	if (state.id === null || branch.id !== state.id) {
+		return;
+	}
+	state.branch = branch;
+}
+
 /** Dismiss the stale-branch notice once the user has read it. */
 export function dismissBranchNotice(): void {
 	state.notice = null;

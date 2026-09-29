@@ -30,6 +30,9 @@ const branch: Branch = {
 	status: 'merged',
 	created_at: '2026-01-15T10:30:00Z',
 	merged_at: '2026-02-01T09:00:00Z',
+	outcome: 'open',
+	subjects: [],
+	proof_summary_ids: [],
 	merge_state: 'incomplete',
 	merge_pending: [pending(ADA, 'Ada Lovelace', 'breaks_reference'), pending(GRACE, 'Grace Hopper', 'ready')]
 };

@@ -26,6 +26,9 @@ const activeBranchFixture: apiModule.Branch = {
 	name: 'Maternal Smith line',
 	base_position: 42,
 	status: 'active',
+	outcome: 'open',
+	subjects: [],
+	proof_summary_ids: [],
 	created_at: '2026-01-15T10:30:00Z'
 };
 
@@ -147,6 +150,9 @@ describe('activeBranch store', () => {
 				name: 'Maternal Smith line',
 				base_position: 2,
 				status: 'active',
+				outcome: 'open',
+				subjects: [],
+				proof_summary_ids: [],
 				created_at: '2026-08-09T00:00:00Z'
 			});
 		} finally {
@@ -299,6 +305,28 @@ describe('activeBranch store', () => {
 		await store.revalidateActiveBranch();
 
 		expect(getBranchMock).not.toHaveBeenCalled();
+	});
+
+	it('adopts a refreshed record of the active branch without reloading', async () => {
+		getBranchMock.mockResolvedValue(activeBranchFixture);
+		const { client, store } = await loadStore(BRANCH_ID);
+		await store.revalidateActiveBranch();
+
+		store.refreshActiveBranch({ ...activeBranchFixture, hypothesis: 'Q', outcome: 'proved' });
+		expect(store.activeBranch.branch?.hypothesis).toBe('Q');
+		expect(store.activeBranch.branch?.outcome).toBe('proved');
+		expect(client.getClientBranch()).toBe(BRANCH_ID);
+		expect(reloadMock).not.toHaveBeenCalled();
+
+		// Another branch's record never replaces the active one.
+		store.refreshActiveBranch({ ...activeBranchFixture, id: 'other', hypothesis: 'Other' });
+		expect(store.activeBranch.branch?.hypothesis).toBe('Q');
+	});
+
+	it('ignores a refreshed record on the mainline', async () => {
+		const { store } = await loadStore(null);
+		store.refreshActiveBranch(activeBranchFixture);
+		expect(store.activeBranch.branch).toBeNull();
 	});
 
 	it('dismisses the stale-branch notice', async () => {

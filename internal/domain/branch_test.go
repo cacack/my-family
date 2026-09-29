@@ -157,6 +157,35 @@ func TestBranch_Validate(t *testing.T) {
 			wantErr: domain.ErrBranchDescTooLong,
 		},
 		{
+			// Limits count characters, not bytes: 500 two-byte characters
+			// (1000 bytes) is a valid description, as the API's maxLength says.
+			name: "multibyte text at the limits",
+			branch: &domain.Branch{
+				Name:        strings.Repeat("é", 100),
+				Description: strings.Repeat("é", 500),
+				MergeNote:   strings.Repeat("é", 1000),
+				Status:      domain.BranchStatusActive,
+			},
+			wantErr: nil,
+		},
+		{
+			name: "multibyte description too long",
+			branch: &domain.Branch{
+				Name:        "Valid",
+				Description: strings.Repeat("é", 501),
+				Status:      domain.BranchStatusActive,
+			},
+			wantErr: domain.ErrBranchDescTooLong,
+		},
+		{
+			name: "multibyte name too long",
+			branch: &domain.Branch{
+				Name:   strings.Repeat("é", 101),
+				Status: domain.BranchStatusActive,
+			},
+			wantErr: domain.ErrBranchNameTooLong,
+		},
+		{
 			name: "invalid status",
 			branch: &domain.Branch{
 				Name:   "Valid",

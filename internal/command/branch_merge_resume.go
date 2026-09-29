@@ -77,6 +77,14 @@ var (
 	// the refusing call. Resume again: the plan it then reads includes the
 	// other request's decisions, and it will not re-decide them.
 	ErrMergeResumeConcurrent = errors.New("another resume of this merge recorded its decisions first")
+
+	// ErrMergeResumeBranchChanged is returned when some other write to the
+	// branch's own stream — an outcome edit (BranchUpdated, #835), the only
+	// other write a merged branch accepts — landed between this call reading
+	// the plan and recording its decisions. The plan itself did not change,
+	// but the record's append asserts the stream version, so it is refused.
+	// Nothing has been replayed; resume again.
+	ErrMergeResumeBranchChanged = errors.New("the branch record changed while the resume was deciding")
 )
 
 // resumeScanPage is the page size of the scan that finds which of the branch's
@@ -252,7 +260,8 @@ type resumeDecision struct {
 // version, so the loser is refused (reported as ErrMergePartiallyApplied) and
 // its retry finds the stream already replayed.
 // Two concurrent resumes cannot both record decisions either: the record
-// asserts the branch stream's version (ErrMergeResumeConcurrent).
+// asserts the branch stream's version (ErrMergeResumeConcurrent, or
+// ErrMergeResumeBranchChanged when the rival write was an outcome edit).
 //
 // A replay failure DURING a resume is reported exactly like one during a merge
 // (ErrMergePartiallyApplied), and the remedy is the same: resume again.
@@ -576,7 +585,7 @@ func (h *Handler) recordResumeDecisions(
 	scope := branchScope(branch)
 	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, record.branchVersion, scope); err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
-			return fmt.Errorf("%w: branch %s; nothing has been replayed — resume again to see the plan as it now stands", ErrMergeResumeConcurrent, branch.ID)
+			return h.explainResumeConflict(ctx, branch, record)
 		}
 		return fmt.Errorf("recording resume decisions: %w", err)
 	}
@@ -584,6 +593,29 @@ func (h *Handler) recordResumeDecisions(
 		return fmt.Errorf("projecting resume decisions: %w", err)
 	}
 	return nil
+}
+
+// explainResumeConflict names the rival write that made recordResumeDecisions'
+// append fail, as explainClaimConflict does for a claim: a rival resume that
+// recorded its own decisions (ErrMergeResumeConcurrent), or any other write to
+// the branch stream, such as an outcome edit (ErrMergeResumeBranchChanged).
+// Either way nothing was replayed and resuming again is the remedy.
+func (h *Handler) explainResumeConflict(ctx context.Context, branch *domain.Branch, record mergeRecord) error {
+	stored, err := h.eventStore.ReadStream(ctx, branch.ID)
+	if err != nil {
+		return fmt.Errorf("reading branch stream: %w", err)
+	}
+	for i := range stored {
+		// ReadStream spans every branch, so filter to this branch's own scope
+		// before trusting the event type.
+		evt := stored[i]
+		if evt.BranchID == domain.BranchID(branch.ID) && evt.EventType == "BranchMergeResumed" && evt.Version > record.branchVersion {
+			return fmt.Errorf("%w: branch %s; nothing has been replayed — resume again to see the plan as it now stands",
+				ErrMergeResumeConcurrent, branch.ID)
+		}
+	}
+	return fmt.Errorf("%w: branch %s; nothing has been replayed — resume again",
+		ErrMergeResumeBranchChanged, branch.ID)
 }
 
 // mainStreamVersions reads main's current version of every stream in the

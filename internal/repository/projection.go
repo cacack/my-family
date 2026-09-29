@@ -161,6 +161,8 @@ func (p *Projector) Project(ctx context.Context, event domain.Event, version int
 		return p.projectProofSummaryDeleted(ctx, e, branchID)
 	case domain.BranchCreated:
 		return p.projectBranchCreated(ctx, e)
+	case domain.BranchUpdated:
+		return p.projectBranchUpdated(ctx, e)
 	case domain.BranchDeleted:
 		return p.projectBranchDeleted(ctx, e)
 	case domain.BranchMerged:
@@ -200,7 +202,22 @@ func (p *Projector) projectBranchCreated(ctx context.Context, e domain.BranchCre
 		Status:       domain.BranchStatusActive,
 		CreatedAt:    e.OccurredAt(),
 	}
+	branch.ApplyResearch(e.Research())
 	return p.branchStore.Upsert(ctx, branch)
+}
+
+// projectBranchUpdated overwrites the branch's description and research
+// record (#835) with the values the event carries. The event holds the full
+// post-edit state, so the write is a plain overwrite: replaying the branch's
+// events in order rebuilds the same registry row. Status and the merge record
+// are untouched — an outcome recorded on a merged branch must not reopen it.
+func (p *Projector) projectBranchUpdated(ctx context.Context, e domain.BranchUpdated) error {
+	if p.branchStore == nil {
+		slog.Warn("projection: dropping branch lifecycle event, no BranchStore wired",
+			"event", "BranchUpdated", "branch_id", e.BranchID)
+		return nil
+	}
+	return p.branchStore.UpdateDetails(ctx, e.BranchID, e.Description, e.Research())
 }
 
 // projectBranchDeleted archives the branch in the registry and drops the

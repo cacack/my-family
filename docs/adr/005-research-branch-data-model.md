@@ -216,6 +216,17 @@ finalized in implementation:
 
 - **`BranchCreated`** — `{ BranchID, Name, Description, BasePosition, OccurredAt }`. Establishes a
   branch off `main` at `BasePosition`.
+- **`BranchUpdated`** — `{ BranchID, Description, Hypothesis, Subjects, Outcome, ProofSummaryIDs,
+  ChangedFields, OccurredAt }`. Added by #835: edits a branch's description and research record
+  (the question it explores, the persons/families it concerns, its verdict and the proof summaries
+  that argue it). It carries the full post-edit value of every editable field, so the projection
+  is a plain overwrite of the registry row. Like the other lifecycle events it lives on the
+  branch's own stream, is research metadata (never a comparison change, never replayed by a
+  merge), and leaves status and the merge record alone. An active branch accepts every field; a
+  merged branch accepts only `Outcome`, so the verdict can be recorded once the merge has landed;
+  an archived branch accepts nothing. `Outcome` (`open | proved | disproved | inconclusive |
+  superseded`, default `open`) is independent of the lifecycle `status` and is reused when a
+  branch is closed without merging (#836).
 - **`BranchDeleted`** — `{ BranchID, OccurredAt }`. Archives/discards a branch. Append-only: this
   records the deletion as a new event; it does not remove the branch's prior events from the log
   (ES-002). Projections drop the branch's overlay rows.
@@ -618,7 +629,8 @@ both halves of what it must know are durable in the log:
   plan. It is a lifecycle marker like `BranchMerged` — excluded from replay and diffs, handled in
   `DecodeEvent` (ES-007) and, as a no-op, in the projector (PR-004) — and its append asserts the
   branch stream's version, so two resumes cannot both record decisions
-  (`409 merge_resume_concurrent`).
+  (`409 merge_resume_concurrent`). The same 409 is returned, with a message naming the real cause,
+  when the rival write was an outcome edit — the one other write a merged branch accepts (#835).
 
 A remaining stream is replayed automatically only when `main` still sits at its pinned version —
 the same guarantee the original attempt ran under, re-asserted at append time by the shared
@@ -1019,6 +1031,9 @@ refusals because they have distinct causes and remedies. A branch bigger than th
 permanent property of that branch. A *mainline* tail bigger than the cap grows with unrelated
 activity since the fork and says nothing about branch size — a three-event branch can trip it — so
 reporting that as "your branch is too large" sends the user after a fix that does not exist.
+The branch side's cap counts only the events a comparison shows and a merge replays: research
+metadata on the branch's own stream (its creation, its `BranchUpdated` research edits, #835) is
+paged past, so a long research history never makes a branch "too large".
 
 **Not every conflict accepts both resolutions.** §Conflict definition says a conflict "requires
 review", which implies a genuine choice; for two of the three classes the "branch wins" side of

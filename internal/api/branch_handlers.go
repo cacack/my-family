@@ -129,26 +129,54 @@ func (ss *StrictServer) CreateBranch(ctx context.Context, request CreateBranchRe
 		return CreateBranch503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
 	}
 	if request.Body == nil {
-		return CreateBranch400JSONResponse{BadRequestJSONResponse{
+		return CreateBranch400JSONResponse{
 			Code:    "invalid_request",
 			Message: "Request body is required",
-		}}, nil
+		}, nil
 	}
 
-	description := ""
+	input := command.CreateBranchInput{Name: request.Body.Name}
 	if request.Body.Description != nil {
-		description = *request.Body.Description
+		input.Description = *request.Body.Description
+	}
+	if request.Body.Hypothesis != nil {
+		input.Research.Hypothesis = *request.Body.Hypothesis
+	}
+	if request.Body.Subjects != nil {
+		input.Research.Subjects = convertGeneratedBranchSubjects(*request.Body.Subjects)
+	}
+	if request.Body.Outcome != nil {
+		// The command reads an empty outcome as "open" (its default for callers
+		// that set none); a client that names one must name a valid value.
+		outcome := domain.BranchOutcome(*request.Body.Outcome)
+		if !outcome.IsValid() {
+			return CreateBranch400JSONResponse{
+				Code:    "validation_error",
+				Message: domain.ErrBranchInvalidOutcome.Error(),
+			}, nil
+		}
+		input.Research.Outcome = outcome
+	}
+	if request.Body.ProofSummaryIds != nil {
+		input.Research.ProofSummaryIDs = append([]uuid.UUID(nil), (*request.Body.ProofSummaryIds)...)
 	}
 
-	branch, err := ss.server.commandHandler.CreateBranch(ctx, request.Body.Name, description)
+	branch, err := ss.server.commandHandler.CreateBranchWithResearch(ctx, input)
 	if err != nil {
 		if errors.Is(err, domain.ErrBranchNameRequired) ||
 			errors.Is(err, domain.ErrBranchNameTooLong) ||
-			errors.Is(err, domain.ErrBranchDescTooLong) {
-			return CreateBranch400JSONResponse{BadRequestJSONResponse{
+			errors.Is(err, domain.ErrBranchDescTooLong) ||
+			isBranchResearchValidationError(err) {
+			return CreateBranch400JSONResponse{
 				Code:    "validation_error",
 				Message: err.Error(),
-			}}, nil
+			}, nil
+		}
+		if isBranchReferenceError(err) {
+			return CreateBranch400JSONResponse{
+				Code:    "invalid_reference",
+				Message: err.Error(),
+			}, nil
 		}
 		if errors.Is(err, command.ErrBranchStoreRequired) || errors.Is(err, command.ErrPositionSourceRequired) {
 			return CreateBranch503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
@@ -156,7 +184,147 @@ func (ss *StrictServer) CreateBranch(ctx context.Context, request CreateBranchRe
 		return nil, err
 	}
 
-	return CreateBranch201JSONResponse(convertDomainBranchToGenerated(branch)), nil
+	resp, err := ss.branchWithLinks(ctx, branch)
+	if err != nil {
+		return nil, err
+	}
+	return CreateBranch201JSONResponse(resp), nil
+}
+
+// UpdateBranch implements StrictServerInterface: a partial edit of a branch's
+// description and research record (#835). See the operation description in
+// openapi.yaml for which fields each status accepts.
+func (ss *StrictServer) UpdateBranch(ctx context.Context, request UpdateBranchRequestObject) (UpdateBranchResponseObject, error) {
+	if ss.server.branchStore == nil {
+		return UpdateBranch503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+	if request.Body == nil {
+		return UpdateBranch400JSONResponse{
+			Code:    "invalid_request",
+			Message: "Request body is required",
+		}, nil
+	}
+
+	body := request.Body
+	input := command.UpdateBranchInput{
+		BranchID:    request.Id,
+		Description: body.Description,
+		Hypothesis:  body.Hypothesis,
+	}
+	if body.Subjects != nil {
+		subjects := convertGeneratedBranchSubjects(*body.Subjects)
+		input.Subjects = &subjects
+	}
+	if body.Outcome != nil {
+		outcome := domain.BranchOutcome(*body.Outcome)
+		input.Outcome = &outcome
+	}
+	if body.ProofSummaryIds != nil {
+		ids := append([]uuid.UUID{}, (*body.ProofSummaryIds)...)
+		input.ProofSummaryIDs = &ids
+	}
+
+	branch, err := ss.server.commandHandler.UpdateBranch(ctx, input)
+	if err != nil {
+		switch {
+		case errors.Is(err, repository.ErrBranchNotFound):
+			return UpdateBranch404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Branch not found",
+			}}, nil
+		case errors.Is(err, command.ErrBranchNotActive):
+			return UpdateBranch409JSONResponse{Code: "branch_not_active", Message: err.Error()}, nil
+		case errors.Is(err, command.ErrBranchFieldLocked):
+			return UpdateBranch409JSONResponse{Code: "branch_field_locked", Message: err.Error()}, nil
+		case errors.Is(err, repository.ErrConcurrencyConflict):
+			// A rival write to the branch's stream landed after this edit read
+			// the branch; nothing was recorded.
+			return UpdateBranch409JSONResponse{Code: "branch_changed", Message: err.Error()}, nil
+		case errors.Is(err, command.ErrBranchUpdateEmpty),
+			errors.Is(err, domain.ErrBranchDescTooLong),
+			isBranchResearchValidationError(err):
+			return UpdateBranch400JSONResponse{Code: "validation_error", Message: err.Error()}, nil
+		case isBranchReferenceError(err):
+			return UpdateBranch400JSONResponse{Code: "invalid_reference", Message: err.Error()}, nil
+		case errors.Is(err, command.ErrBranchStoreRequired):
+			return UpdateBranch503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+		}
+		return nil, err
+	}
+
+	resp, err := ss.branchWithLinks(ctx, branch)
+	if err != nil {
+		return nil, err
+	}
+	return UpdateBranch200JSONResponse(resp), nil
+}
+
+// isBranchResearchValidationError reports whether err is one of the research
+// record's field-validation errors (#835).
+func isBranchResearchValidationError(err error) bool {
+	for _, target := range []error{
+		domain.ErrBranchHypothesisTooLong,
+		domain.ErrBranchInvalidOutcome,
+		domain.ErrBranchTooManySubjects,
+		domain.ErrBranchInvalidSubject,
+		domain.ErrBranchDuplicateSubject,
+		domain.ErrBranchTooManyProofSummaries,
+		domain.ErrBranchInvalidProofSummaryID,
+		domain.ErrBranchDuplicateProofSummary,
+	} {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// isBranchReferenceError reports whether err says a subject or proof summary
+// does not exist where the branch can see it.
+func isBranchReferenceError(err error) bool {
+	return errors.Is(err, command.ErrBranchSubjectNotFound) || errors.Is(err, command.ErrBranchProofSummaryNotFound)
+}
+
+// convertGeneratedBranchSubjects converts wire subjects to domain subjects.
+// Unknown types pass through and are rejected by domain validation.
+func convertGeneratedBranchSubjects(in []BranchSubjectInput) []domain.BranchSubject {
+	out := make([]domain.BranchSubject, len(in))
+	for i, subject := range in {
+		out[i] = domain.BranchSubject{Type: domain.BranchSubjectType(subject.Type), ID: subject.Id}
+	}
+	return out
+}
+
+// branchWithLinks converts a branch and resolves its research record for
+// display: subject names and the linked proof summaries (#835), plus a merged
+// branch's merge state (#830). Used by the single-branch reads; the list skips
+// the research-record resolution.
+func (ss *StrictServer) branchWithLinks(ctx context.Context, b *domain.Branch) (Branch, error) {
+	out := convertDomainBranchToGenerated(b)
+	ss.addMergeState(ctx, &out, b)
+	if ss.server.branchService == nil {
+		return out, nil
+	}
+	links, err := ss.server.branchService.ResolveBranchLinks(ctx, b)
+	if err != nil {
+		return Branch{}, err
+	}
+	for i := range out.Subjects {
+		if name, ok := links.SubjectNames[out.Subjects[i].Id]; ok {
+			resolved := name
+			out.Subjects[i].Name = &resolved
+		}
+	}
+	refs := make([]BranchProofSummaryRef, len(links.ProofSummaries))
+	for i, summary := range links.ProofSummaries {
+		refs[i] = BranchProofSummaryRef{
+			Id:         summary.ID,
+			FactType:   string(summary.FactType),
+			Conclusion: summary.Conclusion,
+		}
+	}
+	out.ProofSummaries = &refs
+	return out, nil
 }
 
 // GetBranch implements StrictServerInterface.
@@ -176,9 +344,11 @@ func (ss *StrictServer) GetBranch(ctx context.Context, request GetBranchRequestO
 		return nil, err
 	}
 
-	out := convertDomainBranchToGenerated(branch)
-	ss.addMergeState(ctx, &out, branch)
-	return GetBranch200JSONResponse(out), nil
+	resp, err := ss.branchWithLinks(ctx, branch)
+	if err != nil {
+		return nil, err
+	}
+	return GetBranch200JSONResponse(resp), nil
 }
 
 // DeleteBranch implements StrictServerInterface. Deleting archives: the branch
@@ -235,8 +405,10 @@ func (ss *StrictServer) CompareBranch(ctx context.Context, request CompareBranch
 		overlapping = []openapi_types.UUID{}
 	}
 
-	branch := convertDomainBranchToGenerated(result.Branch)
-	ss.addMergeState(ctx, &branch, result.Branch)
+	branch, err := ss.branchWithLinks(ctx, result.Branch)
+	if err != nil {
+		return nil, err
+	}
 
 	return CompareBranch200JSONResponse{
 		Branch:               branch,
@@ -644,7 +816,8 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 	case errors.Is(err, command.ErrBranchTooLargeToMerge):
 		return refuse(ResumeBranchTooLarge)
 
-	case errors.Is(err, command.ErrMergeResumeConcurrent):
+	case errors.Is(err, command.ErrMergeResumeConcurrent),
+		errors.Is(err, command.ErrMergeResumeBranchChanged):
 		return refuse(ResumeConcurrent)
 
 	case errors.Is(err, command.ErrUnknownResolution):
@@ -850,6 +1023,18 @@ func convertDomainBranchToGenerated(b *domain.Branch) Branch {
 		mergeNote := b.MergeNote
 		branch.MergeNote = &mergeNote
 	}
+	// The research record (#835). The arrays are always present, [] when
+	// empty, so a client never has to tell null from none.
+	if b.Hypothesis != "" {
+		hypothesis := b.Hypothesis
+		branch.Hypothesis = &hypothesis
+	}
+	branch.Outcome = BranchOutcome(b.Outcome.OrDefault())
+	branch.Subjects = make([]BranchSubject, len(b.Subjects))
+	for i, subject := range b.Subjects {
+		branch.Subjects[i] = BranchSubject{Type: BranchSubjectType(subject.Type), Id: subject.ID}
+	}
+	branch.ProofSummaryIds = append([]openapi_types.UUID{}, b.ProofSummaryIDs...)
 	return branch
 }
 

@@ -521,7 +521,7 @@ func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, event d
 
 	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, currentVersion, scope); err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
-			return fmt.Errorf("%w: %s", ErrMergeAlreadyClaimed, branch.ID)
+			return h.explainClaimConflict(ctx, branch)
 		}
 		return fmt.Errorf("appending branch merged event: %w", err)
 	}
@@ -530,6 +530,25 @@ func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, event d
 		return fmt.Errorf("projecting branch merged event: %w", err)
 	}
 	return nil
+}
+
+// explainClaimConflict names the rival write that made claimMerge's append
+// lose its version race. Another BranchMerged on the stream means a concurrent
+// merge won (ErrMergeAlreadyClaimed). Anything else — a concurrent edit of the
+// branch's research record (#835), say — means the branch changed after this
+// merge read it: nothing was written, and the merge only has to be re-run, so
+// that is reported as a stale plan rather than as a claim that points the
+// caller at /merge/resume for a merge that never started.
+func (h *Handler) explainClaimConflict(ctx context.Context, branch *domain.Branch) error {
+	claimed, err := h.branchAlreadyClaimed(ctx, branch)
+	if err != nil {
+		return err
+	}
+	if claimed != nil {
+		return fmt.Errorf("%w: %s", ErrMergeAlreadyClaimed, branch.ID)
+	}
+	return fmt.Errorf("%w: branch %s was changed while the merge was starting; nothing was written, retry the merge",
+		ErrMergePlanStale, branch.ID)
 }
 
 // branchAlreadyClaimed reports the BranchMerged event already on a branch's own

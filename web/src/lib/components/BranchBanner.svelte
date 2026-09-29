@@ -15,6 +15,15 @@
 		returnToMainline,
 		dismissBranchNotice
 	} from '$lib/stores/activeBranch.svelte';
+	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
+	import { subjectHref, subjectLabel } from '$lib/utils/branchResearch';
+
+	/** How many subjects the banner names before summarising the rest. */
+	const BANNER_SUBJECTS = 3;
+
+	const subjects = $derived(activeBranch.branch?.subjects ?? []);
+	const shownSubjects = $derived(subjects.slice(0, BANNER_SUBJECTS));
+	const hiddenSubjects = $derived(subjects.length - shownSubjects.length);
 
 	// Switching reloads the page, so this only has to survive until the reload
 	// lands - it stops a second click from firing another one.
@@ -48,6 +57,27 @@
 			{:else}
 				Working on a research branch. Changes to people, families and pedigrees are isolated to
 				this branch.
+			{/if}
+			{#if activeBranch.branch}
+				<span class="branch-research" data-testid="banner-research">
+					<BranchOutcomeBadge outcome={activeBranch.branch.outcome} />
+					{#if activeBranch.branch.hypothesis}
+						<span class="branch-hypothesis" title={activeBranch.branch.hypothesis}>
+							{activeBranch.branch.hypothesis}
+						</span>
+					{/if}
+					{#if shownSubjects.length > 0}
+						<span class="branch-subjects" data-testid="banner-subjects">
+							<span class="subjects-label">About</span>
+							{#each shownSubjects as subject, i (subject.type + subject.id)}
+								<a href={subjectHref(subject)}>{subjectLabel(subject)}</a>{#if i < shownSubjects.length - 1},{/if}
+							{/each}
+							{#if hiddenSubjects > 0}
+								<a href="/branches/{activeBranch.id}">+{hiddenSubjects} more</a>
+							{/if}
+						</span>
+					{/if}
+				</span>
 			{/if}
 			{#if activeBranch.unconfirmed}
 				<span class="branch-unconfirmed">
@@ -93,6 +123,38 @@
 	.branch-text {
 		flex: 1;
 		min-width: 12rem;
+	}
+
+	.branch-research {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.25rem;
+		min-width: 0;
+	}
+
+	.branch-hypothesis {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-style: italic;
+		min-width: 0;
+	}
+
+	.branch-subjects {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		white-space: nowrap;
+	}
+
+	.branch-subjects a {
+		color: inherit;
+		text-decoration: underline;
+	}
+
+	.subjects-label {
+		font-weight: 600;
 	}
 
 	.branch-unconfirmed {

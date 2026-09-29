@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
@@ -471,4 +472,52 @@ func TestBranchService_CompareBranch_MainSideIsOneSetRead(t *testing.T) {
 	assert.LessOrEqual(t, counting.stateReads, 6, "describing entries must not read per stream")
 	assert.Len(t, result.MainChanges, len(streamIDs))
 	assert.Len(t, result.OverlappingStreamIDs, len(streamIDs))
+}
+
+// A branch's own stream also carries its research edits (BranchUpdated, #835).
+// They are neither shown nor replayed, so they must not use up the comparison
+// and merge cap: a branch with a long research history but a handful of
+// genealogy changes is neither partial nor too large to merge.
+func TestBranchService_ResearchEditsDoNotCountTowardCap(t *testing.T) {
+	f := newBranchTestFixture(t)
+
+	personID := uuid.New()
+	f.appendMain(t, personID, domain.NewPersonCreated(&domain.Person{ID: personID, GivenName: "Nikola", Surname: "Tesla"}))
+
+	branch := f.forkBranch(t, "Long-running")
+	f.appendBranch(t, branch, branch.ID, "branch", domain.NewBranchCreated(branch))
+	f.appendBranch(t, branch, personID, "person", domain.NewPersonUpdated(personID, map[string]any{"surname": "Teslic"}))
+
+	// More research edits than the cap, interleaved around a second change,
+	// so the scan has to page past full pages of metadata.
+	edits := make([]domain.Event, maxComparisonEvents+5)
+	for i := range edits {
+		branch.Hypothesis = fmt.Sprintf("hypothesis %d", i)
+		edits[i] = domain.NewBranchUpdated(branch, []string{"hypothesis"})
+	}
+	f.appendBranch(t, branch, branch.ID, "branch", edits...)
+	f.appendBranch(t, branch, personID, "person", domain.NewPersonUpdated(personID, map[string]any{"note": "late"}))
+
+	result, err := f.service.CompareBranch(f.ctx, branch.ID)
+	require.NoError(t, err)
+	assert.False(t, result.HasMore)
+	assert.Equal(t, 2, result.BranchChangeCount)
+
+	plan, err := f.service.PlanMerge(f.ctx, branch.ID)
+	require.NoError(t, err)
+	assert.False(t, plan.BranchTruncated)
+	assert.Len(t, plan.ReplayEvents, 2)
+
+	// Past the cap in genealogy changes, the scan still stops at the cap and
+	// reports truncation.
+	more := make([]domain.Event, maxComparisonEvents)
+	for i := range more {
+		more[i] = domain.NewPersonUpdated(personID, map[string]any{"note": i})
+	}
+	f.appendBranch(t, branch, personID, "person", more...)
+
+	plan, err = f.service.PlanMerge(f.ctx, branch.ID)
+	require.NoError(t, err)
+	assert.True(t, plan.BranchTruncated)
+	assert.Len(t, plan.ReplayEvents, maxComparisonEvents)
 }

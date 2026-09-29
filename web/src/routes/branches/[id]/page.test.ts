@@ -107,6 +107,9 @@ const branch: Branch = {
 	name: 'Maternal Smith line',
 	base_position: 42,
 	status: 'active',
+	outcome: 'open',
+	subjects: [],
+	proof_summary_ids: [],
 	created_at: '2026-01-15T10:30:00Z'
 };
 

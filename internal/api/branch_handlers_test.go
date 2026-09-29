@@ -1030,8 +1030,11 @@ func TestMergeBranch_BranchNotActive(t *testing.T) {
 // then appends at it, so losing the race cannot be staged by seeding events
 // beforehand - the loser would simply read the newer version. Failing the
 // BranchMerged append instead reproduces the one thing that matters here: the
-// command sees repository.ErrConcurrencyConflict on the claim. The genuine race
-// is covered at the command layer by TestMergeBranch_ConcurrentClaimLoses.
+// command sees repository.ErrConcurrencyConflict on the claim, with the rival's
+// BranchMerged on the stream (the rival's claim is written, not projected, so
+// the registry still reads active). Without that rival claim the command would
+// read the conflict as a concurrent edit instead (merge_plan_stale). The genuine
+// race is covered at the command layer by TestMergeBranch_ConcurrentClaimLoses.
 type lostClaimEventStore struct {
 	repository.EventStore
 }
@@ -1041,6 +1044,9 @@ func (s *lostClaimEventStore) Append(ctx context.Context, streamID uuid.UUID, st
 ) error {
 	for _, event := range events {
 		if event.EventType() == "BranchMerged" {
+			if err := s.EventStore.Append(ctx, streamID, streamType, events, expectedVersion, scope); err != nil {
+				return err
+			}
 			return repository.ErrConcurrencyConflict
 		}
 	}
@@ -1343,7 +1349,8 @@ func TestMergeBranch_PlanStale(t *testing.T) {
 // server can then resume the merge (#685).
 //
 // raceResumeRecord makes the next resume decision record lose its version
-// check, as if a rival resume had recorded first.
+// check, as if another write to the branch (an outcome edit; no rival
+// resume record is written) had landed first.
 type switchableReplayEventStore struct {
 	repository.EventStore
 	failing          bool
@@ -1490,7 +1497,10 @@ func TestResumeBranchMerge_NeedsResolution(t *testing.T) {
 }
 
 // TestResumeBranchMerge_Concurrent: a resume whose decision record loses to a
-// rival's is a 409 merge_resume_concurrent, having replayed nothing.
+// rival write on the branch stream is a 409 merge_resume_concurrent, having
+// replayed nothing. The injected conflict leaves no rival resume record, so
+// this is the command's ErrMergeResumeBranchChanged; a rival resume
+// (ErrMergeResumeConcurrent, covered in the command tests) maps the same way.
 func TestResumeBranchMerge_Concurrent(t *testing.T) {
 	server, store := setupSwitchableReplayServer()
 	personID, branchID := interruptThenMoveMain(t, server, store)

@@ -5131,3 +5131,82 @@ func TestProjector_PersonMerged_SurvivorInOtherChildFamilyRecountsChildren(t *te
 		t.Errorf("survivor's child family = %+v, want their own kept", cf)
 	}
 }
+
+// TestProjector_BranchResearchRecord pins the #835 research record through the
+// projection: BranchCreated carries it into the registry, BranchUpdated
+// overwrites it in full without touching status or the merge record, and a
+// pre-#835 BranchCreated (no outcome) reads as open.
+func TestProjector_BranchResearchRecord(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	branchStore := memory.NewBranchStore()
+	projector := repository.NewProjector(readStore, branchStore)
+	ctx := context.Background()
+
+	personID, familyID, proofID := uuid.New(), uuid.New(), uuid.New()
+	branch, err := domain.NewBranchWithResearch("mary", "", 7, domain.BranchResearch{
+		Hypothesis: "Was Mary the daughter of John?",
+		Subjects:   []domain.BranchSubject{{Type: domain.BranchSubjectPerson, ID: personID}},
+	})
+	if err != nil {
+		t.Fatalf("NewBranchWithResearch: %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewBranchCreated(branch), 1, domain.BranchID(branch.ID)); err != nil {
+		t.Fatalf("Project BranchCreated: %v", err)
+	}
+	got, err := branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Hypothesis != branch.Hypothesis || got.Outcome != domain.BranchOutcomeOpen ||
+		len(got.Subjects) != 1 || got.Subjects[0].ID != personID {
+		t.Errorf("after create = %+v", got)
+	}
+
+	merged := domain.NewBranchMerged(branch.ID, 7, 9, "done", nil)
+	if err := projector.Project(ctx, merged, 2, domain.BranchID(branch.ID)); err != nil {
+		t.Fatalf("Project BranchMerged: %v", err)
+	}
+
+	edited := *got
+	edited.Description = "now described"
+	edited.Hypothesis = "Mary was John's daughter"
+	edited.Subjects = []domain.BranchSubject{{Type: domain.BranchSubjectFamily, ID: familyID}}
+	edited.Outcome = domain.BranchOutcomeProved
+	edited.ProofSummaryIDs = []uuid.UUID{proofID}
+	if err := projector.Project(ctx, domain.NewBranchUpdated(&edited, []string{"outcome"}), 3, domain.BranchID(branch.ID)); err != nil {
+		t.Fatalf("Project BranchUpdated: %v", err)
+	}
+	got, err = branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != domain.BranchStatusMerged || got.MergeNote != "done" || got.MergedAt == nil {
+		t.Errorf("BranchUpdated disturbed the merge record: %+v", got)
+	}
+	if got.Description != "now described" || got.Hypothesis != "Mary was John's daughter" ||
+		got.Outcome != domain.BranchOutcomeProved || len(got.Subjects) != 1 || got.Subjects[0] != edited.Subjects[0] ||
+		len(got.ProofSummaryIDs) != 1 || got.ProofSummaryIDs[0] != proofID {
+		t.Errorf("after update = %+v", got)
+	}
+
+	// A legacy BranchCreated with no research fields reads as open.
+	legacy := domain.BranchCreated{BaseEvent: domain.NewBaseEvent(), BranchID: uuid.New(), Name: "old", BasePosition: 1}
+	if err := projector.Project(ctx, legacy, 1, domain.BranchID(legacy.BranchID)); err != nil {
+		t.Fatalf("Project legacy BranchCreated: %v", err)
+	}
+	if got, err = branchStore.Get(ctx, legacy.BranchID); err != nil || got.Outcome != domain.BranchOutcomeOpen {
+		t.Errorf("legacy branch = %+v, %v; want outcome open", got, err)
+	}
+
+	// Updating a branch the registry does not know is an error, not a silent drop.
+	missing := domain.NewBranchUpdated(&domain.Branch{ID: uuid.New()}, nil)
+	if err := projector.Project(ctx, missing, 2, domain.BranchID(missing.BranchID)); !errors.Is(err, repository.ErrBranchNotFound) {
+		t.Errorf("update of unknown branch = %v, want ErrBranchNotFound", err)
+	}
+
+	// Without a branch store the event is dropped, not an error.
+	noRegistry := repository.NewProjector(readStore, nil)
+	if err := noRegistry.Project(ctx, domain.NewBranchUpdated(&edited, nil), 4, domain.BranchID(branch.ID)); err != nil {
+		t.Errorf("no-registry BranchUpdated = %v, want nil", err)
+	}
+}

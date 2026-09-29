@@ -65,6 +65,7 @@ while the log still names them. Nothing is read per entry.
 | `GedcomImported` | Import audit record; the persons, families and sources it created each have their own events. |
 | `SnapshotCreated` / `SnapshotDeleted` | Research-artifact markers (#624): a snapshot names a position in the log, it changes no data. |
 | `BranchMergeResumed` | A resume's decision record (#685): part of the merge it finishes, which the history shows once, as `BranchMerged`. Its decisions are on the branch's merge record (`merge_record` in `GET /branches/{id}/compare`). |
+| `BranchUpdated` | A research-record edit (#835): the branch's description, hypothesis, subjects, outcome and linked proof summaries describe the research and are shown on the branch itself; it changes no genealogical data. |
 
 These events remain in the append-only log (ES-002) as the audit record; only the change-log
 views leave them out. The branch diff's `researchMetadataEventTypes` is either excluded here or

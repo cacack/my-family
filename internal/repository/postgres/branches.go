@@ -41,7 +41,11 @@ func (s *BranchStore) createTables() error {
 			status VARCHAR(20) NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			merged_at TIMESTAMPTZ,
-			merge_note TEXT
+			merge_note TEXT,
+			hypothesis TEXT,
+			subjects JSONB,
+			outcome VARCHAR(20) NOT NULL DEFAULT 'open',
+			proof_summary_ids JSONB
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_branches_created_at ON branches(created_at DESC);
@@ -49,7 +53,10 @@ func (s *BranchStore) createTables() error {
 	if err != nil {
 		return err
 	}
-	return s.migrateMergeColumns()
+	if err := s.migrateMergeColumns(); err != nil {
+		return err
+	}
+	return s.migrateResearchColumns()
 }
 
 // migrateMergeColumns adds the merge-record columns (issue #55) to a branches
@@ -63,11 +70,78 @@ func (s *BranchStore) migrateMergeColumns() error {
 	return err
 }
 
+// migrateResearchColumns adds the research-record columns (#835) to a
+// branches table created before they existed. Existing rows read as an open
+// branch with no hypothesis, subjects or proof summaries — exactly what their
+// pre-#835 BranchCreated events replay to.
+func (s *BranchStore) migrateResearchColumns() error {
+	_, err := s.db.Exec(`
+		ALTER TABLE branches ADD COLUMN IF NOT EXISTS hypothesis TEXT;
+		ALTER TABLE branches ADD COLUMN IF NOT EXISTS subjects JSONB;
+		ALTER TABLE branches ADD COLUMN IF NOT EXISTS outcome VARCHAR(20) NOT NULL DEFAULT 'open';
+		ALTER TABLE branches ADD COLUMN IF NOT EXISTS proof_summary_ids JSONB;
+	`)
+	return err
+}
+
+// branchScanner is the Scan method shared by *sql.Row and *sql.Rows.
+type branchScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanBranch reads one row selected in Get/List's column order.
+func scanBranch(row branchScanner) (*domain.Branch, error) {
+	var (
+		branchID                  uuid.UUID
+		name                      string
+		description               sql.NullString
+		basePosition              int64
+		status                    string
+		createdAt                 time.Time
+		mergedAt                  sql.NullTime
+		mergeNote                 sql.NullString
+		hypothesis, outcome       sql.NullString
+		subjects, proofSummaryIDs sql.NullString
+	)
+	if err := row.Scan(&branchID, &name, &description, &basePosition, &status, &createdAt,
+		&mergedAt, &mergeNote, &hypothesis, &outcome, &subjects, &proofSummaryIDs); err != nil {
+		return nil, err
+	}
+
+	research, err := repository.DecodeBranchResearch(hypothesis.String, outcome.String, repository.BranchListsJSON{
+		Subjects:        subjects.String,
+		ProofSummaryIDs: proofSummaryIDs.String,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("branch %s: %w", branchID, err)
+	}
+
+	branch := &domain.Branch{
+		ID:           branchID,
+		Name:         name,
+		Description:  description.String,
+		BasePosition: basePosition,
+		Status:       domain.BranchStatus(status),
+		CreatedAt:    createdAt,
+		MergeNote:    mergeNote.String,
+	}
+	if mergedAt.Valid {
+		branch.MergedAt = &mergedAt.Time
+	}
+	branch.ApplyResearch(research)
+	return branch, nil
+}
+
 // Create stores a new branch.
 func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	lists, err := repository.EncodeBranchLists(branch.Research())
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note,
+		                      hypothesis, outcome, subjects, proof_summary_ids)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, '')::JSONB, NULLIF($12, '')::JSONB)
 	`,
 		branch.ID,
 		branch.Name,
@@ -77,6 +151,10 @@ func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
 		branch.CreatedAt,
 		nullableTime(branch.MergedAt),
 		nullableString(branch.MergeNote),
+		nullableString(branch.Hypothesis),
+		string(branch.Outcome.OrDefault()),
+		lists.Subjects,
+		lists.ProofSummaryIDs,
 	)
 	if err != nil {
 		return fmt.Errorf("insert branch: %w", err)
@@ -86,9 +164,14 @@ func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
 
 // Upsert stores a branch, inserting or updating on ID conflict.
 func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	lists, err := repository.EncodeBranchLists(branch.Research())
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note,
+		                      hypothesis, outcome, subjects, proof_summary_ids)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, '')::JSONB, NULLIF($12, '')::JSONB)
 		ON CONFLICT (id) DO UPDATE SET
 			name = EXCLUDED.name,
 			description = EXCLUDED.description,
@@ -96,7 +179,11 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 			status = EXCLUDED.status,
 			created_at = EXCLUDED.created_at,
 			merged_at = EXCLUDED.merged_at,
-			merge_note = EXCLUDED.merge_note
+			merge_note = EXCLUDED.merge_note,
+			hypothesis = EXCLUDED.hypothesis,
+			outcome = EXCLUDED.outcome,
+			subjects = EXCLUDED.subjects,
+			proof_summary_ids = EXCLUDED.proof_summary_ids
 	`,
 		branch.ID,
 		branch.Name,
@@ -106,6 +193,10 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 		branch.CreatedAt,
 		nullableTime(branch.MergedAt),
 		nullableString(branch.MergeNote),
+		nullableString(branch.Hypothesis),
+		string(branch.Outcome.OrDefault()),
+		lists.Subjects,
+		lists.ProofSummaryIDs,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert branch: %w", err)
@@ -115,54 +206,27 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 
 // Get retrieves a branch by ID.
 func (s *BranchStore) Get(ctx context.Context, id uuid.UUID) (*domain.Branch, error) {
-	var (
-		branchID     uuid.UUID
-		name         string
-		description  sql.NullString
-		basePosition int64
-		status       string
-		createdAt    time.Time
-		mergedAt     sql.NullTime
-		mergeNote    sql.NullString
-	)
-
-	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note,
+		       hypothesis, outcome, subjects::TEXT, proof_summary_ids::TEXT
 		FROM branches
 		WHERE id = $1
-	`, id).Scan(&branchID, &name, &description, &basePosition, &status, &createdAt,
-		&mergedAt, &mergeNote)
-
+	`, id)
+	branch, err := scanBranch(row)
 	if err == sql.ErrNoRows {
 		return nil, repository.ErrBranchNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("query branch: %w", err)
 	}
-
-	branch := &domain.Branch{
-		ID:           branchID,
-		Name:         name,
-		BasePosition: basePosition,
-		Status:       domain.BranchStatus(status),
-		CreatedAt:    createdAt,
-		MergeNote:    mergeNote.String,
-	}
-
-	if mergedAt.Valid {
-		branch.MergedAt = &mergedAt.Time
-	}
-	if description.Valid {
-		branch.Description = description.String
-	}
-
 	return branch, nil
 }
 
 // List retrieves all branches ordered by created_at DESC.
 func (s *BranchStore) List(ctx context.Context) ([]*domain.Branch, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note
+		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note,
+		       hypothesis, outcome, subjects::TEXT, proof_summary_ids::TEXT
 		FROM branches
 		ORDER BY created_at DESC
 	`)
@@ -171,50 +235,17 @@ func (s *BranchStore) List(ctx context.Context) ([]*domain.Branch, error) {
 	}
 	defer rows.Close()
 
-	var branches []*domain.Branch
+	branches := []*domain.Branch{}
 	for rows.Next() {
-		var (
-			id           uuid.UUID
-			name         string
-			description  sql.NullString
-			basePosition int64
-			status       string
-			createdAt    time.Time
-			mergedAt     sql.NullTime
-			mergeNote    sql.NullString
-		)
-
-		if err := rows.Scan(&id, &name, &description, &basePosition, &status, &createdAt,
-			&mergedAt, &mergeNote); err != nil {
+		branch, err := scanBranch(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan branch: %w", err)
 		}
-
-		branch := &domain.Branch{
-			ID:           id,
-			Name:         name,
-			BasePosition: basePosition,
-			Status:       domain.BranchStatus(status),
-			CreatedAt:    createdAt,
-			MergeNote:    mergeNote.String,
-		}
-
-		if mergedAt.Valid {
-			branch.MergedAt = &mergedAt.Time
-		}
-		if description.Valid {
-			branch.Description = description.String
-		}
-
 		branches = append(branches, branch)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate branches: %w", err)
-	}
-
-	// Return empty slice instead of nil
-	if branches == nil {
-		branches = []*domain.Branch{}
 	}
 
 	return branches, nil
@@ -248,6 +279,34 @@ func (s *BranchStore) UpdateStatus(ctx context.Context, id uuid.UUID, status dom
 	`, string(status), id)
 	if err != nil {
 		return fmt.Errorf("update branch status: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return repository.ErrBranchNotFound
+	}
+
+	return nil
+}
+
+// UpdateDetails overwrites the description and research record.
+func (s *BranchStore) UpdateDetails(ctx context.Context, id uuid.UUID, description string, research domain.BranchResearch) error {
+	lists, err := repository.EncodeBranchLists(research)
+	if err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE branches SET description = $1, hypothesis = $2, outcome = $3,
+			subjects = NULLIF($4, '')::JSONB, proof_summary_ids = NULLIF($5, '')::JSONB
+		WHERE id = $6
+	`, nullableString(description), nullableString(research.Hypothesis), string(research.Outcome.OrDefault()),
+		lists.Subjects, lists.ProofSummaryIDs, id)
+	if err != nil {
+		return fmt.Errorf("update branch details: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
