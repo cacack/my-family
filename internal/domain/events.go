@@ -978,6 +978,13 @@ type BranchMerged struct {
 	MergedAtPosition     int64               `json:"merged_at_position"`
 	Note                 string              `json:"note,omitempty"`
 	ReplayStreamVersions map[uuid.UUID]int64 `json:"replay_stream_versions"`
+	// ResolutionRationales records, per stream, why the researcher chose the
+	// side they did for a conflict (#828): the evidence weighed, where GPS asks
+	// a conflict to be resolved by reasoning. Optional and additive — claims
+	// written before it, or with no rationale given, omit it and decode to nil.
+	// Which side won is the replay plan: a stream in ReplayStreamVersions took
+	// the branch, one absent from it kept main.
+	ResolutionRationales map[uuid.UUID]string `json:"resolution_rationales,omitempty"`
 }
 
 func (e BranchMerged) EventType() string      { return "BranchMerged" }
@@ -1029,6 +1036,9 @@ type BranchMergeResumed struct {
 	MergedAtPosition     int64                `json:"merged_at_position"`
 	ReplayStreamVersions map[uuid.UUID]int64  `json:"replay_stream_versions"`
 	Resolutions          map[uuid.UUID]string `json:"resolutions"`
+	// Rationales is the optional reasoning given for Resolutions (#828), by
+	// stream. Additive: omitted when none was given.
+	Rationales map[uuid.UUID]string `json:"rationales,omitempty"`
 }
 
 func (e BranchMergeResumed) EventType() string      { return "BranchMergeResumed" }

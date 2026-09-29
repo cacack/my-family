@@ -1110,6 +1110,8 @@ func TestMergeBranch_BadRequest(t *testing.T) {
 			`{"resolutions":[{"stream_id":"` + unknownUUID + `","resolution":"branch"}]}`},
 		{"duplicate stream id",
 			`{"resolutions":[{"stream_id":"%s","resolution":"branch"},{"stream_id":"%s","resolution":"main"}]}`},
+		{"rationale too long",
+			`{"resolutions":[{"stream_id":"%s","resolution":"branch","rationale":"` + strings.Repeat("x", 1001) + `"}]}`},
 	}
 
 	for _, tt := range tests {
@@ -1687,4 +1689,126 @@ func TestCompareSnapshots_ExcludesBranchEvents(t *testing.T) {
 	if !sawMain {
 		t.Errorf("changes = %v, want the mainline person %s", changes, mainID)
 	}
+}
+
+// A branch with no changes is refused with 409 merge_empty (#828) rather than
+// recorded as a merge that promoted nothing.
+func TestMergeBranch_EmptyBranch(t *testing.T) {
+	server := setupBranchTestServer()
+	branchID := createBranch(t, server, "Nothing yet")
+
+	rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", `{"note":"premature"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Merge: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+	if code := decodeJSON(t, rec)["code"]; code != "merge_empty" {
+		t.Errorf("code = %v, want merge_empty", code)
+	}
+	rec = do(t, server, http.MethodGet, "/api/v1/branches/"+branchID, "")
+	if status := decodeJSON(t, rec)["status"]; status != "active" {
+		t.Errorf("branch status = %v, want active", status)
+	}
+}
+
+// An edit/edit conflict reports what each side says (#828): the fork value,
+// the branch's and the mainline's, with a readable label.
+func TestCompareBranch_ConflictFieldValues(t *testing.T) {
+	server := setupBranchTestServer()
+	personID, branchID, version := forkAndEditPerson(t, server, "Byron")
+	if rec := do(t, server, http.MethodPut, "/api/v1/persons/"+personID,
+		fmt.Sprintf(`{"surname":"King","version":%d}`, version)); rec.Code != http.StatusOK {
+		t.Fatalf("Main update: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := do(t, server, http.MethodGet, "/api/v1/branches/"+branchID+"/compare", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Compare: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	conflicts, _ := decodeJSON(t, rec)["conflicts"].([]any)
+	if len(conflicts) != 1 {
+		t.Fatalf("conflicts = %v, want one", conflicts)
+	}
+	conflict, _ := conflicts[0].(map[string]any)
+	if _, present := conflict["deleted_by"]; present {
+		t.Errorf("deleted_by = %v on an edit_edit, want absent", conflict["deleted_by"])
+	}
+	values, _ := conflict["field_values"].([]any)
+	if len(values) != 1 {
+		t.Fatalf("field_values = %v, want one entry", conflict["field_values"])
+	}
+	got, _ := values[0].(map[string]any)
+	want := map[string]any{
+		"field": "surname", "label": "Surname",
+		"base_value": "Lovelace", "branch_value": "Byron", "main_value": "King",
+	}
+	for key, value := range want {
+		if got[key] != value {
+			t.Errorf("field_values[0].%s = %v, want %v", key, got[key], value)
+		}
+	}
+	if unknown, present := got["base_unknown"]; present {
+		t.Errorf("base_unknown = %v on a readable fork, want absent", unknown)
+	}
+}
+
+// A delete/edit conflict names the deleting side and values the editor's
+// fields, with the deleter's value null.
+func TestCompareBranch_DeleteEditFieldValues(t *testing.T) {
+	server := setupBranchTestServer()
+	personID, branchID, _ := forkAndEditPerson(t, server, "Byron")
+	if rec := do(t, server, http.MethodDelete, "/api/v1/persons/"+personID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("Main delete: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := do(t, server, http.MethodGet, "/api/v1/branches/"+branchID+"/compare", "")
+	conflicts, _ := decodeJSON(t, rec)["conflicts"].([]any)
+	if len(conflicts) != 1 {
+		t.Fatalf("conflicts = %v, want one", conflicts)
+	}
+	conflict, _ := conflicts[0].(map[string]any)
+	if conflict["deleted_by"] != "main" {
+		t.Errorf("deleted_by = %v, want main", conflict["deleted_by"])
+	}
+	values, _ := conflict["field_values"].([]any)
+	if len(values) != 1 {
+		t.Fatalf("field_values = %v, want the branch's one edited field", conflict["field_values"])
+	}
+	got, _ := values[0].(map[string]any)
+	if got["field"] != "surname" || got["branch_value"] != "Byron" || got["base_value"] != "Lovelace" {
+		t.Errorf("field_values[0] = %v, want surname Lovelace -> Byron", got)
+	}
+	if value, present := got["main_value"]; !present || value != nil {
+		t.Errorf("main_value = %v (present %v), want an explicit null for the deleting side", value, present)
+	}
+}
+
+// A rationale travels from the wire to the BranchMerged record.
+func TestMergeBranch_WithRationale(t *testing.T) {
+	server, eventStore := setupBranchTestServerWithEventStore()
+	personID, branchID, _ := forkAndEditPerson(t, server, "Byron")
+
+	rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch","rationale":"parish register"}]}`, personID))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Merge: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	events, err := eventStore.ReadStream(context.Background(), uuid.MustParse(branchID))
+	if err != nil {
+		t.Fatalf("ReadStream failed: %v", err)
+	}
+	for _, evt := range events {
+		if evt.EventType != "BranchMerged" {
+			continue
+		}
+		decoded, err := evt.DecodeEvent()
+		if err != nil {
+			t.Fatalf("DecodeEvent failed: %v", err)
+		}
+		if got := decoded.(domain.BranchMerged).ResolutionRationales[uuid.MustParse(personID)]; got != "parish register" {
+			t.Errorf("recorded rationale = %q, want parish register", got)
+		}
+		return
+	}
+	t.Fatal("no BranchMerged event recorded")
 }

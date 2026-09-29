@@ -90,6 +90,7 @@ const (
 	MergeAlreadyClaimed    BranchMergeConflictErrorCode = "merge_already_claimed"
 	MergeConflicts         BranchMergeConflictErrorCode = "merge_conflicts"
 	MergeDanglingReference BranchMergeConflictErrorCode = "merge_dangling_reference"
+	MergeEmpty             BranchMergeConflictErrorCode = "merge_empty"
 	MergePlanStale         BranchMergeConflictErrorCode = "merge_plan_stale"
 )
 
@@ -107,6 +108,8 @@ func (e BranchMergeConflictErrorCode) Valid() bool {
 	case MergeConflicts:
 		return true
 	case MergeDanglingReference:
+		return true
+	case MergeEmpty:
 		return true
 	case MergePlanStale:
 		return true
@@ -697,6 +700,24 @@ func (e MediaUpdateMediaType) Valid() bool {
 	case MediaUpdateMediaTypePhoto:
 		return true
 	case MediaUpdateMediaTypeVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeConflictDeletedBy.
+const (
+	MergeConflictDeletedByBranch MergeConflictDeletedBy = "branch"
+	MergeConflictDeletedByMain   MergeConflictDeletedBy = "main"
+)
+
+// Valid indicates whether the value is a known member of the MergeConflictDeletedBy enum.
+func (e MergeConflictDeletedBy) Valid() bool {
+	switch e {
+	case MergeConflictDeletedByBranch:
+		return true
+	case MergeConflictDeletedByMain:
 		return true
 	default:
 		return false
@@ -3392,6 +3413,10 @@ type MediaUpdateMediaType string
 // conflict is reported per entity; when several kinds apply the most
 // severe wins, in the order `delete_edit`, `edit_edit`, `create_create`.
 type MergeConflict struct {
+	// DeletedBy For `delete_edit` only: which side deleted the entity. The other
+	// side is the one whose edits `field_values` lists.
+	DeletedBy *MergeConflictDeletedBy `json:"deleted_by,omitempty"`
+
 	// Detail Human-readable explanation of the conflict, ready to display
 	Detail string `json:"detail"`
 
@@ -3404,6 +3429,19 @@ type MergeConflict struct {
 	// vocabulary - the same response carries both, so they use one
 	// vocabulary (derived from the same event-type table).
 	EntityType string `json:"entity_type"`
+
+	// FieldValues What each side says, per contested field, in words: the value at
+	// the fork (`base_value`), the branch's (`branch_value`) and the
+	// mainline's (`main_value`). Ids of referenced entities (people,
+	// families, sources, citations, evidence analyses, notes, media, a
+	// subject or a fact owner) are resolved to their names; a list of ids
+	// is rendered as its names joined with `; `.
+	//
+	// - `edit_edit` - one entry per entry of `fields`, in the same order.
+	// - `delete_edit` - one entry per field the editing side changed; the
+	//   deleting side's value is `null` (see `deleted_by`).
+	// - `create_create` - absent.
+	FieldValues *[]MergeConflictField `json:"field_values,omitempty"`
 
 	// Fields The contested field names, sorted. Present for `edit_edit` only -
 	// the other kinds are whole-entity conflicts with no field to name.
@@ -3441,6 +3479,10 @@ type MergeConflict struct {
 	SupportedResolutions []MergeConflictSupportedResolutions `json:"supported_resolutions"`
 }
 
+// MergeConflictDeletedBy For `delete_edit` only: which side deleted the entity. The other
+// side is the one whose edits `field_values` lists.
+type MergeConflictDeletedBy string
+
 // MergeConflictKind - `edit_edit` - both sides changed the same field to different
 //
 //		values. Structural changes count: linking a child on one side
@@ -3456,6 +3498,33 @@ type MergeConflictKind string
 
 // MergeConflictSupportedResolutions defines model for MergeConflict.SupportedResolutions.
 type MergeConflictSupportedResolutions string
+
+// MergeConflictField One contested field of a conflict, valued on each side.
+type MergeConflictField struct {
+	// BaseUnknown Present and `true` when the fork state could not be read in full
+	// (the history is too long to replay), so `base_value` is unknown
+	// rather than unset. Absent otherwise.
+	BaseUnknown *bool `json:"base_unknown,omitempty"`
+
+	// BaseValue The value when the branch forked (its `base_position`). `null` when
+	// the field was not set then, or when the fork state could not be
+	// read in full - `base_unknown` tells the two apart.
+	BaseValue *string `json:"base_value"`
+
+	// BranchValue The branch's value. `null` when it is not set, or the branch deleted the entity.
+	BranchValue *string `json:"branch_value"`
+
+	// Field The raw field key, as `MergeConflict.fields` reports it - for
+	// example `surname`, `children[<person-id>]` or `names[<name-id>]`.
+	Field string `json:"field"`
+
+	// Label The field's readable name, ready to display. A structural key is
+	// named by what it refers to, e.g. `Child: Ada Lovelace`.
+	Label string `json:"label"`
+
+	// MainValue The mainline's value. `null` when it is not set, or the mainline deleted the entity.
+	MainValue *string `json:"main_value"`
+}
 
 // MergePersonsRequest Request to merge two person records
 type MergePersonsRequest struct {
@@ -3490,6 +3559,12 @@ type MergePersonsResponse struct {
 
 // MergeResolutionEntry The side that wins for one entity.
 type MergeResolutionEntry struct {
+	// Rationale Optional: why this side won - the evidence weighed (GPS: resolve
+	// conflicts by reasoning, not by fiat). Recorded with the merge
+	// (`BranchMerged`, or `BranchMergeResumed` for a resume). Blank is
+	// the same as absent.
+	Rationale *string `json:"rationale,omitempty"`
+
 	// Resolution - `branch` - replay the branch's events for this entity onto main.
 	// - `main` - keep main's version; the entity's branch changes are
 	//   dropped and its id is reported in `skipped_stream_ids`.

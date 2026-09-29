@@ -25,6 +25,11 @@ var (
 	// The conflicts are on the returned MergeBranchResult.
 	ErrMergeConflicts = errors.New("branch has unresolved merge conflicts")
 
+	// ErrMergeEmpty is returned when the branch has no changes of its own
+	// since it forked. Merging it would record a "merged" that promoted
+	// nothing (#828), so it is refused and the branch stays active.
+	ErrMergeEmpty = errors.New("branch has no changes to merge")
+
 	// ErrMergeAlreadyClaimed is returned when another request won the
 	// active→merged compare-and-set for this branch while this one was
 	// planning. The loser has written nothing; the merge it lost to is the
@@ -146,6 +151,11 @@ type MergeBranchInput struct {
 	// touched without conflict may also appear, which is how a caller excludes
 	// it (ResolveMain).
 	Resolutions map[uuid.UUID]MergeResolution // streamID → winning side
+
+	// Rationales optionally says, per resolved stream, why that side won
+	// (#828). Each key must also be in Resolutions. Recorded on the
+	// BranchMerged claim; blank entries are dropped.
+	Rationales map[uuid.UUID]string
 }
 
 // MergeBranchResult reports what a merge did — or, alongside ErrMergeConflicts,
@@ -246,23 +256,8 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err != nil {
 		return nil, fmt.Errorf("planning merge: %w", err)
 	}
-	// The two truncation sides are different problems and get different
-	// answers. A branch bigger than the cap is permanently unmergeable as-is;
-	// a main tail bigger than the cap says nothing about the branch, grows with
-	// unrelated mainline activity, and is not the branch's fault.
-	if plan.BranchTruncated {
-		return nil, fmt.Errorf(
-			"%w: branch %s has more than %d events of its own, so its replay set is incomplete. "+
-				"Retrying will not help — the cap is fixed and the branch does not shrink; "+
-				"promoting a subset needs partial merge (#684)",
-			ErrBranchTooLargeToMerge, branch.ID, plan.EventCap)
-	}
-	if plan.MainTruncated {
-		return nil, fmt.Errorf(
-			"%w: more than %d events have landed on main for the streams branch %s touches since it forked, "+
-				"so the conflict list is not known to be complete. The branch itself may be small — this is a "+
-				"limit on how far back the comparison scans, not on the branch",
-			ErrMainTooFarAheadToMerge, plan.EventCap, branch.ID)
+	if err := refuseUnmergeablePlan(branch, plan); err != nil {
+		return nil, err
 	}
 
 	groups, err := orderEvidenceForReplay(groupEventsByStream(plan.ReplayEvents))
@@ -272,6 +267,10 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 	if err := validateResolutions(input.Resolutions, groups); err != nil {
 		return nil, err
 	}
+	rationales, err := validateRationales(input.Rationales, input.Resolutions)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateConflictResolutions(plan.Conflicts, input.Resolutions); err != nil {
 		return nil, err
 	}
@@ -279,6 +278,11 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, err
 	}
 	if unresolved := unresolvedConflicts(plan.Conflicts, input.Resolutions); unresolved > 0 {
+		// The refusal hands the conflicts back for review, so they carry what
+		// each side says (#828); a merge that goes ahead never reads them.
+		if err := h.branchService.DescribeConflictValues(ctx, plan); err != nil {
+			return nil, err
+		}
 		return &MergeBranchResult{
 				Branch:    branch,
 				Conflicts: plan.Conflicts,
@@ -300,7 +304,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, err
 	}
 
-	if err := h.claimMerge(ctx, branch, mergedAtPosition, input.Note, replayPlan(groups, plan.MainStreamVersions, input.Resolutions)); err != nil {
+	if err := h.claimMerge(ctx, branch, mergedAtPosition, input.Note, replayPlan(groups, plan.MainStreamVersions, input.Resolutions), rationales); err != nil {
 		return nil, err
 	}
 
@@ -323,6 +327,34 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		ReplayedEventCount: replayed,
 		SkippedStreamIDs:   skipped,
 	}, nil
+}
+
+// refuseUnmergeablePlan refuses a plan no resolution can make mergeable: one
+// whose branch or main scan was truncated, or one with nothing to replay.
+func refuseUnmergeablePlan(branch *domain.Branch, plan *query.MergePlan) error {
+	// The two truncation sides are different problems and get different
+	// answers. A branch bigger than the cap is permanently unmergeable as-is;
+	// a main tail bigger than the cap says nothing about the branch, grows with
+	// unrelated mainline activity, and is not the branch's fault.
+	if plan.BranchTruncated {
+		return fmt.Errorf(
+			"%w: branch %s has more than %d events of its own, so its replay set is incomplete. "+
+				"Retrying will not help — the cap is fixed and the branch does not shrink; "+
+				"promoting a subset needs partial merge (#684)",
+			ErrBranchTooLargeToMerge, branch.ID, plan.EventCap)
+	}
+	if plan.MainTruncated {
+		return fmt.Errorf(
+			"%w: more than %d events have landed on main for the streams branch %s touches since it forked, "+
+				"so the conflict list is not known to be complete. The branch itself may be small — this is a "+
+				"limit on how far back the comparison scans, not on the branch",
+			ErrMainTooFarAheadToMerge, plan.EventCap, branch.ID)
+	}
+
+	if len(plan.ReplayEvents) == 0 {
+		return fmt.Errorf("%w: branch %s has made no changes since it forked, so there is nothing to promote", ErrMergeEmpty, branch.ID)
+	}
+	return nil
 }
 
 // validatePlanNotStale refuses a merge whose conflict verdict was computed
@@ -402,7 +434,7 @@ func (h *Handler) validatePlanNotStale(
 //
 // replayVersions is the replay plan recorded on the claim — see
 // domain.BranchMerged.ReplayStreamVersions and ResumeMerge.
-func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedAtPosition int64, note string, replayVersions map[uuid.UUID]int64) error {
+func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedAtPosition int64, note string, replayVersions map[uuid.UUID]int64, rationales map[uuid.UUID]string) error {
 	scope := branchScope(branch)
 
 	currentVersion, err := h.eventStore.GetStreamVersion(ctx, branch.ID, scope.BranchID)
@@ -449,6 +481,7 @@ func (h *Handler) claimMerge(ctx context.Context, branch *domain.Branch, mergedA
 	}
 
 	event := domain.NewBranchMerged(branch.ID, branch.BasePosition, mergedAtPosition, note, replayVersions)
+	event.ResolutionRationales = rationales
 	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, currentVersion, scope); err != nil {
 		if errors.Is(err, repository.ErrConcurrencyConflict) {
 			return fmt.Errorf("%w: %s", ErrMergeAlreadyClaimed, branch.ID)
@@ -903,6 +936,18 @@ func validateResolutions(resolutions map[uuid.UUID]MergeResolution, groups []str
 		}
 	}
 	return nil
+}
+
+// validateRationales checks the optional per-resolution rationales (#828): each
+// must accompany a resolution for the same stream and fit the domain's length
+// rule. It returns them trimmed, blank ones dropped, nil when none remain.
+func validateRationales(rationales map[uuid.UUID]string, resolutions map[uuid.UUID]MergeResolution) (map[uuid.UUID]string, error) {
+	for streamID := range rationales {
+		if _, ok := resolutions[streamID]; !ok {
+			return nil, fmt.Errorf("%w: a rationale was given for stream %s, which has no resolution", ErrUnknownResolution, streamID)
+		}
+	}
+	return domain.NormalizeResolutionRationales(rationales)
 }
 
 // validateConflictResolutions rejects a resolution that is a legal value but

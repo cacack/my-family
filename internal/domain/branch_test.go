@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -304,5 +305,62 @@ func TestBranch_MergeFieldsJSON(t *testing.T) {
 	}
 	if decoded.MergeNote != merged.MergeNote {
 		t.Errorf("MergeNote = %q, want %q", decoded.MergeNote, merged.MergeNote)
+	}
+}
+
+func TestNormalizeResolutionRationales(t *testing.T) {
+	kept, blank := uuid.New(), uuid.New()
+
+	got, err := domain.NormalizeResolutionRationales(map[uuid.UUID]string{kept: "  census 1881 ", blank: " \t"})
+	if err != nil {
+		t.Fatalf("NormalizeResolutionRationales failed: %v", err)
+	}
+	if len(got) != 1 || got[kept] != "census 1881" {
+		t.Errorf("got %v, want only the trimmed non-blank rationale", got)
+	}
+
+	if got, err := domain.NormalizeResolutionRationales(map[uuid.UUID]string{blank: ""}); err != nil || got != nil {
+		t.Errorf("all blank: got %v, %v; want nil, nil", got, err)
+	}
+
+	// Counted in characters, not bytes: 1000 multi-byte runes fit.
+	if _, err := domain.NormalizeResolutionRationales(map[uuid.UUID]string{kept: strings.Repeat("é", domain.MaxResolutionRationaleLength)}); err != nil {
+		t.Errorf("rationale at the limit: %v", err)
+	}
+	if _, err := domain.NormalizeResolutionRationales(map[uuid.UUID]string{kept: strings.Repeat("x", domain.MaxResolutionRationaleLength+1)}); !errors.Is(err, domain.ErrResolutionRationaleTooLong) {
+		t.Errorf("rationale over the limit: err = %v, want ErrResolutionRationaleTooLong", err)
+	}
+}
+
+// BranchMerged's rationales are additive: a claim recorded before #828 decodes
+// with none, and one with rationales round-trips them.
+func TestBranchMerged_ResolutionRationalesAreAdditive(t *testing.T) {
+	var old domain.BranchMerged
+	if err := json.Unmarshal([]byte(`{"branch_id":"`+uuid.NewString()+`","replay_stream_versions":{}}`), &old); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	if old.ResolutionRationales != nil {
+		t.Errorf("pre-#828 claim decoded rationales %v, want nil", old.ResolutionRationales)
+	}
+
+	stream := uuid.New()
+	event := domain.NewBranchMerged(uuid.New(), 1, 2, "", nil)
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	if strings.Contains(string(encoded), "resolution_rationales") {
+		t.Errorf("a claim without rationales encodes the key: %s", encoded)
+	}
+	event.ResolutionRationales = map[uuid.UUID]string{stream: "why"}
+	if encoded, err = json.Marshal(event); err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	var decoded domain.BranchMerged
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	if decoded.ResolutionRationales[stream] != "why" {
+		t.Errorf("round-tripped rationales = %v", decoded.ResolutionRationales)
 	}
 }

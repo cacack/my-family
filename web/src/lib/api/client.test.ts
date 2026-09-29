@@ -514,6 +514,7 @@ describe('isBranchMergeRefusal', () => {
 		'main_too_far_ahead',
 		'merge_plan_stale',
 		'merge_dangling_reference',
+		'merge_empty',
 		'merge_partially_applied',
 		// The two 400s. Reachable when the merge's own conflict re-detection no
 		// longer supports a resolution compare offered, or when the request body

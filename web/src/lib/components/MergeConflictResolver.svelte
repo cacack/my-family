@@ -11,27 +11,109 @@
 	 * `create_create`) accept only `main`, and for those a lone radio is
 	 * meaningless without the reason - hence `soleOptionReason()`.
 	 *
+	 * Each conflict shows what each side says (`ConflictValues`: the fork, the
+	 * branch and the mainline, side by side), and can carry an optional
+	 * rationale - why that side won - which the merge records (#828). With two
+	 * or more conflicts, bulk controls decide them all, or all of one entity
+	 * type, at once; a bulk choice only ever sets a side a conflict accepts.
+	 *
 	 * Controlled on purpose: it renders `resolutions` and calls `onresolve`, it
 	 * does not own the decisions. The page owns that map because it has to
 	 * survive a `409 merge_conflicts` re-render and be serialized into the merge
-	 * request.
+	 * request. The same goes for `rationales`.
 	 */
 	import type { MergeConflict, MergeResolution } from '$lib/api/client';
+	import ConflictValues from '$lib/components/ConflictValues.svelte';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
 	import { RadioGroup, RadioGroupItem } from '$lib/components/ui/radio-group';
-	import { entityTypeLabel } from '$lib/utils/changeEntries';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
+
+	/** The server's limit on one rationale, in characters. */
+	const RATIONALE_MAX_LENGTH = 1000;
 
 	interface Props {
 		conflicts: MergeConflict[];
 		/** Current decisions, keyed by `stream_id`. */
 		resolutions: Map<string, MergeResolution>;
 		onresolve: (streamId: string, resolution: MergeResolution) => void;
+		/**
+		 * Several decisions at once, from a bulk control. Optional: without it
+		 * the bulk controls fall back to one `onresolve` call per conflict.
+		 */
+		onresolveall?: (decisions: Array<[string, MergeResolution]>) => void;
+		/** Optional reasoning per decision, keyed by `stream_id`. */
+		rationales?: Map<string, string>;
+		/** Omit to hide the rationale fields. */
+		onrationale?: (streamId: string, rationale: string) => void;
 		/** True while a merge request is in flight. */
 		disabled?: boolean;
 	}
 
-	let { conflicts, resolutions, onresolve, disabled = false }: Props = $props();
+	let {
+		conflicts,
+		resolutions,
+		onresolve,
+		onresolveall,
+		rationales = new Map(),
+		onrationale,
+		disabled = false
+	}: Props = $props();
+
+	/** Entity types among the conflicts, in first-seen order, with their counts. */
+	const conflictTypes = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const conflict of conflicts) {
+			counts.set(conflict.entity_type, (counts.get(conflict.entity_type) ?? 0) + 1);
+		}
+		return [...counts].map(([entityType, count]) => ({ entityType, count }));
+	});
+
+	/** The outcome of the last bulk action, announced politely. */
+	let bulkStatus = $state('');
+
+	function targetsOf(entityType: string | null): MergeConflict[] {
+		return entityType === null
+			? conflicts
+			: conflicts.filter((conflict) => conflict.entity_type === entityType);
+	}
+
+	function acceptsAny(entityType: string | null, resolution: MergeResolution): boolean {
+		return targetsOf(entityType).some((c) => c.supported_resolutions.includes(resolution));
+	}
+
+	function plural(n: number, word: string): string {
+		return `${n} ${word}${n === 1 ? '' : 's'}`;
+	}
+
+	/**
+	 * Decide every targeted conflict for one side. A conflict that does not
+	 * accept that side is left exactly as it was - never flipped to the other -
+	 * and the status line says how many were skipped and why.
+	 */
+	function decideAll(resolution: MergeResolution, entityType: string | null) {
+		const targets = targetsOf(entityType);
+		const applicable = targets.filter((c) => c.supported_resolutions.includes(resolution));
+		const decisions: Array<[string, MergeResolution]> = applicable.map((c) => [
+			c.stream_id,
+			resolution
+		]);
+		if (onresolveall) {
+			onresolveall(decisions);
+		} else {
+			for (const [streamId, side] of decisions) onresolve(streamId, side);
+		}
+
+		const side = resolution === 'branch' ? "the branch's version" : "the mainline's version";
+		let status = `Chose ${side} for ${plural(applicable.length, 'conflict')}.`;
+		const skipped = targets.length - applicable.length;
+		if (skipped > 0) {
+			status += ` ${plural(skipped, 'conflict')} cannot take ${side} and ${skipped === 1 ? 'was' : 'were'} left as ${skipped === 1 ? 'it was' : 'they were'}.`;
+		}
+		bulkStatus = status;
+	}
 
 	function conflictLabel(kind: MergeConflict['kind']): string {
 		switch (kind) {
@@ -70,9 +152,62 @@
 	}
 
 	const headingId = (streamId: string) => `conflict-${streamId}-entity`;
+	const rationaleId = (streamId: string) => `conflict-${streamId}-rationale`;
 	const optionId = (streamId: string, resolution: string) =>
 		`conflict-${streamId}-resolution-${resolution}`;
 </script>
+
+{#if conflicts.length > 1}
+	<div class="bulk" role="group" aria-labelledby="bulk-heading">
+		<p class="bulk-heading" id="bulk-heading">Decide several at once</p>
+		<div class="bulk-row">
+			<span class="bulk-scope">All {plural(conflicts.length, 'conflict')}</span>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={disabled || !acceptsAny(null, 'branch')}
+				onclick={() => decideAll('branch', null)}
+			>
+				Take the branch's version for all
+			</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={disabled || !acceptsAny(null, 'main')}
+				onclick={() => decideAll('main', null)}
+			>
+				Keep the mainline's version for all
+			</Button>
+		</div>
+		{#if conflictTypes.length > 1}
+			{#each conflictTypes as { entityType, count } (entityType)}
+				{@const typeLabel = entityTypeLabel(entityType)}
+				<div class="bulk-row">
+					<span class="bulk-scope">{typeLabel} ({count})</span>
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={disabled || !acceptsAny(entityType, 'branch')}
+						aria-label="Take branch for every {typeLabel.toLowerCase()} conflict"
+						onclick={() => decideAll('branch', entityType)}
+					>
+						Take branch
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={disabled || !acceptsAny(entityType, 'main')}
+						aria-label="Keep mainline for every {typeLabel.toLowerCase()} conflict"
+						onclick={() => decideAll('main', entityType)}
+					>
+						Keep mainline
+					</Button>
+				</div>
+			{/each}
+		{/if}
+		<p class="bulk-status" role="status" aria-live="polite">{bulkStatus}</p>
+	</div>
+{/if}
 
 {#if conflicts.length > 0}
 	<ul class="conflict-list">
@@ -83,7 +218,9 @@
 				<div class="conflict-head">
 					<h3 class="conflict-title" id={headingId(conflict.stream_id)}>
 						<span class="entity-type">{entityTypeLabel(conflict.entity_type)}</span>
-						<span class="conflict-name">{conflict.entity_name || 'Unnamed entity'}</span>
+						<span class="conflict-name"
+							>{conflict.entity_name || unnamedEntityLabel(conflict.entity_type)}</span
+						>
 					</h3>
 					<Badge variant="destructive">{conflictLabel(conflict.kind)}</Badge>
 					{#if !decided}
@@ -96,7 +233,9 @@
 
 				<p class="conflict-detail">{conflict.detail}</p>
 
-				{#if conflict.fields && conflict.fields.length > 0}
+				{#if conflict.field_values && conflict.field_values.length > 0}
+					<ConflictValues {conflict} />
+				{:else if conflict.fields && conflict.fields.length > 0}
 					<p class="conflict-fields">Contested fields: {conflict.fields.join(', ')}</p>
 				{/if}
 
@@ -128,12 +267,83 @@
 						</div>
 					{/each}
 				</RadioGroup>
+
+				{#if onrationale}
+					<div class="rationale">
+						<Label for={rationaleId(conflict.stream_id)} class="rationale-label">
+							Why this side? <span class="optional">(optional - recorded with the merge)</span>
+						</Label>
+						<Textarea
+							id={rationaleId(conflict.stream_id)}
+							value={rationales.get(conflict.stream_id) ?? ''}
+							oninput={(event) =>
+								onrationale(conflict.stream_id, (event.currentTarget as HTMLTextAreaElement).value)}
+							maxlength={RATIONALE_MAX_LENGTH}
+							rows={2}
+							{disabled}
+							placeholder="The evidence you weighed, e.g. the 1881 census gives her birthplace as..."
+						/>
+					</div>
+				{/if}
 			</li>
 		{/each}
 	</ul>
 {/if}
 
 <style>
+	.bulk {
+		margin-bottom: 0.75rem;
+		padding: 0.625rem 0.875rem;
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+	}
+
+	.bulk-heading {
+		margin: 0 0 0.375rem;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: #334155;
+	}
+
+	.bulk-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		margin-top: 0.25rem;
+	}
+
+	.bulk-scope {
+		min-width: 9rem;
+		font-size: 0.8125rem;
+		color: #475569;
+	}
+
+	.bulk-status {
+		margin: 0.375rem 0 0;
+		font-size: 0.8125rem;
+		color: #334155;
+	}
+
+	/* Empty, the live region stays rendered (so the first announcement is
+	   heard) but takes no space. */
+	.bulk-status:empty {
+		margin: 0;
+	}
+
+	.rationale {
+		margin-top: 0.625rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.optional {
+		font-weight: 400;
+		color: #64748b;
+	}
+
 	.conflict-list {
 		list-style: none;
 		margin: 0;

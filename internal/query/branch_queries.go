@@ -128,6 +128,12 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 	if err != nil {
 		return nil, err
 	}
+	// The review shows what each side says per contested field (#828). Only
+	// the review needs it, so it is not part of detectConflicts, which the
+	// merge plan shares.
+	if err := s.describeConflictValues(ctx, diff, conflicts); err != nil {
+		return nil, fmt.Errorf("describe conflicting values: %w", err)
+	}
 
 	return &BranchComparisonResult{
 		Branch:               diff.branch,

@@ -700,6 +700,7 @@ func TestResumeMerge_MainResolutionIsFinal(t *testing.T) {
 	if _, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
 		BranchID:    s.branch.ID,
 		Resolutions: map[uuid.UUID]command.MergeResolution{s.second: command.ResolveMain},
+		Rationales:  map[uuid.UUID]string{s.second: " main's census reading stands "},
 	}); err != nil {
 		t.Fatalf("resolved ResumeMerge failed: %v", err)
 	}
@@ -711,6 +712,10 @@ func TestResumeMerge_MainResolutionIsFinal(t *testing.T) {
 	}
 	if records[0].Resolutions[s.second] != string(command.ResolveMain) {
 		t.Errorf("recorded resolutions = %v, want second -> main", records[0].Resolutions)
+	}
+	// Its rationale (#828) is recorded with it, trimmed.
+	if got := records[0].Rationales[s.second]; got != "main's census reading stands" {
+		t.Errorf("recorded rationale = %q, want the trimmed text", got)
 	}
 	if _, planned := records[0].ReplayStreamVersions[s.second]; planned {
 		t.Errorf("recorded plan %v still replays the stream resolved to main", records[0].ReplayStreamVersions)
@@ -1278,5 +1283,23 @@ func TestResumeMerge_ConcurrentRepairsDoNotDoubleCount(t *testing.T) {
 	}
 	if row.Version != logVersion {
 		t.Errorf("read-model version = %d, want the log's %d", row.Version, logVersion)
+	}
+}
+
+// A resume refuses a rationale that names a stream it was not asked to decide.
+func TestResumeMerge_RationaleWithoutResolutionRefused(t *testing.T) {
+	s := seedResume(t)
+	ctx := context.Background()
+	s.makeSecondStreamStale(t)
+
+	_, err := s.handler.ResumeMerge(ctx, command.ResumeMergeInput{
+		BranchID:   s.branch.ID,
+		Rationales: map[uuid.UUID]string{s.second: "why"},
+	})
+	if !errors.Is(err, command.ErrUnknownResolution) {
+		t.Fatalf("ResumeMerge error = %v, want ErrUnknownResolution", err)
+	}
+	if got := len(resumeRecords(t, s)); got != 0 {
+		t.Errorf("got %d BranchMergeResumed records, want none from a refused resume", got)
 	}
 }

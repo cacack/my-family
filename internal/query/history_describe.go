@@ -231,7 +231,16 @@ func (s *HistoryService) foldRelatedPeople(ctx context.Context, branchID domain.
 		return nil
 	}
 	sort.Slice(missing, func(i, j int) bool { return missing[i].String() < missing[j].String() })
-	streams, _, err := s.readStreams(ctx, branchID, missing, nil)
+	return s.foldStreams(ctx, branchID, d, missing)
+}
+
+// foldStreams folds each of streamIDs, as branchID sees them, into d.states
+// with one set-based read. No ids, no read.
+func (s *HistoryService) foldStreams(ctx context.Context, branchID domain.BranchID, d *historyDescription, streamIDs []uuid.UUID) error {
+	if len(streamIDs) == 0 {
+		return nil
+	}
+	streams, _, err := s.readStreams(ctx, branchID, streamIDs, nil)
 	if err != nil {
 		return err
 	}

@@ -3088,6 +3088,10 @@ paths:
               across entities, so excluding one entity does not exclude the
               references to it. The message names both entities. Refused rather
               than silently dropping or orphaning data.
+            - `merge_empty` — the branch has no changes of its own since it
+              forked, so there is nothing to promote. Refused rather than
+              recording a "merged" that promoted nothing (#828); the branch
+              stays `active`.
           content:
             application/json:
               schema:
@@ -7347,10 +7351,74 @@ components:
             The contested field names, sorted. Present for `edit_edit` only -
             the other kinds are whole-entity conflicts with no field to name.
           example: ["surname"]
+        deleted_by:
+          type: string
+          enum: [branch, main]
+          description: |
+            For `delete_edit` only: which side deleted the entity. The other
+            side is the one whose edits `field_values` lists.
+        field_values:
+          type: array
+          items:
+            $ref: '#/components/schemas/MergeConflictField'
+          description: |
+            What each side says, per contested field, in words: the value at
+            the fork (`base_value`), the branch's (`branch_value`) and the
+            mainline's (`main_value`). Ids of referenced entities (people,
+            families, sources, citations, evidence analyses, notes, media, a
+            subject or a fact owner) are resolved to their names; a list of ids
+            is rendered as its names joined with `; `.
+
+            - `edit_edit` - one entry per entry of `fields`, in the same order.
+            - `delete_edit` - one entry per field the editing side changed; the
+              deleting side's value is `null` (see `deleted_by`).
+            - `create_create` - absent.
         detail:
           type: string
           description: Human-readable explanation of the conflict, ready to display
-          example: "Both sides changed surname to different values"
+          example: "The branch and main disagree on Surname"
+
+    MergeConflictField:
+      type: object
+      description: One contested field of a conflict, valued on each side.
+      required: [field, label, base_value, branch_value, main_value]
+      properties:
+        field:
+          type: string
+          description: |
+            The raw field key, as `MergeConflict.fields` reports it - for
+            example `surname`, `children[<person-id>]` or `names[<name-id>]`.
+          example: "surname"
+        label:
+          type: string
+          description: |
+            The field's readable name, ready to display. A structural key is
+            named by what it refers to, e.g. `Child: Ada Lovelace`.
+          example: "Surname"
+        base_value:
+          type: string
+          nullable: true
+          description: |
+            The value when the branch forked (its `base_position`). `null` when
+            the field was not set then, or when the fork state could not be
+            read in full - `base_unknown` tells the two apart.
+          example: "Byron"
+        base_unknown:
+          type: boolean
+          description: |
+            Present and `true` when the fork state could not be read in full
+            (the history is too long to replay), so `base_value` is unknown
+            rather than unset. Absent otherwise.
+        branch_value:
+          type: string
+          nullable: true
+          description: The branch's value. `null` when it is not set, or the branch deleted the entity.
+          example: "Lovelace"
+        main_value:
+          type: string
+          nullable: true
+          description: The mainline's value. `null` when it is not set, or the mainline deleted the entity.
+          example: "King"
 
     BranchMergeRequest:
       type: object
@@ -7401,6 +7469,14 @@ components:
             - `branch` - replay the branch's events for this entity onto main.
             - `main` - keep main's version; the entity's branch changes are
               dropped and its id is reported in `skipped_stream_ids`.
+        rationale:
+          type: string
+          maxLength: 1000
+          description: |
+            Optional: why this side won - the evidence weighed (GPS: resolve
+            conflicts by reasoning, not by fiat). Recorded with the merge
+            (`BranchMerged`, or `BranchMergeResumed` for a resume). Blank is
+            the same as absent.
 
     BranchMergeResult:
       type: object
@@ -7449,7 +7525,7 @@ components:
       properties:
         code:
           type: string
-          enum: [merge_conflicts, branch_not_active, merge_already_claimed, branch_too_large, main_too_far_ahead, merge_plan_stale, merge_dangling_reference]
+          enum: [merge_conflicts, branch_not_active, merge_already_claimed, branch_too_large, main_too_far_ahead, merge_plan_stale, merge_dangling_reference, merge_empty]
           description: Which refusal this is - see the operation's 409 description
           example: "merge_conflicts"
         message:

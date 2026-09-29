@@ -12,7 +12,7 @@
  * the branch must have dropped out of the switcher's active list.
  */
 import { expect, test } from '@playwright/test';
-import { readSeed } from './seed';
+import { API_BASE, readSeed } from './seed';
 
 test('review resolves the conflict, merges the branch, and the mainline takes the branch value', async ({
 	page
@@ -20,8 +20,15 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	// Read the seed inside the test, not at module scope: `playwright test --list`
 	// and editor test discovery load spec files WITHOUT running globalSetup, so a
 	// module-scope read fails collection with ENOENT instead of listing tests.
-	const { branchId, branchName, person, conflictField, familyName, familyBranchMarriagePlace } =
-		readSeed().merge;
+	const {
+		branchId,
+		branchName,
+		person,
+		conflictFieldLabel,
+		baseBirthPlace,
+		familyName,
+		familyBranchMarriagePlace
+	} = readSeed().merge;
 
 	await page.goto(`/branches/${branchId}`);
 	await expect(page.getByRole('heading', { level: 1, name: branchName })).toBeVisible();
@@ -45,7 +52,24 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 
 	// --- The conflict, and its resolution controls -------------------------
 	await expect(page.getByRole('heading', { level: 3, name: new RegExp(person.name) })).toBeVisible();
-	await expect(page.getByText(`Contested fields: ${conflictField}`)).toBeVisible();
+	// What each side says, side by side, under a readable label (#828): the
+	// value at the fork, the branch's and the mainline's - so choosing a side
+	// does not mean hunting through the two change columns below.
+	const values = page.locator('.verdict').getByRole('table');
+	const row = values.getByRole('row').filter({
+		has: page.getByRole('rowheader', { name: conflictFieldLabel })
+	});
+	await expect(row.getByRole('cell')).toHaveText([
+		baseBirthPlace,
+		person.branchBirthPlace,
+		person.mainBirthPlace
+	]);
+	await expect(values.getByRole('columnheader')).toHaveText([
+		'Field',
+		'At the fork',
+		'This branch',
+		'Mainline'
+	]);
 
 	const takeBranch = page.getByRole('radio', { name: /Take the branch's version/ });
 	await expect(takeBranch).toBeVisible();
@@ -59,11 +83,16 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	await expect(page.getByText('All 1 conflict decided.')).toBeVisible();
 	await expect(reviewAndMerge).toBeEnabled();
 
+	// An optional rationale travels with the decision into the confirm dialog.
+	const rationale = 'Baptism register gives Branch View';
+	await page.getByLabel(/Why this side/).fill(rationale);
+
 	// --- The confirm dialog -------------------------------------------------
 	await reviewAndMerge.click();
 	const dialog = page.getByRole('alertdialog');
 	await expect(dialog.getByText(`Merge ${branchName} into the mainline?`)).toBeVisible();
 	await expect(dialog.getByText('This branch wins')).toBeVisible();
+	await expect(dialog.getByText(`Why: ${rationale}`)).toBeVisible();
 
 	await dialog.getByRole('button', { name: 'Merge branch' }).click();
 
@@ -90,4 +119,17 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	await page.getByRole('button', { name: /switch research branch/i }).click();
 	await expect(page.getByRole('menuitem', { name: 'Mainline' })).toBeVisible();
 	await expect(page.getByRole('menuitem', { name: branchName })).toHaveCount(0);
+});
+
+test('a branch with no changes cannot be sent to review', async ({ page, request }) => {
+	// A branch of this test's own, so nothing another spec does can give it changes.
+	const name = `E2E Empty ${Date.now()}`;
+	const response = await request.post(`${API_BASE}/branches`, { data: { name } });
+	expect(response.status(), await response.text()).toBe(201);
+	const { id } = (await response.json()) as { id: string };
+
+	await page.goto(`/branches/${id}`);
+	await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+	await expect(page.getByText('This branch has no changes to merge yet.')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Review & merge' })).toBeDisabled();
 });

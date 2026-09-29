@@ -54,6 +54,16 @@ type MergeConflict struct {
 	Fields     []string          `json:"fields,omitempty"` // edit_edit only
 	Detail     string            `json:"detail"`
 
+	// DeletedBy names the side that deleted the entity ("branch" or "main").
+	// Set for delete_edit only.
+	DeletedBy string `json:"deleted_by,omitempty"`
+
+	// FieldValues says, per contested field, what the entity held at the fork
+	// and what each side now asserts, in words (#828). For edit_edit it covers
+	// Fields; for delete_edit it covers the fields the editing side changed,
+	// with the deleting side's value absent. Empty for create_create.
+	FieldValues []MergeConflictField `json:"field_values,omitempty"`
+
 	// SupportedResolutions lists the resolutions that would actually produce
 	// the outcome they name, sorted. Most conflicts accept both sides, but two
 	// shapes do not, and offering a resolution that silently does nothing is
@@ -133,6 +143,27 @@ type MergePlan struct {
 	// reported so a refusal can tell the caller the actual limit instead of
 	// leaving them to guess at "too large".
 	EventCap int
+
+	// diff is the loaded diff the verdict was computed from, kept so
+	// DescribeConflictValues can value the conflicts on demand (#828) without
+	// re-reading either side. The merge itself never needs the values, so
+	// PlanMerge does not compute them.
+	diff *branchDiffSources
+}
+
+// DescribeConflictValues fills FieldValues on the plan's conflicts: what each
+// side says, per contested field, in words (#828). The merge command calls it
+// only when it refuses over undecided conflicts and hands them back to the
+// reviewer; a merge that goes ahead never pays for the display-only reads. A
+// plan not built by PlanMerge (or without conflicts) is left as it is.
+func (s *BranchService) DescribeConflictValues(ctx context.Context, plan *MergePlan) error {
+	if plan == nil || plan.diff == nil || len(plan.Conflicts) == 0 {
+		return nil
+	}
+	if err := s.describeConflictValues(ctx, plan.diff, plan.Conflicts); err != nil {
+		return fmt.Errorf("describe conflicting values: %w", err)
+	}
+	return nil
 }
 
 // PlanMerge builds the merge plan for a branch: its replayable events and the
@@ -189,6 +220,7 @@ func (s *BranchService) PlanMerge(ctx context.Context, branchID uuid.UUID) (*Mer
 		BranchTruncated:    diff.branchTruncated,
 		MainTruncated:      diff.mainTruncated || tailTruncated,
 		EventCap:           maxComparisonEvents,
+		diff:               diff,
 	}, nil
 }
 
@@ -282,7 +314,6 @@ func (s *BranchService) detectConflicts(ctx context.Context, diff *branchDiffSou
 	if err := s.enrichConflictEntities(ctx, domain.BranchID(diff.branch.ID), diff.branchEvents, conflicts); err != nil {
 		return nil, false, fmt.Errorf("name conflicting entities: %w", err)
 	}
-
 	return conflicts, tailTruncated, nil
 }
 
@@ -356,6 +387,7 @@ func classifyStream(streamID uuid.UUID, branchSide, mainSide *streamSide) (Merge
 
 	if branchSide.deleted != mainSide.deleted {
 		deleter, editor := "The branch", "main"
+		deletedBy := resolveBranchValue
 		// When the BRANCH is the deleter, replaying its delete onto main works
 		// normally, so both sides remain choosable. When MAIN is the deleter,
 		// replaying the branch's edits onto a row that no longer exists is a
@@ -364,6 +396,7 @@ func classifyStream(streamID uuid.UUID, branchSide, mainSide *streamSide) (Merge
 		detail := "%s deleted this entity while %s changed it"
 		if mainSide.deleted {
 			deleter, editor = "Main", "the branch"
+			deletedBy = resolveMainValue
 			supported = []string{resolveMainValue}
 			detail += "; the branch's changes cannot be replayed onto a deleted entity, so only \"main\" is available"
 		}
@@ -371,6 +404,7 @@ func classifyStream(streamID uuid.UUID, branchSide, mainSide *streamSide) (Merge
 			StreamID:             streamID,
 			Kind:                 ConflictDeleteEdit,
 			Detail:               fmt.Sprintf(detail, deleter, editor),
+			DeletedBy:            deletedBy,
 			SupportedResolutions: supported,
 		}, true
 	}

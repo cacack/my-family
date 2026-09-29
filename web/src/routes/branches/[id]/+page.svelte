@@ -31,6 +31,7 @@
 		type MergeResolution
 	} from '$lib/api/client';
 	import { activeBranch, returnToMainline, switchBranch } from '$lib/stores/activeBranch.svelte';
+	import ConflictValues from '$lib/components/ConflictValues.svelte';
 	import DiffView from '$lib/components/DiffView.svelte';
 	import MergeConflictResolver from '$lib/components/MergeConflictResolver.svelte';
 	import MergeConfirmDialog, {
@@ -40,7 +41,11 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { changeEntryLink, entityTypeLabel } from '$lib/utils/changeEntries';
+	import {
+		changeEntryLink,
+		entityTypeLabel,
+		unnamedEntityLabel
+	} from '$lib/utils/changeEntries';
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);
@@ -59,6 +64,11 @@
 	 * in-place `.set()` would leave every reader of this state unrepainted.
 	 */
 	let resolutions: Map<string, MergeResolution> = $state(new Map());
+	/**
+	 * Optional reasoning per conflict decision, keyed by `stream_id` (#828).
+	 * Reassigned, never mutated, for the same reason as `resolutions`.
+	 */
+	let rationales: Map<string, string> = $state(new Map());
 	/**
 	 * Entities the user opted out of the merge, by `stream_id`. Excluding is
 	 * keyed by *entity*, not by change entry: one entity can appear in several
@@ -87,6 +97,13 @@
 	 * `comparison` back to its `null` initialiser and `.branch` collapses.
 	 */
 	const mergeable = $derived.by(() => comparison?.branch.status === 'active');
+
+	/**
+	 * A branch with no changes of its own has nothing to promote, and the server
+	 * refuses to merge it (`409 merge_empty`) rather than record a merge that
+	 * did nothing (#828) - so the button is not offered as if it could.
+	 */
+	const hasChanges = $derived.by(() => (comparison?.branch_change_count ?? 0) > 0);
 
 	/**
 	 * Every entity this branch changed, first entry wins for the name. The merge
@@ -138,6 +155,7 @@
 		conflicts.filter((conflict) => !mergeResolutions.has(conflict.stream_id)).length
 	);
 	const undecidedLabel = $derived.by(() => {
+		if (!hasChanges) return 'This branch has no changes to merge yet.';
 		if (conflicts.length === 0) return 'No conflicts to resolve.';
 		const total = `${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'}`;
 		return undecidedCount === 0
@@ -158,7 +176,8 @@
 			excluded: leftBehind,
 			decisions: conflicts.flatMap((conflict) => {
 				const resolution = mergeResolutions.get(conflict.stream_id);
-				return resolution ? [{ conflict, resolution }] : [];
+				const rationale = rationales.get(conflict.stream_id)?.trim();
+				return resolution ? [{ conflict, resolution, ...(rationale ? { rationale } : {}) }] : [];
 			}),
 			hasMore: comparison?.has_more ?? false
 		};
@@ -178,6 +197,15 @@
 
 	function resolveConflict(streamId: string, resolution: MergeResolution) {
 		resolutions = new Map(resolutions).set(streamId, resolution);
+	}
+
+	/** A bulk decision from the resolver: one reassignment for all of them. */
+	function resolveConflicts(decisions: Array<[string, MergeResolution]>) {
+		resolutions = new Map([...resolutions, ...decisions]);
+	}
+
+	function setRationale(streamId: string, rationale: string) {
+		rationales = new Map(rationales).set(streamId, rationale);
 	}
 
 	function toggleExclusion(streamId: string) {
@@ -239,6 +267,7 @@
 		// branch's decisions are still held.
 		serverConflicts = null;
 		resolutions = new Map();
+		rationales = new Map();
 		excluded = new Set();
 		confirmOpen = false;
 		// `merging` is per-comparison too: it disables this page's resolver,
@@ -293,10 +322,13 @@
 		try {
 			const result = await api.mergeBranch(id, {
 				...(note ? { note } : {}),
-				resolutions: [...mergeResolutions].map(([stream_id, resolution]) => ({
-					stream_id,
-					resolution
-				}))
+				resolutions: [...mergeResolutions].map(([stream_id, resolution]) => {
+					// Only a conflict decision carries reasoning; an exclusion is its own.
+					const rationale = conflictedStreamIds.has(stream_id)
+						? rationales.get(stream_id)?.trim()
+						: undefined;
+					return { stream_id, resolution, ...(rationale ? { rationale } : {}) };
+				})
 			});
 			// Adopt the branch as the merge left it, so the page stops offering
 			// merge affordances behind the still-open success summary. Gated on the
@@ -325,6 +357,7 @@
 		serverConflicts = fresh;
 		const live = new Set(fresh.map((conflict) => conflict.stream_id));
 		resolutions = new Map([...resolutions].filter(([streamId]) => live.has(streamId)));
+		rationales = new Map([...rationales].filter(([streamId]) => live.has(streamId)));
 	}
 </script>
 
@@ -363,9 +396,13 @@
 					<div class="change-body">
 						<span class="entity-type">{entityTypeLabel(entry.entity_type)}</span>
 						{#if link}
-							<a href={link} class="entity-name">{entry.entity_name || 'Unnamed'}</a>
+							<a href={link} class="entity-name"
+								>{entry.entity_name || unnamedEntityLabel(entry.entity_type)}</a
+							>
 						{:else}
-							<span class="entity-name" class:deleted={entry.action === 'deleted'}>{entry.entity_name || 'Unnamed'}</span>
+							<span class="entity-name" class:deleted={entry.action === 'deleted'}
+								>{entry.entity_name || unnamedEntityLabel(entry.entity_type)}</span
+							>
 						{/if}
 					</div>
 					{#if entry.changes && Object.keys(entry.changes).length > 0}
@@ -385,11 +422,12 @@
 								checked={isExcluded}
 								onCheckedChange={() => toggleExclusion(entry.entity_id)}
 								disabled={merging}
-								aria-label="Leave out of the merge: {entry.entity_name || 'unnamed entity'}"
+								aria-label="Leave out of the merge: {entry.entity_name ||
+									unnamedEntityLabel(entry.entity_type)}"
 							/>
 							<span class="exclude-text">
 								Leave out of the merge: <span class="exclude-name"
-									>{entry.entity_name || 'unnamed entity'}</span
+									>{entry.entity_name || unnamedEntityLabel(entry.entity_type)}</span
 								>
 							</span>
 						</div>
@@ -435,7 +473,10 @@
 				{#if mergeable}
 					<div class="merge-bar">
 						<p class="undecided" role="status">{undecidedLabel}</p>
-						<Button onclick={() => (confirmOpen = true)} disabled={undecidedCount > 0 || merging}>
+						<Button
+							onclick={() => (confirmOpen = true)}
+							disabled={!hasChanges || undecidedCount > 0 || merging}
+						>
 							Review &amp; merge
 						</Button>
 					</div>
@@ -478,6 +519,9 @@
 					{conflicts}
 					resolutions={mergeResolutions}
 					onresolve={resolveConflict}
+					onresolveall={resolveConflicts}
+					{rationales}
+					onrationale={setRationale}
 					disabled={merging}
 				/>
 			{:else}
@@ -491,11 +535,15 @@
 						<li class="conflict">
 							<div class="conflict-head">
 								<span class="entity-type">{entityTypeLabel(conflict.entity_type)}</span>
-								<span class="conflict-name">{conflict.entity_name || 'Unnamed entity'}</span>
+								<span class="conflict-name"
+									>{conflict.entity_name || unnamedEntityLabel(conflict.entity_type)}</span
+								>
 								<Badge variant="destructive">{conflictLabel(conflict.kind)}</Badge>
 							</div>
 							<p class="conflict-detail">{conflict.detail}</p>
-							{#if conflict.fields && conflict.fields.length > 0}
+							{#if conflict.field_values && conflict.field_values.length > 0}
+								<ConflictValues {conflict} />
+							{:else if conflict.fields && conflict.fields.length > 0}
 								<p class="conflict-fields">
 									Contested fields: {conflict.fields.join(', ')}
 								</p>
