@@ -51,23 +51,15 @@ var (
 // metadata, and #760 to the GPS artifacts: evidence analyses, evidence
 // conflicts, research logs and proof summaries).
 //
-// Deliberately excluded despite their handlers taking a branchID:
-//   - PersonMerged — since #760 every read-model write its projection makes is
-//     branch-keyed, so it no longer fails the store half of this rule. It stays
-//     off because a branch merge could not replay it safely: it rewrites rows of
-//     the merged person's aggregates (names, facts, citations, media, GPS
-//     artifacts) and deletes that person without an event on any of their
-//     streams, so the merge conflict scan cannot see a concurrent main edit to
-//     them, and the dangling-reference checks do not model it. Admitting it
-//     needs that merge design first (tracked under #676's follow-ups).
-//   - LDSOrdinanceCreated — same shape, but PERMANENT. LDS ordinances are
-//     deliberately never branch-scoped, so this entry is not waiting on anything.
+// Deliberately excluded despite their handler taking a branchID:
+//   - LDSOrdinanceCreated — PERMANENT. LDS ordinances are deliberately never
+//     branch-scoped, so this entry is not waiting on anything.
 //     See docs/adr/005-research-branch-data-model.md, "Entities that stay
 //     main-only"; admitting it would contradict that decision.
 //
-// Issue #676 (branch fan-out) grows this set as the remaining projections and
-// read-model tables become branch-aware — but it does not grow to cover every
-// exclusion above, so check which kind an entry is before removing it. This lives
+// Issue #676 (branch fan-out) grew this set as the projections and read-model
+// tables became branch-aware, and #834 added the last command it refused
+// (MergePersons). The exclusion above is permanent. This lives
 // next to the guard that uses it so its coupling to the projector stays visible.
 var branchAwareEventTypes = map[string]struct{}{
 	"PersonCreated":           {},
@@ -124,6 +116,14 @@ var branchAwareEventTypes = map[string]struct{}{
 	"ProofSummaryCreated":      {},
 	"ProofSummaryUpdated":      {},
 	"ProofSummaryDeleted":      {},
+	// Person merge (#834). Every read and write its projection makes is on the
+	// handler's branch (#757-#760 scoped the steps one entity at a time). A
+	// branch merge replays it after every stream that mentions the merged
+	// person (orderPersonMergesForReplay), the conflict classifier compares
+	// it against main's edits of both persons (query.classifyConflicts), and
+	// the dangling-reference checks treat its survivor as a person it
+	// references and follow the branch's merge chains.
+	"PersonMerged": {},
 }
 
 // BranchAwareEventTypes returns the event types a branch-scoped handler may
@@ -251,15 +251,15 @@ func NewHandlerWithRollbackService(eventStore repository.EventStore, readStore r
 // UpdateNote, DeleteNote, UploadMedia, UpdateMedia, DeleteMedia,
 // CreateEvidenceAnalysis, UpdateEvidenceAnalysis, DeleteEvidenceAnalysis,
 // ResolveEvidenceConflict, CreateResearchLog, UpdateResearchLog,
-// DeleteResearchLog, CreateProofSummary, UpdateProofSummary and
-// DeleteProofSummary. (Life events and attributes have no
+// DeleteResearchLog, CreateProofSummary, UpdateProofSummary,
+// DeleteProofSummary and MergePersons. (Life events and attributes have no
 // commands of their own yet — GEDCOM import writes them, on main — but their
 // events are allowlisted so a branch merge or a future command can carry them.)
 //
-// Every other entity command — submitters, repositories and LDS ordinances
-// (main-only by decision, ADR-005 "Entities that stay main-only") and
-// MergePersons (see branchAwareEventTypes) — routes through execute too, so on
-// a branch it fails loudly rather than writing main.
+// MergePersons joined that surface in #834. Every other entity command —
+// submitters, repositories and LDS ordinances (main-only by decision, ADR-005
+// "Entities that stay main-only") — routes through execute too, so on a
+// branch it fails loudly rather than writing main.
 //
 // # What ignores the scope
 //

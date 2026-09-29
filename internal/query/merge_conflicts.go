@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"sort"
 	"strings"
@@ -101,8 +102,10 @@ type MergePlan struct {
 	Conflicts []MergeConflict
 
 	// MainStreamVersions is main's version for every stream in ReplayEvents, as
-	// observed while this plan was being built. Streams main has never seen are
-	// present with 0.
+	// observed while this plan was being built, and for every person a
+	// replayed PersonMerged merges away (#834) — those streams are not
+	// replayed, but the verdict covers main's changes to them. Streams main has
+	// never seen are present with 0.
 	//
 	// It belongs on the plan rather than being re-read at replay time because it
 	// is part of what the conflict verdict was computed against: Conflicts says
@@ -285,7 +288,11 @@ func (s *BranchService) LoadMergeReplaySet(ctx context.Context, branchID uuid.UU
 // read-only diff, and ADR-005 keeps them off the public comparison response, so
 // compare must not pay N extra reads for them.
 func (s *BranchService) captureMainStreamVersions(ctx context.Context, branchEvents []repository.StoredEvent) (map[uuid.UUID]int64, error) {
-	streamIDs := branchStreamIDs(branchEvents)
+	// comparedStreamIDs, not branchStreamIDs: the persons the branch merged
+	// away are pinned too. Their streams are not replayed, but main writing to
+	// one after this verdict was computed is exactly the unreviewed change the
+	// pin exists to catch (see the command's validatePlanNotStale).
+	streamIDs := comparedStreamIDs(branchEvents)
 	versions := make(map[uuid.UUID]int64, len(streamIDs))
 	for _, streamID := range streamIDs {
 		version, err := s.eventStore.GetStreamVersion(ctx, streamID, domain.MainBranchID)
@@ -365,15 +372,131 @@ func classifyConflicts(branchEvents, mainEvents, mainTail []repository.StoredEve
 
 	var conflicts []MergeConflict
 	for _, streamID := range branchStreamIDs(branchEvents) {
+		mergedEdited := mergedPersonsMainChanged(branchSides[streamID], mainSides)
 		if conflict, ok := classifyStream(streamID, branchSides[streamID], mainSides[streamID]); ok {
-			conflicts = append(conflicts, conflict)
+			conflicts = append(conflicts, withMergedPersonEdits(conflict, mergedEdited))
 			continue
 		}
 		if conflict, ok := classifyCreateCollision(streamID, branchXrefs[streamID], mainXrefOwners); ok {
-			conflicts = append(conflicts, conflict)
+			conflicts = append(conflicts, withMergedPersonEdits(conflict, mergedEdited))
+			continue
+		}
+		if len(mergedEdited) > 0 {
+			conflicts = append(conflicts, mergedPersonConflict(streamID, mergedEdited))
 		}
 	}
 	return conflicts
+}
+
+// mergedPersonsMainChanged returns the persons a branch stream merged away
+// (PersonMerged.MergedID, #834) that main changed after the fork, in the order
+// the branch merged them.
+//
+// A PersonMerged lands on the SURVIVOR's stream, but it also ends the merged
+// person: the projection re-links their data to the survivor and deletes
+// them, with no event on their own stream. Per-stream comparison therefore
+// cannot see main editing the merged person — main's events are on a stream
+// the branch never wrote. PlanMerge reads main's events on the merged
+// persons' streams too (mergedPersonIDs), so they are in mainSides here. A
+// merged person main deleted is not a disagreement: both sides removed them.
+func mergedPersonsMainChanged(branchSide *streamSide, mainSides map[uuid.UUID]*streamSide) []uuid.UUID {
+	if branchSide == nil {
+		return nil
+	}
+	var changed []uuid.UUID
+	for _, mergedID := range branchSide.merged {
+		if mainSide := mainSides[mergedID]; mainSide != nil && !mainSide.deleted {
+			changed = append(changed, mergedID)
+		}
+	}
+	return changed
+}
+
+// mergedPersonConflict reports that the branch merged persons into this one
+// whom main changed after the fork. It is a delete_edit with the branch as
+// the deleter, keyed on the SURVIVOR's stream, because that is the stream
+// whose resolution decides the outcome: "branch" replays the merge (main's
+// changes to the merged person's names, facts and evidence move to the
+// survivor with the rest; its changed fields go with the deleted record), and
+// "main" skips the survivor's stream, so main keeps both persons as it has
+// them.
+func mergedPersonConflict(streamID uuid.UUID, mergedEdited []uuid.UUID) MergeConflict {
+	return MergeConflict{
+		StreamID: streamID,
+		Kind:     ConflictDeleteEdit,
+		Detail: fmt.Sprintf(
+			"The branch merged %s into this person while main changed %s; "+
+				"\"branch\" completes the merge over main's changes, \"main\" keeps both persons as main has them",
+			joinIDs(mergedEdited), pluralPerson(len(mergedEdited))),
+		SupportedResolutions: []string{resolveBranchValue, resolveMainValue},
+	}
+}
+
+// withMergedPersonEdits adds the merged-person disagreement to a conflict
+// already reported on the survivor's stream, so the one resolution the caller
+// makes for that stream is made knowing both.
+func withMergedPersonEdits(conflict MergeConflict, mergedEdited []uuid.UUID) MergeConflict {
+	if len(mergedEdited) == 0 {
+		return conflict
+	}
+	conflict.Detail += fmt.Sprintf(". The branch also merged %s into this person, which main changed after the fork",
+		joinIDs(mergedEdited))
+	return conflict
+}
+
+// joinIDs renders ids for a conflict detail.
+func joinIDs(ids []uuid.UUID) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = "person " + id.String()
+	}
+	return strings.Join(parts, ", ")
+}
+
+// pluralPerson names one or several merged persons in a conflict detail.
+func pluralPerson(n int) string {
+	if n == 1 {
+		return "that person"
+	}
+	return "those persons"
+}
+
+// mergedPersonIDs returns the persons the events merge away
+// (PersonMerged.MergedID), in the order they were merged, without
+// duplicates. PlanMerge and CompareBranch read main's events on these streams
+// alongside the streams the branch wrote, since a branch merge ends each of
+// them without writing to their stream (see mergedPersonsMainChanged).
+func mergedPersonIDs(events []repository.StoredEvent) []uuid.UUID {
+	seen := make(map[uuid.UUID]bool)
+	var ids []uuid.UUID
+	for _, evt := range events {
+		if evt.EventType != personMergedEventType {
+			continue
+		}
+		mergedID, ok := mergedPersonOf(evt)
+		if !ok || seen[mergedID] {
+			continue
+		}
+		seen[mergedID] = true
+		ids = append(ids, mergedID)
+	}
+	return ids
+}
+
+// personMergedEventType is the event a person merge writes on the survivor's
+// stream.
+const personMergedEventType = "PersonMerged"
+
+// mergedPersonOf decodes the person a PersonMerged merges away.
+func mergedPersonOf(evt repository.StoredEvent) (uuid.UUID, bool) {
+	var payload struct {
+		MergedID uuid.UUID `json:"merged_id"`
+	}
+	if err := json.Unmarshal(evt.Data, &payload); err != nil || payload.MergedID == uuid.Nil {
+		warnMalformedPersonMerge(evt, err)
+		return uuid.Nil, false
+	}
+	return payload.MergedID, true
 }
 
 // classifyStream applies the delete-vs-edit and edit-vs-edit rules to one
@@ -461,6 +584,11 @@ func classifyCreateCollision(streamID uuid.UUID, branchXref string, mainXrefOwne
 type streamSide struct {
 	deleted bool
 	fields  map[string]any
+
+	// merged lists the persons this side merged into the stream's person
+	// (PersonMerged.MergedID), in order. Only the branch side's is read: see
+	// mergedPersonsMainChanged.
+	merged []uuid.UUID
 }
 
 // summarizeStreams folds one side's events, which must be in ascending position
@@ -489,6 +617,8 @@ func summarizeStreams(events []repository.StoredEvent) map[uuid.UUID]*streamSide
 			}
 		case foldEvidenceConflictResolved:
 			applyEvidenceConflictResolved(side, evt)
+		case foldPersonMerged:
+			applyPersonMerged(side, evt)
 		case foldIgnored:
 			// Nothing to compare — see conflictFoldFor.
 		}
@@ -512,6 +642,7 @@ const (
 	foldPersonName
 	foldChangesMap
 	foldEvidenceConflictResolved
+	foldPersonMerged
 )
 
 // conflictFoldFor classifies an event type for conflict comparison.
@@ -532,6 +663,8 @@ func conflictFoldFor(eventType string) conflictFold {
 		return foldPersonName
 	case eventType == "EvidenceConflictResolved":
 		return foldEvidenceConflictResolved
+	case eventType == personMergedEventType:
+		return foldPersonMerged
 	case strings.HasSuffix(eventType, "Updated"):
 		return foldChangesMap
 	default:
@@ -669,6 +802,40 @@ func applyEvidenceConflictResolved(side *streamSide, evt repository.StoredEvent)
 	}
 	side.fields["resolution"] = payload.Resolution
 	side.fields["status"] = payload.Status
+}
+
+// applyPersonMerged records a person merge (#834) on the survivor's side: the
+// fields it resolved onto the survivor, compared like an *Updated event's
+// Changes (the keys are the same person field names), and the person it
+// merged away. The event carries its fields as ResolvedFields, not Changes, so
+// the *Updated fold would read nothing from it — and main merging someone into
+// the same survivor with a different surname would merge with no review.
+func applyPersonMerged(side *streamSide, evt repository.StoredEvent) {
+	var payload struct {
+		MergedID       uuid.UUID      `json:"merged_id"`
+		ResolvedFields map[string]any `json:"resolved_fields"`
+	}
+	if err := json.Unmarshal(evt.Data, &payload); err != nil {
+		warnMalformedPersonMerge(evt, err)
+		return
+	}
+	for field, value := range payload.ResolvedFields {
+		side.fields[field] = value
+	}
+	if payload.MergedID != uuid.Nil {
+		side.merged = append(side.merged, payload.MergedID)
+	}
+}
+
+// warnMalformedPersonMerge logs a PersonMerged the conflict fold cannot read.
+// The fold stays a pure function that drops what it cannot decode, like every
+// other fold here; the merge and resume commands decode the same payload
+// strictly (personMergesIn) and refuse to replay it, so a corrupt merge is
+// reported there rather than merged past. The warning makes the compare-side
+// drop visible too.
+func warnMalformedPersonMerge(evt repository.StoredEvent, err error) {
+	slog.Warn("merge conflicts: cannot decode person merge; its merged person is left out of the comparison",
+		"stream_id", evt.StreamID, "position", evt.Position, "error", err)
 }
 
 // updatedChanges pulls the Changes map out of a *Updated event that carries one.

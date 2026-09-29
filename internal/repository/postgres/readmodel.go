@@ -1582,7 +1582,10 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 		return fmt.Errorf("tombstone person: %w", err)
 	}
 
-	// Cascade tombstone the person's names (every name visible on the branch).
+	// Cascade tombstone the person's names: every name the branch resolves to
+	// this person. The overlay is resolved per name id BEFORE the owner filter,
+	// so a name the branch re-owned away (PersonMerged moves the merged
+	// person's names to the survivor, #834) keeps its branch row.
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_names (id, person_id, given_name, surname, name_prefix, name_suffix,
 								  surname_prefix, nickname, name_type, is_primary, updated_at, branch_id, deleted)
@@ -1591,9 +1594,11 @@ func (s *ReadModelStore) DeletePerson(ctx context.Context, branchID domain.Branc
 		FROM (
 			SELECT DISTINCT ON (id) id, person_id, given_name, surname, name_prefix, name_suffix,
 				   surname_prefix, nickname, name_type, is_primary, updated_at, deleted
-			FROM person_names WHERE person_id = $1 AND branch_id IN ($2, $3)
+			FROM person_names
+			WHERE id IN (SELECT id FROM person_names WHERE person_id = $1 AND branch_id IN ($2, $3))
+			  AND branch_id IN ($2, $3)
 			ORDER BY id, (branch_id = $2) DESC
-		) o WHERE NOT o.deleted
+		) o WHERE NOT o.deleted AND o.person_id = $1
 		ON CONFLICT (id, branch_id) DO UPDATE SET deleted = TRUE
 	`, id, branchID.UUID(), main); err != nil {
 		return fmt.Errorf("cascade tombstone person names: %w", err)
@@ -1677,9 +1682,11 @@ func (s *ReadModelStore) GetPersonNames(ctx context.Context, branchID domain.Bra
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+personNameSelectCols+` FROM (
 			SELECT DISTINCT ON (id) `+personNameSelectCols+`, deleted
-			FROM person_names WHERE person_id = $1 AND branch_id IN ($2, $3)
+			FROM person_names
+			WHERE id IN (SELECT id FROM person_names WHERE person_id = $1 AND branch_id IN ($2, $3))
+			  AND branch_id IN ($2, $3)
 			ORDER BY id, (branch_id = $2) DESC
-		) o WHERE NOT deleted
+		) o WHERE NOT deleted AND person_id = $1
 		ORDER BY is_primary DESC, name_type
 	`, personID, branchID.UUID(), domain.MainBranchID.UUID())
 	if err != nil {

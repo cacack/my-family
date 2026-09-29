@@ -1539,6 +1539,10 @@ export interface paths {
          * @description Merges two person records, consolidating data from the merged person into the survivor.
          *     The merged person is deleted after the merge. All relationships (families, citations,
          *     alternate names, events, media) are transferred to the survivor.
+         *
+         *     With `branch`, the merge is made on that research branch only (#834): both persons are
+         *     read through the branch's view, the survivor and the versions are checked there, and the
+         *     mainline is untouched until the branch itself is merged.
          */
         post: operations["mergePersons"];
         delete?: never;
@@ -1587,7 +1591,8 @@ export interface paths {
          * @description Merges multiple duplicate pairs in a single batch operation.
          *     Each pair is processed independently; partial failures are reported
          *     in the response. Successfully merged pairs continue processing even
-         *     if earlier pairs fail.
+         *     if earlier pairs fail. With `branch`, every merge is made on that
+         *     research branch only, as for a single merge.
          */
         post: operations["batchMergePersons"];
         delete?: never;
@@ -4999,9 +5004,13 @@ export interface components {
              *       the mainline will not have.
              *     - `subject_delete_orphans_gps` - a person or family delete would
              *       also delete mainline GPS research the branch never saw.
+             *     - `person_merge_conflicts_main` - a person merge made on the branch
+             *       (on the survivor, `stream_id`) cannot land as made: the mainline
+             *       has since merged the merged person (`referenced_id`) itself, or
+             *       the two persons are children of different families there.
              * @enum {string}
              */
-            kind: "missing_person" | "missing_source" | "source_delete_orphans_citation" | "missing_media_owner" | "owner_delete_orphans_media" | "missing_gps_artifact" | "missing_gps_subject" | "subject_delete_orphans_gps";
+            kind: "missing_person" | "missing_source" | "source_delete_orphans_citation" | "missing_media_owner" | "owner_delete_orphans_media" | "missing_gps_artifact" | "missing_gps_subject" | "subject_delete_orphans_gps" | "person_merge_conflicts_main";
             /**
              * @description The one-step fix: `leave_out` resolves `stream_id` to `main`;
              *     `include_referenced` resolves `referenced_id` to `branch` (offered
@@ -8729,7 +8738,17 @@ export interface operations {
     };
     mergePersons: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8796,7 +8815,17 @@ export interface operations {
     };
     batchMergePersons: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Branch scope; omit for the mainline. Reads return the branch's isolated
+                 *     view and writes land on the branch only (ADR-005). A malformed branch id
+                 *     returns 400 at parameter binding, before the operation runs. An unknown
+                 *     branch id returns 404. Writes to a non-active (merged or archived) branch
+                 *     return 409; reads of one return 404, because its overlay rows are purged
+                 *     on archive and it therefore has no view to return.
+                 */
+                branch?: components["parameters"]["branchScope"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

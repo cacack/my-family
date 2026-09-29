@@ -32,7 +32,9 @@
 	 *   and families follow the branch; the notice says which is which
 	 * - `/quality` — validation issues and duplicate pairs (a branch's own findings,
 	 *   the ones it introduces over the mainline, are in its merge review's branch
-	 *   health section, #838)
+	 *   health section, #838). A pair's "Merge" link opens the merge page, which
+	 *   follows the branch (#834): it shows the two persons as the branch sees
+	 *   them and merges them on the branch only
 	 * - `/history` — the global change feed
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
 	 * - `/repositories` (list and detail, including its edit form) —
@@ -43,8 +45,7 @@
 	 *
 	 * GEDCOM import is not labelled but withdrawn: it always writes the mainline,
 	 * so `/import` and the onboarding wizard's import step replace their upload
-	 * controls with `BranchImportBlocked` while a branch is active (the same
-	 * pattern as the merge page's `mergeBlockedByBranch`), and the API refuses an
+	 * controls with `BranchImportBlocked` while a branch is active, and the API refuses an
 	 * import that carries `?branch=`. The onboarding wizard itself is suppressed
 	 * on a branch, so an empty branch view never offers to "start" a tree.
 	 *

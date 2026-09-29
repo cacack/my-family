@@ -5077,3 +5077,57 @@ func TestProjector_BranchSnapshotKeepsBranch(t *testing.T) {
 		t.Errorf("BranchID = %v, want %v", got.BranchID, branch)
 	}
 }
+
+// TestProjector_PersonMerged_SurvivorInOtherChildFamilyRecountsChildren: a
+// person merge that meets a survivor who is already a child of a different
+// family (a log written before the merge guards, or a branch replay the merge
+// command did not catch) cannot keep the merged person's parentage — a person
+// has one child family — but it must leave the family's child count matching
+// its child rows.
+func TestProjector_PersonMerged_SurvivorInOtherChildFamilyRecountsChildren(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	projector := repository.NewProjector(readStore, nil)
+	ctx := context.Background()
+
+	survivor := domain.NewPerson("John", "Doe")
+	merged := domain.NewPerson("Johnny", "Doe")
+	for _, p := range []*domain.Person{survivor, merged} {
+		if err := projector.Project(ctx, domain.NewPersonCreated(p), 1, domain.MainBranchID); err != nil {
+			t.Fatalf("PersonCreated: %v", err)
+		}
+	}
+	families := [2]*domain.Family{domain.NewFamily(), domain.NewFamily()}
+	for i, child := range []uuid.UUID{survivor.ID, merged.ID} {
+		if err := projector.Project(ctx, domain.NewFamilyCreated(families[i]), 1, domain.MainBranchID); err != nil {
+			t.Fatalf("FamilyCreated: %v", err)
+		}
+		link := domain.NewChildLinkedToFamily(domain.NewFamilyChild(families[i].ID, child, domain.ChildBiological))
+		if err := projector.Project(ctx, link, 2, domain.MainBranchID); err != nil {
+			t.Fatalf("ChildLinkedToFamily: %v", err)
+		}
+	}
+	if f, _ := readStore.GetFamily(ctx, domain.MainBranchID, families[1].ID); f == nil || f.ChildCount != 1 {
+		t.Fatalf("merged person's family before the merge = %+v, want one child", f)
+	}
+
+	event := domain.NewPersonMerged(survivor.ID, merged.ID, map[string]any{}, map[string]any{},
+		nil, nil, nil, nil, nil)
+	if err := projector.Project(ctx, event, 2, domain.MainBranchID); err != nil {
+		t.Fatalf("PersonMerged: %v", err)
+	}
+
+	f, err := readStore.GetFamily(ctx, domain.MainBranchID, families[1].ID)
+	if err != nil || f == nil {
+		t.Fatalf("GetFamily = %+v, %v", f, err)
+	}
+	children, err := readStore.GetFamilyChildren(ctx, domain.MainBranchID, families[1].ID)
+	if err != nil {
+		t.Fatalf("GetFamilyChildren: %v", err)
+	}
+	if f.ChildCount != len(children) {
+		t.Errorf("child count = %d with %d child rows, want them to agree", f.ChildCount, len(children))
+	}
+	if cf, _ := readStore.GetChildFamily(ctx, domain.MainBranchID, survivor.ID); cf == nil || cf.ID != families[0].ID {
+		t.Errorf("survivor's child family = %+v, want their own kept", cf)
+	}
+}

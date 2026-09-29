@@ -164,6 +164,7 @@ type ReadModelStore struct {
 	// bucket as a tombstone. See branchKey and the resolve* helpers above.
 	persons               map[branchKey]*repository.PersonReadModel
 	personNames           map[branchKey][]repository.PersonNameReadModel       // keyed by (branch, person ID)
+	nameOwners            map[branchKey]uuid.UUID                              // (branch, name ID) -> person last saved under; a hint, see SavePersonName
 	personExternalIDs     map[branchKey][]repository.PersonExternalIDReadModel // keyed by (branch, person ID)
 	families              map[branchKey]*repository.FamilyReadModel
 	familyChildren        map[branchKey][]repository.FamilyChildReadModel      // keyed by (branch, family ID)
@@ -192,6 +193,7 @@ func NewReadModelStore() *ReadModelStore {
 	return &ReadModelStore{
 		persons:               make(map[branchKey]*repository.PersonReadModel),
 		personNames:           make(map[branchKey][]repository.PersonNameReadModel),
+		nameOwners:            make(map[branchKey]uuid.UUID),
 		personExternalIDs:     make(map[branchKey][]repository.PersonExternalIDReadModel),
 		families:              make(map[branchKey]*repository.FamilyReadModel),
 		familyChildren:        make(map[branchKey][]repository.FamilyChildReadModel),
@@ -614,6 +616,36 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 	nameCopy := *name
 	nameCopy.FullName = fullName
 
+	// A name saved under a different person than the one the scope currently
+	// files it under has been re-owned (PersonMerged moves the merged person's
+	// names to the survivor, #834). Names are bucketed per person, so take it
+	// out of its old owner's bucket — copy-on-write on a branch — or it would
+	// resolve under both, as the SQL backends' per-id overlay does not.
+	//
+	// The old owner comes from nameOwners, the person each name id was last
+	// saved under in each scope, so this is O(1) per save rather than a scan
+	// of every bucket (a GEDCOM import saves one name per NameAdded). The index
+	// is only a hint: an entry left behind by a delete or purge names a bucket
+	// that no longer holds the id, which the membership check below skips.
+	for _, owner := range s.nameOwnerCandidates(branchID, name.ID) {
+		if owner == name.PersonID {
+			continue
+		}
+		current, _ := resolveBucket(s.personNames, branchID, owner)
+		if !slices.ContainsFunc(current, func(n repository.PersonNameReadModel) bool { return n.ID == name.ID }) {
+			continue
+		}
+		seeded := bucketForWrite(s.personNames, branchID, owner)
+		kept := seeded[:0]
+		for _, n := range seeded {
+			if n.ID != name.ID {
+				kept = append(kept, n)
+			}
+		}
+		storeBucket(s.personNames, branchID, owner, kept)
+	}
+	s.nameOwners[branchKey{branchID, name.ID}] = name.PersonID
+
 	names := bucketForWrite(s.personNames, branchID, name.PersonID)
 	updated := false
 	for i := range names {
@@ -628,6 +660,22 @@ func (s *ReadModelStore) SavePersonName(ctx context.Context, branchID domain.Bra
 	}
 	storeBucket(s.personNames, branchID, name.PersonID, names)
 	return nil
+}
+
+// nameOwnerCandidates returns the persons a name id may currently be filed
+// under in a scope: the one it was last saved under on the branch, and on main
+// (a branch that never wrote the name resolves main's bucket for it).
+func (s *ReadModelStore) nameOwnerCandidates(branchID domain.BranchID, nameID uuid.UUID) []uuid.UUID {
+	var owners []uuid.UUID
+	if owner, ok := s.nameOwners[branchKey{branchID, nameID}]; ok {
+		owners = append(owners, owner)
+	}
+	if branchID != domain.MainBranchID {
+		if owner, ok := s.nameOwners[branchKey{domain.MainBranchID, nameID}]; ok {
+			owners = append(owners, owner)
+		}
+	}
+	return owners
 }
 
 // GetPersonName retrieves a person name by ID within the branch overlay.
@@ -1115,6 +1163,7 @@ func (s *ReadModelStore) PurgeBranch(ctx context.Context, branchID domain.Branch
 
 	deleteBranchRows(s.persons, branchID)
 	deleteBranchRows(s.personNames, branchID)
+	deleteBranchRows(s.nameOwners, branchID)
 	deleteBranchRows(s.personExternalIDs, branchID)
 	deleteBranchRows(s.families, branchID)
 	deleteBranchRows(s.familyExternalIDs, branchID)
@@ -1155,6 +1204,7 @@ func (s *ReadModelStore) Reset() {
 
 	s.persons = make(map[branchKey]*repository.PersonReadModel)
 	s.personNames = make(map[branchKey][]repository.PersonNameReadModel)
+	s.nameOwners = make(map[branchKey]uuid.UUID)
 	s.families = make(map[branchKey]*repository.FamilyReadModel)
 	s.familyChildren = make(map[branchKey][]repository.FamilyChildReadModel)
 	s.pedigreeEdges = make(map[branchKey]*repository.PedigreeEdge)

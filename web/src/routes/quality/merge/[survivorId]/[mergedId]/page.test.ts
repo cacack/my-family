@@ -38,7 +38,7 @@ vi.mock('$app/navigation', () => ({
 
 // The real store exposes a read-only view, so the active branch is injected here.
 const { branchState } = vi.hoisted(() => ({
-	branchState: { id: null as string | null }
+	branchState: { id: null as string | null, branch: null as { name: string } | null }
 }));
 
 vi.mock('$lib/stores/activeBranch.svelte', () => ({
@@ -78,6 +78,7 @@ describe('Merge Picker Page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		branchState.id = null;
+		branchState.branch = null;
 		mockPageParams = { survivorId: 'p-survivor', mergedId: 'p-merged' };
 		vi.mocked(apiModule.api.getPerson).mockImplementation(async (id: string) => {
 			if (id === 'p-survivor') return survivorPerson;
@@ -187,28 +188,44 @@ describe('Merge Picker Page', () => {
 		});
 	});
 
-	// `GET /persons/{id}` is branch-scoped but `POST /persons/merge` is not, so
-	// on a branch the panels show branch data while the merge would rewrite the
-	// mainline. The action is withdrawn rather than merely annotated.
-	it('blocks the merge while a research branch is active', async () => {
+	// Both the reads and the merge honor the active branch (#834): the merge is
+	// offered on a branch, and the page says it lands there only.
+	it('merges on a research branch and says the mainline is unaffected', async () => {
 		branchState.id = '44444444-4444-4444-4444-444444444444';
+		branchState.branch = { name: 'Same-person hypothesis' };
 
-		render(Page);
-
-		const button = await screen.findByRole('button', { name: 'Merge persons' });
-		expect((button as HTMLButtonElement).disabled).toBe(true);
-		expect(screen.getByText('Merging is unavailable on a research branch')).toBeDefined();
-
-		await fireEvent.click(button);
-		expect(apiModule.api.mergePersons).not.toHaveBeenCalled();
-	});
-
-	it('allows the merge on the mainline', async () => {
 		render(Page);
 
 		const button = await screen.findByRole('button', { name: 'Merge persons' });
 		expect((button as HTMLButtonElement).disabled).toBe(false);
-		expect(screen.queryByText('Merging is unavailable on a research branch')).toBeNull();
+		expect(screen.getByText('Merging on Same-person hypothesis')).toBeDefined();
+		expect(screen.getByText(/The mainline keeps both persons/)).toBeDefined();
+
+		await fireEvent.click(button);
+		await waitFor(() => {
+			expect(apiModule.api.mergePersons).toHaveBeenCalledTimes(1);
+		});
+		await waitFor(() => {
+			expect(screen.getByText('Merged successfully')).toBeDefined();
+		});
+		expect(screen.queryByText('Merging on Same-person hypothesis')).toBeNull();
+	});
+
+	it('names the branch generically until its record has loaded', async () => {
+		branchState.id = '44444444-4444-4444-4444-444444444444';
+
+		render(Page);
+
+		await screen.findByRole('button', { name: 'Merge persons' });
+		expect(screen.getByText('Merging on the active research branch')).toBeDefined();
+	});
+
+	it('shows no branch note on the mainline', async () => {
+		render(Page);
+
+		const button = await screen.findByRole('button', { name: 'Merge persons' });
+		expect((button as HTMLButtonElement).disabled).toBe(false);
+		expect(screen.queryByText(/^Merging on /)).toBeNull();
 	});
 
 	it('shows error when a person fetch fails', async () => {

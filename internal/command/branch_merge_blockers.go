@@ -41,6 +41,10 @@ const (
 	// BlockerSubjectDeleteOrphansGPS: a person or family delete would cascade
 	// onto GPS research main added or changed after the fork.
 	BlockerSubjectDeleteOrphansGPS MergeBlockerKind = "subject_delete_orphans_gps"
+	// BlockerPersonMergeConflictsMain: a person merge the branch made cannot
+	// land as made, because main has since merged the merged person itself or
+	// given the two persons different child families (#834).
+	BlockerPersonMergeConflictsMain MergeBlockerKind = "person_merge_conflicts_main"
 )
 
 // MergeBlockerFix is the one-step change to the resolutions that clears a
@@ -78,6 +82,10 @@ type MergeBlocker struct {
 
 	// Message is the refusal in words, as the single-blocker error said it.
 	Message string
+
+	// cause is a more specific sentinel the refusal also wraps, if any (a
+	// person merge's child-family clash wraps ErrChildFamilyConflict).
+	cause error
 }
 
 // MergeBlockedError is the refusal a merge or resume returns when it has
@@ -98,8 +106,17 @@ func (e *MergeBlockedError) Error() string {
 	return msg
 }
 
-// Unwrap makes errors.Is(err, ErrMergeDanglingReference) hold.
-func (e *MergeBlockedError) Unwrap() error { return ErrMergeDanglingReference }
+// Unwrap makes errors.Is(err, ErrMergeDanglingReference) hold, and
+// errors.Is hold for any blocker's more specific cause.
+func (e *MergeBlockedError) Unwrap() []error {
+	errs := []error{ErrMergeDanglingReference}
+	for i := range e.Blockers {
+		if cause := e.Blockers[i].cause; cause != nil {
+			errs = append(errs, cause)
+		}
+	}
+	return errs
+}
 
 // blockerList collects blockers, dropping exact repeats.
 type blockerList struct {

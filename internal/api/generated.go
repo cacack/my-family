@@ -840,6 +840,7 @@ const (
 	MissingPerson               MergeBlockerKind = "missing_person"
 	MissingSource               MergeBlockerKind = "missing_source"
 	OwnerDeleteOrphansMedia     MergeBlockerKind = "owner_delete_orphans_media"
+	PersonMergeConflictsMain    MergeBlockerKind = "person_merge_conflicts_main"
 	SourceDeleteOrphansCitation MergeBlockerKind = "source_delete_orphans_citation"
 	SubjectDeleteOrphansGps     MergeBlockerKind = "subject_delete_orphans_gps"
 )
@@ -858,6 +859,8 @@ func (e MergeBlockerKind) Valid() bool {
 	case MissingSource:
 		return true
 	case OwnerDeleteOrphansMedia:
+		return true
+	case PersonMergeConflictsMain:
 		return true
 	case SourceDeleteOrphansCitation:
 		return true
@@ -3978,6 +3981,10 @@ type MergeBlocker struct {
 	//   the mainline will not have.
 	// - `subject_delete_orphans_gps` - a person or family delete would
 	//   also delete mainline GPS research the branch never saw.
+	// - `person_merge_conflicts_main` - a person merge made on the branch
+	//   (on the survivor, `stream_id`) cannot land as made: the mainline
+	//   has since merged the merged person (`referenced_id`) itself, or
+	//   the two persons are children of different families there.
 	Kind MergeBlockerKind `json:"kind"`
 
 	// Message The refusal in words (ids, not names).
@@ -4018,6 +4025,10 @@ type MergeBlocker struct {
 //	    the mainline will not have.
 //	  - `subject_delete_orphans_gps` - a person or family delete would
 //	    also delete mainline GPS research the branch never saw.
+//	  - `person_merge_conflicts_main` - a person merge made on the branch
+//	    (on the survivor, `stream_id`) cannot land as made: the mainline
+//	    has since merged the merged person (`referenced_id`) itself, or
+//	    the two persons are children of different families there.
 type MergeBlockerKind string
 
 // MergeBlockerSuggestedResolution The one-step fix: `leave_out` resolves `stream_id` to `main`;
@@ -6320,6 +6331,28 @@ type GetPersonsDuplicatesParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// MergePersonsParams defines parameters for MergePersons.
+type MergePersonsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
+// BatchMergePersonsParams defines parameters for BatchMergePersons.
+type BatchMergePersonsParams struct {
+	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
+	// view and writes land on the branch only (ADR-005). A malformed branch id
+	// returns 400 at parameter binding, before the operation runs. An unknown
+	// branch id returns 404. Writes to a non-active (merged or archived) branch
+	// return 409; reads of one return 404, because its overlay rows are purged
+	// on archive and it therefore has no view to return.
+	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+}
+
 // DeletePersonParams defines parameters for DeletePerson.
 type DeletePersonParams struct {
 	// Branch Branch scope; omit for the mainline. Reads return the branch's isolated
@@ -7395,10 +7428,10 @@ type ServerInterface interface {
 	DismissDuplicate(ctx echo.Context, person1Id openapi_types.UUID, person2Id openapi_types.UUID) error
 	// Merge two person records
 	// (POST /persons/merge)
-	MergePersons(ctx echo.Context) error
+	MergePersons(ctx echo.Context, params MergePersonsParams) error
 	// Batch merge multiple duplicate pairs
 	// (POST /persons/merge/batch)
-	BatchMergePersons(ctx echo.Context) error
+	BatchMergePersons(ctx echo.Context, params BatchMergePersonsParams) error
 	// Delete a person
 	// (DELETE /persons/{id})
 	DeletePerson(ctx echo.Context, id PersonId, params DeletePersonParams) error
@@ -9756,8 +9789,17 @@ func (w *ServerInterfaceWrapper) DismissDuplicate(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) MergePersons(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params MergePersonsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.MergePersons(ctx)
+	err = w.Handler.MergePersons(ctx, params)
 	return err
 }
 
@@ -9765,8 +9807,17 @@ func (w *ServerInterfaceWrapper) MergePersons(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) BatchMergePersons(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params BatchMergePersonsParams
+	// ------------- Optional query parameter "branch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.BatchMergePersons(ctx)
+	err = w.Handler.BatchMergePersons(ctx, params)
 	return err
 }
 
@@ -15704,7 +15755,8 @@ func (response DismissDuplicate404JSONResponse) VisitDismissDuplicateResponse(w 
 }
 
 type MergePersonsRequestObject struct {
-	Body *MergePersonsJSONRequestBody
+	Params MergePersonsParams
+	Body   *MergePersonsJSONRequestBody
 }
 
 type MergePersonsResponseObject interface {
@@ -15768,7 +15820,8 @@ func (response MergePersons409JSONResponse) VisitMergePersonsResponse(w http.Res
 }
 
 type BatchMergePersonsRequestObject struct {
-	Body *BatchMergePersonsJSONRequestBody
+	Params BatchMergePersonsParams
+	Body   *BatchMergePersonsJSONRequestBody
 }
 
 type BatchMergePersonsResponseObject interface {
@@ -21499,8 +21552,10 @@ func (sh *strictHandler) DismissDuplicate(ctx echo.Context, person1Id openapi_ty
 }
 
 // MergePersons operation middleware
-func (sh *strictHandler) MergePersons(ctx echo.Context) error {
+func (sh *strictHandler) MergePersons(ctx echo.Context, params MergePersonsParams) error {
 	var request MergePersonsRequestObject
+
+	request.Params = params
 
 	var body MergePersonsJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {
@@ -21528,8 +21583,10 @@ func (sh *strictHandler) MergePersons(ctx echo.Context) error {
 }
 
 // BatchMergePersons operation middleware
-func (sh *strictHandler) BatchMergePersons(ctx echo.Context) error {
+func (sh *strictHandler) BatchMergePersons(ctx echo.Context, params BatchMergePersonsParams) error {
 	var request BatchMergePersonsRequestObject
+
+	request.Params = params
 
 	var body BatchMergePersonsJSONRequestBody
 	if err := ctx.Bind(&body); err != nil {

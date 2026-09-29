@@ -111,6 +111,10 @@ func citedSource(evt repository.StoredEvent) (sourceID uuid.UUID, sets bool, err
 // media upload whose owner's stream deletes that owner is moved to just
 // before the owner's stream (see moveMediaBeforeOwnerDelete), so the upload
 // lands before the delete that cascades it away — as it did on the branch.
+//
+// A person merge (#834) goes after every stream that mentions a person it
+// merges away (see orderPersonMergesForReplay), so the merge re-links on main
+// what the branch had re-linked.
 func orderEvidenceForReplay(groups []streamGroup) ([]streamGroup, error) {
 	ordered := make([]streamGroup, 0, len(groups))
 	var middle, last []streamGroup
@@ -125,6 +129,13 @@ func orderEvidenceForReplay(groups []streamGroup) ([]streamGroup, error) {
 		}
 	}
 	middle, err := moveMediaBeforeOwnerDelete(middle)
+	if err != nil {
+		return nil, err
+	}
+	// Person merges (#834) go after every stream that mentions a person they
+	// merge away. A source stream never names a person, so this cannot need
+	// to cross the source groups on either side.
+	middle, err = orderPersonMergesForReplay(middle)
 	if err != nil {
 		return nil, err
 	}
@@ -252,6 +263,13 @@ type evidencePlan struct {
 	// stream after it.
 	basePosition int64
 
+	// mergedInto maps each person a still-to-be-appended PersonMerged merges
+	// away to the person it merges them into (#834). A media owner or GPS
+	// subject main will not have is fine when the replay merges them into one
+	// it will: the merge re-links the item to the survivor, as it did on the
+	// branch.
+	mergedInto map[uuid.UUID]uuid.UUID
+
 	// undecided names the streams with a merge conflict the caller has not
 	// resolved yet (merge only). The merge will refuse with ErrMergeConflicts
 	// until they are, so the GPS edit rule (checkGPSSubjectSurvives) leaves
@@ -329,6 +347,11 @@ func (h *Handler) collectEvidenceBlockers(ctx context.Context, mergePlan *query.
 			plan.replayed[group.streamID] = group
 		}
 	}
+	mergedInto, err := pendingPersonMerges(plan.replayed, nil)
+	if err != nil {
+		return err
+	}
+	plan.mergedInto = mergedInto
 
 	// A stream with an undecided merge conflict is the conflict machinery's to
 	// report first: a main-side delete of a GPS artifact is an edit-vs-delete
@@ -458,19 +481,17 @@ func (h *Handler) checkMediaOwnerSurvives(ctx context.Context, group streamGroup
 			"the branch's media %s is attached to an unknown entity type %q", group.streamID, entityType))
 		return nil
 	}
-	if ownerGroup, replaysOwner := plan.replayed[entityID]; replaysOwner {
-		deletesLater := groupDeletes(ownerGroup, deleteEvent) &&
-			!plan.landed[entityID] && plan.order[entityID] > plan.order[group.streamID]
-		if !plan.removed[entityID] && (!groupDeletes(ownerGroup, deleteEvent) || deletesLater) {
-			return nil
-		}
-	} else {
-		exists, err := h.mediaOwnerOnMain(ctx, entityType, entityID)
-		if err != nil {
+	survives, err := h.mediaOwnerSurvives(ctx, group, entityType, entityID, deleteEvent, plan)
+	if err != nil || survives {
+		return err
+	}
+	// A person owner the replay merges into another (#834) is re-linked by
+	// that merge, which replays after this upload (orderPersonMergesForReplay):
+	// the item ends up on the survivor, as it did on the branch.
+	if survivor, merged := finalMergeSurvivor(entityID, plan.mergedInto); merged && entityType == "person" {
+		survives, err = h.mediaOwnerSurvives(ctx, group, entityType, survivor, deleteEvent, plan)
+		if err != nil || survives {
 			return err
-		}
-		if exists {
-			return nil
 		}
 	}
 	list.add(streamBlocker(group, BlockerMissingMediaOwner, entityID, entityType,
@@ -478,6 +499,17 @@ func (h *Handler) checkMediaOwnerSurvives(ctx context.Context, group streamGroup
 			"(deleted there, excluded by a \"main\" resolution, or deleted earlier in the replay)",
 		group.streamID, entityType, entityID, entityType))
 	return nil
+}
+
+// mediaOwnerSurvives reports whether a media owner will exist on main when the
+// media stream lands (see checkMediaOwnerSurvives).
+func (h *Handler) mediaOwnerSurvives(ctx context.Context, group streamGroup, entityType string, entityID uuid.UUID, deleteEvent string, plan evidencePlan) (bool, error) {
+	if ownerGroup, replaysOwner := plan.replayed[entityID]; replaysOwner {
+		deletesLater := groupDeletes(ownerGroup, deleteEvent) &&
+			!plan.landed[entityID] && plan.order[entityID] > plan.order[group.streamID]
+		return !plan.removed[entityID] && (!groupDeletes(ownerGroup, deleteEvent) || deletesLater), nil
+	}
+	return h.mediaOwnerOnMain(ctx, entityType, entityID)
 }
 
 // mediaOwnerOnMain reports whether main currently has the given media owner.

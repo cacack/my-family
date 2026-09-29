@@ -31,7 +31,11 @@ describe('describeBlocker', () => {
 		['owner_delete_orphans_media', 'which this branch never saw.'],
 		['missing_gps_artifact', 'Person "Ada Lovelace" edits research the mainline no longer has.'],
 		['missing_gps_subject', 'is about evidence analysis "Birth: born 1815"'],
-		['subject_delete_orphans_gps', 'added or changed after the fork.']
+		['subject_delete_orphans_gps', 'added or changed after the fork.'],
+		[
+			'person_merge_conflicts_main',
+			'Merging evidence analysis "Birth: born 1815" into Person "Ada Lovelace" no longer fits the mainline'
+		]
 	];
 	it.each(cases)('%s says what breaks, by name', (kind, fragment) => {
 		expect(describeBlocker(blocker({ kind }))).toContain(fragment);

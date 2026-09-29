@@ -147,6 +147,18 @@ Rules that must hold true in the my-family codebase. Violations break architectu
 > and the `?branch=` handler tests in `internal/api/gps_branch_handlers_test.go`. With it every
 > #676 sub-issue is delivered.
 >
+> **Implementation status ([#834](https://github.com/cacack/my-family/issues/834)):** `PersonMerged`
+> is on the BR-006 allowlist, so person merge works on a branch. Its projection reaches across
+> aggregates (names, facts, citations, media, GPS artifacts, families, child links and pedigree
+> edges) and every write goes through the overlay; the merged person is tombstoned on the branch
+> only. BR-004 carries it: the branch merge replays it after every stream that mentions the merged
+> person (and after a branch-created survivor's creation), refuses it over main's cross-stream
+> changes to the two persons (merged elsewhere, or a conflicting child family), the conflict scan compares it against main's edits of both persons, and the
+> dangling-reference checks follow its survivor and the branch's merge chains. Verified by
+> `TestBranchScenario_PersonMerge` (identical copies per backend), `TestBranchPersonMerge_*`
+> (`internal/integration`, over HTTP on all three backends), the `PersonMerged` probe of
+> `TestBranchAwareEventTypes_LeaveMainUntouched` and `internal/command/branch_person_merge_test.go`.
+>
 > **BR-003's scope is bounded by decision, not only by progress.** Extending branch-scoping to the
 > pending entity types was #676 (complete with #760), but four entities — Submitter, Repository,
 > RepositoryExternalID and LDSOrdinance — will never carry a `branch_id`: they are file-/archive-level

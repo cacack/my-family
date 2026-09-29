@@ -1657,12 +1657,16 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 
 	survivor.Version = version
 	survivor.UpdatedAt = e.OccurredAt()
+	// The survivor row — and with it the version — is saved LAST (step 14), not
+	// here. A branch merge replays PersonMerged onto main, and a resumed merge
+	// (#685) repairs a half-projected replay by re-running every event past the
+	// row's version. Saving the version first would leave a merge that failed
+	// midway looking finished; saving it last makes a partial projection read
+	// as behind, so the repair re-runs the whole merge. Every step below is an
+	// upsert, a re-link or a delete, so re-running it is safe.
 
-	if err := p.readStore.SavePerson(ctx, branchID, survivor); err != nil {
-		return err
-	}
-
-	// 2. Update families where merged person is a partner
+	// 2. Update families where merged person is a partner, and the pedigree
+	// edges of their children, which name the partner as father or mother.
 	families, err := p.readStore.GetFamiliesForPerson(ctx, branchID, e.MergedID)
 	if err != nil {
 		return err
@@ -1680,6 +1684,9 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 		}
 		family.UpdatedAt = e.OccurredAt()
 		if err := p.readStore.SaveFamily(ctx, branchID, &family); err != nil {
+			return err
+		}
+		if err := p.relinkChildEdges(ctx, branchID, &family, e.MergedID, survivor); err != nil {
 			return err
 		}
 	}
@@ -1747,7 +1754,24 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 					return err
 				}
 			}
-			// If survivor already has a child-family, we don't transfer (plan says block this case)
+			if survivorChildFamily != nil {
+				// The survivor already is a child. The command refuses a merge of
+				// two persons who are children of different families
+				// (ErrChildFamilyConflict), and a branch merge refuses to replay
+				// one onto a main where they have become so
+				// (collectPersonMergeBlockers), so this is the same family, or a
+				// log written before those guards. Either way the merged person's
+				// link is gone: recount the family's children rather than leave
+				// its child count counting them.
+				if survivorChildFamily.ID != mergedChildFamily.ID {
+					slog.Warn("projection: person merge dropped the merged person's child link; the survivor is a child of another family",
+						"merged_id", e.MergedID, "survivor_id", e.SurvivorID,
+						"dropped_family_id", mergedChildFamily.ID, "survivor_family_id", survivorChildFamily.ID)
+				}
+				if err := p.recountFamilyChildren(ctx, branchID, mergedChildFamily, e.OccurredAt()); err != nil {
+					return err
+				}
+			}
 		}
 	}
 
@@ -1864,7 +1888,122 @@ func (p *Projector) projectPersonMerged(ctx context.Context, e domain.PersonMerg
 	}
 
 	// 13. Delete merged person from read model
-	return p.readStore.DeletePerson(ctx, branchID, e.MergedID)
+	if err := p.readStore.DeletePerson(ctx, branchID, e.MergedID); err != nil {
+		return fmt.Errorf("delete merged person %s: %w", e.MergedID, err)
+	}
+
+	// 14. Save the survivor, version included (see step 1).
+	return p.readStore.SavePerson(ctx, branchID, survivor)
+}
+
+// recountFamilyChildren saves a family with its child count recomputed from
+// its child rows. Unlike saveFamilyAfterChildChange it leaves the family's
+// version alone: the event recounting it is on another stream.
+func (p *Projector) recountFamilyChildren(ctx context.Context, branchID domain.BranchID, family *FamilyReadModel, at time.Time) error {
+	children, err := p.readStore.GetFamilyChildren(ctx, branchID, family.ID)
+	if err != nil {
+		return fmt.Errorf("fetch children of family %s: %w", family.ID, err)
+	}
+	family.ChildCount = len(children)
+	family.UpdatedAt = at
+	if err := p.readStore.SaveFamily(ctx, branchID, family); err != nil {
+		return fmt.Errorf("recount children of family %s: %w", family.ID, err)
+	}
+	return nil
+}
+
+// relinkChildEdges points the pedigree edges of a family's children from the
+// merged person to the survivor. A child's edge names its parents directly
+// (father/mother id and name, projectChildLinked), so re-linking the family's
+// partner alone would leave every child's pedigree pointing at a person the
+// merge deletes.
+//
+// It also fills a parent slot the child's link left EMPTY because the merged
+// person was missing when it was projected. A branch merge replays a branch
+// that linked a child to a family naming the merged person and then merged
+// them away; when main has since deleted the merged person, the replayed
+// ChildLinkedToFamily finds no row for them and leaves that parent unset
+// (#834). The replayed merge re-links the family to the survivor, so the
+// child's edge must name the survivor too, as it does on the branch. The slot
+// is filled only when the edge still agrees with this family (every parent it
+// names is one of the family's partners), so an edge projected from another
+// family the child belongs to is not rewritten.
+func (p *Projector) relinkChildEdges(ctx context.Context, branchID domain.BranchID, family *FamilyReadModel, mergedID uuid.UUID, survivor *PersonReadModel) error {
+	children, err := p.readStore.GetFamilyChildren(ctx, branchID, family.ID)
+	if err != nil {
+		return fmt.Errorf("fetch children of family %s: %w", family.ID, err)
+	}
+	for _, child := range children {
+		edge, err := p.readStore.GetPedigreeEdge(ctx, branchID, child.PersonID)
+		if err != nil {
+			return fmt.Errorf("fetch pedigree edge of %s: %w", child.PersonID, err)
+		}
+		if edge == nil {
+			continue
+		}
+		if !relinkEdgeParent(edge, family, mergedID, survivor) {
+			continue
+		}
+		if err := p.readStore.SavePedigreeEdge(ctx, branchID, edge); err != nil {
+			return fmt.Errorf("re-link pedigree edge of %s: %w", child.PersonID, err)
+		}
+	}
+	return nil
+}
+
+// relinkEdgeParent applies relinkChildEdges' rules to one child's edge and
+// reports whether it changed. family is the family after the merge re-linked
+// its partners.
+func relinkEdgeParent(edge *PedigreeEdge, family *FamilyReadModel, mergedID uuid.UUID, survivor *PersonReadModel) bool {
+	changed := false
+	if edge.FatherID != nil && *edge.FatherID == mergedID {
+		edge.FatherID = &survivor.ID
+		edge.FatherName = survivor.FullName
+		changed = true
+	}
+	if edge.MotherID != nil && *edge.MotherID == mergedID {
+		edge.MotherID = &survivor.ID
+		edge.MotherName = survivor.FullName
+		changed = true
+	}
+	if changed {
+		return true
+	}
+	if !familyHasPartner(family, survivor.ID) || edgeNamesParent(edge, survivor.ID) {
+		return false
+	}
+	for _, parent := range []*uuid.UUID{edge.FatherID, edge.MotherID} {
+		if parent != nil && !familyHasPartner(family, *parent) {
+			return false // the edge came from another family
+		}
+	}
+	// The same father/mother choice projectChildLinked makes.
+	if survivor.Gender == domain.GenderMale {
+		if edge.FatherID != nil {
+			return false
+		}
+		edge.FatherID = &survivor.ID
+		edge.FatherName = survivor.FullName
+		return true
+	}
+	if edge.MotherID != nil {
+		return false
+	}
+	edge.MotherID = &survivor.ID
+	edge.MotherName = survivor.FullName
+	return true
+}
+
+// familyHasPartner reports whether a person is one of a family's partners.
+func familyHasPartner(family *FamilyReadModel, personID uuid.UUID) bool {
+	return (family.Partner1ID != nil && *family.Partner1ID == personID) ||
+		(family.Partner2ID != nil && *family.Partner2ID == personID)
+}
+
+// edgeNamesParent reports whether a pedigree edge names a person as a parent.
+func edgeNamesParent(edge *PedigreeEdge, personID uuid.UUID) bool {
+	return (edge.FatherID != nil && *edge.FatherID == personID) ||
+		(edge.MotherID != nil && *edge.MotherID == personID)
 }
 
 // Note projections

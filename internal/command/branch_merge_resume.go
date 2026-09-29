@@ -798,7 +798,13 @@ func (h *Handler) danglingAutoPlannedStreams(
 			}
 		}
 	}
-	dangling, err := h.findDanglingReferences(ctx, auto, func(personID uuid.UUID) bool { return present[personID] })
+	mergedInto, err := pendingPersonMerges(evidence.replayed, view.landed)
+	if err != nil {
+		return nil, err
+	}
+	evidence.mergedInto = mergedInto
+	dangling, err := h.findDanglingReferences(ctx, auto,
+		func(personID uuid.UUID) bool { return present[personID] }, survivorLookup(mergedInto))
 	if err != nil {
 		return nil, err
 	}
@@ -880,9 +886,13 @@ func (h *Handler) collectResumeBlockers(
 	for _, step := range steps {
 		replayed[step.group.streamID] = true
 	}
+	stepMerges, err := branchPersonMerges(stepGroups(steps))
+	if err != nil {
+		return err
+	}
 	dangling, err := h.findDanglingReferences(ctx, stepGroups(steps), func(personID uuid.UUID) bool {
 		return replayed[personID] && view.created[personID]
-	})
+	}, survivorLookup(stepMerges))
 	if err != nil {
 		return err
 	}
@@ -896,11 +906,15 @@ func (h *Handler) collectResumeBlockers(
 			landedGroups = append(landedGroups, group)
 		}
 	}
+	// Deliberately no merge chain here (#834): this check only guards this
+	// call's own "main" resolutions of a person the replay would create, and
+	// refusing such a resolution — the caller can resolve that person to
+	// branch instead — is the conservative answer.
 	dangling, err = h.findDanglingReferences(ctx, landedGroups, func(personID uuid.UUID) bool {
 		// Only excluding a person the replay would CREATE takes them away;
 		// excluding a stream of edits leaves the person as main has them.
 		return resolutions[personID] != ResolveMain || !view.created[personID]
-	})
+	}, nil)
 	if err != nil {
 		return err
 	}
@@ -948,6 +962,11 @@ func (h *Handler) validateResumeEvidence(
 	for _, step := range steps {
 		evidence.replayed[step.group.streamID] = step.group
 	}
+	mergedInto, err := pendingPersonMerges(evidence.replayed, view.landed)
+	if err != nil {
+		return err
+	}
+	evidence.mergedInto = mergedInto
 	for _, step := range steps {
 		if err := h.checkEvidence(ctx, step.group, evidence, list); err != nil {
 			return err

@@ -155,17 +155,22 @@ func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup
 	subjectID := outcome.subjectID
 	var subjectType string
 	if subjectGroup, replaysSubject := plan.replayed[subjectID]; replaysSubject {
-		deletes := groupDeletesGPSSubject(subjectGroup)
-		deletesLater := deletes && !plan.landed[subjectID] && plan.order[subjectID] > plan.order[group.streamID]
-		if !plan.removed[subjectID] && (!deletes || deletesLater) {
-			return nil
-		}
 		subjectType = entityTypeOfStream(subjectGroup.streamType)
-	} else {
-		exists, err := h.gpsSubjectOnMain(ctx, subjectID)
-		if err != nil || exists {
+	}
+	survives, err := h.gpsSubjectSurvives(ctx, group, subjectID, plan)
+	if err != nil || survives {
+		return err
+	}
+	// A subject person the replay merges into another (#834) is re-pointed by
+	// that merge, which replays after this artifact
+	// (orderPersonMergesForReplay), as it was on the branch.
+	if survivor, merged := finalMergeSurvivor(subjectID, plan.mergedInto); merged {
+		survives, err = h.gpsSubjectSurvives(ctx, group, survivor, plan)
+		if err != nil || survives {
 			return err
 		}
+	}
+	if _, replaysSubject := plan.replayed[subjectID]; !replaysSubject {
 		// The write path does not require the subject to exist (only a
 		// non-nil id), so a subject no person or family ever had is accepted
 		// on main as on the branch; refusing it here would make the branch
@@ -181,6 +186,17 @@ func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup
 			"when it lands (deleted there, excluded by a \"main\" resolution, or deleted earlier in the replay)",
 		group.streamType, group.streamID, subjectID))
 	return nil
+}
+
+// gpsSubjectSurvives reports whether a GPS artifact's subject will exist on
+// main when the artifact's stream lands (see checkGPSSubjectSurvives).
+func (h *Handler) gpsSubjectSurvives(ctx context.Context, group streamGroup, subjectID uuid.UUID, plan evidencePlan) (bool, error) {
+	if subjectGroup, replaysSubject := plan.replayed[subjectID]; replaysSubject {
+		deletes := groupDeletesGPSSubject(subjectGroup)
+		deletesLater := deletes && !plan.landed[subjectID] && plan.order[subjectID] > plan.order[group.streamID]
+		return !plan.removed[subjectID] && (!deletes || deletesLater), nil
+	}
+	return h.gpsSubjectOnMain(ctx, subjectID)
 }
 
 // gpsArtifactOnMain reports whether main currently has the GPS artifact a

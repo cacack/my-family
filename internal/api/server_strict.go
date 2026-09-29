@@ -2961,6 +2961,13 @@ func (ss *StrictServer) GetPersonsDuplicates(ctx context.Context, request GetPer
 
 // MergePersons implements StrictServerInterface.
 func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRequestObject) (MergePersonsResponseObject, error) {
+	// A branch-scoped merge (#834) reads both persons and lands on the branch
+	// only; main is untouched until the branch merges.
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+
 	// Build field resolution map
 	var fieldResolution map[string]string
 	if request.Body.FieldResolution != nil {
@@ -2971,7 +2978,7 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 	}
 
 	// Call command handler
-	result, err := ss.server.commandHandler.MergePersons(ctx, command.MergePersonsInput{
+	result, err := ss.branchWriter(branch).MergePersons(ctx, command.MergePersonsInput{
 		SurvivorID:      request.Body.SurvivorId,
 		MergedID:        request.Body.MergedId,
 		SurvivorVersion: request.Body.SurvivorVersion,
@@ -3012,8 +3019,8 @@ func (ss *StrictServer) MergePersons(ctx context.Context, request MergePersonsRe
 		return nil, err
 	}
 
-	// Get updated survivor person
-	person, err := ss.server.personService.GetPerson(ctx, domain.MainBranchID, result.SurvivorID)
+	// Get updated survivor person, as the scope the merge was made on sees it.
+	person, err := ss.server.personService.GetPerson(ctx, branchScopeID(branch), result.SurvivorID)
 	if err != nil {
 		return nil, err
 	}
@@ -3083,6 +3090,12 @@ func (ss *StrictServer) BatchMergePersons(ctx context.Context, request BatchMerg
 		}}, nil
 	}
 
+	branch, err := ss.resolveBranchScope(ctx, request.Params.Branch, branchScopeWrite)
+	if err != nil {
+		return nil, err
+	}
+	writer := ss.branchWriter(branch)
+
 	results := make([]BatchMergeResult, len(request.Body.Merges))
 	successful := 0
 	failed := 0
@@ -3098,7 +3111,7 @@ func (ss *StrictServer) BatchMergePersons(ctx context.Context, request BatchMerg
 		}
 
 		// Attempt the merge
-		result, err := ss.server.commandHandler.MergePersons(ctx, command.MergePersonsInput{
+		result, err := writer.MergePersons(ctx, command.MergePersonsInput{
 			SurvivorID:      mergeReq.SurvivorId,
 			MergedID:        mergeReq.MergedId,
 			SurvivorVersion: mergeReq.SurvivorVersion,

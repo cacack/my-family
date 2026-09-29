@@ -47,6 +47,12 @@ type MergePersonsResult struct {
 
 // MergePersons merges two person records, consolidating data from the merged person
 // into the survivor. The merged person is deleted after the merge.
+//
+// It honors the handler's branch scope (#834): every read below — the version
+// check, the ancestry and child-family guards, and the ids the event records —
+// is made through the handler's overlay, and execute appends and projects the
+// PersonMerged on the same scope, so a merge on a branch leaves main untouched
+// until the branch itself is merged (see branchAwareEventTypes).
 func (h *Handler) MergePersons(ctx context.Context, input MergePersonsInput) (*MergePersonsResult, error) {
 	// 1. Validate not same person
 	if input.SurvivorID == input.MergedID {
@@ -96,7 +102,7 @@ func (h *Handler) MergePersons(ctx context.Context, input MergePersonsInput) (*M
 
 // validateMergePersons fetches and validates both persons exist with correct versions.
 func (h *Handler) validateMergePersons(ctx context.Context, input MergePersonsInput) (*repository.PersonReadModel, *repository.PersonReadModel, error) {
-	survivor, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.SurvivorID)
+	survivor, err := h.readStore.GetPerson(ctx, h.branchID, input.SurvivorID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -104,7 +110,7 @@ func (h *Handler) validateMergePersons(ctx context.Context, input MergePersonsIn
 		return nil, nil, fmt.Errorf("%w: survivor not found", ErrPersonNotFound)
 	}
 
-	merged, err := h.readStore.GetPerson(ctx, domain.MainBranchID, input.MergedID)
+	merged, err := h.readStore.GetPerson(ctx, h.branchID, input.MergedID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -138,11 +144,11 @@ func (h *Handler) validateMergeRelationships(ctx context.Context, survivorID, me
 	}
 
 	// Child-family conflict check: if both are children in different families, block
-	survivorChildFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, survivorID)
+	survivorChildFamily, err := h.readStore.GetChildFamily(ctx, h.branchID, survivorID)
 	if err != nil {
 		return fmt.Errorf("getting survivor child family: %w", err)
 	}
-	mergedChildFamily, err := h.readStore.GetChildFamily(ctx, domain.MainBranchID, mergedID)
+	mergedChildFamily, err := h.readStore.GetChildFamily(ctx, h.branchID, mergedID)
 	if err != nil {
 		return fmt.Errorf("getting merged child family: %w", err)
 	}
@@ -285,7 +291,7 @@ func resolveFields(survivor, merged *repository.PersonReadModel, resolution map[
 
 // collectAffectedFamilies returns IDs of families where merged person is a partner.
 func (h *Handler) collectAffectedFamilies(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	families, err := h.readStore.GetFamiliesForPerson(ctx, domain.MainBranchID, mergedID)
+	families, err := h.readStore.GetFamiliesForPerson(ctx, h.branchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("getting families for person: %w", err)
 	}
@@ -299,7 +305,7 @@ func (h *Handler) collectAffectedFamilies(ctx context.Context, mergedID uuid.UUI
 
 // collectAffectedCitations returns IDs of citations linked to merged person.
 func (h *Handler) collectAffectedCitations(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	citations, err := h.readStore.GetCitationsForPerson(ctx, domain.MainBranchID, mergedID)
+	citations, err := h.readStore.GetCitationsForPerson(ctx, h.branchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("getting citations for person: %w", err)
 	}
@@ -313,7 +319,7 @@ func (h *Handler) collectAffectedCitations(ctx context.Context, mergedID uuid.UU
 
 // collectTransferredNames returns IDs of alternate names from merged person.
 func (h *Handler) collectTransferredNames(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	names, err := h.readStore.GetPersonNames(ctx, domain.MainBranchID, mergedID)
+	names, err := h.readStore.GetPersonNames(ctx, h.branchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("getting person names: %w", err)
 	}
@@ -327,7 +333,7 @@ func (h *Handler) collectTransferredNames(ctx context.Context, mergedID uuid.UUI
 
 // collectTransferredEvents returns IDs of life events from merged person.
 func (h *Handler) collectTransferredEvents(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	events, err := h.readStore.ListEventsForPerson(ctx, domain.MainBranchID, mergedID)
+	events, err := h.readStore.ListEventsForPerson(ctx, h.branchID, mergedID)
 	if err != nil {
 		return nil, fmt.Errorf("listing events for person: %w", err)
 	}
@@ -341,7 +347,7 @@ func (h *Handler) collectTransferredEvents(ctx context.Context, mergedID uuid.UU
 
 // collectTransferredMedia returns IDs of media from merged person.
 func (h *Handler) collectTransferredMedia(ctx context.Context, mergedID uuid.UUID) ([]uuid.UUID, error) {
-	media, _, err := h.readStore.ListMediaForEntity(ctx, "person", mergedID, repository.ListOptions{Limit: 10000, BranchID: domain.MainBranchID})
+	media, _, err := h.readStore.ListMediaForEntity(ctx, "person", mergedID, repository.ListOptions{Limit: 10000, BranchID: h.branchID})
 	if err != nil {
 		return nil, fmt.Errorf("listing media for person: %w", err)
 	}
