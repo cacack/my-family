@@ -105,3 +105,101 @@ func assertFamilyAPI(t *testing.T, family map[string]any, partner1, partner1Give
 		t.Errorf("marriage_place = %v, want %s", got, marriagePlace)
 	}
 }
+
+// TestFamilyUpdate_PartnerChangeRefreshesChildPedigree (#826): clearing or
+// swapping a family's partners after a child is linked re-derives the child's
+// pedigree edge, live, on a branch, through a merge and on a full replay, so
+// the pedigree, Ahnentafel and group sheet stop naming a removed partner as the
+// child's parent.
+func TestFamilyUpdate_PartnerChangeRefreshesChildPedigree(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(backend.name, func(t *testing.T) {
+			st := backend.setup(t)
+			runPartnerChangePedigree(t, newServer(t, st), st, backend)
+		})
+	}
+}
+
+func createGenderedPerson(t *testing.T, server *api.Server, givenName, gender string) string {
+	t.Helper()
+	resp := mustDo(t, server, http.MethodPost, "/api/v1/persons",
+		fmt.Sprintf(`{"given_name":%q,"surname":"Placeholder","gender":%q}`, givenName, gender),
+		http.StatusCreated)
+	return mustString(t, resp, "id")
+}
+
+func runPartnerChangePedigree(t *testing.T, server *api.Server, st stores, backend backend) {
+	t.Helper()
+	ctx := context.Background()
+
+	father := createGenderedPerson(t, server, "Alden", "male")
+	mother := createGenderedPerson(t, server, "Briar", "female")
+	other := createGenderedPerson(t, server, "Corin", "male")
+	child := createGenderedPerson(t, server, "Wren", "female")
+	familyID := createFamily(t, server, father, mother)
+	familyPath := "/api/v1/families/" + familyID
+	mustDo(t, server, http.MethodPost, familyPath+"/children",
+		fmt.Sprintf(`{"person_id":%q}`, child), http.StatusCreated)
+	childID := uuid.MustParse(child)
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, father, mother)
+
+	// --- Live: clearing a partner drops them from the child's edge. ---
+	mustDo(t, server, http.MethodPut, familyPath,
+		fmt.Sprintf(`{"clear_partner2":true,"version":%d}`, entityVersion(t, server, familyPath, "")),
+		http.StatusOK)
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, father, "")
+
+	// --- Branch: a swap is visible on the branch only, then merges to main. ---
+	branchID := createBranch(t, server, "partner-swap")
+	mustDo(t, server, http.MethodPut, scoped(familyPath, branchID),
+		fmt.Sprintf(`{"partner1_id":%q,"partner2_id":%q,"version":%d}`,
+			other, mother, entityVersion(t, server, familyPath, branchID)),
+		http.StatusOK)
+	assertPedigreeEdge(t, st, domain.BranchID(uuid.MustParse(branchID)), childID, other, mother)
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, father, "")
+
+	mustDo(t, server, http.MethodPost, mergePath(branchID), mergeBody("partner swap"), http.StatusOK)
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, other, mother)
+
+	// --- A family must keep a partner: clearing both is refused (400) and the
+	// child's edge is untouched. ---
+	mustDo(t, server, http.MethodPut, familyPath,
+		fmt.Sprintf(`{"clear_partner1":true,"clear_partner2":true,"version":%d}`, entityVersion(t, server, familyPath, "")),
+		http.StatusBadRequest)
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, other, mother)
+
+	// --- Clearing one partner after the merge drops them from the edge. ---
+	mustDo(t, server, http.MethodPut, familyPath,
+		fmt.Sprintf(`{"clear_partner1":true,"version":%d}`, entityVersion(t, server, familyPath, "")),
+		http.StatusOK)
+	assertPedigreeEdge(t, st, domain.MainBranchID, childID, "", mother)
+
+	// --- Replay: rebuilding the read model from the log gives the same edge. ---
+	fresh := backend.setup(t)
+	replayLog(t, ctx, st.events, fresh.read)
+	assertPedigreeEdge(t, fresh, domain.MainBranchID, childID, "", mother)
+}
+
+// assertPedigreeEdge checks a child's father/mother on a scope; "" means unset.
+func assertPedigreeEdge(t *testing.T, st stores, branchID domain.BranchID, childID uuid.UUID, wantFather, wantMother string) {
+	t.Helper()
+	edge, err := st.read.GetPedigreeEdge(context.Background(), branchID, childID)
+	if err != nil {
+		t.Fatalf("GetPedigreeEdge: %v", err)
+	}
+	if edge == nil {
+		t.Fatalf("no pedigree edge for %s", childID)
+	}
+	idOf := func(id *uuid.UUID) string {
+		if id == nil {
+			return ""
+		}
+		return id.String()
+	}
+	if got := idOf(edge.FatherID); got != wantFather {
+		t.Errorf("father = %q, want %q", got, wantFather)
+	}
+	if got := idOf(edge.MotherID); got != wantMother {
+		t.Errorf("mother = %q, want %q", got, wantMother)
+	}
+}

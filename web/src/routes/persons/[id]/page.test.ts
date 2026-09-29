@@ -214,3 +214,44 @@ describe('Person detail rollback on a branch (#824)', () => {
 		expect(getPersonRestorePoints).not.toHaveBeenCalled();
 	});
 });
+
+describe('Person detail family shortcuts (#826)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+	});
+
+	it('offers Add family and Add parents when the person has neither', async () => {
+		getPerson.mockResolvedValue(person());
+		render(Page);
+
+		const addFamily = await screen.findByRole('link', { name: 'Add family' });
+		expect(addFamily.getAttribute('href')).toBe(`/families/add?partner1=${PERSON_ID}`);
+		const addParents = screen.getByRole('link', { name: 'Add parents' });
+		expect(addParents.getAttribute('href')).toBe(`/families/add?child=${PERSON_ID}`);
+		expect(screen.getByText('No parents recorded.')).toBeDefined();
+	});
+
+	it('keeps Add family but withdraws Add parents once parents are recorded', async () => {
+		getPerson.mockResolvedValue(
+			person({
+				family_as_child: { id: 'fam-parents', partner1_name: 'John Smith', partner2_name: 'Ann Jones' },
+				families_as_partner: [{ id: 'fam-own', partner1_name: 'Ada Lovelace' }]
+			})
+		);
+		render(Page);
+
+		expect(await screen.findByRole('link', { name: 'Add family' })).toBeDefined();
+		expect(screen.queryByRole('link', { name: 'Add parents' })).toBeNull();
+		expect(screen.getByText(/John Smith/).closest('a')?.getAttribute('href')).toBe('/families/fam-parents');
+	});
+
+	it('offers the shortcuts on a branch too, since family writes follow the branch', async () => {
+		branchState.id = BRANCH_ID;
+		getPerson.mockResolvedValue(person());
+		render(Page);
+
+		expect(await screen.findByRole('link', { name: 'Add family' })).toBeDefined();
+		expect(screen.getByRole('link', { name: 'Add parents' })).toBeDefined();
+	});
+});
