@@ -179,7 +179,12 @@ describe('isBranchScopedRequest', () => {
 
 	it('does not mistake literal person routes for /persons/{id}', () => {
 		expect(isBranchScopedRequest('GET', '/persons/duplicates')).toBe(false);
-		expect(isBranchScopedRequest('POST', '/persons/merge')).toBe(false);
+		expect(isBranchScopedRequest('GET', '/persons/merge')).toBe(false);
+	});
+
+	it('scopes person merge, single and batch (#834)', () => {
+		expect(isBranchScopedRequest('POST', '/persons/merge')).toBe(true);
+		expect(isBranchScopedRequest('POST', '/persons/merge/batch')).toBe(true);
 	});
 
 	it('leaves branch lifecycle and other mainline-only endpoints alone', () => {

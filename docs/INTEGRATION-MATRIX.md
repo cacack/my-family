@@ -222,11 +222,11 @@ four GPS artifact types of #760. Branch
 
 | Read-model type | Branch reads (#669) | Branch writes (#670) | How it is written on a branch |
 |---|---|---|---|
-| Person | ✅ | ✅ | `createPerson` / `updatePerson` / `deletePerson` |
+| Person | ✅ | ✅ | `createPerson` / `updatePerson` / `deletePerson` / `mergePersons` (#834; the merge re-links every row below that names the merged person) |
 | PersonName | ✅ | ✅ | `addPersonName` / `updatePersonName` / `deletePersonName` |
 | Family | ✅ | ✅ | `createFamily` / `updateFamily` / `deleteFamily` |
 | FamilyChild | ✅ | ✅ | `addChildToFamily` / `removeChildFromFamily` |
-| PedigreeEdge | ✅ | ✅ | derived — reprojected from branch-scoped child link/unlink |
+| PedigreeEdge | ✅ | ✅ | derived — reprojected from branch-scoped child link/unlink, and re-pointed to the survivor by a branch `mergePersons` (#834) |
 | PersonExternalID | ✅ | ❌ | written only by GEDCOM import, which is main-only by design (#670 non-goal) |
 | FamilyExternalID | ✅ | ❌ | same as PersonExternalID |
 | LifeEvent (#757) | ✅ | ⚠️ | no command of its own; tombstoned by a branch `deletePerson` / `deleteFamily` |
@@ -364,10 +364,23 @@ generation (`GetFamiliesForPersons`, `GetFamilyChildrenByFamilyIDs`, `GetPedigre
 | `getDescendancy` | GET | `/descendancy/{id}` |
 | `getRelationship` | GET | `/relationship/{personId1}/{personId2}` |
 
-That is **92 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
+[#839](https://github.com/cacack/my-family/issues/839) scoped research snapshots (a snapshot marks
+a position in one branch's view), and [#834](https://github.com/cacack/my-family/issues/834)
+admitted person merges on a branch:
+
+| operationId | Method | Path |
+|---|---|---|
+| `listSnapshots`, `createSnapshot` | GET, POST | `/snapshots` |
+| `getSnapshot`, `deleteSnapshot` | GET, DELETE | `/snapshots/{id}` |
+| `compareSnapshots` | GET | `/snapshots/{id1}/compare/{id2}` |
+| `compareSnapshotToCurrent` | GET | `/snapshots/{id}/compare-current` |
+| `mergePersons` | POST | `/persons/merge` |
+| `batchMergePersons` | POST | `/persons/merge/batch` |
+
+That is **100 API operations carrying `?branch=`**. Treat `internal/api/openapi.yaml` as the count
 of record — the drift test described below re-derives it from the spec on every run.
 
-The frontend mirrors exactly those 92 in `isBranchScopedRequest()`
+The frontend mirrors exactly those 100 in `isBranchScopedRequest()`
 (`web/src/lib/api/client.ts`), matching on method as well as path, since two methods on one path
 need not agree. The free-text `{surname}` and `{place}` segments are
 matched as a single non-empty, non-slash segment rather than as a UUID, so a percent-encoded place
@@ -420,9 +433,19 @@ behaves like a normal working copy:
 Remaining gaps, both deliberate: GEDCOM import/export is main-only (a stated non-goal of #670), and
 rollback is main-only (`Handler.rollbackEntity`; a `?branch=` rollback or restore-point request is
 refused with 409 `rollback_mainline_only`, #824). [#676](https://github.com/cacack/my-family/issues/676)
-widened branch writes to every entity type that is not main-only by decision; `MergePersons`
-(`PersonMerged`) is the one command still refused on a branch, because a branch merge cannot yet
-replay it safely (see `branchAwareEventTypes` in `internal/command/handler.go`).
+widened branch writes to every entity type that is not main-only by decision, and
+[#834](https://github.com/cacack/my-family/issues/834) admitted the last command it still refused:
+`mergePersons` / `batchMergePersons` take `?branch=`, so two duplicates can be merged on a branch
+as a hypothesis. The merge's projection re-links the merged person's names, life events,
+attributes, citations, media, GPS artifacts, family partner slots, child link and the pedigree
+edges of their children to the survivor, and tombstones the merged person, all through the
+overlay; main keeps both persons until the branch merges. The branch merge replays the
+`PersonMerged` after every stream that mentions the merged person (and after the creation of a
+survivor the branch created), refuses a merge whose merged person main has merged elsewhere or
+given a different child family than the survivor's, reports main's later edits of
+the merged person as a `delete_edit` conflict on the survivor's stream, refuses a merge into a
+survivor main has removed as a dangling reference, and pins the merged person's stream against
+staleness (see ADR-005, "Implementation Note — person merge on a branch").
 
 Merging a branch back into `main` is **not** a gap: [#55](https://github.com/cacack/my-family/issues/55)
 delivered the command and `POST /branches/{id}/merge`, and the merge *review* UI

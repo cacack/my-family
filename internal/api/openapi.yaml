@@ -2489,7 +2489,13 @@ paths:
         Merges two person records, consolidating data from the merged person into the survivor.
         The merged person is deleted after the merge. All relationships (families, citations,
         alternate names, events, media) are transferred to the survivor.
+
+        With `branch`, the merge is made on that research branch only (#834): both persons are
+        read through the branch's view, the survivor and the versions are checked there, and the
+        mainline is untouched until the branch itself is merged.
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -2560,8 +2566,11 @@ paths:
         Merges multiple duplicate pairs in a single batch operation.
         Each pair is processed independently; partial failures are reported
         in the response. Successfully merged pairs continue processing even
-        if earlier pairs fail.
+        if earlier pairs fail. With `branch`, every merge is made on that
+        research branch only, as for a single merge.
       tags: [persons]
+      parameters:
+        - $ref: '#/components/parameters/branchScope'
       requestBody:
         required: true
         content:
@@ -8172,6 +8181,7 @@ components:
             - missing_gps_artifact
             - missing_gps_subject
             - subject_delete_orphans_gps
+            - person_merge_conflicts_main
           description: |
             - `missing_person` - a family partner or child link, or an
               association, names a person the mainline will not have.
@@ -8189,6 +8199,10 @@ components:
               the mainline will not have.
             - `subject_delete_orphans_gps` - a person or family delete would
               also delete mainline GPS research the branch never saw.
+            - `person_merge_conflicts_main` - a person merge made on the branch
+              (on the survivor, `stream_id`) cannot land as made: the mainline
+              has since merged the merged person (`referenced_id`) itself, or
+              the two persons are children of different families there.
         suggested_resolution:
           type: string
           enum: [leave_out, include_referenced]

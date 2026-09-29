@@ -7,8 +7,8 @@
 	 * non-goal (ADR-005). Uploading from beneath the branch banner would
 	 * therefore rewrite the mainline while the UI claimed to be on the branch.
 	 * A notice alone would not prevent that, so import is withdrawn outright
-	 * (the same pattern as the merge page's `mergeBlockedByBranch`) and the user
-	 * is offered the way back to the mainline. The API refuses an import that
+	 * rather than only labelled, and the user is offered the way back to the
+	 * mainline. The API refuses an import that
 	 * carries `?branch=` as a backstop (#825).
 	 */
 	import { activeBranch, returnToMainline } from '$lib/stores/activeBranch.svelte';

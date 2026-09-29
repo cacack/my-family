@@ -206,6 +206,9 @@ const BRANCH_SCOPED_OPERATIONS: ReadonlyArray<{
 	{ methods: ['GET'], pattern: new RegExp(`^/ahnentafel/${UUID_SEGMENT}$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/descendancy/${UUID_SEGMENT}$`) },
 	{ methods: ['GET'], pattern: new RegExp(`^/relationship/${UUID_SEGMENT}/${UUID_SEGMENT}$`) },
+	// Person merge (#834): a merge made on a branch lands there only.
+	{ methods: ['POST'], pattern: new RegExp('^/persons/merge$') },
+	{ methods: ['POST'], pattern: new RegExp('^/persons/merge/batch$') },
 	// Browse and map aggregates (#756), plus the cemetery index (#757).
 	{ methods: ['GET'], pattern: new RegExp('^/browse/surnames$') },
 	{ methods: ['GET'], pattern: new RegExp(`^/browse/surnames/${TEXT_SEGMENT}/persons$`) },
@@ -1150,8 +1153,8 @@ export interface ChangeHistoryResponse {
  * `BRANCH_SCOPED_OPERATIONS` above is the authoritative list, mirrored from the
  * `branchScope` parameter in `internal/api/openapi.yaml` and pinned to it by a
  * test in `client.test.ts`. Every other method here is mainline-only whatever
- * branch is active — including `mergePersons` and the brick-wall setters, whose
- * pages therefore withdraw their controls while a branch is active. The
+ * branch is active — including the brick-wall setters, whose pages therefore
+ * withdraw their controls while a branch is active. The
  * restore-point and rollback methods forward the scope only for the server to
  * refuse it (rollback is mainline-only, ADR-005), so their pages withdraw those
  * controls too. Individual scoped methods are marked below.
@@ -2353,6 +2356,7 @@ class ApiClient {
 	}
 
 	// Merge endpoints
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async mergePersons(req: MergePersonsRequest): Promise<MergePersonsResponse> {
 		return this.requestWithConflictRetry<MergePersonsResponse>(
 			'POST',
@@ -2361,6 +2365,7 @@ class ApiClient {
 		);
 	}
 
+	/** Branch-scoped: honors the active branch (see `BRANCH_SCOPED_OPERATIONS`). */
 	async batchMergePersons(req: BatchMergeRequest): Promise<BatchMergeResponse> {
 		return this.request<BatchMergeResponse>('POST', '/persons/merge/batch', req);
 	}

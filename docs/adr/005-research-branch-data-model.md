@@ -1382,7 +1382,8 @@ read-model write its projection makes (steps 9–12 now pass the branch through)
 but a branch merge could not replay it safely: it rewrites rows of the merged person's aggregates
 and deletes that person without an event on any of their streams, so a concurrent main edit to them
 is invisible to the conflict scan and to the dangling-reference checks. Admitting it needs that
-merge design first.
+merge design first. (#834 delivered that design and admitted it — see "Implementation Note —
+person merge on a branch".)
 
 **The cascade is new on main too.** `DeletePerson` and `DeleteFamily` now delete (main) or tombstone
 (branch) every GPS artifact whose subject is the deleted entity, on that branch only (there was never
@@ -1436,6 +1437,119 @@ paginates, so `total` counts every matching conflict.
 a primary key, so `detectBranchCapable` also requires `branch_id` in their primary keys; a database
 created before #760 refuses every branch write with `ErrBranchesUnsupported` until the read model is
 rebuilt (#680), while its mainline GPS artifacts keep working.
+
+## Implementation Note — person merge on a branch (#834, delivered)
+
+`PersonMerged` is on the BR-006 allowlist, so `MergePersons` — and `POST /persons/merge` and
+`/persons/merge/batch` with `?branch=` — works on a branch. "These two records are the same person"
+is a classic hypothesis, exactly what a branch is for. It was the last genealogy-data command a
+branch refused that is not main-only by decision (rollback, GEDCOM import and the main-only
+entities stay refused).
+
+**The projection.** Every step already wrote through the overlay after #757–#760; the audit for
+this issue found two gaps and one ordering hazard, all fixed on every backend:
+
+- The children of a family whose partner is re-linked kept the merged person as father or mother
+  in their pedigree edges. The projection now re-points those edges to the survivor
+  (`relinkChildEdges`), on main as on a branch.
+- A branch `DeletePerson` tombstoned the merged person's names by main's owner column, so on SQLite
+  and PostgreSQL it tombstoned over the branch row that had just re-owned the name to the survivor,
+  and `GetPersonNames` filtered by owner before resolving the overlay. Both now resolve each name
+  id first and filter on the winning row — the rule the fact tables already followed — and the
+  memory store takes a re-owned name out of its old owner's bucket.
+- The survivor's row, version included, is now saved LAST. A replayed merge whose projection fails
+  midway then reads as behind the log, so a resume (#685) re-runs the whole merge; every step is an
+  upsert, a re-link or a delete, so re-running it is safe. Saving the version first would have made
+  a half-projected merge look finished.
+
+Associations of the merged person are still removed with them (the delete cascade), on main as on
+a branch; transferring them is a separate behaviour change, not a branch concern.
+
+**Replay order.** A merge is one event on the survivor's stream, but on main it re-links whatever
+main's rows name the merged person *when it lands*. So everything the branch wrote that mentions
+the merged person — their own stream (their creation or edits), a family linking them, a media
+upload or a GPS artifact about them — must land first. And when the branch CREATED the survivor,
+the survivor's stream carries that creation too, so everything that names the survivor (a family
+partner slot, a child link under their family, an association) must still land after it: the
+projections denormalize a partner's name and a child's parents from the person row, and a
+reference landing before the person exists leaves a blank name and a parentless pedigree edge on
+main that the branch never had. `orderPersonMergesForReplay` solves both constraints together as a
+stable topological order (Kahn's algorithm, always taking the ready stream the branch touched
+first): every stream mentioning a merged person goes before the merge's stream, every stream
+mentioning an entity the branch created goes after the stream that creates it, and nothing else
+moves. "Mentions" is the entity's own stream or any event payload carrying its id: generic on
+purpose, so a reference shape a future event adds cannot be missed silently, and a false positive
+only adds a constraint. When the two constraints contradict — one stream both names a
+branch-created survivor and mentions the person merged into them — no stream order reproduces the
+branch, and the merge is refused as `ErrMergeDanglingReference` rather than replayed into a main
+that differs from it. In a chain (A into B, then B into C) the merge into B lands before the merge
+that ends B, because B's own stream mentions B. A resume recomputes the same order from the same
+replay set. A stream whose own events straddle the merge on the branch still lands whole on one
+side of it — the one-`Append`-per-stream granularity every ordering rule here shares.
+
+**Conflicts.** The classifier folds a `PersonMerged` as the fields it resolved onto the survivor
+(compared like an `*Updated` event's `Changes`) plus the person it merged away. A branch merge
+ends the merged person without writing to their stream, so `PlanMerge` and `CompareBranch` read
+main's tail for the merged persons' streams too (`comparedStreamIDs`). Main having changed a merged
+person after the fork is a `delete_edit` with the branch as deleter, keyed on the SURVIVOR's
+stream, because that is the stream whose resolution decides the outcome: `branch` replays the merge
+over main's change (its names, facts and evidence move to the survivor with the rest; its changed
+fields go with the deleted record), `main` skips the survivor's stream and keeps both persons as
+main has them. When the survivor's stream already conflicts, the merged-person edit is added to
+that conflict's detail rather than reported twice. Main deleting the merged person is agreement,
+not a conflict; main deleting the survivor is the ordinary `delete_edit` with main as deleter, so
+only `main` is offered. The merged person's main version is pinned with the replayed streams
+(`MainStreamVersions`), and `validatePlanNotStale` refuses a merge whose merged person main wrote
+to after the verdict (`ErrMergePlanStale`, nothing written). The claim's recorded plan lists
+replayed streams only, so a resume does not re-check that pin — the same residual window a
+replayed stream has between the pre-claim check and its append.
+
+**Dangling references.** The survivor is a person a replayed `PersonMerged` makes main point at,
+so a survivor main has removed since the fork — deleted, or merged into someone else (which writes
+nothing to the survivor's stream, so no conflict shows it) — is refused as
+`ErrMergeDanglingReference`, as a family link to such a person would be; resolving the survivor's
+stream to `main` is the way out. In the other direction the checks follow the branch's own merge
+chains: a family link, media upload or GPS artifact naming a person the replay merges away counts as
+present when the final survivor will exist, because the merge — ordered after it — re-links it, as
+it did on the branch. So a branch that linked a duplicate and then merged them merges even if main
+has since deleted the duplicate. A resume follows only the merges still to replay: one already on
+main has re-linked what it found then and vouches for nothing landing now.
+
+**Main's cross-stream changes to the two persons.** The merge command checked its guards against the
+branch's state; what main did to the two persons since the fork can live on streams the branch never
+wrote, so no per-stream comparison sees it. Before the claim, `collectPersonMergeBlockers` reports,
+as a `person_merge_conflicts_main` merge blocker on the survivor's stream (#831; the refusal is
+`ErrMergeDanglingReference`, and the precheck lists it), a replayed merge that would land on:
+
+- a merged person main has merged into someone else (a `PersonMerged` on that other person's
+  stream). The two merges are contradictory identity hypotheses; replaying the branch's would move
+  main's copy of the merged person's resolved fields onto the survivor while their families, names
+  and evidence stay with main's survivor. A merged person main *deleted* is still accepted, as
+  above: their stream ends in the delete, which is how the check tells the two apart.
+- a survivor and merged person who are children of different families when the merge lands (main
+  linked one of them after the fork). A person has one child family, so the projection would drop
+  the merged person's parentage — the case `MergePersons` refuses as `ErrChildFamilyConflict`, which
+  the refusal also wraps. The child families are followed through the replay (main's read model,
+  then every replayed link, unlink, family delete and earlier merge before this one), so a branch
+  that unlinked one of them before merging is judged on the state the merge will actually meet.
+
+Resolving the survivor's stream to `main` skips the merge, as for any dangling reference, and is
+the blocker's suggested `leave_out` fix. The
+projection itself no longer leaves a family's child count counting a child the merge removed: when
+the survivor already has a child family it recounts the merged person's family, and logs a warning
+if that dropped a link (a log written before these guards). A resume does not repeat these checks:
+as for the other reference rules, a change main makes after the claim is main's own.
+
+Verified by `TestBranchScenario_PersonMerge` (identical copies per backend: every row re-linked on
+the branch, main unchanged), `TestBranchPersonMerge_*` in `internal/integration` (over HTTP on
+memory, SQLite and PostgreSQL: merge on a branch, main untouched, merge the branch; main edited the
+merged person; main deleted the survivor; main merged the survivor away; main merged the merged
+person into someone else; main linked the merged person as a child; a survivor the branch created;
+the branch's merge chain vouching for a link after main deleted the duplicate), `internal/command/branch_person_merge_test.go`
+(replay order, merge chains, staleness pin, media and GPS vouching, resume of a half-projected
+merge), the classifier cases in `internal/query/merge_conflicts_person_merge_test.go`, and the
+Playwright spec `web/e2e/branch-person-merge.spec.ts`, which merges two persons on a branch through
+the merge page.
 
 ## Implementation Note — entity history and rollback on a branch (#823, #824, delivered)
 

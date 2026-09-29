@@ -65,14 +65,14 @@
 	let routeMergedId = $state<string | null>(null);
 
 	/**
-	 * `GET /persons/{id}` declares the `branch` parameter, so the panels below
-	 * show the branch's overlay values. `POST /persons/merge` does not, so the
-	 * merge itself would land on the mainline — destroying a mainline record on
-	 * the strength of a branch preview. A notice alone would not fix that, since
-	 * the read is already scoped, so the action is blocked outright until #676
-	 * brings person merge into the branch-scoped slice.
+	 * Both the reads (`GET /persons/{id}`) and the merge (`POST /persons/merge`)
+	 * honor the active research branch (#834): the panels show the branch's
+	 * view of the two records, and the merge lands on the branch only, so the
+	 * mainline keeps both persons until the branch itself is merged. Merging
+	 * duplicates is exactly the kind of hypothesis a branch is for.
 	 */
-	const mergeBlockedByBranch = $derived(activeBranch.id !== null);
+	const onBranch = $derived(activeBranch.id !== null);
+	const branchLabel = $derived(activeBranch.branch?.name ?? 'the active research branch');
 
 	$effect(() => {
 		const params = $page.params as Record<string, string | undefined>;
@@ -207,7 +207,6 @@
 	}
 
 	async function handleMerge() {
-		if (mergeBlockedByBranch) return;
 		if (!survivor || !merged || !routeSurvivorId || !routeMergedId) return;
 		const survivorTarget = routeSurvivorId;
 		const mergedTarget = routeMergedId;
@@ -257,16 +256,15 @@
 		</p>
 	</header>
 
-	{#if mergeBlockedByBranch}
+	{#if onBranch && !result}
 		<div
 			role="note"
-			class="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+			class="rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900"
 		>
-			<p class="font-semibold">Merging is unavailable on a research branch</p>
+			<p class="font-semibold">Merging on {branchLabel}</p>
 			<p class="mt-1">
-				Person merge operates on the mainline. It is not part of the branch-scoped slice, so the
-				records shown below come from your branch while the merge itself would rewrite the
-				mainline. Return to the mainline to merge these people.
+				The records below are shown as this branch sees them, and the merge is made on the branch
+				only. The mainline keeps both persons until you merge the branch.
 			</p>
 		</div>
 	{/if}
@@ -423,7 +421,7 @@
 			<Button variant="outline" onclick={handleCancel} disabled={submitting}>Cancel</Button>
 			<Button
 				onclick={handleMerge}
-				disabled={loading || submitting || !survivor || !merged || mergeBlockedByBranch}
+				disabled={loading || submitting || !survivor || !merged}
 			>
 				{submitting ? 'Merging…' : 'Merge persons'}
 			</Button>

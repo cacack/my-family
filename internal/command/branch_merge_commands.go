@@ -457,7 +457,7 @@ func (h *Handler) validatePlanNotStale(
 				ErrMergePlanStale, current, group.streamID, planned, plan.Branch.ID)
 		}
 	}
-	return nil
+	return h.validateMergedPersonsNotStale(ctx, plan, groups, resolutions)
 }
 
 // claimMerge performs the active→merged compare-and-set by appending
@@ -834,13 +834,21 @@ func (h *Handler) findMergeBlockers(ctx context.Context, plan *query.MergePlan, 
 		}
 	}
 
-	dangling, err := h.findDanglingReferences(ctx, checkedGroups, func(personID uuid.UUID) bool { return created[personID] })
+	mergedInto, err := branchPersonMerges(checkedGroups)
+	if err != nil {
+		return nil, err
+	}
+	dangling, err := h.findDanglingReferences(ctx, checkedGroups,
+		func(personID uuid.UUID) bool { return created[personID] }, survivorLookup(mergedInto))
 	if err != nil {
 		return nil, err
 	}
 	var list blockerList
 	for _, d := range dangling {
 		list.add(d.blocker())
+	}
+	if err := h.collectPersonMergeBlockers(ctx, groups, resolutions, created, &list); err != nil {
+		return nil, err
 	}
 	if err := h.collectEvidenceBlockers(ctx, plan, groups, resolutions, &list); err != nil {
 		return nil, err
@@ -882,44 +890,94 @@ func (d danglingReference) blocker() MergeBlocker {
 // group's events references (see personReferences) a person who is neither
 // vouched for by present nor on main's read model. Pairs are reported in group
 // order, each at most once. Each person is looked up on main at most once.
-func (h *Handler) findDanglingReferences(ctx context.Context, groups []streamGroup, present func(uuid.UUID) bool) ([]danglingReference, error) {
+//
+// survivorOf, when set, follows the branch's own person merges (#834): a
+// reference to a person the replay merges into another is fine when that
+// survivor is present, because the merge — replayed after every stream that
+// mentions the merged person (orderPersonMergesForReplay) — re-links it, as it
+// did on the branch. This is what lets a branch that linked a person and then
+// merged them away merge even when main has since deleted the merged person.
+func (h *Handler) findDanglingReferences(
+	ctx context.Context,
+	groups []streamGroup,
+	present func(uuid.UUID) bool,
+	survivorOf func(uuid.UUID) (uuid.UUID, bool),
+) ([]danglingReference, error) {
 	onMain := make(map[uuid.UUID]bool)
+	exists := func(personID uuid.UUID) (bool, error) {
+		if present(personID) {
+			return true, nil
+		}
+		found, looked := onMain[personID]
+		if !looked {
+			person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, personID)
+			if err != nil {
+				return false, fmt.Errorf("checking person %s on main: %w", personID, err)
+			}
+			found = person != nil
+			onMain[personID] = found
+		}
+		return found, nil
+	}
 	var dangling []danglingReference
 	for _, group := range groups {
-		reported := make(map[uuid.UUID]bool)
-		for i := range group.events {
-			personIDs, err := personReferences(group.events[i])
-			if err != nil {
-				return nil, err
-			}
-			for _, personID := range personIDs {
-				if present(personID) {
-					continue
-				}
-				found, looked := onMain[personID]
-				if !looked {
-					person, err := h.readStore.GetPerson(ctx, domain.MainBranchID, personID)
-					if err != nil {
-						return nil, fmt.Errorf("checking person %s on main: %w", personID, err)
-					}
-					found = person != nil
-					onMain[personID] = found
-				}
-				if !found && !reported[personID] {
-					reported[personID] = true
-					dangling = append(dangling, danglingReference{group: group, personID: personID})
-				}
-			}
+		personIDs, err := danglingPersonsOf(group, exists, survivorOf)
+		if err != nil {
+			return nil, err
+		}
+		for _, personID := range personIDs {
+			dangling = append(dangling, danglingReference{group: group, personID: personID})
 		}
 	}
 	return dangling, nil
 }
 
+// danglingPersonsOf returns every person a group's events reference who does
+// not exist by exists — directly, or through survivorOf's merge chain — in
+// the order the events first reference them, each once.
+func danglingPersonsOf(
+	group streamGroup,
+	exists func(uuid.UUID) (bool, error),
+	survivorOf func(uuid.UUID) (uuid.UUID, bool),
+) ([]uuid.UUID, error) {
+	var missing []uuid.UUID
+	reported := make(map[uuid.UUID]bool)
+	for i := range group.events {
+		personIDs, err := personReferences(group.events[i])
+		if err != nil {
+			return nil, err
+		}
+		for _, personID := range personIDs {
+			if reported[personID] {
+				continue
+			}
+			found, err := exists(personID)
+			if err != nil {
+				return nil, err
+			}
+			if !found && survivorOf != nil {
+				if survivor, merged := survivorOf(personID); merged {
+					if found, err = exists(survivor); err != nil {
+						return nil, err
+					}
+				}
+			}
+			if !found {
+				reported[personID] = true
+				missing = append(missing, personID)
+			}
+		}
+	}
+	return missing, nil
+}
+
 // personReferences returns the persons a branch event makes main point at: the
 // partners a FamilyCreated names, a partner a FamilyUpdated sets, the child of
-// a ChildLinkedToFamily, and both sides of an AssociationCreated (an
+// a ChildLinkedToFamily, both sides of an AssociationCreated (an
 // association's persons are fixed at creation; AssociationUpdated cannot
-// change them). A FamilyUpdated that clears a partner references no one.
+// change them), and the survivor of a PersonMerged (#834) — a merge into a
+// person main has removed would re-link the merged person's data to nothing
+// and delete them. A FamilyUpdated that clears a partner references no one.
 func personReferences(evt repository.StoredEvent) ([]uuid.UUID, error) {
 	switch evt.EventType {
 	case "FamilyCreated":
@@ -962,6 +1020,8 @@ func personReferences(evt repository.StoredEvent) ([]uuid.UUID, error) {
 			return nil, fmt.Errorf("decoding association on stream %s: %w", evt.StreamID, err)
 		}
 		return []uuid.UUID{payload.PersonID, payload.AssociateID}, nil
+	case "PersonMerged":
+		return personMergeSurvivor(evt)
 	}
 	return nil, nil
 }

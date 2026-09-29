@@ -252,9 +252,11 @@ func (s *BranchService) loadBranchSide(ctx context.Context, branchID uuid.UUID) 
 }
 
 // loadMainSide fills in the main half of the diff: main's events after the base
-// position, restricted to the streams the branch actually touched.
+// position, restricted to the streams the branch actually touched — plus the
+// streams of the persons the branch merged away (#834), whose PersonMerged ends
+// them without writing to their stream (see comparedStreamIDs).
 func (s *BranchService) loadMainSide(ctx context.Context, diff *branchDiffSources) error {
-	rawMainEvents, mainHasMore, err := s.readMainTail(ctx, branchStreamIDs(diff.branchEvents), diff.branch.BasePosition)
+	rawMainEvents, mainHasMore, err := s.readMainTail(ctx, comparedStreamIDs(diff.branchEvents), diff.branch.BasePosition)
 	if err != nil {
 		return err
 	}
@@ -307,6 +309,28 @@ func branchStreamIDs(events []repository.StoredEvent) []uuid.UUID {
 		}
 		seen[evt.StreamID] = true
 		ids = append(ids, evt.StreamID)
+	}
+	return ids
+}
+
+// comparedStreamIDs returns the streams whose main events a branch is compared
+// against: every stream the branch wrote, in first-touch order, then every
+// person the branch merged away (PersonMerged.MergedID) that it did not also
+// write. A person merge lands on the survivor's stream but deletes the merged
+// person too, so main changing the merged person after the fork is a
+// disagreement the classifier must see (mergedPersonsMainChanged), and main's
+// version of that stream is pinned with the rest (#698).
+func comparedStreamIDs(events []repository.StoredEvent) []uuid.UUID {
+	ids := branchStreamIDs(events)
+	seen := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		seen[id] = true
+	}
+	for _, id := range mergedPersonIDs(events) {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
 	}
 	return ids
 }

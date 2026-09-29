@@ -46,6 +46,8 @@ export function describeBlocker(blocker: MergeBlocker): string {
 			return `${e} is about ${r}, which will not exist on the mainline.`;
 		case 'subject_delete_orphans_gps':
 			return `Deleting ${e} would also delete the mainline's ${r}, added or changed after the fork.`;
+		case 'person_merge_conflicts_main':
+			return `Merging ${r} into ${e} no longer fits the mainline, which has since merged or re-parented one of them.`;
 		default:
 			return `${e} references ${r}, which the merge would break.`;
 	}

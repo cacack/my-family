@@ -1928,16 +1928,24 @@ func (s *ReadModelStore) tombstonePersonBranch(ctx context.Context, branchID dom
 // tombstone for each mainline name id, so the per-row name overlay resolves the
 // person's names as absent on the branch.
 func tombstoneNamesBranch(ctx context.Context, tx *sql.Tx, personID uuid.UUID, branchID domain.BranchID) error {
+	// The branch's own rows for the person become tombstones in place, which
+	// also hides a mainline name the branch had re-owned TO this person.
 	if _, err := tx.ExecContext(ctx,
-		"DELETE FROM person_names WHERE person_id = ? AND branch_id = ?",
+		"UPDATE person_names SET deleted = 1 WHERE person_id = ? AND branch_id = ?",
 		personID.String(), branchID.String()); err != nil {
-		return fmt.Errorf("clear branch names: %w", err)
+		return fmt.Errorf("tombstone branch names: %w", err)
 	}
+	// Then the mainline names the branch has not shadowed. A name the branch
+	// re-owned AWAY from this person (PersonMerged moves the merged person's
+	// names to the survivor, #834) has a branch row under its new owner and
+	// must keep it, so it is skipped rather than tombstoned over.
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO person_names (id, person_id, given_name, surname, branch_id, deleted)
-		SELECT id, person_id, '', '', ?, 1 FROM person_names WHERE person_id = ? AND branch_id = ?
+		SELECT id, person_id, '', '', ?, 1 FROM person_names
+		WHERE person_id = ? AND branch_id = ?
+		  AND id NOT IN (SELECT id FROM person_names WHERE branch_id = ?)
 		ON CONFLICT(id, branch_id) DO UPDATE SET deleted = 1
-	`, branchID.String(), personID.String(), mainBranchID); err != nil {
+	`, branchID.String(), personID.String(), mainBranchID, branchID.String()); err != nil {
 		return fmt.Errorf("tombstone names: %w", err)
 	}
 	return nil
@@ -2041,11 +2049,14 @@ func (s *ReadModelStore) GetPersonNames(ctx context.Context, branchID domain.Bra
 			   surname_prefix, nickname, name_type, is_primary, updated_at
 		FROM (
 			SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
-			FROM person_names WHERE person_id = ? AND branch_id IN (?, ?)
+			FROM person_names
+			WHERE id IN (SELECT id FROM person_names WHERE person_id = ? AND branch_id IN (?, ?))
+			  AND branch_id IN (?, ?)
 		)
-		WHERE rn = 1 AND deleted = 0
+		WHERE rn = 1 AND deleted = 0 AND person_id = ?
 		ORDER BY is_primary DESC, name_type
-	`, branchID.String(), personID.String(), branchID.String(), mainBranchID)
+	`, branchID.String(), personID.String(), branchID.String(), mainBranchID,
+		branchID.String(), mainBranchID, personID.String())
 	if err != nil {
 		return nil, fmt.Errorf("query person names: %w", err)
 	}

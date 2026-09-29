@@ -3,6 +3,7 @@ package memory_test
 import (
 	"context"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -1893,5 +1894,185 @@ func runBranchGPSScenario(t *testing.T, readStore repository.ReadModelStore, bra
 	}
 	if got := proofsBySubject(branchID, subject.ID); got != 1 {
 		t.Errorf("purged branch GetProofSummariesBySubject(person) = %d, want main's 1", got)
+	}
+}
+
+// TestBranchScenario_PersonMerge proves a branch-scoped PersonMerged (#834)
+// re-links every row it touches through the overlay and leaves main alone.
+func TestBranchScenario_PersonMerge(t *testing.T) {
+	runBranchPersonMergeScenario(t, memory.NewReadModelStore(), memory.NewBranchStore())
+}
+
+// runBranchPersonMergeScenario is the backend-agnostic person-merge scenario
+// for #834. Each backend package carries an identical copy (there is no shared
+// test harness in this repo); keeping the assertions byte-identical is the
+// DB-001 parity guarantee.
+//
+// Shape: on main, a survivor and a duplicate; the duplicate is a father in a
+// family with a child, and has an alternate name, a life event, an attribute,
+// a citation, a media item, an evidence analysis, an evidence conflict, a
+// research log, a proof summary and an association. A PersonMerged projected
+// on a branch must re-link every one of them to the survivor, and re-point the
+// child's pedigree edge, through the branch overlay only: the branch sees the
+// survivor with the duplicate's data and no duplicate, and main is unchanged.
+// The association is the one row the merge does not move: deleting the
+// duplicate cascades it away, on the branch only.
+func runBranchPersonMergeScenario(t *testing.T, readStore repository.ReadModelStore, branchStore repository.BranchStore) {
+	t.Helper()
+	ctx := context.Background()
+	projector := repository.NewProjector(readStore, branchStore)
+	main := domain.MainBranchID
+
+	project := func(label string, branchID domain.BranchID, events ...domain.Event) {
+		t.Helper()
+		for i, ev := range events {
+			if err := projector.Project(ctx, ev, int64(i+2), branchID); err != nil {
+				t.Fatalf("%s: project %s: %v", label, ev.EventType(), err)
+			}
+		}
+	}
+
+	survivor := domain.NewPerson("Morgan", "Duplicate")
+	survivor.Gender = domain.GenderMale
+	merged := domain.NewPerson("Morgan", "Duplicat")
+	merged.Gender = domain.GenderMale
+	partner := domain.NewPerson("Jordan", "Partner")
+	partner.Gender = domain.GenderFemale
+	child := domain.NewPerson("Quinn", "Duplicat")
+	family := domain.NewFamilyWithPartners(&merged.ID, &partner.ID)
+	alias := domain.NewPersonName(merged.ID, "Morgen", "Duplicat")
+	birth := domain.NewLifeEvent(merged.ID, domain.FactPersonBirth)
+	birth.Place = "Riverton"
+	occupation := domain.NewAttribute(merged.ID, domain.FactPersonOccupation, "Miller")
+	register := domain.NewSource("Parish Register", domain.SourceChurch)
+	birthCite := domain.NewCitation(register.ID, domain.FactPersonBirth, merged.ID)
+	analysis := domain.NewEvidenceAnalysis(domain.FactPersonBirth, merged.ID, "Born in Riverton")
+	researchLog := domain.NewResearchLog(merged.ID, "person", "County Archive", "Baptisms",
+		domain.ResearchOutcomeNotFound, time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC))
+	portrait := domain.NewMedia("Portrait", "person", merged.ID)
+	disagreement := domain.NewEvidenceConflict(domain.FactPersonBirth, merged.ID, []uuid.UUID{analysis.ID}, "Birth place disagrees")
+	proof := domain.NewProofSummary(domain.FactPersonBirth, merged.ID, "Born in Riverton", "The register is the only record")
+	witness := domain.NewAssociation(merged.ID, partner.ID, "witness")
+	project("seed main", main,
+		domain.NewPersonCreated(survivor),
+		domain.NewPersonCreated(merged),
+		domain.NewPersonCreated(partner),
+		domain.NewPersonCreated(child),
+		domain.NewFamilyCreated(family),
+		domain.NewChildLinkedToFamily(domain.NewFamilyChild(family.ID, child.ID, domain.ChildBiological)),
+		domain.NewNameAdded(alias),
+		domain.NewLifeEventCreatedFromModel(birth),
+		domain.NewAttributeCreatedFromModel(occupation),
+		domain.NewSourceCreated(register),
+		domain.NewCitationCreated(birthCite),
+		domain.NewEvidenceAnalysisCreated(analysis),
+		domain.NewResearchLogCreated(researchLog),
+		domain.NewMediaCreated(portrait),
+		domain.NewEvidenceConflictDetected(disagreement),
+		domain.NewProofSummaryCreated(proof),
+		domain.NewAssociationCreated(witness),
+	)
+
+	branch, err := domain.NewBranch("person-merge", "the two records are one person", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	project("create branch", main, domain.NewBranchCreated(branch))
+	branchID := domain.BranchID(branch.ID)
+
+	project("merge on branch", branchID, domain.NewPersonMerged(survivor.ID, merged.ID,
+		map[string]any{"id": merged.ID.String()},
+		map[string]any{"birth_place": "Riverton"},
+		[]uuid.UUID{family.ID}, []uuid.UUID{birthCite.ID}, []uuid.UUID{alias.ID},
+		[]uuid.UUID{birth.ID}, []uuid.UUID{portrait.ID}))
+
+	// ownerView asserts where one scope files the duplicate's data: under owner,
+	// and no longer (or not) under other.
+	ownerView := func(label string, branchID domain.BranchID, owner, other uuid.UUID) {
+		t.Helper()
+		if got, err := readStore.GetFamily(ctx, branchID, family.ID); err != nil || got == nil ||
+			got.Partner1ID == nil || *got.Partner1ID != owner {
+			t.Errorf("%s: family partner1 = %+v (err=%v), want %s", label, got, err, owner)
+		}
+		if got, err := readStore.GetPedigreeEdge(ctx, branchID, child.ID); err != nil || got == nil ||
+			got.FatherID == nil || *got.FatherID != owner {
+			t.Errorf("%s: child's pedigree edge = %+v (err=%v), want father %s", label, got, err, owner)
+		}
+		for _, check := range []struct {
+			what  string
+			list  func(uuid.UUID) (int, bool, error)
+			entry uuid.UUID
+		}{
+			{"names", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.GetPersonNames(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.PersonNameReadModel) bool { return r.ID == alias.ID }), err
+			}, alias.ID},
+			{"life events", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.ListEventsForPerson(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.EventReadModel) bool { return r.ID == birth.ID }), err
+			}, birth.ID},
+			{"attributes", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.ListAttributesForPerson(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.AttributeReadModel) bool { return r.ID == occupation.ID }), err
+			}, occupation.ID},
+			{"citations", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.GetCitationsForPerson(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.CitationReadModel) bool { return r.ID == birthCite.ID }), err
+			}, birthCite.ID},
+			{"evidence analyses", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.GetAnalysesBySubject(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.EvidenceAnalysisReadModel) bool { return r.ID == analysis.ID }), err
+			}, analysis.ID},
+			{"research logs", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.GetResearchLogsForSubject(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.ResearchLogReadModel) bool { return r.ID == researchLog.ID }), err
+			}, researchLog.ID},
+			{"media", func(id uuid.UUID) (int, bool, error) {
+				rows, _, err := readStore.ListMediaForEntity(ctx, "person", id, repository.ListOptions{Limit: 100, BranchID: branchID})
+				return len(rows), slices.ContainsFunc(rows, func(r repository.MediaReadModel) bool { return r.ID == portrait.ID }), err
+			}, portrait.ID},
+			{"evidence conflicts", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.GetConflictsForSubject(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.EvidenceConflictReadModel) bool { return r.ID == disagreement.ID }), err
+			}, disagreement.ID},
+			{"proof summaries", func(id uuid.UUID) (int, bool, error) {
+				rows, err := readStore.GetProofSummariesBySubject(ctx, branchID, id)
+				return len(rows), slices.ContainsFunc(rows, func(r repository.ProofSummaryReadModel) bool { return r.ID == proof.ID }), err
+			}, proof.ID},
+		} {
+			if _, found, err := check.list(owner); err != nil || !found {
+				t.Errorf("%s: %s of %s lack %s (err=%v)", label, check.what, owner, check.entry, err)
+			}
+			if _, found, err := check.list(other); err != nil || found {
+				t.Errorf("%s: %s of %s still list %s (err=%v)", label, check.what, other, check.entry, err)
+			}
+		}
+	}
+
+	// The branch: the survivor holds everything, the duplicate is gone.
+	if got, err := readStore.GetPerson(ctx, branchID, merged.ID); err != nil || got != nil {
+		t.Errorf("branch GetPerson(merged) = %+v (err=%v), want absent", got, err)
+	}
+	if got, err := readStore.GetPerson(ctx, branchID, survivor.ID); err != nil || got == nil || got.BirthPlace != "Riverton" {
+		t.Errorf("branch GetPerson(survivor) = %+v (err=%v), want birth place Riverton", got, err)
+	}
+	ownerView("branch", branchID, survivor.ID, merged.ID)
+	for _, person := range []uuid.UUID{survivor.ID, merged.ID, partner.ID} {
+		if got, err := readStore.ListAssociationsForPerson(ctx, branchID, person); err != nil || len(got) != 0 {
+			t.Errorf("branch ListAssociationsForPerson(%s) = %+v (err=%v), want the duplicate's association cascaded away", person, got, err)
+		}
+	}
+
+	// Main: untouched.
+	if got, err := readStore.GetPerson(ctx, main, merged.ID); err != nil || got == nil {
+		t.Errorf("main GetPerson(merged) = %+v (err=%v), want present", got, err)
+	}
+	if got, err := readStore.GetPerson(ctx, main, survivor.ID); err != nil || got == nil || got.BirthPlace != "" {
+		t.Errorf("main GetPerson(survivor) = %+v (err=%v), want no birth place", got, err)
+	}
+	ownerView("main", main, merged.ID, survivor.ID)
+	if got, err := readStore.GetAssociation(ctx, main, witness.ID); err != nil || got == nil ||
+		got.PersonID != merged.ID || got.AssociateID != partner.ID {
+		t.Errorf("main GetAssociation(witness) = %+v (err=%v), want it between the duplicate and the partner", got, err)
 	}
 }

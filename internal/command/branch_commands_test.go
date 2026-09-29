@@ -1669,6 +1669,17 @@ var branchAwareProbes = map[string]func(s driftSeed) domain.Event{
 	"ProofSummaryDeleted": func(s driftSeed) domain.Event {
 		return domain.NewProofSummaryDeleted(s.proofSummary, "branch hypothesis")
 	},
+	// Person merge (#834): the seeded person owns a name, a life event, an
+	// attribute, an association, a citation, a photo and every GPS artifact,
+	// is a partner of the family whose child's pedigree names them, so merging
+	// them away exercises every step of the projection at once.
+	"PersonMerged": func(s driftSeed) domain.Event {
+		return domain.NewPersonMerged(s.partner, s.person,
+			map[string]any{"id": s.person.String()},
+			map[string]any{"birth_place": "London"},
+			[]uuid.UUID{s.family}, []uuid.UUID{s.citation}, []uuid.UUID{s.name},
+			[]uuid.UUID{s.lifeEvent}, []uuid.UUID{s.media})
+	},
 }
 
 // mainRows is the mainline read-model state a branch-scoped projection must

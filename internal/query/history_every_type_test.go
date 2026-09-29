@@ -32,6 +32,9 @@ type everyTypeFixture struct {
 	lifeEvent, attribute, association                         uuid.UUID
 	analysis, conflict, researchLog, proofSummary, branchConf uuid.UUID
 	primaryName                                               uuid.UUID
+	// mergeSurvivor and mergedAway are two branch-only duplicates the branch
+	// merges (#834).
+	mergeSurvivor, mergedAway uuid.UUID
 }
 
 // BranchCompareFixtureEventTypes runs the fixture on a memory store and
@@ -127,6 +130,16 @@ func writeEveryTypeFixture(t *testing.T, ctx context.Context, es repository.Even
 			return domain.PersonCreated{BaseEvent: base(), PersonID: id, GivenName: "Allegra", Surname: "Byron"}
 		},
 		func(id uuid.UUID) domain.Event { return domain.PersonDeleted{BaseEvent: base(), PersonID: id} })
+	// A person merge made on the branch (#834): two branch-only duplicates, the
+	// second folded into the first.
+	f.mergeSurvivor, f.mergedAway = uuid.New(), uuid.New()
+	onBranch(f.mergedAway, "Person", domain.PersonCreated{BaseEvent: base(), PersonID: f.mergedAway, GivenName: "Claire", Surname: "Clairmont"})
+	onBranch(f.mergeSurvivor, "Person",
+		domain.PersonCreated{BaseEvent: base(), PersonID: f.mergeSurvivor, GivenName: "Clara", Surname: "Clairmont"},
+		domain.NewPersonMerged(f.mergeSurvivor, f.mergedAway,
+			map[string]any{"given_name": "Claire", "surname": "Clairmont"},
+			map[string]any{"birth_place": "Bristol"},
+			nil, nil, nil, nil, nil))
 	onBranch(f.family, "Family",
 		domain.FamilyUpdated{BaseEvent: base(), FamilyID: f.family, Changes: map[string]any{"marriage_place": "Ockham"}},
 		domain.ChildLinkedToFamily{BaseEvent: base(), FamilyID: f.family, PersonID: f.associate},
@@ -323,6 +336,17 @@ func TestCompareBranch_EveryBranchWritableType(t *testing.T) {
 			family := byEntity(result.BranchChanges, f.family)
 			assert.Equal(t, "Child linked: Charles Babbage", family[1].Changes["children"].NewValue)
 			assert.Equal(t, "Child unlinked: Charles Babbage", family[2].Changes["children"].NewValue)
+
+			// A person merge on the branch reads as "merged" on the survivor,
+			// naming the person it folded in.
+			merge := byEntity(result.BranchChanges, f.mergeSurvivor)
+			require.Len(t, merge, 2)
+			assert.Equal(t, actionCreated, merge[0].Action)
+			assert.Equal(t, "person", merge[1].EntityType)
+			assert.Equal(t, actionMerged, merge[1].Action)
+			assert.Equal(t, "Clara Clairmont", merge[1].EntityName)
+			assert.Equal(t, FieldChange{NewValue: "Claire Clairmont"}, merge[1].Changes["merged_person"])
+			assert.Equal(t, FieldChange{NewValue: "Bristol"}, merge[1].Changes["birth_place"])
 
 			// A conflict the branch detected is created there.
 			detected := byEntity(result.BranchChanges, f.branchConf)
