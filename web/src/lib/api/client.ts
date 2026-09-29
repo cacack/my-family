@@ -66,6 +66,9 @@ export type BranchMergeConflictError = components['schemas']['BranchMergeConflic
 export type BranchMergeResumeRequest = components['schemas']['BranchMergeResumeRequest'];
 export type BranchMergeResumeResult = components['schemas']['BranchMergeResumeResult'];
 export type BranchMergeResumeError = components['schemas']['BranchMergeResumeError'];
+export type MergeBlocker = components['schemas']['MergeBlocker'];
+export type BranchMergePrecheckRequest = components['schemas']['BranchMergePrecheckRequest'];
+export type BranchMergePrecheckResult = components['schemas']['BranchMergePrecheckResult'];
 /**
  * The side that wins for one entity - `'branch' | 'main'`. Derived from the
  * generated entry rather than hand-written so it cannot drift from the spec's
@@ -2439,6 +2442,23 @@ class ApiClient {
 		return this.request<BranchMergeResult>(
 			'POST',
 			`/branches/${encodeURIComponent(id)}/merge`,
+			req
+		);
+	}
+
+	/**
+	 * The merge blockers the proposed resolutions would be refused with
+	 * (`409 merge_dangling_reference`), without merging (#831). Writes nothing,
+	 * so the review can re-check after every decision. Refusals share the merge's
+	 * codes (`branch_not_active`, `merge_empty`, ...).
+	 */
+	async precheckBranchMerge(
+		id: string,
+		req: BranchMergePrecheckRequest = {}
+	): Promise<BranchMergePrecheckResult> {
+		return this.request<BranchMergePrecheckResult>(
+			'POST',
+			`/branches/${encodeURIComponent(id)}/merge/precheck`,
 			req
 		);
 	}

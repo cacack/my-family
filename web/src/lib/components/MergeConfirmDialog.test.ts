@@ -499,4 +499,58 @@ describe('MergeConfirmDialog', () => {
 			expect(screen.getByText(/Merge Maternal Smith line into the mainline\?/)).toBeDefined();
 		});
 	});
+
+	describe('merge blockers (#831)', () => {
+		it('lists every blocker of a dangling-reference refusal by name, in place of the raw message', async () => {
+			await refuse({
+				code: 'merge_dangling_reference',
+				message: 'merge would leave a reference pointing at an entity main does not have: raw ids',
+				status: 409,
+				blockers: [
+					{
+						stream_id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+						entity_type: 'family',
+						entity_name: 'Smith / Jones',
+						referenced_id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+						referenced_type: 'person',
+						referenced_name: 'Mary Smith',
+						kind: 'missing_person',
+						suggested_resolution: 'include_referenced',
+						message: 'raw'
+					},
+					{
+						stream_id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+						entity_type: 'media',
+						entity_name: '',
+						referenced_id: '12121212-1212-1212-1212-121212121212',
+						referenced_type: 'person',
+						referenced_name: '',
+						kind: 'missing_media_owner',
+						suggested_resolution: 'leave_out',
+						message: 'raw'
+					}
+				]
+			});
+
+			const list = await screen.findByRole('list', { name: 'Merge blockers' });
+			expect(list.querySelectorAll('li')).toHaveLength(2);
+			expect(
+				screen.getByText('Family "Smith / Jones" names person "Mary Smith", who will not exist on the mainline.')
+			).toBeDefined();
+			expect(
+				screen.getByText('Media "Unnamed media" is attached to person "Unnamed person", which will not exist on the mainline.')
+			).toBeDefined();
+			expect(screen.queryByText(/raw ids/)).toBeNull();
+			expect(screen.getByText(/fix them from the merge blockers panel/)).toBeDefined();
+		});
+
+		it('falls back to the server message for a refusal without blockers', async () => {
+			await refuse({
+				code: 'merge_dangling_reference',
+				message: 'an older server said this',
+				status: 409
+			});
+			await waitFor(() => expect(screen.getByText('an older server said this')).toBeDefined());
+		});
+	});
 });

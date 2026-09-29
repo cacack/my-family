@@ -27,7 +27,9 @@ func TestGPSOutcomeOf_MalformedInput(t *testing.T) {
 		if _, err := gpsOutcomeOf(group); err == nil {
 			t.Errorf("%s %s: err = nil, want a decode error", tc.eventType, tc.data)
 		}
-		if err := (&Handler{}).checkGPSSubjectSurvives(context.Background(), group, evidencePlan{}); err == nil ||
+		if err := blockErr(func(l *blockerList) error {
+			return (&Handler{}).checkGPSSubjectSurvives(context.Background(), group, evidencePlan{}, l)
+		}); err == nil ||
 			errors.Is(err, ErrMergeDanglingReference) {
 			t.Errorf("%s %s: checkGPSSubjectSurvives err = %v, want a decode error", tc.eventType, tc.data, err)
 		}

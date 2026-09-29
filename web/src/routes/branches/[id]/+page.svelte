@@ -18,6 +18,12 @@
 	 * Merge affordances appear only while the branch is `active`. A `merged` or
 	 * `archived` branch accepts no further writes, so it keeps the read-only
 	 * conflict rendering below.
+	 *
+	 * Merge blockers (#831): the decisions and exclusions below are re-checked
+	 * with `POST /branches/{id}/merge/precheck` whenever they change, and every
+	 * cross-entity reference the merge would break is listed by name, with a
+	 * one-click fix, and highlighted on the rows involved. "Review & merge" is
+	 * held while any remain.
 	 */
 	import { page } from '$app/stores';
 	import {
@@ -27,12 +33,14 @@
 		type BranchComparisonResult,
 		type BranchMergeRefusal,
 		type BranchMergeResult,
+		type MergeBlocker,
 		type MergeConflict,
 		type MergeResolution
 	} from '$lib/api/client';
 	import { activeBranch, returnToMainline, switchBranch } from '$lib/stores/activeBranch.svelte';
 	import ConflictValues from '$lib/components/ConflictValues.svelte';
 	import DiffView from '$lib/components/DiffView.svelte';
+	import MergeBlockersPanel from '$lib/components/MergeBlockersPanel.svelte';
 	import MergeConflictResolver from '$lib/components/MergeConflictResolver.svelte';
 	import MergeConfirmDialog, {
 		type MergePlan,
@@ -46,6 +54,7 @@
 		entityTypeLabel,
 		unnamedEntityLabel
 	} from '$lib/utils/changeEntries';
+	import { blockedEntityIds, blockerFix } from '$lib/utils/mergeBlockers';
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);
@@ -77,6 +86,19 @@
 	let excluded: Set<string> = $state(new Set());
 	let merging = $state(false);
 	let confirmOpen = $state(false);
+
+	/**
+	 * What the last precheck (or a `409 merge_dangling_reference`) said the
+	 * current decisions would break. Replaced wholesale on every check.
+	 */
+	let blockers: MergeBlocker[] = $state([]);
+	let checkingBlockers = $state(false);
+	let blockerCheckError: string | null = $state(null);
+	/** Orders precheck responses: only the latest request may write. */
+	let precheckRequest = 0;
+	/** How long the decisions must hold still before they are prechecked. */
+	const PRECHECK_DEBOUNCE_MS = 250;
+	const blockedIds = $derived(blockedEntityIds(blockers));
 
 	// `?? ''` so the id is a plain string everywhere below; the `$effect` already
 	// treats an absent id as "nothing to load", and empty is absent.
@@ -154,6 +176,11 @@
 	const undecidedCount = $derived(
 		conflicts.filter((conflict) => !mergeResolutions.has(conflict.stream_id)).length
 	);
+	const blockerLabel = $derived(
+		blockers.length === 0
+			? ''
+			: `${blockers.length} merge blocker${blockers.length === 1 ? '' : 's'} to fix.`
+	);
 	const undecidedLabel = $derived.by(() => {
 		if (!hasChanges) return 'This branch has no changes to merge yet.';
 		if (conflicts.length === 0) return 'No conflicts to resolve.';
@@ -214,6 +241,70 @@
 		excluded = next;
 	}
 
+	/**
+	 * Applies a blocker's suggested fix. "Leave out" excludes the entity at
+	 * fault; "include" undoes whatever left the referenced entity out - its
+	 * exclusion - and, for a conflicted entity, records the branch decision
+	 * that brings it along, whatever was decided before. The precheck effect
+	 * then re-checks, since a fix can surface another blocker.
+	 */
+	function applyBlockerFix(blocker: MergeBlocker) {
+		const { streamId, resolution } = blockerFix(blocker);
+		const next = new Set(excluded);
+		if (resolution === 'main') {
+			next.add(streamId);
+		} else {
+			next.delete(streamId);
+			// A conflicted entity is only included once it is decided for the
+			// branch. It may have been left out by a mainline decision or by its
+			// checkbox alone, with no decision at all; either way the fix records
+			// "branch", or the conflict would go back to needing a decision.
+			if (conflictedStreamIds.has(streamId) && resolutions.get(streamId) !== 'branch') {
+				resolveConflict(streamId, 'branch');
+			}
+		}
+		excluded = next;
+	}
+
+	/**
+	 * Re-checks the merge blockers whenever the decisions that would be sent
+	 * change. Only an active branch with changes can be merged, so only that is
+	 * checked. Writes nothing on the server; a failed check is shown but does
+	 * not hold the merge, which checks for itself.
+	 */
+	async function checkBlockers(id: string, entries: Array<[string, MergeResolution]>) {
+		const request = ++precheckRequest;
+		checkingBlockers = true;
+		try {
+			const result = await api.precheckBranchMerge(id, {
+				resolutions: entries.map(([stream_id, resolution]) => ({ stream_id, resolution }))
+			});
+			if (request !== precheckRequest) return;
+			blockers = result.blockers ?? [];
+			blockerCheckError = null;
+		} catch (e) {
+			if (request !== precheckRequest) return;
+			blockers = [];
+			blockerCheckError = (e as ApiError)?.message || 'the check failed';
+		} finally {
+			if (request === precheckRequest) checkingBlockers = false;
+		}
+	}
+
+	/**
+	 * Debounced, so a burst of clicks (ticking several exclusions, a bulk
+	 * decision) sends one precheck for the decisions it settles on rather
+	 * than one per click. A pending check is dropped when the decisions change
+	 * again or the page goes away.
+	 */
+	$effect(() => {
+		const entries = [...mergeResolutions];
+		const id = comparison?.branch.id;
+		if (!id || !mergeable || !hasChanges) return;
+		const timer = setTimeout(() => checkBlockers(id, entries), PRECHECK_DEBOUNCE_MS);
+		return () => clearTimeout(timer);
+	});
+
 	function formatTimestamp(iso: string): string {
 		return new Date(iso).toLocaleDateString('en-US', {
 			month: 'short',
@@ -270,6 +361,12 @@
 		rationales = new Map();
 		excluded = new Set();
 		confirmOpen = false;
+		// Blockers describe one comparison's decisions, like the decisions do;
+		// bumping the token drops any check still in flight for the old one.
+		precheckRequest++;
+		blockers = [];
+		checkingBlockers = false;
+		blockerCheckError = null;
 		// `merging` is per-comparison too: it disables this page's resolver,
 		// exclusion checkboxes and merge button, and a merge issued for the branch
 		// we just navigated away from must not disable the new one's. It is cleared
@@ -352,6 +449,13 @@
 	 */
 	function handleRefused(refusal: BranchMergeRefusal) {
 		if (mergeComparisonRequest !== comparisonRequest) return;
+		if (refusal.code === 'merge_dangling_reference' && refusal.blockers) {
+			// The merge's own verdict, which the panel shows until the next change.
+			precheckRequest++;
+			checkingBlockers = false;
+			blockers = refusal.blockers;
+			return;
+		}
 		if (refusal.code !== 'merge_conflicts') return;
 		const fresh = refusal.conflicts ?? [];
 		serverConflicts = fresh;
@@ -375,10 +479,12 @@
 				<!-- Branch side only: the mainline's own changes are never "being merged",
 				     so marking them left behind would be meaningless. -->
 				{@const isExcluded = excludable && excluded.has(entry.entity_id)}
+				{@const isBlocked = excludable && mergeable && blockedIds.has(entry.entity_id)}
 				<li
 					class="change-entry"
 					class:contested={conflictedStreamIds.has(entry.entity_id)}
 					class:excluded={isExcluded}
+					class:blocked={isBlocked}
 				>
 					<div class="change-head">
 						<span class="change-time">{formatTimestamp(entry.timestamp)}</span>
@@ -391,6 +497,9 @@
 						{#if isExcluded}
 							<!-- Words, not just the dashed border: the state must not depend on sight. -->
 							<Badge variant="outline">Not merging</Badge>
+						{/if}
+						{#if isBlocked}
+							<Badge variant="outline" class="border-orange-400 text-orange-800">Merge blocker</Badge>
 						{/if}
 					</div>
 					<div class="change-body">
@@ -473,9 +582,12 @@
 				{#if mergeable}
 					<div class="merge-bar">
 						<p class="undecided" role="status">{undecidedLabel}</p>
+						{#if blockerLabel}
+							<p class="undecided blocker-count" role="status">{blockerLabel}</p>
+						{/if}
 						<Button
 							onclick={() => (confirmOpen = true)}
-							disabled={!hasChanges || undecidedCount > 0 || merging}
+							disabled={!hasChanges || undecidedCount > 0 || blockers.length > 0 || merging}
 						>
 							Review &amp; merge
 						</Button>
@@ -489,6 +601,16 @@
 				One or both sides hit the read cap, so this comparison is <strong>partial</strong>. More
 				changes exist than are shown below.
 			</div>
+		{/if}
+
+		{#if mergeable}
+			<MergeBlockersPanel
+				{blockers}
+				checking={checkingBlockers}
+				error={blockerCheckError}
+				onfix={applyBlockerFix}
+				disabled={merging}
+			/>
 		{/if}
 
 		<section class="verdict">
@@ -522,6 +644,7 @@
 					onresolveall={resolveConflicts}
 					{rationales}
 					onrationale={setRationale}
+					blocked={blockedIds}
 					disabled={merging}
 				/>
 			{:else}
@@ -827,6 +950,17 @@
 
 	.change-entry.contested {
 		border-color: #fca5a5;
+	}
+
+	/* Alongside the "Merge blocker" badge, so it never rests on colour alone. */
+	.change-entry.blocked {
+		border-color: #fb923c;
+		box-shadow: 0 0 0 1px #fb923c;
+	}
+
+	.blocker-count {
+		color: #9a3412;
+		font-weight: 500;
 	}
 
 	/* Dashed and dimmed, alongside the "Not merging" badge - shape and words, so

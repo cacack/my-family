@@ -706,6 +706,60 @@ func (e MediaUpdateMediaType) Valid() bool {
 	}
 }
 
+// Defines values for MergeBlockerKind.
+const (
+	MissingGpsArtifact          MergeBlockerKind = "missing_gps_artifact"
+	MissingGpsSubject           MergeBlockerKind = "missing_gps_subject"
+	MissingMediaOwner           MergeBlockerKind = "missing_media_owner"
+	MissingPerson               MergeBlockerKind = "missing_person"
+	MissingSource               MergeBlockerKind = "missing_source"
+	OwnerDeleteOrphansMedia     MergeBlockerKind = "owner_delete_orphans_media"
+	SourceDeleteOrphansCitation MergeBlockerKind = "source_delete_orphans_citation"
+	SubjectDeleteOrphansGps     MergeBlockerKind = "subject_delete_orphans_gps"
+)
+
+// Valid indicates whether the value is a known member of the MergeBlockerKind enum.
+func (e MergeBlockerKind) Valid() bool {
+	switch e {
+	case MissingGpsArtifact:
+		return true
+	case MissingGpsSubject:
+		return true
+	case MissingMediaOwner:
+		return true
+	case MissingPerson:
+		return true
+	case MissingSource:
+		return true
+	case OwnerDeleteOrphansMedia:
+		return true
+	case SourceDeleteOrphansCitation:
+		return true
+	case SubjectDeleteOrphansGps:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeBlockerSuggestedResolution.
+const (
+	IncludeReferenced MergeBlockerSuggestedResolution = "include_referenced"
+	LeaveOut          MergeBlockerSuggestedResolution = "leave_out"
+)
+
+// Valid indicates whether the value is a known member of the MergeBlockerSuggestedResolution enum.
+func (e MergeBlockerSuggestedResolution) Valid() bool {
+	switch e {
+	case IncludeReferenced:
+		return true
+	case LeaveOut:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MergeConflictDeletedBy.
 const (
 	MergeConflictDeletedByBranch MergeConflictDeletedBy = "branch"
@@ -2203,6 +2257,10 @@ type BranchList struct {
 // BranchMergeConflictError A refused merge. Shares `code`/`message` with the standard `Error`
 // shape and adds the conflict list the `merge_conflicts` code needs.
 type BranchMergeConflictError struct {
+	// Blockers Present only for `merge_dangling_reference`: every reference the
+	// merge would break, not just the first (#831).
+	Blockers *[]MergeBlocker `json:"blockers,omitempty"`
+
 	// Code Which refusal this is - see the operation's 409 description
 	Code BranchMergeConflictErrorCode `json:"code"`
 
@@ -2217,6 +2275,20 @@ type BranchMergeConflictError struct {
 
 // BranchMergeConflictErrorCode Which refusal this is - see the operation's 409 description
 type BranchMergeConflictErrorCode string
+
+// BranchMergePrecheckRequest The resolutions a merge would be sent with.
+type BranchMergePrecheckRequest struct {
+	// Resolutions As for `BranchMergeRequest.resolutions`: conflict decisions and
+	// exclusions (`main` for an entity left out). A `rationale` is
+	// accepted and ignored. A `stream_id` may appear at most once.
+	Resolutions *[]MergeResolutionEntry `json:"resolutions,omitempty"`
+}
+
+// BranchMergePrecheckResult What would block the proposed merge.
+type BranchMergePrecheckResult struct {
+	// Blockers Every merge blocker, in replay order. `[]`, never `null`, when the merge is clear.
+	Blockers []MergeBlocker `json:"blockers"`
+}
 
 // BranchMergeRequest What to do with the merge. Both properties are optional; an empty object
 // merges a conflict-free branch with no note.
@@ -2266,6 +2338,10 @@ type BranchMergeResult struct {
 // BranchMergeResumeError A refused resume. Shares `code`/`message` with the standard `Error`
 // shape and adds the pending entity list.
 type BranchMergeResumeError struct {
+	// Blockers Present only for `merge_dangling_reference`: every reference the
+	// resolutions given would break (#831).
+	Blockers *[]MergeBlocker `json:"blockers,omitempty"`
+
 	// Code Which refusal this is - see the operation's 409 description
 	Code BranchMergeResumeErrorCode `json:"code"`
 
@@ -3408,6 +3484,79 @@ type MediaUpdate struct {
 
 // MediaUpdateMediaType defines model for MediaUpdate.MediaType.
 type MediaUpdateMediaType string
+
+// MergeBlocker One cross-entity reference a merge (or resume) would break (#831): the
+// entity whose branch changes break it, and the entity it references or
+// would cascade onto.
+type MergeBlocker struct {
+	// EntityName Its display name, or `""` when nothing names it.
+	EntityName string `json:"entity_name"`
+
+	// EntityType Its type, in the change-entry vocabulary (`family`, `citation`, `media`, `evidence_analysis`, ...).
+	EntityType string `json:"entity_type"`
+
+	// Kind - `missing_person` - a family partner or child link, or an
+	//   association, names a person the mainline will not have.
+	// - `missing_source` - a citation cites a source the mainline will
+	//   not have.
+	// - `source_delete_orphans_citation` - a source delete would also
+	//   delete a mainline citation of it.
+	// - `missing_media_owner` - a media item is attached to a person,
+	//   family or source the mainline will not have.
+	// - `owner_delete_orphans_media` - an owner delete would also delete
+	//   a mainline media item the branch never saw.
+	// - `missing_gps_artifact` - the branch edits GPS research the
+	//   mainline no longer has (`referenced_id` is that research).
+	// - `missing_gps_subject` - GPS research is about a person or family
+	//   the mainline will not have.
+	// - `subject_delete_orphans_gps` - a person or family delete would
+	//   also delete mainline GPS research the branch never saw.
+	Kind MergeBlockerKind `json:"kind"`
+
+	// Message The refusal in words (ids, not names).
+	Message string `json:"message"`
+
+	// ReferencedId The entity it references, or would cascade onto.
+	ReferencedId openapi_types.UUID `json:"referenced_id"`
+
+	// ReferencedName The referenced entity's display name, or `""` when nothing names it.
+	ReferencedName string `json:"referenced_name"`
+
+	// ReferencedType The referenced entity's type, in the same vocabulary.
+	ReferencedType string `json:"referenced_type"`
+
+	// StreamId The entity whose branch changes break the reference.
+	StreamId openapi_types.UUID `json:"stream_id"`
+
+	// SuggestedResolution The one-step fix: `leave_out` resolves `stream_id` to `main`;
+	// `include_referenced` resolves `referenced_id` to `branch` (offered
+	// when a `main` resolution is what excluded it).
+	SuggestedResolution MergeBlockerSuggestedResolution `json:"suggested_resolution"`
+}
+
+// MergeBlockerKind - `missing_person` - a family partner or child link, or an
+//
+//		association, names a person the mainline will not have.
+//	  - `missing_source` - a citation cites a source the mainline will
+//	    not have.
+//	  - `source_delete_orphans_citation` - a source delete would also
+//	    delete a mainline citation of it.
+//	  - `missing_media_owner` - a media item is attached to a person,
+//	    family or source the mainline will not have.
+//	  - `owner_delete_orphans_media` - an owner delete would also delete
+//	    a mainline media item the branch never saw.
+//	  - `missing_gps_artifact` - the branch edits GPS research the
+//	    mainline no longer has (`referenced_id` is that research).
+//	  - `missing_gps_subject` - GPS research is about a person or family
+//	    the mainline will not have.
+//	  - `subject_delete_orphans_gps` - a person or family delete would
+//	    also delete mainline GPS research the branch never saw.
+type MergeBlockerKind string
+
+// MergeBlockerSuggestedResolution The one-step fix: `leave_out` resolves `stream_id` to `main`;
+// `include_referenced` resolves `referenced_id` to `branch` (offered
+// when a `main` resolution is what excluded it).
+type MergeBlockerSuggestedResolution string
 
 // MergeConflict One entity the branch and the mainline changed incompatibly. At most one
 // conflict is reported per entity; when several kinds apply the most
@@ -6203,6 +6352,9 @@ type CreateBranchJSONRequestBody = BranchCreate
 // MergeBranchJSONRequestBody defines body for MergeBranch for application/json ContentType.
 type MergeBranchJSONRequestBody = BranchMergeRequest
 
+// PrecheckBranchMergeJSONRequestBody defines body for PrecheckBranchMerge for application/json ContentType.
+type PrecheckBranchMergeJSONRequestBody = BranchMergePrecheckRequest
+
 // ResumeBranchMergeJSONRequestBody defines body for ResumeBranchMerge for application/json ContentType.
 type ResumeBranchMergeJSONRequestBody = BranchMergeResumeRequest
 
@@ -6367,6 +6519,9 @@ type ServerInterface interface {
 	// Merge a branch into the mainline
 	// (POST /branches/{id}/merge)
 	MergeBranch(ctx echo.Context, id BranchId) error
+	// List what would block merging a branch with the proposed resolutions
+	// (POST /branches/{id}/merge/precheck)
+	PrecheckBranchMerge(ctx echo.Context, id BranchId) error
 	// Finish a merge whose replay onto the mainline was interrupted
 	// (POST /branches/{id}/merge/resume)
 	ResumeBranchMerge(ctx echo.Context, id BranchId) error
@@ -7073,6 +7228,22 @@ func (w *ServerInterfaceWrapper) MergeBranch(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.MergeBranch(ctx, id)
+	return err
+}
+
+// PrecheckBranchMerge converts echo context to params.
+func (w *ServerInterfaceWrapper) PrecheckBranchMerge(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PrecheckBranchMerge(ctx, id)
 	return err
 }
 
@@ -10656,6 +10827,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/branches/:id", wrapper.GetBranch, options.OperationMiddlewares["getBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge", wrapper.MergeBranch, options.OperationMiddlewares["mergeBranch"]...)
+	router.POST(options.BaseURL+"/branches/:id/merge/precheck", wrapper.PrecheckBranchMerge, options.OperationMiddlewares["precheckBranchMerge"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge/resume", wrapper.ResumeBranchMerge, options.OperationMiddlewares["resumeBranchMerge"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
@@ -11462,6 +11634,87 @@ type MergeBranch503JSONResponse struct {
 }
 
 func (response MergeBranch503JSONResponse) VisitMergeBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrecheckBranchMergeRequestObject struct {
+	Id   BranchId `json:"id"`
+	Body *PrecheckBranchMergeJSONRequestBody
+}
+
+type PrecheckBranchMergeResponseObject interface {
+	VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error
+}
+
+type PrecheckBranchMerge200JSONResponse BranchMergePrecheckResult
+
+func (response PrecheckBranchMerge200JSONResponse) VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrecheckBranchMerge400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PrecheckBranchMerge400JSONResponse) VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrecheckBranchMerge404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PrecheckBranchMerge404JSONResponse) VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrecheckBranchMerge409JSONResponse BranchMergeConflictError
+
+func (response PrecheckBranchMerge409JSONResponse) VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PrecheckBranchMerge503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response PrecheckBranchMerge503JSONResponse) VisitPrecheckBranchMergeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -17542,6 +17795,9 @@ type StrictServerInterface interface {
 	// Merge a branch into the mainline
 	// (POST /branches/{id}/merge)
 	MergeBranch(ctx context.Context, request MergeBranchRequestObject) (MergeBranchResponseObject, error)
+	// List what would block merging a branch with the proposed resolutions
+	// (POST /branches/{id}/merge/precheck)
+	PrecheckBranchMerge(ctx context.Context, request PrecheckBranchMergeRequestObject) (PrecheckBranchMergeResponseObject, error)
 	// Finish a merge whose replay onto the mainline was interrupted
 	// (POST /branches/{id}/merge/resume)
 	ResumeBranchMerge(ctx context.Context, request ResumeBranchMergeRequestObject) (ResumeBranchMergeResponseObject, error)
@@ -18319,6 +18575,40 @@ func (sh *strictHandler) MergeBranch(ctx echo.Context, id BranchId) error {
 		return err
 	} else if validResponse, ok := response.(MergeBranchResponseObject); ok {
 		return validResponse.VisitMergeBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// PrecheckBranchMerge operation middleware
+func (sh *strictHandler) PrecheckBranchMerge(ctx echo.Context, id BranchId) error {
+	var request PrecheckBranchMergeRequestObject
+
+	request.Id = id
+
+	var body PrecheckBranchMergeJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return err
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PrecheckBranchMerge(ctx.Request().Context(), request.(PrecheckBranchMergeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrecheckBranchMerge")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PrecheckBranchMergeResponseObject); ok {
+		return validResponse.VisitPrecheckBranchMergeResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

@@ -263,7 +263,7 @@ type evidencePlan struct {
 	undecided map[uuid.UUID]bool
 }
 
-// validateNoDanglingEvidence is the evidence and media half of
+// collectEvidenceBlockers is the evidence and media half of
 // validateNoDanglingReferences (#758, #759). A citation lives on its own
 // stream and names a source on another, and a media item names its owner on
 // another, so per-aggregate resolutions and per-aggregate conflict detection
@@ -313,10 +313,11 @@ type evidencePlan struct {
 //     store's cascade would delete them from main with no event and no
 //     conflict shown (the GPS counterpart of checkSourceDeleteOrphansNothing).
 //
-// All are refused before the claim, like the dangling child link. ResumeMerge
-// applies the same rules through checkEvidence (see
+// All are refused before the claim, like the dangling child link; every
+// breach is collected into list rather than stopping at the first (#831).
+// ResumeMerge applies the same rules through checkEvidence (see
 // danglingAutoPlannedStreams and validateResumeReferences).
-func (h *Handler) validateNoDanglingEvidence(ctx context.Context, mergePlan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
+func (h *Handler) collectEvidenceBlockers(ctx context.Context, mergePlan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution, list *blockerList) error {
 	plan := evidencePlan{
 		replayed:     make(map[uuid.UUID]streamGroup, len(groups)),
 		order:        replayOrder(groups),
@@ -345,7 +346,7 @@ func (h *Handler) validateNoDanglingEvidence(ctx context.Context, mergePlan *que
 		if _, ok := plan.replayed[group.streamID]; !ok {
 			continue
 		}
-		if err := h.checkEvidence(ctx, group, plan); err != nil {
+		if err := h.checkEvidence(ctx, group, plan, list); err != nil {
 			return err
 		}
 	}
@@ -363,25 +364,25 @@ func replayOrder(groups []streamGroup) map[uuid.UUID]int {
 
 // checkEvidence applies the evidence rules — the two citation/source rules
 // (#758), the two media-owner rules (#759) and the three GPS artifact rules
-// (#760) — to one stream the replay will append. A refusal wraps
-// ErrMergeDanglingReference; any other error is a failure to check.
-func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evidencePlan) error {
-	if err := h.checkCitationSourceSurvives(ctx, group, plan); err != nil {
+// (#760) — to one stream the replay will append. Every breach is added to
+// list as a blocker; an error is a failure to check.
+func (h *Handler) checkEvidence(ctx context.Context, group streamGroup, plan evidencePlan, list *blockerList) error {
+	if err := h.checkCitationSourceSurvives(ctx, group, plan, list); err != nil {
 		return err
 	}
-	if err := h.checkSourceDeleteOrphansNothing(ctx, group, plan.replayed); err != nil {
+	if err := h.checkSourceDeleteOrphansNothing(ctx, group, plan.replayed, list); err != nil {
 		return err
 	}
-	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, group, plan); err != nil {
+	if err := h.checkOwnerDeleteOrphansNoMedia(ctx, group, plan, list); err != nil {
 		return err
 	}
-	if err := h.checkMediaOwnerSurvives(ctx, group, plan); err != nil {
+	if err := h.checkMediaOwnerSurvives(ctx, group, plan, list); err != nil {
 		return err
 	}
-	if err := h.checkGPSSubjectSurvives(ctx, group, plan); err != nil {
+	if err := h.checkGPSSubjectSurvives(ctx, group, plan, list); err != nil {
 		return err
 	}
-	return h.checkSubjectDeleteOrphansNoGPS(ctx, group, plan)
+	return h.checkSubjectDeleteOrphansNoGPS(ctx, group, plan, list)
 }
 
 // mediaOwnerDeleteEvents maps a media owner's entity type to the event that
@@ -446,15 +447,16 @@ func groupDeletes(group streamGroup, eventType string) bool {
 // other way round — or, on a resume, already landed on main — the upload would
 // land on an owner that is already gone. On a resume an owner main removed
 // since the claim is gone whatever its replayed stream holds.
-func (h *Handler) checkMediaOwnerSurvives(ctx context.Context, group streamGroup, plan evidencePlan) error {
+func (h *Handler) checkMediaOwnerSurvives(ctx context.Context, group streamGroup, plan evidencePlan, list *blockerList) error {
 	entityType, entityID, ok, err := mediaUploadOf(group)
 	if err != nil || !ok {
 		return err
 	}
 	deleteEvent, known := mediaOwnerDeleteEvents[entityType]
 	if !known {
-		return fmt.Errorf("%w: the branch's media %s is attached to an unknown entity type %q",
-			ErrMergeDanglingReference, group.streamID, entityType)
+		list.add(streamBlocker(group, BlockerMissingMediaOwner, entityID, entityType,
+			"the branch's media %s is attached to an unknown entity type %q", group.streamID, entityType))
+		return nil
 	}
 	if ownerGroup, replaysOwner := plan.replayed[entityID]; replaysOwner {
 		deletesLater := groupDeletes(ownerGroup, deleteEvent) &&
@@ -471,10 +473,11 @@ func (h *Handler) checkMediaOwnerSurvives(ctx context.Context, group streamGroup
 			return nil
 		}
 	}
-	return fmt.Errorf(
-		"%w: the branch's media %s is attached to %s %s, but that %s will not exist on main when the media lands "+
+	list.add(streamBlocker(group, BlockerMissingMediaOwner, entityID, entityType,
+		"the branch's media %s is attached to %s %s, but that %s will not exist on main when the media lands "+
 			"(deleted there, excluded by a \"main\" resolution, or deleted earlier in the replay)",
-		ErrMergeDanglingReference, group.streamID, entityType, entityID, entityType)
+		group.streamID, entityType, entityID, entityType))
+	return nil
 }
 
 // mediaOwnerOnMain reports whether main currently has the given media owner.
@@ -505,7 +508,7 @@ func (h *Handler) mediaOwnerOnMain(ctx context.Context, entityType string, entit
 // source will not exist on main once the replay is done. Only the FINAL source
 // matters: a citation created on a source and later re-pointed lands on the
 // second one, and one the branch deleted cites nothing.
-func (h *Handler) checkCitationSourceSurvives(ctx context.Context, group streamGroup, plan evidencePlan) error {
+func (h *Handler) checkCitationSourceSurvives(ctx context.Context, group streamGroup, plan evidencePlan, list *blockerList) error {
 	outcome, err := citationOutcomeOf(group)
 	if err != nil {
 		return err
@@ -517,10 +520,11 @@ func (h *Handler) checkCitationSourceSurvives(ctx context.Context, group streamG
 	if err != nil || survives {
 		return err
 	}
-	return fmt.Errorf(
-		"%w: the branch's citation %s cites source %s, but that source will not exist on main "+
+	list.add(streamBlocker(group, BlockerMissingSource, outcome.sourceID, "source",
+		"the branch's citation %s cites source %s, but that source will not exist on main "+
 			"(deleted there, or excluded by a \"main\" resolution)",
-		ErrMergeDanglingReference, group.streamID, outcome.sourceID)
+		group.streamID, outcome.sourceID))
+	return nil
 }
 
 // sourceSurvivesReplay reports whether main will have a source once the
@@ -541,7 +545,7 @@ func (h *Handler) sourceSurvivesReplay(ctx context.Context, sourceID uuid.UUID, 
 // checkSourceDeleteOrphansNothing refuses a replayed SourceDeleted while main
 // has a citation of that source the replay does not itself delete or re-point
 // elsewhere.
-func (h *Handler) checkSourceDeleteOrphansNothing(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup) error {
+func (h *Handler) checkSourceDeleteOrphansNothing(ctx context.Context, group streamGroup, replayed map[uuid.UUID]streamGroup, list *blockerList) error {
 	if !groupDeletesSource(group) {
 		return nil
 	}
@@ -559,10 +563,10 @@ func (h *Handler) checkSourceDeleteOrphansNothing(ctx context.Context, group str
 				continue
 			}
 		}
-		return fmt.Errorf(
-			"%w: the branch deletes source %s, but main's citation %s still cites it; "+
+		list.add(streamBlocker(group, BlockerSourceDeleteOrphansCitation, citation.ID, "citation",
+			"the branch deletes source %s, but main's citation %s still cites it; "+
 				"merging would delete that citation from main with no record",
-			ErrMergeDanglingReference, group.streamID, citation.ID)
+			group.streamID, citation.ID))
 	}
 	return nil
 }
@@ -612,13 +616,14 @@ func ownerDeleteOf(group streamGroup) (entityType string, deletedAt int64, ok bo
 // stream, which the merge's conflict detection (or, on resume, the plan's
 // staleness pin) already puts in front of the caller.
 //
-// The work is one media listing per owner-deleting stream and one set-based
-// query for the first main event on the listed items' streams after the
-// branch's delete — never a read per item, and never those items' histories
-// (whose MediaCreated events carry the file bytes). Only a resume's landed
+// The work is one media listing per owner-deleting stream and one set-based,
+// limit-one query for the first main event on the listed items' streams after
+// the branch's delete, repeated once per offending item so every one is
+// reported (#831) — never a read per listed item, and never those items'
+// histories (whose MediaCreated events carry the file bytes). Only a resume's landed
 // items, which need the landed replay's own events to locate "after landing",
 // are read in full, in one set-based read.
-func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group streamGroup, plan evidencePlan) error {
+func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group streamGroup, plan evidencePlan, list *blockerList) error {
 	entityType, deletedAt, ok := ownerDeleteOf(group)
 	if !ok {
 		return nil
@@ -656,10 +661,10 @@ func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group stre
 				return err
 			}
 			if later != nil {
-				return fmt.Errorf(
-					"%w: the branch deletes %s %s, but main changed its media %s (%s at position %d) after the branch's "+
+				list.add(streamBlocker(group, BlockerOwnerDeleteOrphansMedia, mediaID, "media",
+					"the branch deletes %s %s, but main changed its media %s (%s at position %d) after the branch's "+
 						"own changes to it landed; merging would delete it from main with no record",
-					ErrMergeDanglingReference, entityType, group.streamID, mediaID, later.EventType, later.Position)
+					entityType, group.streamID, mediaID, later.EventType, later.Position))
 			}
 		}
 	}
@@ -667,22 +672,21 @@ func (h *Handler) checkOwnerDeleteOrphansNoMedia(ctx context.Context, group stre
 		return nil
 	}
 	// Any main event on a candidate's stream after the branch's delete refuses
-	// the merge, so one query for the first such event across all candidates
-	// answers the question. The limit of one keeps it from materializing the
+	// the merge. Each offending item is found with a limit-one read across the
+	// candidates still unreported, which keeps it from materializing the
 	// items' histories: a MediaCreated carries the file and thumbnail bytes,
 	// and only an offending event's position and type are needed.
-	later, err := h.eventStore.ReadStreamsForBranch(ctx, candidates, domain.MainBranchID, deletedAt, 1)
+	later, err := h.firstMainWritesAfter(ctx, candidates, deletedAt)
 	if err != nil {
 		return fmt.Errorf("checking main changes to media of %s %s: %w", entityType, group.streamID, err)
 	}
-	if len(later) == 0 {
-		return nil
+	for _, evt := range later {
+		list.add(streamBlocker(group, BlockerOwnerDeleteOrphansMedia, evt.StreamID, "media",
+			"the branch deletes %s %s, but main's media %s attached to it changed after that delete "+
+				"(%s at position %d), so the branch never saw it; merging would delete it from main with no record",
+			entityType, group.streamID, evt.StreamID, evt.EventType, evt.Position))
 	}
-	evt := later[0]
-	return fmt.Errorf(
-		"%w: the branch deletes %s %s, but main's media %s attached to it changed after that delete "+
-			"(%s at position %d), so the branch never saw it; merging would delete it from main with no record",
-		ErrMergeDanglingReference, entityType, group.streamID, evt.StreamID, evt.EventType, evt.Position)
+	return nil
 }
 
 // mainWriteAfterLanding returns main's first event on a landed stream that

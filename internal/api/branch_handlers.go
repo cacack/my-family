@@ -334,7 +334,13 @@ func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (Mer
 		return refuse(MainTooFarAhead)
 
 	case errors.Is(err, command.ErrMergeDanglingReference):
-		return refuse(MergeDanglingReference)
+		// Every blocker travels with the refusal, named, so the review can
+		// show them all and offer each one's fix (#831).
+		return MergeBranch409JSONResponse{
+			Code:     MergeDanglingReference,
+			Message:  err.Error(),
+			Blockers: mergeBlockersOf(err),
+		}, nil
 
 	case errors.Is(err, command.ErrUnknownResolution),
 		errors.Is(err, command.ErrUnsupportedResolution):
@@ -388,6 +394,96 @@ func mergeBranchErrorResponse(result *command.MergeBranchResult, err error) (Mer
 	}
 
 	return nil, err
+}
+
+// PrecheckBranchMerge implements StrictServerInterface. It reports the merge
+// blockers the proposed resolutions would be refused with, writing nothing
+// (#831); see command.Handler.PrecheckMerge.
+func (ss *StrictServer) PrecheckBranchMerge(ctx context.Context, request PrecheckBranchMergeRequestObject) (PrecheckBranchMergeResponseObject, error) {
+	if ss.server.branchStore == nil {
+		return PrecheckBranchMerge503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+	input := command.PrecheckMergeInput{BranchID: request.Id}
+	if request.Body != nil {
+		resolutions, _, err := convertGeneratedResolutionsToCommand(request.Body.Resolutions)
+		if err != nil {
+			return PrecheckBranchMerge400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_resolution",
+				Message: err.Error(),
+			}}, nil
+		}
+		input.Resolutions = resolutions
+	}
+
+	blockers, err := ss.server.commandHandler.PrecheckMerge(ctx, input)
+	if err != nil {
+		return precheckBranchMergeErrorResponse(err)
+	}
+	return PrecheckBranchMerge200JSONResponse{Blockers: convertMergeBlockersToGenerated(blockers)}, nil
+}
+
+// precheckBranchMergeErrorResponse maps the refusals a precheck shares with
+// the merge onto its responses. Unrecognized errors go to customErrorHandler
+// as a 500.
+func precheckBranchMergeErrorResponse(err error) (PrecheckBranchMergeResponseObject, error) {
+	refuse := func(code BranchMergeConflictErrorCode) (PrecheckBranchMergeResponseObject, error) {
+		return PrecheckBranchMerge409JSONResponse{Code: code, Message: err.Error()}, nil
+	}
+	switch {
+	case errors.Is(err, command.ErrBranchNotActive):
+		return refuse(BranchNotActive)
+	case errors.Is(err, command.ErrBranchTooLargeToMerge):
+		return refuse(BranchTooLarge)
+	case errors.Is(err, command.ErrMainTooFarAheadToMerge):
+		return refuse(MainTooFarAhead)
+	case errors.Is(err, command.ErrMergeEmpty):
+		return refuse(MergeEmpty)
+	case errors.Is(err, command.ErrUnknownResolution),
+		errors.Is(err, command.ErrUnsupportedResolution):
+		return PrecheckBranchMerge400JSONResponse{BadRequestJSONResponse{
+			Code:    "invalid_resolution",
+			Message: err.Error(),
+		}}, nil
+	case errors.Is(err, repository.ErrBranchNotFound):
+		return PrecheckBranchMerge404JSONResponse{NotFoundJSONResponse{
+			Code:    "not_found",
+			Message: "Branch not found",
+		}}, nil
+	case errors.Is(err, command.ErrBranchStoreRequired):
+		return PrecheckBranchMerge503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+	return nil, err
+}
+
+// mergeBlockersOf returns the blockers a merge or resume refusal carries, or
+// nil when it carries none.
+func mergeBlockersOf(err error) *[]MergeBlocker {
+	var blocked *command.MergeBlockedError
+	if !errors.As(err, &blocked) {
+		return nil
+	}
+	converted := convertMergeBlockersToGenerated(blocked.Blockers)
+	return &converted
+}
+
+// convertMergeBlockersToGenerated converts command blockers, always returning
+// a non-nil slice so the JSON payload carries [] rather than null.
+func convertMergeBlockersToGenerated(blockers []command.MergeBlocker) []MergeBlocker {
+	out := make([]MergeBlocker, len(blockers))
+	for i, b := range blockers {
+		out[i] = MergeBlocker{
+			StreamId:            b.StreamID,
+			EntityType:          b.EntityType,
+			EntityName:          b.EntityName,
+			ReferencedId:        b.ReferencedID,
+			ReferencedType:      b.ReferencedType,
+			ReferencedName:      b.ReferencedName,
+			Kind:                MergeBlockerKind(b.Kind),
+			SuggestedResolution: MergeBlockerSuggestedResolution(b.SuggestedResolution),
+			Message:             b.Message,
+		}
+	}
+	return out
 }
 
 // ResumeBranchMerge implements StrictServerInterface. It finishes a merge whose
@@ -453,7 +549,11 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 		return refuse(ResumeMergeNotClaimed)
 
 	case errors.Is(err, command.ErrMergeDanglingReference):
-		return refuse(ResumeDanglingReference)
+		return ResumeBranchMerge409JSONResponse{
+			Code:     ResumeDanglingReference,
+			Message:  err.Error(),
+			Blockers: mergeBlockersOf(err),
+		}, nil
 
 	case errors.Is(err, command.ErrBranchTooLargeToMerge):
 		return refuse(ResumeBranchTooLarge)

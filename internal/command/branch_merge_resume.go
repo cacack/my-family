@@ -373,7 +373,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	// resolution made here can replay a reference to a person main no longer
 	// has, and a "main" one can exclude a person a stream already on main
 	// references.
-	if err := h.validateResumeReferences(ctx, groups, decision.steps, view, input.Resolutions); err != nil {
+	if err := h.validateResumeReferences(ctx, branch.ID, groups, decision.steps, view, input.Resolutions); err != nil {
 		return nil, err
 	}
 
@@ -811,15 +811,15 @@ func (h *Handler) danglingAutoPlannedStreams(
 	}
 	flagged := make(map[uuid.UUID]bool, len(dangling))
 	for _, d := range dangling {
-		flagged[d.streamID] = true
+		flagged[d.group.streamID] = true
 	}
 	for _, group := range auto {
-		err := h.checkEvidence(ctx, group, evidence)
-		switch {
-		case errors.Is(err, ErrMergeDanglingReference):
-			flagged[group.streamID] = true
-		case err != nil:
+		var list blockerList
+		if err := h.checkEvidence(ctx, group, evidence, &list); err != nil {
 			return nil, err
+		}
+		if list.len() > 0 {
+			flagged[group.streamID] = true
 		}
 	}
 	if len(flagged) == 0 {
@@ -850,12 +850,35 @@ func (h *Handler) danglingAutoPlannedStreams(
 //     be replayed passes checkEvidence against the landed and replayed
 //     streams, and a landed citation may not lose its source to this call's
 //     "main" resolution of the stream that creates it.
+//
+// Every breach is reported as a named blocker on one *MergeBlockedError
+// (#831). A stream about to be replayed is fixed by resolving it to main; a
+// landed stream cannot be, so its blocker suggests resolving the referenced
+// entity to branch instead.
 func (h *Handler) validateResumeReferences(
+	ctx context.Context,
+	branchID uuid.UUID,
+	groups []streamGroup,
+	steps []resumeStep,
+	view resumeView,
+	resolutions map[uuid.UUID]MergeResolution,
+) error {
+	var list blockerList
+	if err := h.collectResumeBlockers(ctx, groups, steps, view, resolutions, &list); err != nil {
+		return err
+	}
+	return h.refusal(ctx, branchID, &list)
+}
+
+// collectResumeBlockers adds every breach validateResumeReferences refuses to
+// list.
+func (h *Handler) collectResumeBlockers(
 	ctx context.Context,
 	groups []streamGroup,
 	steps []resumeStep,
 	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
+	list *blockerList,
 ) error {
 	replayed := make(map[uuid.UUID]bool, len(groups))
 	for id, onMain := range view.landed {
@@ -870,8 +893,8 @@ func (h *Handler) validateResumeReferences(
 	if err != nil {
 		return err
 	}
-	if len(dangling) > 0 {
-		return dangling[0].err()
+	for _, d := range dangling {
+		list.add(d.blocker())
 	}
 
 	var landedGroups []streamGroup
@@ -888,14 +911,15 @@ func (h *Handler) validateResumeReferences(
 	if err != nil {
 		return err
 	}
-	if len(dangling) > 0 {
-		d := dangling[0]
-		return fmt.Errorf(
-			"%w: stream %s is already on main and references person %s, whom main does not have; "+
+	for _, d := range dangling {
+		b := streamBlocker(d.group, BlockerMissingPerson, d.personID, "person",
+			"stream %s is already on main and references person %s, whom main does not have; "+
 				"resolving that person to main would leave the reference dangling — resolve them to branch instead",
-			ErrMergeDanglingReference, d.streamID, d.personID)
+			d.group.streamID, d.personID)
+		b.SuggestedResolution = FixIncludeReferenced
+		list.add(b)
 	}
-	return h.validateResumeEvidence(ctx, groups, steps, view, resolutions)
+	return h.validateResumeEvidence(ctx, groups, steps, view, resolutions, list)
 }
 
 // validateResumeEvidence is validateResumeReferences' evidence half: the
@@ -905,13 +929,14 @@ func (h *Handler) validateResumeReferences(
 // it, nor a media owner main does not have while a media upload already on
 // main is attached to it (checkLandedMediaOwners), nor a GPS subject main does
 // not have while a GPS artifact already on main is about it
-// (checkLandedGPSSubjects).
+// (checkLandedGPSSubjects). Every breach is added to list.
 func (h *Handler) validateResumeEvidence(
 	ctx context.Context,
 	groups []streamGroup,
 	steps []resumeStep,
 	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
+	list *blockerList,
 ) error {
 	evidence := evidencePlan{
 		replayed:     make(map[uuid.UUID]streamGroup, len(groups)),
@@ -931,7 +956,7 @@ func (h *Handler) validateResumeEvidence(
 		evidence.replayed[step.group.streamID] = step.group
 	}
 	for _, step := range steps {
-		if err := h.checkEvidence(ctx, step.group, evidence); err != nil {
+		if err := h.checkEvidence(ctx, step.group, evidence, list); err != nil {
 			return err
 		}
 	}
@@ -953,16 +978,18 @@ func (h *Handler) validateResumeEvidence(
 			return fmt.Errorf("checking source %s on main: %w", outcome.sourceID, err)
 		}
 		if source == nil {
-			return fmt.Errorf(
-				"%w: citation %s is already on main and cites source %s, which main does not have; "+
+			b := streamBlocker(group, BlockerMissingSource, outcome.sourceID, "source",
+				"citation %s is already on main and cites source %s, which main does not have; "+
 					"resolving that source to main would leave the citation orphaned — resolve it to branch instead",
-				ErrMergeDanglingReference, group.streamID, outcome.sourceID)
+				group.streamID, outcome.sourceID)
+			b.SuggestedResolution = FixIncludeReferenced
+			list.add(b)
 		}
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, view, resolutions); err != nil {
+	if err := h.checkLandedMediaOwners(ctx, groups, view, resolutions, list); err != nil {
 		return err
 	}
-	return h.checkLandedGPSSubjects(ctx, groups, view, resolutions)
+	return h.checkLandedGPSSubjects(ctx, groups, view, resolutions, list)
 }
 
 // personsCreatedByReplay returns the persons whose replay group creates them

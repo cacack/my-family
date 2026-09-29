@@ -505,6 +505,41 @@ describe('resumeBranchMerge', () => {
 	});
 });
 
+describe('precheckBranchMerge', () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			statusText: '',
+			json: async () => ({ blockers: [] })
+		});
+		vi.stubGlobal('fetch', fetchMock);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('POSTs the proposed resolutions to /branches/{id}/merge/precheck', async () => {
+		const resolutions = [
+			{ stream_id: '55555555-5555-5555-5555-555555555555', resolution: 'main' as const }
+		];
+		await expect(api.precheckBranchMerge('branch/x', { resolutions })).resolves.toEqual({
+			blockers: []
+		});
+		expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/branches/branch%2Fx/merge/precheck');
+		expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+		expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ resolutions });
+	});
+
+	it('sends an empty body when given nothing', async () => {
+		await api.precheckBranchMerge(BRANCH_ID);
+		expect(fetchMock.mock.calls[0][1].body).toBe('{}');
+	});
+});
+
 describe('isBranchMergeRefusal', () => {
 	it.each([
 		'merge_conflicts',

@@ -346,6 +346,7 @@ func (h *Handler) checkLandedMediaOwners(
 	groups []streamGroup,
 	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
+	list *blockerList,
 ) error {
 	for _, group := range groups {
 		if !view.landed[group.streamID] || view.removed[group.streamID] {
@@ -376,11 +377,13 @@ func (h *Handler) checkLandedMediaOwners(
 			return err
 		}
 		if !exists {
-			return fmt.Errorf(
-				"%w: media %s is already on main and is attached to %s %s, which main does not have; "+
+			b := streamBlocker(group, BlockerMissingMediaOwner, entityID, entityType,
+				"media %s is already on main and is attached to %s %s, which main does not have; "+
 					"resolving that %s to main would leave the media orphaned — resolve it to branch instead, "+
 					"or delete the media on main first",
-				ErrMergeDanglingReference, group.streamID, entityType, entityID, entityType)
+				group.streamID, entityType, entityID, entityType)
+			b.SuggestedResolution = FixIncludeReferenced
+			list.add(b)
 		}
 	}
 	return nil

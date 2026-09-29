@@ -75,7 +75,7 @@ func TestCheckMediaOwnerSurvives_ResumeTerms(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := h.checkMediaOwnerSurvives(ctx, upload, tc.plan)
+			err := blockErr(func(l *blockerList) error { return h.checkMediaOwnerSurvives(ctx, upload, tc.plan, l) })
 			if refused := errors.Is(err, ErrMergeDanglingReference); refused != tc.refused || (err != nil && !refused) {
 				t.Errorf("checkMediaOwnerSurvives = %v, want refused=%v", err, tc.refused)
 			}
@@ -103,21 +103,29 @@ func TestCheckLandedMediaOwners(t *testing.T) {
 	groups := []streamGroup{creating, upload}
 	view := resumeView{landed: map[uuid.UUID]bool{mediaID: true}}
 
-	err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain})
+	err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}, l)
+	})
 	if !errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("excluding the landed upload's owner: err = %v, want ErrMergeDanglingReference", err)
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveBranch}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveBranch}, l)
+	}); err != nil {
 		t.Errorf("replaying the owner: err = %v, want nil", err)
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, resumeView{}, map[uuid.UUID]MergeResolution{owner: ResolveMain}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, resumeView{}, map[uuid.UUID]MergeResolution{owner: ResolveMain}, l)
+	}); err != nil {
 		t.Errorf("upload not on main: err = %v, want nil", err)
 	}
 
 	// Main's log explains the item's absence (main deleted it, or an owner
 	// it had cascaded it away): nothing is left to orphan.
 	removed := resumeView{landed: view.landed, removed: map[uuid.UUID]bool{mediaID: true}}
-	if err := h.checkLandedMediaOwners(ctx, groups, removed, map[uuid.UUID]MergeResolution{owner: ResolveMain}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, removed, map[uuid.UUID]MergeResolution{owner: ResolveMain}, l)
+	}); err != nil {
 		t.Errorf("item main removed: err = %v, want nil", err)
 	}
 
@@ -132,14 +140,18 @@ func TestCheckLandedMediaOwners(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SaveMedia failed: %v", err)
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}, l)
+	}); err != nil {
 		t.Errorf("item moved to a survivor main has: err = %v, want nil", err)
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain}, l)
+	}); err != nil {
 		t.Errorf("survivor main has, resolved to main: err = %v, want nil", err)
 	}
 	failing := &Handler{readStore: getMediaFailStore{store}}
-	if err := failing.checkLandedMediaOwners(ctx, groups, view, nil); err == nil || errors.Is(err, ErrMergeDanglingReference) {
+	if err := blockErr(func(l *blockerList) error { return failing.checkLandedMediaOwners(ctx, groups, view, nil, l) }); err == nil || errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("failed media read: err = %v, want a read error", err)
 	}
 	if err := store.DeleteMedia(ctx, domain.MainBranchID, mediaID); err != nil {
@@ -149,12 +161,14 @@ func TestCheckLandedMediaOwners(t *testing.T) {
 	if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: owner, GivenName: "Owen", Version: 1}); err != nil {
 		t.Fatalf("SavePerson failed: %v", err)
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}, l)
+	}); err != nil {
 		t.Errorf("owner main already has: err = %v, want nil", err)
 	}
 
 	bad := streamGroup{streamID: mediaID, streamType: "Media", events: []repository.StoredEvent{{StreamID: mediaID, EventType: "MediaCreated", Data: []byte(`{not json`)}}}
-	if err := h.checkLandedMediaOwners(ctx, []streamGroup{bad}, view, nil); err == nil || errors.Is(err, ErrMergeDanglingReference) {
+	if err := blockErr(func(l *blockerList) error { return h.checkLandedMediaOwners(ctx, []streamGroup{bad}, view, nil, l) }); err == nil || errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("undecodable landed upload: err = %v, want a decode error", err)
 	}
 }
@@ -188,17 +202,23 @@ func TestCheckLandedMediaOwners_RelinkedToSurvivor(t *testing.T) {
 	groups := []streamGroup{personGroup(owner, "PersonUpdated"), personGroup(survivor, "PersonUpdated"), mediaUploadGroup(mediaID, "person", owner)}
 	view := resumeView{landed: map[uuid.UUID]bool{mediaID: true}, relinked: map[uuid.UUID]uuid.UUID{mediaID: survivor}}
 
-	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{owner: ResolveMain}, l)
+	}); err != nil {
 		t.Errorf("merged-away owner resolved to main: err = %v, want nil (the item moves to the survivor)", err)
 	}
-	err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain})
+	err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain}, l)
+	})
 	if !errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("survivor main lacks, resolved to main: err = %v, want ErrMergeDanglingReference", err)
 	}
 	if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: survivor, GivenName: "Sam", Version: 1}); err != nil {
 		t.Fatalf("SavePerson failed: %v", err)
 	}
-	if err := h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedMediaOwners(ctx, groups, view, map[uuid.UUID]MergeResolution{survivor: ResolveMain}, l)
+	}); err != nil {
 		t.Errorf("survivor main has, resolved to main: err = %v, want nil", err)
 	}
 }

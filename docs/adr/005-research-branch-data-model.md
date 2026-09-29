@@ -650,7 +650,7 @@ resume's to refuse. Every refusal — pending, dangling, concurrent — comes be
 including the read-model repair below, so a `409` has written nothing at all.
 
 **Evidence on resume (#758).** A resume applies the same two evidence rules `MergeBranch` checks
-before its claim (`validateNoDanglingEvidence`), on the same terms as the person references above.
+before its claim (`collectEvidenceBlockers`), on the same terms as the person references above.
 Its replay set is put in the merge's evidence order (`orderEvidenceForReplay`: sources that survive
 the replay first, sources it deletes last), so a resumed merge continues the original order — the
 remaining citations find their sources on `main`, and a doomed source's delete lands only after
@@ -923,7 +923,7 @@ review exists to prevent. Unlink events, and a `FamilyUpdated` that clears a par
 `main` lacks is a no-op.
 
 #758 put sources and citations on the allowlist, which opened two more shapes of the same class,
-now refused by the same check (`validateNoDanglingEvidence`). A citation lives on its own stream
+now refused by the same check (`collectEvidenceBlockers`). A citation lives on its own stream
 and names a source on another. (1) A replayed citation whose *final* source — the last one a
 `CitationCreated` or a `source_id` change in `CitationUpdated` set, unless the stream ends deleted
 — must exist on `main` or be created and not deleted by the replay; otherwise `main` would gain a
@@ -961,6 +961,27 @@ its own: `PersonMerged` writes the owner's stream, which the conflict detection 
 check is one owner-media listing and one set-based scan of the listed items' `main` histories per
 owner-deleting stream. `ResumeMerge` applies both media rules with its pending semantics (see *Media
 on resume* under the merge implementation note).
+
+**Every blocker is reported, and can be checked before merging (#831).** The reference rules above
+do not stop at the first breach: `validateNoDanglingReferences` collects every one into a
+`MergeBlocker` — the stream at fault, the entity it references (or would cascade onto), both named
+as the branch sees them in one batched naming pass (`BranchService.NameEntities`), the rule broken,
+and the one-step fix (`leave_out` the stream, or `include_referenced` when a `main` resolution of a
+stream that would bring the entity back is what excluded it, and re-running the checks with that
+stream included raises no blocker the current resolutions do not already have — so the fixes never
+cycle: a branch-created family left out for a deleted partner strands a research log about it, and
+the log's fix is to leave it out too, not to include the family and bring the partner blocker
+back) — and refuses with all of them
+(`MergeBlockedError`, still `ErrMergeDanglingReference`; the message stays the first blocker's). A
+resume refuses the same way, suggesting `include_referenced` for a landed stream it can no longer
+leave out. `POST /branches/{id}/merge/precheck` runs the same collection for proposed resolutions
+and writes nothing, so the review lists the blockers, fixes them, and re-checks before the user
+clicks Merge; with the same resolutions against the same `main`, the precheck and the merge agree.
+The cascade rules report each offending row by repeating their limit-one `main` scan over the rows
+not yet reported — one read per blocker, never one per listed row. Naming asks the read model first and folds only
+the entities it cannot name; a media item is named from its read-model metadata, so its history
+(whose `MediaCreated` carries the bytes) is read only for an item gone from the read model on both
+the branch and `main`.
 
 **The claim is idempotent against its own interrupted attempt.** The claim's append is durable
 before the projection that flips the registry status, so a projection failure leaves a branch that
