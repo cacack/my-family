@@ -815,7 +815,10 @@ func TestClassifyHistoryEvent(t *testing.T) {
 		{"GedcomImported", "", "", true},
 		{"SnapshotCreated", "", "", true},
 		{"SnapshotDeleted", "", "", true},
-		{"BranchMerged", "", "", true},
+		{"BranchCreated", "branch", "created", false},
+		{"BranchMerged", "branch", "merged", false},
+		{"BranchDeleted", "branch", "deleted", false},
+		{"BranchMergeResumed", "", "", true},
 	}
 
 	for _, tt := range tests {

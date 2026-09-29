@@ -93,6 +93,8 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	await expect(dialog.getByText(`Merge ${branchName} into the mainline?`)).toBeVisible();
 	await expect(dialog.getByText('This branch wins')).toBeVisible();
 	await expect(dialog.getByText(`Why: ${rationale}`)).toBeVisible();
+	const mergeNote = 'The register settles the birthplace';
+	await dialog.getByLabel('Note (optional)').fill(mergeNote);
 
 	await dialog.getByRole('button', { name: 'Merge branch' }).click();
 
@@ -109,10 +111,40 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	await expect(page.getByText(/accepts no further changes/)).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Review & merge' })).toHaveCount(0);
 
+	// --- ...with its record of what was decided (#832) ----------------------
+	await expect(page.getByTestId('merged-at')).toContainText(mergeNote);
+	const record = page.getByTestId('merge-record');
+	await expect(record.getByRole('heading', { name: 'Merge record' })).toBeVisible();
+	await expect(record.getByText('2 changes replayed onto the mainline')).toBeVisible();
+	const decision = record.locator('.record-item').filter({ hasText: person.name });
+	await expect(decision.getByText("Kept this branch's version")).toBeVisible();
+	await expect(decision.getByText(`Why: ${rationale}`)).toBeVisible();
+	// The merge's copies of the branch's changes are not the mainline's own:
+	// the mainline column keeps only its independent edit.
+	await expect(page.getByTestId('replayed-note')).toContainText('2 changes the merge copied');
+	await expect(mainSide.getByText(person.branchBirthPlace)).toHaveCount(0);
+	await expect(mainSide.getByText(person.mainBirthPlace)).toBeVisible();
+
 	// --- The merge actually moved the mainline ------------------------------
 	await page.goto(`/persons/${person.id}`);
 	await expect(page.getByText(person.branchBirthPlace)).toBeVisible();
 	await expect(page.getByText(person.mainBirthPlace)).toHaveCount(0);
+
+	// --- ...and the change says where it came from (#832) --------------------
+	// The person's own history is short enough to read whole; the global log
+	// is oldest-first and shared with every other spec.
+	await page.getByRole('button', { name: /History/ }).click();
+	const viaMerge = page.getByRole('link', { name: `via merge of ${branchName}: ${mergeNote}` });
+	await expect(viaMerge).toBeVisible();
+	await expect(viaMerge).toHaveAttribute('href', `/branches/${branchId}`);
+	// The merge itself is in the mainline's history too.
+	await page.goto('/history');
+	await page.getByLabel('Entity Type').selectOption('branch');
+	const mergeEntry = page.locator('.timeline-entry').filter({
+		has: page.getByRole('link', { name: branchName, exact: true }),
+		hasText: 'merged'
+	});
+	await expect(mergeEntry).toBeVisible();
 
 	// A merged branch is terminal, so it is no longer a switch target.
 	await page.goto('/');

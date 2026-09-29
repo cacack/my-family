@@ -57,6 +57,12 @@ export type BranchCreate = components['schemas']['BranchCreate'];
 export type BranchList = components['schemas']['BranchList'];
 export type BranchComparisonResult = components['schemas']['BranchComparisonResult'];
 export type MergeConflict = components['schemas']['MergeConflict'];
+/** A merged branch's record of what its merge decided (#832). */
+export type MergeRecord = components['schemas']['MergeRecord'];
+export type MergeRecordDecision = components['schemas']['MergeRecordDecision'];
+export type MergeRecordExclusion = components['schemas']['MergeRecordExclusion'];
+/** The merge a mainline change came with (#832). */
+export type MergeOrigin = components['schemas']['MergeOrigin'];
 /** One contested field of a conflict, valued at the fork and on each side (#828). */
 export type MergeConflictField = components['schemas']['MergeConflictField'];
 export type BranchMergeRequest = components['schemas']['BranchMergeRequest'];
@@ -1104,6 +1110,11 @@ export interface ChangeEntry {
 	 * own events, `main` for the mainline events its view inherits.
 	 */
 	origin?: 'main' | 'branch';
+	/**
+	 * Set on a mainline change a merge replayed from a research branch: the
+	 * branch, the merge note, and when the change was originally made.
+	 */
+	merged_from?: MergeOrigin;
 }
 
 export interface ChangeHistoryResponse {

@@ -40,6 +40,11 @@ const (
 	entityTypeEvidenceConflict = "evidence_conflict"
 	entityTypeResearchLog      = "research_log"
 	entityTypeProofSummary     = "proof_summary"
+	// entityTypeBranch is a research branch's lifecycle (#832): created,
+	// merged into the mainline, deleted (archived). Only the global history
+	// shows it; its events live on each branch's own scope, and the store
+	// keeps them in the mainline's page (HistoryBranchLifecycleEventTypes).
+	entityTypeBranch = "branch"
 )
 
 // ChangeEntry.Action vocabulary.
@@ -75,7 +80,7 @@ func excluded(reason string) historyEventClass {
 const (
 	reasonImport   = "import audit record: the persons, families and sources it created each have their own events"
 	reasonSnapshot = "research-artifact marker (#624): a snapshot names a position in the log, it changes no genealogical data"
-	reasonBranch   = "branch lifecycle (ADR-005 §Merge): describes a research branch, not the data on it; a merge's replayed changes appear as their own events"
+	reasonResume   = "merge resume record (#685): part of the merge it finishes, which the history shows once as BranchMerged; its decisions are on the branch's merge record"
 )
 
 // historyEventCatalog is the table itself. Keep it in the order of
@@ -101,15 +106,18 @@ var historyEventCatalog = map[string]historyEventClass{
 	"MediaDeleted":            mapped(entityTypeMedia, actionDeleted),
 	// A person's names live on the person's stream, so a name change is an
 	// update of the person; the change map carries the name itself.
-	"NameAdded":                mapped(entityTypePerson, actionUpdated),
-	"NameUpdated":              mapped(entityTypePerson, actionUpdated),
-	"NameRemoved":              mapped(entityTypePerson, actionUpdated),
-	"SnapshotCreated":          excluded(reasonSnapshot),
-	"SnapshotDeleted":          excluded(reasonSnapshot),
-	"BranchCreated":            excluded(reasonBranch),
-	"BranchDeleted":            excluded(reasonBranch),
-	"BranchMerged":             excluded(reasonBranch),
-	"BranchMergeResumed":       excluded(reasonBranch),
+	"NameAdded":       mapped(entityTypePerson, actionUpdated),
+	"NameUpdated":     mapped(entityTypePerson, actionUpdated),
+	"NameRemoved":     mapped(entityTypePerson, actionUpdated),
+	"SnapshotCreated": excluded(reasonSnapshot),
+	"SnapshotDeleted": excluded(reasonSnapshot),
+	// The branch lifecycle (#832): mapped so the mainline's history shows
+	// when research branched off and when (and why) it came back. The
+	// replayed changes of a merge still appear as their own entries.
+	"BranchCreated":            mapped(entityTypeBranch, actionCreated),
+	"BranchDeleted":            mapped(entityTypeBranch, actionDeleted),
+	"BranchMerged":             mapped(entityTypeBranch, actionMerged),
+	"BranchMergeResumed":       excluded(reasonResume),
 	"PersonMerged":             mapped(entityTypePerson, actionMerged),
 	"NoteCreated":              mapped(entityTypeNote, actionCreated),
 	"NoteUpdated":              mapped(entityTypeNote, actionUpdated),
@@ -179,6 +187,14 @@ func HistoryEventTypesForEntity(entityType string) []string {
 	}
 	sort.Strings(types)
 	return types
+}
+
+// HistoryBranchLifecycleEventTypes returns, sorted, the mapped event types
+// of a research branch's lifecycle. They are written on each branch's own
+// scope, so the mainline's global history asks the store to keep them from
+// every branch (GlobalHistoryQuery.AnyBranchEventTypes).
+func HistoryBranchLifecycleEventTypes() []string {
+	return HistoryEventTypesForEntity(entityTypeBranch)
 }
 
 // HistoryEntityTypes returns every entity type a ChangeEntry can report,

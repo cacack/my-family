@@ -3,6 +3,7 @@ package command_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -186,8 +187,18 @@ func TestMergeBranch_PreservesProvenance(t *testing.T) {
 	}
 	replayed := mainEvents[1]
 
-	if !replayed.Timestamp.Equal(original[0].Timestamp) {
-		t.Errorf("replayed timestamp = %s, want the branch original %s", replayed.Timestamp, original[0].Timestamp)
+	// The payload keeps when the research was done; the envelope records the
+	// event at the merge (#832), so main's history shows when it arrived.
+	decodedReplay, err := replayed.DecodeEvent()
+	if err != nil {
+		t.Fatalf("DecodeEvent failed: %v", err)
+	}
+	if !decodedReplay.OccurredAt().Equal(original[0].Timestamp) {
+		t.Errorf("replayed OccurredAt = %s, want the branch original %s", decodedReplay.OccurredAt(), original[0].Timestamp)
+	}
+	claim := branchMergedEvent(t, s.f, s.branch)
+	if !replayed.Timestamp.Equal(claim.Timestamp) {
+		t.Errorf("replayed record time = %s, want the merge's %s", replayed.Timestamp, claim.Timestamp)
 	}
 	if !bytes.Equal(replayed.Data, original[0].Data) {
 		t.Errorf("replayed payload = %s, want byte-identical to the branch original %s", replayed.Data, original[0].Data)
@@ -1630,5 +1641,222 @@ func TestMergeBranch_RationaleValidation(t *testing.T) {
 				t.Errorf("log head moved from %d to %d - the refusal wrote something", before, after)
 			}
 		})
+	}
+}
+
+// replayProvenance decodes the merge provenance stamped on a stored event.
+func replayProvenance(t *testing.T, evt repository.StoredEvent) *domain.MergeProvenance {
+	t.Helper()
+	if len(evt.Metadata) == 0 {
+		return nil
+	}
+	var meta domain.EventMetadata
+	if err := json.Unmarshal(evt.Metadata, &meta); err != nil {
+		t.Fatalf("decoding metadata %s: %v", evt.Metadata, err)
+	}
+	return meta.MergedFromBranch
+}
+
+// Every replayed event is stamped with the merge that wrote it (#832): the
+// branch's id and name, the claim, and the note.
+func TestMergeBranch_StampsProvenance(t *testing.T) {
+	s := seedMerge(t, "Byron")
+	ctx := context.Background()
+
+	if _, err := s.f.handler.MergeBranch(ctx, command.MergeBranchInput{BranchID: s.branch.ID, Note: "baptism register"}); err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+	claim := branchMergedEvent(t, s.f, s.branch)
+	mainEvents := branchEventsFor(t, s.f, s.person, domain.MainBranchID)
+
+	if prov := replayProvenance(t, mainEvents[0]); prov != nil {
+		t.Errorf("the mainline's own PersonCreated carries provenance %+v, want none", prov)
+	}
+	prov := replayProvenance(t, mainEvents[1])
+	if prov == nil {
+		t.Fatalf("replayed event carries no provenance; metadata = %s", mainEvents[1].Metadata)
+	}
+	want := domain.MergeProvenance{
+		BranchID: s.branch.ID, BranchName: s.branch.Name, ClaimID: claim.ID,
+		MergedAtPosition: claim.MergedAtPosition, MergedAt: claim.Timestamp, Note: "baptism register",
+	}
+	if !prov.MergedAt.Equal(want.MergedAt) {
+		t.Errorf("provenance merged_at = %s, want %s", prov.MergedAt, want.MergedAt)
+	}
+	prov.MergedAt = want.MergedAt
+	if *prov != want {
+		t.Errorf("provenance = %+v, want %+v", *prov, want)
+	}
+}
+
+// The claim records the merge's decisions (#832): each conflict with its kind,
+// fields, chosen side and rationale, each exclusion by name, and the counts.
+func TestMergeBranch_RecordsDecisions(t *testing.T) {
+	f := newBranchFixture()
+	ctx := context.Background()
+
+	contested, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	left, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Allegra", Surname: "Byron"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "Byron theory", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	onBranch := f.handler.WithBranch(branch)
+	byron, king, clairmont := "Byron", "King", "Clairmont"
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: contested.ID, Surname: &byron, Version: contested.Version}); err != nil {
+		t.Fatalf("branch UpdatePerson failed: %v", err)
+	}
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: left.ID, Surname: &clairmont, Version: left.Version}); err != nil {
+		t.Fatalf("branch UpdatePerson failed: %v", err)
+	}
+	if _, err := onBranch.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Clara", Surname: "Clairmont"}); err != nil {
+		t.Fatalf("branch CreatePerson failed: %v", err)
+	}
+	if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{ID: contested.ID, Surname: &king, Version: contested.Version}); err != nil {
+		t.Fatalf("main UpdatePerson failed: %v", err)
+	}
+
+	result, err := f.handler.MergeBranch(ctx, command.MergeBranchInput{
+		BranchID: branch.ID,
+		Note:     "Byron theory holds",
+		Resolutions: map[uuid.UUID]command.MergeResolution{
+			contested.ID: command.ResolveBranch,
+			left.ID:      command.ResolveMain,
+		},
+		Rationales: map[uuid.UUID]string{contested.ID: "baptism register", left.ID: "not yet proven"},
+	})
+	if err != nil {
+		t.Fatalf("MergeBranch failed: %v", err)
+	}
+
+	claim := branchMergedEvent(t, f, branch)
+	if !claim.HasRecord() {
+		t.Fatal("claim carries no merge record")
+	}
+	if *claim.ReplayedEventCount != result.ReplayedEventCount || *claim.ReplayedEventCount != 2 {
+		t.Errorf("recorded replayed_event_count = %d, result says %d, want 2", *claim.ReplayedEventCount, result.ReplayedEventCount)
+	}
+	if len(claim.SkippedStreamIDs) != 1 || claim.SkippedStreamIDs[0] != left.ID {
+		t.Errorf("skipped = %v, want [%s]", claim.SkippedStreamIDs, left.ID)
+	}
+	if len(claim.Resolutions) != 1 {
+		t.Fatalf("resolutions = %+v, want one", claim.Resolutions)
+	}
+	decision := claim.Resolutions[0]
+	if decision.StreamID != contested.ID || decision.Kind != "edit_edit" || decision.Resolution != "branch" ||
+		decision.Rationale != "baptism register" || decision.EntityType != "person" || decision.EntityName == "" ||
+		len(decision.Fields) != 1 || decision.Fields[0] != "surname" {
+		t.Errorf("decision = %+v", decision)
+	}
+	if len(claim.Exclusions) != 1 {
+		t.Fatalf("exclusions = %+v, want one", claim.Exclusions)
+	}
+	exclusion := claim.Exclusions[0]
+	if exclusion.StreamID != left.ID || exclusion.EntityType != "person" || exclusion.Rationale != "not yet proven" ||
+		exclusion.EntityName != "Allegra Clairmont" {
+		t.Errorf("exclusion = %+v, want Allegra Clairmont (the branch's name for her) with its rationale", exclusion)
+	}
+	if claim.ResolutionRationales[left.ID] != "not yet proven" {
+		t.Errorf("resolution_rationales = %v, want it kept complete", claim.ResolutionRationales)
+	}
+}
+
+// namingRacingReadStore fires a rival write when the merge record names the
+// entities left out of the merge: the one GetPersonsByIDs read on the branch
+// for exactly the excluded person's id.
+type namingRacingReadStore struct {
+	repository.ReadModelStore
+	branchID domain.BranchID
+	excluded uuid.UUID
+	rival    func()
+	fired    bool
+}
+
+func (s *namingRacingReadStore) GetPersonsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.PersonReadModel, error) {
+	if s.rival != nil && !s.fired && branchID == s.branchID && len(ids) == 1 && ids[0] == s.excluded {
+		s.fired = true
+		s.rival()
+	}
+	return s.ReadModelStore.GetPersonsByIDs(ctx, branchID, ids)
+}
+
+// TestMergeBranch_RecordNamingPrecedesStalenessCheck pins where the merge
+// record's reads sit (#832): naming the exclusions reads the read model, so it
+// has to happen before the staleness check, not between the check and the
+// claim. A mainline write landing during that read must come back as a clean
+// ErrMergePlanStale refusal, not a claimed merge whose replay then fails and
+// leaves the branch partially applied.
+func TestMergeBranch_RecordNamingPrecedesStalenessCheck(t *testing.T) {
+	var racing *namingRacingReadStore
+	f := newBranchFixtureWith(branchFixtureDeps{
+		wrapReads: func(inner repository.ReadModelStore) repository.ReadModelStore {
+			racing = &namingRacingReadStore{ReadModelStore: inner}
+			return racing
+		},
+	})
+	ctx := context.Background()
+
+	kept, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Ada", Surname: "Lovelace"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	left, err := f.handler.CreatePerson(ctx, command.CreatePersonInput{GivenName: "Allegra", Surname: "Byron"})
+	if err != nil {
+		t.Fatalf("CreatePerson failed: %v", err)
+	}
+	branch, err := f.handler.CreateBranch(ctx, "naming race", "")
+	if err != nil {
+		t.Fatalf("CreateBranch failed: %v", err)
+	}
+	onBranch := f.handler.WithBranch(branch)
+	byron, clairmont := "Byron", "Clairmont"
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: kept.ID, Surname: &byron, Version: kept.Version}); err != nil {
+		t.Fatalf("branch UpdatePerson failed: %v", err)
+	}
+	if _, err := onBranch.UpdatePerson(ctx, command.UpdatePersonInput{ID: left.ID, Surname: &clairmont, Version: left.Version}); err != nil {
+		t.Fatalf("branch UpdatePerson failed: %v", err)
+	}
+
+	racing.branchID = domain.BranchID(branch.ID)
+	racing.excluded = left.ID
+	racing.rival = func() {
+		person, err := f.readStore.GetPerson(ctx, domain.MainBranchID, kept.ID)
+		if err != nil {
+			t.Errorf("rival GetPerson failed: %v", err)
+			return
+		}
+		given := "Augusta"
+		if _, err := f.handler.UpdatePerson(ctx, command.UpdatePersonInput{
+			ID: kept.ID, GivenName: &given, Version: person.Version,
+		}); err != nil {
+			t.Errorf("rival UpdatePerson failed: %v", err)
+		}
+	}
+
+	_, err = f.handler.MergeBranch(ctx, command.MergeBranchInput{
+		BranchID:    branch.ID,
+		Resolutions: map[uuid.UUID]command.MergeResolution{left.ID: command.ResolveMain},
+	})
+	if !racing.fired {
+		t.Fatal("the rival write never fired, so nothing was raced")
+	}
+	if !errors.Is(err, command.ErrMergePlanStale) {
+		t.Fatalf("MergeBranch error = %v, want ErrMergePlanStale", err)
+	}
+	if errors.Is(err, command.ErrMergePartiallyApplied) {
+		t.Errorf("the refusal also matched ErrMergePartiallyApplied: %v", err)
+	}
+	got, err := f.branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("branchStore.Get failed: %v", err)
+	}
+	if got.Status != domain.BranchStatusActive {
+		t.Errorf("branch status = %q, want it still active after a refusal", got.Status)
 	}
 }

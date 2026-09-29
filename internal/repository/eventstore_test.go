@@ -1314,3 +1314,39 @@ func runBranchVersioningScenario(t *testing.T, store repository.EventStore) {
 		}
 	}
 }
+
+// DecodeEvent reads a BranchMerged claim written before #832 (no merge record)
+// and one written since, and ignores the envelope metadata either way (#832).
+func TestDecodeEvent_BranchMergedAcrossVersions(t *testing.T) {
+	stream := uuid.New()
+	legacy := repository.StoredEvent{
+		EventType: "BranchMerged",
+		Data: []byte(`{"id":"` + uuid.NewString() + `","timestamp":"2025-01-01T00:00:00Z","branch_id":"` + uuid.NewString() +
+			`","base_position":1,"merged_at_position":2,"replay_stream_versions":{"` + stream.String() + `":0}}`),
+	}
+	decoded, err := legacy.DecodeEvent()
+	if err != nil {
+		t.Fatalf("decoding a pre-#832 claim: %v", err)
+	}
+	claim, ok := decoded.(domain.BranchMerged)
+	if !ok || claim.HasRecord() || claim.ReplayStreamVersions[stream] != 0 {
+		t.Errorf("pre-#832 claim decoded as %+v", decoded)
+	}
+
+	count := 1
+	current := domain.NewBranchMerged(uuid.New(), 1, 2, "note", map[uuid.UUID]int64{stream: 0})
+	current.ReplayedEventCount = &count
+	current.Resolutions = []domain.MergeDecision{{StreamID: stream, Kind: "edit_edit", Resolution: "branch"}}
+	data, metadata, _, err := domain.EncodeForStore(domain.Stamp(current, domain.EventMetadata{UserID: "u"}, time.Time{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := repository.StoredEvent{EventType: "BranchMerged", Data: data, Metadata: metadata}
+	decoded, err = stored.DecodeEvent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claim := decoded.(domain.BranchMerged); !claim.HasRecord() || len(claim.Resolutions) != 1 {
+		t.Errorf("current claim decoded as %+v", claim)
+	}
+}

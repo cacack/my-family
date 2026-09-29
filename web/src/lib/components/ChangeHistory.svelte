@@ -6,8 +6,10 @@
 	import {
 		CHANGE_ENTITY_TYPES,
 		ENTITY_TYPE_LABELS,
+		changeActionLabel,
 		changeEntryLink,
-		entityTypeLabel
+		entityTypeLabel,
+		mergedFromLabel
 	} from '$lib/utils/changeEntries';
 
 	interface Props {
@@ -174,7 +176,7 @@
 				<div class="timeline-entry">
 					<div class="entry-header">
 						<span class="timestamp">{formatTimestamp(entry.timestamp)}</span>
-						<Badge variant={getActionBadgeVariant(entry.action)} class="capitalize {getActionBadgeClass(entry.action)}">{entry.action}</Badge>
+						<Badge variant={getActionBadgeVariant(entry.action)} class="capitalize {getActionBadgeClass(entry.action)}">{changeActionLabel(entry)}</Badge>
 						{#if entry.origin === 'branch'}
 							<Badge variant="outline" class="origin-badge" title="Made on this research branch">This branch</Badge>
 						{:else if entry.origin === 'main'}
@@ -189,6 +191,22 @@
 							<span class="entity-name" class:deleted={entry.action === 'deleted'}>{entry.entity_name}</span>
 						{/if}
 					</div>
+					{#if entry.merged_from}
+						<!--
+							Where the change came from (#832): the branch it was researched on
+							and the merge note - the "why" of the promotion. The time above is
+							when the merge brought it here; the chip's title says when it was
+							made on the branch.
+						-->
+						<a
+							href="/branches/{entry.merged_from.branch_id}"
+							class="merge-chip"
+							title="Made on the branch {formatTimestamp(entry.merged_from.original_timestamp)}; merged {formatTimestamp(entry.merged_from.merged_at)}"
+							data-testid="merged-from"
+						>
+							{mergedFromLabel(entry.merged_from)}
+						</a>
+					{/if}
 
 					{#if hasChanges && (entry.action === 'updated' || entry.action === 'merged')}
 						<button class="toggle-changes" onclick={() => toggleExpanded(entry.id)}>
@@ -350,6 +368,24 @@
 		margin-top: 0.75rem;
 		padding-top: 0.75rem;
 		border-top: 1px solid #e2e8f0;
+	}
+
+	.merge-chip {
+		display: inline-block;
+		max-width: 100%;
+		margin-top: 0.5rem;
+		padding: 0.125rem 0.5rem;
+		border: 1px solid #c4b5fd;
+		border-radius: 9999px;
+		background: #f5f3ff;
+		font-size: 0.75rem;
+		color: #5b21b6;
+		text-decoration: none;
+		overflow-wrap: anywhere;
+	}
+
+	.merge-chip:hover {
+		border-color: #7c3aed;
 	}
 
 	.load-more {

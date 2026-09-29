@@ -213,7 +213,7 @@ var (
 		"person": true, "family": true, "source": true, "citation": true, "media": true, "note": true,
 		"submitter": true, "repository": true, "association": true, "life_event": true, "attribute": true,
 		"lds_ordinance": true, "evidence_analysis": true, "evidence_conflict": true, "research_log": true,
-		"proof_summary": true,
+		"proof_summary": true, "branch": true,
 	}
 	validActions = map[string]bool{"created": true, "updated": true, "deleted": true, "merged": true}
 )

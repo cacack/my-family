@@ -268,11 +268,99 @@ type EventEnvelope struct {
 	Timestamp time.Time       `json:"timestamp"`
 }
 
-// EventMetadata contains correlation and causation data for events.
+// EventMetadata contains correlation and causation data for events. It is
+// stored in the event envelope (the event store's metadata column), never in
+// the payload, so a payload stays byte-identical wherever it is re-appended.
 type EventMetadata struct {
 	CorrelationID string `json:"correlation_id,omitempty"`
 	CausationID   string `json:"causation_id,omitempty"`
 	UserID        string `json:"user_id,omitempty"`
+	// MergedFromBranch is set on a mainline event a merge replayed from a
+	// research branch (#832): which branch, which merge, and why. Absent on
+	// every other event, including replays written before #832.
+	MergedFromBranch *MergeProvenance `json:"merged_from_branch,omitempty"`
+}
+
+// IsZero reports whether the metadata carries nothing worth storing.
+func (m EventMetadata) IsZero() bool {
+	return m.CorrelationID == "" && m.CausationID == "" && m.UserID == "" && m.MergedFromBranch == nil
+}
+
+// MergeProvenance links a replayed mainline event to the merge that wrote it
+// (#832). Every field comes from the branch and its BranchMerged claim, so a
+// merge and any resume of it stamp every replayed event identically.
+type MergeProvenance struct {
+	// BranchID and BranchName name the research branch the change came from,
+	// as it was called when the merge was claimed.
+	BranchID   uuid.UUID `json:"id"`
+	BranchName string    `json:"name"`
+	// ClaimID is the BranchMerged event's id, and MergedAtPosition the log
+	// head it recorded: together they identify the merge.
+	ClaimID          uuid.UUID `json:"claim_id"`
+	MergedAtPosition int64     `json:"merged_at_position"`
+	// MergedAt is when the merge was claimed. The event store records a
+	// replayed event at this time, so the mainline's history shows the change
+	// when it reached the mainline; the payload keeps the time it was made.
+	MergedAt time.Time `json:"merged_at"`
+	// Note is the merge note: the "why" of the promotion.
+	Note string `json:"note,omitempty"`
+}
+
+// StampedEvent carries envelope data for the event store alongside an event:
+// the metadata to store with it and the time to record it at. It delegates
+// the Event methods to the wrapped event, and the stores unwrap it
+// (UnwrapEvent) before encoding, so the stored payload is the inner event's
+// alone. Projections take the inner event.
+type StampedEvent struct {
+	Event      Event
+	Metadata   EventMetadata
+	RecordedAt time.Time
+}
+
+func (s StampedEvent) EventType() string      { return s.Event.EventType() }
+func (s StampedEvent) AggregateID() uuid.UUID { return s.Event.AggregateID() }
+func (s StampedEvent) OccurredAt() time.Time  { return s.Event.OccurredAt() }
+
+// Stamp wraps event with the metadata the store keeps beside it and the time
+// the store records it at. A zero recordedAt records it at its OccurredAt.
+func Stamp(event Event, metadata EventMetadata, recordedAt time.Time) Event {
+	return StampedEvent{Event: event, Metadata: metadata, RecordedAt: recordedAt}
+}
+
+// UnwrapEvent splits an event handed to an event store into the payload to
+// encode, the metadata to store (nil when there is none) and the time to
+// record it at: the stamp's RecordedAt when set, else the event's OccurredAt.
+func UnwrapEvent(event Event) (Event, *EventMetadata, time.Time) {
+	stamped, ok := event.(StampedEvent)
+	if !ok {
+		return event, nil, event.OccurredAt()
+	}
+	inner, _, at := UnwrapEvent(stamped.Event)
+	if !stamped.RecordedAt.IsZero() {
+		at = stamped.RecordedAt
+	}
+	if stamped.Metadata.IsZero() {
+		return inner, nil, at
+	}
+	meta := stamped.Metadata
+	return inner, &meta, at
+}
+
+// EncodeForStore is UnwrapEvent plus the JSON encoding every store needs: the
+// payload, the metadata (nil when there is none) and the record time.
+func EncodeForStore(event Event) (data, metadata []byte, recordedAt time.Time, err error) {
+	inner, meta, at := UnwrapEvent(event)
+	data, err = json.Marshal(inner)
+	if err != nil {
+		return nil, nil, time.Time{}, err
+	}
+	if meta != nil {
+		metadata, err = json.Marshal(meta)
+		if err != nil {
+			return nil, nil, time.Time{}, err
+		}
+	}
+	return data, metadata, at, nil
 }
 
 // SourceCreated event is emitted when a new source is created.
@@ -984,7 +1072,58 @@ type BranchMerged struct {
 	// written before it, or with no rationale given, omit it and decode to nil.
 	// Which side won is the replay plan: a stream in ReplayStreamVersions took
 	// the branch, one absent from it kept main.
+	//
+	// Since #832 the rationale of a conflict decision or an exclusion is also
+	// copied onto its entry in Resolutions or Exclusions; this map stays the
+	// complete record (a rationale may explain a non-conflicting "branch"
+	// resolution too, which has no entry there).
 	ResolutionRationales map[uuid.UUID]string `json:"resolution_rationales,omitempty"`
+
+	// The merge record (#832): what was decided and what was left behind, as
+	// the researcher saw it when the merge was claimed. All optional and
+	// additive — a claim written before #832 omits them and decodes to nil,
+	// which is how a reader tells "not recorded" from "nothing decided"
+	// (HasRecord).
+	//
+	// Resolutions are the conflict decisions, one per conflicting entity, with
+	// the conflict as it was reviewed. Exclusions are the entities the branch
+	// changed without conflict but that were left out (resolved to main).
+	Resolutions []MergeDecision  `json:"resolutions,omitempty"`
+	Exclusions  []MergeExclusion `json:"exclusions,omitempty"`
+	// ReplayedEventCount is how many branch events the merge set out to
+	// replay onto main (a resume can later leave some behind; see
+	// BranchMergeResumed). SkippedStreamIDs are the entities resolved to main
+	// — conflicts and exclusions alike — whose branch events are not replayed.
+	ReplayedEventCount *int        `json:"replayed_event_count,omitempty"`
+	SkippedStreamIDs   []uuid.UUID `json:"skipped_stream_ids,omitempty"`
+}
+
+// HasRecord reports whether the claim carries a #832 merge record. An older
+// claim records only its note and replay plan.
+func (e BranchMerged) HasRecord() bool { return e.ReplayedEventCount != nil }
+
+// MergeDecision is one conflict decision on a merge record (#832).
+type MergeDecision struct {
+	StreamID   uuid.UUID `json:"stream_id"`
+	EntityType string    `json:"entity_type,omitempty"`
+	EntityName string    `json:"entity_name,omitempty"`
+	// Kind is the conflict class (edit_edit, delete_edit, create_create);
+	// Fields the contested fields of an edit_edit; DeletedBy the side that
+	// deleted, for a delete_edit.
+	Kind      string   `json:"kind"`
+	Fields    []string `json:"fields,omitempty"`
+	DeletedBy string   `json:"deleted_by,omitempty"`
+	// Resolution is the side that won: "branch" or "main".
+	Resolution string `json:"resolution"`
+	Rationale  string `json:"rationale,omitempty"`
+}
+
+// MergeExclusion is one entity a merge left behind without a conflict (#832).
+type MergeExclusion struct {
+	StreamID   uuid.UUID `json:"stream_id"`
+	EntityType string    `json:"entity_type,omitempty"`
+	EntityName string    `json:"entity_name,omitempty"`
+	Rationale  string    `json:"rationale,omitempty"`
 }
 
 func (e BranchMerged) EventType() string      { return "BranchMerged" }

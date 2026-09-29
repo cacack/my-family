@@ -173,6 +173,7 @@ func (e ChangeEntryAction) Valid() bool {
 const (
 	ChangeEntryEntityTypeAssociation      ChangeEntryEntityType = "association"
 	ChangeEntryEntityTypeAttribute        ChangeEntryEntityType = "attribute"
+	ChangeEntryEntityTypeBranch           ChangeEntryEntityType = "branch"
 	ChangeEntryEntityTypeCitation         ChangeEntryEntityType = "citation"
 	ChangeEntryEntityTypeEvidenceAnalysis ChangeEntryEntityType = "evidence_analysis"
 	ChangeEntryEntityTypeEvidenceConflict ChangeEntryEntityType = "evidence_conflict"
@@ -195,6 +196,8 @@ func (e ChangeEntryEntityType) Valid() bool {
 	case ChangeEntryEntityTypeAssociation:
 		return true
 	case ChangeEntryEntityTypeAttribute:
+		return true
+	case ChangeEntryEntityTypeBranch:
 		return true
 	case ChangeEntryEntityTypeCitation:
 		return true
@@ -780,19 +783,19 @@ func (e MergeConflictDeletedBy) Valid() bool {
 
 // Defines values for MergeConflictKind.
 const (
-	CreateCreate MergeConflictKind = "create_create"
-	DeleteEdit   MergeConflictKind = "delete_edit"
-	EditEdit     MergeConflictKind = "edit_edit"
+	MergeConflictKindCreateCreate MergeConflictKind = "create_create"
+	MergeConflictKindDeleteEdit   MergeConflictKind = "delete_edit"
+	MergeConflictKindEditEdit     MergeConflictKind = "edit_edit"
 )
 
 // Valid indicates whether the value is a known member of the MergeConflictKind enum.
 func (e MergeConflictKind) Valid() bool {
 	switch e {
-	case CreateCreate:
+	case MergeConflictKindCreateCreate:
 		return true
-	case DeleteEdit:
+	case MergeConflictKindDeleteEdit:
 		return true
-	case EditEdit:
+	case MergeConflictKindEditEdit:
 		return true
 	default:
 		return false
@@ -829,6 +832,81 @@ func (e MergePersonsRequestFieldResolution) Valid() bool {
 	case Merged:
 		return true
 	case Survivor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeRecordDecisionDecidedAt.
+const (
+	Merge  MergeRecordDecisionDecidedAt = "merge"
+	Resume MergeRecordDecisionDecidedAt = "resume"
+)
+
+// Valid indicates whether the value is a known member of the MergeRecordDecisionDecidedAt enum.
+func (e MergeRecordDecisionDecidedAt) Valid() bool {
+	switch e {
+	case Merge:
+		return true
+	case Resume:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeRecordDecisionDeletedBy.
+const (
+	MergeRecordDecisionDeletedByBranch MergeRecordDecisionDeletedBy = "branch"
+	MergeRecordDecisionDeletedByMain   MergeRecordDecisionDeletedBy = "main"
+)
+
+// Valid indicates whether the value is a known member of the MergeRecordDecisionDeletedBy enum.
+func (e MergeRecordDecisionDeletedBy) Valid() bool {
+	switch e {
+	case MergeRecordDecisionDeletedByBranch:
+		return true
+	case MergeRecordDecisionDeletedByMain:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeRecordDecisionKind.
+const (
+	MergeRecordDecisionKindCreateCreate MergeRecordDecisionKind = "create_create"
+	MergeRecordDecisionKindDeleteEdit   MergeRecordDecisionKind = "delete_edit"
+	MergeRecordDecisionKindEditEdit     MergeRecordDecisionKind = "edit_edit"
+)
+
+// Valid indicates whether the value is a known member of the MergeRecordDecisionKind enum.
+func (e MergeRecordDecisionKind) Valid() bool {
+	switch e {
+	case MergeRecordDecisionKindCreateCreate:
+		return true
+	case MergeRecordDecisionKindDeleteEdit:
+		return true
+	case MergeRecordDecisionKindEditEdit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeRecordDecisionResolution.
+const (
+	MergeRecordDecisionResolutionBranch MergeRecordDecisionResolution = "branch"
+	MergeRecordDecisionResolutionMain   MergeRecordDecisionResolution = "main"
+)
+
+// Valid indicates whether the value is a known member of the MergeRecordDecisionResolution enum.
+func (e MergeRecordDecisionResolution) Valid() bool {
+	switch e {
+	case MergeRecordDecisionResolutionBranch:
+		return true
+	case MergeRecordDecisionResolutionMain:
 		return true
 	default:
 		return false
@@ -1415,6 +1493,7 @@ func (e PreviewGedcomExportParamsVersion) Valid() bool {
 const (
 	ListHistoryParamsEntityTypeAssociation      ListHistoryParamsEntityType = "association"
 	ListHistoryParamsEntityTypeAttribute        ListHistoryParamsEntityType = "attribute"
+	ListHistoryParamsEntityTypeBranch           ListHistoryParamsEntityType = "branch"
 	ListHistoryParamsEntityTypeCitation         ListHistoryParamsEntityType = "citation"
 	ListHistoryParamsEntityTypeEvidenceAnalysis ListHistoryParamsEntityType = "evidence_analysis"
 	ListHistoryParamsEntityTypeEvidenceConflict ListHistoryParamsEntityType = "evidence_conflict"
@@ -1437,6 +1516,8 @@ func (e ListHistoryParamsEntityType) Valid() bool {
 	case ListHistoryParamsEntityTypeAssociation:
 		return true
 	case ListHistoryParamsEntityTypeAttribute:
+		return true
+	case ListHistoryParamsEntityTypeBranch:
 		return true
 	case ListHistoryParamsEntityTypeCitation:
 		return true
@@ -2232,9 +2313,20 @@ type BranchComparisonResult struct {
 	// entities the branch also touched. Oldest first.
 	MainChanges []ChangeEntry `json:"main_changes"`
 
+	// MergeRecord What a merged branch's merge decided, read from the merge's own record
+	// rather than recomputed. Present only for a merged branch.
+	MergeRecord *MergeRecord `json:"merge_record,omitempty"`
+
 	// OverlappingStreamIds Entities changed on both the branch and main - a divergence hint for
 	// human review, not conflict detection.
 	OverlappingStreamIds []openapi_types.UUID `json:"overlapping_stream_ids"`
+
+	// ReplayedChangeCount For a merged branch: how many of the mainline's events on the
+	// branch's entities are its merge's replay of the branch's own
+	// changes. They are left out of `main_changes`,
+	// `overlapping_stream_ids` and `conflicts`, which describe only the
+	// mainline's independent changes. `0` for any other branch.
+	ReplayedChangeCount *int `json:"replayed_change_count,omitempty"`
 }
 
 // BranchCreate defines model for BranchCreate.
@@ -2428,7 +2520,8 @@ type CemeteryIndexResponse struct {
 
 // ChangeEntry defines model for ChangeEntry.
 type ChangeEntry struct {
-	// Action `merged` is a person merge, reported on the surviving person.
+	// Action `merged` is a person merge, reported on the surviving person, or a
+	// research branch merged into the mainline.
 	Action ChangeEntryAction `json:"action"`
 
 	// Changes Field-level changes for updates and merges. `old_value` is the value
@@ -2448,9 +2541,16 @@ type ChangeEntry struct {
 
 	// EntityType The kind of entity the change is about. A person's name variants
 	// live on the person, so a name change is a `person` entry whose
-	// `changes` carry the `name`.
+	// `changes` carry the `name`. `branch` is a research branch's
+	// lifecycle, in the global history only: `created`, `merged` (its
+	// `changes.merge_note` carries the note) and `deleted` (archived).
 	EntityType ChangeEntryEntityType `json:"entity_type"`
 	Id         openapi_types.UUID    `json:"id"`
+
+	// MergedFrom The merge that brought a mainline change over from a research branch.
+	// Present only on changes a merge replayed; changes replayed by a merge
+	// recorded before this was tracked carry none.
+	MergedFrom *MergeOrigin `json:"merged_from,omitempty"`
 
 	// Origin Set only on branch-scoped entity history and branch-scoped snapshot
 	// comparisons (`?branch=`): `branch` for the branch's own events,
@@ -2466,18 +2566,25 @@ type ChangeEntry struct {
 	// family, an attribute's or association's person, a citation's
 	// source, a media item's owner. Absent otherwise.
 	ParentEntityType *ChangeEntryParentEntityType `json:"parent_entity_type,omitempty"`
-	Timestamp        time.Time                    `json:"timestamp"`
+
+	// Timestamp When the change reached this line of research. For a change a
+	// merge replayed onto the mainline that is the merge; when it was
+	// made on the branch is `merged_from.original_timestamp`.
+	Timestamp time.Time `json:"timestamp"`
 
 	// UserId ID of user who made the change (null if single-user)
 	UserId *string `json:"user_id,omitempty"`
 }
 
-// ChangeEntryAction `merged` is a person merge, reported on the surviving person.
+// ChangeEntryAction `merged` is a person merge, reported on the surviving person, or a
+// research branch merged into the mainline.
 type ChangeEntryAction string
 
 // ChangeEntryEntityType The kind of entity the change is about. A person's name variants
 // live on the person, so a name change is a `person` entry whose
-// `changes` carry the `name`.
+// `changes` carry the `name`. `branch` is a research branch's
+// lifecycle, in the global history only: `created`, `merged` (its
+// `changes.merge_note` carries the note) and `deleted` (archived).
 type ChangeEntryEntityType string
 
 // ChangeEntryOrigin Set only on branch-scoped entity history and branch-scoped snapshot
@@ -3675,6 +3782,23 @@ type MergeConflictField struct {
 	MainValue *string `json:"main_value"`
 }
 
+// MergeOrigin The merge that brought a mainline change over from a research branch.
+// Present only on changes a merge replayed; changes replayed by a merge
+// recorded before this was tracked carry none.
+type MergeOrigin struct {
+	BranchId openapi_types.UUID `json:"branch_id"`
+
+	// BranchName The branch's name when it was merged
+	BranchName string    `json:"branch_name"`
+	MergedAt   time.Time `json:"merged_at"`
+
+	// Note The merge note - why the research was promoted
+	Note *string `json:"note,omitempty"`
+
+	// OriginalTimestamp When the change was made on the branch
+	OriginalTimestamp time.Time `json:"original_timestamp"`
+}
+
 // MergePersonsRequest Request to merge two person records
 type MergePersonsRequest struct {
 	// FieldResolution Optional per-field source selection. Keys are field names
@@ -3704,6 +3828,74 @@ type MergePersonsResponse struct {
 	// MergeSummary Summary of what was merged
 	MergeSummary MergeSummary `json:"merge_summary"`
 	Person       Person       `json:"person"`
+}
+
+// MergeRecord What a merged branch's merge decided, read from the merge's own record
+// rather than recomputed. Present only for a merged branch.
+type MergeRecord struct {
+	// ClaimId The `BranchMerged` event's id
+	ClaimId          openapi_types.UUID     `json:"claim_id"`
+	Decisions        []MergeRecordDecision  `json:"decisions"`
+	Exclusions       []MergeRecordExclusion `json:"exclusions"`
+	MergedAt         time.Time              `json:"merged_at"`
+	MergedAtPosition int64                  `json:"merged_at_position"`
+
+	// Note The merge note
+	Note *string `json:"note,omitempty"`
+
+	// Recorded `false` for a merge made before decisions were recorded: its
+	// `exclusions` are then derived from the replay plan (every entity
+	// the plan left out kept the mainline's version), without saying
+	// which were conflicts.
+	Recorded bool `json:"recorded"`
+
+	// ReplayedEventCount How many branch events the merge set out to replay. Absent when
+	// not recorded.
+	ReplayedEventCount *int `json:"replayed_event_count,omitempty"`
+
+	// ResumeCount How many resumes of an interrupted merge recorded decisions
+	ResumeCount int `json:"resume_count"`
+
+	// SkippedStreamIds The entities whose branch changes were not replayed.
+	SkippedStreamIds []openapi_types.UUID `json:"skipped_stream_ids"`
+}
+
+// MergeRecordDecision One decision a merge (or a resume of it) recorded.
+type MergeRecordDecision struct {
+	DecidedAt MergeRecordDecisionDecidedAt  `json:"decided_at"`
+	DeletedBy *MergeRecordDecisionDeletedBy `json:"deleted_by,omitempty"`
+
+	// EntityName Empty when the entity cannot be named
+	EntityName string    `json:"entity_name"`
+	EntityType string    `json:"entity_type"`
+	Fields     *[]string `json:"fields,omitempty"`
+
+	// Kind The conflict decided. Absent when not recorded.
+	Kind       *MergeRecordDecisionKind      `json:"kind,omitempty"`
+	Rationale  *string                       `json:"rationale,omitempty"`
+	Resolution MergeRecordDecisionResolution `json:"resolution"`
+	StreamId   openapi_types.UUID            `json:"stream_id"`
+}
+
+// MergeRecordDecisionDecidedAt defines model for MergeRecordDecision.DecidedAt.
+type MergeRecordDecisionDecidedAt string
+
+// MergeRecordDecisionDeletedBy defines model for MergeRecordDecision.DeletedBy.
+type MergeRecordDecisionDeletedBy string
+
+// MergeRecordDecisionKind The conflict decided. Absent when not recorded.
+type MergeRecordDecisionKind string
+
+// MergeRecordDecisionResolution defines model for MergeRecordDecision.Resolution.
+type MergeRecordDecisionResolution string
+
+// MergeRecordExclusion One entity the merge left behind without a conflict.
+type MergeRecordExclusion struct {
+	// EntityName Empty when the entity cannot be named
+	EntityName string             `json:"entity_name"`
+	EntityType string             `json:"entity_type"`
+	Rationale  *string            `json:"rationale,omitempty"`
+	StreamId   openapi_types.UUID `json:"stream_id"`
 }
 
 // MergeResolutionEntry The side that wins for one entity.

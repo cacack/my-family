@@ -24,6 +24,13 @@
 	 * cross-entity reference the merge would break is listed by name, with a
 	 * one-click fix, and highlighted on the rows involved. "Review & merge" is
 	 * held while any remain.
+	 *
+	 * Merge record (#832): a merged branch shows what its merge decided, read
+	 * from the merge's own record (`merge_record`) rather than a verdict
+	 * recomputed against a mainline the merge itself changed - the note, when,
+	 * the counts, each decision by name, and what was left behind. The
+	 * mainline column leaves out the merge's copies of this branch's changes
+	 * (`replayed_change_count` says how many).
 	 */
 	import { page } from '$app/stores';
 	import {
@@ -35,6 +42,8 @@
 		type BranchMergeResult,
 		type MergeBlocker,
 		type MergeConflict,
+		type MergeRecord,
+		type MergeRecordDecision,
 		type MergeResolution
 	} from '$lib/api/client';
 	import { activeBranch, returnToMainline, switchBranch } from '$lib/stores/activeBranch.svelte';
@@ -107,10 +116,20 @@
 		() => serverConflicts ?? comparison?.conflicts ?? []
 	);
 	const conflictedStreamIds = $derived.by(() => new Set(conflicts.map((c) => c.stream_id)));
-	/** Overlaps the conflict detector cleared - the interesting part of the hint. */
-	const cleanOverlaps = $derived.by(() =>
-		(comparison?.overlapping_stream_ids ?? []).filter((id) => !conflictedStreamIds.has(id))
-	);
+	/**
+	 * Overlaps not listed above - the interesting part of the hint. Normally
+	 * that is the overlaps the conflict detector cleared. A merged branch shows
+	 * its merge record instead of the recomputed conflicts, so there only the
+	 * record's decisions are taken out: an entity the mainline changed again
+	 * after the merge can be a recomputed conflict the record never decided,
+	 * and it must still be listed somewhere.
+	 */
+	const cleanOverlaps = $derived.by(() => {
+		const listedAbove = mergeRecord
+			? new Set(mergeRecord.decisions.map((d) => d.stream_id))
+			: conflictedStreamIds;
+		return (comparison?.overlapping_stream_ids ?? []).filter((id) => !listedAbove.has(id));
+	});
 
 	/**
 	 * Only an active branch can be merged; terminal ones are a read-only record.
@@ -119,6 +138,27 @@
 	 * `comparison` back to its `null` initialiser and `.branch` collapses.
 	 */
 	const mergeable = $derived.by(() => comparison?.branch.status === 'active');
+
+	/** A merged branch's record of its merge (#832); null for any other branch. */
+	const mergeRecord: MergeRecord | null = $derived.by(() => comparison?.merge_record ?? null);
+
+	/** How many of the mainline's changes are this branch's own, copied by its merge. */
+	const replayedCopies = $derived.by(() => comparison?.replayed_change_count ?? 0);
+
+	/**
+	 * Names for the "changed on both sides" hint, from the entries that list
+	 * each entity, so the hint reads as names rather than ids.
+	 */
+	const overlapNames: Map<string, { type: string; name: string }> = $derived.by(() => {
+		const names = new Map<string, { type: string; name: string }>();
+		for (const entry of [...(comparison?.branch_changes ?? []), ...(comparison?.main_changes ?? [])]) {
+			const known = names.get(entry.entity_id);
+			if (!known || (!known.name && entry.entity_name)) {
+				names.set(entry.entity_id, { type: entry.entity_type, name: entry.entity_name ?? '' });
+			}
+		}
+		return names;
+	});
 
 	/**
 	 * A branch with no changes of its own has nothing to promote, and the server
@@ -318,6 +358,17 @@
 	/** Every branch-aware entity links to its page, or to the page that presents it. */
 	function entityLink(entry: BranchChangeEntry): string | null {
 		return changeEntryLink(entry);
+	}
+
+	/** Which side a recorded decision kept, in words. */
+	function decisionLabel(decision: MergeRecordDecision): string {
+		return decision.resolution === 'branch'
+			? "Kept this branch's version"
+			: "Kept the mainline's version";
+	}
+
+	function plural(count: number, one: string, many = `${one}s`): string {
+		return `${count} ${count === 1 ? one : many}`;
 	}
 
 	function conflictLabel(kind: MergeConflict['kind']): string {
@@ -547,6 +598,118 @@
 	{/if}
 {/snippet}
 
+{#snippet mergeRecordSection(record: MergeRecord)}
+	<section class="merge-record" aria-labelledby="merge-record-heading" data-testid="merge-record">
+		<h2 id="merge-record-heading">Merge record</h2>
+		<p class="section-hint">
+			What was decided when this branch was merged, as it was recorded then.
+			The branch accepts no further changes.
+		</p>
+		<dl class="record-facts">
+			<div>
+				<dt>Merged</dt>
+				<dd>{formatTimestamp(record.merged_at)}</dd>
+			</div>
+			<div>
+				<dt>Note</dt>
+				<dd>
+					{#if record.note}
+						<span class="record-note">{record.note}</span>
+					{:else}
+						<span class="muted">No merge note was recorded.</span>
+					{/if}
+				</dd>
+			</div>
+			<div>
+				<dt>Promoted</dt>
+				<dd>
+					{#if record.replayed_event_count !== undefined}
+						{plural(record.replayed_event_count, 'change')} replayed onto the mainline
+					{:else}
+						{plural(replayedCopies, 'change')} found on the mainline
+					{/if}
+				</dd>
+			</div>
+			<div>
+				<dt>Left behind</dt>
+				<dd>{plural(record.skipped_stream_ids.length, 'entity', 'entities')}</dd>
+			</div>
+			{#if record.resume_count > 0}
+				<div>
+					<dt>Resumed</dt>
+					<dd>
+						The merge was interrupted and finished later ({plural(record.resume_count, 'resume')}
+						recorded decisions).
+					</dd>
+				</div>
+			{/if}
+		</dl>
+		{#if !record.recorded}
+			<p class="record-legacy" role="note">
+				This merge was made before decisions were recorded. What it left behind is known from
+				its plan, but not which of those were conflicts or why.
+			</p>
+		{/if}
+
+		<h3>Decisions</h3>
+		{#if record.decisions.length === 0}
+			<p class="muted">No conflicts needed a decision.</p>
+		{:else}
+			<ul class="record-list">
+				{#each record.decisions as decision (decision.stream_id)}
+					<li class="record-item">
+						<div class="conflict-head">
+							<span class="entity-type">{entityTypeLabel(decision.entity_type)}</span>
+							<span class="conflict-name"
+								>{decision.entity_name || unnamedEntityLabel(decision.entity_type)}</span
+							>
+							{#if decision.kind}
+								<Badge variant="secondary">{conflictLabel(decision.kind)}</Badge>
+							{/if}
+							<Badge variant={decision.resolution === 'branch' ? 'default' : 'outline'}
+								>{decisionLabel(decision)}</Badge
+							>
+						</div>
+						{#if decision.fields && decision.fields.length > 0}
+							<p class="conflict-fields record-fields">
+								Contested fields: {decision.fields.join(', ')}
+							</p>
+						{/if}
+						{#if decision.rationale}
+							<p class="record-rationale">Why: {decision.rationale}</p>
+						{/if}
+						{#if decision.decided_at === 'resume'}
+							<p class="muted record-when">Decided when the interrupted merge was resumed.</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+
+		<h3>Left behind</h3>
+		{#if record.exclusions.length === 0}
+			<p class="muted">Nothing else was left out of the merge.</p>
+		{:else}
+			<ul class="record-list">
+				{#each record.exclusions as exclusion (exclusion.stream_id)}
+					<li class="record-item">
+						<div class="conflict-head">
+							<span class="entity-type">{entityTypeLabel(exclusion.entity_type)}</span>
+							<span class="conflict-name"
+								>{exclusion.entity_name || unnamedEntityLabel(exclusion.entity_type)}</span
+							>
+							<Badge variant="outline">Not merged</Badge>
+						</div>
+						{#if exclusion.rationale}
+							<p class="record-rationale">Why: {exclusion.rationale}</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+{/snippet}
+
 <div class="compare-page">
 	<a href="/branches" class="back-link">&larr; All branches</a>
 
@@ -570,6 +733,17 @@
 				</div>
 				{#if comparison.branch.description}
 					<p class="description">{comparison.branch.description}</p>
+				{/if}
+				{#if comparison.branch.status === 'merged' && comparison.branch.merged_at}
+					<p class="merged-line" data-testid="merged-at">
+						Merged into the mainline {formatTimestamp(comparison.branch.merged_at)}{comparison
+							.branch.merge_note
+							? ':'
+							: '.'}
+						{#if comparison.branch.merge_note}
+							<span class="merged-note">{comparison.branch.merge_note}</span>
+						{/if}
+					</p>
 				{/if}
 				<p class="anchor">Compared against the mainline from position {comparison.base_position}.</p>
 			</div>
@@ -613,86 +787,108 @@
 			/>
 		{/if}
 
-		<section class="verdict">
-			<h2>Conflicts</h2>
-			<p class="section-hint">
-				{#if mergeable}
-					Entities whose branch and mainline changes are actually incompatible. Every one needs a
-					decision before this branch can be merged.
+		{#if mergeRecord}
+			{@render mergeRecordSection(mergeRecord)}
+		{/if}
+
+		{#if !mergeRecord}
+			<section class="verdict">
+				<h2>Conflicts</h2>
+				<p class="section-hint">
+					{#if mergeable}
+						Entities whose branch and mainline changes are actually incompatible. Every one needs a
+						decision before this branch can be merged.
+					{:else}
+						Entities whose branch and mainline changes were incompatible. This branch is
+						{comparison.branch.status} and accepts no further changes, so this is a record rather
+						than a decision.
+					{/if}
+				</p>
+				{#if conflicts.length === 0}
+					<p class="clean">No conflicts. This branch's changes are compatible with the mainline.</p>
+				{:else if mergeable}
+					<!--
+						Shown from `mergeResolutions`, not `resolutions`, so the picker always
+						reads back what will actually be sent: an excluded entity displays the
+						`main` its exclusion folds on top, rather than the branch's-version
+						choice the payload overrides. Nothing is lost by this - the fold is
+						one-way and `resolutions` still holds the original decision, so
+						unticking the exclusion restores it. `onresolve` writes to
+						`resolutions` (never the derived map), which is what keeps that true.
+					-->
+					<MergeConflictResolver
+						{conflicts}
+						resolutions={mergeResolutions}
+						onresolve={resolveConflict}
+						onresolveall={resolveConflicts}
+						{rationales}
+						onrationale={setRationale}
+						blocked={blockedIds}
+						disabled={merging}
+					/>
 				{:else}
-					Entities whose branch and mainline changes were incompatible. This branch is
-					{comparison.branch.status} and accepts no further changes, so this is a record rather
-					than a decision.
+					<!--
+						A terminal branch gets the read-only list, not a disabled resolver: it
+						can never take another write, so offering pickers at all - even inert
+						ones - would suggest a decision is still outstanding.
+					-->
+					<ul class="conflict-list">
+						{#each conflicts as conflict (conflict.stream_id)}
+							<li class="conflict">
+								<div class="conflict-head">
+									<span class="entity-type">{entityTypeLabel(conflict.entity_type)}</span>
+									<span class="conflict-name"
+										>{conflict.entity_name || unnamedEntityLabel(conflict.entity_type)}</span
+									>
+									<Badge variant="destructive">{conflictLabel(conflict.kind)}</Badge>
+								</div>
+								<p class="conflict-detail">{conflict.detail}</p>
+								{#if conflict.field_values && conflict.field_values.length > 0}
+									<ConflictValues {conflict} />
+								{:else if conflict.fields && conflict.fields.length > 0}
+									<p class="conflict-fields">
+										Contested fields: {conflict.fields.join(', ')}
+									</p>
+								{/if}
+							</li>
+						{/each}
+					</ul>
 				{/if}
-			</p>
-			{#if conflicts.length === 0}
-				<p class="clean">No conflicts. This branch's changes are compatible with the mainline.</p>
-			{:else if mergeable}
-				<!--
-					Shown from `mergeResolutions`, not `resolutions`, so the picker always
-					reads back what will actually be sent: an excluded entity displays the
-					`main` its exclusion folds on top, rather than the branch's-version
-					choice the payload overrides. Nothing is lost by this - the fold is
-					one-way and `resolutions` still holds the original decision, so
-					unticking the exclusion restores it. `onresolve` writes to
-					`resolutions` (never the derived map), which is what keeps that true.
-				-->
-				<MergeConflictResolver
-					{conflicts}
-					resolutions={mergeResolutions}
-					onresolve={resolveConflict}
-					onresolveall={resolveConflicts}
-					{rationales}
-					onrationale={setRationale}
-					blocked={blockedIds}
-					disabled={merging}
-				/>
-			{:else}
-				<!--
-					A terminal branch gets the read-only list, not a disabled resolver: it
-					can never take another write, so offering pickers at all - even inert
-					ones - would suggest a decision is still outstanding.
-				-->
-				<ul class="conflict-list">
-					{#each conflicts as conflict (conflict.stream_id)}
-						<li class="conflict">
-							<div class="conflict-head">
-								<span class="entity-type">{entityTypeLabel(conflict.entity_type)}</span>
-								<span class="conflict-name"
-									>{conflict.entity_name || unnamedEntityLabel(conflict.entity_type)}</span
-								>
-								<Badge variant="destructive">{conflictLabel(conflict.kind)}</Badge>
-							</div>
-							<p class="conflict-detail">{conflict.detail}</p>
-							{#if conflict.field_values && conflict.field_values.length > 0}
-								<ConflictValues {conflict} />
-							{:else if conflict.fields && conflict.fields.length > 0}
-								<p class="conflict-fields">
-									Contested fields: {conflict.fields.join(', ')}
-								</p>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
+			</section>
+		{/if}
 
 		<section class="hint">
 			<h2>Also changed on both sides</h2>
 			<p class="section-hint">
-				A divergence hint for human review, not a verdict - these entities were touched by both
-				the branch and the mainline but their changes do not conflict.
+				{#if mergeRecord}
+					A divergence hint for human review, not a verdict - these entities were touched by both
+					the branch and the mainline and are not among the merge's decisions above. That includes
+					entities the mainline changed again after the merge.
+				{:else}
+					A divergence hint for human review, not a verdict - these entities were touched by both
+					the branch and the mainline but their changes do not conflict.
+				{/if}
 			</p>
 			{#if cleanOverlaps.length === 0}
 				<p class="clean">
 					{comparison.overlapping_stream_ids.length === 0
 						? 'No entities were changed on both sides.'
-						: 'Every entity changed on both sides is listed as a conflict above.'}
+						: mergeRecord
+							? 'Every entity changed on both sides is listed in the merge record above.'
+							: 'Every entity changed on both sides is listed as a conflict above.'}
 				</p>
 			{:else}
 				<ul class="overlap-list">
 					{#each cleanOverlaps as streamId (streamId)}
-						<li><code>{streamId}</code></li>
+						{@const known = overlapNames.get(streamId)}
+						<li>
+							{#if known}
+								<span class="entity-type">{entityTypeLabel(known.type)}</span>
+								<span class="overlap-name">{known.name || unnamedEntityLabel(known.type)}</span>
+							{:else}
+								<code>{streamId}</code>
+							{/if}
+						</li>
 					{/each}
 				</ul>
 			{/if}
@@ -713,6 +909,14 @@
 					{comparison.main_change_count} change{comparison.main_change_count === 1 ? '' : 's'} to the
 					same entities since the fork
 				</p>
+				{#if replayedCopies > 0}
+					<p class="side-count replayed-note" data-testid="replayed-note">
+						{plural(replayedCopies, 'change')} the merge copied from this branch
+						{replayedCopies === 1 ? 'is' : 'are'} not listed here: {replayedCopies === 1
+							? "it is this branch's own change"
+							: "they are this branch's own changes"}, shown alongside.
+					</p>
+				{/if}
 				{@render changeList(
 					comparison.main_changes,
 					'The mainline has not touched any of the entities this branch changed.',
@@ -892,6 +1096,110 @@
 		margin: 0.25rem 0 0;
 		font-size: 0.8125rem;
 		color: #b91c1c;
+	}
+
+	.merged-line {
+		margin: 0.375rem 0 0;
+		font-size: 0.875rem;
+		color: #475569;
+	}
+
+	.merged-note {
+		font-style: italic;
+		color: #1e293b;
+		overflow-wrap: anywhere;
+	}
+
+	.merge-record h3 {
+		margin: 1rem 0 0.5rem;
+		font-size: 0.875rem;
+		color: #1e293b;
+	}
+
+	.record-facts {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.5rem;
+		margin: 0;
+		padding: 0.75rem 1rem;
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+	}
+
+	@media (min-width: 640px) {
+		.record-facts {
+			grid-template-columns: 1fr 1fr;
+		}
+	}
+
+	.record-facts dt {
+		font-size: 0.75rem;
+		color: #64748b;
+	}
+
+	.record-facts dd {
+		margin: 0;
+		font-size: 0.875rem;
+		color: #1e293b;
+		overflow-wrap: anywhere;
+	}
+
+	.record-note {
+		white-space: pre-line;
+	}
+
+	.record-legacy {
+		margin: 0.75rem 0 0;
+		padding: 0.5rem 0.75rem;
+		background: #fef3c7;
+		border: 1px solid #f59e0b;
+		border-radius: 6px;
+		font-size: 0.8125rem;
+		color: #92400e;
+	}
+
+	.record-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.record-item {
+		padding: 0.75rem 1rem;
+		background: white;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+	}
+
+	.record-fields {
+		color: #475569;
+	}
+
+	.record-rationale {
+		margin: 0.375rem 0 0;
+		font-size: 0.875rem;
+		color: #334155;
+		overflow-wrap: anywhere;
+	}
+
+	.record-when,
+	.muted {
+		margin: 0.25rem 0 0;
+		font-size: 0.8125rem;
+		color: #64748b;
+	}
+
+	.overlap-name {
+		font-weight: 500;
+		color: #1e293b;
+	}
+
+	.replayed-note {
+		font-style: italic;
 	}
 
 	.overlap-list li {

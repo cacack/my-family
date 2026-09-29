@@ -30,7 +30,8 @@ export const ENTITY_TYPE_LABELS: Record<ChangeEntityType, string> = {
 	evidence_analysis: 'Evidence analysis',
 	evidence_conflict: 'Evidence conflict',
 	research_log: 'Research log',
-	proof_summary: 'Proof summary'
+	proof_summary: 'Proof summary',
+	branch: 'Research branch'
 };
 
 /** Every entity type, in label order. */
@@ -77,6 +78,8 @@ function pageOf(entityType: string, id: string): string | null {
 			return `/evidence/research-logs/${id}`;
 		case 'proof_summary':
 			return `/evidence/proof-summaries/${id}`;
+		case 'branch':
+			return `/branches/${id}`;
 		default:
 			return null;
 	}
@@ -94,7 +97,8 @@ type LinkableEntry = Pick<Entry, 'entity_type' | 'entity_id' | 'action'> & {
  * does. Null when there is nowhere to go (a note, a submitter).
  */
 export function changeEntryLink(entry: LinkableEntry): string | null {
-	if (entry.action !== 'deleted') {
+	// A deleted branch is archived, not gone: its page is its record.
+	if (entry.action !== 'deleted' || entry.entity_type === 'branch') {
 		const own = pageOf(entry.entity_type, entry.entity_id);
 		if (own) return own;
 	}
@@ -102,4 +106,26 @@ export function changeEntryLink(entry: LinkableEntry): string | null {
 		return pageOf(entry.parent_entity_type, entry.parent_entity_id);
 	}
 	return null;
+}
+
+/**
+ * The action as the entry's reader would say it. A deleted research branch is
+ * archived (its events and record are kept); everything else reads as the
+ * server's action.
+ */
+export function changeActionLabel(entry: Pick<Entry, 'entity_type' | 'action'>): string {
+	if (entry.entity_type === 'branch' && entry.action === 'deleted') return 'archived';
+	return entry.action;
+}
+
+type MergeOrigin = components['schemas']['MergeOrigin'];
+
+/**
+ * The provenance chip of a change a merge brought onto the mainline (#832):
+ * "via merge of <branch>", then the merge note when there is one.
+ */
+export function mergedFromLabel(origin: MergeOrigin): string {
+	const via = `via merge of ${origin.branch_name || 'a research branch'}`;
+	const note = origin.note?.trim();
+	return note ? `${via}: ${note}` : via;
 }

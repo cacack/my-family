@@ -537,11 +537,17 @@ export interface paths {
          * List global change history
          * @description The mainline's change log, oldest first. Every event type is either
          *     mapped to an entry or deliberately excluded (snapshot markers, GEDCOM
-         *     import records, branch lifecycle events - see
+         *     import records, merge-resume records - see
          *     docs/HISTORY-EVENT-TYPES.md), and the exclusion is applied in the store
          *     before pagination, so `total` and `has_more` describe exactly the set
          *     `items` is paged from. A research branch's own edits are not listed:
-         *     they are not part of the mainline until a merge replays them.
+         *     they are not part of the mainline until a merge replays them. A
+         *     branch's lifecycle is: `branch` entries record when it was created,
+         *     merged (with the merge note) or deleted.
+         *
+         *     A merge's replayed changes are listed at the time of the merge, not
+         *     when they were made on the branch, and carry `merged_from`; the `from`
+         *     and `to` window selects them by that time too.
          */
         get: operations["listHistory"];
         put?: never;
@@ -1857,6 +1863,10 @@ export interface paths {
          *
          *     Terminal (merged or archived) branches compare normally: their events
          *     remain in the append-only log, so the historical diff is still returned.
+         *     A merged branch's compare also carries `merge_record` - what the merge
+         *     decided, as recorded then - and leaves the merge's own replayed copies
+         *     of the branch's changes out of the mainline side
+         *     (`replayed_change_count`).
          */
         get: operations["compareBranch"];
         put?: never;
@@ -3296,15 +3306,22 @@ export interface components {
         ChangeEntry: {
             /** Format: uuid */
             id: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the change reached this line of research. For a change a
+             *     merge replayed onto the mainline that is the merge; when it was
+             *     made on the branch is `merged_from.original_timestamp`.
+             */
             timestamp: string;
             /**
              * @description The kind of entity the change is about. A person's name variants
              *     live on the person, so a name change is a `person` entry whose
-             *     `changes` carry the `name`.
+             *     `changes` carry the `name`. `branch` is a research branch's
+             *     lifecycle, in the global history only: `created`, `merged` (its
+             *     `changes.merge_note` carries the note) and `deleted` (archived).
              * @enum {string}
              */
-            entity_type: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary";
+            entity_type: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary" | "branch";
             /**
              * Format: uuid
              * @description The changed entity's id (its event stream). Merge exclusions and
@@ -3320,7 +3337,8 @@ export interface components {
              */
             entity_name?: string;
             /**
-             * @description `merged` is a person merge, reported on the surviving person.
+             * @description `merged` is a person merge, reported on the surviving person, or a
+             *     research branch merged into the mainline.
              * @enum {string}
              */
             action: "created" | "updated" | "deleted" | "merged";
@@ -3354,6 +3372,27 @@ export interface components {
              * @enum {string}
              */
             origin?: "main" | "branch";
+            merged_from?: components["schemas"]["MergeOrigin"];
+        };
+        /**
+         * @description The merge that brought a mainline change over from a research branch.
+         *     Present only on changes a merge replayed; changes replayed by a merge
+         *     recorded before this was tracked carry none.
+         */
+        MergeOrigin: {
+            /** Format: uuid */
+            branch_id: string;
+            /** @description The branch's name when it was merged */
+            branch_name: string;
+            /** @description The merge note - why the research was promoted */
+            note?: string;
+            /** Format: date-time */
+            merged_at: string;
+            /**
+             * Format: date-time
+             * @description When the change was made on the branch
+             */
+            original_timestamp: string;
         };
         FieldChange: {
             /** @description Previous value (null for new fields) */
@@ -4335,6 +4374,80 @@ export interface components {
              *     `POST /branches/{id}/merge` or the merge is refused.
              */
             conflicts: components["schemas"]["MergeConflict"][];
+            /**
+             * @description For a merged branch: how many of the mainline's events on the
+             *     branch's entities are its merge's replay of the branch's own
+             *     changes. They are left out of `main_changes`,
+             *     `overlapping_stream_ids` and `conflicts`, which describe only the
+             *     mainline's independent changes. `0` for any other branch.
+             */
+            replayed_change_count?: number;
+            merge_record?: components["schemas"]["MergeRecord"];
+        };
+        /**
+         * @description What a merged branch's merge decided, read from the merge's own record
+         *     rather than recomputed. Present only for a merged branch.
+         */
+        MergeRecord: {
+            /**
+             * Format: uuid
+             * @description The `BranchMerged` event's id
+             */
+            claim_id: string;
+            /** Format: date-time */
+            merged_at: string;
+            /** Format: int64 */
+            merged_at_position: number;
+            /** @description The merge note */
+            note?: string;
+            /**
+             * @description `false` for a merge made before decisions were recorded: its
+             *     `exclusions` are then derived from the replay plan (every entity
+             *     the plan left out kept the mainline's version), without saying
+             *     which were conflicts.
+             */
+            recorded: boolean;
+            /**
+             * @description How many branch events the merge set out to replay. Absent when
+             *     not recorded.
+             */
+            replayed_event_count?: number;
+            /** @description The entities whose branch changes were not replayed. */
+            skipped_stream_ids: string[];
+            decisions: components["schemas"]["MergeRecordDecision"][];
+            exclusions: components["schemas"]["MergeRecordExclusion"][];
+            /** @description How many resumes of an interrupted merge recorded decisions */
+            resume_count: number;
+        };
+        /** @description One decision a merge (or a resume of it) recorded. */
+        MergeRecordDecision: {
+            /** Format: uuid */
+            stream_id: string;
+            entity_type: string;
+            /** @description Empty when the entity cannot be named */
+            entity_name: string;
+            /**
+             * @description The conflict decided. Absent when not recorded.
+             * @enum {string}
+             */
+            kind?: "edit_edit" | "delete_edit" | "create_create";
+            fields?: string[];
+            /** @enum {string} */
+            deleted_by?: "branch" | "main";
+            /** @enum {string} */
+            resolution: "branch" | "main";
+            rationale?: string;
+            /** @enum {string} */
+            decided_at: "merge" | "resume";
+        };
+        /** @description One entity the merge left behind without a conflict. */
+        MergeRecordExclusion: {
+            /** Format: uuid */
+            stream_id: string;
+            entity_type: string;
+            /** @description Empty when the entity cannot be named */
+            entity_name: string;
+            rationale?: string;
         };
         /**
          * @description One entity the branch and the mainline changed incompatibly. At most one
@@ -6482,7 +6595,7 @@ export interface operations {
                  *     Applied in the store before pagination, so `total` counts only the
                  *     matching entries.
                  */
-                entity_type?: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary";
+                entity_type?: "person" | "family" | "source" | "citation" | "media" | "note" | "submitter" | "repository" | "association" | "life_event" | "attribute" | "lds_ordinance" | "evidence_analysis" | "evidence_conflict" | "research_log" | "proof_summary" | "branch";
                 /** @description Start date/time for history (ISO 8601) */
                 from?: string;
                 /** @description End date/time for history (ISO 8601) */

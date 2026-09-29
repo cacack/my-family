@@ -395,7 +395,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 			ErrMergePartiallyApplied, branch.ID, err)
 	}
 
-	if err := h.finishResumeReplay(ctx, branch.ID, groups, landed, decision.steps, result); err != nil {
+	if err := h.finishResumeReplay(ctx, branch, claim, groups, landed, decision.steps, result); err != nil {
 		return nil, err
 	}
 
@@ -411,18 +411,23 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 // recounts the citation counts of the sources they touch.
 func (h *Handler) finishResumeReplay(
 	ctx context.Context,
-	branchID uuid.UUID,
+	branch *domain.Branch,
+	claim domain.BranchMerged,
 	groups []streamGroup,
 	landed map[uuid.UUID]bool,
 	steps []resumeStep,
 	result *ResumeMergeResult,
 ) error {
+	branchID := branch.ID
+	// Stamped exactly as the merge stamped the streams it did replay (#832):
+	// the provenance is built from the branch and the claim alone.
+	provenance := mergeProvenance(branch, claim)
 	onMain := make(map[uuid.UUID]bool, len(groups))
 	for id, done := range landed {
 		onMain[id] = done
 	}
 	for i, step := range steps {
-		appended, err := h.replayStream(ctx, step.group, step.planned)
+		appended, err := h.replayStream(ctx, step.group, step.planned, provenance)
 		result.ReplayedEventCount += appended
 		if err != nil {
 			return fmt.Errorf(

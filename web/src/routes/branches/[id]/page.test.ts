@@ -376,13 +376,17 @@ describe('Branch comparison page', () => {
 			comparison({ conflicts: [], overlapping_stream_ids: [PERSON_ID, OTHER_ID] })
 		);
 
-		render(Page);
+		const { container } = render(Page);
 
 		await screen.findByText(
 			"No conflicts. This branch's changes are compatible with the mainline."
 		);
-		expect(screen.getByText(PERSON_ID)).toBeDefined();
-		expect(screen.getByText(OTHER_ID)).toBeDefined();
+		// Named from the entries that list it (#832); an id no entry names
+		// stays an id rather than vanishing.
+		const overlaps = container.querySelector('.overlap-list') as HTMLElement;
+		expect(within(overlaps).getByText('Ada Lovelace')).toBeDefined();
+		expect(within(overlaps).queryByText(PERSON_ID)).toBeNull();
+		expect(within(overlaps).getByText(OTHER_ID)).toBeDefined();
 	});
 
 	it('discloses a truncated diff', async () => {
@@ -1150,5 +1154,205 @@ describe('Branch comparison page', () => {
 			await new Promise((resolve) => setTimeout(resolve, 400));
 			expect(precheckBranchMerge).not.toHaveBeenCalled();
 		});
+	});
+});
+
+describe('Merged branch record (#832)', () => {
+	const ALLEGRA_ID = '66666666-6666-6666-6666-666666666666';
+	const merged: Branch = {
+		...branch,
+		status: 'merged',
+		merged_at: '2026-02-01T09:00:00Z',
+		merge_note: 'The baptism register settles it'
+	};
+
+	function mergedComparison(overrides: Partial<BranchComparisonResult> = {}) {
+		return comparison({
+			branch: merged,
+			replayed_change_count: 2,
+			merge_record: {
+				claim_id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+				merged_at: '2026-02-01T09:00:00Z',
+				merged_at_position: 128,
+				note: 'The baptism register settles it',
+				recorded: true,
+				replayed_event_count: 2,
+				skipped_stream_ids: [ALLEGRA_ID],
+				decisions: [
+					{
+						stream_id: PERSON_ID,
+						entity_type: 'person',
+						entity_name: 'Ada Lovelace',
+						kind: 'edit_edit',
+						fields: ['surname'],
+						resolution: 'branch',
+						rationale: 'Baptism register, 1815',
+						decided_at: 'merge'
+					}
+				],
+				exclusions: [
+					{
+						stream_id: ALLEGRA_ID,
+						entity_type: 'person',
+						entity_name: 'Allegra Clairmont',
+						rationale: 'Not yet proven'
+					}
+				],
+				resume_count: 0
+			},
+			...overrides
+		});
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockState.id = null;
+		mockState.branch = null;
+		routeState.current = { params: { id: BRANCH_ID } };
+		routeState.subscribers.clear();
+		precheckBranchMerge.mockResolvedValue({ blockers: [] });
+	});
+
+	it('shows what the merge decided, by name, and what it left behind', async () => {
+		compareBranch.mockResolvedValue(mergedComparison());
+
+		render(Page);
+
+		const record = await screen.findByTestId('merge-record');
+		expect(within(record).getByRole('heading', { name: 'Merge record' })).toBeDefined();
+		expect(within(record).getByText('The baptism register settles it')).toBeDefined();
+		expect(within(record).getByText('2 changes replayed onto the mainline')).toBeDefined();
+		expect(within(record).getByText('1 entity')).toBeDefined();
+		expect(within(record).getByText('Ada Lovelace')).toBeDefined();
+		expect(within(record).getByText('Both sides edited')).toBeDefined();
+		expect(within(record).getByText("Kept this branch's version")).toBeDefined();
+		expect(within(record).getByText('Contested fields: surname')).toBeDefined();
+		expect(within(record).getByText('Why: Baptism register, 1815')).toBeDefined();
+		expect(within(record).getByText('Allegra Clairmont')).toBeDefined();
+		expect(within(record).getByText('Not merged')).toBeDefined();
+		expect(within(record).getByText('Why: Not yet proven')).toBeDefined();
+		// The record replaces the recomputed verdict, which would describe a
+		// mainline the merge itself changed.
+		expect(screen.queryByRole('heading', { name: 'Conflicts' })).toBeNull();
+		expect(screen.queryByText(/merge/i, { selector: 'button' })).toBeNull();
+	});
+
+	it('shows when and why the branch was merged in its header', async () => {
+		compareBranch.mockResolvedValue(mergedComparison());
+
+		render(Page);
+
+		const line = await screen.findByTestId('merged-at');
+		expect(line.textContent?.replace(/\s+/g, ' ')).toMatch(/Merged into the mainline Feb 1, 2026/);
+		expect(within(line).getByText('The baptism register settles it')).toBeDefined();
+	});
+
+	it("says the mainline column leaves out the merge's copies", async () => {
+		compareBranch.mockResolvedValue(mergedComparison());
+
+		render(Page);
+
+		const note = await screen.findByTestId('replayed-note');
+		expect(note.textContent?.replace(/\s+/g, ' ')).toMatch(
+			/2 changes the merge copied from this branch are not listed here: they are this branch's own changes/
+		);
+	});
+
+	it('says when a merge predates the record, and when a decision came from a resume', async () => {
+		const base = mergedComparison().merge_record!;
+		compareBranch.mockResolvedValue(
+			mergedComparison({
+				replayed_change_count: 1,
+				merge_record: {
+					...base,
+					note: undefined,
+					recorded: false,
+					replayed_event_count: undefined,
+					resume_count: 1,
+					decisions: [
+						{
+							stream_id: PERSON_ID,
+							entity_type: 'person',
+							entity_name: '',
+							resolution: 'main',
+							decided_at: 'resume'
+						}
+					],
+					exclusions: []
+				}
+			})
+		);
+
+		render(Page);
+
+		const record = await screen.findByTestId('merge-record');
+		expect(within(record).getByText(/made before decisions were recorded/)).toBeDefined();
+		expect(within(record).getByText('No merge note was recorded.')).toBeDefined();
+		expect(within(record).getByText('1 change found on the mainline')).toBeDefined();
+		expect(within(record).getByText(/interrupted and finished later/)).toBeDefined();
+		expect(within(record).getByText('Unnamed person')).toBeDefined();
+		expect(within(record).getByText("Kept the mainline's version")).toBeDefined();
+		expect(within(record).getByText(/Decided when the interrupted merge was resumed/)).toBeDefined();
+		expect(within(record).getByText('Nothing else was left out of the merge.')).toBeDefined();
+	});
+
+	it('lists a recomputed conflict the record never decided among the overlaps', async () => {
+		// The mainline edited Allegra after the merge: compare recomputes a
+		// conflict for her, but the record decided only Ada, and the conflicts
+		// section is not shown for a merged branch - so the hint must list her.
+		const base = mergedComparison();
+		compareBranch.mockResolvedValue(
+			mergedComparison({
+				branch_changes: [
+					...base.branch_changes,
+					{
+						id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+						timestamp: '2026-01-16T11:30:00Z',
+						entity_type: 'person',
+						entity_id: ALLEGRA_ID,
+						entity_name: 'Allegra Clairmont',
+						action: 'updated',
+						changes: { surname: { old_value: 'Byron', new_value: 'Clairmont' } }
+					}
+				],
+				overlapping_stream_ids: [PERSON_ID, ALLEGRA_ID],
+				conflicts: [
+					...base.conflicts,
+					{ ...base.conflicts[0], stream_id: ALLEGRA_ID, entity_name: 'Allegra Clairmont' }
+				]
+			})
+		);
+
+		render(Page);
+
+		const heading = await screen.findByRole('heading', { name: 'Also changed on both sides' });
+		const hint = heading.closest('section')!;
+		expect(within(hint).getByText('Allegra Clairmont')).toBeDefined();
+		expect(within(hint).queryByText('Ada Lovelace')).toBeNull();
+		expect(within(hint).getByText(/changed again after the merge/)).toBeDefined();
+		expect(screen.queryByText(/listed as a conflict above/)).toBeNull();
+	});
+
+	it('points at the merge record when every overlap is one of its decisions', async () => {
+		compareBranch.mockResolvedValue(mergedComparison());
+
+		render(Page);
+
+		expect(
+			await screen.findByText(
+				'Every entity changed on both sides is listed in the merge record above.'
+			)
+		).toBeDefined();
+		expect(screen.queryByText(/listed as a conflict above/)).toBeNull();
+	});
+
+	it('keeps the read-only conflicts for a merged branch with no record', async () => {
+		compareBranch.mockResolvedValue(comparison({ branch: merged }));
+
+		render(Page);
+
+		expect(await screen.findByText('Both sides edited')).toBeDefined();
+		expect(screen.queryByTestId('merge-record')).toBeNull();
+		expect(screen.queryByTestId('replayed-note')).toBeNull();
 	});
 });

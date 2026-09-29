@@ -47,6 +47,7 @@ mapped or not exercised by the every-type compare fixture
 | `EvidenceConflictDetected` / `EvidenceConflictResolved` | `evidence_conflict` | created / updated | "Fact: description" | conflict page |
 | `ResearchLogCreated` / `ResearchLogUpdated` / `ResearchLogDeleted` | `research_log` | created / updated / deleted | "search description (repository)" | research log page |
 | `ProofSummaryCreated` / `ProofSummaryUpdated` / `ProofSummaryDeleted` | `proof_summary` | created / updated / deleted | "Fact: conclusion" | proof summary page |
+| `BranchCreated` / `BranchMerged` / `BranchDeleted` | `branch` | created / merged / deleted (archived) | branch name (registry, else the `BranchCreated` payload); `changes.merge_note` on a merge, `changes.description` on a creation | branch page |
 
 Updates (and merges) carry field-level `changes` with **both** `old_value` and `new_value`. The
 old value is derived from the entity's earlier events as the scope sees them (the mainline, or a
@@ -63,16 +64,36 @@ while the log still names them. Nothing is read per entry.
 |---|---|
 | `GedcomImported` | Import audit record; the persons, families and sources it created each have their own events. |
 | `SnapshotCreated` / `SnapshotDeleted` | Research-artifact markers (#624): a snapshot names a position in the log, it changes no data. |
-| `BranchCreated` / `BranchDeleted` / `BranchMerged` / `BranchMergeResumed` | Branch lifecycle (ADR-005 §Merge): they describe a research branch, not the data on it; a merge's replayed changes appear as their own events. |
+| `BranchMergeResumed` | A resume's decision record (#685): part of the merge it finishes, which the history shows once, as `BranchMerged`. Its decisions are on the branch's merge record (`merge_record` in `GET /branches/{id}/compare`). |
 
 These events remain in the append-only log (ES-002) as the audit record; only the change-log
-views leave them out. The branch diff's `researchMetadataEventTypes` is a subset of this list
+views leave them out. The branch diff's `researchMetadataEventTypes` is either excluded here or
+mapped to the `branch` entity type — never to genealogy data
 (`TestHistoryCatalog_ExcludesResearchMetadata`).
+
+## Branch lifecycle and merged changes (#832)
+
+The lifecycle of a research branch is **mapped**, as `branch` entries, because the mainline's
+change log is where a researcher looks for "when did this research fork off, and when (and why) did
+it come back". The events are written on each branch's own scope, so the global history asks the
+store to keep them from every branch (`GlobalHistoryQuery.AnyBranchEventTypes`,
+`HistoryBranchLifecycleEventTypes`); branch compare and merge review still strip them
+(`researchMetadataEventTypes`), since they are not changes to the branch's data. Entity history
+never contains them: they live on the branch's own stream.
+
+A merge's **replayed changes** remain their own entries, and each carries `merged_from`: the branch
+(id and name), the merge note, when it was merged and when the change was originally made. The
+provenance is stamped in the replayed event's envelope metadata (`domain.MergeProvenance`), never
+its payload, and the store records the replayed event at the merge's time — so the entry's
+`timestamp`, and the global history's `from`/`to` window and ordering, place it when it reached
+the mainline, while `merged_from.original_timestamp` keeps when the research was done. Changes
+replayed by a merge made before #832 carry no provenance and keep their original time.
 
 ## Branch scope
 
 - **Global history** is the mainline's: a research branch's own events are filtered out in the
   store, matching the `MainlineNotice` the history page shows. They appear once a merge replays them.
+  The branch lifecycle is the exception (see above).
 - **Entity history with `?branch=`**, **branch compare** and **merge review** render a branch's
   events with the same table; names resolve through the branch overlay and old values come from
   the branch's view of each stream.

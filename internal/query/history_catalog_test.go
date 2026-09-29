@@ -83,18 +83,21 @@ func TestHistoryCatalog_CoversEveryEventType(t *testing.T) {
 	}
 }
 
-// Every research-metadata event the branch diff strips is also excluded from
-// the change log: the two lists describe the same kind of event.
+// Every research-metadata event the branch diff strips is either excluded
+// from the change log or, for a branch's lifecycle (#832), reported as a
+// change to the branch itself — never as a change to genealogy data.
 func TestHistoryCatalog_ExcludesResearchMetadata(t *testing.T) {
 	for eventType := range researchMetadataEventTypes {
 		class, ok := classifyHistoryEvent(eventType)
 		require.True(t, ok, eventType)
-		assert.True(t, class.Excluded(), "%s is research metadata but the history catalog maps it", eventType)
+		assert.True(t, class.Excluded() || class.EntityType == entityTypeBranch,
+			"%s is research metadata but the history catalog maps it to %q", eventType, class.EntityType)
 	}
+	assert.Equal(t, []string{"BranchCreated", "BranchDeleted", "BranchMerged"}, HistoryBranchLifecycleEventTypes())
 }
 
 func TestHistoryCatalog_Lookups(t *testing.T) {
-	assert.Equal(t, []string{"BranchCreated", "BranchDeleted", "BranchMergeResumed", "BranchMerged", "GedcomImported", "SnapshotCreated", "SnapshotDeleted"}, HistoryExcludedEventTypes())
+	assert.Equal(t, []string{"BranchMergeResumed", "GedcomImported", "SnapshotCreated", "SnapshotDeleted"}, HistoryExcludedEventTypes())
 	assert.Equal(t, []string{"ChildLinkedToFamily", "ChildUnlinkedFromFamily", "FamilyCreated", "FamilyDeleted", "FamilyUpdated"}, HistoryEventTypesForEntity("family"))
 	assert.Equal(t, []string{"NameAdded", "NameRemoved", "NameUpdated", "PersonCreated", "PersonDeleted", "PersonMerged", "PersonUpdated"}, HistoryEventTypesForEntity("person"))
 	assert.Nil(t, HistoryEventTypesForEntity("unknown"))
@@ -109,7 +112,7 @@ func TestHistoryCatalog_Lookups(t *testing.T) {
 
 // TestGetGlobalHistory_PaginatesOverShownEntries is #739's acceptance test:
 // over a log interleaving shown events with excluded ones (snapshot markers, an
-// import record, branch lifecycle) and a branch's own edits, every page holds
+// import record, a merge-resume record) and a branch's own edits, every page holds
 // exactly min(limit, total-offset) entries, has_more agrees, and the pages
 // together are the whole mainline change log — on every backend.
 func TestGetGlobalHistory_PaginatesOverShownEntries(t *testing.T) {
@@ -135,7 +138,7 @@ func TestGetGlobalHistory_PaginatesOverShownEntries(t *testing.T) {
 					domain.SnapshotCreated{BaseEvent: domain.NewBaseEvent(), SnapshotID: snapshot, Name: "Milestone"},
 					domain.SnapshotDeleted{BaseEvent: domain.NewBaseEvent(), SnapshotID: snapshot})
 				appendOn(repository.MainScope, "import", uuid.New(), domain.GedcomImported{BaseEvent: domain.NewBaseEvent(), Filename: "tree.ged"})
-				appendOn(repository.MainScope, "branch", uuid.New(), domain.BranchCreated{BaseEvent: domain.NewBaseEvent(), Name: "Theory"})
+				appendOn(repository.AppendScope{BranchID: branch}, "branch", branch.UUID(), domain.BranchMergeResumed{BaseEvent: domain.NewBaseEvent(), BranchID: branch.UUID()})
 				// A research branch's edit of the same person is not mainline history.
 				appendOn(repository.AppendScope{BranchID: branch}, "Person", person, domain.NewPersonUpdated(person, map[string]any{"surname": "Branch"}))
 			}
