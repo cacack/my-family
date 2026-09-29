@@ -589,7 +589,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 		switch event.Type {
 		case gedcom.EventBirth:
 			person.BirthDate = event.Date
-			person.BirthPlace = event.Place
+			person.BirthPlace = event.PlaceName()
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -610,7 +610,7 @@ func parseIndividual(indi *gedcom.Individual, _ *gedcom.Document, result *Import
 			}
 		case gedcom.EventDeath:
 			person.DeathDate = event.Date
-			person.DeathPlace = event.Place
+			person.DeathPlace = event.PlaceName()
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -698,7 +698,7 @@ func parseFamily(fam *gedcom.Family, doc *gedcom.Document, result *ImportResult)
 			}
 			family.RelationshipType = domain.RelationMarriage
 			family.MarriageDate = event.Date
-			family.MarriagePlace = event.Place
+			family.MarriagePlace = event.PlaceName()
 			// Extract coordinates from PlaceDetail if available
 			if event.PlaceDetail != nil && event.PlaceDetail.Coordinates != nil {
 				if event.PlaceDetail.Coordinates.Latitude != "" {
@@ -1145,7 +1145,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 				OwnerID:     personID,
 				FactType:    factType,
 				Date:        event.Date,
-				Place:       event.Place,
+				Place:       event.PlaceName(),
 				Description: event.Description,
 				Cause:       event.Cause,
 				Age:         event.Age,
@@ -1199,7 +1199,7 @@ func extractEventsFromIndividual(indi *gedcom.Individual, personID uuid.UUID) []
 			OwnerID:     personID,
 			FactType:    factType,
 			Date:        event.Date,
-			Place:       event.Place,
+			Place:       event.PlaceName(),
 			Description: event.Description,
 			Cause:       event.Cause,
 			Age:         event.Age,
@@ -1263,7 +1263,7 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 			value = event.Description
 		case gedcom.EventResidence:
 			factType = domain.FactPersonResidence
-			value = event.Place // For residence, place is the value
+			value = event.PlaceName() // For residence, place is the value
 		default:
 			// Not an attribute type, skip
 			continue
@@ -1275,7 +1275,7 @@ func extractAttributesFromIndividual(indi *gedcom.Individual, personID uuid.UUID
 			FactType: factType,
 			Value:    value,
 			Date:     event.Date,
-			Place:    event.Place,
+			Place:    event.PlaceName(),
 		}
 		attributes = append(attributes, attr)
 	}
@@ -1402,7 +1402,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 				OwnerID:     familyID,
 				FactType:    domain.FactFamilyMarriage,
 				Date:        event.Date,
-				Place:       event.Place,
+				Place:       event.PlaceName(),
 				Description: event.Description,
 				IsNegated:   true,
 			}
@@ -1452,7 +1452,7 @@ func extractEventsFromFamily(fam *gedcom.Family, familyID uuid.UUID) []EventData
 			OwnerID:     familyID,
 			FactType:    factType,
 			Date:        event.Date,
-			Place:       event.Place,
+			Place:       event.PlaceName(),
 			Description: event.Description,
 			IsNegated:   event.IsNegative,
 		}

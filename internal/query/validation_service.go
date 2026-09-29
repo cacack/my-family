@@ -452,10 +452,10 @@ func (s *ValidationService) personToIndividual(person repository.PersonReadModel
 	// Add birth event
 	if person.BirthDateRaw != "" {
 		birthEvent := &gedcom.Event{
-			Type:  gedcom.EventBirth,
-			Date:  person.BirthDateRaw,
-			Place: person.BirthPlace,
+			Type: gedcom.EventBirth,
+			Date: person.BirthDateRaw,
 		}
+		birthEvent.SetPlaceName(person.BirthPlace)
 		// Parse the date
 		gd := domain.ParseGenDate(person.BirthDateRaw)
 		if gd.Year != nil {
@@ -476,10 +476,10 @@ func (s *ValidationService) personToIndividual(person repository.PersonReadModel
 	// Add death event
 	if person.DeathDateRaw != "" {
 		deathEvent := &gedcom.Event{
-			Type:  gedcom.EventDeath,
-			Date:  person.DeathDateRaw,
-			Place: person.DeathPlace,
+			Type: gedcom.EventDeath,
+			Date: person.DeathDateRaw,
 		}
+		deathEvent.SetPlaceName(person.DeathPlace)
 		// Parse the date
 		gd := domain.ParseGenDate(person.DeathDateRaw)
 		if gd.Year != nil {
@@ -524,10 +524,10 @@ func (s *ValidationService) familyToGedcomFamily(family repository.FamilyReadMod
 	// Add marriage event
 	if family.MarriageDateRaw != "" {
 		marriageEvent := &gedcom.Event{
-			Type:  gedcom.EventMarriage,
-			Date:  family.MarriageDateRaw,
-			Place: family.MarriagePlace,
+			Type: gedcom.EventMarriage,
+			Date: family.MarriageDateRaw,
 		}
+		marriageEvent.SetPlaceName(family.MarriagePlace)
 		// Parse the date
 		gd := domain.ParseGenDate(family.MarriageDateRaw)
 		if gd.Year != nil {

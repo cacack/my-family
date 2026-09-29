@@ -2586,6 +2586,96 @@ func TestExport_NegatedEventRoundTrip(t *testing.T) {
 	}
 }
 
+// TestExport_EventPlaceRoundTrip exports events with a place (one with
+// coordinates, one without) and re-imports them, checking both places survive.
+// The no-coordinates case guards against the place name being written only
+// alongside a PlaceDetail that is allocated for coordinates.
+func TestExport_EventPlaceRoundTrip(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	ctx := context.Background()
+
+	personID := uuid.New()
+	if err := readStore.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+		ID:        personID,
+		GivenName: "John",
+		Surname:   "Doe",
+		FullName:  "John Doe",
+		Gender:    domain.GenderMale,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	lat := "N42.3601"
+	long := "W71.0589"
+	events := []*repository.EventReadModel{
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBaptism,
+			DateRaw:   "1 FEB 1850",
+			Place:     "Boston, MA, USA",
+			PlaceLat:  &lat,
+			PlaceLong: &long,
+			Version:   1,
+		},
+		{
+			ID:        uuid.New(),
+			OwnerType: "person",
+			OwnerID:   personID,
+			FactType:  domain.FactPersonBurial,
+			DateRaw:   "25 MAR 1920",
+			Place:     "Springfield, IL, USA",
+			Version:   1,
+		},
+	}
+	for _, e := range events {
+		if err := readStore.SaveEvent(ctx, domain.MainBranchID, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	buf := &bytes.Buffer{}
+	if _, err := gedcom.NewExporter(readStore).Export(ctx, buf); err != nil {
+		t.Fatalf("Export failed: %v", err)
+	}
+
+	_, _, _, _, _, _, imported, _, _, _, _, _, _, err := gedcom.NewImporter().Import(ctx, bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("Import failed: %v", err)
+	}
+
+	byType := make(map[domain.FactType]gedcom.EventData)
+	for _, e := range imported {
+		byType[e.FactType] = e
+	}
+
+	bapm, ok := byType[domain.FactPersonBaptism]
+	if !ok {
+		t.Fatal("baptism event missing after round-trip")
+	}
+	if bapm.Place != "Boston, MA, USA" {
+		t.Errorf("baptism place = %q, want %q", bapm.Place, "Boston, MA, USA")
+	}
+	if bapm.PlaceLat == nil || *bapm.PlaceLat != lat {
+		t.Errorf("baptism latitude = %v, want %q", bapm.PlaceLat, lat)
+	}
+	if bapm.PlaceLong == nil || *bapm.PlaceLong != long {
+		t.Errorf("baptism longitude = %v, want %q", bapm.PlaceLong, long)
+	}
+
+	buri, ok := byType[domain.FactPersonBurial]
+	if !ok {
+		t.Fatal("burial event missing after round-trip")
+	}
+	if buri.Place != "Springfield, IL, USA" {
+		t.Errorf("burial place = %q, want %q", buri.Place, "Springfield, IL, USA")
+	}
+	if buri.PlaceLat != nil || buri.PlaceLong != nil {
+		t.Errorf("burial should have no coordinates, got lat=%v long=%v", buri.PlaceLat, buri.PlaceLong)
+	}
+}
+
 func TestExport_Repositories(t *testing.T) {
 	readStore := memory.NewReadModelStore()
 	ctx := context.Background()
