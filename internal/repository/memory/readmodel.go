@@ -336,16 +336,19 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	hasQuery := strings.TrimSpace(opts.Query) != ""
+	// Trim the query and places like the SQL stores, so "  O'Brien  " is a search
+	// for O'Brien and " London" filters on "London".
+	opts.Query = strings.TrimSpace(opts.Query)
+	opts.BirthPlace = strings.TrimSpace(opts.BirthPlace)
+	opts.DeathPlace = strings.TrimSpace(opts.DeathPlace)
+	hasQuery := opts.Query != ""
 	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
 		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
-	hasPlaceFilter := strings.TrimSpace(opts.BirthPlace) != "" || strings.TrimSpace(opts.DeathPlace) != ""
+	hasPlaceFilter := opts.BirthPlace != "" || opts.DeathPlace != ""
 	if !hasQuery && !hasDateFilter && !hasPlaceFilter {
 		return nil, nil
 	}
 
-	// Trim like the SQL stores, so "  O'Brien  " is a search for O'Brien.
-	opts.Query = strings.TrimSpace(opts.Query)
 	queryLower := strings.ToLower(opts.Query)
 	foundIDs := make(map[uuid.UUID]bool)
 	var results []repository.PersonReadModel
@@ -377,21 +380,28 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return results, nil
 }
 
+// sqlFullName is the full name the SQL stores search: their full_name columns
+// are generated as given_name || ' ' || surname, without the prefix, suffix and
+// surname prefix the projection folds into an alternate name's FullName.
+func sqlFullName(givenName, surname string) string {
+	return givenName + " " + surname
+}
+
 // personMatchesQuery checks if a person matches the text query (or returns true if no query).
-// A fuzzy query is trigram similarity, as PostgreSQL's pg_trgm `%` (DB-005).
+// A plain query matches as PostgreSQL's full_name ILIKE '%' || q || '%' and a
+// fuzzy query is trigram similarity, as PostgreSQL's pg_trgm `%` (DB-005).
 func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, queryLower string, opts repository.SearchOptions) bool {
 	if queryLower == "" {
 		return true
 	}
+	fullName := sqlFullName(p.GivenName, p.Surname)
 	if opts.Fuzzy {
 		return repository.TrigramMatch(queryLower, p.GivenName) ||
 			repository.TrigramMatch(queryLower, p.Surname) ||
-			repository.TrigramMatch(queryLower, p.FullName)
+			repository.TrigramMatch(queryLower, fullName)
 	}
 	soundex := opts.Soundex
-	if strings.Contains(strings.ToLower(p.FullName), queryLower) ||
-		strings.Contains(strings.ToLower(p.GivenName), queryLower) ||
-		strings.Contains(strings.ToLower(p.Surname), queryLower) {
+	if repository.ContainsFold(fullName, queryLower) {
 		return true
 	}
 	if soundex {
@@ -431,7 +441,7 @@ func altNameMatches(name repository.PersonNameReadModel, queryLower string, opts
 	if opts.Fuzzy {
 		return repository.TrigramMatch(queryLower, name.GivenName) ||
 			repository.TrigramMatch(queryLower, name.Surname) ||
-			repository.TrigramMatch(queryLower, name.FullName) ||
+			repository.TrigramMatch(queryLower, sqlFullName(name.GivenName, name.Surname)) ||
 			repository.TrigramMatch(queryLower, name.Nickname)
 	}
 	soundex := opts.Soundex
@@ -492,12 +502,11 @@ func compareTimePtr(a, b *time.Time) int {
 	return a.Compare(*b)
 }
 
-// nameMatchesQuery checks if a PersonNameReadModel matches the query.
+// nameMatchesQuery checks if a PersonNameReadModel matches the query, as
+// PostgreSQL's full_name or nickname ILIKE '%' || q || '%'.
 func nameMatchesQuery(name repository.PersonNameReadModel, queryLower string) bool {
-	return strings.Contains(strings.ToLower(name.FullName), queryLower) ||
-		strings.Contains(strings.ToLower(name.GivenName), queryLower) ||
-		strings.Contains(strings.ToLower(name.Surname), queryLower) ||
-		strings.Contains(strings.ToLower(name.Nickname), queryLower)
+	return repository.ContainsFold(sqlFullName(name.GivenName, name.Surname), queryLower) ||
+		repository.ContainsFold(name.Nickname, queryLower)
 }
 
 // matchesSearchFilters checks if a person matches the date/place filters in SearchOptions.
@@ -514,10 +523,10 @@ func (s *ReadModelStore) matchesSearchFilters(p *repository.PersonReadModel, opt
 	if opts.DeathDateTo != nil && (p.DeathDateSort == nil || p.DeathDateSort.After(*opts.DeathDateTo)) {
 		return false
 	}
-	if opts.BirthPlace != "" && !strings.Contains(strings.ToLower(p.BirthPlace), strings.ToLower(opts.BirthPlace)) {
+	if opts.BirthPlace != "" && !repository.ContainsFold(p.BirthPlace, opts.BirthPlace) {
 		return false
 	}
-	if opts.DeathPlace != "" && !strings.Contains(strings.ToLower(p.DeathPlace), strings.ToLower(opts.DeathPlace)) {
+	if opts.DeathPlace != "" && !repository.ContainsFold(p.DeathPlace, opts.DeathPlace) {
 		return false
 	}
 	return true

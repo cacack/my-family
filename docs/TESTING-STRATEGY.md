@@ -60,7 +60,7 @@ skip themselves when it is absent.
 | Event Flow | Command -> Event -> Projection -> ReadModel | ES-001, PR-001, PR-002 |
 | API | HTTP endpoints return correct responses | API-001, API-002, API-003 |
 | GEDCOM | Import/export round-trip | DI-003, DM-003 |
-| Search | Full-text search on both databases | DB-005 |
+| Search | Name search finds the same people on both databases | DB-005 |
 | Branches | Branch lifecycle, diff, merge and conflict resolution on every backend | BR-003, BR-004, BR-005 |
 
 ---
@@ -196,7 +196,7 @@ Quick reference for which tests verify which invariants.
 | DB-002 | `internal/repository/eventstore_test.go` - concurrency | Automated |
 | DB-003 | `internal/repository/*_test.go` - nil for missing | Automated |
 | DB-004 | Feature parity checklist | Code review |
-| DB-005 | `internal/repository/soundex_test.go` + per-backend `readmodel_test.go` | Automated |
+| DB-005 | `internal/integration/search_parity_test.go` (every backend) + `internal/repository/{like,trigram,soundex}_test.go` + per-backend `readmodel_test.go` | Automated |
 | DB-006 | `internal/integration/harness_test.go` - both stores on one database per backend | Automated |
 | DB-007 | `internal/repository/{sqlite,postgres}/` - legacy-migration and construction-order tests | Automated |
 | DB-008 | `internal/storage/storage_test.go` - backend selection, restart persistence, fail-fast refusals | Automated |

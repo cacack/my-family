@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -92,8 +93,9 @@ const (
 )
 
 // TestSearchPersons_LikeEscaping asserts exact result sets for plain queries.
-// LIKE is a case-insensitive substring match on the raw input, so punctuation is
-// literal and 'John' only matches a name containing the quotes.
+// A plain query is PostgreSQL's ILIKE '%' || q || '%': punctuation other than
+// ILIKE's own % _ and \ is literal, so 'John' only matches a name containing
+// the quotes.
 func TestSearchPersons_LikeEscaping(t *testing.T) {
 	store, cleanup := setupTestReadModelDB(t)
 	defer cleanup()
@@ -336,5 +338,188 @@ func TestSearchPersons_WhitespaceQueryIsFiltersOnly(t *testing.T) {
 				t.Errorf("SearchPersons(%q, fuzzy=%v) with birth filter = %d results, want only Late", q, fuzzy, len(results))
 			}
 		}
+	}
+}
+
+// TestSearchPersons_UnicodeCaseWildcardsAndPlaces covers where SQLite's own
+// LOWER/LIKE would disagree with PostgreSQL's ILIKE: upper-case non-ASCII
+// letters (found by any spelling of their case), the % and _ wildcards, the
+// backslash escape, and padded or accented place filters.
+func TestSearchPersons_UnicodeCaseWildcardsAndPlaces(t *testing.T) {
+	store, cleanup := setupTestReadModelDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	for _, p := range []struct{ given, surname, place string }{
+		{"Hans", "Müller", "London, England"},
+		{"Karl", "MÜLLER", "MÜNCHEN, Bayern"},
+		{"Ana", "ÑÚÑEZ", ""},
+		{"Back", `Slash\Name`, ""},
+		{"Per", "100%", ""},
+	} {
+		if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{
+			ID: uuid.New(), GivenName: p.given, Surname: p.surname, BirthPlace: p.place,
+			Version: 1, UpdatedAt: time.Now(),
+		}); err != nil {
+			t.Fatalf("save person %s: %v", p.given, err)
+		}
+	}
+
+	const hans, karl, ana, back, per = "Hans Müller", "Karl MÜLLER", "Ana ÑÚÑEZ", `Back Slash\Name`, "Per 100%"
+	runSearchCases(t, store, []searchCase{
+		{name: "lower umlaut", query: "müller", want: []string{hans, karl}},
+		{name: "upper umlaut", query: "MÜLLER", want: []string{hans, karl}},
+		{name: "upper tilde", query: "ÑÚÑEZ", want: []string{ana}},
+		{name: "lower tilde", query: "ñúñez", want: []string{ana}},
+		{name: "underscore wildcard", query: "M_ller", want: []string{hans, karl}},
+		{name: "percent wildcard", query: "H%r", want: []string{hans}},
+		{name: "escaped percent", query: `100\%`, want: []string{per}},
+		{name: "escaped backslash", query: `\\`, want: []string{back}},
+		{name: "escaped letter", query: `\N`, want: []string{back, ana, hans}}, // a literal n
+		{name: "fuzzy upper umlaut", query: "MÜLLER", fuzzy: true, want: []string{hans, karl}},
+	})
+
+	for _, tc := range []struct {
+		name, place string
+		fuzzy       bool
+		want        []string
+	}{
+		{"accented place", "münchen", false, []string{karl}},
+		{"padded place", " London ", false, []string{hans}},
+		{"blank place", " ", false, []string{hans, karl}},
+		{"padded place fuzzy", " london", true, []string{hans}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Müller", Fuzzy: tc.fuzzy, BirthPlace: tc.place, Limit: 100})
+			if err != nil {
+				t.Fatalf("SearchPersons: %v", err)
+			}
+			var got []string
+			for _, r := range results {
+				got = append(got, r.FullName)
+			}
+			slices.Sort(got)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("birth place %q = %q, want %q", tc.place, got, tc.want)
+			}
+		})
+	}
+
+	// A place filter alone (no query) is trimmed as well.
+	results, err := store.SearchPersons(ctx, repository.SearchOptions{DeathPlace: "  ", BirthPlace: " bayern ", Limit: 100})
+	if err != nil {
+		t.Fatalf("SearchPersons: %v", err)
+	}
+	if len(results) != 1 || results[0].FullName != karl {
+		t.Errorf("birth place \" bayern \" alone = %v, want [%s]", results, karl)
+	}
+}
+
+// seedLargeTree bulk-inserts n people, each with one alternate name row, straight
+// into a fresh read model (SavePerson per row would dominate the test's time).
+// Every 200th person is a Smith; the rest are unique non-matching names.
+func seedLargeTree(tb testing.TB, n int) *sqlite.ReadModelStore {
+	tb.Helper()
+	db, err := sqlite.OpenDB(filepath.Join(tb.TempDir(), "large.db"))
+	if err != nil {
+		tb.Fatalf("open database: %v", err)
+	}
+	tb.Cleanup(func() { db.Close() })
+	store, err := sqlite.NewReadModelStore(db)
+	if err != nil {
+		tb.Fatalf("create read model store: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		tb.Fatalf("begin: %v", err)
+	}
+	insPerson, err := tx.Prepare(`INSERT INTO persons (id, given_name, surname) VALUES (?, ?, ?)`)
+	if err != nil {
+		tb.Fatalf("prepare person insert: %v", err)
+	}
+	insName, err := tx.Prepare(`INSERT INTO person_names (id, person_id, given_name, surname, is_primary) VALUES (?, ?, ?, ?, 1)`)
+	if err != nil {
+		tb.Fatalf("prepare name insert: %v", err)
+	}
+	for i := range n {
+		id := uuid.NewString()
+		given, surname := fmt.Sprintf("Given%d", i), fmt.Sprintf("Surname%d", i)
+		if i%200 == 0 {
+			surname = "Smith"
+		}
+		if _, err := insPerson.Exec(id, given, surname); err != nil {
+			tb.Fatalf("insert person: %v", err)
+		}
+		if _, err := insName.Exec(uuid.NewString(), id, given, surname); err != nil {
+			tb.Fatalf("insert name: %v", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		tb.Fatalf("commit: %v", err)
+	}
+	return store
+}
+
+// TestSearchPersons_PlainSearchPlan pins that plain search matches alternate
+// names in one pass rather than rescanning every alternate name for every
+// person. The earlier LEFT JOIN form planned as "SCAN pn LEFT-JOIN" inside the
+// person scan, which is quadratic: about 10s at 10,000 people and over 90s at
+// 100,000 (#822 review).
+func TestSearchPersons_PlainSearchPlan(t *testing.T) {
+	store := seedLargeTree(t, 10)
+	for _, branch := range []domain.BranchID{domain.MainBranchID, domain.BranchID(uuid.New())} {
+		plan, err := store.SearchPersonsPlan(repository.SearchOptions{Query: "Smith", BranchID: branch})
+		if err != nil {
+			t.Fatalf("explain: %v", err)
+		}
+		for _, step := range plan {
+			// A joined table walked with SCAN (no index) or a correlated subquery
+			// runs once per person.
+			if (strings.HasPrefix(step, "SCAN ") && strings.Contains(step, "JOIN")) || strings.Contains(step, "CORRELATED") {
+				t.Errorf("branch %s: plain search plan rescans names per person: %q in %q", branch, step, plan)
+			}
+		}
+	}
+}
+
+// TestSearchPersons_LargeTree runs plain and fuzzy search over 20,000 people.
+// Linear scans finish in well under a second; the bound is generous so a slow
+// machine does not flake, but a quadratic plan (tens of seconds) fails it.
+func TestSearchPersons_LargeTree(t *testing.T) {
+	if testing.Short() {
+		t.Skip("large tree search skipped in -short mode")
+	}
+	const n = 20000
+	store := seedLargeTree(t, n)
+	ctx := context.Background()
+	for _, fuzzy := range []bool{false, true} {
+		start := time.Now()
+		results, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Fuzzy: fuzzy, Limit: 100})
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatalf("search (fuzzy=%v): %v", fuzzy, err)
+		}
+		if len(results) != n/200 {
+			t.Errorf("search (fuzzy=%v) found %d people, want %d", fuzzy, len(results), n/200)
+		}
+		if elapsed > 15*time.Second {
+			t.Errorf("search (fuzzy=%v) over %d people took %v", fuzzy, n, elapsed)
+		}
+		t.Logf("search (fuzzy=%v) over %d people: %v", fuzzy, n, elapsed)
+	}
+}
+
+// BenchmarkSearchPersons measures plain and fuzzy name search over a
+// 20,000-person tree, the scan ADR-002 relies on being fast enough.
+func BenchmarkSearchPersons(b *testing.B) {
+	store := seedLargeTree(b, 20000)
+	ctx := context.Background()
+	for _, fuzzy := range []bool{false, true} {
+		b.Run(fmt.Sprintf("fuzzy=%v", fuzzy), func(b *testing.B) {
+			for b.Loop() {
+				if _, err := store.SearchPersons(ctx, repository.SearchOptions{Query: "Smith", Fuzzy: fuzzy, Limit: 20}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

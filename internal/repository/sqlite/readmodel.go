@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -1115,9 +1116,12 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		limit = 100
 	}
 
-	// Trim like the PostgreSQL and memory stores do, so a whitespace-only query is
-	// "no query" (a filters-only search).
+	// Trim the query and places as the PostgreSQL store does: a whitespace-only
+	// query is "no query" (a filters-only search), a blank place is no filter, and
+	// " London" filters on "London".
 	opts.Query = strings.TrimSpace(opts.Query)
+	opts.BirthPlace = strings.TrimSpace(opts.BirthPlace)
+	opts.DeathPlace = strings.TrimSpace(opts.DeathPlace)
 	hasQuery := opts.Query != ""
 	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
 		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
@@ -1149,35 +1153,52 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 }
 
 // searchPersonsLike matches the query as a case-insensitive substring of a
-// person's names or alternate names, with date/place filters. This is the
-// SQLite search strategy (ADR-002): a scan rather than an index, which keeps it
-// identical to PostgreSQL's substring arm without a second search index to
-// maintain.
+// person's full name or of an alternate name's full name or nickname, with
+// date/place filters: PostgreSQL's ILIKE arm (full_name ILIKE '%' || q || '%'),
+// matched by ilike_contains so case folding and wildcards agree with it. This
+// is the SQLite search strategy (ADR-002): a scan rather than an index, which
+// keeps it identical to PostgreSQL's substring arm without a second search index
+// to maintain. (Given name and surname need no test of their own: full_name is
+// given_name || ' ' || surname, so it contains any substring of either.)
+//
+// Alternate names are matched in an uncorrelated IN subquery, which SQLite runs
+// once, rather than joined per person: a LEFT JOIN against the names overlay
+// scans every name for every person, which is quadratic in tree size.
 func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
-	likeQuery := "%" + strings.ToLower(opts.Query) + "%"
+	query, args := searchPersonsLikeSQL(opts, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search persons: %w", err)
+	}
+	defer rows.Close()
+
+	return scanPersonRows(rows)
+}
+
+// searchPersonsLikeSQL builds searchPersonsLike's statement and arguments.
+func searchPersonsLikeSQL(opts repository.SearchOptions, limit int) (string, []any) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 	orderClause := searchOrderClause(opts, "p.")
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	namesOverlay, namesArgs := personNamesOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
 	var args []any
 	args = append(args, overlayArgs...)
 
-	namesOverlay, namesArgs := personNamesOverlaySubquery(opts.BranchID)
-
 	sb.WriteString(`
-		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
+		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM ` + overlay + ` p
-		LEFT JOIN ` + namesOverlay + ` pn ON p.id = pn.person_id
-		WHERE (LOWER(p.full_name) LIKE ? OR LOWER(p.given_name) LIKE ? OR LOWER(p.surname) LIKE ?
-		   OR LOWER(pn.full_name) LIKE ? OR LOWER(pn.given_name) LIKE ? OR LOWER(pn.surname) LIKE ?
-		   OR LOWER(pn.nickname) LIKE ?)`)
+		WHERE (` + containsFoldFunc + `(p.full_name, ?)
+		   OR p.id IN (SELECT person_id FROM ` + namesOverlay + `
+			   WHERE ` + containsFoldFunc + `(full_name, ?) OR ` + containsFoldFunc + `(nickname, ?)))`)
+	args = append(args, opts.Query)
 	args = append(args, namesArgs...)
-	args = append(args, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery)
+	args = append(args, opts.Query, opts.Query)
 
 	if filterSQL != "" {
 		sb.WriteString(" AND " + filterSQL)
@@ -1186,14 +1207,7 @@ func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.
 
 	sb.WriteString(" ORDER BY " + orderClause + " LIMIT ?")
 	args = append(args, limit)
-
-	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
-	if err != nil {
-		return nil, fmt.Errorf("search persons: %w", err)
-	}
-	defer rows.Close()
-
-	return scanPersonRows(rows)
+	return sb.String(), args
 }
 
 // personNamesOverlaySubquery resolves person_names for a branch (partition by
@@ -1217,10 +1231,12 @@ func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
 // nickname of one of their alternate names. SQLite has no trigram operator, so
 // every person that passes the date/place filters is read and scored in Go;
 // unlike the Soundex path there is no candidate cap, so a match is never missed
-// because it sorted late.
+// because it sorted late. The scan reads only the columns that are scored or
+// sorted on; the full rows are fetched for the people that make the limit.
 //
 // Results are ordered by best similarity (highest first, or lowest with
-// order=asc) unless a name or date sort is requested.
+// order=asc), ties broken by surname, given name and id as on PostgreSQL,
+// unless a name or date sort is requested.
 func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
@@ -1229,11 +1245,7 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 	var sb strings.Builder
 	args := append(append([]any{}, overlayArgs...), namesArgs...)
 	sb.WriteString(`
-		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
-			   p.version, p.updated_at,
+		SELECT p.id, p.given_name, p.surname, p.full_name, p.birth_date_sort, p.death_date_sort,
 			   pn.given_name, pn.surname, pn.full_name, pn.nickname
 		FROM ` + overlay + ` p
 		LEFT JOIN ` + namesOverlay + ` pn ON p.id = pn.person_id`)
@@ -1246,28 +1258,51 @@ func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository
 	if err != nil {
 		return nil, fmt.Errorf("search persons fuzzy: %w", err)
 	}
-	defer rows.Close()
-
 	matched, err := scoreFuzzyRows(rows, repository.NewTrigramQuery(opts.Query))
+	rows.Close()
 	if err != nil {
 		return nil, fmt.Errorf("search persons fuzzy: %w", err)
 	}
-	results := orderFuzzyMatches(matched, opts)
-	if len(results) > limit {
-		results = results[:limit]
+	ranked := orderFuzzyMatches(matched, opts)
+	if len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+	if len(ranked) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]uuid.UUID, len(ranked))
+	for i, p := range ranked {
+		ids[i] = p.ID
+	}
+	full, err := s.GetPersonsByIDs(ctx, opts.BranchID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("search persons fuzzy: %w", err)
+	}
+	byID := make(map[uuid.UUID]repository.PersonReadModel, len(full))
+	for _, p := range full {
+		byID[p.ID] = p
+	}
+	results := make([]repository.PersonReadModel, 0, len(ranked))
+	for _, id := range ids {
+		if p, ok := byID[id]; ok {
+			results = append(results, p)
+		}
 	}
 	return results, nil
 }
 
 // fuzzyMatch is a person that matched a fuzzy search, with their best score.
+// Only the fields searchPersonsFuzzy scores and sorts on are set.
 type fuzzyMatch struct {
 	person repository.PersonReadModel
 	score  float64
 }
 
-// scoreFuzzyRows reads searchPersonsFuzzy's rows (person columns, then one
-// alternate name's given name, surname, full name and nickname, NULL when the
-// person has none) and returns the people who match, in first-seen order.
+// scoreFuzzyRows reads searchPersonsFuzzy's rows (id, given name, surname, full
+// name, birth and death sort dates, then one alternate name's given name,
+// surname, full name and nickname, NULL when the person has none) and returns
+// the people who match, in first-seen order.
 //
 // A person with several alternate names spans several rows; they are merged.
 // The score follows PostgreSQL's dedup: a direct match on the person's own names
@@ -1282,31 +1317,52 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 		}
 		return top, hit
 	}
+	parseSortDate := func(v sql.NullString) *time.Time {
+		if !v.Valid {
+			return nil
+		}
+		t, err := time.Parse("2006-01-02", v.String)
+		if err != nil {
+			return nil
+		}
+		return &t
+	}
 
 	type entry struct {
 		fuzzyMatch
 		direct, match bool
 	}
-	byID := make(map[uuid.UUID]*entry)
+	byID := make(map[string]*entry)
 	var order []*entry
 	for rows.Next() {
-		var altGiven, altSurname, altFull, altNick sql.NullString
-		p, err := scanPerson(rows, &altGiven, &altSurname, &altFull, &altNick)
-		if err != nil {
+		var (
+			idStr, given, surname, full          string
+			birthSort, deathSort                 sql.NullString
+			altGiven, altSurname, altFull, altNk sql.NullString
+		)
+		if err := rows.Scan(&idStr, &given, &surname, &full, &birthSort, &deathSort,
+			&altGiven, &altSurname, &altFull, &altNk); err != nil {
 			return nil, err
 		}
-		e, seen := byID[p.ID]
+		e, seen := byID[idStr]
 		if !seen {
-			e = &entry{fuzzyMatch: fuzzyMatch{person: *p}}
-			e.score, e.direct = best(p.GivenName, p.Surname, p.FullName)
+			id, err := uuid.Parse(idStr)
+			if err != nil {
+				return nil, fmt.Errorf("parse person id %q: %w", idStr, err)
+			}
+			e = &entry{fuzzyMatch: fuzzyMatch{person: repository.PersonReadModel{
+				ID: id, GivenName: given, Surname: surname, FullName: full,
+				BirthDateSort: parseSortDate(birthSort), DeathDateSort: parseSortDate(deathSort),
+			}}}
+			e.score, e.direct = best(given, surname, full)
 			e.match = e.direct
-			byID[p.ID] = e
+			byID[idStr] = e
 			order = append(order, e)
 		}
 		if e.direct || !altGiven.Valid {
 			continue
 		}
-		if sim, hit := best(altGiven.String, altSurname.String, altFull.String, altNick.String); hit {
+		if sim, hit := best(altGiven.String, altSurname.String, altFull.String, altNk.String); hit {
 			e.match, e.score = true, max(e.score, sim)
 		}
 	}
@@ -1325,7 +1381,8 @@ func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch
 
 // orderFuzzyMatches orders fuzzy results: by the requested name or date sort,
 // else by score (best first, or worst first with order=asc) with ties broken by
-// name, as PostgreSQL orders fuzzy results by rank_score.
+// surname, given name and id (always ascending), the order PostgreSQL gives
+// fuzzy results, so both return the same people when more match than the limit.
 func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []repository.PersonReadModel {
 	switch opts.Sort {
 	case "name", "birth_date", "death_date":
@@ -1340,8 +1397,10 @@ func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []re
 				return a.score > b.score
 			case a.person.Surname != b.person.Surname:
 				return a.person.Surname < b.person.Surname
-			default:
+			case a.person.GivenName != b.person.GivenName:
 				return a.person.GivenName < b.person.GivenName
+			default:
+				return bytes.Compare(a.person.ID[:], b.person.ID[:]) < 0
 			}
 		})
 	}
@@ -1564,12 +1623,14 @@ func buildDatePlaceFilters(opts repository.SearchOptions) (string, []any) {
 		conditions = append(conditions, "p.death_date_sort <= ?")
 		args = append(args, opts.DeathDateTo.Format("2006-01-02"))
 	}
+	// Places match as PostgreSQL's ILIKE '%' || place || '%' (see containsFoldFunc).
+	// SearchPersons has already trimmed them.
 	if opts.BirthPlace != "" {
-		conditions = append(conditions, "p.birth_place LIKE '%' || ? || '%' COLLATE NOCASE")
+		conditions = append(conditions, containsFoldFunc+"(p.birth_place, ?)")
 		args = append(args, opts.BirthPlace)
 	}
 	if opts.DeathPlace != "" {
-		conditions = append(conditions, "p.death_place LIKE '%' || ? || '%' COLLATE NOCASE")
+		conditions = append(conditions, containsFoldFunc+"(p.death_place, ?)")
 		args = append(args, opts.DeathPlace)
 	}
 

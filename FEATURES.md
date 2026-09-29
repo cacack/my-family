@@ -68,7 +68,7 @@ Completed features in my-family genealogy software.
 
 ## Search
 
-- **Name Search** - Search names and alternate names; the same query finds the same people on SQLite and PostgreSQL
+- **Name Search** - Search names and alternate names, including accented and upper-case names; SQLite and PostgreSQL find the same people for a query, apart from the few differences listed in [ADR-002](./docs/adr/002-dual-database-strategy.md#name-search)
 - **Partial Matching** - Find people with partial name searches (`Joh` finds John and Johnson)
 - **Fuzzy Matching** - Find spelling variants (`Smyth` finds Smith) with trigram similarity
 

@@ -2,17 +2,61 @@ package sqlite
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"time"
 
 	// modernc.org/sqlite is a pure-Go SQLite (no cgo), so every build —
 	// including the CGO_ENABLED=0 release binaries — can open a database
 	// (ADR-002, #822). It registers itself as the "sqlite" driver.
-	_ "modernc.org/sqlite"
+	sqlitedriver "modernc.org/sqlite"
+
+	"github.com/cacack/my-family/internal/repository"
 )
 
 // DriverName is the database/sql driver name the SQLite stores run on.
 const DriverName = "sqlite"
+
+// containsFoldFunc is the SQL function name of repository.ContainsFold:
+// ilike_contains(value, query) is 1 when value ILIKE '%' || query || '%' on
+// PostgreSQL would be true, else 0 (and 0 for a NULL value). Plain name search
+// and the place filters use it instead of LOWER(...) LIKE, because SQLite's
+// LOWER and LIKE fold only ASCII case and have no escape character by default,
+// so they disagree with PostgreSQL on names such as "MÜLLER" (DB-005).
+const containsFoldFunc = "ilike_contains"
+
+func init() {
+	sqlitedriver.MustRegisterDeterministicScalarFunction(containsFoldFunc, 2, ilikeContains)
+}
+
+// ilikeContains implements containsFoldFunc.
+func ilikeContains(_ *sqlitedriver.FunctionContext, args []driver.Value) (driver.Value, error) {
+	value, ok := sqlText(args[0])
+	if !ok {
+		return int64(0), nil
+	}
+	query, ok := sqlText(args[1])
+	if !ok {
+		return int64(0), nil
+	}
+	if repository.ContainsFold(value, query) {
+		return int64(1), nil
+	}
+	return int64(0), nil
+}
+
+// sqlText reads a TEXT (or BLOB) SQL function argument; NULL and other types
+// report false.
+func sqlText(v driver.Value) (string, bool) {
+	switch v := v.(type) {
+	case string:
+		return v, true
+	case []byte:
+		return string(v), true
+	default:
+		return "", false
+	}
+}
 
 // dsnParams are applied by the driver to every new connection. Pragmas such
 // as foreign_keys and busy_timeout are per-connection, so they belong in the

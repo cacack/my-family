@@ -176,42 +176,76 @@ silently.
 
 ### Name Search
 
-Decided in #822. Both databases find the same people for the same query
-(DB-005); they get there differently.
+Decided in #822. For the same plain or fuzzy query both databases find the same
+people, apart from the known differences listed below (DB-005); they get there
+differently.
 
 | Query | PostgreSQL | SQLite |
 |-------|------------|--------|
-| Plain (`q=`) | tsvector match **or** `full_name ILIKE '%q%'` (and alternate names/nicknames) | case-insensitive substring (`LIKE '%q%'`) of the person's names and alternate names/nicknames — a scan, no index |
+| Plain (`q=`) | tsvector match **or** `full_name ILIKE '%q%'` (and alternate names' full names/nicknames) | the `ILIKE '%q%'` arm alone, on the person's full name and alternate names' full names/nicknames — a scan, no index |
 | Fuzzy (`fuzzy=true`) | pg_trgm `%` (similarity ≥ 0.3) on given name, surname, full name and alternate names/nicknames | the same similarity, computed in Go (`repository.TrigramSimilarity`, a port of pg_trgm tested against it) over every person that passes the date/place filters |
+
+SQLite's own `LOWER` and `LIKE` fold only ASCII case and have no escape
+character by default, so they would disagree with `ILIKE` on names such as
+`MÜLLER` and on queries containing `\`. The SQLite store instead registers
+`ilike_contains(value, query)` with the driver: a Go function
+(`repository.ContainsFold`, tested against PostgreSQL) that follows `ILIKE`'s
+rules — case folded for every letter, `%` and `_` as wildcards, backslash as the
+escape character. The place filters use it too, and the in-memory store calls
+the same function, so all three backends apply one definition. Query and place
+filters are trimmed on every backend.
 
 SQLite does **not** use FTS5. Plain FTS5 matches whole words, so `John` would not
 find `Johnson`, which makes it stricter than PostgreSQL's substring arm; adding a
-substring arm back brings the full scan back with it. For the tree sizes
-genealogy databases reach, a scan of short name strings is fast enough, and one
-search strategy is simpler than two. Earlier versions could create FTS5 tables
-(`persons_fts`, `person_names_fts`) and triggers; the read model drops them on
-startup so saves stop maintaining an index nothing reads.
+substring arm back brings the full scan back with it. One search strategy is
+simpler than two. Earlier versions could create FTS5 tables (`persons_fts`,
+`person_names_fts`) and triggers; the read model drops them on startup so saves
+stop maintaining an index nothing reads.
 
-Revisit if search on large SQLite trees is measurably slow (#14, #489): FTS5 is
-built into `modernc.org/sqlite`, and its `trigram` tokenizer can serve substring
-queries of three or more characters from an index.
+The scan is linear in the number of people. Alternate names are matched in one
+uncorrelated subquery; a join that rescans every alternate name for every person
+is quadratic (about 10 s at 10,000 people, over 90 s at 100,000), and
+`TestSearchPersons_PlainSearchPlan` pins the query plan against it. Measured with
+`BenchmarkSearchPersons` on a 2.1 GHz Xeon, one alternate name per person:
+
+| People | Plain | Fuzzy |
+|--------|-------|-------|
+| 20,000 | ~0.1 s | ~0.5 s |
+| 100,000 | ~0.5 s | ~3 s |
+
+Fuzzy search costs more because every name is scored in Go. Revisit if search on
+large SQLite trees is measurably slow for users (#14, #489): FTS5 is built into
+`modernc.org/sqlite`, and its `trigram` tokenizer can serve substring queries of
+three or more characters from an index; fuzzy scoring would need its own
+candidate filter (for example, shared trigrams) rather than FTS5.
 
 `internal/integration/search_parity_test.go` runs the #822 query set (`John`,
-`Joh`, `O'Brien`, `Smith-Jones`, a multi-word query, fuzzy and plain) through the
-HTTP API on memory, SQLite and PostgreSQL and requires identical results.
+`Joh`, `O'Brien`, `Smith-Jones`, a multi-word query, fuzzy and plain), plus
+non-ASCII case, wildcards and escapes, padded place filters and prefixed
+alternate names, through the HTTP API on memory, SQLite and PostgreSQL and
+requires identical results.
 
 Known differences that remain:
 
-- **Word order and stemming.** PostgreSQL's tsvector arm also matches the words
-  of a multi-word query in any order (`Smith John`) and English stems; SQLite
-  matches the query as one substring.
-- **Non-ASCII case folding.** SQLite's `LIKE`/`LOWER` fold only ASCII, so a plain
-  `müller` query does not find `Müller` there; PostgreSQL's `ILIKE` does. Fuzzy
-  search folds case the same on both.
+- **Word order, stemming and punctuation.** PostgreSQL's tsvector arm splits the
+  query into words, so it also matches the words of a multi-word query in any
+  order (`Smith John`), English stems, and queries wrapped in punctuation
+  (`(Mary)` and `"Mary-Ann"` find Mary-Ann O'Brien). SQLite matches the query as
+  one literal substring and finds nobody for those.
+- **Case folding depends on PostgreSQL's locale.** SQLite and memory fold every
+  letter (Go's `unicode.ToLower`), as `ILIKE` does in a UTF-8 locale; a
+  PostgreSQL database created with the `C` ctype folds only ASCII.
 - **Soundex.** PostgreSQL uses `difference() >= 3`; SQLite and memory require
   equal Soundex codes.
-- **Result order.** Plain searches order by relevance (`ts_rank`) on PostgreSQL
-  and by name on SQLite; the set of people found is the same.
+- **Which matches fill the limit.** Search returns at most `limit` people (20 by
+  default, at most 100). Plain searches order by relevance (`ts_rank`) on
+  PostgreSQL and by name on SQLite, so when more people match than the limit,
+  the two return different subsets of the same match set. Fuzzy searches order
+  by similarity on both, ties broken by surname, given name and id, so they
+  return the same people in the same order (`TestSearchParity_FuzzyLimit`) as
+  long as PostgreSQL's collation orders names by code point, as the `C` and
+  `C.UTF-8` collations do. The in-memory demo store keeps relevance results in
+  the order it finds them.
 
 ### Repository Interfaces
 
@@ -231,7 +265,7 @@ internal/repository/
 
 | Feature | PostgreSQL | SQLite |
 |---------|------------|--------|
-| Name search | tsvector + GIN index, `ILIKE` substring | `LIKE` substring scan (no FTS5) |
+| Name search | tsvector + GIN index, `ILIKE` substring | `ILIKE`-equivalent substring scan (no FTS5) |
 | Fuzzy matching | pg_trgm extension | pg_trgm similarity ported to Go |
 | JSON storage | Native JSONB | TEXT with JSON encoding |
 | Future: Vector search | pgvector extension | Not available |
