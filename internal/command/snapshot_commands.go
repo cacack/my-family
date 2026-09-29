@@ -36,6 +36,13 @@ const snapshotStreamType = "snapshot"
 // chicken-and-egg the issue raised: emitting the event moves the head, but not
 // the position the snapshot marks.
 func (h *Handler) CreateSnapshot(ctx context.Context, name, description string) (*domain.Snapshot, error) {
+	return h.createSnapshotOn(ctx, h.branchID, name, description)
+}
+
+// createSnapshotOn is CreateSnapshot for an explicit branch, whatever the
+// handler's own scope. The merge's pre-merge snapshot (#833) uses it to mark
+// the mainline from a merge, which is never branch-scoped work.
+func (h *Handler) createSnapshotOn(ctx context.Context, branchID domain.BranchID, name, description string) (*domain.Snapshot, error) {
 	if h.snapshots == nil {
 		return nil, ErrSnapshotStoreRequired
 	}
@@ -45,7 +52,7 @@ func (h *Handler) CreateSnapshot(ctx context.Context, name, description string) 
 		return nil, fmt.Errorf("getting max event position: %w", err)
 	}
 
-	snapshot, err := domain.NewSnapshotOn(h.branchID, name, description, position)
+	snapshot, err := domain.NewSnapshotOn(branchID, name, description, position)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +96,12 @@ func (h *Handler) CreateSnapshot(ctx context.Context, name, description string) 
 // branch (or on the mainline, from a branch) is not found in this scope, the
 // same answer the scoped list and get give (issue #839).
 func (h *Handler) DeleteSnapshot(ctx context.Context, snapshotID uuid.UUID) error {
+	return h.deleteSnapshotOn(ctx, h.branchID, snapshotID)
+}
+
+// deleteSnapshotOn is DeleteSnapshot for an explicit branch, whatever the
+// handler's own scope (see createSnapshotOn).
+func (h *Handler) deleteSnapshotOn(ctx context.Context, branchID domain.BranchID, snapshotID uuid.UUID) error {
 	if h.snapshots == nil {
 		return ErrSnapshotStoreRequired
 	}
@@ -99,7 +112,7 @@ func (h *Handler) DeleteSnapshot(ctx context.Context, snapshotID uuid.UUID) erro
 	if err != nil {
 		return err // includes repository.ErrSnapshotNotFound
 	}
-	if existing.BranchID != h.branchID {
+	if existing.BranchID != branchID {
 		return repository.ErrSnapshotNotFound
 	}
 

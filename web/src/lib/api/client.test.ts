@@ -308,6 +308,7 @@ describe('branch scope threading', () => {
 		await api.deleteSnapshot(NAME_ID);
 		await api.compareSnapshots(NAME_ID, PERSON_ID);
 		await api.compareSnapshotToCurrent(NAME_ID);
+		await api.compareSnapshotToCurrent(NAME_ID, 7);
 		// Ids are path-encoded, so a malformed one cannot reshape the route; it is
 		// not a snapshot id either, so it is not scoped.
 		await api.compareSnapshots('a/b', 'c d');
@@ -317,6 +318,7 @@ describe('branch scope threading', () => {
 			`/api/v1/snapshots/${NAME_ID}?branch=${BRANCH_ID}`,
 			`/api/v1/snapshots/${NAME_ID}/compare/${PERSON_ID}?branch=${BRANCH_ID}`,
 			`/api/v1/snapshots/${NAME_ID}/compare-current?branch=${BRANCH_ID}`,
+			`/api/v1/snapshots/${NAME_ID}/compare-current?until=7&branch=${BRANCH_ID}`,
 			'/api/v1/snapshots/a%2Fb/compare/c%20d'
 		]);
 	});
@@ -324,9 +326,11 @@ describe('branch scope threading', () => {
 	it('leaves the snapshot endpoints unscoped on the mainline', async () => {
 		await api.listSnapshots();
 		await api.compareSnapshotToCurrent(NAME_ID);
+		await api.compareSnapshotToCurrent(NAME_ID, 42);
 		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
 			'/api/v1/snapshots',
-			`/api/v1/snapshots/${NAME_ID}/compare-current`
+			`/api/v1/snapshots/${NAME_ID}/compare-current`,
+			`/api/v1/snapshots/${NAME_ID}/compare-current?until=42`
 		]);
 	});
 });

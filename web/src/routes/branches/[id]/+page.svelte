@@ -55,7 +55,9 @@
 	import IncompleteMergeCallout from '$lib/components/IncompleteMergeCallout.svelte';
 	import MergeBlockersPanel from '$lib/components/MergeBlockersPanel.svelte';
 	import MergeConflictResolver from '$lib/components/MergeConflictResolver.svelte';
+	import MergeEffectLink from '$lib/components/MergeEffectLink.svelte';
 	import MergeConfirmDialog, {
+		type MergeOptions,
 		type MergePlan,
 		type MergePlanEntity
 	} from '$lib/components/MergeConfirmDialog.svelte';
@@ -474,13 +476,14 @@
 	 * Issues the merge. Resolves with the result and *throws* the refusal, which
 	 * is the contract `MergeConfirmDialog` renders its outcome from.
 	 */
-	async function performMerge(note: string): Promise<BranchMergeResult> {
+	async function performMerge(note: string, options?: MergeOptions): Promise<BranchMergeResult> {
 		const request = (mergeComparisonRequest = comparisonRequest);
 		const id = branchId;
 		merging = true;
 		try {
 			const result = await api.mergeBranch(id, {
 				...(note ? { note } : {}),
+				...(options?.snapshotBefore ? { snapshot_before: true } : {}),
 				resolutions: [...mergeResolutions].map(([stream_id, resolution]) => {
 					// Only a conflict decision carries reasoning; an exclusion is its own.
 					const rationale = conflictedStreamIds.has(stream_id)
@@ -690,6 +693,7 @@
 				</div>
 			{/if}
 		</dl>
+		<MergeEffectLink {record} onBranch={activeBranch.id !== null} />
 		{#if !record.recorded}
 			<p class="record-legacy" role="note">
 				This merge was made before decisions were recorded. What it left behind is known from

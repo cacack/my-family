@@ -52,6 +52,20 @@ type MergeRecord struct {
 
 	// ResumeCount is how many resumes recorded decisions for this merge.
 	ResumeCount int `json:"resume_count"`
+
+	// PreMergeSnapshotID is the mainline snapshot the merge took before it
+	// claimed the branch (#833); nil when it took none.
+	PreMergeSnapshotID *uuid.UUID `json:"pre_merge_snapshot_id,omitempty"`
+
+	// ReplayedThroughPosition is the log position of the last change the
+	// merge (and any resume of it) replayed onto the mainline: with the
+	// pre-merge snapshot, the exact range the merge's effect lies in. For a
+	// merge that replayed nothing it is the merge's own claim, so the range
+	// holds none of the merge's changes. nil when the last replayed change is
+	// not known: none carrying this merge's provenance was found, or the scan
+	// that looks for them was cut short before it found every one the plan
+	// called for (see replayedThroughPosition).
+	ReplayedThroughPosition *int64 `json:"replayed_through_position,omitempty"`
 }
 
 // MergeRecordDecision is one decision on a merge record.
@@ -81,8 +95,20 @@ type MergeRecordExclusion struct {
 // mergeMarkers is a branch's merge claim and resume records, in the order
 // they were appended.
 type mergeMarkers struct {
-	claim   domain.BranchMerged
-	resumes []domain.BranchMergeResumed
+	claim domain.BranchMerged
+	// claimPosition is the claim's own log position: after the pre-merge
+	// snapshot and before the first replayed change.
+	claimPosition int64
+	resumes       []domain.BranchMergeResumed
+}
+
+// replayPlan is the replay plan as it now stands: the latest resume's, or
+// the claim's. nil for a claim that recorded no plan (before #685).
+func (m *mergeMarkers) replayPlan() map[uuid.UUID]int64 {
+	if n := len(m.resumes); n > 0 {
+		return m.resumes[n-1].ReplayStreamVersions
+	}
+	return m.claim.ReplayStreamVersions
 }
 
 // readMergeMarkers reads a branch's own stream for its merge claim and resume
@@ -114,6 +140,7 @@ func (s *BranchService) readMergeMarkers(ctx context.Context, branchID uuid.UUID
 			if err := json.Unmarshal(own[i].Data, &markers.claim); err != nil {
 				return mergeMarkers{}, false, fmt.Errorf("decode merge claim: %w", err)
 			}
+			markers.claimPosition = own[i].Position
 			claimed = true
 		case "BranchMergeResumed":
 			var resumed domain.BranchMergeResumed
@@ -144,6 +171,7 @@ func (s *BranchService) buildMergeRecord(ctx context.Context, branch *domain.Bra
 		Decisions:          []MergeRecordDecision{},
 		Exclusions:         []MergeRecordExclusion{},
 		ResumeCount:        len(markers.resumes),
+		PreMergeSnapshotID: claim.PreMergeSnapshotID,
 	}
 
 	touched := branchStreamIDs(branchEvents)
@@ -331,4 +359,67 @@ func payloadID(evt *repository.StoredEvent) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return payload.ID, true
+}
+
+// replayedThroughPosition returns the log position the merge's effect ends
+// at: the last of main's events that the merge claimed by markers replayed.
+// ok is false when that position is not known.
+//
+// mainEvents is main's tail on the branch's streams in ascending order, capped
+// at maxComparisonEvents. When the cap was not hit, the last stamped copy in
+// it is the last one there is. When it was hit, later mainline edits to the
+// same entities may have filled the scan, and the last copy found is still
+// the last one there is provided every copy the plan called for was found:
+// the plan replays every branch event on the streams it names, so that count
+// is known exactly whenever the branch's own scan was complete.
+//
+// A plan that replays nothing is complete before it starts: the merge
+// changed nothing, and its effect ends at its own claim, which sits after the
+// pre-merge snapshot and before anything a replay would append — so the range
+// from the snapshot to it is empty of the merge's changes.
+func replayedThroughPosition(markers *mergeMarkers, diff *branchDiffSources) (position int64, ok bool) {
+	expected := -1 // unknown
+	if plan := markers.replayPlan(); plan != nil && !diff.branchTruncated {
+		expected = 0
+		for i := range diff.branchEvents {
+			if _, replayed := plan[diff.branchEvents[i].StreamID]; replayed {
+				expected++
+			}
+		}
+	}
+	if expected == 0 {
+		return markers.claimPosition, markers.claimPosition > 0
+	}
+	last, found, count := lastReplayedPosition(markers.claim.ID, diff.mainEvents)
+	if !found {
+		return 0, false
+	}
+	if !diff.mainTruncated || (expected > 0 && count >= expected) {
+		return last, true
+	}
+	return 0, false
+}
+
+// lastReplayedPosition returns the log position of the last of mainEvents that
+// the merge claimed by claimID replayed, recognised by the merge provenance
+// every replayed event is stamped with (#832), and how many such copies it
+// found. ok is false when none is found: a merge recorded before provenance
+// was stamped, or a replay that has not yet reached the mainline.
+func lastReplayedPosition(claimID uuid.UUID, mainEvents []repository.StoredEvent) (position int64, ok bool, count int) {
+	for i := range mainEvents {
+		if len(mainEvents[i].Metadata) == 0 {
+			continue
+		}
+		var meta domain.EventMetadata
+		if err := json.Unmarshal(mainEvents[i].Metadata, &meta); err != nil || meta.MergedFromBranch == nil {
+			continue
+		}
+		if meta.MergedFromBranch.ClaimID == claimID {
+			count++
+			if mainEvents[i].Position > position {
+				position, ok = mainEvents[i].Position, true
+			}
+		}
+	}
+	return position, ok, count
 }

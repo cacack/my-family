@@ -3,13 +3,13 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import DiffView from './DiffView.svelte';
+	import MergedFromChip from './MergedFromChip.svelte';
 	import {
 		CHANGE_ENTITY_TYPES,
 		ENTITY_TYPE_LABELS,
 		changeActionLabel,
 		changeEntryLink,
-		entityTypeLabel,
-		mergedFromLabel
+		entityTypeLabel
 	} from '$lib/utils/changeEntries';
 
 	interface Props {
@@ -192,20 +192,8 @@
 						{/if}
 					</div>
 					{#if entry.merged_from}
-						<!--
-							Where the change came from (#832): the branch it was researched on
-							and the merge note - the "why" of the promotion. The time above is
-							when the merge brought it here; the chip's title says when it was
-							made on the branch.
-						-->
-						<a
-							href="/branches/{entry.merged_from.branch_id}"
-							class="merge-chip"
-							title="Made on the branch {formatTimestamp(entry.merged_from.original_timestamp)}; merged {formatTimestamp(entry.merged_from.merged_at)}"
-							data-testid="merged-from"
-						>
-							{mergedFromLabel(entry.merged_from)}
-						</a>
+						<!-- The time above is when the merge brought it here (#832). -->
+						<MergedFromChip origin={entry.merged_from} />
 					{/if}
 
 					{#if hasChanges && (entry.action === 'updated' || entry.action === 'merged')}
@@ -368,24 +356,6 @@
 		margin-top: 0.75rem;
 		padding-top: 0.75rem;
 		border-top: 1px solid #e2e8f0;
-	}
-
-	.merge-chip {
-		display: inline-block;
-		max-width: 100%;
-		margin-top: 0.5rem;
-		padding: 0.125rem 0.5rem;
-		border: 1px solid #c4b5fd;
-		border-radius: 9999px;
-		background: #f5f3ff;
-		font-size: 0.75rem;
-		color: #5b21b6;
-		text-decoration: none;
-		overflow-wrap: anywhere;
-	}
-
-	.merge-chip:hover {
-		border-color: #7c3aed;
 	}
 
 	.load-more {

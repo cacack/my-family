@@ -38,7 +38,8 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		...actual,
 		api: {
 			compareSnapshots: (a: string, b: string) => compareSnapshots(a, b),
-			compareSnapshotToCurrent: (id: string) => compareSnapshotToCurrent(id)
+			compareSnapshotToCurrent: (id: string, until?: number) =>
+				until === undefined ? compareSnapshotToCurrent(id) : compareSnapshotToCurrent(id, until)
 		}
 	};
 });
@@ -383,6 +384,98 @@ describe('Snapshot comparison page', () => {
 
 			expect(await screen.findByText('Snapshots from another branch')).toBeDefined();
 			expect(screen.getByRole('link', { name: 'choose snapshots from this one' })).toBeDefined();
+		});
+	});
+
+	describe('a fixed range, up to a log position (#833)', () => {
+		const MERGED_BRANCH_ID = '55555555-5555-5555-5555-555555555555';
+		const replayed: BranchChangeEntry = {
+			...personUpdate,
+			id: 'e7',
+			merged_from: {
+				branch_id: MERGED_BRANCH_ID,
+				branch_name: 'Byron theory',
+				note: 'the register settles it',
+				merged_at: '2026-02-01T09:00:00Z',
+				original_timestamp: '2026-01-25T09:00:00Z'
+			}
+		};
+
+		beforeEach(() => {
+			branchState.activeBranch.id = null;
+			branchState.activeBranch.branch = null;
+			navigateTo(`?from=${OLDER_ID}&to=current&until=131`);
+			compareSnapshotToCurrent.mockResolvedValue({
+				snapshot: older,
+				head_position: 200,
+				to_position: 131,
+				changes: [replayed, familyCreate],
+				total_count: 2,
+				has_more: false
+			});
+		});
+
+		it('asks for the range, shows where it ends and which changes a merge brought', async () => {
+			render(Page);
+
+			expect(await screen.findByText('Position 131')).toBeDefined();
+			expect(compareSnapshotToCurrent).toHaveBeenCalledWith(OLDER_ID, 131);
+			expect(screen.getByRole('link', { name: 'Compare to now' }).getAttribute('href')).toBe(
+				`/snapshots/compare?from=${OLDER_ID}&to=current`
+			);
+			const chips = screen.getAllByTestId('merged-from');
+			expect(chips).toHaveLength(1);
+			expect(chips[0].textContent).toMatch(/via merge of Byron theory: the register settles it/);
+			expect(chips[0].getAttribute('href')).toBe(`/branches/${MERGED_BRANCH_ID}`);
+		});
+
+		it('says so when the range is empty', async () => {
+			compareSnapshotToCurrent.mockResolvedValue({
+				snapshot: older,
+				head_position: 200,
+				to_position: 42,
+				changes: [],
+				total_count: 0,
+				has_more: false
+			});
+
+			render(Page);
+
+			expect(await screen.findByText('No changes in this range.')).toBeDefined();
+		});
+
+		it('refuses a malformed end position without asking the server', async () => {
+			navigateTo(`?from=${OLDER_ID}&to=current&until=soon`);
+
+			render(Page);
+
+			expect(await screen.findByText(/its end position is not a log position/)).toBeDefined();
+			expect(compareSnapshotToCurrent).not.toHaveBeenCalled();
+		});
+
+		it('explains a range that ends before its snapshot', async () => {
+			compareSnapshotToCurrent.mockRejectedValue({
+				status: 400,
+				code: 'invalid_range',
+				message: 'bad range'
+			});
+
+			render(Page);
+
+			expect(await screen.findByText(/This range ends before its snapshot/)).toBeDefined();
+		});
+
+		it('calls any other 400 on a bounded range a malformed link', async () => {
+			compareSnapshotToCurrent.mockRejectedValue({
+				status: 400,
+				code: 'invalid_request',
+				message: 'invalid format for parameter id'
+			});
+
+			render(Page);
+
+			expect(await screen.findByText(/These snapshot links are malformed/)).toBeDefined();
+			expect(screen.queryByText(/This range ends before its snapshot/)).toBeNull();
 		});
 	});
 });

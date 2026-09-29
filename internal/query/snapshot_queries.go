@@ -22,6 +22,10 @@ var (
 	// positions in two different views is not a history anyone saw, so the
 	// comparison is refused rather than answered from either view.
 	ErrSnapshotBranchMismatch = errors.New("snapshots on different branches cannot be compared")
+
+	// ErrComparisonEndBeforeSnapshot is returned when a comparison's end
+	// position lies before the snapshot it starts from (#833).
+	ErrComparisonEndBeforeSnapshot = errors.New("comparison end position is before the snapshot")
 )
 
 // SnapshotService provides query operations for research milestone snapshots.
@@ -83,9 +87,12 @@ type SnapshotComparisonResult struct {
 type SnapshotCurrentComparisonResult struct {
 	Snapshot     *domain.Snapshot `json:"snapshot"`
 	HeadPosition int64            `json:"head_position"`
-	Changes      []ChangeEntry    `json:"changes"`
-	TotalCount   int              `json:"total_count"`
-	HasMore      bool             `json:"has_more"`
+	// ToPosition is where the comparison ran to: HeadPosition, or the end
+	// position the caller asked for when that lies before the head (#833).
+	ToPosition int64         `json:"to_position"`
+	Changes    []ChangeEntry `json:"changes"`
+	TotalCount int           `json:"total_count"`
+	HasMore    bool          `json:"has_more"`
 }
 
 // CompareSnapshots returns the changes between two snapshots of branchID's, in
@@ -143,6 +150,16 @@ func (s *SnapshotService) CompareSnapshots(ctx context.Context, branchID domain.
 // taken now would mark. An unknown id is repository.ErrSnapshotNotFound; a
 // snapshot on another branch is ErrSnapshotBranchMismatch.
 func (s *SnapshotService) CompareSnapshotToCurrent(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*SnapshotCurrentComparisonResult, error) {
+	return s.CompareSnapshotToPosition(ctx, branchID, id, nil)
+}
+
+// CompareSnapshotToPosition is CompareSnapshotToCurrent with an optional end
+// position: the changes from the snapshot up to and including position until,
+// or up to the head when until is nil or lies past it. A bounded range answers
+// "what did this merge change" exactly (#833): from the merge's pre-merge
+// snapshot to the last change it replayed, however much the mainline has moved
+// since. An end before the snapshot is ErrComparisonEndBeforeSnapshot.
+func (s *SnapshotService) CompareSnapshotToPosition(ctx context.Context, branchID domain.BranchID, id uuid.UUID, until *int64) (*SnapshotCurrentComparisonResult, error) {
 	snapshot, err := s.snapshotStore.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get snapshot: %w", err)
@@ -151,12 +168,20 @@ func (s *SnapshotService) CompareSnapshotToCurrent(ctx context.Context, branchID
 		return nil, ErrSnapshotBranchMismatch
 	}
 
+	if until != nil && *until < snapshot.Position {
+		return nil, fmt.Errorf("%w: position %d is before the snapshot's %d", ErrComparisonEndBeforeSnapshot, *until, snapshot.Position)
+	}
+
 	head, err := s.snapshotStore.GetMaxPosition(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get log head: %w", err)
 	}
+	to := head
+	if until != nil && *until < head {
+		to = *until
+	}
 
-	changes, hasMore, err := s.changesBetween(ctx, branchID, snapshot.Position, head)
+	changes, hasMore, err := s.changesBetween(ctx, branchID, snapshot.Position, to)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +189,7 @@ func (s *SnapshotService) CompareSnapshotToCurrent(ctx context.Context, branchID
 	return &SnapshotCurrentComparisonResult{
 		Snapshot:     snapshot,
 		HeadPosition: head,
+		ToPosition:   to,
 		Changes:      changes,
 		TotalCount:   len(changes),
 		HasMore:      hasMore,

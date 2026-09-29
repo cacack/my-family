@@ -18,6 +18,12 @@
 	 */
 	export const EXCLUDED_PREVIEW_LIMIT = 20;
 
+	/** What the user chose in the dialog besides the note. */
+	export interface MergeOptions {
+		/** Take "Before merging <branch>" on the mainline first (#833). On by default. */
+		snapshotBefore: boolean;
+	}
+
 	/** One entity named in the plan - enough to say what it is and which one. */
 	export interface MergePlanEntity {
 		streamId: string;
@@ -176,6 +182,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import PreMergeSnapshotOption from '$lib/components/PreMergeSnapshotOption.svelte';
 	import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
 	import { describeBlocker } from '$lib/utils/mergeBlockers';
 
@@ -192,7 +199,7 @@
 		 * a transport error, a bare `Promise.reject()`, a string. Whatever is not a
 		 * documented refusal is rendered as a generic, non-retryable failure.
 		 */
-		onconfirm: (note: string) => Promise<BranchMergeResult>;
+		onconfirm: (note: string, options: MergeOptions) => Promise<BranchMergeResult>;
 		onclose: () => void;
 		/**
 		 * A refusal landed. The page needs this because `merge_conflicts` carries
@@ -224,6 +231,7 @@
 	}: Props = $props();
 
 	let note = $state('');
+	let snapshotBefore = $state(true);
 	let pending = $state(false);
 	let refusal: BranchMergeRefusal | null = $state(null);
 	/** Set instead of `refusal` when the failure is not a documented refusal. */
@@ -280,6 +288,7 @@
 	$effect(() => {
 		if (open) {
 			note = '';
+			snapshotBefore = true;
 			refusal = null;
 			unrecognized = null;
 			result = null;
@@ -296,7 +305,7 @@
 		refusal = null;
 		unrecognized = null;
 		try {
-			result = await onconfirm(trimmedNote);
+			result = await onconfirm(trimmedNote, { snapshotBefore });
 		} catch (e) {
 			if (isBranchMergeRefusal(e)) {
 				refusal = e;
@@ -387,6 +396,12 @@
 				Positions are one global sequence shared by every branch, so this one marks where the merge
 				landed in the log - it is not a count of what was promoted.
 			</p>
+			{#if result.pre_merge_snapshot}
+				<p class="hint" data-testid="pre-merge-snapshot">
+					The mainline was saved as the snapshot "{result.pre_merge_snapshot.name}" first. This
+					branch's merge record links to exactly what the merge changed.
+				</p>
+			{/if}
 			{#if isActiveBranch}
 				<p class="hint">
 					You are still standing on this branch. It is merged now, so further research belongs on
@@ -474,6 +489,8 @@
 					{/if}
 				</section>
 			{/if}
+
+			<PreMergeSnapshotOption bind:checked={snapshotBefore} branchName={branch.name} disabled={pending} />
 
 			<div class="field">
 				<Label for="merge-note">Note (optional)</Label>

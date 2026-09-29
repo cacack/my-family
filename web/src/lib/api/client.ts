@@ -2395,11 +2395,20 @@ class ApiClient {
 		);
 	}
 
-	/** The changes recorded since a snapshot, up to the current state, in the active branch's view. */
-	async compareSnapshotToCurrent(id: string): Promise<SnapshotCurrentComparisonResult> {
+	/**
+	 * The changes recorded since a snapshot, up to the current state, in the
+	 * active branch's view. `until` stops the comparison at that log position
+	 * instead (#833) - a merge's pre-merge snapshot up to the last change the
+	 * merge replayed is exactly what the merge changed.
+	 */
+	async compareSnapshotToCurrent(
+		id: string,
+		until?: number
+	): Promise<SnapshotCurrentComparisonResult> {
+		const query = until === undefined ? '' : `?until=${encodeURIComponent(String(until))}`;
 		return this.request<SnapshotCurrentComparisonResult>(
 			'GET',
-			`/snapshots/${encodeURIComponent(id)}/compare-current`
+			`/snapshots/${encodeURIComponent(id)}/compare-current${query}`
 		);
 	}
 
