@@ -1,3 +1,19 @@
+<script lang="ts" module>
+	import type { MergeConflict } from '$lib/api/client';
+
+	/**
+	 * What the resolver can put a decision in front of: a merge conflict, or
+	 * anything shaped like one that has no conflict `kind` - an entity an
+	 * interrupted merge still has to replay (#830), labelled through `badgeOf`
+	 * and `soleOptionReasonOf` instead.
+	 */
+	export type ResolvableConflict = Omit<MergeConflict, 'kind'> & { kind?: MergeConflict['kind'] };
+
+	function isMergeConflict(conflict: ResolvableConflict): conflict is MergeConflict {
+		return conflict.kind !== undefined;
+	}
+</script>
+
 <script lang="ts">
 	/**
 	 * Interactive picker for the conflicts a branch comparison reported - one
@@ -22,7 +38,7 @@
 	 * survive a `409 merge_conflicts` re-render and be serialized into the merge
 	 * request. The same goes for `rationales`.
 	 */
-	import type { MergeConflict, MergeResolution } from '$lib/api/client';
+	import type { MergeResolution } from '$lib/api/client';
 	import ConflictValues from '$lib/components/ConflictValues.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -35,7 +51,7 @@
 	const RATIONALE_MAX_LENGTH = 1000;
 
 	interface Props {
-		conflicts: MergeConflict[];
+		conflicts: ResolvableConflict[];
 		/** Current decisions, keyed by `stream_id`. */
 		resolutions: Map<string, MergeResolution>;
 		onresolve: (streamId: string, resolution: MergeResolution) => void;
@@ -52,6 +68,12 @@
 		disabled?: boolean;
 		/** Entities a merge blocker involves (#831), highlighted here too. */
 		blocked?: Set<string>;
+		/** What one item is called in the bulk controls' words. */
+		noun?: string;
+		/** The badge naming why an item needs a decision; defaults to its conflict kind. */
+		badgeOf?: (conflict: ResolvableConflict) => string;
+		/** Why only one side is offered; defaults to the conflict kind's reason. */
+		soleOptionReasonOf?: (conflict: ResolvableConflict) => string;
 	}
 
 	let {
@@ -62,7 +84,10 @@
 		rationales = new Map(),
 		onrationale,
 		disabled = false,
-		blocked = new Set()
+		blocked = new Set(),
+		noun = 'conflict',
+		badgeOf = (conflict) => conflictLabel(conflict.kind),
+		soleOptionReasonOf = soleOptionReason
 	}: Props = $props();
 
 	/** Entity types among the conflicts, in first-seen order, with their counts. */
@@ -77,7 +102,7 @@
 	/** The outcome of the last bulk action, announced politely. */
 	let bulkStatus = $state('');
 
-	function targetsOf(entityType: string | null): MergeConflict[] {
+	function targetsOf(entityType: string | null): ResolvableConflict[] {
 		return entityType === null
 			? conflicts
 			: conflicts.filter((conflict) => conflict.entity_type === entityType);
@@ -110,15 +135,15 @@
 		}
 
 		const side = resolution === 'branch' ? "the branch's version" : "the mainline's version";
-		let status = `Chose ${side} for ${plural(applicable.length, 'conflict')}.`;
+		let status = `Chose ${side} for ${plural(applicable.length, noun)}.`;
 		const skipped = targets.length - applicable.length;
 		if (skipped > 0) {
-			status += ` ${plural(skipped, 'conflict')} cannot take ${side} and ${skipped === 1 ? 'was' : 'were'} left as ${skipped === 1 ? 'it was' : 'they were'}.`;
+			status += ` ${plural(skipped, noun)} cannot take ${side} and ${skipped === 1 ? 'was' : 'were'} left as ${skipped === 1 ? 'it was' : 'they were'}.`;
 		}
 		bulkStatus = status;
 	}
 
-	function conflictLabel(kind: MergeConflict['kind']): string {
+	function conflictLabel(kind: MergeConflict['kind'] | undefined): string {
 		switch (kind) {
 			case 'edit_edit':
 				return 'Both sides edited';
@@ -127,7 +152,7 @@
 			case 'create_create':
 				return 'Created on both sides';
 			default:
-				return kind;
+				return kind ?? 'Needs a decision';
 		}
 	}
 
@@ -143,7 +168,7 @@
 	}
 
 	/** Paraphrases the `supported_resolutions` schema note for a single-option conflict. */
-	function soleOptionReason(conflict: MergeConflict): string {
+	function soleOptionReason(conflict: ResolvableConflict): string {
 		switch (conflict.kind) {
 			case 'delete_edit':
 				return "The mainline deleted this entity. Replaying the branch's edits cannot bring a deleted entity back, so taking the branch's version is not offered - it would report success while the entity stayed deleted.";
@@ -164,7 +189,7 @@
 	<div class="bulk" role="group" aria-labelledby="bulk-heading">
 		<p class="bulk-heading" id="bulk-heading">Decide several at once</p>
 		<div class="bulk-row">
-			<span class="bulk-scope">All {plural(conflicts.length, 'conflict')}</span>
+			<span class="bulk-scope">All {plural(conflicts.length, noun)}</span>
 			<Button
 				variant="outline"
 				size="sm"
@@ -191,7 +216,7 @@
 						variant="ghost"
 						size="sm"
 						disabled={disabled || !acceptsAny(entityType, 'branch')}
-						aria-label="Take branch for every {typeLabel.toLowerCase()} conflict"
+						aria-label="Take branch for every {typeLabel.toLowerCase()} {noun}"
 						onclick={() => decideAll('branch', entityType)}
 					>
 						Take branch
@@ -200,7 +225,7 @@
 						variant="ghost"
 						size="sm"
 						disabled={disabled || !acceptsAny(entityType, 'main')}
-						aria-label="Keep mainline for every {typeLabel.toLowerCase()} conflict"
+						aria-label="Keep mainline for every {typeLabel.toLowerCase()} {noun}"
 						onclick={() => decideAll('main', entityType)}
 					>
 						Keep mainline
@@ -226,7 +251,7 @@
 							>{conflict.entity_name || unnamedEntityLabel(conflict.entity_type)}</span
 						>
 					</h3>
-					<Badge variant="destructive">{conflictLabel(conflict.kind)}</Badge>
+					<Badge variant="destructive">{badgeOf(conflict)}</Badge>
 					{#if !decided}
 						<!-- Text, not just the border colour, so the state does not depend on sight. -->
 						<Badge variant="outline" class="border-amber-500 text-amber-700">
@@ -240,14 +265,14 @@
 
 				<p class="conflict-detail">{conflict.detail}</p>
 
-				{#if conflict.field_values && conflict.field_values.length > 0}
+				{#if isMergeConflict(conflict) && conflict.field_values && conflict.field_values.length > 0}
 					<ConflictValues {conflict} />
 				{:else if conflict.fields && conflict.fields.length > 0}
 					<p class="conflict-fields">Contested fields: {conflict.fields.join(', ')}</p>
 				{/if}
 
 				{#if options.length === 1}
-					<p class="sole-option">{soleOptionReason(conflict)}</p>
+					<p class="sole-option">{soleOptionReasonOf(conflict)}</p>
 				{/if}
 
 				<RadioGroup

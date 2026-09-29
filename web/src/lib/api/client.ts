@@ -72,6 +72,8 @@ export type BranchMergeConflictError = components['schemas']['BranchMergeConflic
 export type BranchMergeResumeRequest = components['schemas']['BranchMergeResumeRequest'];
 export type BranchMergeResumeResult = components['schemas']['BranchMergeResumeResult'];
 export type BranchMergeResumeError = components['schemas']['BranchMergeResumeError'];
+/** One entity an interrupted merge has not replayed yet (#830). */
+export type MergePendingEntity = components['schemas']['MergePendingEntity'];
 export type MergeBlocker = components['schemas']['MergeBlocker'];
 export type BranchMergePrecheckRequest = components['schemas']['BranchMergePrecheckRequest'];
 export type BranchMergePrecheckResult = components['schemas']['BranchMergePrecheckResult'];
@@ -2480,9 +2482,10 @@ class ApiClient {
 	 * a completed merge is a no-op (`replayed_event_count: 0`), so unlike
 	 * `mergeBranch()` a retry after a 500 is safe.
 	 *
-	 * A `409 merge_resume_needs_resolution` carries `pending_stream_ids`: the
-	 * entities the mainline changed since the merge was claimed. Resolve each
-	 * via `req.resolutions` after showing the user `compareBranch()`.
+	 * A `409 merge_resume_needs_resolution` carries `pending`: the entities
+	 * that need a decision, named, with why and which sides each accepts.
+	 * Resolve each via `req.resolutions`. Narrow what this throws with
+	 * `isBranchMergeResumeRefusal()`.
 	 */
 	async resumeBranchMerge(
 		id: string,
@@ -2575,6 +2578,51 @@ export function isBranchMergeRefusal(error: unknown): error is BranchMergeRefusa
 	return (
 		typeof candidate.code === 'string' &&
 		(BRANCH_MERGE_REFUSAL_CODES as readonly string[]).includes(candidate.code) &&
+		typeof candidate.message === 'string'
+	);
+}
+
+/**
+ * Every `code` `POST /branches/{id}/merge/resume` refuses with: the 409 enum of
+ * the generated `BranchMergeResumeError`, plus the 500 `merge_partially_applied`
+ * and the two 400s, which carry the generic error shape. An allowlist for the
+ * same reason as `BRANCH_MERGE_REFUSAL_CODES`.
+ */
+const BRANCH_MERGE_RESUME_REFUSAL_CODES = [
+	'merge_not_claimed',
+	'merge_resume_needs_resolution',
+	'merge_dangling_reference',
+	'branch_too_large',
+	'merge_resume_concurrent',
+	'merge_partially_applied',
+	'invalid_resolution',
+	'validation_error'
+] as const satisfies readonly (
+	| BranchMergeResumeError['code']
+	| 'merge_partially_applied'
+	| 'invalid_resolution'
+	| 'validation_error'
+)[];
+
+export type BranchMergeResumeRefusalCode = (typeof BRANCH_MERGE_RESUME_REFUSAL_CODES)[number];
+
+type _BranchMergeResumeRefusalCodesAreComplete = AssertNever<
+	Exclude<BranchMergeResumeError['code'], BranchMergeResumeRefusalCode>
+>;
+
+/** A refusal thrown by `resumeBranchMerge()`, with the HTTP `status`. */
+export type BranchMergeResumeRefusal = Omit<BranchMergeResumeError, 'code'> & {
+	code: BranchMergeResumeRefusalCode;
+	status?: number;
+};
+
+/** Narrow a thrown value to a resume refusal. */
+export function isBranchMergeResumeRefusal(error: unknown): error is BranchMergeResumeRefusal {
+	if (typeof error !== 'object' || error === null) return false;
+	const candidate = error as { code?: unknown; message?: unknown };
+	return (
+		typeof candidate.code === 'string' &&
+		(BRANCH_MERGE_RESUME_REFUSAL_CODES as readonly string[]).includes(candidate.code) &&
 		typeof candidate.message === 'string'
 	);
 }

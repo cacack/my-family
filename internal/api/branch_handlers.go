@@ -114,6 +114,7 @@ func (ss *StrictServer) ListBranches(ctx context.Context, _ ListBranchesRequestO
 	items := make([]Branch, len(branches))
 	for i, b := range branches {
 		items[i] = convertDomainBranchToGenerated(b)
+		ss.addMergeState(ctx, &items[i], b)
 	}
 
 	return ListBranches200JSONResponse{
@@ -175,7 +176,9 @@ func (ss *StrictServer) GetBranch(ctx context.Context, request GetBranchRequestO
 		return nil, err
 	}
 
-	return GetBranch200JSONResponse(convertDomainBranchToGenerated(branch)), nil
+	out := convertDomainBranchToGenerated(branch)
+	ss.addMergeState(ctx, &out, branch)
+	return GetBranch200JSONResponse(out), nil
 }
 
 // DeleteBranch implements StrictServerInterface. Deleting archives: the branch
@@ -232,8 +235,11 @@ func (ss *StrictServer) CompareBranch(ctx context.Context, request CompareBranch
 		overlapping = []openapi_types.UUID{}
 	}
 
+	branch := convertDomainBranchToGenerated(result.Branch)
+	ss.addMergeState(ctx, &branch, result.Branch)
+
 	return CompareBranch200JSONResponse{
-		Branch:               convertDomainBranchToGenerated(result.Branch),
+		Branch:               branch,
 		BasePosition:         result.BasePosition,
 		BranchChanges:        convertQueryChangeEntriesToGenerated(result.BranchChanges),
 		MainChanges:          convertQueryChangeEntriesToGenerated(result.MainChanges),
@@ -574,8 +580,13 @@ func (ss *StrictServer) ResumeBranchMerge(ctx context.Context, request ResumeBra
 		return resumeBranchMergeErrorResponse(result, err)
 	}
 
+	// The finished merge reads as complete (#830), so a client can adopt the
+	// branch straight from the result.
+	branch := convertDomainBranchToGenerated(result.Branch)
+	ss.addMergeState(ctx, &branch, result.Branch)
+
 	return ResumeBranchMerge200JSONResponse{
-		Branch:                   convertDomainBranchToGenerated(result.Branch),
+		Branch:                   branch,
 		MergedAtPosition:         result.MergedAtPosition,
 		ReplayedEventCount:       result.ReplayedEventCount,
 		AlreadyReplayedStreamIds: nonNilUUIDs(result.AlreadyReplayedStreamIDs),
@@ -599,10 +610,17 @@ func resumeBranchMergeErrorResponse(result *command.ResumeMergeResult, err error
 			pending = result.PendingStreamIDs
 		}
 		pending = nonNilUUIDs(pending)
+		var described []MergePendingEntity
+		if result != nil {
+			described = convertPendingMergeEntities(result.Pending)
+		} else {
+			described = []MergePendingEntity{}
+		}
 		return ResumeBranchMerge409JSONResponse{
 			Code:             ResumeNeedsResolution,
 			Message:          err.Error(),
 			PendingStreamIds: &pending,
+			Pending:          &described,
 		}, nil
 
 	case errors.Is(err, command.ErrMergeNotClaimed):
@@ -744,6 +762,59 @@ func convertQueryMergeConflictsToGenerated(conflicts []query.MergeConflict) []Me
 				}
 			}
 			out[i].FieldValues = &values
+		}
+	}
+	return out
+}
+
+// addMergeState fills a merged branch's merge_state and, when the merge did
+// not finish, merge_pending (#830). The command computes it without writing;
+// any other branch is left without either field.
+//
+// A merge state that cannot be read never fails the request: the branch is
+// reported with merge_state "unknown" and the error is logged. One merged
+// branch in a shape the resume refuses must not take down the branch list
+// (and with it the branch switcher) or that branch's own page, from which the
+// user can still run the resume that names the problem.
+func (ss *StrictServer) addMergeState(ctx context.Context, out *Branch, b *domain.Branch) {
+	if b == nil || b.Status != domain.BranchStatusMerged {
+		return
+	}
+	completeness, err := ss.server.commandHandler.MergeCompleteness(ctx, b)
+	if err != nil {
+		ss.server.echo.Logger.Errorf("reading the merge state of branch %s: %v", b.ID, err)
+		unknown := MergeStateUnknown
+		out.MergeState = &unknown
+		return
+	}
+	if completeness == nil {
+		return
+	}
+	state := BranchMergeState(completeness.State)
+	out.MergeState = &state
+	if completeness.State == command.MergeStateIncomplete {
+		pending := convertPendingMergeEntities(completeness.Pending)
+		out.MergePending = &pending
+	}
+}
+
+// convertPendingMergeEntities converts an incomplete merge's pending entities,
+// always returning a non-nil slice so the payload carries [] rather than null.
+func convertPendingMergeEntities(entities []command.PendingMergeEntity) []MergePendingEntity {
+	out := make([]MergePendingEntity, len(entities))
+	for i, e := range entities {
+		supported := e.Reason.SupportedResolutions()
+		resolutions := make([]MergePendingEntitySupportedResolutions, len(supported))
+		for j, r := range supported {
+			resolutions[j] = MergePendingEntitySupportedResolutions(r)
+		}
+		out[i] = MergePendingEntity{
+			StreamId:             e.StreamID,
+			EntityType:           e.EntityType,
+			EntityName:           e.EntityName,
+			Reason:               MergePendingEntityReason(e.Reason),
+			NeedsResolution:      e.Reason.NeedsResolution(),
+			SupportedResolutions: resolutions,
 		}
 	}
 	return out

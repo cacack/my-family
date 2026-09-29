@@ -11,7 +11,8 @@ const { mockState, returnToMainline, dismissBranchNotice } = vi.hoisted(() => ({
 		branch: null as Branch | null,
 		revalidating: false,
 		unconfirmed: false,
-		notice: null as string | null
+		notice: null as string | null,
+		noticeHref: null as string | null
 	},
 	returnToMainline: vi.fn().mockResolvedValue(undefined),
 	dismissBranchNotice: vi.fn()
@@ -39,6 +40,27 @@ describe('BranchBanner', () => {
 		mockState.revalidating = false;
 		mockState.unconfirmed = false;
 		mockState.notice = null;
+		mockState.noticeHref = null;
+	});
+
+	it('links an unfinished-merge notice to the branch page to finish it (#830)', async () => {
+		mockState.notice = 'Research branch "X" is merged, but its merge did not finish.';
+		mockState.noticeHref = `/branches/${branch.id}`;
+
+		render(BranchBanner);
+
+		const link = screen.getByRole('link', { name: 'Finish merge' });
+		expect(link.getAttribute('href')).toBe(`/branches/${branch.id}`);
+		// jsdom cannot navigate; keep the click to what the banner does with it.
+		link.addEventListener('click', (event) => event.preventDefault());
+		await fireEvent.click(link);
+		expect(dismissBranchNotice).toHaveBeenCalled();
+	});
+
+	it('offers no follow-up link for a plain notice', () => {
+		mockState.notice = 'The research branch you were working on is no longer available.';
+		render(BranchBanner);
+		expect(screen.queryByRole('link', { name: 'Finish merge' })).toBeNull();
 	});
 
 	it('says so when the branch status could not be confirmed, without dropping it', () => {

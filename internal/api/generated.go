@@ -61,6 +61,27 @@ func (e AhnentafelEntryGender) Valid() bool {
 	}
 }
 
+// Defines values for BranchMergeState.
+const (
+	MergeStateComplete   BranchMergeState = "complete"
+	MergeStateIncomplete BranchMergeState = "incomplete"
+	MergeStateUnknown    BranchMergeState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the BranchMergeState enum.
+func (e BranchMergeState) Valid() bool {
+	switch e {
+	case MergeStateComplete:
+		return true
+	case MergeStateIncomplete:
+		return true
+	case MergeStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BranchStatus.
 const (
 	BranchStatusActive   BranchStatus = "active"
@@ -814,6 +835,54 @@ func (e MergeConflictSupportedResolutions) Valid() bool {
 	case MergeConflictSupportedResolutionsBranch:
 		return true
 	case MergeConflictSupportedResolutionsMain:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergePendingEntityReason.
+const (
+	PendingBreaksReference MergePendingEntityReason = "breaks_reference"
+	PendingMainChanged     MergePendingEntityReason = "main_changed"
+	PendingMainRemoved     MergePendingEntityReason = "main_removed"
+	PendingNeedsRepair     MergePendingEntityReason = "needs_repair"
+	PendingNoPlan          MergePendingEntityReason = "no_plan"
+	PendingReady           MergePendingEntityReason = "ready"
+)
+
+// Valid indicates whether the value is a known member of the MergePendingEntityReason enum.
+func (e MergePendingEntityReason) Valid() bool {
+	switch e {
+	case PendingBreaksReference:
+		return true
+	case PendingMainChanged:
+		return true
+	case PendingMainRemoved:
+		return true
+	case PendingNeedsRepair:
+		return true
+	case PendingNoPlan:
+		return true
+	case PendingReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergePendingEntitySupportedResolutions.
+const (
+	MergePendingEntitySupportedResolutionsBranch MergePendingEntitySupportedResolutions = "branch"
+	MergePendingEntitySupportedResolutionsMain   MergePendingEntitySupportedResolutions = "main"
+)
+
+// Valid indicates whether the value is a known member of the MergePendingEntitySupportedResolutions enum.
+func (e MergePendingEntitySupportedResolutions) Valid() bool {
+	switch e {
+	case MergePendingEntitySupportedResolutionsBranch:
+		return true
+	case MergePendingEntitySupportedResolutionsMain:
 		return true
 	default:
 		return false
@@ -2264,6 +2333,35 @@ type Branch struct {
 	// promoted. Absent unless the branch was merged with a note.
 	MergeNote *string `json:"merge_note,omitempty"`
 
+	// MergePending Present only when `merge_state` is `incomplete`: the entities a
+	// resume would still act on (replay, ask about, or repair), in
+	// replay order.
+	MergePending *[]MergePendingEntity `json:"merge_pending,omitempty"`
+
+	// MergeState Whether the merge finished (#830). Present on `GET /branches`,
+	// `GET /branches/{id}` and the comparison's `branch`, and only when
+	// `status` is `merged`.
+	//
+	// - `complete` - every entity the merge set out to replay is on the
+	//   mainline, or was deliberately left behind, and the mainline's
+	//   data shows it.
+	// - `incomplete` - the merge answered `500 merge_partially_applied`
+	//   and did not finish: its replay stopped partway, or a replayed
+	//   change reached the mainline's history but not its data.
+	//   `merge_pending` lists what is left;
+	//   `POST /branches/{id}/merge/resume` finishes it.
+	// - `unknown` - the state could not be read (the branch's recorded
+	//   changes are in a shape a resume refuses too). The branch is
+	//   still listed and readable; `POST /branches/{id}/merge/resume`
+	//   reports what is wrong.
+	//
+	// Computed on every read **without writing anything**, from the same
+	// read-only checks a resume starts from: which entities already
+	// reached the mainline's log, which the merge left behind, which
+	// remain, and which reached the log but whose mainline data is
+	// behind it (pending as `needs_repair`).
+	MergeState *BranchMergeState `json:"merge_state,omitempty"`
+
 	// MergedAt When the branch was merged into the mainline. Absent unless
 	// `status` is `merged` - it is set only on the `active -> merged`
 	// transition and never cleared.
@@ -2278,6 +2376,30 @@ type Branch struct {
 	// are purged.
 	Status BranchStatus `json:"status"`
 }
+
+// BranchMergeState Whether the merge finished (#830). Present on `GET /branches`,
+// `GET /branches/{id}` and the comparison's `branch`, and only when
+// `status` is `merged`.
+//
+//   - `complete` - every entity the merge set out to replay is on the
+//     mainline, or was deliberately left behind, and the mainline's
+//     data shows it.
+//   - `incomplete` - the merge answered `500 merge_partially_applied`
+//     and did not finish: its replay stopped partway, or a replayed
+//     change reached the mainline's history but not its data.
+//     `merge_pending` lists what is left;
+//     `POST /branches/{id}/merge/resume` finishes it.
+//   - `unknown` - the state could not be read (the branch's recorded
+//     changes are in a shape a resume refuses too). The branch is
+//     still listed and readable; `POST /branches/{id}/merge/resume`
+//     reports what is wrong.
+//
+// Computed on every read **without writing anything**, from the same
+// read-only checks a resume starts from: which entities already
+// reached the mainline's log, which the merge left behind, which
+// remain, and which reached the log but whose mainline data is
+// behind it (pending as `needs_repair`).
+type BranchMergeState string
 
 // BranchStatus Lifecycle state. `merged` and `archived` are terminal — a branch in
 // either state accepts no further writes. `archived` is the state a
@@ -2439,6 +2561,11 @@ type BranchMergeResumeError struct {
 
 	// Message Human-readable explanation
 	Message string `json:"message"`
+
+	// Pending Present only for `merge_resume_needs_resolution`: the entities of
+	// `pending_stream_ids`, in the same order, named and with the reason
+	// each needs a decision and the resolutions it accepts (#830).
+	Pending *[]MergePendingEntity `json:"pending,omitempty"`
 
 	// PendingStreamIds Present only for `merge_resume_needs_resolution`: the entities that
 	// need a resolution before the resume can proceed.
@@ -3798,6 +3925,71 @@ type MergeOrigin struct {
 	// OriginalTimestamp When the change was made on the branch
 	OriginalTimestamp time.Time `json:"original_timestamp"`
 }
+
+// MergePendingEntity One entity an interrupted merge has not replayed onto the mainline yet
+// (#830).
+type MergePendingEntity struct {
+	// EntityName Display name of the entity as the branch sees it. Empty when
+	// nothing names it.
+	EntityName string `json:"entity_name"`
+
+	// EntityType Kind of entity, in the `ChangeEntry.entity_type` vocabulary.
+	EntityType string `json:"entity_type"`
+
+	// NeedsResolution True unless `reason` is `ready` or `needs_repair`: a resume
+	// refuses with `merge_resume_needs_resolution` until it is resolved.
+	NeedsResolution bool `json:"needs_resolution"`
+
+	// Reason - `ready` - the merge's recorded plan still covers it; a resume
+	//   replays it without asking.
+	// - `main_changed` - the mainline changed it after the merge was
+	//   planned, so the merge's decision about it no longer describes
+	//   the mainline.
+	// - `main_removed` - the mainline deleted it (or merged the person
+	//   into another) after the merge started; replaying the branch's
+	//   changes would restore nothing.
+	// - `no_plan` - the merge predates recorded replay plans, so nothing
+	//   says whether it should be replayed.
+	// - `breaks_reference` - replaying it would leave the mainline
+	//   referencing something it no longer has, or delete mainline data
+	//   the branch never saw.
+	// - `needs_repair` - its changes reached the mainline's history, but
+	//   the mainline's data does not show them yet (or a source's
+	//   citation count is off); a resume rebuilds it from the history
+	//   without asking.
+	Reason MergePendingEntityReason `json:"reason"`
+
+	// StreamId The entity's id; the key a resume resolution uses.
+	StreamId openapi_types.UUID `json:"stream_id"`
+
+	// SupportedResolutions The resolutions a resume accepts for it. Empty for `ready` and
+	// `needs_repair`; only
+	// `main` for `main_removed` and `breaks_reference`.
+	SupportedResolutions []MergePendingEntitySupportedResolutions `json:"supported_resolutions"`
+}
+
+// MergePendingEntityReason - `ready` - the merge's recorded plan still covers it; a resume
+//
+//		replays it without asking.
+//	  - `main_changed` - the mainline changed it after the merge was
+//	    planned, so the merge's decision about it no longer describes
+//	    the mainline.
+//	  - `main_removed` - the mainline deleted it (or merged the person
+//	    into another) after the merge started; replaying the branch's
+//	    changes would restore nothing.
+//	  - `no_plan` - the merge predates recorded replay plans, so nothing
+//	    says whether it should be replayed.
+//	  - `breaks_reference` - replaying it would leave the mainline
+//	    referencing something it no longer has, or delete mainline data
+//	    the branch never saw.
+//	  - `needs_repair` - its changes reached the mainline's history, but
+//	    the mainline's data does not show them yet (or a source's
+//	    citation count is off); a resume rebuilds it from the history
+//	    without asking.
+type MergePendingEntityReason string
+
+// MergePendingEntitySupportedResolutions defines model for MergePendingEntity.SupportedResolutions.
+type MergePendingEntitySupportedResolutions string
 
 // MergePersonsRequest Request to merge two person records
 type MergePersonsRequest struct {

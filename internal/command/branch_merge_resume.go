@@ -141,6 +141,11 @@ type ResumeMergeResult struct {
 	// PendingStreamIDs is populated only alongside
 	// ErrMergeResumeNeedsResolution: the streams that need a resolution.
 	PendingStreamIDs []uuid.UUID
+
+	// Pending describes PendingStreamIDs, in the same order: what each entity
+	// is, what it is called, why it needs a decision and which decisions it
+	// accepts (#830).
+	Pending []PendingMergeEntity
 }
 
 // resumeStep is what a resume will do with one stream of the replay set.
@@ -203,6 +208,10 @@ type resumeDecision struct {
 	// nextPlan is the plan with this call's resolutions applied — what a
 	// BranchMergeResumed records. Meaningful only when resolutions were given.
 	nextPlan map[uuid.UUID]int64
+
+	// reasons says, per pending stream, why the recorded plan cannot vouch
+	// for it (#830).
+	reasons map[uuid.UUID]MergePendingReason
 }
 
 // ResumeMerge finishes a merge whose replay onto main was interrupted after
@@ -300,66 +309,30 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 		return nil, err
 	}
 	claim := record.claim
-
-	groups, err := h.resumeReplayGroups(ctx, branch, claim)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateResolutions(input.Resolutions, groups); err != nil {
-		return nil, err
-	}
 	rationales, err := validateRationales(input.Rationales, input.Resolutions)
 	if err != nil {
 		return nil, err
 	}
 
-	// Main's versions are read BEFORE the landed scan, and the order is what
-	// keeps a concurrent resume from landing a stream twice. A stream another
-	// resume appends before the scan shows as landed and is left alone. One it
-	// appends after the scan was read at its pre-landing version, so this
-	// call's step for it asserts that stale version and replayStream refuses
-	// it (ErrMergePlanStale) instead of appending over the other resume's
-	// copy. Read the other way round, a landing between the two reads would
-	// look unlanded AND already at main's new version — decidable, and a
-	// "branch" resolution would then replay it a second time.
-	mainVersions, err := h.mainStreamVersions(ctx, groups)
+	// Everything up to here, and everything inspectResume does, only reads:
+	// the same plan GET /branches/{id} reports as the merge's completeness.
+	inspection, err := h.inspectResume(ctx, branch, record, input.Resolutions)
 	if err != nil {
 		return nil, err
 	}
-	landed, err := h.streamsAlreadyOnMain(ctx, groups, claim.MergedAtPosition)
-	if err != nil {
-		return nil, err
-	}
-
-	// What main removed since the claim, and so which persons the replay can
-	// still vouch for.
-	removed, relinked, err := h.streamsRemovedOnMain(ctx, groups, mainVersions)
-	if err != nil {
-		return nil, err
-	}
-	view := resumeView{
-		landed:       landed,
-		mainVersions: mainVersions,
-		removed:      removed,
-		relinked:     relinked,
-		created:      personsCreatedByReplay(groups, removed),
-		basePosition: branch.BasePosition,
-	}
-
-	// A stream the plan would replay automatically still needs a decision when
-	// replaying it would leave main pointing at a person it no longer has.
-	view.danglingAuto, err = h.danglingAutoPlannedStreams(ctx, record.plan, groups, view, input.Resolutions)
-	if err != nil {
-		return nil, err
-	}
-
-	result := &ResumeMergeResult{MergedAtPosition: claim.MergedAtPosition}
-	decision, err := planResume(claim.BranchID, record.plan, groups, view, input.Resolutions, result)
-	if err != nil {
-		return nil, err
-	}
+	groups, view, decision, result := inspection.groups, inspection.view, inspection.decision, inspection.result
+	landed := view.landed
 	if len(result.PendingStreamIDs) > 0 {
 		result.Branch = branch
+		// Named here so a caller can put the decision in front of a person
+		// without a second round trip (#830).
+		reasons := make(map[uuid.UUID]MergePendingReason, len(result.PendingStreamIDs))
+		for _, id := range result.PendingStreamIDs {
+			reasons[id] = inspection.decision.reasons[id]
+		}
+		if result.Pending, err = h.describePendingStreams(ctx, branch.ID, groups, reasons); err != nil {
+			return nil, err
+		}
 		return result, fmt.Errorf(
 			"%w: %d stream(s) still to replay for branch %s cannot be replayed on the recorded plan "+
 				"(main moved on them since it was recorded, main removed the entity, the claim recorded no plan, "+
@@ -387,7 +360,7 @@ func (h *Handler) ResumeMerge(ctx context.Context, input ResumeMergeInput) (*Res
 	// there, before the replay's projections read it on their behalf. It runs
 	// after every refusal above, so a refused resume has written nothing at
 	// all — not even a read-model repair.
-	result.ReprojectedStreamIDs, err = h.reprojectLandedStreams(ctx, groups, landed, mainVersions)
+	result.ReprojectedStreamIDs, err = h.reprojectLandedStreams(ctx, groups, landed, view.mainVersions)
 	if err != nil {
 		// Any decisions are already recorded, so this is reported like a
 		// replay failure: the remedy is to resume again.
@@ -496,13 +469,30 @@ func (h *Handler) resumeReplayGroups(ctx context.Context, branch *domain.Branch,
 // "active") is repaired first, exactly as claimMerge repairs it — resuming is
 // the natural next step from that state too.
 func (h *Handler) resumableMerge(ctx context.Context, branch *domain.Branch) (mergeRecord, error) {
+	record, claimVersion, err := h.readMergeRecord(ctx, branch)
+	if err != nil {
+		return mergeRecord{}, err
+	}
+	if branch.Status != domain.BranchStatusMerged {
+		if err := h.projector.Project(ctx, record.claim, claimVersion, domain.BranchID(branch.ID)); err != nil {
+			return mergeRecord{}, fmt.Errorf("repairing branch registry after an interrupted claim: %w", err)
+		}
+	}
+	return record, nil
+}
+
+// readMergeRecord is resumableMerge without the registry repair: it reads the
+// branch's own stream and writes nothing, so the merge-completeness read
+// (MergeCompleteness) can share it. claimVersion is the claim's version on
+// that stream.
+func (h *Handler) readMergeRecord(ctx context.Context, branch *domain.Branch) (mergeRecord, int64, error) {
 	if branch.Status == domain.BranchStatusArchived {
-		return mergeRecord{}, fmt.Errorf("%w: branch %s is archived", ErrMergeNotClaimed, branch.ID)
+		return mergeRecord{}, 0, fmt.Errorf("%w: branch %s is archived", ErrMergeNotClaimed, branch.ID)
 	}
 
 	stored, err := h.eventStore.ReadStream(ctx, branch.ID)
 	if err != nil {
-		return mergeRecord{}, fmt.Errorf("reading branch stream: %w", err)
+		return mergeRecord{}, 0, fmt.Errorf("reading branch stream: %w", err)
 	}
 	// ReadStream spans every branch, so keep only this branch's own scope
 	// before trusting an event type, and order by version so "latest" means
@@ -530,44 +520,38 @@ func (h *Handler) resumableMerge(ctx context.Context, branch *domain.Branch) (me
 			}
 			decoded, err := evt.DecodeEvent()
 			if err != nil {
-				return mergeRecord{}, fmt.Errorf("decoding branch merged event: %w", err)
+				return mergeRecord{}, 0, fmt.Errorf("decoding branch merged event: %w", err)
 			}
 			claim, ok := decoded.(domain.BranchMerged)
 			if !ok {
-				return mergeRecord{}, fmt.Errorf("branch %s: merge claim decoded as %T, want BranchMerged", branch.ID, decoded)
+				return mergeRecord{}, 0, fmt.Errorf("branch %s: merge claim decoded as %T, want BranchMerged", branch.ID, decoded)
 			}
 			record.claim, record.plan, claimed, claimVersion = claim, claim.ReplayStreamVersions, true, evt.Version
 		case "BranchMergeResumed":
 			if !claimed {
-				return mergeRecord{}, fmt.Errorf("branch %s: resume record at version %d precedes any merge claim", branch.ID, evt.Version)
+				return mergeRecord{}, 0, fmt.Errorf("branch %s: resume record at version %d precedes any merge claim", branch.ID, evt.Version)
 			}
 			decoded, err := evt.DecodeEvent()
 			if err != nil {
-				return mergeRecord{}, fmt.Errorf("decoding branch merge resumed event: %w", err)
+				return mergeRecord{}, 0, fmt.Errorf("decoding branch merge resumed event: %w", err)
 			}
 			resumed, ok := decoded.(domain.BranchMergeResumed)
 			if !ok {
-				return mergeRecord{}, fmt.Errorf("branch %s: resume record decoded as %T, want BranchMergeResumed", branch.ID, decoded)
+				return mergeRecord{}, 0, fmt.Errorf("branch %s: resume record decoded as %T, want BranchMergeResumed", branch.ID, decoded)
 			}
 			if resumed.ReplayStreamVersions == nil {
 				// The constructor always stores {}; a missing plan here would
 				// silently turn every stream into "resolved to main".
-				return mergeRecord{}, fmt.Errorf("branch %s: resume record at version %d carries no replay plan", branch.ID, evt.Version)
+				return mergeRecord{}, 0, fmt.Errorf("branch %s: resume record at version %d carries no replay plan", branch.ID, evt.Version)
 			}
 			record.plan = resumed.ReplayStreamVersions
 		}
 	}
 	if !claimed {
-		return mergeRecord{}, fmt.Errorf("%w: branch %s is %s and was never claimed for a merge; merge it instead",
+		return mergeRecord{}, 0, fmt.Errorf("%w: branch %s is %s and was never claimed for a merge; merge it instead",
 			ErrMergeNotClaimed, branch.ID, branch.Status)
 	}
-
-	if branch.Status != domain.BranchStatusMerged {
-		if err := h.projector.Project(ctx, record.claim, claimVersion, domain.BranchID(branch.ID)); err != nil {
-			return mergeRecord{}, fmt.Errorf("repairing branch registry after an interrupted claim: %w", err)
-		}
-	}
-	return record, nil
+	return record, claimVersion, nil
 }
 
 // recordResumeDecisions appends the caller's resolutions, and the plan they
@@ -695,6 +679,10 @@ func planResume(
 			delete(nextPlan, group.streamID)
 		default:
 			result.PendingStreamIDs = append(result.PendingStreamIDs, group.streamID)
+			if decision.reasons == nil {
+				decision.reasons = make(map[uuid.UUID]MergePendingReason)
+			}
+			decision.reasons[group.streamID] = pendingReasonOf(plan, planned, pinned, current, view, group.streamID)
 		}
 	}
 

@@ -4330,6 +4330,38 @@ export interface components {
              *     promoted. Absent unless the branch was merged with a note.
              */
             merge_note?: string;
+            /**
+             * @description Whether the merge finished (#830). Present on `GET /branches`,
+             *     `GET /branches/{id}` and the comparison's `branch`, and only when
+             *     `status` is `merged`.
+             *
+             *     - `complete` - every entity the merge set out to replay is on the
+             *       mainline, or was deliberately left behind, and the mainline's
+             *       data shows it.
+             *     - `incomplete` - the merge answered `500 merge_partially_applied`
+             *       and did not finish: its replay stopped partway, or a replayed
+             *       change reached the mainline's history but not its data.
+             *       `merge_pending` lists what is left;
+             *       `POST /branches/{id}/merge/resume` finishes it.
+             *     - `unknown` - the state could not be read (the branch's recorded
+             *       changes are in a shape a resume refuses too). The branch is
+             *       still listed and readable; `POST /branches/{id}/merge/resume`
+             *       reports what is wrong.
+             *
+             *     Computed on every read **without writing anything**, from the same
+             *     read-only checks a resume starts from: which entities already
+             *     reached the mainline's log, which the merge left behind, which
+             *     remain, and which reached the log but whose mainline data is
+             *     behind it (pending as `needs_repair`).
+             * @enum {string}
+             */
+            merge_state?: "complete" | "incomplete" | "unknown";
+            /**
+             * @description Present only when `merge_state` is `incomplete`: the entities a
+             *     resume would still act on (replay, ask about, or repair), in
+             *     replay order.
+             */
+            merge_pending?: components["schemas"]["MergePendingEntity"][];
         };
         BranchCreate: {
             /** @description Name of the line of research */
@@ -4825,10 +4857,70 @@ export interface components {
              */
             pending_stream_ids?: string[];
             /**
+             * @description Present only for `merge_resume_needs_resolution`: the entities of
+             *     `pending_stream_ids`, in the same order, named and with the reason
+             *     each needs a decision and the resolutions it accepts (#830).
+             */
+            pending?: components["schemas"]["MergePendingEntity"][];
+            /**
              * @description Present only for `merge_dangling_reference`: every reference the
              *     resolutions given would break (#831).
              */
             blockers?: components["schemas"]["MergeBlocker"][];
+        };
+        /**
+         * @description One entity an interrupted merge has not replayed onto the mainline yet
+         *     (#830).
+         */
+        MergePendingEntity: {
+            /**
+             * Format: uuid
+             * @description The entity's id; the key a resume resolution uses.
+             */
+            stream_id: string;
+            /**
+             * @description Kind of entity, in the `ChangeEntry.entity_type` vocabulary.
+             * @example person
+             */
+            entity_type: string;
+            /**
+             * @description Display name of the entity as the branch sees it. Empty when
+             *     nothing names it.
+             * @example Ada Lovelace
+             */
+            entity_name: string;
+            /**
+             * @description - `ready` - the merge's recorded plan still covers it; a resume
+             *       replays it without asking.
+             *     - `main_changed` - the mainline changed it after the merge was
+             *       planned, so the merge's decision about it no longer describes
+             *       the mainline.
+             *     - `main_removed` - the mainline deleted it (or merged the person
+             *       into another) after the merge started; replaying the branch's
+             *       changes would restore nothing.
+             *     - `no_plan` - the merge predates recorded replay plans, so nothing
+             *       says whether it should be replayed.
+             *     - `breaks_reference` - replaying it would leave the mainline
+             *       referencing something it no longer has, or delete mainline data
+             *       the branch never saw.
+             *     - `needs_repair` - its changes reached the mainline's history, but
+             *       the mainline's data does not show them yet (or a source's
+             *       citation count is off); a resume rebuilds it from the history
+             *       without asking.
+             * @enum {string}
+             */
+            reason: "ready" | "main_changed" | "main_removed" | "no_plan" | "breaks_reference" | "needs_repair";
+            /**
+             * @description True unless `reason` is `ready` or `needs_repair`: a resume
+             *     refuses with `merge_resume_needs_resolution` until it is resolved.
+             */
+            needs_resolution: boolean;
+            /**
+             * @description The resolutions a resume accepts for it. Empty for `ready` and
+             *     `needs_repair`; only
+             *     `main` for `main_removed` and `breaks_reference`.
+             */
+            supported_resolutions: ("branch" | "main")[];
         };
         RelationshipPathNode: {
             /** Format: uuid */

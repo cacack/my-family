@@ -277,6 +277,9 @@ func (m *mockReadModelStore) ListCitations(ctx context.Context, opts repository.
 func (m *mockReadModelStore) GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	return map[uuid.UUID]int{}, nil
+}
 func (m *mockReadModelStore) GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]repository.CitationReadModel, error) {
 	return nil, nil
 }

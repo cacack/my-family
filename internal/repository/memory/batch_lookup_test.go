@@ -153,6 +153,36 @@ func runBatchLookupScenario(t *testing.T, store repository.ReadModelStore) {
 	checkBatch(t, "citations on branch", cits, citationID, citationName, getCitation(branch),
 		map[uuid.UUID]string{c.kept: "Kept", c.edited: "BranchEdit", c.added: "Added"})
 
+	// --- Citation counts by source (#830): the batched len(GetCitationsForSource).
+	// Re-pointing c.kept on the branch moves it to s.edited there only, so the
+	// source filter must be re-applied to the row the branch actually sees.
+	moved := citation(c.kept, "Moved")
+	moved.SourceID = s.edited
+	mustNoErr(t, "re-point branch citation", store.SaveCitation(ctx, branch, moved))
+	for _, tc := range []struct {
+		branch domain.BranchID
+		want   map[uuid.UUID]int
+	}{
+		{domain.MainBranchID, map[uuid.UUID]int{s.kept: 3}},
+		{branch, map[uuid.UUID]int{s.kept: 2, s.edited: 1}},
+	} {
+		counts, err := store.CountCitationsBySource(ctx, tc.branch, []uuid.UUID{s.kept, s.edited, uuid.New()})
+		mustNoErr(t, "count citations by source", err)
+		if !reflect.DeepEqual(counts, tc.want) {
+			t.Fatalf("CountCitationsBySource(%s) = %v, want %v", tc.branch, counts, tc.want)
+		}
+		for sourceID, n := range tc.want {
+			list, err := store.GetCitationsForSource(ctx, tc.branch, sourceID)
+			mustNoErr(t, "citations for source", err)
+			if len(list) != n {
+				t.Fatalf("GetCitationsForSource(%s, %s) = %d rows, CountCitationsBySource says %d", tc.branch, sourceID, len(list), n)
+			}
+		}
+		if counts, err := store.CountCitationsBySource(ctx, tc.branch, nil); err != nil || len(counts) != 0 {
+			t.Fatalf("CountCitationsBySource(nil) = %v, %v; want empty", counts, err)
+		}
+	}
+
 	// --- Empty and all-unknown id sets ---
 	for _, b := range []domain.BranchID{domain.MainBranchID, branch} {
 		if rows, err := store.GetPersonsByIDs(ctx, b, nil); err != nil || len(rows) != 0 {

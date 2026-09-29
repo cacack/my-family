@@ -113,6 +113,39 @@ type faultyReadStore struct {
 	// beforeMainSaveSource, when set, runs once just before the next mainline
 	// SaveSource reaches the store.
 	beforeMainSaveSource func()
+
+	// sourceReads, while countSourceReads is set, counts every read-model
+	// statement that reads sources or their citations: the single-source
+	// GetSource/GetCitationsForSource and the batched GetSourcesByIDs/
+	// CountCitationsBySource alike.
+	countSourceReads bool
+	sourceReads      int
+}
+
+func (s *faultyReadStore) countSourceRead() {
+	if s.countSourceReads {
+		s.sourceReads++
+	}
+}
+
+func (s *faultyReadStore) GetSource(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*repository.SourceReadModel, error) {
+	s.countSourceRead()
+	return s.ReadModelStore.GetSource(ctx, branchID, id)
+}
+
+func (s *faultyReadStore) GetSourcesByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]repository.SourceReadModel, error) {
+	s.countSourceRead()
+	return s.ReadModelStore.GetSourcesByIDs(ctx, branchID, ids)
+}
+
+func (s *faultyReadStore) GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]repository.CitationReadModel, error) {
+	s.countSourceRead()
+	return s.ReadModelStore.GetCitationsForSource(ctx, branchID, sourceID)
+}
+
+func (s *faultyReadStore) CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	s.countSourceRead()
+	return s.ReadModelStore.CountCitationsBySource(ctx, branchID, sourceIDs)
 }
 
 func (s *faultyReadStore) SaveCitation(ctx context.Context, branchID domain.BranchID, citation *repository.CitationReadModel) error {

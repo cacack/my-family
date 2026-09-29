@@ -573,7 +573,24 @@ the state is finished by resuming (below). Three things bound the damage:
   a client must not retry: the branch is terminal, so a retry returns `409 branch_not_active`,
   which is not evidence the merge completed. `GET /branches/{id}/compare` still works on a merged
   branch and is the way to see what actually landed; `POST /branches/{id}/merge/resume` is the way
-  to finish it.
+  to finish it. Since #830 the branch itself says so: `GET /branches/{id}` (and the list and the
+  comparison) carries `merge_state: complete | incomplete` and, when incomplete, the entities a
+  resume would still act on, named, with the reason each is pending. It is computed by the resume's
+  own read halves, so it **writes nothing**: the replay plan (`inspectResume`) for the entities
+  still to replay, and the read-model repair's check (`planReadModelRepair`, plus the citation-count
+  check `citationCountsOff`) for entities already in `main`'s log whose read model is behind it —
+  an append that landed and whose synchronous projection then failed, which `MergeBranch` also
+  reports as `merge_partially_applied`. Those are pending as `needs_repair`, so a merge that
+  stopped at a projection failure never reads as complete. A finished merge runs no replay plan and
+  is remembered against the event log's head, so re-reading it (the branch list does, for every
+  merged branch) costs one head read until something is appended. The memo is keyed on the global
+  head, not the branch's own streams, because other writes (a citation of a cited source, a person
+  merge) change the verdict too; a recompute after an append scans `main`'s log once for the whole
+  replay set and reads the cited sources and their citation counts in one batched statement each
+  (`CountCitationsBySource`), so its cost does not grow with the number of cited sources. A branch
+  whose state cannot be read (a replay set the resume itself refuses) reports
+  `merge_state: unknown` rather than failing the list or the branch page; its resume names the
+  problem.
 
 **Resuming an interrupted merge (#685, delivered).** `Handler.ResumeMerge`, exposed as
 `POST /branches/{id}/merge/resume`, completes the replay append-only (ES-002): it appends only the

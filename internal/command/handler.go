@@ -174,6 +174,10 @@ type Handler struct {
 	// a reviewer) without any constructor gaining an argument.
 	branchService *query.BranchService
 
+	// mergeStates remembers finished merges for MergeCompleteness (#830).
+	// Nil disables the memo.
+	mergeStates *mergeStateCache
+
 	// Branch scope applied to every append and projection made through execute.
 	branchID domain.BranchID
 }
@@ -209,6 +213,7 @@ func NewHandlerWithBranches(eventStore repository.EventStore, readStore reposito
 		projector:       repository.NewProjectorWithSnapshots(readStore, branchStore, snapshots),
 		rollbackService: query.NewRollbackService(eventStore, readStore),
 		branchService:   query.NewBranchService(branchStore, eventStore, query.NewHistoryService(eventStore, readStore)),
+		mergeStates:     newMergeStateCache(),
 	}
 }
 

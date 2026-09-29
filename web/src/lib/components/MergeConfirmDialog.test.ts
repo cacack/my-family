@@ -86,9 +86,9 @@ function renderDialog(overrides: Partial<Props> = {}) {
 }
 
 /** Drives the dialog to a failure state and hands back the confirm spy. */
-async function refuse(error: unknown) {
+async function refuse(error: unknown, overrides: Partial<Props> = {}) {
 	const onconfirm = vi.fn().mockRejectedValue(error);
-	renderDialog({ onconfirm });
+	renderDialog({ ...overrides, onconfirm });
 	await fireEvent.click(screen.getByRole('button', { name: 'Merge branch' }));
 	return onconfirm;
 }
@@ -334,24 +334,36 @@ describe('MergeConfirmDialog', () => {
 			);
 		});
 
-		it('does not offer a retry for merge_partially_applied, and points at resuming', async () => {
-			await refuse({
-				status: 500,
-				code: 'merge_partially_applied',
-				message: 'replay stopped after 3 of 9 streams; main was modified'
-			});
+		it('does not offer a retry for merge_partially_applied, and offers to finish the merge', async () => {
+			const onfinishmerge = vi.fn();
+			await refuse(
+				{
+					status: 500,
+					code: 'merge_partially_applied',
+					message: 'replay stopped after 3 of 9 streams; main was modified'
+				},
+				{ onfinishmerge }
+			);
 
 			await screen.findByText(MERGE_REFUSAL_COPY.merge_partially_applied.title);
 			expect(screen.queryByRole('button', { name: /try merging again/i })).toBeNull();
-			// Resuming is supported now, so there is no tracking issue to send
-			// the user to - the copy names the resume instead, in user terms
-			// (the resume is API-only, so no raw endpoint is shown).
 			expect(screen.queryByRole('link', { name: '#685' })).toBeNull();
 			expect(MERGE_REFUSAL_COPY.merge_partially_applied.issue).toBeUndefined();
-			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).toMatch(/administrator can finish this merge by resuming it/);
+			// A single-user app: the copy speaks to the user, not an administrator,
+			// and names no raw endpoint (#830).
+			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).not.toMatch(/administrator/i);
+			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).toMatch(/you can finish it yourself/);
 			expect(MERGE_REFUSAL_COPY.merge_partially_applied.body).not.toMatch(/POST|\/branches\//);
-			// The only valid recovery: verify by comparing again.
-			expect(screen.getByRole('button', { name: /compare again/i })).toBeDefined();
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Finish merge' }));
+			expect(onfinishmerge).toHaveBeenCalledTimes(1);
+			expect(onclose).toHaveBeenCalled();
+		});
+
+		it('falls back to comparing again when the page offers no finish flow', async () => {
+			await refuse({ status: 500, code: 'merge_partially_applied', message: 'stopped' });
+			await fireEvent.click(await screen.findByRole('button', { name: 'Finish merge' }));
+			expect(onrecompare).toHaveBeenCalledTimes(1);
 		});
 
 		it('names the mainline, not the branch, for main_too_far_ahead', async () => {

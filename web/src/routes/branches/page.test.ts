@@ -219,4 +219,44 @@ describe('Branches page', () => {
 		const alert = await screen.findByRole('alert');
 		expect(alert.textContent).toContain('boom');
 	});
+
+	it('flags a merged branch whose merge did not finish, and links to finishing it (#830)', async () => {
+		const unfinished: Branch = {
+			...merged,
+			merge_state: 'incomplete',
+			merge_pending: [
+				{
+					stream_id: '55555555-5555-5555-5555-555555555555',
+					entity_type: 'person',
+					entity_name: 'Ada Lovelace',
+					reason: 'ready',
+					needs_resolution: false,
+					supported_resolutions: []
+				}
+			]
+		};
+		const finished: Branch = { ...archived, id: '66666666-6666-6666-6666-666666666666', status: 'merged', merge_state: 'complete' };
+		listBranches.mockResolvedValue({ items: [unfinished, finished], total: 2 });
+
+		render(Page);
+
+		expect(await screen.findByText('Merge unfinished')).toBeDefined();
+		expect(screen.getAllByText('Merge unfinished')).toHaveLength(1);
+		expect(
+			screen.getByText(/Its merge did not finish. 1 entity has not reached the mainline yet/)
+		).toBeDefined();
+		const finish = screen.getByRole('link', { name: 'Finish merge' });
+		expect(finish.getAttribute('href')).toBe(`/branches/${unfinished.id}`);
+	});
+
+	it('flags a merged branch whose merge state could not be read (#830)', async () => {
+		const unreadable: Branch = { ...merged, merge_state: 'unknown' };
+		listBranches.mockResolvedValue({ items: [unreadable], total: 1 });
+
+		render(Page);
+
+		expect(await screen.findByText('Merge unfinished')).toBeDefined();
+		expect(screen.getByText(/could not work out how far it got/)).toBeDefined();
+		expect(screen.getByRole('link', { name: 'Finish merge' }).getAttribute('href')).toBe(`/branches/${unreadable.id}`);
+	});
 });

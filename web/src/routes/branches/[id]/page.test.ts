@@ -10,6 +10,8 @@ import type {
 	BranchMergePrecheckRequest,
 	BranchMergeRequest,
 	BranchMergeResult,
+	BranchMergeResumeRequest,
+	BranchMergeResumeResult,
 	MergeBlocker,
 	MergeConflict
 } from '$lib/api/client';
@@ -26,6 +28,7 @@ const {
 	compareBranch,
 	mergeBranch,
 	precheckBranchMerge,
+	resumeBranchMerge,
 	switchBranch,
 	returnToMainline,
 	routeState
@@ -40,6 +43,7 @@ const {
 		compareBranch: vi.fn(),
 		mergeBranch: vi.fn(),
 		precheckBranchMerge: vi.fn(),
+		resumeBranchMerge: vi.fn(),
 		switchBranch: vi.fn().mockResolvedValue(undefined),
 		returnToMainline: vi.fn(),
 		// A soft navigation between two /branches/{id} entries reuses the component,
@@ -58,7 +62,8 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 			compareBranch: (id: string) => compareBranch(id),
 			mergeBranch: (id: string, req: BranchMergeRequest) => mergeBranch(id, req),
 			precheckBranchMerge: (id: string, req: BranchMergePrecheckRequest) =>
-				precheckBranchMerge(id, req)
+				precheckBranchMerge(id, req),
+			resumeBranchMerge: (id: string, req: BranchMergeResumeRequest) => resumeBranchMerge(id, req)
 		}
 	};
 });
@@ -1354,5 +1359,205 @@ describe('Merged branch record (#832)', () => {
 		expect(await screen.findByText('Both sides edited')).toBeDefined();
 		expect(screen.queryByTestId('merge-record')).toBeNull();
 		expect(screen.queryByTestId('replayed-note')).toBeNull();
+	});
+});
+
+describe('Incomplete merge (#830)', () => {
+	const merged: Branch = { ...branch, status: 'merged', merged_at: '2026-02-01T09:00:00Z' };
+	const incomplete: Branch = {
+		...merged,
+		merge_state: 'incomplete',
+		merge_pending: [
+			{
+				stream_id: PERSON_ID,
+				entity_type: 'person',
+				entity_name: 'Ada Lovelace',
+				reason: 'main_changed',
+				needs_resolution: true,
+				supported_resolutions: ['branch', 'main']
+			},
+			{
+				stream_id: OTHER_ID,
+				entity_type: 'person',
+				entity_name: 'Grace Hopper',
+				reason: 'ready',
+				needs_resolution: false,
+				supported_resolutions: []
+			}
+		]
+	};
+	const complete: Branch = { ...merged, merge_state: 'complete' };
+
+	function resumeResult(): BranchMergeResumeResult {
+		return {
+			branch: complete,
+			merged_at_position: 128,
+			replayed_event_count: 2,
+			already_replayed_stream_ids: [THIRD_ID],
+			skipped_stream_ids: [],
+			reprojected_stream_ids: []
+		};
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockState.id = null;
+		mockState.branch = null;
+		routeState.current = { params: { id: BRANCH_ID } };
+		routeState.subscribers.clear();
+		precheckBranchMerge.mockResolvedValue({ blockers: [] });
+	});
+
+	it('flags the unfinished merge and finishes it, with the pending decision, from the page', async () => {
+		compareBranch
+			.mockResolvedValueOnce(comparison({ branch: incomplete }))
+			.mockResolvedValue(comparison({ branch: complete }));
+		resumeBranchMerge.mockResolvedValue(resumeResult());
+
+		render(Page);
+
+		const flag = await screen.findByTestId('incomplete-merge');
+		expect(within(flag).getByText('This merge did not finish')).toBeDefined();
+		expect(flag.textContent).toMatch(/2 entities have not reached the mainline yet, and one needs your decision first/);
+		expect(screen.getByText('Merge unfinished')).toBeDefined();
+
+		await fireEvent.click(within(flag).getByRole('button', { name: 'Finish merge' }));
+		const dialog = await screen.findByRole('alertdialog');
+		// The pending entities by name, with why each is pending.
+		expect(within(dialog).getByText('Ada Lovelace')).toBeDefined();
+		expect(within(dialog).getByText('Changed on the mainline since')).toBeDefined();
+		expect(within(dialog).getByText('Grace Hopper')).toBeDefined();
+
+		const finish = within(dialog).getByRole('button', { name: 'Finish merge' }) as HTMLButtonElement;
+		expect(finish.disabled).toBe(true);
+		await fireEvent.click(dialog.querySelector<HTMLElement>(`#conflict-${PERSON_ID}-resolution-branch`)!);
+		await fireEvent.input(within(dialog).getByLabelText(/Why this side/), {
+			target: { value: 'Census, 1851' }
+		});
+		expect(finish.disabled).toBe(false);
+		await fireEvent.click(finish);
+
+		await waitFor(() => expect(resumeBranchMerge).toHaveBeenCalledTimes(1));
+		expect(resumeBranchMerge).toHaveBeenCalledWith(BRANCH_ID, {
+			resolutions: [{ stream_id: PERSON_ID, resolution: 'branch', rationale: 'Census, 1851' }]
+		});
+		await screen.findByText('Finished merging Maternal Smith line');
+		// The page adopted the finished branch: the flag is gone.
+		expect(screen.queryByTestId('incomplete-merge')).toBeNull();
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+		await waitFor(() => expect(compareBranch).toHaveBeenCalledTimes(2));
+		expect(screen.queryByText('Merge unfinished')).toBeNull();
+	});
+
+	it('takes the resume refusal\'s fresh pending list and keeps deciding', async () => {
+		compareBranch.mockResolvedValue(
+			comparison({ branch: { ...incomplete, merge_pending: [incomplete.merge_pending![1]] } })
+		);
+		resumeBranchMerge
+			.mockRejectedValueOnce({
+				status: 409,
+				code: 'merge_resume_needs_resolution',
+				message: '1 stream(s) still to replay',
+				pending_stream_ids: [OTHER_ID],
+				pending: [
+					{
+						stream_id: OTHER_ID,
+						entity_type: 'person',
+						entity_name: 'Grace Hopper',
+						reason: 'main_removed',
+						needs_resolution: true,
+						supported_resolutions: ['main']
+					}
+				]
+			})
+			.mockResolvedValueOnce(resumeResult());
+
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Finish merge' }));
+		const dialog = await screen.findByRole('alertdialog');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Finish merge' }));
+
+		await within(dialog).findByText(/more entities need a decision/);
+		expect(within(dialog).getByText('Deleted on the mainline since')).toBeDefined();
+		// Only the mainline's side is offered for an entity the mainline deleted.
+		expect(dialog.querySelector(`#conflict-${OTHER_ID}-resolution-branch`)).toBeNull();
+		await fireEvent.click(dialog.querySelector<HTMLElement>(`#conflict-${OTHER_ID}-resolution-main`)!);
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Finish merge' }));
+
+		await waitFor(() => expect(resumeBranchMerge).toHaveBeenCalledTimes(2));
+		expect(resumeBranchMerge).toHaveBeenLastCalledWith(BRANCH_ID, {
+			resolutions: [{ stream_id: OTHER_ID, resolution: 'main' }]
+		});
+		await screen.findByText('Finished merging Maternal Smith line');
+	});
+
+	it('opens the finish flow from a merge that stopped partway', async () => {
+		compareBranch
+			.mockResolvedValueOnce(comparison())
+			.mockResolvedValue(comparison({ branch: incomplete }));
+		mergeBranch.mockRejectedValue({
+			status: 500,
+			code: 'merge_partially_applied',
+			message: 'replay stopped after 1 of 2 streams'
+		});
+
+		const { container } = render(Page);
+		await screen.findByRole('heading', { name: 'Maternal Smith line' });
+		await fireEvent.click(radio(container, PERSON_ID, 'branch'));
+		await fireEvent.click(screen.getByRole('button', { name: 'Review & merge' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Merge branch' }));
+
+		await screen.findByText('The merge started but did not finish');
+		expect(screen.queryByText(/administrator/i)).toBeNull();
+		await fireEvent.click(screen.getByRole('button', { name: 'Finish merge' }));
+
+		await waitFor(() => expect(compareBranch).toHaveBeenCalledTimes(2));
+		expect(await screen.findByText('Finish merging Maternal Smith line?')).toBeDefined();
+	});
+
+	it('still opens the finish flow when the reloaded merge reads complete', async () => {
+		// Another tab finished it, or nothing was left but a check: the button
+		// the user pressed must lead somewhere, and the resume is safe to run.
+		compareBranch
+			.mockResolvedValueOnce(comparison())
+			.mockResolvedValue(comparison({ branch: complete }));
+		mergeBranch.mockRejectedValue({
+			status: 500,
+			code: 'merge_partially_applied',
+			message: 'projection failed'
+		});
+		resumeBranchMerge.mockResolvedValue(resumeResult());
+
+		const { container } = render(Page);
+		await screen.findByRole('heading', { name: 'Maternal Smith line' });
+		await fireEvent.click(radio(container, PERSON_ID, 'branch'));
+		await fireEvent.click(screen.getByRole('button', { name: 'Review & merge' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Merge branch' }));
+		await screen.findByText('The merge started but did not finish');
+		await fireEvent.click(screen.getByRole('button', { name: 'Finish merge' }));
+
+		const dialog = await screen.findByRole('alertdialog', { name: /Finish merging Maternal Smith line/ });
+		expect(within(dialog).getByText(/Nothing is left to replay/)).toBeDefined();
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Finish merge' }));
+		await waitFor(() => expect(resumeBranchMerge).toHaveBeenCalledWith(BRANCH_ID, {}));
+	});
+
+	it('flags a merge whose state could not be read and offers to finish it', async () => {
+		compareBranch.mockResolvedValue(
+			comparison({ branch: { ...merged, merge_state: 'unknown', merge_pending: undefined } })
+		);
+		render(Page);
+		const flag = await screen.findByTestId('incomplete-merge');
+		expect(flag.textContent).toMatch(/could not work out how far it got/);
+		expect(within(flag).getByRole('button', { name: 'Finish merge' })).toBeDefined();
+	});
+
+	it('does not flag a merge that finished', async () => {
+		compareBranch.mockResolvedValue(comparison({ branch: complete }));
+		render(Page);
+		await screen.findByRole('heading', { name: 'Maternal Smith line' });
+		expect(screen.queryByTestId('incomplete-merge')).toBeNull();
+		expect(screen.queryByText('Merge unfinished')).toBeNull();
 	});
 });

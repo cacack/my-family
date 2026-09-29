@@ -53,7 +53,7 @@
 	 * the merge - offering it on a failure the API documents as non-retryable
 	 * would invite a second request that can only make things worse.
 	 */
-	export type MergeRecovery = 'close' | 'retry' | 'recompare';
+	export type MergeRecovery = 'close' | 'retry' | 'recompare' | 'finish';
 
 	export interface MergeFailureCopy {
 		/** Names the real cause, in the user's terms. */
@@ -121,10 +121,10 @@
 			recovery: 'close'
 		},
 		merge_partially_applied: {
-			title: 'The merge was claimed but did not finish',
+			title: 'The merge started but did not finish',
 			body:
-				"The branch is already marked merged while the replay onto the mainline stopped partway. Do not merge again: the branch is terminal, so a second attempt would only report that, which is no evidence the work completed. An administrator can finish this merge by resuming it, which replays only what has not yet reached the mainline and asks before replaying over anything the mainline changed since. Compare again to see exactly what did and did not land - the server's message below says how far the replay got, and whether the mainline was modified at all.",
-			recovery: 'recompare'
+				"The branch is already marked merged, but the replay onto the mainline stopped partway, so only some of its changes are there. Nothing is lost, and you can finish it yourself: Finish merge replays only what has not reached the mainline yet, and asks you before replaying over anything the mainline changed since. You can also do it later from this branch's page, which flags the merge as unfinished until then. The server's message below says how far the replay got.",
+			recovery: 'finish'
 		},
 		invalid_resolution: {
 			title: 'One of your decisions is not one this conflict accepts',
@@ -203,6 +203,11 @@
 		onrecompare?: () => void;
 		/** The user asked to leave the merged branch; the page performs it. */
 		onreturntomainline?: () => void;
+		/**
+		 * The user asked to finish an interrupted merge (#830); the page opens
+		 * its finish-merge flow. Without it, that recovery compares again.
+		 */
+		onfinishmerge?: () => void;
 	}
 
 	let {
@@ -214,7 +219,8 @@
 		onclose,
 		onrefused,
 		onrecompare,
-		onreturntomainline
+		onreturntomainline,
+		onfinishmerge
 	}: Props = $props();
 
 	let note = $state('');
@@ -313,6 +319,15 @@
 	function handleRecompare() {
 		onrecompare?.();
 		onclose();
+	}
+
+	function handleFinishMerge() {
+		if (onfinishmerge) {
+			onclose();
+			onfinishmerge();
+		} else {
+			handleRecompare();
+		}
 	}
 </script>
 
@@ -498,6 +513,8 @@
 					</AlertDialog.Action>
 				{:else if failure.recovery === 'recompare'}
 					<AlertDialog.Action onclick={handleRecompare}>Compare again</AlertDialog.Action>
+				{:else if failure.recovery === 'finish'}
+					<AlertDialog.Action onclick={handleFinishMerge}>Finish merge</AlertDialog.Action>
 				{/if}
 			{:else}
 				<!--

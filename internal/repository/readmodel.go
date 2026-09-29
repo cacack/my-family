@@ -539,6 +539,11 @@ type ReadModelStore interface {
 	GetCitationsByIDs(ctx context.Context, branchID domain.BranchID, ids []uuid.UUID) ([]CitationReadModel, error)
 	ListCitations(ctx context.Context, opts ListOptions) ([]CitationReadModel, int, error)
 	GetCitationsForSource(ctx context.Context, branchID domain.BranchID, sourceID uuid.UUID) ([]CitationReadModel, error)
+	// CountCitationsBySource counts, in ONE statement, the citations visible
+	// on branchID of each of sourceIDs — the batched len(GetCitationsForSource),
+	// resolved through the same overlay. A source with no citations (or one
+	// that is unknown) is absent from the map. An empty set queries nothing.
+	CountCitationsBySource(ctx context.Context, branchID domain.BranchID, sourceIDs []uuid.UUID) (map[uuid.UUID]int, error)
 	GetCitationsForPerson(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) ([]CitationReadModel, error)
 	GetCitationsForFact(ctx context.Context, branchID domain.BranchID, factType domain.FactType, factOwnerID uuid.UUID) ([]CitationReadModel, error)
 	SaveCitation(ctx context.Context, branchID domain.BranchID, citation *CitationReadModel) error
