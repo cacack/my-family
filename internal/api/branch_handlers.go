@@ -260,15 +260,17 @@ func convertQueryMergeRecordToGenerated(record *query.MergeRecord) *MergeRecord 
 		return nil
 	}
 	out := &MergeRecord{
-		ClaimId:            record.ClaimID,
-		MergedAt:           record.MergedAt,
-		MergedAtPosition:   record.MergedAtPosition,
-		Recorded:           record.Recorded,
-		ReplayedEventCount: record.ReplayedEventCount,
-		ResumeCount:        record.ResumeCount,
-		SkippedStreamIds:   append([]openapi_types.UUID{}, record.SkippedStreamIDs...),
-		Decisions:          make([]MergeRecordDecision, 0, len(record.Decisions)),
-		Exclusions:         make([]MergeRecordExclusion, 0, len(record.Exclusions)),
+		ClaimId:                 record.ClaimID,
+		MergedAt:                record.MergedAt,
+		MergedAtPosition:        record.MergedAtPosition,
+		Recorded:                record.Recorded,
+		ReplayedEventCount:      record.ReplayedEventCount,
+		ResumeCount:             record.ResumeCount,
+		SkippedStreamIds:        append([]openapi_types.UUID{}, record.SkippedStreamIDs...),
+		PreMergeSnapshotId:      record.PreMergeSnapshotID,
+		ReplayedThroughPosition: record.ReplayedThroughPosition,
+		Decisions:               make([]MergeRecordDecision, 0, len(record.Decisions)),
+		Exclusions:              make([]MergeRecordExclusion, 0, len(record.Exclusions)),
 	}
 	if record.Note != "" {
 		note := record.Note
@@ -334,6 +336,7 @@ func (ss *StrictServer) MergeBranch(ctx context.Context, request MergeBranchRequ
 		}
 		input.Resolutions = resolutions
 		input.Rationales = rationales
+		input.SnapshotBefore = request.Body.SnapshotBefore != nil && *request.Body.SnapshotBefore
 	}
 
 	// result is non-nil alongside ErrMergeConflicts and carries the conflicts;
@@ -349,12 +352,17 @@ func (ss *StrictServer) MergeBranch(ctx context.Context, request MergeBranchRequ
 		skipped = []openapi_types.UUID{}
 	}
 
-	return MergeBranch200JSONResponse{
+	response := MergeBranch200JSONResponse{
 		Branch:             convertDomainBranchToGenerated(result.Branch),
 		MergedAtPosition:   result.MergedAtPosition,
 		ReplayedEventCount: result.ReplayedEventCount,
 		SkippedStreamIds:   skipped,
-	}, nil
+	}
+	if result.PreMergeSnapshot != nil {
+		snapshot := convertDomainSnapshotToGenerated(result.PreMergeSnapshot)
+		response.PreMergeSnapshot = &snapshot
+	}
+	return response, nil
 }
 
 // mergeBranchErrorResponse maps the merge command's sentinel errors onto the

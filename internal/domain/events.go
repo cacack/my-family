@@ -1096,6 +1096,13 @@ type BranchMerged struct {
 	// — conflicts and exclusions alike — whose branch events are not replayed.
 	ReplayedEventCount *int        `json:"replayed_event_count,omitempty"`
 	SkippedStreamIDs   []uuid.UUID `json:"skipped_stream_ids,omitempty"`
+
+	// PreMergeSnapshotID is the mainline snapshot the merge took just before
+	// it claimed the branch (#833): "Before merging <branch>", marking the
+	// mainline as it stood before the merge's first replayed event. Optional
+	// and additive — a merge that took no snapshot, or a claim written before
+	// #833, omits it and decodes to nil.
+	PreMergeSnapshotID *uuid.UUID `json:"pre_merge_snapshot_id,omitempty"`
 }
 
 // HasRecord reports whether the claim carries a #832 merge record. An older

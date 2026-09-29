@@ -64,6 +64,9 @@ const mergeResult: BranchMergeResult = {
 
 type Props = ComponentProps<typeof MergeConfirmDialog>;
 
+/** The options a confirm carries when the user leaves the snapshot option on (#833). */
+const SNAPSHOT_ON = { snapshotBefore: true };
+
 const onclose = vi.fn();
 const onrefused = vi.fn();
 const onrecompare = vi.fn();
@@ -199,7 +202,7 @@ describe('MergeConfirmDialog', () => {
 			expect(mergeButton().disabled).toBe(false);
 			await fireEvent.click(mergeButton());
 
-			await waitFor(() => expect(props.onconfirm).toHaveBeenCalledWith(''));
+			await waitFor(() => expect(props.onconfirm).toHaveBeenCalledWith('', SNAPSHOT_ON));
 		});
 
 		it('measures the cap on the trimmed note, so trailing whitespace is free', async () => {
@@ -211,7 +214,7 @@ describe('MergeConfirmDialog', () => {
 			expect(mergeButton().disabled).toBe(false);
 			await fireEvent.click(mergeButton());
 
-			await waitFor(() => expect(props.onconfirm).toHaveBeenCalledWith(note));
+			await waitFor(() => expect(props.onconfirm).toHaveBeenCalledWith(note, SNAPSHOT_ON));
 		});
 
 		it('refuses to send a note longer than the cap once trimmed', async () => {
@@ -254,7 +257,7 @@ describe('MergeConfirmDialog', () => {
 			await fireEvent.input(noteField(), { target: { value: 'Confirmed by the 1881 census' } });
 			await fireEvent.click(mergeButton());
 
-			await waitFor(() => expect(onconfirm).toHaveBeenCalledWith('Confirmed by the 1881 census'));
+			await waitFor(() => expect(onconfirm).toHaveBeenCalledWith('Confirmed by the 1881 census', SNAPSHOT_ON));
 			expect(mergeButton().textContent).toContain('Merging...');
 			expect(mergeButton().disabled).toBe(true);
 
@@ -315,7 +318,7 @@ describe('MergeConfirmDialog', () => {
 			await fireEvent.click(retry);
 
 			await waitFor(() => expect(onconfirm).toHaveBeenCalledTimes(2));
-			expect(onconfirm).toHaveBeenNthCalledWith(2, 'Census confirmed');
+			expect(onconfirm).toHaveBeenNthCalledWith(2, 'Census confirmed', SNAPSHOT_ON);
 			await screen.findByText(/Merged Maternal Smith line into the mainline/);
 		});
 
@@ -563,6 +566,52 @@ describe('MergeConfirmDialog', () => {
 				status: 409
 			});
 			await waitFor(() => expect(screen.getByText('an older server said this')).toBeDefined());
+		});
+	});
+
+	describe('snapshot before merging (#833)', () => {
+		function snapshotOption(): HTMLElement {
+			return screen.getByRole('checkbox', { name: /snapshot before merging/i });
+		}
+
+		it('is on by default and names the snapshot it will take', () => {
+			renderDialog();
+			expect(snapshotOption().getAttribute('aria-checked')).toBe('true');
+			expect(screen.getByText(/"Before merging Maternal Smith line"/)).toBeTruthy();
+		});
+
+		it('sends the choice with the merge, and can be turned off', async () => {
+			const props = renderDialog();
+			await fireEvent.click(snapshotOption());
+			expect(snapshotOption().getAttribute('aria-checked')).toBe('false');
+			await fireEvent.click(mergeButton());
+			await waitFor(() =>
+				expect(props.onconfirm).toHaveBeenCalledWith('', { snapshotBefore: false })
+			);
+		});
+
+		it('names the snapshot the merge took in the outcome', async () => {
+			renderDialog({
+				onconfirm: vi.fn().mockResolvedValue({
+					...mergeResult,
+					pre_merge_snapshot: {
+						id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+						name: 'Before merging Maternal Smith line',
+						position: 127,
+						created_at: '2026-02-01T09:00:00Z'
+					}
+				})
+			});
+			await fireEvent.click(mergeButton());
+			const note = await screen.findByTestId('pre-merge-snapshot');
+			expect(note.textContent).toContain('Before merging Maternal Smith line');
+		});
+
+		it('says nothing about a snapshot the merge did not take', async () => {
+			renderDialog();
+			await fireEvent.click(mergeButton());
+			await screen.findByText(/Merged Maternal Smith line into the mainline/);
+			expect(screen.queryByTestId('pre-merge-snapshot')).toBeNull();
 		});
 	});
 });

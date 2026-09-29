@@ -11,7 +11,11 @@
 	 * branch with 409 `snapshot_branch_mismatch`.
 	 *
 	 * The two ids come from `?from=&to=` (see `snapshotCompareHref`); `to` is
-	 * `CURRENT_STATE` for "now". The server orders a pair itself - `older_first`
+	 * `CURRENT_STATE` for "now", and with `&until=<position>` the comparison
+	 * stops at that log position instead (#833, `snapshotCompareRangeHref`) -
+	 * how a merged branch links to exactly what its merge changed. Changes a
+	 * merge brought over carry its provenance chip, which tells them apart from
+	 * mainline edits made in the same range. The server orders a pair itself - `older_first`
 	 * says whether `snapshot1` is the older one - so the page always presents
 	 * "older -> newer" whichever order the ids were given in.
 	 *
@@ -24,10 +28,11 @@
 	import { page } from '$app/stores';
 	import { api, type ApiError, type BranchChangeEntry, type Snapshot } from '$lib/api/client';
 	import DiffView from '$lib/components/DiffView.svelte';
+	import MergedFromChip from '$lib/components/MergedFromChip.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Label } from '$lib/components/ui/label';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
-	import { CURRENT_STATE, snapshotCompareHref } from '$lib/utils/snapshots';
+	import { CURRENT_STATE, parseComparisonEnd, snapshotCompareHref } from '$lib/utils/snapshots';
 	import {
 		CHANGE_ENTITY_TYPES,
 		ENTITY_TYPE_LABELS as ENTITY_LABELS,
@@ -40,11 +45,13 @@
 
 	/**
 	 * One comparison, whichever endpoint answered it: `newer` is null when the
-	 * comparison runs to the current state.
+	 * comparison runs to the current state, or to the log position `toPosition`
+	 * when the page asked for one (`until`).
 	 */
 	interface ComparisonView {
 		older: Snapshot;
 		newer: Snapshot | null;
+		toPosition: number | null;
 		changes: ChangeItem[];
 		hasMore: boolean;
 		/** The ids arrived newest first, so the page reordered them. */
@@ -54,6 +61,8 @@
 	const fromId = $derived($page.url.searchParams.get('from') ?? '');
 	const toId = $derived($page.url.searchParams.get('to') ?? '');
 	const toNow = $derived(toId === CURRENT_STATE);
+	/** The log position a "to now" comparison stops at; null for the head. */
+	const until = $derived(toNow ? parseComparisonEnd($page.url.searchParams.get('until')) : null);
 
 	let comparison = $state<ComparisonView | null>(null);
 	let loading = $state(true);
@@ -70,7 +79,9 @@
 			? 'Choose two snapshots to compare.'
 			: fromId === toId
 				? 'Choose two different snapshots - a snapshot compared with itself has no changes.'
-				: null
+				: until === undefined
+					? 'This comparison link is malformed: its end position is not a log position.'
+					: null
 	);
 
 	const older: Snapshot | null = $derived(comparison?.older ?? null);
@@ -98,9 +109,11 @@
 
 	const summary = $derived(
 		itemized.length === 0
-			? comparison?.newer === null
-				? 'No changes since this snapshot.'
-				: 'No changes between these snapshots.'
+			? comparison?.toPosition != null
+				? 'No changes in this range.'
+				: comparison?.newer === null
+					? 'No changes since this snapshot.'
+					: 'No changes between these snapshots.'
 			: `${plural(itemized.length, 'change')}: ${counts.created} created, ${counts.updated} updated, ${counts.deleted} deleted${counts.merged > 0 ? `, ${counts.merged} merged` : ''}.`
 	);
 
@@ -130,12 +143,20 @@
 	// (the same pattern as the branch comparison page).
 	let comparisonRequest = 0;
 
-	async function fetchComparison(a: string, b: string): Promise<ComparisonView> {
+	async function fetchComparison(
+		a: string,
+		b: string,
+		end: number | null
+	): Promise<ComparisonView> {
 		if (b === CURRENT_STATE) {
-			const result = await api.compareSnapshotToCurrent(a);
+			const result =
+				end === null
+					? await api.compareSnapshotToCurrent(a)
+					: await api.compareSnapshotToCurrent(a, end);
 			return {
 				older: result.snapshot,
 				newer: null,
+				toPosition: end === null ? null : result.to_position,
 				changes: result.changes as ChangeItem[],
 				hasMore: result.has_more,
 				reordered: false
@@ -145,13 +166,14 @@
 		return {
 			older: result.older_first ? result.snapshot1 : result.snapshot2,
 			newer: result.older_first ? result.snapshot2 : result.snapshot1,
+			toPosition: null,
 			changes: result.changes as ChangeItem[],
 			hasMore: result.has_more,
 			reordered: !result.older_first
 		};
 	}
 
-	async function loadComparison(a: string, b: string) {
+	async function loadComparison(a: string, b: string, end: number | null) {
 		const request = ++comparisonRequest;
 		loading = true;
 		error = null;
@@ -159,7 +181,7 @@
 		otherBranch = false;
 		entityFilter = 'all';
 		try {
-			const result = await fetchComparison(a, b);
+			const result = await fetchComparison(a, b, end);
 			if (request !== comparisonRequest) return;
 			comparison = result;
 		} catch (e) {
@@ -170,7 +192,12 @@
 			} else if (apiError.status === 409 && apiError.code === 'snapshot_branch_mismatch') {
 				otherBranch = true;
 			} else if (apiError.status === 400) {
-				error = 'These snapshot links are malformed. Choose the snapshots again.';
+				// Only the server's range refusal means the end lies before the
+				// snapshot; any other 400 is a malformed link, bounded or not.
+				error =
+					end !== null && apiError.code === 'invalid_range'
+						? 'This range ends before its snapshot, so it holds no changes. Choose the snapshots again.'
+						: 'These snapshot links are malformed. Choose the snapshots again.';
 			} else {
 				error = apiError.message || 'Failed to compare snapshots';
 			}
@@ -185,6 +212,7 @@
 	$effect(() => {
 		const a = fromId;
 		const b = toId;
+		const end = until ?? null;
 		if (invalidReason) {
 			// Invalidate any request still in flight for a previous pair.
 			comparisonRequest++;
@@ -192,7 +220,7 @@
 			loading = false;
 			return;
 		}
-		loadComparison(a, b);
+		loadComparison(a, b, end);
 	});
 
 	// Announce the outcome once per loaded comparison, not on every filter change.
@@ -206,7 +234,7 @@
 <svelte:head>
 	<title>
 		{older
-			? `${older.name} to ${newer ? newer.name : 'now'} | Snapshots`
+			? `${older.name} to ${newer ? newer.name : comparison?.toPosition != null ? `position ${comparison.toPosition}` : 'now'} | Snapshots`
 			: 'Snapshot Comparison'} | My Family
 	</title>
 </svelte:head>
@@ -272,6 +300,15 @@
 			<span class="endpoint-arrow" aria-hidden="true">&rarr;</span>
 			{#if newer}
 				{@render snapshotCard('To (newer)', newer)}
+			{:else if comparison.toPosition !== null}
+				<div class="endpoint">
+					<span class="endpoint-label">To</span>
+					<span class="endpoint-name">Position {comparison.toPosition}</span>
+					<span class="endpoint-description">
+						Changes recorded after this point are not listed.
+						<a href={snapshotCompareHref(older.id, CURRENT_STATE)}>Compare to now</a>
+					</span>
+				</div>
 			{:else}
 				<div class="endpoint">
 					<span class="endpoint-label">To</span>
@@ -339,6 +376,9 @@
 								<span class="entity-name" class:deleted={entry.action === 'deleted'}>{entry.entity_name || 'Unnamed'}</span>
 							{/if}
 						</div>
+						{#if entry.merged_from}
+							<MergedFromChip origin={entry.merged_from} />
+						{/if}
 						{#if entry.changes && Object.keys(entry.changes).length > 0}
 							<div class="change-diff">
 								<DiffView changes={entry.changes} />

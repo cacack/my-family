@@ -170,10 +170,16 @@ func (ss *StrictServer) CompareSnapshotToCurrent(ctx context.Context, request Co
 		return nil, err
 	}
 
-	result, err := ss.server.snapshotService.CompareSnapshotToCurrent(ctx, branchScopeID(branch), request.Id)
+	result, err := ss.server.snapshotService.CompareSnapshotToPosition(ctx, branchScopeID(branch), request.Id, request.Params.Until)
 	if err != nil {
 		if errors.Is(err, repository.ErrSnapshotNotFound) {
 			return CompareSnapshotToCurrent404JSONResponse{snapshotNotFound}, nil
+		}
+		if errors.Is(err, query.ErrComparisonEndBeforeSnapshot) {
+			return CompareSnapshotToCurrent400JSONResponse{BadRequestJSONResponse{
+				Code:    "invalid_range",
+				Message: err.Error(),
+			}}, nil
 		}
 		if errors.Is(err, query.ErrSnapshotBranchMismatch) {
 			return CompareSnapshotToCurrent409JSONResponse(errSnapshotBranchMismatch), nil
@@ -184,6 +190,7 @@ func (ss *StrictServer) CompareSnapshotToCurrent(ctx context.Context, request Co
 	return CompareSnapshotToCurrent200JSONResponse{
 		Snapshot:     convertDomainSnapshotToGenerated(result.Snapshot),
 		HeadPosition: result.HeadPosition,
+		ToPosition:   result.ToPosition,
 		Changes:      convertQueryChangeEntries(result.Changes),
 		TotalCount:   result.TotalCount,
 		HasMore:      result.HasMore,

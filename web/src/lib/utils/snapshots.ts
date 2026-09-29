@@ -20,3 +20,25 @@ export function snapshotCompareHref(fromId: string, toId: string): string {
 export function snapshotCompareToNowHref(fromId: string): string {
 	return snapshotCompareHref(fromId, CURRENT_STATE);
 }
+
+/**
+ * The page that compares a snapshot with the log up to position `until`
+ * (#833): a fixed range that stays the same however far the log moves on.
+ * A merge's pre-merge snapshot up to the last change the merge replayed is
+ * exactly what the merge changed.
+ */
+export function snapshotCompareRangeHref(fromId: string, until: number): string {
+	const params = new URLSearchParams({ from: fromId, to: CURRENT_STATE, until: String(until) });
+	return `/snapshots/compare?${params.toString()}`;
+}
+
+/**
+ * Reads the `until` query value of the compare page: a non-negative integer
+ * log position, `null` when absent, or `undefined` when present but malformed.
+ */
+export function parseComparisonEnd(raw: string | null): number | null | undefined {
+	if (raw === null) return null;
+	if (!/^\d+$/.test(raw)) return undefined;
+	const value = Number(raw);
+	return Number.isSafeInteger(value) ? value : undefined;
+}

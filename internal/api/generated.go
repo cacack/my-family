@@ -2524,6 +2524,18 @@ type BranchMergeRequest struct {
 	// more entities than that is refused before resolutions are read, so
 	// a longer array can never be useful.
 	Resolutions *[]MergeResolutionEntry `json:"resolutions,omitempty"`
+
+	// SnapshotBefore Off unless set. Mark the mainline with a snapshot named "Before merging <branch>"
+	// just before the merge claims the branch, and record its id on the
+	// merge record (`pre_merge_snapshot_id`), so the merge's effect can
+	// be compared from it afterwards. The snapshot is taken after every
+	// check that can refuse the merge up front; if the merge is refused
+	// after it (the mainline moved, or a concurrent merge claimed the
+	// branch first), the snapshot is removed again. An unrelated mainline
+	// change made at the same moment can still land between the snapshot
+	// and the merge's replay; it then shows in that comparison without
+	// the merge provenance (`merged_from`) every replayed change carries.
+	SnapshotBefore *bool `json:"snapshot_before,omitempty"`
 }
 
 // BranchMergeResult What the merge actually did.
@@ -2538,7 +2550,8 @@ type BranchMergeResult struct {
 	// so this number counts other branches' events too. Do not treat
 	// `merged_at_position - base_position` as a count of what this merge
 	// promoted — it is inflated by unrelated branch activity.
-	MergedAtPosition int64 `json:"merged_at_position"`
+	MergedAtPosition int64     `json:"merged_at_position"`
+	PreMergeSnapshot *Snapshot `json:"pre_merge_snapshot,omitempty"`
 
 	// ReplayedEventCount How many branch events were re-appended to the mainline
 	ReplayedEventCount int `json:"replayed_event_count"`
@@ -4035,6 +4048,11 @@ type MergeRecord struct {
 	// Note The merge note
 	Note *string `json:"note,omitempty"`
 
+	// PreMergeSnapshotId The mainline snapshot the merge took just before claiming the branch
+	// (`snapshot_before`). Absent when it took none. The snapshot itself
+	// may since have been deleted.
+	PreMergeSnapshotId *openapi_types.UUID `json:"pre_merge_snapshot_id,omitempty"`
+
 	// Recorded `false` for a merge made before decisions were recorded: its
 	// `exclusions` are then derived from the replay plan (every entity
 	// the plan left out kept the mainline's version), without saying
@@ -4044,6 +4062,17 @@ type MergeRecord struct {
 	// ReplayedEventCount How many branch events the merge set out to replay. Absent when
 	// not recorded.
 	ReplayedEventCount *int `json:"replayed_event_count,omitempty"`
+
+	// ReplayedThroughPosition The log position of the last change the merge (or a resume of it)
+	// replayed onto the mainline. With `pre_merge_snapshot_id` it bounds
+	// exactly what the merge changed:
+	// `GET /snapshots/{pre_merge_snapshot_id}/compare-current?until=<this>`.
+	// For a merge that replayed nothing it is the position of the merge's
+	// own claim, so that range lists none of the merge's changes. Absent
+	// when no replayed change carrying this merge's provenance was found,
+	// or when the scan for them hit its cap before finding every change
+	// the merge's plan replays.
+	ReplayedThroughPosition *int64 `json:"replayed_through_position,omitempty"`
 
 	// ResumeCount How many resumes of an interrupted merge recorded decisions
 	ResumeCount int `json:"resume_count"`
@@ -4908,10 +4937,14 @@ type SnapshotCurrentComparisonResult struct {
 	// HasMore Whether there are more changes beyond the limit
 	HasMore bool `json:"has_more"`
 
-	// HeadPosition The event log head the comparison ran to — the position a snapshot
-	// taken now would mark.
+	// HeadPosition The event log head when the comparison ran — the position a
+	// snapshot taken now would mark.
 	HeadPosition int64    `json:"head_position"`
 	Snapshot     Snapshot `json:"snapshot"`
+
+	// ToPosition The last log position the comparison includes: `head_position`,
+	// or the requested `until` when that lies before the head.
+	ToPosition int64 `json:"to_position"`
 
 	// TotalCount Number of changes listed
 	TotalCount int `json:"total_count"`
@@ -6574,6 +6607,9 @@ type CompareSnapshotToCurrentParams struct {
 	// return 409; reads of one return 404, because its overlay rows are purged
 	// on archive and it therefore has no view to return.
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
+
+	// Until The last log position to include. Defaults to the current head.
+	Until *int64 `form:"until,omitempty" json:"until,omitempty"`
 }
 
 // ListSourcesParams defines parameters for ListSources.
@@ -10724,6 +10760,13 @@ func (w *ServerInterfaceWrapper) CompareSnapshotToCurrent(ctx echo.Context) erro
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "branch", ctx.QueryParams(), &params.Branch, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter branch: %s", err))
+	}
+
+	// ------------- Optional query parameter "until" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "until", ctx.QueryParams(), &params.Until, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter until: %s", err))
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -17391,6 +17434,20 @@ func (response CompareSnapshotToCurrent200JSONResponse) VisitCompareSnapshotToCu
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompareSnapshotToCurrent400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CompareSnapshotToCurrent400JSONResponse) VisitCompareSnapshotToCurrentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }

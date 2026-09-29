@@ -1571,7 +1571,7 @@ head** — the position a snapshot taken now would mark — in the requesting sc
 mainline or a branch. It is a separate operation rather than a reserved `{id2}` value such as
 `current`, so the two-snapshot path keeps a strict UUID contract and "now" has its own response
 shape (`snapshot`, `head_position`, `changes`, `total_count`, `has_more`). The merge safety net
-(#833) can use it for a snapshot-to-current diff.
+(#833) uses it, bounded by `until`, for the merge's exact range (see its note below).
 
 **API and UI.** `listSnapshots`, `createSnapshot`, `getSnapshot`, `deleteSnapshot`,
 `compareSnapshots` and `compareSnapshotToCurrent` declare `branchScope` (six more operations, 98 in
@@ -1667,6 +1667,59 @@ by a branch citation and then corrected on `main` editable at the shadow's versi
 version ahead of `main`, ignore it once the branch has its own line), `TestBranchOverlayStreams_*`
 and `TestBranchOverlayVersion` (`internal/command`, every resolver and the error path), and
 `TestBranchUpdate_EntityMainEditedAfterFork` (`internal/api`, the reproduction over HTTP).
+
+## Implementation Note — merge safety net: snapshot before merging (#833, delivered)
+
+A merge can take a mainline snapshot, **"Before merging <branch>"**, just before it claims the
+branch, and the merged branch links to exactly what the merge changed.
+
+**Request and record.** `POST /branches/{id}/merge` takes `snapshot_before` (off unless set; the web
+merge dialog sends it by default, as its "Snapshot before merging" option is on by default).
+`MergeBranch` then creates the snapshot through the ordinary event-sourced snapshot command
+(`SnapshotCreated` on the mainline, the registry written by its projection), and the claim records
+it additively as `BranchMerged.pre_merge_snapshot_id` (absent on older claims and on merges that
+took none). The merge response returns the snapshot, and the merged branch's `merge_record` carries
+`pre_merge_snapshot_id` and `replayed_through_position`: the log position of the last replayed
+event stamped with this merge's provenance (#832), found in the main-side events the branch compare
+already reads — no extra query. It is omitted when that scan was capped, since the last copy may lie
+past the cut. The snapshot name is capped at the snapshot limit (100 bytes) by shortening the branch
+name on a rune boundary; the description carries it whole.
+
+**Where the snapshot is taken, and races.** After every read the merge makes up front (plan,
+validation, claim and merge record) and before the staleness check and claim — any later would put
+a write between the check and the claim, which the merge forbids; any earlier would only widen the
+window below. Without a transaction across snapshot, claim and replay the snapshot is "exactly before
+the merge" only for writes the merge itself guards:
+
+- a concurrent mainline write to a stream the merge replays is caught by the staleness check (the
+  merge is refused and the snapshot is **discarded** with `SnapshotDeleted`, so a refused merge
+  leaves no "Before merging" snapshot and a retry does not stack a second one) or by the replay's
+  per-stream assertion (the partially-applied state — the snapshot is kept: it still marks the
+  mainline before the merge);
+- a concurrent write to an unrelated entity can land between the snapshot and the replay (or between
+  a claim and a later resume). It then appears in the merge's range **without** merge provenance,
+  and the comparison shows every replayed change's `via merge of …` chip, so the two are told apart.
+
+The snapshot's own marker and the claim also sit in that range, but neither is a mainline change:
+snapshot markers are left out of every change log and the claim is on the branch's envelope. If
+the snapshot cannot be taken, the merge is refused before its claim with nothing replayed.
+
+**The exact range.** `GET /snapshots/{id}/compare-current` takes an optional `until` position (a
+later one runs to the head; one before the snapshot is a 400) and reports `to_position`. The merged
+branch's page links to `/snapshots/compare?from=<snapshot>&to=current&until=<replayed_through_position>`
+— the merge's effect, however far the mainline has moved since. Without a replayed-through position
+it links to the snapshot compared with now and labels it "everything changed since before the
+merge". The snapshot is a mainline one, so while a research branch is active the page says to return
+to the mainline first rather than lead to a scope refusal.
+
+A true revert-merge (compensating events for everything a merge replayed) remains out of scope and
+is tracked in the backlog.
+
+Verified by `TestMergeBranch_SnapshotBefore` and the refusal/discard tests (`internal/command`),
+`TestCompareSnapshotToPosition_AllBackends` and `TestCompareBranch_MergedBranchShowsItsRecord`
+(`internal/query`), `TestMergeBranch_SnapshotBefore` (`internal/api`),
+`TestBranchMergeSnapshot_EndToEnd` (`internal/integration`, memory/SQLite/PostgreSQL), the dialog,
+branch page and compare page tests, and `e2e/merge-review.spec.ts`.
 
 ## References
 

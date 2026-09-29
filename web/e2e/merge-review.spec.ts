@@ -95,6 +95,8 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	await expect(dialog.getByText(`Why: ${rationale}`)).toBeVisible();
 	const mergeNote = 'The register settles the birthplace';
 	await dialog.getByLabel('Note (optional)').fill(mergeNote);
+	// The safety net (#833) is on unless the user turns it off.
+	await expect(dialog.getByRole('checkbox', { name: 'Snapshot before merging' })).toBeChecked();
 
 	await dialog.getByRole('button', { name: 'Merge branch' }).click();
 
@@ -104,6 +106,9 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	// checking only its visibility would pass on a merge that replayed nothing.
 	const replayed = dialog.locator('dl.summary > div').filter({ hasText: 'Events replayed' });
 	await expect(replayed).toContainText('2');
+	await expect(dialog.getByTestId('pre-merge-snapshot')).toContainText(
+		`Before merging ${branchName}`
+	);
 	await dialog.getByRole('button', { name: 'Done' }).click();
 
 	// --- The branch now reads as merged ------------------------------------
@@ -124,6 +129,22 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	await expect(page.getByTestId('replayed-note')).toContainText('2 changes the merge copied');
 	await expect(mainSide.getByText(person.branchBirthPlace)).toHaveCount(0);
 	await expect(mainSide.getByText(person.mainBirthPlace)).toBeVisible();
+
+	// --- ...and a link to exactly what the merge changed (#833) --------------
+	await record.getByRole('link', { name: 'See exactly what this merge changed' }).click();
+	await expect(page).toHaveURL(/\/snapshots\/compare\?from=.+&to=current&until=\d+/);
+	await expect(page.getByText(`Before merging ${branchName}`, { exact: true })).toBeVisible();
+	const changes = page.getByRole('list', { name: 'Changes, oldest first' });
+	const merged = changes.getByRole('listitem').filter({ hasText: person.branchBirthPlace });
+	await expect(merged.getByRole('link', { name: person.name, exact: true })).toBeVisible();
+	await expect(
+		merged.getByRole('link', { name: `via merge of ${branchName}: ${mergeNote}` })
+	).toBeVisible();
+	// Only the merge's own two changes, each carrying its provenance: the
+	// mainline's earlier edit is before the snapshot (its value shows only as
+	// what the merged edit replaced).
+	await expect(changes.getByRole('listitem')).toHaveCount(2);
+	await expect(changes.getByTestId('merged-from')).toHaveCount(2);
 
 	// --- The merge actually moved the mainline ------------------------------
 	await page.goto(`/persons/${person.id}`);

@@ -2748,9 +2748,25 @@ paths:
         inherits, each labelled with `origin` — ADR-005). The snapshot must be
         marked on the requested scope; one marked on another branch is refused
         with 409 `snapshot_branch_mismatch`.
+
+        `until` bounds the comparison at a log position instead of the head, so
+        a range can be pinned after the log has moved on - for instance from a
+        merge's pre-merge snapshot to the last change the merge replayed
+        (`MergeRecord.replayed_through_position`), which lists exactly what the
+        merge changed. An `until` past the head runs to the head; one before the
+        snapshot is a 400.
       tags: [snapshots]
       parameters:
         - $ref: '#/components/parameters/branchScope'
+        - name: until
+          in: query
+          required: false
+          description: |
+            The last log position to include. Defaults to the current head.
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
       responses:
         '200':
           description: Comparison result
@@ -2758,6 +2774,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SnapshotCurrentComparisonResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -7241,7 +7259,7 @@ components:
 
     SnapshotCurrentComparisonResult:
       type: object
-      required: [snapshot, head_position, changes, total_count, has_more]
+      required: [snapshot, head_position, to_position, changes, total_count, has_more]
       properties:
         snapshot:
           $ref: '#/components/schemas/Snapshot'
@@ -7249,8 +7267,14 @@ components:
           type: integer
           format: int64
           description: |
-            The event log head the comparison ran to — the position a snapshot
-            taken now would mark.
+            The event log head when the comparison ran — the position a
+            snapshot taken now would mark.
+        to_position:
+          type: integer
+          format: int64
+          description: |
+            The last log position the comparison includes: `head_position`,
+            or the requested `until` when that lies before the head.
         changes:
           type: array
           items:
@@ -7488,6 +7512,26 @@ components:
         resume_count:
           type: integer
           description: How many resumes of an interrupted merge recorded decisions
+        pre_merge_snapshot_id:
+          type: string
+          format: uuid
+          description: |
+            The mainline snapshot the merge took just before claiming the branch
+            (`snapshot_before`). Absent when it took none. The snapshot itself
+            may since have been deleted.
+        replayed_through_position:
+          type: integer
+          format: int64
+          description: |
+            The log position of the last change the merge (or a resume of it)
+            replayed onto the mainline. With `pre_merge_snapshot_id` it bounds
+            exactly what the merge changed:
+            `GET /snapshots/{pre_merge_snapshot_id}/compare-current?until=<this>`.
+            For a merge that replayed nothing it is the position of the merge's
+            own claim, so that range lists none of the merge's changes. Absent
+            when no replayed change carrying this merge's provenance was found,
+            or when the scan for them hit its cap before finding every change
+            the merge's plan replays.
 
     MergeRecordDecision:
       type: object
@@ -7707,6 +7751,19 @@ components:
             Capped at 1000 entries, matching the scan cap: a branch that touches
             more entities than that is refused before resolutions are read, so
             a longer array can never be useful.
+        snapshot_before:
+          type: boolean
+          description: |
+            Off unless set. Mark the mainline with a snapshot named "Before merging <branch>"
+            just before the merge claims the branch, and record its id on the
+            merge record (`pre_merge_snapshot_id`), so the merge's effect can
+            be compared from it afterwards. The snapshot is taken after every
+            check that can refuse the merge up front; if the merge is refused
+            after it (the mainline moved, or a concurrent merge claimed the
+            branch first), the snapshot is removed again. An unrelated mainline
+            change made at the same moment can still land between the snapshot
+            and the merge's replay; it then shows in that comparison without
+            the merge provenance (`merged_from`) every replayed change carries.
 
     MergeResolutionEntry:
       type: object
@@ -7772,6 +7829,8 @@ components:
             The entities resolved to `main`, whose branch changes were
             deliberately not replayed. `[]`, never `null`, when nothing was
             skipped.
+        pre_merge_snapshot:
+          $ref: '#/components/schemas/Snapshot'
 
     BranchMergeConflictError:
       type: object

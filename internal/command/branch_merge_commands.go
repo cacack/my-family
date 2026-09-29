@@ -157,6 +157,11 @@ type MergeBranchInput struct {
 	// (#828). Each key must also be in Resolutions. Recorded on the
 	// BranchMerged claim; blank entries are dropped.
 	Rationales map[uuid.UUID]string
+
+	// SnapshotBefore asks the merge to mark the mainline with a snapshot
+	// ("Before merging <branch>") just before it claims the branch (#833), and
+	// to record its id on the claim. See takePreMergeSnapshot.
+	SnapshotBefore bool
 }
 
 // MergeBranchResult reports what a merge did — or, alongside ErrMergeConflicts,
@@ -180,6 +185,10 @@ type MergeBranchResult struct {
 	// the whole conflict list so a caller can render the review. It is nil on a
 	// successful merge.
 	Conflicts []query.MergeConflict
+
+	// PreMergeSnapshot is the snapshot taken before the claim when the input
+	// asked for one (SnapshotBefore); nil otherwise.
+	PreMergeSnapshot *domain.Snapshot
 }
 
 // MergeBranch replays a branch's genealogy-mutation events onto main and marks
@@ -189,34 +198,37 @@ type MergeBranchResult struct {
 //
 //  1. Guards, then the merge plan. A truncated plan is refused outright.
 //  2. Conflicts must all be resolved before anything is written.
-//  3. The STALENESS CHECK: main must still sit at the versions the plan was
+//  3. When asked (SnapshotBefore), the PRE-MERGE SNAPSHOT (#833): a mainline
+//     snapshot marking the log before anything is replayed. A refusal at
+//     step 4 or 5 discards it again; see takePreMergeSnapshot for its races.
+//  4. The STALENESS CHECK: main must still sit at the versions the plan was
 //     computed against, or the verdict from step 1 no longer describes main and
 //     the merge is refused (ErrMergePlanStale) with nothing written.
-//  4. The CLAIM: BranchMerged is appended to the branch's OWN stream at the
+//  5. The CLAIM: BranchMerged is appended to the branch's OWN stream at the
 //     version this call observed. Per-(stream, branch) optimistic concurrency
 //     makes that append the atomic compare-and-set ADR-005 asks for — exactly
 //     one of two concurrent merges wins it, and the loser has not yet touched
 //     main.
-//  5. Only then the replay onto main, which re-asserts the same planned
+//  6. Only then the replay onto main, which re-asserts the same planned
 //     versions per stream as it goes.
 //
-// Step 3 MUST precede step 4. claimMerge marks the branch terminal, so a
+// Step 4 MUST precede step 5. claimMerge marks the branch terminal, so a
 // staleness refusal after it would leave the branch merged with nothing
 // replayed and no way to retry — the retry would hit the status guard and get
 // 409 branch_not_active, which is not evidence of anything. Checking first
 // keeps "stale" in the same class as every other refusal: nothing written,
 // branch still active, re-plan and try again.
 //
-// RESIDUAL WINDOW: steps 3 and 5 close the gap #698 described but cannot make it
-// zero. Between the check in step 3 and each stream's append in step 5 there is
-// still no lock, so a mainline write can still land — step 5's per-stream
+// RESIDUAL WINDOW: steps 4 and 6 close the gap #698 described but cannot make it
+// zero. Between the check in step 4 and each stream's append in step 6 there is
+// still no lock, so a mainline write can still land — step 6's per-stream
 // assertion catches it, but by then the branch is claimed, so it surfaces as the
 // partially-applied state below rather than as a clean refusal. Shrinking that
 // last window needs the transaction the codebase does not have; a merge-wide
 // lock is not an option, as it contradicts ADR-005's per-(stream, branch)
 // design.
 //
-// KNOWN LIMITATION: steps 4 and 5 are not one transaction. The codebase has no
+// KNOWN LIMITATION: steps 5 and 6 are not one transaction. The codebase has no
 // cross-store transaction facility and ADR-003's synchronous projections are
 // per-append, so a failure mid-replay leaves the branch merged with main
 // partially updated — or, when the FIRST stream fails, with main untouched. The
@@ -306,7 +318,11 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		return nil, err
 	}
 
-	if err := h.claimFreshMerge(ctx, branch, claim, plan, groups, input.Resolutions); err != nil {
+	// The pre-merge snapshot (#833), when asked for, goes after every read
+	// above and before the staleness check, so nothing sits between that check
+	// and the claim.
+	preMerge, err := h.snapshotAndClaim(ctx, branch, &claim, plan, groups, input)
+	if err != nil {
 		return nil, err
 	}
 
@@ -328,6 +344,7 @@ func (h *Handler) MergeBranch(ctx context.Context, input MergeBranchInput) (*Mer
 		MergedAtPosition:   mergedAtPosition,
 		ReplayedEventCount: replayed,
 		SkippedStreamIDs:   skipped,
+		PreMergeSnapshot:   preMerge,
 	}, nil
 }
 

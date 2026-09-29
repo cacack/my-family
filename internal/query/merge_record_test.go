@@ -95,10 +95,20 @@ func TestCompareBranch_MergedBranchShowsItsRecord(t *testing.T) {
 	claim.Resolutions = []domain.MergeDecision{{StreamID: s.ada, EntityType: "person", EntityName: "Ada Byron",
 		Kind: "edit_edit", Fields: []string{"surname"}, Resolution: "branch", Rationale: "baptism register"}}
 	claim.Exclusions = []domain.MergeExclusion{{StreamID: s.allegra, EntityType: "person", EntityName: "Allegra Clairmont"}}
+	snapshotID := uuid.New()
+	claim.PreMergeSnapshotID = &snapshotID
 	s.merge(t, claim, true, s.allegra)
+	replayedThrough := s.f.maxPosition(t)
+	// Main moves on after the merge; the record still ends at the replay.
+	later := uuid.New()
+	s.f.appendMain(t, later, domain.NewPersonCreated(&domain.Person{ID: later, GivenName: "Later", Surname: "Mainline"}))
 
 	result, err := s.f.service.CompareBranch(s.f.ctx, s.branch.ID)
 	require.NoError(t, err)
+	require.NotNil(t, result.MergeRecord)
+	assert.Equal(t, &snapshotID, result.MergeRecord.PreMergeSnapshotID)
+	require.NotNil(t, result.MergeRecord.ReplayedThroughPosition)
+	assert.Equal(t, replayedThrough, *result.MergeRecord.ReplayedThroughPosition)
 
 	// The replayed copies are not the mainline's own changes.
 	assert.Equal(t, 2, result.ReplayedChangeCount)
@@ -125,6 +135,29 @@ func TestCompareBranch_MergedBranchShowsItsRecord(t *testing.T) {
 // A merge recorded before #832 has neither a record on its claim nor
 // provenance on its replay: the record is derived from the plan, and the
 // copies are still recognised by their payload ids.
+// A merge that replays nothing changed nothing: its effect ends at its own
+// claim, so later mainline work stays out of the "what the merge changed"
+// range rather than falling back to everything since the snapshot (#833).
+func TestCompareBranch_MergeThatReplayedNothingEndsAtItsClaim(t *testing.T) {
+	s := newMergedScenario(t)
+	claim := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, s.f.maxPosition(t), "", map[uuid.UUID]int64{})
+	count := 0
+	claim.ReplayedEventCount = &count
+	snapshotID := uuid.New()
+	claim.PreMergeSnapshotID = &snapshotID
+	s.merge(t, claim, true, s.ada, s.allegra, s.clara)
+	claimPosition := s.f.maxPosition(t)
+	later := uuid.New()
+	s.f.appendMain(t, later, domain.NewPersonCreated(&domain.Person{ID: later, GivenName: "Later", Surname: "Mainline"}))
+
+	result, err := s.f.service.CompareBranch(s.f.ctx, s.branch.ID)
+	require.NoError(t, err)
+	require.NotNil(t, result.MergeRecord)
+	require.NotNil(t, result.MergeRecord.ReplayedThroughPosition)
+	assert.Equal(t, claimPosition, *result.MergeRecord.ReplayedThroughPosition)
+	assert.Zero(t, result.ReplayedChangeCount)
+}
+
 func TestCompareBranch_MergedBeforeTheRecord(t *testing.T) {
 	s := newMergedScenario(t)
 	claim := domain.NewBranchMerged(s.branch.ID, s.branch.BasePosition, s.f.maxPosition(t), "",

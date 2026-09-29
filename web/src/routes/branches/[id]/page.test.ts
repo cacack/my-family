@@ -570,6 +570,29 @@ describe('Branch comparison page', () => {
 			]);
 		});
 
+		it('asks for a snapshot before merging by default, and not once it is turned off (#833)', async () => {
+			compareBranch.mockResolvedValue(comparison({ conflicts: [] }));
+
+			render(Page);
+			await fireEvent.click(await screen.findByRole('button', { name: 'Review & merge' }));
+			await fireEvent.click(await screen.findByRole('button', { name: 'Merge branch' }));
+			await waitFor(() => expect(mergeBranch).toHaveBeenCalledTimes(1));
+			expect((mergeBranch.mock.calls[0][1] as BranchMergeRequest).snapshot_before).toBe(true);
+		});
+
+		it('sends no snapshot request when the option is unchecked (#833)', async () => {
+			compareBranch.mockResolvedValue(comparison({ conflicts: [] }));
+
+			render(Page);
+			await fireEvent.click(await screen.findByRole('button', { name: 'Review & merge' }));
+			await fireEvent.click(
+				await screen.findByRole('checkbox', { name: /snapshot before merging/i })
+			);
+			await fireEvent.click(screen.getByRole('button', { name: 'Merge branch' }));
+			await waitFor(() => expect(mergeBranch).toHaveBeenCalledTimes(1));
+			expect(mergeBranch.mock.calls[0][1]).not.toHaveProperty('snapshot_before');
+		});
+
 		it('toggles exclusion per entity, not per change entry', async () => {
 			compareBranch.mockResolvedValue(
 				comparison({
@@ -1240,6 +1263,59 @@ describe('Merged branch record (#832)', () => {
 		// mainline the merge itself changed.
 		expect(screen.queryByRole('heading', { name: 'Conflicts' })).toBeNull();
 		expect(screen.queryByText(/merge/i, { selector: 'button' })).toBeNull();
+	});
+
+	describe("the merge's effect (#833)", () => {
+		const SNAPSHOT_ID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+		function withSnapshot(extra: Record<string, unknown> = {}) {
+			const base = mergedComparison();
+			return mergedComparison({
+				merge_record: { ...base.merge_record!, pre_merge_snapshot_id: SNAPSHOT_ID, ...extra }
+			});
+		}
+
+		it('links to exactly what the merge changed', async () => {
+			compareBranch.mockResolvedValue(withSnapshot({ replayed_through_position: 131 }));
+
+			render(Page);
+
+			const link = await screen.findByRole('link', { name: 'See exactly what this merge changed' });
+			expect(link.getAttribute('href')).toBe(
+				`/snapshots/compare?from=${SNAPSHOT_ID}&to=current&until=131`
+			);
+		});
+
+		it('falls back to comparing with now, and says so', async () => {
+			compareBranch.mockResolvedValue(withSnapshot());
+
+			render(Page);
+
+			const link = await screen.findByRole('link', {
+				name: 'See everything changed since before the merge'
+			});
+			expect(link.getAttribute('href')).toBe(`/snapshots/compare?from=${SNAPSHOT_ID}&to=current`);
+			expect(screen.getByText(/also lists changes made after the merge/)).toBeDefined();
+		});
+
+		it('says to return to the mainline while standing on a branch', async () => {
+			mockState.id = BRANCH_ID;
+			compareBranch.mockResolvedValue(withSnapshot({ replayed_through_position: 131 }));
+
+			render(Page);
+
+			await screen.findByTestId('merge-effect-link');
+			expect(screen.getByText(/return to the mainline to open the comparison/)).toBeDefined();
+		});
+
+		it('says when the merge took no snapshot', async () => {
+			compareBranch.mockResolvedValue(mergedComparison());
+
+			render(Page);
+
+			const effect = await screen.findByTestId('merge-effect');
+			expect(effect.textContent).toMatch(/No snapshot was taken before this merge/);
+			expect(screen.queryByTestId('merge-effect-link')).toBeNull();
+		});
 	});
 
 	it('shows when and why the branch was merged in its header', async () => {

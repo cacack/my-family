@@ -130,7 +130,6 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 		replayed int
 	)
 	if diff.branch.Status == domain.BranchStatusMerged {
-		diff.mainEvents, replayed = withoutReplayedCopies(diff.branch.ID, diff.branchEvents, diff.mainEvents)
 		markers, claimed, err := s.readMergeMarkers(ctx, diff.branch.ID)
 		if err != nil {
 			return nil, err
@@ -139,7 +138,13 @@ func (s *BranchService) CompareBranch(ctx context.Context, branchID uuid.UUID) (
 			if record, err = s.buildMergeRecord(ctx, diff.branch, markers, diff.branchEvents); err != nil {
 				return nil, err
 			}
+			// The replayed copies are main's events on the branch's streams
+			// after its fork, which is what mainEvents holds, up to its cap.
+			if last, ok := replayedThroughPosition(&markers, diff); ok {
+				record.ReplayedThroughPosition = &last
+			}
 		}
+		diff.mainEvents, replayed = withoutReplayedCopies(diff.branch.ID, diff.branchEvents, diff.mainEvents)
 	}
 
 	// Each side is named as it sees itself: the branch's changes through the
