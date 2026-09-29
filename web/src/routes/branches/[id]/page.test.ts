@@ -7,6 +7,8 @@ import type {
 	Branch,
 	BranchChangeEntry,
 	BranchComparisonResult,
+	BranchEvidenceCoverage,
+	BranchHealth,
 	BranchMergePrecheckRequest,
 	BranchMergeRequest,
 	BranchMergeResult,
@@ -29,6 +31,8 @@ const {
 	mergeBranch,
 	precheckBranchMerge,
 	resumeBranchMerge,
+	getBranchEvidenceCoverage,
+	getBranchHealth,
 	switchBranch,
 	returnToMainline,
 	routeState
@@ -44,6 +48,8 @@ const {
 		mergeBranch: vi.fn(),
 		precheckBranchMerge: vi.fn(),
 		resumeBranchMerge: vi.fn(),
+		getBranchEvidenceCoverage: vi.fn(),
+		getBranchHealth: vi.fn(),
 		switchBranch: vi.fn().mockResolvedValue(undefined),
 		returnToMainline: vi.fn(),
 		// A soft navigation between two /branches/{id} entries reuses the component,
@@ -63,7 +69,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 			mergeBranch: (id: string, req: BranchMergeRequest) => mergeBranch(id, req),
 			precheckBranchMerge: (id: string, req: BranchMergePrecheckRequest) =>
 				precheckBranchMerge(id, req),
-			resumeBranchMerge: (id: string, req: BranchMergeResumeRequest) => resumeBranchMerge(id, req)
+			resumeBranchMerge: (id: string, req: BranchMergeResumeRequest) => resumeBranchMerge(id, req),
+			getBranchEvidenceCoverage: (id: string) => getBranchEvidenceCoverage(id),
+			getBranchHealth: (id: string) => getBranchHealth(id)
 		}
 	};
 });
@@ -220,6 +228,17 @@ function sentResolutions(call = 0) {
 	return [...(req.resolutions ?? [])].sort((a, b) => a.stream_id.localeCompare(b.stream_id));
 }
 
+const emptyCoverage: BranchEvidenceCoverage = { changed_fact_count: 0, uncovered: [], has_more: false };
+const emptyHealth: BranchHealth = {
+	validation_issues: [],
+	quality_issues: [],
+	duplicates: [],
+	error_count: 0,
+	warning_count: 0,
+	info_count: 0,
+	resolved_count: 0
+};
+
 describe('Branch comparison page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -230,6 +249,8 @@ describe('Branch comparison page', () => {
 		compareBranch.mockResolvedValue(comparison());
 		mergeBranch.mockResolvedValue(mergeResult());
 		precheckBranchMerge.mockResolvedValue({ blockers: [] });
+		getBranchEvidenceCoverage.mockResolvedValue(emptyCoverage);
+		getBranchHealth.mockResolvedValue(emptyHealth);
 	});
 
 	// The merge tests open a bits-ui AlertDialog, which releases its body-scroll
@@ -1239,6 +1260,8 @@ describe('Merged branch record (#832)', () => {
 		routeState.current = { params: { id: BRANCH_ID } };
 		routeState.subscribers.clear();
 		precheckBranchMerge.mockResolvedValue({ blockers: [] });
+		getBranchEvidenceCoverage.mockResolvedValue(emptyCoverage);
+		getBranchHealth.mockResolvedValue(emptyHealth);
 	});
 
 	it('shows what the merge decided, by name, and what it left behind', async () => {
@@ -1635,5 +1658,106 @@ describe('Incomplete merge (#830)', () => {
 		await screen.findByRole('heading', { name: 'Maternal Smith line' });
 		expect(screen.queryByTestId('incomplete-merge')).toBeNull();
 		expect(screen.queryByText('Merge unfinished')).toBeNull();
+	});
+});
+
+describe('Review checks (#838)', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockState.id = null;
+		mockState.branch = null;
+		routeState.current = { params: { id: BRANCH_ID } };
+		routeState.subscribers.clear();
+		compareBranch.mockResolvedValue(
+			comparison({ conflicts: [], main_changes: [], main_change_count: 0 })
+		);
+		precheckBranchMerge.mockResolvedValue({ blockers: [] });
+		getBranchEvidenceCoverage.mockResolvedValue({
+			changed_fact_count: 2,
+			has_more: false,
+			uncovered: [
+				{
+					kind: 'fact',
+					fact_type: 'person_death',
+					subject_type: 'person',
+					subject_id: PERSON_ID,
+					subject_name: 'Ada Lovelace',
+					change_count: 1
+				}
+			]
+		});
+		getBranchHealth.mockResolvedValue({
+			...emptyHealth,
+			warning_count: 1,
+			validation_issues: [
+				{
+					key: 'validation:IMPOSSIBLE_AGE:x::1',
+					severity: 'warning',
+					code: 'IMPOSSIBLE_AGE',
+					message: 'age at death (140 years) exceeds maximum',
+					record_id: PERSON_ID,
+					record_type: 'person',
+					record_name: 'Ada Lovelace'
+				}
+			]
+		});
+	});
+
+	afterEach(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 30));
+	});
+
+	it('shows the evidence-coverage warning and the branch health for an active branch', async () => {
+		render(Page);
+
+		const coverage = await screen.findByTestId('evidence-coverage');
+		expect(getBranchEvidenceCoverage).toHaveBeenCalledWith(BRANCH_ID);
+		expect(within(coverage).getByText('Death')).toBeDefined();
+		const health = screen.getByTestId('branch-health');
+		expect(getBranchHealth).toHaveBeenCalledWith(BRANCH_ID);
+		expect(await within(health).findByText('IMPOSSIBLE_AGE')).toBeDefined();
+		// Soft checks: the merge button is not held by them.
+		await waitFor(() => {
+			expect(
+				screen.getByRole('button', { name: /Review & merge/ }).hasAttribute('disabled')
+			).toBe(false);
+		});
+	});
+
+	it('offers the switch rather than "add analysis" when another scope is active', async () => {
+		render(Page);
+
+		const coverage = await screen.findByTestId('evidence-coverage');
+		expect(within(coverage).queryByRole('link', { name: /^Add analysis/ })).toBeNull();
+		await fireEvent.click(within(coverage).getByRole('button', { name: 'Switch to branch' }));
+		expect(switchBranch).toHaveBeenCalledWith(branch);
+	});
+
+	it('offers "add analysis" on the branch itself', async () => {
+		mockState.id = BRANCH_ID;
+		render(Page);
+
+		const coverage = await screen.findByTestId('evidence-coverage');
+		const link = within(coverage).getByRole('link', { name: /^Add analysis/ });
+		expect(link.getAttribute('href')).toBe(
+			`/evidence/analyses/new?subjectId=${PERSON_ID}&factType=person_death`
+		);
+	});
+
+	it('does not run the checks for a branch without changes or a merged one', async () => {
+		compareBranch.mockResolvedValue(
+			comparison({ branch_changes: [], branch_change_count: 0, conflicts: [] })
+		);
+		const { unmount } = render(Page);
+		await screen.findByRole('heading', { name: 'Maternal Smith line' });
+		expect(screen.queryByTestId('branch-health')).toBeNull();
+		unmount();
+
+		compareBranch.mockResolvedValue(comparison({ branch: { ...branch, status: 'merged' } }));
+		render(Page);
+		await screen.findByRole('heading', { name: 'Maternal Smith line' });
+		expect(screen.queryByTestId('branch-health')).toBeNull();
+		expect(getBranchEvidenceCoverage).not.toHaveBeenCalled();
+		expect(getBranchHealth).not.toHaveBeenCalled();
 	});
 });

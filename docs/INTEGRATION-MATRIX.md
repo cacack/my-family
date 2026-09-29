@@ -386,9 +386,14 @@ all follow the active branch, and so do the source list and source detail pages 
 person media gallery (#759) and the `/evidence` pages and person evidence panel (#760). Since #829
 so do every search surface (`/search`, the header search box and the person picker), the families
 list, the dashboard's family count and recent families, `/analytics`, the family group sheet,
-`/ahnentafel/{id}`, `/descendancy/{id}` and `/relationship`. With every #676 sub-issue delivered,
-what still renders the notice is mainline by nature (quality checks, research suggestions, the
-global change history, snapshots) or by decision (brick walls, repositories, exports); grow the allowlist and the notice coverage together if that changes. The person and
+`/ahnentafel/{id}`, `/descendancy/{id}` and `/relationship`, and since #839 `/snapshots` and its
+comparisons. With every #676 sub-issue delivered, what still renders the notice is mainline by
+nature (quality checks, research suggestions, the global change history) or by decision (brick
+walls, repositories, exports); grow the allowlist and the notice coverage together if that changes.
+A branch's own quality, validation and duplicate findings are not a `?branch=` read of `/quality`
+but the merge review's branch health (`GET /branches/{id}/health`, #838), which reports only what
+the branch introduces over the mainline; the review also warns about changed facts the branch has
+not documented with evidence (`GET /branches/{id}/evidence-coverage`). The person and
 family history panels follow the branch (#824); their Restore tab and rollback dialog are withdrawn
 on a branch instead of labelled.
 

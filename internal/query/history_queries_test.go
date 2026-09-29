@@ -226,6 +226,9 @@ func (m *mockReadModelStore) DeleteFamily(ctx context.Context, _ domain.BranchID
 func (m *mockReadModelStore) GetFamilyChildren(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.FamilyChildReadModel, error) {
 	return nil, nil
 }
+func (m *mockReadModelStore) ListAllFamilyChildren(ctx context.Context, _ domain.BranchID) ([]repository.FamilyChildReadModel, error) {
+	return nil, nil
+}
 func (m *mockReadModelStore) GetChildrenOfFamily(ctx context.Context, _ domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {
 	return nil, nil
 }

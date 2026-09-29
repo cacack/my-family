@@ -480,6 +480,14 @@ type ReadModelStore interface {
 	// order on every backend. Duplicated family ids are collapsed; an empty
 	// familyIDs slice returns nil without touching the store.
 	GetFamilyChildrenByFamilyIDs(ctx context.Context, branchID domain.BranchID, familyIDs []uuid.UUID) ([]FamilyChildReadModel, error)
+	// ListAllFamilyChildren returns every child link branchID sees, across all
+	// families, in ONE set-based read (#838): the whole-tree counterpart of
+	// GetFamilyChildren for callers that would otherwise call it once per family
+	// (validation, orphan detection). Each (family, child) link resolves through
+	// the overlay exactly as GetFamilyChildren resolves it; the result is ordered
+	// by family id, then person id. Links of a family the scope no longer has
+	// are NOT filtered out here — callers join against the families they list.
+	ListAllFamilyChildren(ctx context.Context, branchID domain.BranchID) ([]FamilyChildReadModel, error)
 	GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]PersonReadModel, error)
 	GetChildFamily(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (*FamilyReadModel, error)
 	SaveFamilyChild(ctx context.Context, branchID domain.BranchID, child *FamilyChildReadModel) error
@@ -963,10 +971,17 @@ func DefaultListOptions() ListOptions {
 }
 
 // ListAll fetches all records using pagination to avoid truncation from hard-coded limits.
+// It lists the mainline; ListAllOn lists a branch's view.
 func ListAll[T any](ctx context.Context, pageSize int, listFn func(ctx context.Context, opts ListOptions) ([]T, int, error)) ([]T, error) {
+	return ListAllOn(ctx, domain.MainBranchID, pageSize, listFn)
+}
+
+// ListAllOn is ListAll over branchID's view (ADR-005): every page is requested
+// with opts.BranchID set, so a branch-scoped list resolves the overlay.
+func ListAllOn[T any](ctx context.Context, branchID domain.BranchID, pageSize int, listFn func(ctx context.Context, opts ListOptions) ([]T, int, error)) ([]T, error) {
 	var all []T
 	for offset := 0; ; offset += pageSize {
-		page, total, err := listFn(ctx, ListOptions{Limit: pageSize, Offset: offset})
+		page, total, err := listFn(ctx, ListOptions{Limit: pageSize, Offset: offset, BranchID: branchID})
 		if err != nil {
 			return nil, err
 		}

@@ -236,20 +236,27 @@ func (n *entityNames) personName(personID uuid.UUID, evt *repository.StoredEvent
 	return personID.String()
 }
 
+// familyReadModelName names a family by its partners ("A & B", or the one
+// partner it has), or "" when it has neither.
+func familyReadModelName(family *repository.FamilyReadModel) string {
+	p1Name := fullName(family.Partner1GivenName, family.Partner1Surname)
+	p2Name := fullName(family.Partner2GivenName, family.Partner2Surname)
+	switch {
+	case p1Name != "" && p2Name != "":
+		return fmt.Sprintf("%s & %s", p1Name, p2Name)
+	case p1Name != "":
+		return p1Name
+	default:
+		return p2Name
+	}
+}
+
 // familyName returns a family's partner names from the read model, else the
 // partners named by its creation event, else its id.
 func (n *entityNames) familyName(familyID uuid.UUID, evt *repository.StoredEvent) string {
 	if family := n.families[familyID]; family != nil {
-		p1Name := fullName(family.Partner1GivenName, family.Partner1Surname)
-		p2Name := fullName(family.Partner2GivenName, family.Partner2Surname)
-		if p1Name != "" && p2Name != "" {
-			return fmt.Sprintf("%s & %s", p1Name, p2Name)
-		}
-		if p1Name != "" {
-			return p1Name
-		}
-		if p2Name != "" {
-			return p2Name
+		if name := familyReadModelName(family); name != "" {
+			return name
 		}
 	}
 

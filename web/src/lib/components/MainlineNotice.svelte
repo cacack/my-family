@@ -30,7 +30,9 @@
 	 * - `/` (dashboard) — the research suggestions (discovery feed) come from
 	 *   the mainline while the people and family counts and the recent people
 	 *   and families follow the branch; the notice says which is which
-	 * - `/quality` — validation issues and duplicate pairs
+	 * - `/quality` — validation issues and duplicate pairs (a branch's own findings,
+	 *   the ones it introduces over the mainline, are in its merge review's branch
+	 *   health section, #838)
 	 * - `/history` — the global change feed
 	 * - `/browse/brick-walls` — brick walls are not event-sourced (#761)
 	 * - `/repositories` (list and detail, including its edit form) —

@@ -31,6 +31,12 @@
 	 * the counts, each decision by name, and what was left behind. The
 	 * mainline column leaves out the merge's copies of this branch's changes
 	 * (`replayed_change_count` says how many).
+	 *
+	 * Review checks (#838): while an active branch has changes, two soft,
+	 * non-blocking panels follow the blockers - the facts and relationships it
+	 * changed without evidence on the branch, and the validation issues, quality
+	 * issues and possible duplicates it introduces over the mainline. Each loads
+	 * its own data and never holds the merge.
 	 */
 	import { page } from '$app/stores';
 	import {
@@ -54,6 +60,8 @@
 	import FinishMergeDialog from '$lib/components/FinishMergeDialog.svelte';
 	import IncompleteMergeCallout from '$lib/components/IncompleteMergeCallout.svelte';
 	import MergeBlockersPanel from '$lib/components/MergeBlockersPanel.svelte';
+	import BranchEvidenceCoveragePanel from '$lib/components/BranchEvidenceCoveragePanel.svelte';
+	import BranchHealthPanel from '$lib/components/BranchHealthPanel.svelte';
 	import MergeConflictResolver from '$lib/components/MergeConflictResolver.svelte';
 	import MergeEffectLink from '$lib/components/MergeEffectLink.svelte';
 	import MergeConfirmDialog, {
@@ -846,6 +854,18 @@
 				onfix={applyBlockerFix}
 				disabled={merging}
 			/>
+			{#if hasChanges}
+				<BranchEvidenceCoveragePanel
+					branchId={comparison.branch.id}
+					onBranch={activeBranch.id === comparison.branch.id}
+					onswitch={() => switchBranch(comparison?.branch ?? null)}
+				/>
+				<BranchHealthPanel
+					branchId={comparison.branch.id}
+					onBranch={activeBranch.id === comparison.branch.id}
+					onswitch={() => switchBranch(comparison?.branch ?? null)}
+				/>
+			{/if}
 		{/if}
 
 		{#if mergeRecord}

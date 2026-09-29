@@ -16,13 +16,17 @@
 	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 
+	// Every fact type the API accepts (domain.FactType), so a fact the merge
+	// review links here (#838) is always offered.
 	const factTypes = [
 		'person_birth', 'person_death', 'person_name', 'person_gender',
-		'family_marriage', 'family_divorce', 'person_burial', 'person_baptism',
-		'person_census', 'person_immigration', 'person_emigration', 'person_naturalization',
-		'person_military', 'person_graduation', 'person_retirement', 'person_occupation',
-		'person_residence', 'person_education', 'person_religion', 'person_title',
-		'person_description', 'person_note', 'family_annulment', 'family_engagement'
+		'person_burial', 'person_cremation', 'person_baptism', 'person_christening',
+		'person_emigration', 'person_immigration', 'person_naturalization', 'person_census',
+		'person_generic_event', 'person_occupation', 'person_residence', 'person_education',
+		'person_religion', 'person_title',
+		'family_marriage', 'family_divorce', 'family_marriage_bann', 'family_marriage_contract',
+		'family_marriage_license', 'family_marriage_settlement', 'family_annulment',
+		'family_engagement'
 	];
 
 	const researchStatuses = ['certain', 'probable', 'possible', 'unknown'] as const;
@@ -35,9 +39,19 @@
 	let deleting = $state(false);
 	let isNew = $state(false);
 
-	function emptyFormData(subjectId = '') {
+	/**
+	 * The initial fact type: a prefilled one (the merge review's "add
+	 * analysis", #838) when the form offers it; otherwise a default that fits
+	 * the subject - a family's marriage, a person's birth.
+	 */
+	function initialFactType(factType: string, subjectType: string): string {
+		if (factTypes.includes(factType)) return factType;
+		return subjectType === 'family' ? 'family_marriage' : 'person_birth';
+	}
+
+	function emptyFormData(subjectId = '', factType = '', subjectType = '') {
 		return {
-			fact_type: 'person_birth',
+			fact_type: initialFactType(factType, subjectType),
 			subject_id: subjectId,
 			conclusion: '',
 			research_status: 'unknown' as 'certain' | 'probable' | 'possible' | 'unknown',
@@ -53,13 +67,24 @@
 	// Monotonic request id to guard against stale async completions on fast route changes.
 	let loadSeq = 0;
 
-	async function loadAnalysis(id: string, urlSubjectId?: string) {
+	// A linked fact type the form does not offer, said aloud rather than
+	// silently swapped for the default.
+	let unknownFactType: string | null = $state(null);
+
+	async function loadAnalysis(
+		id: string,
+		urlSubjectId?: string,
+		urlFactType?: string,
+		urlSubjectType?: string
+	) {
 		const seq = ++loadSeq;
+		unknownFactType = null;
 		if (id === 'new') {
 			analysis = null;
 			error = null;
 			newCitationId = '';
-			formData = emptyFormData(urlSubjectId ?? '');
+			formData = emptyFormData(urlSubjectId ?? '', urlFactType ?? '', urlSubjectType ?? '');
+			if (urlFactType && !factTypes.includes(urlFactType)) unknownFactType = urlFactType;
 			isNew = true;
 			editing = true;
 			loading = false;
@@ -190,10 +215,14 @@
 
 	$effect(() => {
 		const id = $page.params.id;
-		// Track subjectId so navigating ?subjectId=A → ?subjectId=B re-prefills
+		// Track subjectId (and factType) so navigating ?subjectId=A → ?subjectId=B re-prefills
 		const subjectId = $page.url?.searchParams?.get('subjectId');
+		const factType = $page.url?.searchParams?.get('factType');
+		const subjectType = $page.url?.searchParams?.get('subjectType');
 		if (id) {
-			untrack(() => loadAnalysis(id, subjectId ?? undefined));
+			untrack(() =>
+				loadAnalysis(id, subjectId ?? undefined, factType ?? undefined, subjectType ?? undefined)
+			);
 		}
 	});
 </script>
@@ -260,6 +289,12 @@
 							<option value={ft}>{formatFactType(ft)}</option>
 						{/each}
 					</select>
+					{#if unknownFactType}
+						<p class="m-0 text-xs text-amber-700" role="note">
+							The linked fact type "{unknownFactType}" is not one an analysis can have; choose the
+							fact this analysis is about.
+						</p>
+					{/if}
 				</div>
 				<div class="flex flex-col gap-1.5">
 					<Label for="subject-id" class="text-sm text-slate-600">

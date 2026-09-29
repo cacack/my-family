@@ -959,6 +959,26 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, branchID domain.
 	return s.GetFamilyChildrenByFamilyIDs(ctx, branchID, []uuid.UUID{familyID})
 }
 
+// ListAllFamilyChildren returns every child link branchID sees, resolving each
+// family's children bucket through the overlay as GetFamilyChildren does,
+// ordered by family id then person id.
+func (s *ReadModelStore) ListAllFamilyChildren(ctx context.Context, branchID domain.BranchID) ([]repository.FamilyChildReadModel, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var result []repository.FamilyChildReadModel
+	for _, children := range resolveAllBuckets(s.familyChildren, branchID) {
+		result = append(result, children...)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].FamilyID != result[j].FamilyID {
+			return result[i].FamilyID.String() < result[j].FamilyID.String()
+		}
+		return result[i].PersonID.String() < result[j].PersonID.String()
+	})
+	return result, nil
+}
+
 // GetChildrenOfFamily returns person read models for all children in a family,
 // resolving both the children bucket and each person through the branch overlay.
 func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {

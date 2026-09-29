@@ -3345,6 +3345,77 @@ paths:
         '503':
           $ref: '#/components/responses/BranchesUnavailable'
 
+  /branches/{id}/evidence-coverage:
+    parameters:
+      - $ref: '#/components/parameters/branchId'
+
+    get:
+      operationId: getBranchEvidenceCoverage
+      summary: List the facts a branch changed without documenting them
+      description: |
+        The merge review's evidence-coverage warning (#838). Lists the facts
+        and relationships the branch changed - a person's name, gender,
+        birth or death; a life event or attribute; a family's marriage; a
+        family's partners or children - that have no evidence analysis or
+        proof summary written or revised on the branch itself.
+
+        A fact is documented by an analysis or proof summary of the same fact
+        type and subject that the branch created or updated (and did not
+        delete); one inherited from the mainline documents the conclusion the
+        branch is changing, so it does not count. A relationship has no fact
+        type, so any analysis or proof summary the branch wrote about the
+        family documents it. Facts the branch created and deleted again, and
+        facts about a person or family the branch deleted, are not listed.
+
+        This is a soft warning, never a merge gate. It is computed from the
+        append-only log, so a merged or archived branch still answers.
+      tags: [branches]
+      responses:
+        '200':
+          description: The branch's changed facts that have no evidence on the branch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchEvidenceCoverage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+  /branches/{id}/health:
+    parameters:
+      - $ref: '#/components/parameters/branchId'
+
+    get:
+      operationId: getBranchHealth
+      summary: List the validation issues, quality issues and duplicates a branch introduces
+      description: |
+        Runs the `/quality` checks - validation, per-person quality and
+        duplicate detection - over the branch's view of the tree and over the
+        mainline, and returns what the branch INTRODUCES: its findings that the
+        mainline does not have (#838). `resolved_count` counts the mainline
+        findings the branch no longer has.
+
+        Every finding carries a `key` that is stable across the two views
+        because it is built from record ids: a validation issue's code, record,
+        related record and occurrence; a quality issue's person and text; a
+        duplicate pair's two person ids.
+
+        Only an active branch has a view to check: an unknown, merged or
+        archived branch is `404`, as for a `?branch=` read.
+      tags: [branches]
+      responses:
+        '200':
+          description: What the branch introduces into the tree's checks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchHealth'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
   /relationship/{personId1}/{personId2}:
     get:
       operationId: getRelationship
@@ -7888,6 +7959,168 @@ components:
           items:
             $ref: '#/components/schemas/MergeBlocker'
           description: Every merge blocker, in replay order. `[]`, never `null`, when the merge is clear.
+
+    BranchEvidenceCoverage:
+      type: object
+      description: |
+        The evidence-coverage warning of a branch (#838): how many facts and
+        relationships it changed, and which of them have no evidence analysis
+        or proof summary on the branch.
+      required: [changed_fact_count, uncovered, has_more]
+      properties:
+        changed_fact_count:
+          type: integer
+          description: How many facts and relationships the branch changed.
+        uncovered:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchChangedFact'
+          description: The changed facts with no evidence on the branch, by subject name. `[]` when every change is documented.
+        has_more:
+          type: boolean
+          description: The branch's own events hit the read cap, so the counts may be incomplete.
+
+    BranchChangedFact:
+      type: object
+      description: One fact or relationship a branch changed.
+      required: [kind, subject_type, subject_id, subject_name, change_count]
+      properties:
+        kind:
+          type: string
+          enum: [fact, relationship, deletion]
+          description: |
+            `fact` for a person's or family's fact (`fact_type` says which);
+            `relationship` for a family's partners or children; `deletion` for
+            a person or family the mainline has that the branch deleted.
+        fact_type:
+          type: string
+          description: The fact changed (e.g. `person_birth`); absent for a relationship or a deletion.
+        subject_type:
+          type: string
+          enum: [person, family]
+          description: What the fact is about - the subject an analysis of it has.
+        subject_id:
+          type: string
+          format: uuid
+        subject_name:
+          type: string
+          description: The subject's display name as the branch sees it (a deleted one as the mainline has it); empty when nothing names it.
+        change_count:
+          type: integer
+          description: How many of the branch's changes touched the fact.
+
+    BranchHealth:
+      type: object
+      description: |
+        What a branch introduces into the tree's checks (#838): its findings
+        the mainline does not have. Every list is `[]`, never `null`, when
+        empty.
+      required: [validation_issues, quality_issues, duplicates, error_count, warning_count, info_count, resolved_count]
+      properties:
+        validation_issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchValidationIssue'
+          description: Validation issues the branch introduces, errors first, then warnings, then information.
+        quality_issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchQualityIssue'
+          description: Per-person quality issues the branch introduces, by person name.
+        duplicates:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchDuplicatePair'
+          description: Potential duplicate pairs the branch introduces, most likely first.
+        error_count:
+          type: integer
+          description: How many of `validation_issues` are errors.
+        warning_count:
+          type: integer
+          description: How many of `validation_issues` are warnings.
+        info_count:
+          type: integer
+          description: How many of `validation_issues` are information.
+        resolved_count:
+          type: integer
+          description: How many of the mainline's findings, of every kind, the branch no longer has.
+
+    BranchValidationIssue:
+      type: object
+      description: A validation issue a branch introduces, with the records it is about by name.
+      required: [key, severity, code, message]
+      properties:
+        key:
+          type: string
+          description: Stable across the branch and the mainline (code, record, related record, occurrence).
+        severity:
+          type: string
+          enum: [error, warning, info]
+        code:
+          type: string
+        message:
+          type: string
+        record_id:
+          type: string
+          format: uuid
+        record_type:
+          type: string
+          enum: [person, family, source]
+        record_name:
+          type: string
+        related_record_id:
+          type: string
+          format: uuid
+        related_record_type:
+          type: string
+          enum: [person, family, source]
+        related_record_name:
+          type: string
+
+    BranchQualityIssue:
+      type: object
+      description: A person's quality issue a branch introduces.
+      required: [key, person_id, person_name, issue]
+      properties:
+        key:
+          type: string
+          description: Stable across the branch and the mainline (person and issue).
+        person_id:
+          type: string
+          format: uuid
+        person_name:
+          type: string
+        issue:
+          type: string
+          description: The issue, as `/quality/persons/{id}` words it.
+
+    BranchDuplicatePair:
+      type: object
+      description: A potential duplicate pair a branch introduces.
+      required: [key, person1_id, person1_name, person2_id, person2_name, confidence, match_reasons]
+      properties:
+        key:
+          type: string
+          description: Stable across the branch and the mainline (the two person ids, in id order).
+        person1_id:
+          type: string
+          format: uuid
+        person1_name:
+          type: string
+        person2_id:
+          type: string
+          format: uuid
+        person2_name:
+          type: string
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        match_reasons:
+          type: array
+          items:
+            type: string
 
     MergeBlocker:
       type: object
