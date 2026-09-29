@@ -205,6 +205,51 @@ func (e BranchMergeResumeErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for BranchOutcome.
+const (
+	BranchOutcomeDisproved    BranchOutcome = "disproved"
+	BranchOutcomeInconclusive BranchOutcome = "inconclusive"
+	BranchOutcomeOpen         BranchOutcome = "open"
+	BranchOutcomeProved       BranchOutcome = "proved"
+	BranchOutcomeSuperseded   BranchOutcome = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the BranchOutcome enum.
+func (e BranchOutcome) Valid() bool {
+	switch e {
+	case BranchOutcomeDisproved:
+		return true
+	case BranchOutcomeInconclusive:
+		return true
+	case BranchOutcomeOpen:
+		return true
+	case BranchOutcomeProved:
+		return true
+	case BranchOutcomeSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BranchSubjectType.
+const (
+	BranchSubjectTypeFamily BranchSubjectType = "family"
+	BranchSubjectTypePerson BranchSubjectType = "person"
+)
+
+// Valid indicates whether the value is a known member of the BranchSubjectType enum.
+func (e BranchSubjectType) Valid() bool {
+	switch e {
+	case BranchSubjectTypeFamily:
+		return true
+	case BranchSubjectTypePerson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BranchValidationIssueRecordType.
 const (
 	BranchValidationIssueRecordTypeFamily BranchValidationIssueRecordType = "family"
@@ -1605,16 +1650,16 @@ func (e ListEvidenceAnalysesParamsOrder) Valid() bool {
 
 // Defines values for ListEvidenceConflictsParamsStatus.
 const (
-	ListEvidenceConflictsParamsStatusOpen     ListEvidenceConflictsParamsStatus = "open"
-	ListEvidenceConflictsParamsStatusResolved ListEvidenceConflictsParamsStatus = "resolved"
+	Open     ListEvidenceConflictsParamsStatus = "open"
+	Resolved ListEvidenceConflictsParamsStatus = "resolved"
 )
 
 // Valid indicates whether the value is a known member of the ListEvidenceConflictsParamsStatus enum.
 func (e ListEvidenceConflictsParamsStatus) Valid() bool {
 	switch e {
-	case ListEvidenceConflictsParamsStatusOpen:
+	case Open:
 		return true
-	case ListEvidenceConflictsParamsStatusResolved:
+	case Resolved:
 		return true
 	default:
 		return false
@@ -2431,8 +2476,12 @@ type Branch struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Description Optional description of what the branch explores
-	Description *string            `json:"description,omitempty"`
-	Id          openapi_types.UUID `json:"id"`
+	Description *string `json:"description,omitempty"`
+
+	// Hypothesis The research question the branch explores. Absent when none has
+	// been recorded.
+	Hypothesis *string            `json:"hypothesis,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
 
 	// MergeNote The note recorded with the merge, explaining why the research was
 	// promoted. Absent unless the branch was merged with a note.
@@ -2475,11 +2524,29 @@ type Branch struct {
 	// Name Name of the line of research
 	Name string `json:"name"`
 
+	// Outcome The verdict the research reached. Independent of `status`: status says
+	// whether the branch still takes writes, outcome says what it concluded.
+	// `open` means the question is still being worked; `superseded` marks a
+	// question overtaken by other research.
+	Outcome BranchOutcome `json:"outcome"`
+
+	// ProofSummaries The linked proof summaries, resolved for display. Present on the
+	// single-branch reads (get, update, compare) and absent on the list;
+	// a linked summary that no longer exists is left out, while its id
+	// stays in `proof_summary_ids`.
+	ProofSummaries *[]BranchProofSummaryRef `json:"proof_summaries,omitempty"`
+
+	// ProofSummaryIds Proof summaries that argue the branch's conclusion
+	ProofSummaryIds []openapi_types.UUID `json:"proof_summary_ids"`
+
 	// Status Lifecycle state. `merged` and `archived` are terminal — a branch in
 	// either state accepts no further writes. `archived` is the state a
 	// deleted branch enters; its events are retained but its overlay rows
 	// are purged.
 	Status BranchStatus `json:"status"`
+
+	// Subjects The persons and families the hypothesis concerns
+	Subjects []BranchSubject `json:"subjects"`
 }
 
 // BranchMergeState Whether the merge finished (#830). Present on `GET /branches`,
@@ -2590,8 +2657,23 @@ type BranchCreate struct {
 	// Description Optional description of what the branch explores
 	Description *string `json:"description,omitempty"`
 
+	// Hypothesis The research question the branch explores
+	Hypothesis *string `json:"hypothesis,omitempty"`
+
 	// Name Name of the line of research
 	Name string `json:"name"`
+
+	// Outcome The verdict the research reached. Independent of `status`: status says
+	// whether the branch still takes writes, outcome says what it concluded.
+	// `open` means the question is still being worked; `superseded` marks a
+	// question overtaken by other research.
+	Outcome *BranchOutcome `json:"outcome,omitempty"`
+
+	// ProofSummaryIds Proof summaries to link; must exist on the mainline
+	ProofSummaryIds *[]openapi_types.UUID `json:"proof_summary_ids,omitempty"`
+
+	// Subjects Persons and families the hypothesis concerns; must exist on the mainline
+	Subjects *[]BranchSubjectInput `json:"subjects,omitempty"`
 }
 
 // BranchDuplicatePair A potential duplicate pair a branch introduces.
@@ -2812,6 +2894,19 @@ type BranchMergeResumeResult struct {
 	SkippedStreamIds []openapi_types.UUID `json:"skipped_stream_ids"`
 }
 
+// BranchOutcome The verdict the research reached. Independent of `status`: status says
+// whether the branch still takes writes, outcome says what it concluded.
+// `open` means the question is still being worked; `superseded` marks a
+// question overtaken by other research.
+type BranchOutcome string
+
+// BranchProofSummaryRef defines model for BranchProofSummaryRef.
+type BranchProofSummaryRef struct {
+	Conclusion string             `json:"conclusion"`
+	FactType   string             `json:"fact_type"`
+	Id         openapi_types.UUID `json:"id"`
+}
+
 // BranchQualityIssue A person's quality issue a branch introduces.
 type BranchQualityIssue struct {
 	// Issue The issue, as `/quality/persons/{id}` words it.
@@ -2821,6 +2916,39 @@ type BranchQualityIssue struct {
 	Key        string             `json:"key"`
 	PersonId   openapi_types.UUID `json:"person_id"`
 	PersonName string             `json:"person_name"`
+}
+
+// BranchSubject defines model for BranchSubject.
+type BranchSubject struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Display name, resolved on the single-branch reads. Absent on the
+	// list, and when the person or family no longer exists.
+	Name *string           `json:"name,omitempty"`
+	Type BranchSubjectType `json:"type"`
+}
+
+// BranchSubjectInput defines model for BranchSubjectInput.
+type BranchSubjectInput struct {
+	Id   openapi_types.UUID `json:"id"`
+	Type BranchSubjectType  `json:"type"`
+}
+
+// BranchSubjectType defines model for BranchSubjectType.
+type BranchSubjectType string
+
+// BranchUpdate Partial update; see `PATCH /branches/{id}`.
+type BranchUpdate struct {
+	Description *string `json:"description,omitempty"`
+	Hypothesis  *string `json:"hypothesis,omitempty"`
+
+	// Outcome The verdict the research reached. Independent of `status`: status says
+	// whether the branch still takes writes, outcome says what it concluded.
+	// `open` means the question is still being worked; `superseded` marks a
+	// question overtaken by other research.
+	Outcome         *BranchOutcome        `json:"outcome,omitempty"`
+	ProofSummaryIds *[]openapi_types.UUID `json:"proof_summary_ids,omitempty"`
+	Subjects        *[]BranchSubjectInput `json:"subjects,omitempty"`
 }
 
 // BranchValidationIssue A validation issue a branch introduces, with the records it is about by name.
@@ -7022,6 +7150,9 @@ type UpdateAssociationJSONRequestBody = AssociationUpdate
 // CreateBranchJSONRequestBody defines body for CreateBranch for application/json ContentType.
 type CreateBranchJSONRequestBody = BranchCreate
 
+// UpdateBranchJSONRequestBody defines body for UpdateBranch for application/json ContentType.
+type UpdateBranchJSONRequestBody = BranchUpdate
+
 // MergeBranchJSONRequestBody defines body for MergeBranch for application/json ContentType.
 type MergeBranchJSONRequestBody = BranchMergeRequest
 
@@ -7186,6 +7317,9 @@ type ServerInterface interface {
 	// Get a branch by ID
 	// (GET /branches/{id})
 	GetBranch(ctx echo.Context, id BranchId) error
+	// Edit a branch's description and research record
+	// (PATCH /branches/{id})
+	UpdateBranch(ctx echo.Context, id BranchId) error
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx echo.Context, id BranchId) error
@@ -7875,6 +8009,22 @@ func (w *ServerInterfaceWrapper) GetBranch(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetBranch(ctx, id)
+	return err
+}
+
+// UpdateBranch converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateBranch(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateBranch(ctx, id)
 	return err
 }
 
@@ -11561,6 +11711,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/branches", wrapper.CreateBranch, options.OperationMiddlewares["createBranch"]...)
 	router.DELETE(options.BaseURL+"/branches/:id", wrapper.DeleteBranch, options.OperationMiddlewares["deleteBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id", wrapper.GetBranch, options.OperationMiddlewares["getBranch"]...)
+	router.PATCH(options.BaseURL+"/branches/:id", wrapper.UpdateBranch, options.OperationMiddlewares["updateBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/evidence-coverage", wrapper.GetBranchEvidenceCoverage, options.OperationMiddlewares["getBranchEvidenceCoverage"]...)
 	router.GET(options.BaseURL+"/branches/:id/health", wrapper.GetBranchHealth, options.OperationMiddlewares["getBranchHealth"]...)
@@ -12094,7 +12245,7 @@ func (response CreateBranch201JSONResponse) VisitCreateBranchResponse(w http.Res
 	return err
 }
 
-type CreateBranch400JSONResponse struct{ BadRequestJSONResponse }
+type CreateBranch400JSONResponse Error
 
 func (response CreateBranch400JSONResponse) VisitCreateBranchResponse(w http.ResponseWriter) error {
 
@@ -12225,6 +12376,87 @@ type GetBranch503JSONResponse struct {
 }
 
 func (response GetBranch503JSONResponse) VisitGetBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBranchRequestObject struct {
+	Id   BranchId `json:"id"`
+	Body *UpdateBranchJSONRequestBody
+}
+
+type UpdateBranchResponseObject interface {
+	VisitUpdateBranchResponse(w http.ResponseWriter) error
+}
+
+type UpdateBranch200JSONResponse Branch
+
+func (response UpdateBranch200JSONResponse) VisitUpdateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBranch400JSONResponse Error
+
+func (response UpdateBranch400JSONResponse) VisitUpdateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBranch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateBranch404JSONResponse) VisitUpdateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBranch409JSONResponse Error
+
+func (response UpdateBranch409JSONResponse) VisitUpdateBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBranch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response UpdateBranch503JSONResponse) VisitUpdateBranchResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -18647,6 +18879,9 @@ type StrictServerInterface interface {
 	// Get a branch by ID
 	// (GET /branches/{id})
 	GetBranch(ctx context.Context, request GetBranchRequestObject) (GetBranchResponseObject, error)
+	// Edit a branch's description and research record
+	// (PATCH /branches/{id})
+	UpdateBranch(ctx context.Context, request UpdateBranchRequestObject) (UpdateBranchResponseObject, error)
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx context.Context, request CompareBranchRequestObject) (CompareBranchResponseObject, error)
@@ -19380,6 +19615,37 @@ func (sh *strictHandler) GetBranch(ctx echo.Context, id BranchId) error {
 		return err
 	} else if validResponse, ok := response.(GetBranchResponseObject); ok {
 		return validResponse.VisitGetBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// UpdateBranch operation middleware
+func (sh *strictHandler) UpdateBranch(ctx echo.Context, id BranchId) error {
+	var request UpdateBranchRequestObject
+
+	request.Id = id
+
+	var body UpdateBranchJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateBranch(ctx.Request().Context(), request.(UpdateBranchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateBranch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(UpdateBranchResponseObject); ok {
+		return validResponse.VisitUpdateBranchResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

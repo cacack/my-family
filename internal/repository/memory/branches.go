@@ -29,14 +29,17 @@ func NewBranchStore() *BranchStore {
 }
 
 // copyBranch returns a deep copy of branch. Branch holds a *time.Time
-// (MergedAt), so a plain struct copy would still share that pointer with the
-// caller; this keeps the store's "no external mutation" contract true.
+// (MergedAt) and the research record's slices, so a plain struct copy would
+// still share them with the caller; this keeps the store's "no external
+// mutation" contract true. Like the SQL stores it reads an empty outcome as
+// open and empty lists as nil.
 func copyBranch(branch *domain.Branch) *domain.Branch {
 	copied := *branch
 	if branch.MergedAt != nil {
 		mergedAt := *branch.MergedAt
 		copied.MergedAt = &mergedAt
 	}
+	copied.ApplyResearch(branch.Research())
 	return &copied
 }
 
@@ -117,6 +120,21 @@ func (s *BranchStore) UpdateStatus(_ context.Context, id uuid.UUID, status domai
 	}
 
 	branch.Status = status
+	return nil
+}
+
+// UpdateDetails overwrites the description and research record.
+func (s *BranchStore) UpdateDetails(_ context.Context, id uuid.UUID, description string, research domain.BranchResearch) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	branch, exists := s.branches[id]
+	if !exists {
+		return repository.ErrBranchNotFound
+	}
+
+	branch.Description = description
+	branch.ApplyResearch(research)
 	return nil
 }
 

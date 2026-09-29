@@ -2876,6 +2876,8 @@ paths:
             example:
               name: "Maternal Smith line"
               description: "Testing the theory that Mary Smith is the daughter of John"
+              hypothesis: "Was Mary Smith (b. 1842) the daughter of John Smith of Albany?"
+              outcome: open
       responses:
         '201':
           description: Branch created
@@ -2884,7 +2886,14 @@ paths:
               schema:
                 $ref: '#/components/schemas/Branch'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: |
+            Invalid request. `validation_error` for a field that breaks its
+            limits; `invalid_reference` when a subject or proof summary does
+            not exist on the mainline (a new branch's view is the mainline).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
           $ref: '#/components/responses/BranchesUnavailable'
 
@@ -2895,6 +2904,12 @@ paths:
     get:
       operationId: getBranch
       summary: Get a branch by ID
+      description: |
+        Returns the branch with its research record. Subjects carry their
+        display `name` and `proof_summaries` lists the linked proof summaries,
+        both resolved through the branch's view while it is active and through
+        the mainline once it is merged or archived. A subject or proof summary
+        that no longer exists keeps its id but has no name / no entry.
       tags: [branches]
       responses:
         '200':
@@ -2905,6 +2920,72 @@ paths:
                 $ref: '#/components/schemas/Branch'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+    patch:
+      operationId: updateBranch
+      summary: Edit a branch's description and research record
+      description: |
+        Partial update (#835): every field is optional, an absent field is left
+        as it is, and a present one replaces the stored value (an empty string
+        or empty array clears it). At least one field is required.
+
+        - An `active` branch accepts every field.
+        - A `merged` branch accepts only `outcome`, so the verdict can be
+          recorded once the merge has landed (typically `proved`). Its question,
+          subjects and evidence stay as they were merged; changing them is a
+          409 `branch_field_locked`.
+        - An `archived` branch accepts nothing (409 `branch_not_active`).
+
+        Subjects and proof summaries the update adds must exist on the branch's
+        own view (its overlay: a person created on the branch counts, one
+        deleted on it does not); otherwise 400 `invalid_reference`. Ids already
+        on the branch are not re-checked.
+
+        The edit is recorded as a `BranchUpdated` event on the branch's own
+        stream. It is research metadata: it never appears among the branch's
+        changes in a comparison and is never replayed onto the mainline by a
+        merge. An update that changes nothing records no event.
+      tags: [branches]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchUpdate'
+            example:
+              hypothesis: "Was Mary Smith (b. 1842) the daughter of John Smith of Albany?"
+              outcome: proved
+      responses:
+        '200':
+          description: The branch as it stands after the edit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+        '400':
+          description: |
+            Invalid request: `validation_error` (a field breaks its limits, or
+            no field was given) or `invalid_reference` (a subject or proof
+            summary is not visible on the branch).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The branch cannot take this edit: `branch_not_active` (archived),
+            `branch_field_locked` (a merged branch accepts only `outcome`) or
+            `branch_changed` (the branch was edited, merged or deleted by
+            another request while this edit was being applied; nothing was
+            recorded — reload the branch and retry).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
           $ref: '#/components/responses/BranchesUnavailable'
 
@@ -3334,9 +3415,11 @@ paths:
               one by name, each with its suggested fix.
             - `branch_too_large` — the branch's replay set exceeds the read cap
               and cannot be resumed in full.
-            - `merge_resume_concurrent` — another resume of the same merge
-              recorded its resolutions first. Resume again; the entities it
-              decided are no longer pending.
+            - `merge_resume_concurrent` — another write to the branch landed
+              while this resume was deciding: another resume of the same
+              merge recorded its resolutions first (the entities it decided
+              are no longer pending), or the branch's outcome was edited.
+              Nothing was replayed; resume again.
           content:
             application/json:
               schema:
@@ -7369,7 +7452,7 @@ components:
 
     Branch:
       type: object
-      required: [id, name, base_position, status, created_at]
+      required: [id, name, base_position, status, created_at, outcome, subjects, proof_summary_ids]
       properties:
         id:
           type: string
@@ -7448,6 +7531,87 @@ components:
             Present only when `merge_state` is `incomplete`: the entities a
             resume would still act on (replay, ask about, or repair), in
             replay order.
+        hypothesis:
+          type: string
+          maxLength: 2000
+          description: |
+            The research question the branch explores. Absent when none has
+            been recorded.
+        subjects:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/BranchSubject'
+          description: The persons and families the hypothesis concerns
+        outcome:
+          $ref: '#/components/schemas/BranchOutcome'
+        proof_summary_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            format: uuid
+          description: Proof summaries that argue the branch's conclusion
+        proof_summaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/BranchProofSummaryRef'
+          description: |
+            The linked proof summaries, resolved for display. Present on the
+            single-branch reads (get, update, compare) and absent on the list;
+            a linked summary that no longer exists is left out, while its id
+            stays in `proof_summary_ids`.
+
+    BranchOutcome:
+      type: string
+      enum: [open, proved, disproved, inconclusive, superseded]
+      default: open
+      description: |
+        The verdict the research reached. Independent of `status`: status says
+        whether the branch still takes writes, outcome says what it concluded.
+        `open` means the question is still being worked; `superseded` marks a
+        question overtaken by other research.
+
+    BranchSubjectType:
+      type: string
+      enum: [person, family]
+
+    BranchSubjectInput:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          $ref: '#/components/schemas/BranchSubjectType'
+        id:
+          type: string
+          format: uuid
+
+    BranchSubject:
+      type: object
+      required: [type, id]
+      properties:
+        type:
+          $ref: '#/components/schemas/BranchSubjectType'
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: |
+            Display name, resolved on the single-branch reads. Absent on the
+            list, and when the person or family no longer exists.
+
+    BranchProofSummaryRef:
+      type: object
+      required: [id, fact_type, conclusion]
+      properties:
+        id:
+          type: string
+          format: uuid
+        fact_type:
+          type: string
+        conclusion:
+          type: string
 
     BranchCreate:
       type: object
@@ -7462,6 +7626,50 @@ components:
           type: string
           maxLength: 500
           description: Optional description of what the branch explores
+        hypothesis:
+          type: string
+          maxLength: 2000
+          description: The research question the branch explores
+        subjects:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/BranchSubjectInput'
+          description: Persons and families the hypothesis concerns; must exist on the mainline
+        outcome:
+          $ref: '#/components/schemas/BranchOutcome'
+        proof_summary_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            format: uuid
+          description: Proof summaries to link; must exist on the mainline
+
+    BranchUpdate:
+      type: object
+      minProperties: 1
+      description: Partial update; see `PATCH /branches/{id}`.
+      properties:
+        description:
+          type: string
+          maxLength: 500
+        hypothesis:
+          type: string
+          maxLength: 2000
+        subjects:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/BranchSubjectInput'
+        outcome:
+          $ref: '#/components/schemas/BranchOutcome'
+        proof_summary_ids:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            format: uuid
 
     BranchList:
       type: object

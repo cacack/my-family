@@ -250,8 +250,9 @@ type MergeReplaySet struct {
 // fixed when the merge was claimed and are recorded on its BranchMerged event,
 // so re-running PlanMerge would only recompute a verdict against a main the
 // replay has already partly written to — a verdict that no longer means
-// anything. A claimed branch accepts no further writes, so this set is the same
-// one the original merge replayed from.
+// anything. A claimed branch accepts no further genealogy writes — only an
+// outcome edit (BranchUpdated), which is research metadata and never part of
+// the set — so this set is the same one the original merge replayed from.
 func (s *BranchService) LoadMergeReplaySet(ctx context.Context, branchID uuid.UUID) (*MergeReplaySet, error) {
 	diff, err := s.loadBranchSide(ctx, branchID)
 	if err != nil {

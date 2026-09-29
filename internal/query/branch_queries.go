@@ -24,6 +24,7 @@ import (
 // branch's own event set. They stay listed as a guard should that ever change.
 var researchMetadataEventTypes = map[string]bool{
 	"BranchCreated":   true,
+	"BranchUpdated":   true,
 	"BranchDeleted":   true,
 	"BranchMerged":    true,
 	"SnapshotCreated": true,
@@ -57,6 +58,70 @@ func (s *BranchService) ListBranches(ctx context.Context) ([]*domain.Branch, err
 // repository.ErrBranchNotFound when it does not exist.
 func (s *BranchService) GetBranch(ctx context.Context, id uuid.UUID) (*domain.Branch, error) {
 	return s.branchStore.Get(ctx, id)
+}
+
+// BranchLinks is the display data for a branch's research record (#835): the
+// names of its subjects and the proof summaries it links. Entries that no
+// longer resolve are simply absent.
+type BranchLinks struct {
+	// SubjectNames maps a subject's id to its display name.
+	SubjectNames map[uuid.UUID]string
+	// ProofSummaries are the linked proof summaries still visible, in the
+	// branch's proof_summary_ids order.
+	ProofSummaries []repository.ProofSummaryReadModel
+}
+
+// ResolveBranchLinks resolves the branch's subjects and proof summaries for
+// display. An active branch resolves through its own overlay; a merged or
+// archived one has no overlay left (its rows were purged), so it resolves
+// through main — where a merged branch's records now live.
+//
+// Subject names cost one batched lookup per subject type (two more on a
+// branch, for ids the overlay does not resolve; see resolveEntityNamesOn);
+// proof summaries, capped at domain.MaxBranchProofSummaries, are read one at a
+// time.
+func (s *BranchService) ResolveBranchLinks(ctx context.Context, branch *domain.Branch) (*BranchLinks, error) {
+	links := &BranchLinks{SubjectNames: map[uuid.UUID]string{}}
+	if s.historyService == nil || s.historyService.readStore == nil {
+		return links, nil
+	}
+
+	scope := domain.MainBranchID
+	if branch.Status == domain.BranchStatusActive {
+		scope = domain.BranchID(branch.ID)
+	}
+
+	refs := newEntityRefs()
+	for _, subject := range branch.Subjects {
+		refs.add(string(subject.Type), subject.ID)
+	}
+	names, err := s.historyService.resolveEntityNamesOn(ctx, scope, refs)
+	if err != nil {
+		return nil, err
+	}
+	for _, subject := range branch.Subjects {
+		switch subject.Type {
+		case domain.BranchSubjectPerson:
+			if names.persons[subject.ID] != nil {
+				links.SubjectNames[subject.ID] = names.personName(subject.ID, nil)
+			}
+		case domain.BranchSubjectFamily:
+			if names.families[subject.ID] != nil {
+				links.SubjectNames[subject.ID] = names.familyName(subject.ID, nil)
+			}
+		}
+	}
+
+	for _, id := range branch.ProofSummaryIDs {
+		summary, err := s.historyService.readStore.GetProofSummary(ctx, scope, id)
+		if err != nil {
+			return nil, fmt.Errorf("resolve proof summary %s: %w", id, err)
+		}
+		if summary != nil {
+			links.ProofSummaries = append(links.ProofSummaries, *summary)
+		}
+	}
+	return links, nil
 }
 
 // BranchComparisonResult is a structured diff of a branch against main: what the
@@ -236,19 +301,54 @@ func (s *BranchService) loadBranchSide(ctx context.Context, branchID uuid.UUID) 
 		return nil, fmt.Errorf("get branch: %w", err)
 	}
 
-	// Branch side: the branch's own events. fromPosition is exclusive, and every
-	// branch event is appended after the fork, so the base position is a no-op
-	// filter here — it is passed for symmetry with the main side.
-	rawBranchEvents, err := s.eventStore.ReadBranch(ctx, domain.BranchID(branch.ID), branch.BasePosition, maxComparisonEvents)
+	branchEvents, truncated, err := s.readBranchMutations(ctx, branch)
 	if err != nil {
-		return nil, fmt.Errorf("read branch events: %w", err)
+		return nil, err
 	}
 
 	return &branchDiffSources{
 		branch:          branch,
-		branchEvents:    withoutBranchLifecycleEvents(rawBranchEvents),
-		branchTruncated: len(rawBranchEvents) >= maxComparisonEvents,
+		branchEvents:    branchEvents,
+		branchTruncated: truncated,
 	}, nil
+}
+
+// readBranchMutations reads the branch's own events with the research-metadata
+// events (researchMetadataEventTypes) stripped, and reports whether the scan
+// hit maxComparisonEvents.
+//
+// The cap is measured against the events KEPT, not the raw rows read: a
+// branch's own stream also carries its BranchUpdated research edits (#835),
+// one per saved hypothesis, subject or outcome change, and none of them is
+// shown in a comparison or replayed by a merge. Counting them would let a
+// long-running line of research edge a branch towards a partial comparison and
+// ErrBranchTooLargeToMerge without a single extra genealogy change. So the
+// scan pages on until it has maxComparisonEvents kept events or reaches the
+// end of the branch. Every extra page is bounded by the number of research
+// edits, which are appended one at a time by a person.
+//
+// Truncation keeps the conservative rule used elsewhere: a scan that stops
+// with the cap reached reports truncation even if nothing followed.
+func (s *BranchService) readBranchMutations(ctx context.Context, branch *domain.Branch) ([]repository.StoredEvent, bool, error) {
+	// fromPosition is exclusive, and every branch event is appended after the
+	// fork, so the base position is a no-op filter on the first page — it is
+	// passed for symmetry with the main side.
+	from := branch.BasePosition
+	var kept []repository.StoredEvent
+	for {
+		page, err := s.eventStore.ReadBranch(ctx, domain.BranchID(branch.ID), from, maxComparisonEvents)
+		if err != nil {
+			return nil, false, fmt.Errorf("read branch events: %w", err)
+		}
+		kept = append(kept, withoutBranchLifecycleEvents(page)...)
+		if len(kept) >= maxComparisonEvents {
+			return kept[:maxComparisonEvents], true, nil
+		}
+		if len(page) < maxComparisonEvents {
+			return kept, false, nil
+		}
+		from = page[len(page)-1].Position
+	}
 }
 
 // loadMainSide fills in the main half of the diff: main's events after the base

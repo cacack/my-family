@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,6 +41,13 @@ type BranchStore interface {
 	// missing. Used by the deleted projection's archive transition.
 	UpdateStatus(ctx context.Context, id uuid.UUID, status domain.BranchStatus) error
 
+	// UpdateDetails overwrites a branch's description and research record
+	// (#835) — hypothesis, subjects, outcome and proof summary ids — leaving
+	// name, base position, status and the merge record untouched. Returns
+	// ErrBranchNotFound when missing. Written only by the BranchUpdated
+	// projection.
+	UpdateDetails(ctx context.Context, id uuid.UUID, description string, research domain.BranchResearch) error
+
 	// MarkMerged records the merge: it sets the status to merged and writes the
 	// merge timestamp and note in one atomic write, returning ErrBranchNotFound
 	// when missing.
@@ -50,4 +59,59 @@ type BranchStore interface {
 	// make it optional at every call site and let a merge land with a nil
 	// MergedAt; a separate method makes the record impossible to omit.
 	MarkMerged(ctx context.Context, id uuid.UUID, mergedAt time.Time, note string) error
+}
+
+// BranchListsJSON is the stored form of a branch's research-record lists
+// (#835): subjects and proof summary ids, each JSON-encoded, or "" for an
+// empty list so both SQL stores can bind it as NULL.
+type BranchListsJSON struct {
+	Subjects        string
+	ProofSummaryIDs string
+}
+
+// EncodeBranchLists JSON-encodes the research record's lists for storage.
+func EncodeBranchLists(research domain.BranchResearch) (BranchListsJSON, error) {
+	var out BranchListsJSON
+	if len(research.Subjects) > 0 {
+		b, err := json.Marshal(research.Subjects)
+		if err != nil {
+			return BranchListsJSON{}, fmt.Errorf("encode branch subjects: %w", err)
+		}
+		out.Subjects = string(b)
+	}
+	if len(research.ProofSummaryIDs) > 0 {
+		b, err := json.Marshal(research.ProofSummaryIDs)
+		if err != nil {
+			return BranchListsJSON{}, fmt.Errorf("encode branch proof summary ids: %w", err)
+		}
+		out.ProofSummaryIDs = string(b)
+	}
+	return out, nil
+}
+
+// DecodeBranchResearch rebuilds a branch's research record from its stored
+// columns. An empty (NULL) list decodes to nil and an empty outcome — a row
+// written before #835 — to open.
+func DecodeBranchResearch(hypothesis, outcome string, lists BranchListsJSON) (domain.BranchResearch, error) {
+	research := domain.BranchResearch{
+		Hypothesis: hypothesis,
+		Outcome:    domain.BranchOutcome(outcome).OrDefault(),
+	}
+	if lists.Subjects != "" {
+		if err := json.Unmarshal([]byte(lists.Subjects), &research.Subjects); err != nil {
+			return domain.BranchResearch{}, fmt.Errorf("decode branch subjects: %w", err)
+		}
+	}
+	if lists.ProofSummaryIDs != "" {
+		if err := json.Unmarshal([]byte(lists.ProofSummaryIDs), &research.ProofSummaryIDs); err != nil {
+			return domain.BranchResearch{}, fmt.Errorf("decode branch proof summary ids: %w", err)
+		}
+	}
+	if len(research.Subjects) == 0 {
+		research.Subjects = nil
+	}
+	if len(research.ProofSummaryIDs) == 0 {
+		research.ProofSummaryIDs = nil
+	}
+	return research, nil
 }

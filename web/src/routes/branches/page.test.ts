@@ -42,6 +42,9 @@ const active: Branch = {
 	description: 'Chasing the 1880 census gap',
 	base_position: 42,
 	status: 'active',
+	outcome: 'open',
+	subjects: [],
+	proof_summary_ids: [],
 	created_at: '2026-01-15T10:30:00Z'
 };
 
@@ -50,6 +53,9 @@ const merged: Branch = {
 	name: 'Jones cemetery sweep',
 	base_position: 10,
 	status: 'merged',
+	outcome: 'open',
+	subjects: [],
+	proof_summary_ids: [],
 	created_at: '2026-01-02T09:00:00Z',
 	merged_at: '2026-01-09T12:00:00Z',
 	merge_note: 'Confirmed by headstone photos'
@@ -60,6 +66,9 @@ const archived: Branch = {
 	name: 'Discarded Miller theory',
 	base_position: 5,
 	status: 'archived',
+	outcome: 'open',
+	subjects: [],
+	proof_summary_ids: [],
 	created_at: '2026-01-01T08:00:00Z'
 };
 
@@ -172,6 +181,48 @@ describe('Branches page', () => {
 		await waitFor(() => {
 			expect(createBranch).toHaveBeenCalledWith({ name: 'Paternal Doe line' });
 		});
+	});
+
+	it('creates a branch with its research question and a non-default outcome', async () => {
+		render(Page);
+		await screen.findByText('Maternal Smith line');
+
+		await fireEvent.click(screen.getByRole('button', { name: /new branch/i }));
+		await fireEvent.input(await screen.findByLabelText('Name'), { target: { value: 'Mary line' } });
+		await fireEvent.input(screen.getByLabelText('Research question (optional)'), {
+			target: { value: '  Was Mary the daughter of John?  ' }
+		});
+		await fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'inconclusive' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Create branch$/ }));
+
+		await waitFor(() => {
+			expect(createBranch).toHaveBeenCalledWith({
+				name: 'Mary line',
+				hypothesis: 'Was Mary the daughter of John?',
+				outcome: 'inconclusive'
+			});
+		});
+	});
+
+	it("shows each branch's outcome, research question and subject count", async () => {
+		listBranches.mockResolvedValue({
+			items: [
+				{
+					...active,
+					hypothesis: 'Was Mary the daughter of John?',
+					subjects: [{ type: 'person', id: '99999999-9999-9999-9999-999999999999' }]
+				},
+				{ ...merged, outcome: 'proved' }
+			],
+			total: 2
+		});
+		render(Page);
+
+		expect(await screen.findByTestId('card-hypothesis')).toBeDefined();
+		expect(screen.getByText('Was Mary the daughter of John?')).toBeDefined();
+		const outcomes = screen.getAllByTestId('branch-outcome').map((el) => el.getAttribute('data-outcome'));
+		expect(outcomes).toEqual(['open', 'proved']);
+		expect(screen.getByText('Subjects')).toBeDefined();
 	});
 
 	it('accepts a full-length name with trailing whitespace, since the name is trimmed', async () => {

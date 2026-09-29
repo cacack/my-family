@@ -360,6 +360,12 @@ func (e *StoredEvent) DecodeEvent() (domain.Event, error) {
 			return nil, err
 		}
 		return event, nil
+	case "BranchUpdated":
+		var event domain.BranchUpdated
+		if err := json.Unmarshal(e.Data, &event); err != nil {
+			return nil, err
+		}
+		return event, nil
 	case "BranchDeleted":
 		var event domain.BranchDeleted
 		if err := json.Unmarshal(e.Data, &event); err != nil {

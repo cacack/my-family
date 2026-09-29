@@ -989,6 +989,25 @@ type BranchCreated struct {
 	Name         string    `json:"name"`
 	Description  string    `json:"description,omitempty"`
 	BasePosition int64     `json:"base_position"`
+
+	// The research record the branch was created with (#835). All optional:
+	// an event written before #835 carries none of them, and an empty Outcome
+	// is read as open.
+	Hypothesis      string          `json:"hypothesis,omitempty"`
+	Subjects        []BranchSubject `json:"subjects,omitempty"`
+	Outcome         BranchOutcome   `json:"outcome,omitempty"`
+	ProofSummaryIDs []uuid.UUID     `json:"proof_summary_ids,omitempty"`
+}
+
+// Research returns the research record carried by the event, with an empty
+// outcome defaulted to open.
+func (e BranchCreated) Research() BranchResearch {
+	return BranchResearch{
+		Hypothesis:      e.Hypothesis,
+		Subjects:        append([]BranchSubject(nil), e.Subjects...),
+		Outcome:         e.Outcome.OrDefault(),
+		ProofSummaryIDs: append([]uuid.UUID(nil), e.ProofSummaryIDs...),
+	}
 }
 
 func (e BranchCreated) EventType() string      { return "BranchCreated" }
@@ -1002,6 +1021,67 @@ func NewBranchCreated(b *Branch) BranchCreated {
 		Name:         b.Name,
 		Description:  b.Description,
 		BasePosition: b.BasePosition,
+
+		Hypothesis:      b.Hypothesis,
+		Subjects:        append([]BranchSubject(nil), b.Subjects...),
+		Outcome:         b.Outcome.OrDefault(),
+		ProofSummaryIDs: append([]uuid.UUID(nil), b.ProofSummaryIDs...),
+	}
+}
+
+// BranchUpdated event is emitted when a branch's description or research
+// record (#835) is edited. It carries the full post-edit value of every
+// editable field, not only the changed ones, so the projection is a plain
+// overwrite and replaying the log in order always reconstructs the registry.
+// ChangedFields names what the edit actually changed, for the audit trail.
+//
+// It is appended to the branch's own stream. It is research metadata, not a
+// genealogy change: it is never replayed onto main by a merge and never shown
+// as a branch change in a comparison (see researchMetadataEventTypes in
+// internal/query/branch_queries.go).
+type BranchUpdated struct {
+	BaseEvent
+	BranchID        uuid.UUID       `json:"branch_id"`
+	Description     string          `json:"description"`
+	Hypothesis      string          `json:"hypothesis"`
+	Subjects        []BranchSubject `json:"subjects"`
+	Outcome         BranchOutcome   `json:"outcome"`
+	ProofSummaryIDs []uuid.UUID     `json:"proof_summary_ids"`
+	ChangedFields   []string        `json:"changed_fields"`
+}
+
+func (e BranchUpdated) EventType() string      { return "BranchUpdated" }
+func (e BranchUpdated) AggregateID() uuid.UUID { return e.BranchID }
+
+// Research returns the research record carried by the event, with an empty
+// outcome defaulted to open.
+func (e BranchUpdated) Research() BranchResearch {
+	return BranchResearch{
+		Hypothesis:      e.Hypothesis,
+		Subjects:        append([]BranchSubject(nil), e.Subjects...),
+		Outcome:         e.Outcome.OrDefault(),
+		ProofSummaryIDs: append([]uuid.UUID(nil), e.ProofSummaryIDs...),
+	}
+}
+
+// NewBranchUpdated creates a BranchUpdated event from the branch as it stands
+// after the edit. The slices are copied and stored as [] rather than null.
+func NewBranchUpdated(b *Branch, changedFields []string) BranchUpdated {
+	subjects := make([]BranchSubject, len(b.Subjects))
+	copy(subjects, b.Subjects)
+	proofs := make([]uuid.UUID, len(b.ProofSummaryIDs))
+	copy(proofs, b.ProofSummaryIDs)
+	changed := make([]string, len(changedFields))
+	copy(changed, changedFields)
+	return BranchUpdated{
+		BaseEvent:       NewBaseEvent(),
+		BranchID:        b.ID,
+		Description:     b.Description,
+		Hypothesis:      b.Hypothesis,
+		Subjects:        subjects,
+		Outcome:         b.Outcome.OrDefault(),
+		ProofSummaryIDs: proofs,
+		ChangedFields:   changed,
 	}
 }
 

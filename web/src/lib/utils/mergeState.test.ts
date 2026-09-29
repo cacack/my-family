@@ -41,7 +41,10 @@ describe('mergeState', () => {
 		name: 'Line',
 		base_position: 1,
 		status: 'merged',
-		created_at: '2026-01-01T00:00:00Z'
+		created_at: '2026-01-01T00:00:00Z',
+		outcome: 'open',
+		subjects: [],
+		proof_summary_ids: []
 	};
 
 	it('recognises only a merged branch whose merge is incomplete', () => {

@@ -1822,7 +1822,14 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get a branch by ID */
+        /**
+         * Get a branch by ID
+         * @description Returns the branch with its research record. Subjects carry their
+         *     display `name` and `proof_summaries` lists the linked proof summaries,
+         *     both resolved through the branch's view while it is active and through
+         *     the mainline once it is merged or archived. A subject or proof summary
+         *     that no longer exists keeps its id but has no name / no entry.
+         */
         get: operations["getBranch"];
         put?: never;
         post?: never;
@@ -1844,7 +1851,30 @@ export interface paths {
         delete: operations["deleteBranch"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit a branch's description and research record
+         * @description Partial update (#835): every field is optional, an absent field is left
+         *     as it is, and a present one replaces the stored value (an empty string
+         *     or empty array clears it). At least one field is required.
+         *
+         *     - An `active` branch accepts every field.
+         *     - A `merged` branch accepts only `outcome`, so the verdict can be
+         *       recorded once the merge has landed (typically `proved`). Its question,
+         *       subjects and evidence stay as they were merged; changing them is a
+         *       409 `branch_field_locked`.
+         *     - An `archived` branch accepts nothing (409 `branch_not_active`).
+         *
+         *     Subjects and proof summaries the update adds must exist on the branch's
+         *     own view (its overlay: a person created on the branch counts, one
+         *     deleted on it does not); otherwise 400 `invalid_reference`. Ids already
+         *     on the branch are not re-checked.
+         *
+         *     The edit is recorded as a `BranchUpdated` event on the branch's own
+         *     stream. It is research metadata: it never appears among the branch's
+         *     changes in a comparison and is never replayed onto the mainline by a
+         *     merge. An update that changes nothing records no event.
+         */
+        patch: operations["updateBranch"];
         trace?: never;
     };
     "/branches/{id}/compare": {
@@ -4453,12 +4483,76 @@ export interface components {
              *     replay order.
              */
             merge_pending?: components["schemas"]["MergePendingEntity"][];
+            /**
+             * @description The research question the branch explores. Absent when none has
+             *     been recorded.
+             */
+            hypothesis?: string;
+            /** @description The persons and families the hypothesis concerns */
+            subjects: components["schemas"]["BranchSubject"][];
+            outcome: components["schemas"]["BranchOutcome"];
+            /** @description Proof summaries that argue the branch's conclusion */
+            proof_summary_ids: string[];
+            /**
+             * @description The linked proof summaries, resolved for display. Present on the
+             *     single-branch reads (get, update, compare) and absent on the list;
+             *     a linked summary that no longer exists is left out, while its id
+             *     stays in `proof_summary_ids`.
+             */
+            proof_summaries?: components["schemas"]["BranchProofSummaryRef"][];
+        };
+        /**
+         * @description The verdict the research reached. Independent of `status`: status says
+         *     whether the branch still takes writes, outcome says what it concluded.
+         *     `open` means the question is still being worked; `superseded` marks a
+         *     question overtaken by other research.
+         * @default open
+         * @enum {string}
+         */
+        BranchOutcome: "open" | "proved" | "disproved" | "inconclusive" | "superseded";
+        /** @enum {string} */
+        BranchSubjectType: "person" | "family";
+        BranchSubjectInput: {
+            type: components["schemas"]["BranchSubjectType"];
+            /** Format: uuid */
+            id: string;
+        };
+        BranchSubject: {
+            type: components["schemas"]["BranchSubjectType"];
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Display name, resolved on the single-branch reads. Absent on the
+             *     list, and when the person or family no longer exists.
+             */
+            name?: string;
+        };
+        BranchProofSummaryRef: {
+            /** Format: uuid */
+            id: string;
+            fact_type: string;
+            conclusion: string;
         };
         BranchCreate: {
             /** @description Name of the line of research */
             name: string;
             /** @description Optional description of what the branch explores */
             description?: string;
+            /** @description The research question the branch explores */
+            hypothesis?: string;
+            /** @description Persons and families the hypothesis concerns; must exist on the mainline */
+            subjects?: components["schemas"]["BranchSubjectInput"][];
+            outcome?: components["schemas"]["BranchOutcome"];
+            /** @description Proof summaries to link; must exist on the mainline */
+            proof_summary_ids?: string[];
+        };
+        /** @description Partial update; see `PATCH /branches/{id}`. */
+        BranchUpdate: {
+            description?: string;
+            hypothesis?: string;
+            subjects?: components["schemas"]["BranchSubjectInput"][];
+            outcome?: components["schemas"]["BranchOutcome"];
+            proof_summary_ids?: string[];
         };
         BranchList: {
             items: components["schemas"]["Branch"][];
@@ -9180,7 +9274,9 @@ export interface operations {
                 /**
                  * @example {
                  *       "name": "Maternal Smith line",
-                 *       "description": "Testing the theory that Mary Smith is the daughter of John"
+                 *       "description": "Testing the theory that Mary Smith is the daughter of John",
+                 *       "hypothesis": "Was Mary Smith (b. 1842) the daughter of John Smith of Albany?",
+                 *       "outcome": "open"
                  *     }
                  */
                 "application/json": components["schemas"]["BranchCreate"];
@@ -9196,7 +9292,19 @@ export interface operations {
                     "application/json": components["schemas"]["Branch"];
                 };
             };
-            400: components["responses"]["BadRequest"];
+            /**
+             * @description Invalid request. `validation_error` for a field that breaks its
+             *     limits; `invalid_reference` when a subject or proof summary does
+             *     not exist on the mainline (a new branch's view is the mainline).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             503: components["responses"]["BranchesUnavailable"];
         };
     };
@@ -9246,6 +9354,69 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             /** @description Branch is not active (already merged or archived) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    updateBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "hypothesis": "Was Mary Smith (b. 1842) the daughter of John Smith of Albany?",
+                 *       "outcome": "proved"
+                 *     }
+                 */
+                "application/json": components["schemas"]["BranchUpdate"];
+            };
+        };
+        responses: {
+            /** @description The branch as it stands after the edit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            /**
+             * @description Invalid request: `validation_error` (a field breaks its limits, or
+             *     no field was given) or `invalid_reference` (a subject or proof
+             *     summary is not visible on the branch).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The branch cannot take this edit: `branch_not_active` (archived),
+             *     `branch_field_locked` (a merged branch accepts only `outcome`) or
+             *     `branch_changed` (the branch was edited, merged or deleted by
+             *     another request while this edit was being applied; nothing was
+             *     recorded — reload the branch and retry).
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -9513,9 +9684,11 @@ export interface operations {
              *       one by name, each with its suggested fix.
              *     - `branch_too_large` — the branch's replay set exceeds the read cap
              *       and cannot be resumed in full.
-             *     - `merge_resume_concurrent` — another resume of the same merge
-             *       recorded its resolutions first. Resume again; the entities it
-             *       decided are no longer pending.
+             *     - `merge_resume_concurrent` — another write to the branch landed
+             *       while this resume was deciding: another resume of the same
+             *       merge recorded its resolutions first (the entities it decided
+             *       are no longer pending), or the branch's outcome was edited.
+             *       Nothing was replayed; resume again.
              */
             409: {
                 headers: {

@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { api, type ApiError, type Branch } from '$lib/api/client';
+	import { api, type ApiError, type Branch, type BranchOutcome } from '$lib/api/client';
+	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
+	import {
+		BRANCH_OUTCOMES,
+		HYPOTHESIS_MAX_LENGTH,
+		OUTCOME_LABELS
+	} from '$lib/utils/branchResearch';
 	import { activeBranch, switchBranch } from '$lib/stores/activeBranch.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -26,6 +32,8 @@
 	let createError: string | null = $state(null);
 	let newName = $state('');
 	let newDescription = $state('');
+	let newHypothesis = $state('');
+	let newOutcome: BranchOutcome = $state('open');
 
 	// Delete dialog
 	let deleteTarget: Branch | null = $state(null);
@@ -75,6 +83,8 @@
 	function openCreate() {
 		newName = '';
 		newDescription = '';
+		newHypothesis = '';
+		newOutcome = 'open';
 		createError = null;
 		createOpen = true;
 	}
@@ -87,10 +97,14 @@
 		createError = null;
 		try {
 			const description = newDescription.trim();
+			const hypothesis = newHypothesis.trim();
 			await api.createBranch({
 				name: newName.trim(),
 				// Omit rather than send "": an empty description is absence, not a value.
-				...(description ? { description } : {})
+				...(description ? { description } : {}),
+				...(hypothesis ? { hypothesis } : {}),
+				// `open` is the server's default, so only a different verdict is sent.
+				...(newOutcome !== 'open' ? { outcome: newOutcome } : {})
 			});
 			createOpen = false;
 			await loadBranches();
@@ -154,6 +168,7 @@
 			<div class="branch-title">
 				<a href="/branches/{branch.id}" class="branch-name">{branch.name}</a>
 				<Badge variant={statusVariant(branch.status)} class="capitalize">{branch.status}</Badge>
+				<BranchOutcomeBadge outcome={branch.outcome} />
 				{#if activeBranch.id === branch.id}
 					<Badge class="bg-violet-100 text-violet-800">Current</Badge>
 				{/if}
@@ -183,6 +198,13 @@
 			</div>
 		</div>
 
+		{#if branch.hypothesis}
+			<p class="branch-hypothesis" data-testid="card-hypothesis">
+				<span class="hypothesis-label">Question</span>
+				{branch.hypothesis}
+			</p>
+		{/if}
+
 		{#if branch.description}
 			<p class="branch-description">{branch.description}</p>
 		{/if}
@@ -196,6 +218,12 @@
 				<dt>Created</dt>
 				<dd>{formatTimestamp(branch.created_at)}</dd>
 			</div>
+			{#if (branch.subjects ?? []).length > 0}
+				<div>
+					<dt>Subjects</dt>
+					<dd>{branch.subjects.length}</dd>
+				</div>
+			{/if}
 			{#if branch.merged_at}
 				<div>
 					<dt>Merged</dt>
@@ -296,6 +324,27 @@
 					required
 				/>
 				<span class="field-hint">{newName.length}/{NAME_MAX_LENGTH}</span>
+			</div>
+
+			<div class="field">
+				<Label for="branch-hypothesis">Research question (optional)</Label>
+				<Textarea
+					id="branch-hypothesis"
+					bind:value={newHypothesis}
+					maxlength={HYPOTHESIS_MAX_LENGTH}
+					rows={3}
+					placeholder="Was Mary Smith (b. 1842) the daughter of John Smith of Albany?"
+				/>
+				<span class="field-hint">{newHypothesis.length}/{HYPOTHESIS_MAX_LENGTH}</span>
+			</div>
+
+			<div class="field">
+				<Label for="branch-outcome">Outcome</Label>
+				<select id="branch-outcome" class="native-select" bind:value={newOutcome}>
+					{#each BRANCH_OUTCOMES as option (option)}
+						<option value={option}>{OUTCOME_LABELS[option]}</option>
+					{/each}
+				</select>
 			</div>
 
 			<div class="field">
@@ -460,6 +509,30 @@
 		margin: 0.5rem 0 0;
 		font-size: 0.875rem;
 		color: #475569;
+	}
+
+	.branch-hypothesis {
+		margin: 0.5rem 0 0;
+		font-size: 0.875rem;
+		color: #1e293b;
+	}
+
+	.hypothesis-label {
+		margin-right: 0.375rem;
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: #94a3b8;
+	}
+
+	.native-select {
+		height: 2.25rem;
+		padding: 0 0.5rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 6px;
+		background: white;
+		font-size: 0.875rem;
 	}
 
 	.branch-meta {

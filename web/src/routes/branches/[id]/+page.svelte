@@ -42,6 +42,7 @@
 	import {
 		api,
 		type ApiError,
+		type Branch,
 		type BranchChangeEntry,
 		type BranchComparisonResult,
 		type BranchMergeRefusal,
@@ -54,8 +55,16 @@
 		type MergeRecordDecision,
 		type MergeResolution
 	} from '$lib/api/client';
-	import { activeBranch, returnToMainline, switchBranch } from '$lib/stores/activeBranch.svelte';
+	import {
+		activeBranch,
+		refreshActiveBranch,
+		returnToMainline,
+		switchBranch
+	} from '$lib/stores/activeBranch.svelte';
 	import ConflictValues from '$lib/components/ConflictValues.svelte';
+	import BranchResearchSummary from '$lib/components/branch/BranchResearchSummary.svelte';
+	import BranchResearchEditor from '$lib/components/branch/BranchResearchEditor.svelte';
+	import { branchSubjectCandidates } from '$lib/utils/branchResearch';
 	import DiffView from '$lib/components/DiffView.svelte';
 	import FinishMergeDialog from '$lib/components/FinishMergeDialog.svelte';
 	import IncompleteMergeCallout from '$lib/components/IncompleteMergeCallout.svelte';
@@ -127,6 +136,8 @@
 	/** How long the decisions must hold still before they are prechecked. */
 	const PRECHECK_DEBOUNCE_MS = 250;
 	const blockedIds = $derived(blockedEntityIds(blockers));
+	/** The research-record editor (#835) is open. */
+	let editingResearch = $state(false);
 
 	// `?? ''` so the id is a plain string everywhere below; the `$effect` already
 	// treats an absent id as "nothing to load", and empty is absent.
@@ -185,6 +196,44 @@
 	 * did nothing (#828) - so the button is not offered as if it could.
 	 */
 	const hasChanges = $derived.by(() => (comparison?.branch_change_count ?? 0) > 0);
+
+	/**
+	 * The research record can be edited while the branch is active, and a merged
+	 * branch can still record its outcome. An archived branch is a closed record.
+	 */
+	const researchEditable = $derived.by(() => {
+		const status = comparison?.branch.status;
+		return status === 'active' || status === 'merged';
+	});
+
+	/** Persons and families this branch changed, offered as research subjects. */
+	const subjectCandidates = $derived.by(() => branchSubjectCandidates(comparison?.branch_changes ?? []));
+
+	/**
+	 * Subject and proof summary pages read the active scope. For an active
+	 * branch that is not the active one, say so: what the links open is not
+	 * this branch's view.
+	 */
+	const researchScopeNote = $derived.by(() => {
+		const shown = comparison?.branch;
+		if (!shown || shown.status !== 'active' || activeBranch.id === shown.id) return null;
+		const where = activeBranch.id ? 'the active branch' : 'the mainline';
+		return `These links open in ${where}. Switch to this branch to see them as it has them.`;
+	});
+
+	/**
+	 * Adopt the branch as the edit left it. The comparison's diff is unchanged -
+	 * a research edit is metadata, never a change to the tree - so only the
+	 * branch record is swapped, and the banner follows when this is the active
+	 * branch.
+	 */
+	function handleResearchSaved(saved: Branch) {
+		if (comparison && comparison.branch.id === saved.id) {
+			comparison = { ...comparison, branch: saved };
+		}
+		refreshActiveBranch(saved);
+		editingResearch = false;
+	}
 
 	/**
 	 * Every entity this branch changed, first entry wins for the name. The merge
@@ -439,6 +488,7 @@
 		blockers = [];
 		checkingBlockers = false;
 		blockerCheckError = null;
+		editingResearch = false;
 		// `merging` is per-comparison too: it disables this page's resolver,
 		// exclusion checkboxes and merge button, and a merge issued for the branch
 		// we just navigated away from must not disable the new one's. It is cleared
@@ -807,6 +857,26 @@
 					</p>
 				{/if}
 				<p class="anchor">Compared against the mainline from position {comparison.base_position}.</p>
+				{#if editingResearch}
+					<BranchResearchEditor
+						branch={comparison.branch}
+						candidates={subjectCandidates}
+						onsaved={handleResearchSaved}
+						oncancel={() => (editingResearch = false)}
+					/>
+				{:else}
+					<BranchResearchSummary branch={comparison.branch} scopeNote={researchScopeNote} />
+					{#if researchEditable}
+						<Button
+							variant="outline"
+							size="sm"
+							class="research-edit"
+							onclick={() => (editingResearch = true)}
+						>
+							{mergeable ? 'Edit research record' : 'Record outcome'}
+						</Button>
+					{/if}
+				{/if}
 			</div>
 			<div class="header-actions">
 				{#if mergeable && activeBranch.id !== comparison.branch.id}
@@ -1064,6 +1134,15 @@
 		gap: 1rem;
 		flex-wrap: wrap;
 		margin-bottom: 1.5rem;
+	}
+
+	.page-header > div:first-child {
+		flex: 1 1 28rem;
+		min-width: 0;
+	}
+
+	.page-header :global(.research-edit) {
+		margin-top: 0.5rem;
 	}
 
 	.title-row {
