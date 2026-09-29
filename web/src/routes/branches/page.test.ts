@@ -6,7 +6,7 @@ import type { Branch } from '$lib/api/client';
 
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
-const { mockState, listBranches, createBranch, deleteBranch, switchBranch } = vi.hoisted(() => ({
+const { mockState, listBranches, createBranch, closeBranch, promoteBranchResearchLogs, switchBranch } = vi.hoisted(() => ({
 	mockState: {
 		id: null as string | null,
 		branch: null as Branch | null,
@@ -15,7 +15,8 @@ const { mockState, listBranches, createBranch, deleteBranch, switchBranch } = vi
 	},
 	listBranches: vi.fn(),
 	createBranch: vi.fn(),
-	deleteBranch: vi.fn(),
+	closeBranch: vi.fn(),
+	promoteBranchResearchLogs: vi.fn(),
 	switchBranch: vi.fn().mockResolvedValue(undefined)
 }));
 
@@ -26,7 +27,8 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		api: {
 			listBranches: () => listBranches(),
 			createBranch: (data: apiModule.BranchCreate) => createBranch(data),
-			deleteBranch: (id: string) => deleteBranch(id)
+			closeBranch: (id: string, req: apiModule.BranchCloseRequest) => closeBranch(id, req),
+			promoteBranchResearchLogs: (id: string, ids?: string[]) => promoteBranchResearchLogs(id, ids)
 		}
 	};
 });
@@ -66,10 +68,12 @@ const archived: Branch = {
 	name: 'Discarded Miller theory',
 	base_position: 5,
 	status: 'archived',
-	outcome: 'open',
+	outcome: 'disproved',
 	subjects: [],
 	proof_summary_ids: [],
-	created_at: '2026-01-01T08:00:00Z'
+	created_at: '2026-01-01T08:00:00Z',
+	closed_at: '2026-01-03T08:00:00Z',
+	close_reason: 'The will names other heirs'
 };
 
 describe('Branches page', () => {
@@ -79,11 +83,12 @@ describe('Branches page', () => {
 		mockState.branch = null;
 		listBranches.mockResolvedValue({ items: [active, merged, archived], total: 3 });
 		createBranch.mockResolvedValue(active);
-		deleteBranch.mockResolvedValue(undefined);
+		closeBranch.mockResolvedValue({ ...active, status: 'archived', outcome: 'disproved' });
+		promoteBranchResearchLogs.mockResolvedValue({ promoted: ['l1'], skipped: [], truncated: false });
 	});
 
-	// This file opens bits-ui overlays (the create Dialog, the delete
-	// AlertDialog), and bits-ui releases its body-scroll lock on a 24ms timer
+	// This file opens bits-ui overlays (the create Dialog, the close
+	// Dialog), and bits-ui releases its body-scroll lock on a 24ms timer
 	// (`actualDelay = delay === null ? 24 : delay` in body-scroll-lock.svelte.js).
 	// If the environment tears down inside that window the callback runs against
 	// a destroyed document and throws `ReferenceError: document is not defined`
@@ -101,7 +106,7 @@ describe('Branches page', () => {
 		await screen.findByText('Maternal Smith line');
 		expect(screen.getByRole('heading', { name: 'Active' })).toBeDefined();
 		expect(screen.getByRole('heading', { name: 'Merged' })).toBeDefined();
-		expect(screen.getByRole('heading', { name: 'Archived' })).toBeDefined();
+		expect(screen.getByRole('heading', { name: 'Closed' })).toBeDefined();
 	});
 
 	it('shows the fork position, description and merge note', async () => {
@@ -113,12 +118,41 @@ describe('Branches page', () => {
 		expect(screen.getByText(/Confirmed by headstone photos/)).toBeDefined();
 	});
 
-	it('offers switch and delete only for active branches', async () => {
+	it('offers switch and close only for active branches', async () => {
 		render(Page);
 
 		await screen.findByText('Maternal Smith line');
 		expect(screen.getAllByRole('button', { name: /^Switch to branch$/ })).toHaveLength(1);
-		expect(screen.getAllByRole('button', { name: /^Delete$/ })).toHaveLength(1);
+		expect(screen.getAllByRole('button', { name: /^Close$/ })).toHaveLength(1);
+		expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+	});
+
+	it("shows a closed branch's outcome, reason and a link to its research", async () => {
+		render(Page);
+
+		await screen.findByText('Discarded Miller theory');
+		expect(screen.getByTestId('close-reason').textContent).toContain('The will names other heirs');
+		const research = screen.getByRole('link', { name: /^Research$/ });
+		expect(research.getAttribute('href')).toBe(`/branches/${archived.id}/research`);
+		const outcomes = screen.getAllByTestId('branch-outcome').map((el) => el.getAttribute('data-outcome'));
+		expect(outcomes).toContain('disproved');
+	});
+
+	it('filters by status and by outcome', async () => {
+		render(Page);
+		await screen.findByText('Maternal Smith line');
+
+		await fireEvent.click(screen.getByRole('radio', { name: 'Closed' }));
+		expect(screen.queryByText('Maternal Smith line')).toBeNull();
+		expect(screen.getByText('Discarded Miller theory')).toBeDefined();
+
+		await fireEvent.click(screen.getByRole('radio', { name: 'All' }));
+		await fireEvent.change(screen.getByLabelText('Filter by outcome'), { target: { value: 'open' } });
+		expect(screen.getByText('Maternal Smith line')).toBeDefined();
+		expect(screen.queryByText('Discarded Miller theory')).toBeNull();
+
+		await fireEvent.change(screen.getByLabelText('Filter by outcome'), { target: { value: 'superseded' } });
+		expect(screen.getByText('No branches match these filters.')).toBeDefined();
 	});
 
 	it('delegates switching to the store', async () => {
@@ -243,23 +277,75 @@ describe('Branches page', () => {
 		});
 	});
 
-	it('deletes a branch and explains a 409 as already merged or archived', async () => {
-		deleteBranch.mockRejectedValue({
-			status: 409,
-			code: 'branch_not_active',
-			message: 'Branch is not active'
+	it('closes a branch with an outcome and reason, then copies its research logs', async () => {
+		render(Page);
+		await screen.findByText('Maternal Smith line');
+
+		await fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
+		const submit = await screen.findByRole('button', { name: /^Close branch$/ });
+		expect((submit as HTMLButtonElement).disabled).toBe(true);
+
+		await fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'disproved' } });
+		await fireEvent.input(screen.getByLabelText('Reason (optional)'), {
+			target: { value: '  The will names other heirs  ' }
 		});
+		await fireEvent.click(submit);
+
+		await waitFor(() => {
+			expect(closeBranch).toHaveBeenCalledWith(active.id, {
+				outcome: 'disproved',
+				reason: 'The will names other heirs'
+			});
+		});
+		await waitFor(() => expect(promoteBranchResearchLogs).toHaveBeenCalledWith(active.id, undefined));
+		const notice = await screen.findByText(/Closed "Maternal Smith line" as disproved/);
+		expect(notice.textContent).toContain('1 research log was copied to the mainline.');
+		expect(listBranches).toHaveBeenCalledTimes(2);
+	});
+
+	it('returns to the mainline when the current branch is closed', async () => {
+		mockState.id = active.id;
+		mockState.branch = active;
+		render(Page);
+		await screen.findByText('Maternal Smith line');
+
+		await fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
+		await fireEvent.change(await screen.findByLabelText('Outcome'), { target: { value: 'abandoned' } });
+		await fireEvent.click(screen.getByLabelText(/Copy this branch's research logs/));
+		await fireEvent.click(screen.getByRole('button', { name: /^Close branch$/ }));
+
+		await waitFor(() => expect(switchBranch).toHaveBeenCalledWith(null));
+		expect(closeBranch).toHaveBeenCalledWith(active.id, { outcome: 'abandoned' });
+		expect(promoteBranchResearchLogs).not.toHaveBeenCalled();
+	});
+
+	it('explains a 409 close as already merged or closed', async () => {
+		closeBranch.mockRejectedValue({ status: 409, code: 'branch_not_active', message: 'Branch is not active' });
 
 		render(Page);
 		await screen.findByText('Maternal Smith line');
 
-		await fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-		await fireEvent.click(await screen.findByRole('button', { name: /^Delete branch$/ }));
+		await fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
+		await fireEvent.change(await screen.findByLabelText('Outcome'), { target: { value: 'inconclusive' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Close branch$/ }));
 
-		await waitFor(() => {
-			expect(deleteBranch).toHaveBeenCalledWith(active.id);
-		});
-		expect(await screen.findByText(/already been merged or archived/)).toBeDefined();
+		expect(await screen.findByText(/already been merged or closed/)).toBeDefined();
+		expect(promoteBranchResearchLogs).not.toHaveBeenCalled();
+	});
+
+	it('reports a failed copy without undoing the close', async () => {
+		promoteBranchResearchLogs.mockRejectedValue({ status: 500, message: 'copy failed' });
+		closeBranch.mockResolvedValue({ ...active, status: 'archived', outcome: 'superseded' });
+
+		render(Page);
+		await screen.findByText('Maternal Smith line');
+
+		await fireEvent.click(screen.getByRole('button', { name: /^Close$/ }));
+		await fireEvent.change(await screen.findByLabelText('Outcome'), { target: { value: 'superseded' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Close branch$/ }));
+
+		expect(await screen.findByText(/copy failed/)).toBeDefined();
+		expect(screen.getByText(/Closed "Maternal Smith line" as superseded/)).toBeDefined();
 	});
 
 	it('surfaces a load failure', async () => {

@@ -351,9 +351,10 @@ func (ss *StrictServer) GetBranch(ctx context.Context, request GetBranchRequestO
 	return GetBranch200JSONResponse(resp), nil
 }
 
-// DeleteBranch implements StrictServerInterface. Deleting archives: the branch
-// record and its events are retained (ES-002); only the read-model overlay is
-// purged. See the operation description in openapi.yaml.
+// DeleteBranch implements StrictServerInterface. It closes the branch as
+// abandoned with no reason (CloseBranch records why, #836): the branch record
+// and its events are retained (ES-002); only the read-model overlay is purged.
+// See the operation description in openapi.yaml.
 func (ss *StrictServer) DeleteBranch(ctx context.Context, request DeleteBranchRequestObject) (DeleteBranchResponseObject, error) {
 	if ss.server.branchStore == nil {
 		return DeleteBranch503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
@@ -1022,6 +1023,15 @@ func convertDomainBranchToGenerated(b *domain.Branch) Branch {
 	if b.MergeNote != "" {
 		mergeNote := b.MergeNote
 		branch.MergeNote = &mergeNote
+	}
+	// The close record (#836), present once the branch is closed.
+	if b.ClosedAt != nil {
+		closedAt := *b.ClosedAt
+		branch.ClosedAt = &closedAt
+	}
+	if b.CloseReason != "" {
+		closeReason := b.CloseReason
+		branch.CloseReason = &closeReason
 	}
 	// The research record (#835). The arrays are always present, [] when
 	// empty, so a client never has to tell null from none.

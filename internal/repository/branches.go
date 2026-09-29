@@ -59,6 +59,16 @@ type BranchStore interface {
 	// make it optional at every call site and let a merge land with a nil
 	// MergedAt; a separate method makes the record impossible to omit.
 	MarkMerged(ctx context.Context, id uuid.UUID, mergedAt time.Time, note string) error
+
+	// MarkClosed records a close without merging (#836): it sets the status to
+	// archived and writes the close timestamp and reason in one atomic write,
+	// returning ErrBranchNotFound when missing. A non-empty outcome also
+	// overwrites the branch's outcome; an empty one (a BranchDeleted written
+	// before #836, which recorded no outcome) keeps a verdict the branch had
+	// and turns "open" (or unset) into abandoned: a closed branch is never open. Written only
+	// by the BranchDeleted projection. Like MarkMerged it is separate from
+	// UpdateStatus so the close record cannot be omitted from the transition.
+	MarkClosed(ctx context.Context, id uuid.UUID, closedAt time.Time, outcome domain.BranchOutcome, reason string) error
 }
 
 // BranchListsJSON is the stored form of a branch's research-record lists

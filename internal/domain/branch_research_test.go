@@ -176,3 +176,69 @@ func TestBranchCreated_CarriesResearch(t *testing.T) {
 		t.Errorf("legacy research = %+v", got)
 	}
 }
+
+func TestBranchOutcome_Close(t *testing.T) {
+	if !domain.BranchOutcomeAbandoned.IsValid() {
+		t.Error("abandoned is not a valid outcome")
+	}
+	closing := map[domain.BranchOutcome]bool{
+		domain.BranchOutcomeDisproved: true, domain.BranchOutcomeInconclusive: true,
+		domain.BranchOutcomeSuperseded: true, domain.BranchOutcomeAbandoned: true,
+	}
+	for _, outcome := range append(domain.BranchOutcomes(), "", "bogus") {
+		if got := outcome.IsCloseOutcome(); got != closing[outcome] {
+			t.Errorf("%q.IsCloseOutcome() = %v, want %v", outcome, got, closing[outcome])
+		}
+		err := domain.ValidateBranchClose(outcome, "")
+		if closing[outcome] != (err == nil) {
+			t.Errorf("ValidateBranchClose(%q) = %v", outcome, err)
+		}
+	}
+	if err := domain.ValidateBranchClose(domain.BranchOutcomeDisproved, strings.Repeat("é", domain.MaxBranchCloseReasonLength)); err != nil {
+		t.Errorf("reason at the limit = %v, want nil", err)
+	}
+	if err := domain.ValidateBranchClose(domain.BranchOutcomeDisproved, strings.Repeat("é", domain.MaxBranchCloseReasonLength+1)); !errors.Is(err, domain.ErrBranchCloseReasonTooLong) {
+		t.Errorf("reason over the limit = %v, want ErrBranchCloseReasonTooLong", err)
+	}
+
+	b, err := domain.NewBranch("x", "", 0)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	b.CloseReason = strings.Repeat("a", domain.MaxBranchCloseReasonLength+1)
+	if err := b.Validate(); !errors.Is(err, domain.ErrBranchCloseReasonTooLong) {
+		t.Errorf("Branch.Validate with a long close reason = %v", err)
+	}
+}
+
+func TestBranchDeleted_CloseRecordIsBackwardCompatible(t *testing.T) {
+	id := uuid.New()
+	closed := domain.NewBranchClosed(id, domain.BranchOutcomeDisproved, "because")
+	data, err := json.Marshal(closed)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var decoded domain.BranchDeleted
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if decoded.BranchID != id || decoded.Outcome != domain.BranchOutcomeDisproved || decoded.Reason != "because" {
+		t.Errorf("round trip = %+v", decoded)
+	}
+	if closed.EventType() != "BranchDeleted" || closed.AggregateID() != id {
+		t.Errorf("event identity = %s %s", closed.EventType(), closed.AggregateID())
+	}
+
+	// A pre-#836 payload has neither field; the legacy constructor writes none.
+	legacy, err := json.Marshal(domain.NewBranchDeleted(id))
+	if err != nil {
+		t.Fatalf("Marshal legacy: %v", err)
+	}
+	if strings.Contains(string(legacy), "outcome") || strings.Contains(string(legacy), "reason") {
+		t.Errorf("legacy payload carries close fields: %s", legacy)
+	}
+	var old domain.BranchDeleted
+	if err := json.Unmarshal([]byte(`{"branch_id":"`+id.String()+`"}`), &old); err != nil || old.Outcome != "" || old.Reason != "" {
+		t.Errorf("pre-#836 payload decoded = %+v, %v", old, err)
+	}
+}

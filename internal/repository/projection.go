@@ -222,7 +222,8 @@ func (p *Projector) projectBranchUpdated(ctx context.Context, e domain.BranchUpd
 
 // projectBranchDeleted archives the branch in the registry and drops the
 // branch's copy-on-write overlay rows from the read model (ADR-005): first the
-// replay-safe registry status change, then PurgeBranch to hard-delete the
+// replay-safe registry close record (status, closed_at, and the outcome and
+// reason the close carried, #836), then PurgeBranch to hard-delete the
 // branch's rows across the seven slice tables. PurgeBranch is a no-op for the
 // mainline, so an archived main (which cannot occur) would never be purged.
 func (p *Projector) projectBranchDeleted(ctx context.Context, e domain.BranchDeleted) error {
@@ -231,7 +232,7 @@ func (p *Projector) projectBranchDeleted(ctx context.Context, e domain.BranchDel
 			"event", "BranchDeleted", "branch_id", e.BranchID)
 		return nil
 	}
-	if err := p.branchStore.UpdateStatus(ctx, e.BranchID, domain.BranchStatusArchived); err != nil {
+	if err := p.branchStore.MarkClosed(ctx, e.BranchID, e.OccurredAt(), e.Outcome, e.Reason); err != nil {
 		return err
 	}
 	return p.readStore.PurgeBranch(ctx, domain.BranchID(e.BranchID))
