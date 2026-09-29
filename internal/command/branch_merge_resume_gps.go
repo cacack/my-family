@@ -295,6 +295,7 @@ func (h *Handler) checkLandedGPSSubjects(
 	groups []streamGroup,
 	view resumeView,
 	resolutions map[uuid.UUID]MergeResolution,
+	list *blockerList,
 ) error {
 	for _, group := range groups {
 		if !view.landed[group.streamID] || view.removed[group.streamID] || !isGPSStream(group.streamType) {
@@ -326,11 +327,22 @@ func (h *Handler) checkLandedGPSSubjects(
 			return err
 		}
 		if !exists {
-			return fmt.Errorf(
-				"%w: %s %s is already on main and is about subject %s, which main does not have; "+
+			// A "main" resolution names a stream of the replay set, whose type
+			// says which the subject is.
+			subjectType := "person"
+			for _, g := range groups {
+				if g.streamID == subjectID {
+					subjectType = entityTypeOfStream(g.streamType)
+					break
+				}
+			}
+			b := streamBlocker(group, BlockerMissingGPSSubject, subjectID, subjectType,
+				"%s %s is already on main and is about subject %s, which main does not have; "+
 					"resolving that subject to main would leave the research orphaned — resolve it to branch instead, "+
 					"or delete the %s on main first",
-				ErrMergeDanglingReference, group.streamType, group.streamID, subjectID, group.streamType)
+				group.streamType, group.streamID, subjectID, group.streamType)
+			b.SuggestedResolution = FixIncludeReferenced
+			list.add(b)
 		}
 	}
 	return nil

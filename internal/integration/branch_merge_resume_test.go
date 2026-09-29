@@ -271,6 +271,10 @@ func TestBranchMergeResume_DecisionsAndProjection(t *testing.T) {
 				wrapped.events = faulty
 				runResumeRollsForwardDanglingFamily(t, newServer(t, wrapped), faulty)
 			})
+			t.Run("every blocker of a resume is reported at once", func(t *testing.T) {
+				st := backend.setup(t)
+				runResumeReportsEveryBlocker(t, newServer(t, st), st)
+			})
 			t.Run("merged-away edited child is pending", func(t *testing.T) {
 				st := backend.setup(t)
 				faulty := &faultyReplayStore{EventStore: st.events}
@@ -348,6 +352,10 @@ func runResumeRollsForwardDanglingFamily(t *testing.T, server *api.Server, fault
 	if pending := entryStrings(t, refused["pending_stream_ids"].([]any)); len(pending) != 1 || pending[0] != family {
 		t.Fatalf("pending_stream_ids = %v, want [%s]", pending, family)
 	}
+	// Replaying the family anyway names the person it would dangle on (#831).
+	dangling := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"}]}`, family), http.StatusConflict)
+	assertBlockers(t, dangling, blockerRow{family, "family", "Alex Original & Robin Other", child, "person", "Casey Child", "missing_person", "leave_out"})
 	done := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
 		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, family), http.StatusOK)
 	if skipped := entryStrings(t, done["skipped_stream_ids"].([]any)); len(skipped) != 1 || skipped[0] != family {
@@ -358,6 +366,113 @@ func runResumeRollsForwardDanglingFamily(t *testing.T, server *api.Server, fault
 	}
 	if children, _ := getEntity(t, server, "/api/v1/families/"+family, "")["children"].([]any); len(children) != 0 {
 		t.Errorf("main family children = %v, want no phantom child", children)
+	}
+}
+
+// runResumeReportsEveryBlocker: a resume's refusal carries every blocker its
+// resolutions raise, across rules, not just the first (#831). The branch
+// creates source L with a citation C of it, and family F with a new person P
+// linked in as a child. A pre-#685 claim (no recorded plan, so every
+// unreplayed stream is left to the caller) lands C and F by hand, as that
+// merge would have before it was interrupted. Resolving L and P to main then
+// breaks two rules at once: the landed family links P, whom main would never
+// get, and the landed citation cites L, which main would never get. Both come
+// back named in one 409, each fixed by including the referenced entity (a
+// landed stream cannot be left out), and applying both fixes finishes the
+// merge.
+func runResumeReportsEveryBlocker(t *testing.T, server *api.Server, st stores) {
+	t.Helper()
+	ctx := context.Background()
+	parent := createPerson(t, server, "Alex", "Original")
+	branchID := createBranch(t, server, "two-rules")
+	branchPath := "/api/v1/branches/" + branchID
+
+	letter := createSource(t, server, branchID, "Family letter")
+	cit := createCitation(t, server, branchID, letter, parent)
+	family := mustString(t, mustDo(t, server, http.MethodPost, scoped("/api/v1/families", branchID),
+		fmt.Sprintf(`{"partner1_id":%q,"relationship_type":"marriage"}`, parent), http.StatusCreated), "id")
+	child := mustString(t, mustDo(t, server, http.MethodPost, scoped("/api/v1/persons", branchID),
+		`{"given_name":"Casey","surname":"Child","gender":"unknown"}`, http.StatusCreated), "id")
+	mustDo(t, server, http.MethodPost, scoped("/api/v1/families/"+family+"/children", branchID),
+		fmt.Sprintf(`{"person_id":%q}`, child), http.StatusCreated)
+
+	branch, err := st.branches.Get(ctx, uuid.MustParse(branchID))
+	if err != nil {
+		t.Fatalf("Get branch failed: %v", err)
+	}
+	landLegacyClaim(t, st, branch, uuid.MustParse(cit), uuid.MustParse(family))
+
+	both := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"},{"stream_id":%q,"resolution":"main"}]}`, letter, child),
+		http.StatusConflict)
+	assertBlockers(t, both,
+		blockerRow{family, "family", "Alex Original", child, "person", "Casey Child", "missing_person", "include_referenced"},
+		blockerRow{cit, "citation", "Family letter (Birth)", letter, "source", "Family letter", "missing_source", "include_referenced"},
+	)
+
+	// The suggested fixes clear both.
+	mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
+		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"branch"},{"stream_id":%q,"resolution":"branch"}]}`, letter, child),
+		http.StatusOK)
+	mustDo(t, server, http.MethodGet, "/api/v1/persons/"+child, "", http.StatusOK)
+	mustDo(t, server, http.MethodGet, "/api/v1/sources/"+letter, "", http.StatusOK)
+	if got := mustString(t, getEntity(t, server, "/api/v1/citations/"+cit, ""), "source_id"); got != letter {
+		t.Errorf("landed citation source_id = %s, want %s", got, letter)
+	}
+}
+
+// landLegacyClaim writes a pre-#685 merge claim (no recorded plan) for branch
+// and replays the given streams' branch events onto main by hand, unprojected,
+// as that merge would have before it was interrupted.
+func landLegacyClaim(t *testing.T, st stores, branch *domain.Branch, landed ...uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	all, err := st.events.ReadAll(ctx, 0, 100000)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	var head int64
+	if len(all) > 0 {
+		head = all[len(all)-1].Position
+	}
+	claim := domain.BranchMerged{
+		BaseEvent:        domain.NewBaseEvent(),
+		BranchID:         branch.ID,
+		BasePosition:     branch.BasePosition,
+		MergedAtPosition: head,
+	}
+	scope := repository.AppendScope{BranchID: domain.BranchID(branch.ID)}
+	version, err := st.events.GetStreamVersion(ctx, branch.ID, scope.BranchID)
+	if err != nil {
+		t.Fatalf("GetStreamVersion failed: %v", err)
+	}
+	if err := st.events.Append(ctx, branch.ID, "branch", []domain.Event{claim}, version, scope); err != nil {
+		t.Fatalf("appending legacy claim failed: %v", err)
+	}
+	for _, streamID := range landed {
+		stored, err := st.events.ReadStreamsForBranch(ctx, []uuid.UUID{streamID}, domain.BranchID(branch.ID), 0, 1000)
+		if err != nil {
+			t.Fatalf("reading branch stream %s failed: %v", streamID, err)
+		}
+		var events []domain.Event
+		var streamType string
+		for i := range stored {
+			if stored[i].BranchID != domain.BranchID(branch.ID) {
+				continue
+			}
+			decoded, err := stored[i].DecodeEvent()
+			if err != nil {
+				t.Fatalf("DecodeEvent failed: %v", err)
+			}
+			events = append(events, decoded)
+			streamType = stored[i].StreamType
+		}
+		if len(events) == 0 {
+			t.Fatalf("branch has no events on stream %s", streamID)
+		}
+		if err := st.events.Append(ctx, streamID, streamType, events, 0, repository.MainScope); err != nil {
+			t.Fatalf("replaying stream %s by hand failed: %v", streamID, err)
+		}
 	}
 }
 

@@ -50,6 +50,8 @@
 		onrationale?: (streamId: string, rationale: string) => void;
 		/** True while a merge request is in flight. */
 		disabled?: boolean;
+		/** Entities a merge blocker involves (#831), highlighted here too. */
+		blocked?: Set<string>;
 	}
 
 	let {
@@ -59,7 +61,8 @@
 		onresolveall,
 		rationales = new Map(),
 		onrationale,
-		disabled = false
+		disabled = false,
+		blocked = new Set()
 	}: Props = $props();
 
 	/** Entity types among the conflicts, in first-seen order, with their counts. */
@@ -214,7 +217,8 @@
 		{#each conflicts as conflict (conflict.stream_id)}
 			{@const decided = resolutions.get(conflict.stream_id)}
 			{@const options = conflict.supported_resolutions}
-			<li class="conflict" class:undecided={!decided}>
+			{@const isBlocked = blocked.has(conflict.stream_id)}
+			<li class="conflict" class:undecided={!decided} class:blocked={isBlocked}>
 				<div class="conflict-head">
 					<h3 class="conflict-title" id={headingId(conflict.stream_id)}>
 						<span class="entity-type">{entityTypeLabel(conflict.entity_type)}</span>
@@ -228,6 +232,9 @@
 						<Badge variant="outline" class="border-amber-500 text-amber-700">
 							Needs a decision
 						</Badge>
+					{/if}
+					{#if isBlocked}
+						<Badge variant="outline" class="border-orange-400 text-orange-800">Merge blocker</Badge>
 					{/if}
 				</div>
 
@@ -358,6 +365,10 @@
 		background: #fef2f2;
 		border: 1px solid #fecaca;
 		border-radius: 6px;
+	}
+
+	.conflict.blocked {
+		box-shadow: 0 0 0 2px #fb923c;
 	}
 
 	.conflict.undecided {

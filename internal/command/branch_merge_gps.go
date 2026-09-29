@@ -128,7 +128,10 @@ func groupDeletesGPSSubject(group streamGroup) bool {
 //     resume, has not already landed), so the subject's delete cascades the
 //     artifact on main exactly as it did on the branch. On a resume a subject
 //     main removed since the claim is gone whatever its replayed stream holds.
-func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup, plan evidencePlan) error {
+//
+// An artifact that breaks the first rule is reported once, for that rule: the
+// fix for both (leaving the stream out) is the same.
+func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup, plan evidencePlan, list *blockerList) error {
 	outcome, err := gpsOutcomeOf(group)
 	if err != nil || !outcome.touched || outcome.deleted {
 		return err
@@ -139,22 +142,25 @@ func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup
 			return err
 		}
 		if !exists {
-			return fmt.Errorf(
-				"%w: the branch edits %s %s, but main no longer has it (removed with its subject after the fork); "+
+			list.add(streamBlocker(group, BlockerMissingGPSArtifact, group.streamID, entityTypeOfStream(group.streamType),
+				"the branch edits %s %s, but main no longer has it (removed with its subject after the fork); "+
 					"merging would drop the branch's edit with no record",
-				ErrMergeDanglingReference, group.streamType, group.streamID)
+				group.streamType, group.streamID))
+			return nil
 		}
 	}
 	if !outcome.subjectSet {
 		return nil
 	}
 	subjectID := outcome.subjectID
+	var subjectType string
 	if subjectGroup, replaysSubject := plan.replayed[subjectID]; replaysSubject {
 		deletes := groupDeletesGPSSubject(subjectGroup)
 		deletesLater := deletes && !plan.landed[subjectID] && plan.order[subjectID] > plan.order[group.streamID]
 		if !plan.removed[subjectID] && (!deletes || deletesLater) {
 			return nil
 		}
+		subjectType = entityTypeOfStream(subjectGroup.streamType)
 	} else {
 		exists, err := h.gpsSubjectOnMain(ctx, subjectID)
 		if err != nil || exists {
@@ -165,15 +171,16 @@ func (h *Handler) checkGPSSubjectSurvives(ctx context.Context, group streamGroup
 		// on main as on the branch; refusing it here would make the branch
 		// hold research its own merge can never take. Only a subject that
 		// was a person or family, and is gone, is dangling.
-		known, err := h.gpsSubjectEverExisted(ctx, subjectID)
-		if err != nil || !known {
+		subjectType, err = h.gpsSubjectType(ctx, subjectID)
+		if err != nil || subjectType == "" {
 			return err
 		}
 	}
-	return fmt.Errorf(
-		"%w: the branch's %s %s is about subject %s, but no person or family with that id will exist on main "+
+	list.add(streamBlocker(group, BlockerMissingGPSSubject, subjectID, subjectType,
+		"the branch's %s %s is about subject %s, but no person or family with that id will exist on main "+
 			"when it lands (deleted there, excluded by a \"main\" resolution, or deleted earlier in the replay)",
-		ErrMergeDanglingReference, group.streamType, group.streamID, subjectID)
+		group.streamType, group.streamID, subjectID))
+	return nil
 }
 
 // gpsArtifactOnMain reports whether main currently has the GPS artifact a
@@ -221,20 +228,23 @@ func (h *Handler) gpsSubjectOnMain(ctx context.Context, subjectID uuid.UUID) (bo
 	return false, nil
 }
 
-// gpsSubjectEverExisted reports whether the log has ever held a person or
-// family with the id, on main or on any branch. Stream types are compared
-// case-insensitively: GEDCOM import writes "person", the commands "Person".
-func (h *Handler) gpsSubjectEverExisted(ctx context.Context, subjectID uuid.UUID) (bool, error) {
+// gpsSubjectType reports which of person or family the log has ever held with
+// the id, on main or on any branch, or "" when neither. Stream types are
+// compared case-insensitively: GEDCOM import writes "person", the commands
+// "Person".
+func (h *Handler) gpsSubjectType(ctx context.Context, subjectID uuid.UUID) (string, error) {
 	events, err := h.eventStore.ReadStream(ctx, subjectID)
 	if err != nil {
-		return false, fmt.Errorf("checking subject %s in the event log: %w", subjectID, err)
+		return "", fmt.Errorf("checking subject %s in the event log: %w", subjectID, err)
 	}
 	for i := range events {
-		if strings.EqualFold(events[i].StreamType, "Person") || strings.EqualFold(events[i].StreamType, "Family") {
-			return true, nil
+		for _, entityType := range []string{"person", "family"} {
+			if strings.EqualFold(events[i].StreamType, entityType) {
+				return entityType, nil
+			}
 		}
 	}
-	return false, nil
+	return "", nil
 }
 
 // gpsArtifactIDsOnMain lists the ids of every GPS artifact main has about a
@@ -305,7 +315,7 @@ func (h *Handler) gpsArtifactIDsOnMain(ctx context.Context, subjectID uuid.UUID)
 //     after the landed replay's own events. One main wrote after the landing
 //     was never seen by the branch, and the cascade would drop that change
 //     from main with no record, so the delete is refused.
-func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group streamGroup, plan evidencePlan) error {
+func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group streamGroup, plan evidencePlan, list *blockerList) error {
 	if !groupDeletesGPSSubject(group) {
 		return nil
 	}
@@ -332,28 +342,29 @@ func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group stre
 			landedIDs = append(landedIDs, id)
 			landedRepoints[id] = repointsAway
 		case repointsAway && plan.order[id] > plan.order[subjectID]:
-			return fmt.Errorf(
-				"%w: the branch re-points main's %s %s away from %s and deletes %s, but the delete replays first "+
+			list.add(streamBlocker(group, BlockerSubjectDeleteOrphansGPS, id, entityTypeOfStream(artifactGroup.streamType),
+				"the branch re-points main's %s %s away from %s and deletes %s, but the delete replays first "+
 					"and would remove the artifact from main before the re-point lands",
-				ErrMergeDanglingReference, artifactGroup.streamType, id, subjectID, subjectID)
+				artifactGroup.streamType, id, subjectID, subjectID))
 		}
 	}
-	if err := h.checkLandedGPSArtifacts(ctx, subjectID, landedIDs, landedRepoints, plan); err != nil {
+	if err := h.checkLandedGPSArtifacts(ctx, group, landedIDs, landedRepoints, plan, list); err != nil {
 		return err
 	}
 	if len(untouched) == 0 {
 		return nil
 	}
-	// One set-based read: any main event on these streams after the fork.
-	changed, err := h.eventStore.ReadStreamsForBranch(ctx, untouched, domain.MainBranchID, plan.basePosition, 1)
+	// Set-based, limit-one reads: main's first event on these streams after
+	// the fork, once per offending artifact.
+	changed, err := h.firstMainWritesAfter(ctx, untouched, plan.basePosition)
 	if err != nil {
 		return fmt.Errorf("checking main's GPS research on %s since the fork: %w", subjectID, err)
 	}
-	if len(changed) > 0 {
-		return fmt.Errorf(
-			"%w: the branch deletes %s, but main's %s %s about it was added or changed after the fork; "+
+	for _, evt := range changed {
+		list.add(streamBlocker(group, BlockerSubjectDeleteOrphansGPS, evt.StreamID, entityTypeOfStream(evt.StreamType),
+			"the branch deletes %s, but main's %s %s about it was added or changed after the fork; "+
 				"merging would delete that research from main with no record",
-			ErrMergeDanglingReference, subjectID, changed[0].StreamType, changed[0].StreamID)
+			subjectID, evt.StreamType, evt.StreamID))
 	}
 	return nil
 }
@@ -368,11 +379,12 @@ func (h *Handler) checkSubjectDeleteOrphansNoGPS(ctx context.Context, group stre
 //   - any other is fine only while main has not written its stream since the
 //     landed replay's own events.
 func (h *Handler) checkLandedGPSArtifacts(
-	ctx context.Context, subjectID uuid.UUID, ids []uuid.UUID, repointsAway map[uuid.UUID]bool, plan evidencePlan,
+	ctx context.Context, subject streamGroup, ids []uuid.UUID, repointsAway map[uuid.UUID]bool, plan evidencePlan, list *blockerList,
 ) error {
 	if len(ids) == 0 {
 		return nil
 	}
+	subjectID := subject.streamID
 	byStream, err := h.readMainStreams(ctx, ids)
 	if err != nil {
 		return fmt.Errorf("checking main's GPS research on %s: %w", subjectID, err)
@@ -390,10 +402,11 @@ func (h *Handler) checkLandedGPSArtifacts(
 			if later == nil {
 				continue
 			}
-			return fmt.Errorf(
-				"%w: the branch deletes %s, but main changed %s %s about it (%s at position %d) after the branch's "+
+			list.add(streamBlocker(subject, BlockerSubjectDeleteOrphansGPS, id, entityTypeOfStream(events[0].StreamType),
+				"the branch deletes %s, but main changed %s %s about it (%s at position %d) after the branch's "+
 					"own changes to it landed; merging would delete that research from main with no record",
-				ErrMergeDanglingReference, subjectID, events[0].StreamType, id, later.EventType, later.Position)
+				subjectID, events[0].StreamType, id, later.EventType, later.Position))
+			continue
 		}
 		onMain, err := gpsOutcomeOf(streamGroup{streamID: id, streamType: events[0].StreamType, events: events})
 		if err != nil {
@@ -402,10 +415,10 @@ func (h *Handler) checkLandedGPSArtifacts(
 		if onMain.deleted || (onMain.subjectSet && onMain.subjectID != subjectID) {
 			continue
 		}
-		return fmt.Errorf(
-			"%w: the branch re-pointed %s %s away from %s and deletes %s, but main re-pointed it back after the "+
+		list.add(streamBlocker(subject, BlockerSubjectDeleteOrphansGPS, id, entityTypeOfStream(events[0].StreamType),
+			"the branch re-pointed %s %s away from %s and deletes %s, but main re-pointed it back after the "+
 				"re-point landed; merging would delete that research from main with no record",
-			ErrMergeDanglingReference, events[0].StreamType, id, subjectID, subjectID)
+			events[0].StreamType, id, subjectID, subjectID))
 	}
 	return nil
 }

@@ -72,7 +72,8 @@ var (
 	// would take down main rows that still reference the deleted entity (a
 	// branch SourceDeleted cascading onto a citation main added after the
 	// fork). Refused rather than silently dropping or orphaning data (see
-	// validateNoDanglingReferences and validateNoDanglingEvidence).
+	// validateNoDanglingReferences and collectEvidenceBlockers). The refusal is a
+	// *MergeBlockedError listing every breach (#831).
 	ErrMergeDanglingReference = errors.New("merge would leave a reference pointing at an entity main does not have")
 
 	// ErrMergePlanStale is returned when main moved on a stream this merge would
@@ -735,7 +736,48 @@ func groupEventsByStream(events []repository.StoredEvent) []streamGroup {
 //
 // Only events that ADD a reference are checked. Unlinking a person main does
 // not have removes nothing and is harmless.
+//
+// Every breach is reported, not just the first (#831): the refusal is a
+// *MergeBlockedError carrying one named MergeBlocker per breach, each with the
+// one-step fix that clears it.
 func (h *Handler) validateNoDanglingReferences(ctx context.Context, plan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) error {
+	blockers, err := h.collectMergeBlockers(ctx, plan, groups, resolutions)
+	if err != nil {
+		return err
+	}
+	if len(blockers) == 0 {
+		return nil
+	}
+	return &MergeBlockedError{Blockers: blockers}
+}
+
+// collectMergeBlockers runs every cross-entity reference rule over the replay
+// the resolutions describe and returns the named blockers, each with its
+// suggested fix. It writes nothing, which is what lets PrecheckMerge run it
+// ahead of the merge and get the answer the merge itself would.
+//
+// The scan and every trial run suggestMergeFixes makes share one memo of
+// main-side lookups (forBlockerScan), so a lookup is paid once per scan
+// however many candidate fixes re-run the rules.
+func (h *Handler) collectMergeBlockers(ctx context.Context, plan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) ([]MergeBlocker, error) {
+	scan := h.forBlockerScan()
+	blockers, err := scan.findMergeBlockers(ctx, plan, groups, resolutions)
+	if err != nil || len(blockers) == 0 {
+		return nil, err
+	}
+	if err := scan.suggestMergeFixes(ctx, plan, groups, resolutions, blockers); err != nil {
+		return nil, err
+	}
+	if err := h.nameBlockers(ctx, plan.Branch.ID, blockers); err != nil {
+		return nil, err
+	}
+	return blockers, nil
+}
+
+// findMergeBlockers runs every cross-entity reference rule over the replay the
+// resolutions describe and returns the blockers, unnamed and with the default
+// fix.
+func (h *Handler) findMergeBlockers(ctx context.Context, plan *query.MergePlan, groups []streamGroup, resolutions map[uuid.UUID]MergeResolution) ([]MergeBlocker, error) {
 	created := make(map[uuid.UUID]bool, len(groups))
 	checkedGroups := make([]streamGroup, 0, len(groups))
 	for _, group := range groups {
@@ -750,12 +792,16 @@ func (h *Handler) validateNoDanglingReferences(ctx context.Context, plan *query.
 
 	dangling, err := h.findDanglingReferences(ctx, checkedGroups, func(personID uuid.UUID) bool { return created[personID] })
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if len(dangling) > 0 {
-		return dangling[0].err()
+	var list blockerList
+	for _, d := range dangling {
+		list.add(d.blocker())
 	}
-	return h.validateNoDanglingEvidence(ctx, plan, groups, resolutions)
+	if err := h.collectEvidenceBlockers(ctx, plan, groups, resolutions, &list); err != nil {
+		return nil, err
+	}
+	return list.items, nil
 }
 
 // createsPerson reports whether a replay group leaves its person in existence
@@ -776,26 +822,27 @@ func createsPerson(group streamGroup) bool {
 // danglingReference is one branch stream whose replay would point main at a
 // person main will not have.
 type danglingReference struct {
-	streamID uuid.UUID
+	group    streamGroup
 	personID uuid.UUID
 }
 
-func (d danglingReference) err() error {
-	return fmt.Errorf(
-		"%w: the branch's stream %s (a family partner or child link, or an association) references person %s, "+
+// blocker is the reference as a merge blocker.
+func (d danglingReference) blocker() MergeBlocker {
+	return streamBlocker(d.group, BlockerMissingPerson, d.personID, "person",
+		"the branch's stream %s (a family partner or child link, or an association) references person %s, "+
 			"but that person will not exist on main (deleted or merged away there, or excluded by a \"main\" resolution)",
-		ErrMergeDanglingReference, d.streamID, d.personID)
+		d.group.streamID, d.personID)
 }
 
-// findDanglingReferences reports, for each group, the first person one of its
-// events references (see personReferences) who is neither vouched for by
-// present nor on main's read model. Groups are reported in order, at most once
-// each. Each person is looked up on main at most once.
+// findDanglingReferences reports every (group, person) pair where one of the
+// group's events references (see personReferences) a person who is neither
+// vouched for by present nor on main's read model. Pairs are reported in group
+// order, each at most once. Each person is looked up on main at most once.
 func (h *Handler) findDanglingReferences(ctx context.Context, groups []streamGroup, present func(uuid.UUID) bool) ([]danglingReference, error) {
 	onMain := make(map[uuid.UUID]bool)
 	var dangling []danglingReference
 	for _, group := range groups {
-	events:
+		reported := make(map[uuid.UUID]bool)
 		for i := range group.events {
 			personIDs, err := personReferences(group.events[i])
 			if err != nil {
@@ -814,9 +861,9 @@ func (h *Handler) findDanglingReferences(ctx context.Context, groups []streamGro
 					found = person != nil
 					onMain[personID] = found
 				}
-				if !found {
-					dangling = append(dangling, danglingReference{streamID: group.streamID, personID: personID})
-					break events
+				if !found && !reported[personID] {
+					reported[personID] = true
+					dangling = append(dangling, danglingReference{group: group, personID: personID})
 				}
 			}
 		}

@@ -1159,6 +1159,7 @@ func TestBranches_NoBranchStore(t *testing.T) {
 		{"compare", http.MethodGet, "/api/v1/branches/" + unknownUUID + "/compare", "", http.StatusServiceUnavailable},
 		{"merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge", `{}`, http.StatusServiceUnavailable},
 		{"resume merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge/resume", `{}`, http.StatusServiceUnavailable},
+		{"precheck merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge/precheck", `{}`, http.StatusServiceUnavailable},
 		// A branch scope cannot resolve when no branch can exist.
 		{"scoped read", http.MethodGet, "/api/v1/persons?branch=" + unknownUUID, "", http.StatusNotFound},
 	}
@@ -1557,6 +1558,15 @@ func TestResumeBranchMerge_DanglingRollForward(t *testing.T) {
 	if rec.Code != http.StatusConflict || decodeJSON(t, rec)["code"] != "merge_dangling_reference" {
 		t.Fatalf("branch-resolved Resume: status = %d, want 409 merge_dangling_reference. Body: %s", rec.Code, rec.Body.String())
 	}
+	// The refusal names the person it would dangle on (#831).
+	blockers, _ := decodeJSON(t, rec)["blockers"].([]any)
+	if len(blockers) != 1 {
+		t.Fatalf("blockers = %v, want one", blockers)
+	}
+	if b, _ := blockers[0].(map[string]any); b["stream_id"] != familyID || b["referenced_id"] != child ||
+		b["referenced_name"] != "Byron King" || b["kind"] != "missing_person" || b["suggested_resolution"] != "leave_out" {
+		t.Errorf("blocker = %v, want the family's missing_person blocker naming Byron King", b)
+	}
 
 	rec = do(t, server, http.MethodPost, resumePath,
 		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, familyID))
@@ -1811,4 +1821,97 @@ func TestMergeBranch_WithRationale(t *testing.T) {
 		return
 	}
 	t.Fatal("no BranchMerged event recorded")
+}
+
+// TestPrecheckBranchMerge covers the precheck's answers (#831): the blockers a
+// merge with the same resolutions is refused with, and the merge's own
+// refusals when there is nothing to check.
+func TestPrecheckBranchMerge(t *testing.T) {
+	server := setupBranchTestServer()
+	branchID := createBranch(t, server, "newcomer")
+	rec := do(t, server, http.MethodPost, "/api/v1/persons?branch="+branchID, `{"given_name":"Pat","surname":"Newcomer"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("branch CreatePerson: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	personID, _ := decodeJSON(t, rec)["id"].(string)
+	rec = do(t, server, http.MethodPost, "/api/v1/families?branch="+branchID, fmt.Sprintf(`{"partner1_id":%q}`, personID))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("branch CreateFamily: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	familyID, _ := decodeJSON(t, rec)["id"].(string)
+	precheck := "/api/v1/branches/" + branchID + "/merge/precheck"
+	exclude := fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, personID)
+
+	rec = do(t, server, http.MethodPost, precheck, exclude)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("precheck: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+	}
+	pre := decodeJSON(t, rec)["blockers"]
+	list, _ := pre.([]any)
+	if len(list) != 1 {
+		t.Fatalf("blockers = %v, want one", pre)
+	}
+	if b, _ := list[0].(map[string]any); b["stream_id"] != familyID || b["entity_type"] != "family" ||
+		b["referenced_name"] != "Pat Newcomer" || b["suggested_resolution"] != "include_referenced" {
+		t.Errorf("blocker = %v, want the family's blocker suggesting to include Pat Newcomer", b)
+	}
+
+	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge", exclude)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("merge: status = %d, want 409. Body: %s", rec.Code, rec.Body.String())
+	}
+	merged := decodeJSON(t, rec)
+	if merged["code"] != "merge_dangling_reference" || fmt.Sprint(merged["blockers"]) != fmt.Sprint(pre) {
+		t.Errorf("merge refusal = %v, want merge_dangling_reference with the precheck's blockers %v", merged, pre)
+	}
+
+	if rec := do(t, server, http.MethodPost, precheck, ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"blockers":[]`) {
+		t.Errorf("clean precheck: status = %d body %s, want 200 with []", rec.Code, rec.Body.String())
+	}
+	for name, body := range map[string]string{
+		"malformed":      `{"resolutions":`,
+		"unknown stream": `{"resolutions":[{"stream_id":"` + unknownUUID + `","resolution":"main"}]}`,
+		"duplicate": fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"},{"stream_id":%q,"resolution":"branch"}]}`,
+			personID, personID),
+	} {
+		if rec := do(t, server, http.MethodPost, precheck, body); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400. Body: %s", name, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := do(t, server, http.MethodPost, "/api/v1/branches/"+unknownUUID+"/merge/precheck", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown branch: status = %d, want 404", rec.Code)
+	}
+
+	empty := createBranch(t, server, "empty")
+	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+empty+"/merge/precheck", "")
+	if rec.Code != http.StatusConflict || decodeJSON(t, rec)["code"] != "merge_empty" {
+		t.Errorf("empty branch: status = %d body %s, want 409 merge_empty", rec.Code, rec.Body.String())
+	}
+	if rec := do(t, server, http.MethodDelete, "/api/v1/branches/"+empty, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete branch: status = %d", rec.Code)
+	}
+	rec = do(t, server, http.MethodPost, "/api/v1/branches/"+empty+"/merge/precheck", "")
+	if rec.Code != http.StatusConflict || decodeJSON(t, rec)["code"] != "branch_not_active" {
+		t.Errorf("archived branch: status = %d body %s, want 409 branch_not_active", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPrecheckBranchMerge_TooLarge: a branch past the scan cap cannot be
+// checked any more than merged.
+func TestPrecheckBranchMerge_TooLarge(t *testing.T) {
+	server, eventStore := setupBranchTestServerWithEventStore()
+	_, branchID, _ := forkAndEditPerson(t, server, "Byron")
+	bulkID := uuid.New()
+	edits := make([]domain.Event, 1000)
+	for i := range edits {
+		edits[i] = domain.NewPersonUpdated(bulkID, map[string]any{"note": i})
+	}
+	if err := eventStore.Append(context.Background(), bulkID, "person", edits, -1,
+		repository.AppendScope{BranchID: domain.BranchID(uuid.MustParse(branchID))}); err != nil {
+		t.Fatalf("Seeding an oversized branch: %v", err)
+	}
+	rec := do(t, server, http.MethodPost, "/api/v1/branches/"+branchID+"/merge/precheck", `{}`)
+	if rec.Code != http.StatusConflict || decodeJSON(t, rec)["code"] != "branch_too_large" {
+		t.Errorf("status = %d body %s, want 409 branch_too_large", rec.Code, rec.Body.String())
+	}
 }

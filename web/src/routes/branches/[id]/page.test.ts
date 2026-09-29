@@ -7,8 +7,10 @@ import type {
 	Branch,
 	BranchChangeEntry,
 	BranchComparisonResult,
+	BranchMergePrecheckRequest,
 	BranchMergeRequest,
 	BranchMergeResult,
+	MergeBlocker,
 	MergeConflict
 } from '$lib/api/client';
 
@@ -19,8 +21,15 @@ const THIRD_ID = '77777777-7777-7777-7777-777777777777';
 
 // Hoisted so the module mocks below (which vitest lifts above the imports) can
 // close over them.
-const { mockState, compareBranch, mergeBranch, switchBranch, returnToMainline, routeState } =
-	vi.hoisted(() => ({
+const {
+	mockState,
+	compareBranch,
+	mergeBranch,
+	precheckBranchMerge,
+	switchBranch,
+	returnToMainline,
+	routeState
+} = vi.hoisted(() => ({
 		mockState: {
 			id: null as string | null,
 			branch: null as Branch | null,
@@ -30,6 +39,7 @@ const { mockState, compareBranch, mergeBranch, switchBranch, returnToMainline, r
 		},
 		compareBranch: vi.fn(),
 		mergeBranch: vi.fn(),
+		precheckBranchMerge: vi.fn(),
 		switchBranch: vi.fn().mockResolvedValue(undefined),
 		returnToMainline: vi.fn(),
 		// A soft navigation between two /branches/{id} entries reuses the component,
@@ -46,7 +56,9 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 		...actual,
 		api: {
 			compareBranch: (id: string) => compareBranch(id),
-			mergeBranch: (id: string, req: BranchMergeRequest) => mergeBranch(id, req)
+			mergeBranch: (id: string, req: BranchMergeRequest) => mergeBranch(id, req),
+			precheckBranchMerge: (id: string, req: BranchMergePrecheckRequest) =>
+				precheckBranchMerge(id, req)
 		}
 	};
 });
@@ -212,6 +224,7 @@ describe('Branch comparison page', () => {
 		routeState.subscribers.clear();
 		compareBranch.mockResolvedValue(comparison());
 		mergeBranch.mockResolvedValue(mergeResult());
+		precheckBranchMerge.mockResolvedValue({ blockers: [] });
 	});
 
 	// The merge tests open a bits-ui AlertDialog, which releases its body-scroll
@@ -906,5 +919,236 @@ describe('Branch comparison page', () => {
 		render(Page);
 
 		expect(await screen.findByText('Branch not found')).toBeDefined();
+	});
+
+	describe('merge blockers (#831)', () => {
+		const FAMILY_ID = '66666666-6666-6666-6666-666666666666';
+		const CITATION_ID = '55555555-5555-5555-5555-555555555555';
+		const SOURCE_ID = '44444444-4444-4444-4444-444444444444';
+
+		/** The family names the excluded Grace; the citation cites a deleted source. */
+		function familyBlocker(): MergeBlocker {
+			return {
+				stream_id: FAMILY_ID,
+				entity_type: 'family',
+				entity_name: 'Grace Hopper & Howard Aiken',
+				referenced_id: OTHER_ID,
+				referenced_type: 'person',
+				referenced_name: 'Grace Hopper',
+				kind: 'missing_person',
+				suggested_resolution: 'include_referenced',
+				message: 'family references person'
+			};
+		}
+		function citationBlocker(): MergeBlocker {
+			return {
+				stream_id: CITATION_ID,
+				entity_type: 'citation',
+				entity_name: '1880 Census (Birth)',
+				referenced_id: SOURCE_ID,
+				referenced_type: 'source',
+				referenced_name: '1880 Census',
+				kind: 'missing_source',
+				suggested_resolution: 'leave_out',
+				message: 'citation cites source'
+			};
+		}
+
+		function blockedComparison() {
+			return comparison({
+				branch_changes: [
+					branchEntry('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', OTHER_ID, 'Grace Hopper'),
+					{
+						...branchEntry('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', FAMILY_ID, 'Grace Hopper & Howard Aiken'),
+						entity_type: 'family'
+					},
+					{
+						...branchEntry('cccccccc-cccc-cccc-cccc-cccccccccccc', CITATION_ID, '1880 Census (Birth)'),
+						entity_type: 'citation'
+					}
+				],
+				branch_change_count: 3,
+				conflicts: [],
+				overlapping_stream_ids: [],
+				main_changes: [],
+				main_change_count: 0
+			});
+		}
+
+		/** The resolutions sent with the latest precheck, sorted. */
+		function lastPrecheck() {
+			const calls = precheckBranchMerge.mock.calls;
+			const req = calls[calls.length - 1][1] as BranchMergePrecheckRequest;
+			return [...(req.resolutions ?? [])].sort((a, b) => a.stream_id.localeCompare(b.stream_id));
+		}
+
+		it('checks the decisions as they change, lists every blocker by name and holds the merge', async () => {
+			compareBranch.mockResolvedValue(blockedComparison());
+			precheckBranchMerge.mockImplementation(async (_id: string, req: BranchMergePrecheckRequest) => {
+				const out: MergeBlocker[] = [citationBlocker()];
+				if (req.resolutions?.some((r) => r.stream_id === OTHER_ID && r.resolution === 'main')) {
+					out.unshift(familyBlocker());
+				}
+				if (req.resolutions?.some((r) => r.stream_id === CITATION_ID)) {
+					out.pop();
+				}
+				return { blockers: out };
+			});
+
+			const { container } = render(Page);
+			await screen.findByRole('heading', { name: '1 merge blocker' });
+			expect(precheckBranchMerge).toHaveBeenCalledWith(BRANCH_ID, { resolutions: [] });
+			expect(
+				screen.getByText('Citation "1880 Census (Birth)" cites source "1880 Census", which will not exist on the mainline.')
+			).toBeDefined();
+			expect(screen.getByText('1 merge blocker to fix.')).toBeDefined();
+			expect(
+				(screen.getByRole('button', { name: 'Review & merge' }) as HTMLButtonElement).disabled
+			).toBe(true);
+
+			// Leaving Grace out strands the family that names her: re-checked, both listed.
+			await fireEvent.click(screen.getByRole('checkbox', { name: 'Leave out of the merge: Grace Hopper' }));
+			await screen.findByRole('heading', { name: '2 merge blockers' });
+			expect(lastPrecheck()).toEqual([{ stream_id: OTHER_ID, resolution: 'main' }]);
+			expect(
+				screen.getByText('Family "Grace Hopper & Howard Aiken" names person "Grace Hopper", who will not exist on the mainline.')
+			).toBeDefined();
+
+			// Every affected row - Grace, her family, the citation - is highlighted,
+			// in words as well as colour.
+			const side = screen.getByTestId('branch-changes');
+			const blockedRows = container.querySelectorAll('[data-testid="branch-changes"] li.blocked');
+			expect(blockedRows).toHaveLength(3);
+			expect(within(side).getAllByText('Merge blocker')).toHaveLength(3);
+
+			// One-click fixes: include Grace again, and leave the citation out.
+			await fireEvent.click(screen.getByRole('button', { name: 'Include Grace Hopper' }));
+			await screen.findByRole('heading', { name: '1 merge blocker' });
+			expect(lastPrecheck()).toEqual([]);
+			await fireEvent.click(
+				screen.getByRole('button', { name: 'Also leave out 1880 Census (Birth)' })
+			);
+			await waitFor(() =>
+				expect(screen.queryByRole('heading', { name: /merge blocker/ })).toBeNull()
+			);
+			expect(lastPrecheck()).toEqual([{ stream_id: CITATION_ID, resolution: 'main' }]);
+			expect(
+				(screen.getByRole('button', { name: 'Review & merge' }) as HTMLButtonElement).disabled
+			).toBe(false);
+		});
+
+		it('includes a person left out by a conflict decision by taking the branch side', async () => {
+			compareBranch.mockResolvedValue(
+				comparison({ conflicts: [editEdit(PERSON_ID, 'Ada Lovelace')] })
+			);
+			precheckBranchMerge.mockImplementation(async (_id: string, req: BranchMergePrecheckRequest) => ({
+				blockers: req.resolutions?.some((r) => r.stream_id === PERSON_ID && r.resolution === 'main')
+					? [{ ...familyBlocker(), referenced_id: PERSON_ID, referenced_name: 'Ada Lovelace' }]
+					: []
+			}));
+
+			const { container } = render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			await fireEvent.click(radio(container, PERSON_ID, 'main'));
+			await screen.findByRole('heading', { name: '1 merge blocker' });
+			// The conflict card carries the highlight too.
+			expect(container.querySelector('.verdict li.conflict.blocked')).not.toBeNull();
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Include Ada Lovelace' }));
+			await waitFor(() =>
+				expect(screen.queryByRole('heading', { name: /merge blocker/ })).toBeNull()
+			);
+			expect(lastPrecheck()).toEqual([{ stream_id: PERSON_ID, resolution: 'branch' }]);
+		});
+
+		it('includes a conflicted person left out by the checkbox alone by deciding for the branch', async () => {
+			compareBranch.mockResolvedValue(
+				comparison({ conflicts: [editEdit(PERSON_ID, 'Ada Lovelace')] })
+			);
+			precheckBranchMerge.mockImplementation(async (_id: string, req: BranchMergePrecheckRequest) => ({
+				blockers: req.resolutions?.some((r) => r.stream_id === PERSON_ID && r.resolution === 'main')
+					? [{ ...familyBlocker(), referenced_id: PERSON_ID, referenced_name: 'Ada Lovelace' }]
+					: []
+			}));
+
+			const { container } = render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			// No radio decision: the exclusion alone folds Ada to the mainline.
+			await fireEvent.click(screen.getByRole('checkbox', { name: 'Leave out of the merge: Ada Lovelace' }));
+			await screen.findByRole('heading', { name: '1 merge blocker' });
+			expect(lastPrecheck()).toEqual([{ stream_id: PERSON_ID, resolution: 'main' }]);
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Include Ada Lovelace' }));
+			await waitFor(() =>
+				expect(screen.queryByRole('heading', { name: /merge blocker/ })).toBeNull()
+			);
+			// Included for real: the branch side is decided, not left undecided.
+			expect(lastPrecheck()).toEqual([{ stream_id: PERSON_ID, resolution: 'branch' }]);
+			expect(radio(container, PERSON_ID, 'branch').getAttribute('aria-checked')).toBe('true');
+			expect(screen.getByText('All 1 conflict decided.')).toBeDefined();
+			expect(
+				(screen.getByRole('button', { name: 'Review & merge' }) as HTMLButtonElement).disabled
+			).toBe(false);
+		});
+
+		it('sends one precheck for a burst of changes', async () => {
+			compareBranch.mockResolvedValue(twoEntityComparison({ conflicts: [] }));
+
+			render(Page);
+			await waitFor(() => expect(precheckBranchMerge).toHaveBeenCalledTimes(1));
+			await fireEvent.click(screen.getByRole('checkbox', { name: 'Leave out of the merge: Ada Lovelace' }));
+			await fireEvent.click(screen.getByRole('checkbox', { name: 'Leave out of the merge: Grace Hopper' }));
+			await waitFor(() => expect(precheckBranchMerge).toHaveBeenCalledTimes(2));
+			await new Promise((resolve) => setTimeout(resolve, 400));
+			expect(precheckBranchMerge).toHaveBeenCalledTimes(2);
+			expect(lastPrecheck()).toEqual([
+				{ stream_id: PERSON_ID, resolution: 'main' },
+				{ stream_id: OTHER_ID, resolution: 'main' }
+			].sort((a, b) => a.stream_id.localeCompare(b.stream_id)));
+		});
+
+		it('shows the blockers a dangling-reference refusal carries', async () => {
+			compareBranch.mockResolvedValue(twoEntityComparison({ conflicts: [] }));
+			mergeBranch.mockRejectedValue({
+				code: 'merge_dangling_reference',
+				message: 'merge would leave a reference pointing at an entity main does not have: ...',
+				blockers: [citationBlocker()],
+				status: 409
+			});
+
+			render(Page);
+			const reviewAndMerge = await screen.findByRole('button', { name: 'Review & merge' });
+			await waitFor(() => expect((reviewAndMerge as HTMLButtonElement).disabled).toBe(false));
+			await fireEvent.click(reviewAndMerge);
+			const dialog = await screen.findByRole('alertdialog');
+			await fireEvent.click(within(dialog).getByRole('button', { name: 'Merge branch' }));
+
+			const list = await within(dialog).findByRole('list', { name: 'Merge blockers' });
+			expect(within(list).getByText(/Citation "1880 Census \(Birth\)" cites source/)).toBeDefined();
+			// The panel behind the dialog adopts the merge's own verdict.
+			await screen.findByRole('heading', { name: '1 merge blocker' });
+		});
+
+		it('does not hold the merge when the check itself fails', async () => {
+			compareBranch.mockResolvedValue(twoEntityComparison({ conflicts: [] }));
+			precheckBranchMerge.mockRejectedValue({ code: 'internal_error', message: 'boom' });
+
+			render(Page);
+			await screen.findByText(/The merge blockers could not be checked \(boom\)/);
+			expect(
+				(screen.getByRole('button', { name: 'Review & merge' }) as HTMLButtonElement).disabled
+			).toBe(false);
+		});
+
+		it('does not check a branch that cannot be merged', async () => {
+			compareBranch.mockResolvedValue(
+				comparison({ branch: { ...branch, status: 'merged' }, conflicts: [] })
+			);
+			render(Page);
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			// Past the precheck's debounce, so a scheduled check would have run.
+			await new Promise((resolve) => setTimeout(resolve, 400));
+			expect(precheckBranchMerge).not.toHaveBeenCalled();
+		});
 	});
 });

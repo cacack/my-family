@@ -1955,6 +1955,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/branches/{id}/merge/precheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * List what would block merging a branch with the proposed resolutions
+         * @description Runs the merge's cross-entity reference checks for the given
+         *     resolutions - the conflict decisions and exclusions the review holds -
+         *     and returns every **merge blocker** they find, **writing nothing**
+         *     (#831). A blocker is a reference the merge would break: a family
+         *     partner or child link, or an association, naming a person the mainline
+         *     will not have; a citation whose source it will not have; a media item
+         *     or GPS research whose owner or subject it will not have; an edit of
+         *     GPS research it no longer has; or a delete that would cascade onto a
+         *     citation, media item or GPS research the mainline still has.
+         *
+         *     The checks are the ones `POST /branches/{id}/merge` runs before it
+         *     claims the branch, against the mainline as it is now, so sending the
+         *     same resolutions to the merge returns `409 merge_dangling_reference`
+         *     with these same `blockers` exactly when this list is non-empty (unless
+         *     the mainline moves in between). Undecided conflicts are not blockers:
+         *     an undecided entity is checked as if its branch changes were replayed,
+         *     as the merge checks it.
+         *
+         *     Each blocker carries `suggested_resolution`, the one-step change that
+         *     clears it: `leave_out` resolves the blocker's own entity (`stream_id`)
+         *     to `main`; `include_referenced` resolves the referenced entity
+         *     (`referenced_id`) to `branch`. Applying one can surface another -
+         *     leaving out a person can strand a family that links them - so
+         *     re-check after every change.
+         */
+        post: operations["precheckBranchMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/branches/{id}/merge/resume": {
         parameters: {
             query?: never;
@@ -4521,6 +4567,85 @@ export interface components {
              *     UI can render the whole picture.
              */
             conflicts?: components["schemas"]["MergeConflict"][];
+            /**
+             * @description Present only for `merge_dangling_reference`: every reference the
+             *     merge would break, not just the first (#831).
+             */
+            blockers?: components["schemas"]["MergeBlocker"][];
+        };
+        /** @description The resolutions a merge would be sent with. */
+        BranchMergePrecheckRequest: {
+            /**
+             * @description As for `BranchMergeRequest.resolutions`: conflict decisions and
+             *     exclusions (`main` for an entity left out). A `rationale` is
+             *     accepted and ignored. A `stream_id` may appear at most once.
+             */
+            resolutions?: components["schemas"]["MergeResolutionEntry"][];
+        };
+        /** @description What would block the proposed merge. */
+        BranchMergePrecheckResult: {
+            /** @description Every merge blocker, in replay order. `[]`, never `null`, when the merge is clear. */
+            blockers: components["schemas"]["MergeBlocker"][];
+        };
+        /**
+         * @description One cross-entity reference a merge (or resume) would break (#831): the
+         *     entity whose branch changes break it, and the entity it references or
+         *     would cascade onto.
+         */
+        MergeBlocker: {
+            /**
+             * Format: uuid
+             * @description The entity whose branch changes break the reference.
+             */
+            stream_id: string;
+            /**
+             * @description Its type, in the change-entry vocabulary (`family`, `citation`, `media`, `evidence_analysis`, ...).
+             * @example family
+             */
+            entity_type: string;
+            /** @description Its display name, or `""` when nothing names it. */
+            entity_name: string;
+            /**
+             * Format: uuid
+             * @description The entity it references, or would cascade onto.
+             */
+            referenced_id: string;
+            /**
+             * @description The referenced entity's type, in the same vocabulary.
+             * @example person
+             */
+            referenced_type: string;
+            /** @description The referenced entity's display name, or `""` when nothing names it. */
+            referenced_name: string;
+            /**
+             * @description - `missing_person` - a family partner or child link, or an
+             *       association, names a person the mainline will not have.
+             *     - `missing_source` - a citation cites a source the mainline will
+             *       not have.
+             *     - `source_delete_orphans_citation` - a source delete would also
+             *       delete a mainline citation of it.
+             *     - `missing_media_owner` - a media item is attached to a person,
+             *       family or source the mainline will not have.
+             *     - `owner_delete_orphans_media` - an owner delete would also delete
+             *       a mainline media item the branch never saw.
+             *     - `missing_gps_artifact` - the branch edits GPS research the
+             *       mainline no longer has (`referenced_id` is that research).
+             *     - `missing_gps_subject` - GPS research is about a person or family
+             *       the mainline will not have.
+             *     - `subject_delete_orphans_gps` - a person or family delete would
+             *       also delete mainline GPS research the branch never saw.
+             * @enum {string}
+             */
+            kind: "missing_person" | "missing_source" | "source_delete_orphans_citation" | "missing_media_owner" | "owner_delete_orphans_media" | "missing_gps_artifact" | "missing_gps_subject" | "subject_delete_orphans_gps";
+            /**
+             * @description The one-step fix: `leave_out` resolves `stream_id` to `main`;
+             *     `include_referenced` resolves `referenced_id` to `branch` (offered
+             *     when a `main` resolution is what excluded it).
+             * @enum {string}
+             */
+            suggested_resolution: "leave_out" | "include_referenced";
+            /** @description The refusal in words (ids, not names). */
+            message: string;
         };
         /** @description Decisions for the entities a resume reported as pending. */
         BranchMergeResumeRequest: {
@@ -4586,6 +4711,11 @@ export interface components {
              *     need a resolution before the resume can proceed.
              */
             pending_stream_ids?: string[];
+            /**
+             * @description Present only for `merge_dangling_reference`: every reference the
+             *     resolutions given would break (#831).
+             */
+            blockers?: components["schemas"]["MergeBlocker"][];
         };
         RelationshipPathNode: {
             /** Format: uuid */
@@ -8779,8 +8909,12 @@ export interface operations {
              *       (typically one added on the mainline after the fork). Resolutions
              *       are per entity, but the branch's events reference each other
              *       across entities, so excluding one entity does not exclude the
-             *       references to it. The message names both entities. Refused rather
-             *       than silently dropping or orphaning data.
+             *       references to it. The message names both entities of the first
+             *       one, and `blockers` lists **every** one by name, each with the
+             *       one-step fix that clears it (#831). Refused rather than silently
+             *       dropping or orphaning data. `POST /branches/{id}/merge/precheck`
+             *       reports the same blockers for proposed resolutions without
+             *       merging.
              *     - `merge_empty` — the branch has no changes of its own since it
              *       forked, so there is nothing to promote. Refused rather than
              *       recording a "merged" that promoted nothing (#828); the branch
@@ -8818,6 +8952,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    precheckBranchMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /** @description Optional. An empty body checks a merge with no resolutions. */
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BranchMergePrecheckRequest"];
+            };
+        };
+        responses: {
+            /** @description The blockers the proposed merge would be refused with (`[]` when none) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchMergePrecheckResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The branch cannot be merged whatever the resolutions, so there is
+             *     nothing to check: `branch_not_active`, `branch_too_large`,
+             *     `main_too_far_ahead` or `merge_empty`, as for
+             *     `POST /branches/{id}/merge`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchMergeConflictError"];
                 };
             };
             503: components["responses"]["BranchesUnavailable"];
@@ -8873,7 +9052,8 @@ export interface operations {
              *       GPS research the mainline still has (resolve that entity to
              *       `main` instead), or a `main` resolution excluding an entity the
              *       branch created that an entity already on the mainline
-             *       references (resolve it to `branch`).
+             *       references (resolve it to `branch`). `blockers` lists every
+             *       one by name, each with its suggested fix.
              *     - `branch_too_large` — the branch's replay set exceeds the read cap
              *       and cannot be resumed in full.
              *     - `merge_resume_concurrent` — another resume of the same merge

@@ -161,6 +161,7 @@ func runResumeGPSSubjectDeletedOnMain(t *testing.T, server *api.Server, faulty *
 	if dangling["code"] != "merge_dangling_reference" {
 		t.Errorf("branch resolution code = %v, want merge_dangling_reference", dangling["code"])
 	}
+	assertBlockers(t, dangling, blockerRow{logID, "research_log", "Baptisms (County archive)", subject, "person", "Owen Subject", "missing_gps_subject", "leave_out"})
 	done := mustDo(t, server, http.MethodPost, branchPath+"/merge/resume",
 		fmt.Sprintf(`{"resolutions":[{"stream_id":%q,"resolution":"main"}]}`, logID), http.StatusOK)
 	if skipped := entryStrings(t, jsonArray(t, done, "skipped_stream_ids")); len(skipped) != 1 || skipped[0] != logID {

@@ -111,7 +111,7 @@
 		merge_dangling_reference: {
 			title: 'The merge would break a reference between entities',
 			body:
-				"Merging would leave the mainline holding a reference to something it will not have - a family child whose person was deleted there, or a citation whose source was - or would delete a mainline citation of a source the branch deleted. Decisions are made per entity, but the branch's events reference each other across entities, so leaving one entity out does not leave the references to it out. Nothing was written - close this and revisit what you are excluding.",
+				"Merging would leave the mainline holding a reference to something it will not have - a family child whose person was deleted there, or a citation whose source was - or would delete mainline data the branch never saw. Decisions are made per entity, but the branch's events reference each other across entities, so leaving one entity out does not leave the references to it out. Nothing was written. Each blocker is listed below; close this and fix them from the merge blockers panel, which offers a one-click fix for each.",
 			recovery: 'close'
 		},
 		merge_empty: {
@@ -177,6 +177,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { entityTypeLabel, unnamedEntityLabel } from '$lib/utils/changeEntries';
+	import { describeBlocker } from '$lib/utils/mergeBlockers';
 
 	interface Props {
 		open: boolean;
@@ -379,7 +380,13 @@
 			{/if}
 		{:else if failure}
 			<div class="failure" role="alert">
-				{#if failureMessage}
+				{#if refusal?.blockers && refusal.blockers.length > 0}
+					<ul class="blocker-list" aria-label="Merge blockers">
+						{#each refusal.blockers as blocker (`${blocker.kind}:${blocker.stream_id}:${blocker.referenced_id}`)}
+							<li>{describeBlocker(blocker)}</li>
+						{/each}
+					</ul>
+				{:else if failureMessage}
 					<p class="server-message">{failureMessage}</p>
 				{/if}
 				{#if failure.issue}
@@ -514,6 +521,18 @@
 </AlertDialog.Root>
 
 <style>
+	.blocker-list {
+		margin: 0;
+		padding-left: 1.25rem;
+		font-size: 0.875rem;
+		color: #7f1d1d;
+		overflow-wrap: anywhere;
+	}
+
+	.blocker-list li + li {
+		margin-top: 0.25rem;
+	}
+
 	.truncation {
 		padding: 0.75rem;
 		background: #fef3c7;

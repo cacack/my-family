@@ -185,23 +185,29 @@ func TestCheckLandedGPSSubjects(t *testing.T) {
 		return map[uuid.UUID]MergeResolution{id: ResolveMain}
 	}
 
-	if err := h.checkLandedGPSSubjects(ctx, groups, view, mainRes(subject)); !errors.Is(err, ErrMergeDanglingReference) {
+	if err := blockErr(func(l *blockerList) error { return h.checkLandedGPSSubjects(ctx, groups, view, mainRes(subject), l) }); !errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("subject main lacks, resolved to main: err = %v, want ErrMergeDanglingReference", err)
 	}
-	if err := h.checkLandedGPSSubjects(ctx, groups, view, map[uuid.UUID]MergeResolution{subject: ResolveBranch}); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedGPSSubjects(ctx, groups, view, map[uuid.UUID]MergeResolution{subject: ResolveBranch}, l)
+	}); err != nil {
 		t.Errorf("subject resolved to branch: err = %v, want nil", err)
 	}
 	removed := resumeView{landed: view.landed, removed: map[uuid.UUID]bool{logID: true}}
-	if err := h.checkLandedGPSSubjects(ctx, groups, removed, mainRes(subject)); err != nil {
+	if err := blockErr(func(l *blockerList) error { return h.checkLandedGPSSubjects(ctx, groups, removed, mainRes(subject), l) }); err != nil {
 		t.Errorf("log main removed: err = %v, want nil", err)
 	}
 
 	// With no main row and the subject merged away, the survivor counts.
 	relinked := resumeView{landed: view.landed, relinked: map[uuid.UUID]uuid.UUID{logID: survivor}}
-	if err := h.checkLandedGPSSubjects(ctx, groups, relinked, mainRes(subject)); err != nil {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedGPSSubjects(ctx, groups, relinked, mainRes(subject), l)
+	}); err != nil {
 		t.Errorf("merged-away subject resolved to main: err = %v, want nil", err)
 	}
-	if err := h.checkLandedGPSSubjects(ctx, groups, relinked, mainRes(survivor)); !errors.Is(err, ErrMergeDanglingReference) {
+	if err := blockErr(func(l *blockerList) error {
+		return h.checkLandedGPSSubjects(ctx, groups, relinked, mainRes(survivor), l)
+	}); !errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("survivor main lacks, resolved to main: err = %v, want ErrMergeDanglingReference", err)
 	}
 
@@ -210,16 +216,16 @@ func TestCheckLandedGPSSubjects(t *testing.T) {
 	if err := store.SavePerson(ctx, domain.MainBranchID, &repository.PersonReadModel{ID: survivor, GivenName: "Sam", Version: 1}); err != nil {
 		t.Fatalf("SavePerson failed: %v", err)
 	}
-	if err := h.checkLandedGPSSubjects(ctx, groups, view, mainRes(survivor)); err != nil {
+	if err := blockErr(func(l *blockerList) error { return h.checkLandedGPSSubjects(ctx, groups, view, mainRes(survivor), l) }); err != nil {
 		t.Errorf("row's subject main has: err = %v, want nil", err)
 	}
 
 	failing := &Handler{readStore: gpsFailStore{store}}
-	if err := failing.checkLandedGPSSubjects(ctx, groups, view, nil); !errors.Is(err, errGPSStore) {
+	if err := blockErr(func(l *blockerList) error { return failing.checkLandedGPSSubjects(ctx, groups, view, nil, l) }); !errors.Is(err, errGPSStore) {
 		t.Errorf("failed row read: err = %v, want the store error", err)
 	}
 	bad := streamGroup{streamID: logID, streamType: "ResearchLog", events: []repository.StoredEvent{{StreamID: logID, EventType: "ResearchLogCreated", Data: []byte(`{not json`)}}}
-	if err := h.checkLandedGPSSubjects(ctx, []streamGroup{bad}, view, nil); err == nil || errors.Is(err, ErrMergeDanglingReference) {
+	if err := blockErr(func(l *blockerList) error { return h.checkLandedGPSSubjects(ctx, []streamGroup{bad}, view, nil, l) }); err == nil || errors.Is(err, ErrMergeDanglingReference) {
 		t.Errorf("undecodable landed log: err = %v, want a decode error", err)
 	}
 }

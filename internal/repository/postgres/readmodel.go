@@ -3524,7 +3524,8 @@ func scanSourceRows(rows *sql.Rows) (*repository.SourceReadModel, error) {
 func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 	var (
 		id, sourceID, factOwnerID        uuid.UUID
-		sourceTitle, factType            string
+		factType                         string
+		sourceTitle                      sql.NullString // SaveCitation stores an empty title as NULL
 		page, volume, sourceQuality      sql.NullString
 		informantType, evidenceType      sql.NullString
 		quotedText, analysis, templateID sql.NullString
@@ -3547,7 +3548,7 @@ func scanCitationRow(row rowScanner) (*repository.CitationReadModel, error) {
 	cit := &repository.CitationReadModel{
 		ID:            id,
 		SourceID:      sourceID,
-		SourceTitle:   sourceTitle,
+		SourceTitle:   sourceTitle.String,
 		FactType:      domain.FactType(factType),
 		FactOwnerID:   factOwnerID,
 		Page:          page.String,
