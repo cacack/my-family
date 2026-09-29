@@ -1085,24 +1085,46 @@ func NewBranchUpdated(b *Branch, changedFields []string) BranchUpdated {
 	}
 }
 
-// BranchDeleted event is emitted when a branch is archived/discarded. Despite the
-// name, it transitions the branch to BranchStatusArchived (there is no "deleted"
-// status) — "delete" is the user action, "archived" the retained terminal state.
-// Append-only: it records the deletion as a new event and does not remove
-// the branch's prior events from the log (ES-002).
+// BranchDeleted event is emitted when a branch is closed without merging
+// (archived/discarded). Despite the name, it transitions the branch to
+// BranchStatusArchived (there is no "deleted" status) — "close" is the user
+// action (#836; it was "delete" before), "archived" the retained terminal
+// state. Append-only: it records the close as a new event and does not remove
+// the branch's prior events from the log (ES-002), which is what lets a closed
+// branch's research be reconstructed after its overlay is purged.
+//
+// Outcome and Reason (#836) record why the branch was closed: one of the close
+// outcomes (domain.BranchOutcome.IsCloseOutcome) and an optional free-text
+// reason. Both are omitempty, so the event stays backward compatible: a
+// BranchDeleted written before #836 decodes with an empty Outcome and Reason,
+// and its projection leaves the branch's recorded outcome as it was.
 type BranchDeleted struct {
 	BaseEvent
-	BranchID uuid.UUID `json:"branch_id"`
+	BranchID uuid.UUID     `json:"branch_id"`
+	Outcome  BranchOutcome `json:"outcome,omitempty"`
+	Reason   string        `json:"reason,omitempty"`
 }
 
 func (e BranchDeleted) EventType() string      { return "BranchDeleted" }
 func (e BranchDeleted) AggregateID() uuid.UUID { return e.BranchID }
 
-// NewBranchDeleted creates a BranchDeleted event.
+// NewBranchDeleted creates a BranchDeleted event with no close record, the
+// shape written before #836. New closes use NewBranchClosed.
 func NewBranchDeleted(branchID uuid.UUID) BranchDeleted {
 	return BranchDeleted{
 		BaseEvent: NewBaseEvent(),
 		BranchID:  branchID,
+	}
+}
+
+// NewBranchClosed creates a BranchDeleted event recording the outcome the
+// branch was closed with and the reason given (#836).
+func NewBranchClosed(branchID uuid.UUID, outcome BranchOutcome, reason string) BranchDeleted {
+	return BranchDeleted{
+		BaseEvent: NewBaseEvent(),
+		BranchID:  branchID,
+		Outcome:   outcome,
+		Reason:    reason,
 	}
 }
 

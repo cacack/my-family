@@ -225,11 +225,14 @@ finalized in implementation:
   merge), and leaves status and the merge record alone. An active branch accepts every field; a
   merged branch accepts only `Outcome`, so the verdict can be recorded once the merge has landed;
   an archived branch accepts nothing. `Outcome` (`open | proved | disproved | inconclusive |
-  superseded`, default `open`) is independent of the lifecycle `status` and is reused when a
-  branch is closed without merging (#836).
-- **`BranchDeleted`** — `{ BranchID, OccurredAt }`. Archives/discards a branch. Append-only: this
-  records the deletion as a new event; it does not remove the branch's prior events from the log
-  (ES-002). Projections drop the branch's overlay rows.
+  superseded | abandoned`, default `open`; `abandoned` added by #836) is independent of the
+  lifecycle `status` and is reused when a branch is closed without merging (#836).
+- **`BranchDeleted`** — `{ BranchID, Outcome, Reason, OccurredAt }`. Closes (archives) a branch
+  without merging. Append-only: this records the close as a new event; it does not remove the
+  branch's prior events from the log (ES-002). Projections record the close in the registry and
+  drop the branch's overlay rows. `Outcome` and `Reason` were added by #836 (see *Implementation
+  Note — closing a branch*); both are optional in the payload, so an event written before #836
+  still decodes.
 - **`BranchMerged`** — `{ BranchID, BasePosition, MergedAtPosition, OccurredAt }`. Records that a
   branch's changes were promoted to `main` (see Merge, below).
 - **`BranchMergeResumed`** — `{ BranchID, MergedAtPosition, ReplayStreamVersions, Resolutions,
@@ -1849,6 +1852,85 @@ Verified by `TestMergeBranch_SnapshotBefore` and the refusal/discard tests (`int
 (`internal/query`), `TestMergeBranch_SnapshotBefore` (`internal/api`),
 `TestBranchMergeSnapshot_EndToEnd` (`internal/integration`, memory/SQLite/PostgreSQL), the dialog,
 branch page and compare page tests, and `e2e/merge-review.spec.ts`.
+
+## Implementation Note — closing a branch (#836, delivered)
+
+A disproved hypothesis is GPS evidence: a reasonably exhaustive search includes the searches that
+found nothing. Before #836 abandoning a branch threw that away — `BranchDeleted` recorded no
+reason, the purge removed the overlay and with it every research log written on the branch, and
+the UI called the action "Delete branch".
+
+**Closing records why — on the existing event.** `BranchDeleted` gained two omitempty fields,
+`Outcome` and `Reason`, rather than a new `BranchClosed` event. The event already *is* the close
+(its status is `archived`, not deleted); a second event type for the same transition would have
+needed its own decode case (ES-007), projection case (PR-004), metadata-exclusion entry and merge
+exclusion, and two events that both end a branch invite one of them being missed. A pre-#836
+event decodes with both fields empty. The outcome is one of the *close outcomes* —
+`disproved | inconclusive | superseded | abandoned` — reusing #835's `BranchOutcome`, extended with
+`abandoned` (research stopped without a verdict). `open` is no verdict and a `proved` branch is
+merged, not closed. The reason is free text, at most 2000 characters.
+
+- **Command/API.** `Handler.CloseBranch(id, outcome, reason)` and `POST /branches/{id}/close`
+  (409 `branch_not_active` / `branch_changed`, 400 `validation_error`). `DELETE /branches/{id}`
+  and `DeleteBranch` remain for existing clients as a close with no outcome and no reason — the
+  pre-#836 shape — so a verdict the branch already holds survives it and an open branch reads as
+  `abandoned` (see Registry below).
+- **Registry.** The projection calls `BranchStore.MarkClosed(id, closedAt, outcome, reason)`,
+  which sets `archived`, `closed_at` (the event's `OccurredAt`) and `close_reason` in one write
+  and overwrites `outcome` when the event carries one. Replaying a pre-#836 event (no outcome)
+  keeps a verdict the branch had already recorded (#835) and turns `open` into `abandoned`, so no
+  closed branch reads as open. Memory, SQLite and PostgreSQL add the two columns with additive
+  migrations; the SQL migrations also backfill `abandoned` on archived rows still reading `open`.
+  Existing archived rows otherwise read with no close record (`closed_at`, reason) until a rebuild.
+
+**Keeping the research — both options, (b) always and (a) on request.**
+
+- **(b) A read-only archive rebuilt from events.** `GET /branches/{id}/research`
+  (`BranchService.BranchResearchArchive`) returns the research logs — including their
+  `not_found` outcomes — evidence analyses and proof summaries the branch left, each as the branch
+  last saw it. The overlay is gone, so they are rebuilt: the branch's own GPS events are replayed
+  through the real `Projector` into a throwaway in-memory read model, on the branch's scope. For an
+  artifact the branch edited rather than created, the mainline events *before the branch's first
+  event on that stream* are projected on main first — the same copy-on-write base the entity
+  history note (#823) uses, because the overlay seeds a shadow from main's row as it stands at the
+  branch's first write. Using the real projector means the archive cannot drift from what the
+  overlay showed. The reads are two set-based queries (the branch's events; main's events for the
+  edited streams), each capped at the comparison cap, with `truncated` reported past it. Subjects
+  are named through the mainline, or, for a person the branch created, from its `PersonCreated`.
+  Artifacts the branch deleted are counted, not listed. The archive works for any status — for an
+  active branch it matches the overlay, for a merged one it shows what the branch contributed.
+  The hypothesis record itself needs no reconstruction: the registry keeps it.
+- **(a) Promoting research logs to main.** `POST /branches/{id}/research-logs/promote`
+  (`Handler.PromoteBranchResearchLogs`) copies a closed branch's research logs to the mainline as
+  ordinary `ResearchLogCreated` events, keeping each log's id and appending a note naming the
+  branch, its hypothesis, the outcome it was closed with and the reason. Keeping the id makes it
+  idempotent: the `ResearchLogCreated` is appended on main with expected version 0 ("main holds
+  no events for this stream"), so the event store refuses any second write of the same log —
+  a concurrent promotion that passed the read-model check, or a later one after the promoted log
+  was deleted on main (the read model no longer shows it; the stream still does) — and it is
+  reported as `already_promoted`. A log deleted on main is therefore never resurrected. A log is skipped, never half-written, when its subject does not exist on
+  main (`subject_not_on_main` — promotion must not create the dangling reference the merge guard
+  refuses), or when it is a mainline log the branch only edited (`not_created_on_branch`). Only
+  research logs are promoted: evidence analyses and proof summaries cite citations and analyses
+  that may exist only on the branch, so promoting them safely would need the merge's full
+  reference closure; they remain readable in the archive. Promotion is a separate call after the
+  close rather than a flag on it, so the close stays one atomic event and a failed promotion can
+  be retried from the archive view.
+
+**UI.** "Delete branch" is gone: the action is "Close branch" (on the branch list and the branch
+page), with an outcome picker, an optional reason, and a checked-by-default "Copy this branch's
+research logs to the mainline" option that runs the promotion after the close succeeds. A closed
+branch's page shows its outcome, reason and close date and links to its research archive
+(`/branches/{id}/research`), which lists the artifacts read-only and offers the promotion again.
+The branch list groups closed branches under "Closed", shows each one's outcome, reason and close
+date, and filters by status (all / active / merged / closed) and by outcome.
+
+Verified by `TestBranchClose_ResearchRetained` (`internal/integration`, memory/SQLite/PostgreSQL):
+close as disproved, overlay purged, archive rebuilt (negative search, branch-only subject, edit of
+a mainline log, a deleted log), promotion and re-promotion; the store close contract
+(`runBranchCloseContract`, one copy per backend) and pre-#836 migrations; command, query and API
+unit tests; and `e2e/branch-close.spec.ts` (close a branch as disproved, then read its research
+log).
 
 ## References
 

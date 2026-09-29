@@ -5210,3 +5210,54 @@ func TestProjector_BranchResearchRecord(t *testing.T) {
 		t.Errorf("no-registry BranchUpdated = %v, want nil", err)
 	}
 }
+
+// TestProjector_BranchCloseRecord pins the #836 close record through the
+// projection: a BranchDeleted carrying an outcome and reason archives the
+// branch with both and its OccurredAt as closed_at; a pre-#836 BranchDeleted
+// (no outcome) archives it and keeps the outcome it had.
+func TestProjector_BranchCloseRecord(t *testing.T) {
+	readStore := memory.NewReadModelStore()
+	branchStore := memory.NewBranchStore()
+	projector := repository.NewProjector(readStore, branchStore)
+	ctx := context.Background()
+
+	branch, err := domain.NewBranch("theory", "", 1)
+	if err != nil {
+		t.Fatalf("NewBranch: %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewBranchCreated(branch), 1, domain.BranchID(branch.ID)); err != nil {
+		t.Fatalf("Project BranchCreated: %v", err)
+	}
+	closed := domain.NewBranchClosed(branch.ID, domain.BranchOutcomeSuperseded, "Covered by another line")
+	if err := projector.Project(ctx, closed, 2, domain.BranchID(branch.ID)); err != nil {
+		t.Fatalf("Project BranchDeleted: %v", err)
+	}
+	got, err := branchStore.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != domain.BranchStatusArchived || got.Outcome != domain.BranchOutcomeSuperseded ||
+		got.CloseReason != "Covered by another line" || got.ClosedAt == nil || !got.ClosedAt.Equal(closed.OccurredAt()) {
+		t.Errorf("after close = %+v", got)
+	}
+
+	legacyBranch, err := domain.NewBranchWithResearch("old", "", 1, domain.BranchResearch{Outcome: domain.BranchOutcomeInconclusive})
+	if err != nil {
+		t.Fatalf("NewBranchWithResearch: %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewBranchCreated(legacyBranch), 1, domain.BranchID(legacyBranch.ID)); err != nil {
+		t.Fatalf("Project BranchCreated: %v", err)
+	}
+	if err := projector.Project(ctx, domain.NewBranchDeleted(legacyBranch.ID), 2, domain.BranchID(legacyBranch.ID)); err != nil {
+		t.Fatalf("Project legacy BranchDeleted: %v", err)
+	}
+	if got, err = branchStore.Get(ctx, legacyBranch.ID); err != nil || got.Status != domain.BranchStatusArchived ||
+		got.Outcome != domain.BranchOutcomeInconclusive || got.CloseReason != "" {
+		t.Errorf("legacy close = %+v, %v", got, err)
+	}
+
+	// Closing a branch the registry does not know is an error.
+	if err := projector.Project(ctx, domain.NewBranchClosed(uuid.New(), domain.BranchOutcomeAbandoned, ""), 2, domain.MainBranchID); err == nil {
+		t.Error("closing an unknown branch succeeded, want an error")
+	}
+}

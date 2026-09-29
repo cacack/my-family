@@ -25,6 +25,106 @@ func TestSQLiteBranchStore_ResearchRecord(t *testing.T) {
 	runBranchResearchContract(t, store)
 }
 
+func TestSQLiteBranchStore_CloseRecord(t *testing.T) {
+	db := setupBranchTestDB(t)
+	defer db.Close()
+
+	store, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("NewBranchStore() error = %v", err)
+	}
+	runBranchCloseContract(t, store)
+}
+
+// TestSQLiteBranchStore_CloseMigration covers the pre-#836 upgrade path: a
+// branches table without the close columns gains them on open (twice), an
+// archived row reads with no close record (an undecided one as abandoned),
+// and it can then be closed.
+func TestSQLiteBranchStore_CloseMigration(t *testing.T) {
+	db := setupBranchTestDB(t)
+	defer db.Close()
+
+	if _, err := db.Exec(`
+		CREATE TABLE branches (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			description TEXT,
+			base_position INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			merged_at TEXT,
+			merge_note TEXT,
+			hypothesis TEXT,
+			subjects TEXT,
+			outcome TEXT NOT NULL DEFAULT 'open',
+			proof_summary_ids TEXT
+		)`); err != nil {
+		t.Fatalf("create pre-#836 branches table: %v", err)
+	}
+	existing := uuid.New()
+	if _, err := db.Exec(`INSERT INTO branches (id, name, base_position, status, created_at, outcome)
+		VALUES (?, 'Archived', 7, 'archived', '2026-01-01T00:00:00Z', 'inconclusive')`, existing.String()); err != nil {
+		t.Fatalf("seed pre-#836 branch: %v", err)
+	}
+	undecided, active := uuid.New(), uuid.New()
+	if _, err := db.Exec(`INSERT INTO branches (id, name, base_position, status, created_at, outcome)
+		VALUES (?, 'Undecided', 7, 'archived', '2026-01-01T00:00:00Z', 'open'),
+		       (?, 'Active', 7, 'active', '2026-01-01T00:00:00Z', 'open')`,
+		undecided.String(), active.String()); err != nil {
+		t.Fatalf("seed pre-#836 open branches: %v", err)
+	}
+
+	var store *sqlite.BranchStore
+	for i := 0; i < 2; i++ {
+		var err error
+		if store, err = sqlite.NewBranchStore(db); err != nil {
+			t.Fatalf("NewBranchStore pass %d: %v", i, err)
+		}
+	}
+
+	ctx := context.Background()
+	got, err := store.Get(ctx, existing)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ClosedAt != nil || got.CloseReason != "" || got.Outcome != domain.BranchOutcomeInconclusive {
+		t.Errorf("migrated branch = %+v, want no close record", got)
+	}
+	// An archived branch that reached no verdict is backfilled as abandoned;
+	// an active one stays open.
+	for id, want := range map[uuid.UUID]domain.BranchOutcome{undecided: domain.BranchOutcomeAbandoned, active: domain.BranchOutcomeOpen} {
+		if b, err := store.Get(ctx, id); err != nil || b.Outcome != want {
+			t.Errorf("migrated branch %s = %+v, %v; want outcome %s", id, b, err, want)
+		}
+	}
+	if err := store.MarkClosed(ctx, existing, time.Now().UTC(), "", "rebuilt"); err != nil {
+		t.Fatalf("MarkClosed after migration: %v", err)
+	}
+	if got, err = store.Get(ctx, existing); err != nil || got.CloseReason != "rebuilt" || got.ClosedAt == nil {
+		t.Errorf("after MarkClosed = %+v, %v", got, err)
+	}
+}
+
+// TestSQLiteBranchStore_CorruptClosedAt proves an unparseable closed_at
+// surfaces as an error.
+func TestSQLiteBranchStore_CorruptClosedAt(t *testing.T) {
+	db := setupBranchTestDB(t)
+	defer db.Close()
+
+	store, err := sqlite.NewBranchStore(db)
+	if err != nil {
+		t.Fatalf("NewBranchStore() error = %v", err)
+	}
+	id := uuid.New()
+	if _, err := db.Exec(`INSERT INTO branches (id, name, base_position, status, created_at, closed_at)
+		VALUES (?, 'Corrupt', 1, 'archived', '2026-01-01T00:00:00Z', 'not a time')`, id.String()); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := store.Get(context.Background(), id); err == nil {
+		t.Error("Get of a corrupt closed_at succeeded, want an error")
+	}
+}
+
 // TestSQLiteBranchStore_ResearchMigration covers the pre-#835 upgrade path: a
 // branches table without the research columns gains them on open (twice, to
 // prove the swallowed duplicate-column error is the only failure), and an
@@ -245,5 +345,102 @@ func runBranchResearchContract(t *testing.T, store repository.BranchStore) {
 	if got, err = store.Get(ctx, unset.ID); err != nil || got.Outcome != domain.BranchOutcomeOpen ||
 		got.Subjects != nil || got.ProofSummaryIDs != nil || got.Hypothesis != "" {
 		t.Errorf("unset branch = %+v, %v; want open with no research", got, err)
+	}
+}
+
+// runBranchCloseContract pins the #836 close record on a BranchStore:
+// MarkClosed archives the branch and writes closed_at, the reason and the
+// outcome in one write; an empty outcome (a pre-#836 BranchDeleted) keeps the
+// stored verdict, and turns a stored "open" into abandoned; Create/Upsert/
+// Get/List round-trip the record; an unknown branch
+// is ErrBranchNotFound. The body is an identical copy in the memory, sqlite
+// and postgres test packages (DB-001).
+func runBranchCloseContract(t *testing.T, store repository.BranchStore) {
+	t.Helper()
+	ctx := context.Background()
+
+	branch := &domain.Branch{
+		ID: uuid.New(), Name: "Closing", BasePosition: 2, Status: domain.BranchStatusActive,
+		CreatedAt: time.Now().UTC().Truncate(time.Millisecond), Hypothesis: "Q", Outcome: domain.BranchOutcomeOpen,
+	}
+	if err := store.Create(ctx, branch); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got, err := store.Get(ctx, branch.ID); err != nil || got.ClosedAt != nil || got.CloseReason != "" {
+		t.Fatalf("new branch = %+v, %v; want no close record", got, err)
+	}
+
+	closedAt := time.Now().UTC().Truncate(time.Millisecond)
+	if err := store.MarkClosed(ctx, branch.ID, closedAt, domain.BranchOutcomeDisproved, "Other parents named"); err != nil {
+		t.Fatalf("MarkClosed: %v", err)
+	}
+	got, err := store.Get(ctx, branch.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Status != domain.BranchStatusArchived || got.Outcome != domain.BranchOutcomeDisproved ||
+		got.CloseReason != "Other parents named" || got.ClosedAt == nil || !got.ClosedAt.Equal(closedAt) {
+		t.Errorf("closed branch = %+v", got)
+	}
+	if got.Hypothesis != "Q" {
+		t.Errorf("MarkClosed disturbed the research record: %+v", got)
+	}
+	list, err := store.List(ctx)
+	if err != nil || len(list) != 1 || list[0].CloseReason != "Other parents named" || list[0].ClosedAt == nil {
+		t.Errorf("List after close = %+v, %v", list, err)
+	}
+
+	// A copy handed out cannot reach the store.
+	*got.ClosedAt = got.ClosedAt.Add(time.Hour)
+	if again, err := store.Get(ctx, branch.ID); err != nil || !again.ClosedAt.Equal(closedAt) {
+		t.Errorf("Get after mutating a copy = %+v, %v", again, err)
+	}
+
+	// A legacy close (no outcome) keeps the stored outcome and clears the reason.
+	legacy := &domain.Branch{
+		ID: uuid.New(), Name: "Legacy", Status: domain.BranchStatusActive,
+		CreatedAt: time.Now().UTC().Truncate(time.Millisecond), Outcome: domain.BranchOutcomeInconclusive,
+	}
+	if err := store.Upsert(ctx, legacy); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	if err := store.MarkClosed(ctx, legacy.ID, closedAt, "", ""); err != nil {
+		t.Fatalf("MarkClosed legacy: %v", err)
+	}
+	if got, err := store.Get(ctx, legacy.ID); err != nil || got.Outcome != domain.BranchOutcomeInconclusive ||
+		got.Status != domain.BranchStatusArchived || got.CloseReason != "" || got.ClosedAt == nil {
+		t.Errorf("legacy close = %+v, %v", got, err)
+	}
+
+	// A legacy close of a branch that reached no verdict reads as abandoned,
+	// not open: a close is never "open" (#836).
+	undecided := &domain.Branch{
+		ID: uuid.New(), Name: "Undecided", Status: domain.BranchStatusActive,
+		CreatedAt: time.Now().UTC().Truncate(time.Millisecond), Outcome: domain.BranchOutcomeOpen,
+	}
+	if err := store.Upsert(ctx, undecided); err != nil {
+		t.Fatalf("Upsert undecided: %v", err)
+	}
+	if err := store.MarkClosed(ctx, undecided.ID, closedAt, "", ""); err != nil {
+		t.Fatalf("MarkClosed undecided: %v", err)
+	}
+	if again, err := store.Get(ctx, undecided.ID); err != nil || again.Outcome != domain.BranchOutcomeAbandoned ||
+		again.Status != domain.BranchStatusArchived {
+		t.Errorf("legacy close of an open branch = %+v, %v; want abandoned", again, err)
+	}
+
+	// Upsert round-trips a close record (a projection replaying BranchCreated
+	// over a closed row writes the full branch).
+	replayed := *got
+	replayed.CloseReason = "Replayed"
+	if err := store.Upsert(ctx, &replayed); err != nil {
+		t.Fatalf("Upsert closed: %v", err)
+	}
+	if again, err := store.Get(ctx, replayed.ID); err != nil || again.CloseReason != "Replayed" || again.ClosedAt == nil {
+		t.Errorf("Upsert of a closed branch = %+v, %v", again, err)
+	}
+
+	if err := store.MarkClosed(ctx, uuid.New(), closedAt, domain.BranchOutcomeAbandoned, ""); !errors.Is(err, repository.ErrBranchNotFound) {
+		t.Errorf("MarkClosed unknown = %v, want ErrBranchNotFound", err)
 	}
 }

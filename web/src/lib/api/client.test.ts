@@ -328,6 +328,24 @@ describe('branch scope threading', () => {
 		expect(JSON.parse(init.body as string)).toEqual({ outcome: 'proved' });
 	});
 
+	it('closes a branch, reads its research and promotes its logs, all unscoped', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.closeBranch('a/b', { outcome: 'disproved', reason: 'why' });
+		await api.getBranchResearch('a/b');
+		await api.promoteBranchResearchLogs('a/b');
+		await api.promoteBranchResearchLogs('a/b', ['log-1']);
+		const calls = fetchMock.mock.calls as [string, RequestInit][];
+		expect(calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
+			'POST /api/v1/branches/a%2Fb/close',
+			'GET /api/v1/branches/a%2Fb/research',
+			'POST /api/v1/branches/a%2Fb/research-logs/promote',
+			'POST /api/v1/branches/a%2Fb/research-logs/promote'
+		]);
+		expect(JSON.parse(calls[0][1].body as string)).toEqual({ outcome: 'disproved', reason: 'why' });
+		expect(JSON.parse(calls[2][1].body as string)).toEqual({});
+		expect(JSON.parse(calls[3][1].body as string)).toEqual({ log_ids: ['log-1'] });
+	});
+
 	it('scopes the snapshot endpoints - a snapshot marks a position in the branch view', async () => {
 		setClientBranch(BRANCH_ID);
 		await api.listSnapshots();

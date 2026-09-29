@@ -57,6 +57,13 @@ export type BranchCreate = components['schemas']['BranchCreate'];
 export type BranchUpdate = components['schemas']['BranchUpdate'];
 /** The verdict a line of research reached (#835); independent of `status`. */
 export type BranchOutcome = components['schemas']['BranchOutcome'];
+export type BranchCloseOutcome = components['schemas']['BranchCloseOutcome'];
+export type BranchCloseRequest = components['schemas']['BranchCloseRequest'];
+export type BranchResearchArchive = components['schemas']['BranchResearchArchive'];
+export type ArchivedResearchLog = components['schemas']['ArchivedResearchLog'];
+export type ArchivedEvidenceAnalysis = components['schemas']['ArchivedEvidenceAnalysis'];
+export type ArchivedProofSummary = components['schemas']['ArchivedProofSummary'];
+export type PromoteResearchLogsResult = components['schemas']['PromoteResearchLogsResult'];
 export type BranchSubject = components['schemas']['BranchSubject'];
 export type BranchSubjectInput = components['schemas']['BranchSubjectInput'];
 export type BranchProofSummaryRef = components['schemas']['BranchProofSummaryRef'];
@@ -2475,6 +2482,34 @@ class ApiClient {
 	 */
 	async updateBranch(id: string, data: BranchUpdate): Promise<Branch> {
 		return this.request<Branch>('PATCH', `/branches/${encodeURIComponent(id)}`, data);
+	}
+
+	/**
+	 * Close a branch without merging, recording its outcome and reason (#836).
+	 * Prefer this over deleteBranch, which records no outcome or reason (an open branch reads as abandoned).
+	 */
+	async closeBranch(id: string, req: BranchCloseRequest): Promise<Branch> {
+		return this.request<Branch>('POST', `/branches/${encodeURIComponent(id)}/close`, req);
+	}
+
+	/** A branch's research, rebuilt from its events; works once it is closed. */
+	async getBranchResearch(id: string): Promise<BranchResearchArchive> {
+		return this.request<BranchResearchArchive>(
+			'GET',
+			`/branches/${encodeURIComponent(id)}/research`
+		);
+	}
+
+	/** Copy a closed branch's research logs to the mainline; omit ids for all. */
+	async promoteBranchResearchLogs(
+		id: string,
+		logIds?: string[]
+	): Promise<PromoteResearchLogsResult> {
+		return this.request<PromoteResearchLogsResult>(
+			'POST',
+			`/branches/${encodeURIComponent(id)}/research-logs/promote`,
+			logIds && logIds.length > 0 ? { log_ids: logIds } : {}
+		);
 	}
 
 	async deleteBranch(id: string): Promise<void> {

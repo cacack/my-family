@@ -227,6 +227,33 @@ func TestDeleteBranch_Archives(t *testing.T) {
 	}
 }
 
+// TestDeleteBranch_KeepsRecordedVerdict: the legacy DELETE records no outcome
+// of its own, so a verdict set through PATCH survives it; an open branch reads
+// as abandoned.
+func TestDeleteBranch_KeepsRecordedVerdict(t *testing.T) {
+	server := setupBranchTestServer()
+	judged := createBranch(t, server, "Judged")
+	rec := do(t, server, http.MethodPatch, "/api/v1/branches/"+judged, `{"outcome":"disproved"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	open := createBranch(t, server, "Undecided")
+
+	for id, want := range map[string]string{judged: "disproved", open: "abandoned"} {
+		rec = do(t, server, http.MethodDelete, "/api/v1/branches/"+id, "")
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("DELETE: status = %d. Body: %s", rec.Code, rec.Body.String())
+		}
+		rec = do(t, server, http.MethodGet, "/api/v1/branches/"+id, "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET: status = %d. Body: %s", rec.Code, rec.Body.String())
+		}
+		if got := decodeJSON(t, rec)["outcome"]; got != want {
+			t.Errorf("outcome after DELETE = %v, want %s", got, want)
+		}
+	}
+}
+
 func TestDeleteBranch_NotFound(t *testing.T) {
 	server := setupBranchTestServer()
 	rec := do(t, server, http.MethodDelete, "/api/v1/branches/"+unknownUUID, "")
@@ -1166,6 +1193,9 @@ func TestBranches_NoBranchStore(t *testing.T) {
 		{"merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge", `{}`, http.StatusServiceUnavailable},
 		{"resume merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge/resume", `{}`, http.StatusServiceUnavailable},
 		{"precheck merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge/precheck", `{}`, http.StatusServiceUnavailable},
+		{"close", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/close", `{"outcome":"abandoned"}`, http.StatusServiceUnavailable},
+		{"research", http.MethodGet, "/api/v1/branches/" + unknownUUID + "/research", "", http.StatusServiceUnavailable},
+		{"promote", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/research-logs/promote", `{}`, http.StatusServiceUnavailable},
 		// A branch scope cannot resolve when no branch can exist.
 		{"scoped read", http.MethodGet, "/api/v1/persons?branch=" + unknownUUID, "", http.StatusNotFound},
 	}

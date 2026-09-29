@@ -46,13 +46,17 @@ var (
 
 	// Research-record errors (#835).
 	ErrBranchHypothesisTooLong     = errors.New("branch hypothesis must be 2000 characters or less")
-	ErrBranchInvalidOutcome        = errors.New("branch outcome must be one of open, proved, disproved, inconclusive, superseded")
+	ErrBranchInvalidOutcome        = errors.New("branch outcome must be one of open, proved, disproved, inconclusive, superseded, abandoned")
 	ErrBranchTooManySubjects       = errors.New("a branch may name at most 50 subjects")
 	ErrBranchInvalidSubject        = errors.New("branch subject must be a person or family with an id")
 	ErrBranchDuplicateSubject      = errors.New("branch subjects must not repeat")
 	ErrBranchTooManyProofSummaries = errors.New("a branch may link at most 20 proof summaries")
 	ErrBranchInvalidProofSummaryID = errors.New("branch proof summary ids must be non-empty")
 	ErrBranchDuplicateProofSummary = errors.New("branch proof summary ids must not repeat")
+
+	// Close errors (#836).
+	ErrBranchInvalidCloseOutcome = errors.New("a branch is closed as disproved, inconclusive, superseded or abandoned")
+	ErrBranchCloseReasonTooLong  = errors.New("branch close reason must be 2000 characters or less")
 )
 
 // MaxResolutionRationaleLength bounds the optional rationale a merge records
@@ -86,14 +90,17 @@ const (
 	MaxBranchHypothesisLength = 2000
 	MaxBranchSubjects         = 50
 	MaxBranchProofSummaries   = 20
+	// MaxBranchCloseReasonLength caps the reason recorded when a branch is
+	// closed without merging (#836).
+	MaxBranchCloseReasonLength = 2000
 )
 
 // BranchOutcome is the verdict a line of research reached (#835). It is kept
 // independent of BranchStatus on purpose: status is the branch's lifecycle
 // (can it still take writes?), outcome is what the research concluded. A
 // merged branch is usually "proved", but a branch can be merged as
-// "inconclusive" or archived as "disproved", and #836 reuses this same enum
-// when a branch is closed without merging.
+// "inconclusive" or archived as "disproved"; closing a branch without merging
+// (#836) records one of the close outcomes (see IsCloseOutcome).
 type BranchOutcome string
 
 const (
@@ -104,6 +111,11 @@ const (
 	BranchOutcomeInconclusive BranchOutcome = "inconclusive"
 	// BranchOutcomeSuperseded marks a question overtaken by other research.
 	BranchOutcomeSuperseded BranchOutcome = "superseded"
+	// BranchOutcomeAbandoned marks research stopped without a verdict (#836):
+	// the line was dropped, not answered. The registry also records it for a
+	// close that carried no outcome (a BranchDeleted written before #836) on a
+	// branch that had reached no verdict, so no closed branch reads as "open".
+	BranchOutcomeAbandoned BranchOutcome = "abandoned"
 )
 
 // BranchOutcomes lists every valid outcome in display order.
@@ -114,6 +126,7 @@ func BranchOutcomes() []BranchOutcome {
 		BranchOutcomeDisproved,
 		BranchOutcomeInconclusive,
 		BranchOutcomeSuperseded,
+		BranchOutcomeAbandoned,
 	}
 }
 
@@ -121,11 +134,36 @@ func BranchOutcomes() []BranchOutcome {
 func (o BranchOutcome) IsValid() bool {
 	switch o {
 	case BranchOutcomeOpen, BranchOutcomeProved, BranchOutcomeDisproved,
-		BranchOutcomeInconclusive, BranchOutcomeSuperseded:
+		BranchOutcomeInconclusive, BranchOutcomeSuperseded, BranchOutcomeAbandoned:
 		return true
 	default:
 		return false
 	}
+}
+
+// IsCloseOutcome reports whether the outcome can be recorded when a branch is
+// closed without merging (#836): disproved, inconclusive, superseded or
+// abandoned. "open" is no verdict, and a "proved" branch is merged, not closed.
+func (o BranchOutcome) IsCloseOutcome() bool {
+	switch o {
+	case BranchOutcomeDisproved, BranchOutcomeInconclusive,
+		BranchOutcomeSuperseded, BranchOutcomeAbandoned:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidateBranchClose checks the outcome and reason given when a branch is
+// closed (#836). The reason is optional; its length is counted in characters.
+func ValidateBranchClose(outcome BranchOutcome, reason string) error {
+	if !outcome.IsCloseOutcome() {
+		return ErrBranchInvalidCloseOutcome
+	}
+	if utf8.RuneCountInString(reason) > MaxBranchCloseReasonLength {
+		return ErrBranchCloseReasonTooLong
+	}
+	return nil
 }
 
 // OrDefault returns the outcome, or BranchOutcomeOpen when it is empty. A
@@ -169,7 +207,8 @@ const (
 	// Note the deliberate vocabulary split: the lifecycle *event* is named
 	// BranchDeleted (a "delete branch" action) but the resulting *status* is
 	// "archived" — the branch record and its history are retained (append-only,
-	// ES-002), only its overlay rows are purged. A UI "Delete branch" maps here.
+	// ES-002), only its overlay rows are purged. The UI calls the action "Close
+	// branch" (#836): closing records an outcome and a reason on the event.
 	BranchStatusArchived BranchStatus = "archived"
 )
 
@@ -205,6 +244,14 @@ type Branch struct {
 	// "never merged" is distinguishable from the zero time.
 	MergedAt  *time.Time `json:"merged_at,omitempty"`
 	MergeNote string     `json:"merge_note,omitempty"`
+
+	// ClosedAt and CloseReason are the registry's copy of the close record
+	// (#836), set on the active→archived transition from the BranchDeleted
+	// event. ClosedAt is nil for active and merged branches; CloseReason is
+	// empty when none was given (always, for a branch closed before #836).
+	// The outcome the branch was closed with is stored in Outcome.
+	ClosedAt    *time.Time `json:"closed_at,omitempty"`
+	CloseReason string     `json:"close_reason,omitempty"`
 
 	// The research record (#835): the question the branch explores, the
 	// persons/families it concerns, the verdict it reached and the proof
@@ -323,6 +370,9 @@ func (b *Branch) Validate() error {
 	}
 	if utf8.RuneCountInString(b.MergeNote) > 1000 {
 		return ErrBranchMergeNoteTooLong
+	}
+	if utf8.RuneCountInString(b.CloseReason) > MaxBranchCloseReasonLength {
+		return ErrBranchCloseReasonTooLong
 	}
 	// An empty outcome is a pre-#835 branch and reads as open.
 	research := b.Research()

@@ -39,6 +39,10 @@ func copyBranch(branch *domain.Branch) *domain.Branch {
 		mergedAt := *branch.MergedAt
 		copied.MergedAt = &mergedAt
 	}
+	if branch.ClosedAt != nil {
+		closedAt := *branch.ClosedAt
+		copied.ClosedAt = &closedAt
+	}
 	copied.ApplyResearch(branch.Research())
 	return &copied
 }
@@ -151,6 +155,30 @@ func (s *BranchStore) MarkMerged(_ context.Context, id uuid.UUID, mergedAt time.
 	branch.Status = domain.BranchStatusMerged
 	branch.MergedAt = &mergedAt
 	branch.MergeNote = note
+	return nil
+}
+
+// MarkClosed records a close: status, timestamp, reason and the outcome in one
+// write. An empty outcome (a pre-#836 close) keeps a stored verdict and turns
+// a stored "open" into abandoned.
+func (s *BranchStore) MarkClosed(_ context.Context, id uuid.UUID, closedAt time.Time, outcome domain.BranchOutcome, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	branch, exists := s.branches[id]
+	if !exists {
+		return repository.ErrBranchNotFound
+	}
+
+	branch.Status = domain.BranchStatusArchived
+	branch.ClosedAt = &closedAt
+	branch.CloseReason = reason
+	switch {
+	case outcome != "":
+		branch.Outcome = outcome
+	case branch.Outcome.OrDefault() == domain.BranchOutcomeOpen:
+		branch.Outcome = domain.BranchOutcomeAbandoned
+	}
 	return nil
 }
 

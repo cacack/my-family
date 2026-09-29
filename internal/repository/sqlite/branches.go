@@ -45,7 +45,9 @@ func (s *BranchStore) createTables() error {
 			hypothesis TEXT,
 			subjects TEXT,
 			outcome TEXT NOT NULL DEFAULT 'open',
-			proof_summary_ids TEXT
+			proof_summary_ids TEXT,
+			closed_at TEXT,
+			close_reason TEXT
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_branches_created_at ON branches(created_at DESC);
@@ -55,6 +57,22 @@ func (s *BranchStore) createTables() error {
 	}
 	s.migrateMergeColumns()
 	s.migrateResearchColumns()
+	return s.migrateCloseColumns()
+}
+
+// migrateCloseColumns adds the close-record columns (#836) to a branches table
+// created before they existed. As in migrateMergeColumns, the duplicate-column
+// error on an already-migrated database is the only failure and is
+// intentionally ignored. A branch archived before #836 keeps NULLs; one still
+// reading "open" is backfilled as abandoned, matching MarkClosed for a close
+// that recorded no outcome.
+func (s *BranchStore) migrateCloseColumns() error {
+	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN closed_at TEXT`)
+	_, _ = s.db.Exec(`ALTER TABLE branches ADD COLUMN close_reason TEXT`)
+	if _, err := s.db.Exec(`UPDATE branches SET outcome = ? WHERE status = ? AND outcome IN ('', ?)`,
+		string(domain.BranchOutcomeAbandoned), string(domain.BranchStatusArchived), string(domain.BranchOutcomeOpen)); err != nil {
+		return fmt.Errorf("backfill abandoned outcome: %w", err)
+	}
 	return nil
 }
 
@@ -96,9 +114,11 @@ func scanBranch(row branchScanner) (*domain.Branch, error) {
 		mergedAtStr, mergeNote            sql.NullString
 		hypothesis, outcome               sql.NullString
 		subjects, proofSummaryIDs         sql.NullString
+		closedAtStr, closeReason          sql.NullString
 	)
 	if err := row.Scan(&idStr, &name, &description, &basePosition, &status, &createdAtStr,
-		&mergedAtStr, &mergeNote, &hypothesis, &outcome, &subjects, &proofSummaryIDs); err != nil {
+		&mergedAtStr, &mergeNote, &hypothesis, &outcome, &subjects, &proofSummaryIDs,
+		&closedAtStr, &closeReason); err != nil {
 		return nil, err
 	}
 
@@ -115,6 +135,11 @@ func scanBranch(row branchScanner) (*domain.Branch, error) {
 	mergedAt, err := parseNullableTimestamp(mergedAtStr)
 	if err != nil {
 		return nil, fmt.Errorf("parse branch merged_at %q: %w", mergedAtStr.String, err)
+	}
+
+	closedAt, err := parseNullableTimestamp(closedAtStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse branch closed_at %q: %w", closedAtStr.String, err)
 	}
 
 	research, err := repository.DecodeBranchResearch(hypothesis.String, outcome.String, repository.BranchListsJSON{
@@ -134,6 +159,8 @@ func scanBranch(row branchScanner) (*domain.Branch, error) {
 		CreatedAt:    createdAt,
 		MergedAt:     mergedAt,
 		MergeNote:    mergeNote.String,
+		ClosedAt:     closedAt,
+		CloseReason:  closeReason.String,
 	}
 	branch.ApplyResearch(research)
 	return branch, nil
@@ -147,8 +174,8 @@ func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note,
-		                      hypothesis, outcome, subjects, proof_summary_ids)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                      hypothesis, outcome, subjects, proof_summary_ids, closed_at, close_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		branch.ID.String(),
 		branch.Name,
@@ -162,6 +189,8 @@ func (s *BranchStore) Create(ctx context.Context, branch *domain.Branch) error {
 		string(branch.Outcome.OrDefault()),
 		nullableString(lists.Subjects),
 		nullableString(lists.ProofSummaryIDs),
+		nullableTimestamp(branch.ClosedAt),
+		nullableString(branch.CloseReason),
 	)
 	if err != nil {
 		return fmt.Errorf("insert branch: %w", err)
@@ -177,8 +206,8 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO branches (id, name, description, base_position, status, created_at, merged_at, merge_note,
-		                      hypothesis, outcome, subjects, proof_summary_ids)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                      hypothesis, outcome, subjects, proof_summary_ids, closed_at, close_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			name = excluded.name,
 			description = excluded.description,
@@ -190,7 +219,9 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 			hypothesis = excluded.hypothesis,
 			outcome = excluded.outcome,
 			subjects = excluded.subjects,
-			proof_summary_ids = excluded.proof_summary_ids
+			proof_summary_ids = excluded.proof_summary_ids,
+			closed_at = excluded.closed_at,
+			close_reason = excluded.close_reason
 	`,
 		branch.ID.String(),
 		branch.Name,
@@ -204,6 +235,8 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 		string(branch.Outcome.OrDefault()),
 		nullableString(lists.Subjects),
 		nullableString(lists.ProofSummaryIDs),
+		nullableTimestamp(branch.ClosedAt),
+		nullableString(branch.CloseReason),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert branch: %w", err)
@@ -215,7 +248,8 @@ func (s *BranchStore) Upsert(ctx context.Context, branch *domain.Branch) error {
 func (s *BranchStore) Get(ctx context.Context, id uuid.UUID) (*domain.Branch, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note,
-		       hypothesis, outcome, subjects, proof_summary_ids
+		       hypothesis, outcome, subjects, proof_summary_ids,
+		       closed_at, close_reason
 		FROM branches
 		WHERE id = ?
 	`, id.String())
@@ -233,7 +267,8 @@ func (s *BranchStore) Get(ctx context.Context, id uuid.UUID) (*domain.Branch, er
 func (s *BranchStore) List(ctx context.Context) ([]*domain.Branch, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, description, base_position, status, created_at, merged_at, merge_note,
-		       hypothesis, outcome, subjects, proof_summary_ids
+		       hypothesis, outcome, subjects, proof_summary_ids,
+		       closed_at, close_reason
 		FROM branches
 		ORDER BY created_at DESC
 	`)
@@ -334,6 +369,37 @@ func (s *BranchStore) MarkMerged(ctx context.Context, id uuid.UUID, mergedAt tim
 	`, string(domain.BranchStatusMerged), formatTimestamp(mergedAt), nullableString(note), id.String())
 	if err != nil {
 		return fmt.Errorf("mark branch merged: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return repository.ErrBranchNotFound
+	}
+
+	return nil
+}
+
+// MarkClosed records a close: status, timestamp, reason and the outcome in one
+// statement. An empty outcome (a pre-#836 close) keeps a stored verdict and
+// turns a stored "open" into abandoned.
+func (s *BranchStore) MarkClosed(ctx context.Context, id uuid.UUID, closedAt time.Time, outcome domain.BranchOutcome, reason string) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE branches SET status = ?, closed_at = ?, close_reason = ?,
+			outcome = CASE
+				WHEN ? <> '' THEN ?
+				WHEN outcome IN ('', ?) THEN ?
+				ELSE outcome
+			END
+		WHERE id = ?
+	`, string(domain.BranchStatusArchived), formatTimestamp(closedAt), nullableString(reason),
+		string(outcome), string(outcome), string(domain.BranchOutcomeOpen), string(domain.BranchOutcomeAbandoned),
+		id.String())
+	if err != nil {
+		return fmt.Errorf("mark branch closed: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()

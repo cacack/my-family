@@ -142,6 +142,30 @@ func (e BranchChangedFactSubjectType) Valid() bool {
 	}
 }
 
+// Defines values for BranchCloseOutcome.
+const (
+	BranchCloseOutcomeAbandoned    BranchCloseOutcome = "abandoned"
+	BranchCloseOutcomeDisproved    BranchCloseOutcome = "disproved"
+	BranchCloseOutcomeInconclusive BranchCloseOutcome = "inconclusive"
+	BranchCloseOutcomeSuperseded   BranchCloseOutcome = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the BranchCloseOutcome enum.
+func (e BranchCloseOutcome) Valid() bool {
+	switch e {
+	case BranchCloseOutcomeAbandoned:
+		return true
+	case BranchCloseOutcomeDisproved:
+		return true
+	case BranchCloseOutcomeInconclusive:
+		return true
+	case BranchCloseOutcomeSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BranchMergeConflictErrorCode.
 const (
 	BranchNotActive        BranchMergeConflictErrorCode = "branch_not_active"
@@ -207,6 +231,7 @@ func (e BranchMergeResumeErrorCode) Valid() bool {
 
 // Defines values for BranchOutcome.
 const (
+	BranchOutcomeAbandoned    BranchOutcome = "abandoned"
 	BranchOutcomeDisproved    BranchOutcome = "disproved"
 	BranchOutcomeInconclusive BranchOutcome = "inconclusive"
 	BranchOutcomeOpen         BranchOutcome = "open"
@@ -217,6 +242,8 @@ const (
 // Valid indicates whether the value is a known member of the BranchOutcome enum.
 func (e BranchOutcome) Valid() bool {
 	switch e {
+	case BranchOutcomeAbandoned:
+		return true
 	case BranchOutcomeDisproved:
 		return true
 	case BranchOutcomeInconclusive:
@@ -1324,6 +1351,30 @@ func (e PersonUpdateGender) Valid() bool {
 	}
 }
 
+// Defines values for PromoteSkippedLogReason.
+const (
+	PromoteSkippedLogReasonAlreadyPromoted    PromoteSkippedLogReason = "already_promoted"
+	PromoteSkippedLogReasonNotCreatedOnBranch PromoteSkippedLogReason = "not_created_on_branch"
+	PromoteSkippedLogReasonNotFound           PromoteSkippedLogReason = "not_found"
+	PromoteSkippedLogReasonSubjectNotOnMain   PromoteSkippedLogReason = "subject_not_on_main"
+)
+
+// Valid indicates whether the value is a known member of the PromoteSkippedLogReason enum.
+func (e PromoteSkippedLogReason) Valid() bool {
+	switch e {
+	case PromoteSkippedLogReasonAlreadyPromoted:
+		return true
+	case PromoteSkippedLogReasonNotCreatedOnBranch:
+		return true
+	case PromoteSkippedLogReasonNotFound:
+		return true
+	case PromoteSkippedLogReasonSubjectNotOnMain:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProofSummaryResearchStatus.
 const (
 	ProofSummaryResearchStatusCertain  ProofSummaryResearchStatus = "certain"
@@ -1650,16 +1701,16 @@ func (e ListEvidenceAnalysesParamsOrder) Valid() bool {
 
 // Defines values for ListEvidenceConflictsParamsStatus.
 const (
-	Open     ListEvidenceConflictsParamsStatus = "open"
-	Resolved ListEvidenceConflictsParamsStatus = "resolved"
+	ListEvidenceConflictsParamsStatusOpen     ListEvidenceConflictsParamsStatus = "open"
+	ListEvidenceConflictsParamsStatusResolved ListEvidenceConflictsParamsStatus = "resolved"
 )
 
 // Valid indicates whether the value is a known member of the ListEvidenceConflictsParamsStatus enum.
 func (e ListEvidenceConflictsParamsStatus) Valid() bool {
 	switch e {
-	case Open:
+	case ListEvidenceConflictsParamsStatusOpen:
 		return true
-	case Resolved:
+	case ListEvidenceConflictsParamsStatusResolved:
 		return true
 	default:
 		return false
@@ -2286,6 +2337,33 @@ type AhnentafelSubject struct {
 	Surname   string             `json:"surname"`
 }
 
+// ArchivedEvidenceAnalysis defines model for ArchivedEvidenceAnalysis.
+type ArchivedEvidenceAnalysis struct {
+	Analysis        EvidenceAnalysis `json:"analysis"`
+	CreatedOnBranch bool             `json:"created_on_branch"`
+	SubjectName     *string          `json:"subject_name,omitempty"`
+}
+
+// ArchivedProofSummary defines model for ArchivedProofSummary.
+type ArchivedProofSummary struct {
+	CreatedOnBranch bool         `json:"created_on_branch"`
+	SubjectName     *string      `json:"subject_name,omitempty"`
+	Summary         ProofSummary `json:"summary"`
+}
+
+// ArchivedResearchLog defines model for ArchivedResearchLog.
+type ArchivedResearchLog struct {
+	// CreatedOnBranch The entry was first written on the branch (rather than being a
+	// mainline entry the branch edited). Only such entries can be
+	// promoted to the mainline.
+	CreatedOnBranch bool        `json:"created_on_branch"`
+	Log             ResearchLog `json:"log"`
+
+	// SubjectName Display name of the subject, from the mainline or, for a subject
+	// that only existed on the branch, as the branch created it.
+	SubjectName *string `json:"subject_name,omitempty"`
+}
+
 // Association defines model for Association.
 type Association struct {
 	// AssociateId The associated person
@@ -2472,6 +2550,14 @@ type Branch struct {
 	// BasePosition Mainline event store position the branch forked from
 	BasePosition int64 `json:"base_position"`
 
+	// CloseReason The reason recorded when the branch was closed. Absent when none was
+	// given. The outcome it was closed with is `outcome`.
+	CloseReason *string `json:"close_reason,omitempty"`
+
+	// ClosedAt When the branch was closed without merging (#836). Absent unless
+	// `status` is `archived`.
+	ClosedAt *time.Time `json:"closed_at,omitempty"`
+
 	// CreatedAt When the branch was created
 	CreatedAt time.Time `json:"created_at"`
 
@@ -2527,7 +2613,8 @@ type Branch struct {
 	// Outcome The verdict the research reached. Independent of `status`: status says
 	// whether the branch still takes writes, outcome says what it concluded.
 	// `open` means the question is still being worked; `superseded` marks a
-	// question overtaken by other research.
+	// question overtaken by other research; `abandoned` marks research
+	// stopped without a verdict.
 	Outcome BranchOutcome `json:"outcome"`
 
 	// ProofSummaries The linked proof summaries, resolved for display. Present on the
@@ -2608,6 +2695,20 @@ type BranchChangedFactKind string
 // BranchChangedFactSubjectType What the fact is about - the subject an analysis of it has.
 type BranchChangedFactSubjectType string
 
+// BranchCloseOutcome The outcomes a branch can be closed with (#836). `open` is no verdict,
+// and a `proved` branch is merged rather than closed.
+type BranchCloseOutcome string
+
+// BranchCloseRequest defines model for BranchCloseRequest.
+type BranchCloseRequest struct {
+	// Outcome The outcomes a branch can be closed with (#836). `open` is no verdict,
+	// and a `proved` branch is merged rather than closed.
+	Outcome BranchCloseOutcome `json:"outcome"`
+
+	// Reason Why the branch is being closed, in the researcher's words
+	Reason *string `json:"reason,omitempty"`
+}
+
 // BranchComparisonResult defines model for BranchComparisonResult.
 type BranchComparisonResult struct {
 	// BasePosition Mainline position the branch forked from - the anchor of this diff
@@ -2666,7 +2767,8 @@ type BranchCreate struct {
 	// Outcome The verdict the research reached. Independent of `status`: status says
 	// whether the branch still takes writes, outcome says what it concluded.
 	// `open` means the question is still being worked; `superseded` marks a
-	// question overtaken by other research.
+	// question overtaken by other research; `abandoned` marks research
+	// stopped without a verdict.
 	Outcome *BranchOutcome `json:"outcome,omitempty"`
 
 	// ProofSummaryIds Proof summaries to link; must exist on the mainline
@@ -2897,7 +2999,8 @@ type BranchMergeResumeResult struct {
 // BranchOutcome The verdict the research reached. Independent of `status`: status says
 // whether the branch still takes writes, outcome says what it concluded.
 // `open` means the question is still being worked; `superseded` marks a
-// question overtaken by other research.
+// question overtaken by other research; `abandoned` marks research
+// stopped without a verdict.
 type BranchOutcome string
 
 // BranchProofSummaryRef defines model for BranchProofSummaryRef.
@@ -2916,6 +3019,23 @@ type BranchQualityIssue struct {
 	Key        string             `json:"key"`
 	PersonId   openapi_types.UUID `json:"person_id"`
 	PersonName string             `json:"person_name"`
+}
+
+// BranchResearchArchive The GPS artifacts a branch recorded, rebuilt from the branch's own
+// events (#836). Each artifact is as the branch left it. Entries are in
+// the order the branch first touched them.
+type BranchResearchArchive struct {
+	BranchId openapi_types.UUID `json:"branch_id"`
+
+	// DeletedCount GPS artifacts the branch deleted; they are not listed
+	DeletedCount     int                        `json:"deleted_count"`
+	EvidenceAnalyses []ArchivedEvidenceAnalysis `json:"evidence_analyses"`
+	ProofSummaries   []ArchivedProofSummary     `json:"proof_summaries"`
+	ResearchLogs     []ArchivedResearchLog      `json:"research_logs"`
+
+	// Truncated The branch has more events than the reconstruction reads, so the
+	// archive may be incomplete.
+	Truncated bool `json:"truncated"`
 }
 
 // BranchSubject defines model for BranchSubject.
@@ -2945,7 +3065,8 @@ type BranchUpdate struct {
 	// Outcome The verdict the research reached. Independent of `status`: status says
 	// whether the branch still takes writes, outcome says what it concluded.
 	// `open` means the question is still being worked; `superseded` marks a
-	// question overtaken by other research.
+	// question overtaken by other research; `abandoned` marks research
+	// stopped without a verdict.
 	Outcome         *BranchOutcome        `json:"outcome,omitempty"`
 	ProofSummaryIds *[]openapi_types.UUID `json:"proof_summary_ids,omitempty"`
 	Subjects        *[]BranchSubjectInput `json:"subjects,omitempty"`
@@ -4860,6 +4981,42 @@ type PlaceIndexResponse struct {
 	// Total Total number of unique places at this level
 	Total int `json:"total"`
 }
+
+// PromoteResearchLogsRequest defines model for PromoteResearchLogsRequest.
+type PromoteResearchLogsRequest struct {
+	// LogIds The research logs to promote. Omitted or empty promotes every
+	// eligible log the branch recorded.
+	LogIds *[]openapi_types.UUID `json:"log_ids,omitempty"`
+}
+
+// PromoteResearchLogsResult defines model for PromoteResearchLogsResult.
+type PromoteResearchLogsResult struct {
+	// Promoted Research logs now on the mainline, under the same ids
+	Promoted []openapi_types.UUID `json:"promoted"`
+	Skipped  []PromoteSkippedLog  `json:"skipped"`
+
+	// Truncated The branch's research archive was incomplete (see BranchResearchArchive)
+	Truncated bool `json:"truncated"`
+}
+
+// PromoteSkippedLog defines model for PromoteSkippedLog.
+type PromoteSkippedLog struct {
+	Id openapi_types.UUID `json:"id"`
+
+	// Reason `not_found`: not a research log the branch left.
+	// `not_created_on_branch`: a mainline entry the branch only edited.
+	// `already_promoted`: already on the mainline.
+	// `subject_not_on_main`: its subject does not exist on the mainline,
+	// so promoting it would leave a dangling reference.
+	Reason PromoteSkippedLogReason `json:"reason"`
+}
+
+// PromoteSkippedLogReason `not_found`: not a research log the branch left.
+// `not_created_on_branch`: a mainline entry the branch only edited.
+// `already_promoted`: already on the mainline.
+// `subject_not_on_main`: its subject does not exist on the mainline,
+// so promoting it would leave a dangling reference.
+type PromoteSkippedLogReason string
 
 // ProofSummary defines model for ProofSummary.
 type ProofSummary struct {
@@ -7153,6 +7310,9 @@ type CreateBranchJSONRequestBody = BranchCreate
 // UpdateBranchJSONRequestBody defines body for UpdateBranch for application/json ContentType.
 type UpdateBranchJSONRequestBody = BranchUpdate
 
+// CloseBranchJSONRequestBody defines body for CloseBranch for application/json ContentType.
+type CloseBranchJSONRequestBody = BranchCloseRequest
+
 // MergeBranchJSONRequestBody defines body for MergeBranch for application/json ContentType.
 type MergeBranchJSONRequestBody = BranchMergeRequest
 
@@ -7161,6 +7321,9 @@ type PrecheckBranchMergeJSONRequestBody = BranchMergePrecheckRequest
 
 // ResumeBranchMergeJSONRequestBody defines body for ResumeBranchMerge for application/json ContentType.
 type ResumeBranchMergeJSONRequestBody = BranchMergeResumeRequest
+
+// PromoteBranchResearchLogsJSONRequestBody defines body for PromoteBranchResearchLogs for application/json ContentType.
+type PromoteBranchResearchLogsJSONRequestBody = PromoteResearchLogsRequest
 
 // PreviewCitationTemplateJSONRequestBody defines body for PreviewCitationTemplate for application/json ContentType.
 type PreviewCitationTemplateJSONRequestBody PreviewCitationTemplateJSONBody
@@ -7311,7 +7474,7 @@ type ServerInterface interface {
 	// Create a new branch
 	// (POST /branches)
 	CreateBranch(ctx echo.Context) error
-	// Delete (archive) a branch
+	// Close (archive) a branch without recording why
 	// (DELETE /branches/{id})
 	DeleteBranch(ctx echo.Context, id BranchId) error
 	// Get a branch by ID
@@ -7320,6 +7483,9 @@ type ServerInterface interface {
 	// Edit a branch's description and research record
 	// (PATCH /branches/{id})
 	UpdateBranch(ctx echo.Context, id BranchId) error
+	// Close a branch without merging, recording why
+	// (POST /branches/{id}/close)
+	CloseBranch(ctx echo.Context, id BranchId) error
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx echo.Context, id BranchId) error
@@ -7338,6 +7504,12 @@ type ServerInterface interface {
 	// Finish a merge whose replay onto the mainline was interrupted
 	// (POST /branches/{id}/merge/resume)
 	ResumeBranchMerge(ctx echo.Context, id BranchId) error
+	// Read a branch's research, rebuilt from its events
+	// (GET /branches/{id}/research)
+	GetBranchResearch(ctx echo.Context, id BranchId) error
+	// Copy a closed branch's research logs to the mainline
+	// (POST /branches/{id}/research-logs/promote)
+	PromoteBranchResearchLogs(ctx echo.Context, id BranchId) error
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx echo.Context, params GetBrickWallsParams) error
@@ -8028,6 +8200,22 @@ func (w *ServerInterfaceWrapper) UpdateBranch(ctx echo.Context) error {
 	return err
 }
 
+// CloseBranch converts echo context to params.
+func (w *ServerInterfaceWrapper) CloseBranch(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CloseBranch(ctx, id)
+	return err
+}
+
 // CompareBranch converts echo context to params.
 func (w *ServerInterfaceWrapper) CompareBranch(ctx echo.Context) error {
 	var err error
@@ -8121,6 +8309,38 @@ func (w *ServerInterfaceWrapper) ResumeBranchMerge(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.ResumeBranchMerge(ctx, id)
+	return err
+}
+
+// GetBranchResearch converts echo context to params.
+func (w *ServerInterfaceWrapper) GetBranchResearch(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetBranchResearch(ctx, id)
+	return err
+}
+
+// PromoteBranchResearchLogs converts echo context to params.
+func (w *ServerInterfaceWrapper) PromoteBranchResearchLogs(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PromoteBranchResearchLogs(ctx, id)
 	return err
 }
 
@@ -11712,12 +11932,15 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/branches/:id", wrapper.DeleteBranch, options.OperationMiddlewares["deleteBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id", wrapper.GetBranch, options.OperationMiddlewares["getBranch"]...)
 	router.PATCH(options.BaseURL+"/branches/:id", wrapper.UpdateBranch, options.OperationMiddlewares["updateBranch"]...)
+	router.POST(options.BaseURL+"/branches/:id/close", wrapper.CloseBranch, options.OperationMiddlewares["closeBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/evidence-coverage", wrapper.GetBranchEvidenceCoverage, options.OperationMiddlewares["getBranchEvidenceCoverage"]...)
 	router.GET(options.BaseURL+"/branches/:id/health", wrapper.GetBranchHealth, options.OperationMiddlewares["getBranchHealth"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge", wrapper.MergeBranch, options.OperationMiddlewares["mergeBranch"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge/precheck", wrapper.PrecheckBranchMerge, options.OperationMiddlewares["precheckBranchMerge"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge/resume", wrapper.ResumeBranchMerge, options.OperationMiddlewares["resumeBranchMerge"]...)
+	router.GET(options.BaseURL+"/branches/:id/research", wrapper.GetBranchResearch, options.OperationMiddlewares["getBranchResearch"]...)
+	router.POST(options.BaseURL+"/branches/:id/research-logs/promote", wrapper.PromoteBranchResearchLogs, options.OperationMiddlewares["promoteBranchResearchLogs"]...)
 	router.GET(options.BaseURL+"/browse/brick-walls", wrapper.GetBrickWalls, options.OperationMiddlewares["getBrickWalls"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries", wrapper.BrowseCemeteries, options.OperationMiddlewares["browseCemeteries"]...)
 	router.GET(options.BaseURL+"/browse/cemeteries/:place/persons", wrapper.GetPersonsByCemetery, options.OperationMiddlewares["getPersonsByCemetery"]...)
@@ -12468,6 +12691,87 @@ func (response UpdateBranch503JSONResponse) VisitUpdateBranchResponse(w http.Res
 	return err
 }
 
+type CloseBranchRequestObject struct {
+	Id   BranchId `json:"id"`
+	Body *CloseBranchJSONRequestBody
+}
+
+type CloseBranchResponseObject interface {
+	VisitCloseBranchResponse(w http.ResponseWriter) error
+}
+
+type CloseBranch200JSONResponse Branch
+
+func (response CloseBranch200JSONResponse) VisitCloseBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseBranch400JSONResponse Error
+
+func (response CloseBranch400JSONResponse) VisitCloseBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseBranch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CloseBranch404JSONResponse) VisitCloseBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseBranch409JSONResponse Error
+
+func (response CloseBranch409JSONResponse) VisitCloseBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseBranch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response CloseBranch503JSONResponse) VisitCloseBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CompareBranchRequestObject struct {
 	Id BranchId `json:"id"`
 }
@@ -12884,6 +13188,139 @@ type ResumeBranchMerge503JSONResponse struct {
 }
 
 func (response ResumeBranchMerge503JSONResponse) VisitResumeBranchMergeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchResearchRequestObject struct {
+	Id BranchId `json:"id"`
+}
+
+type GetBranchResearchResponseObject interface {
+	VisitGetBranchResearchResponse(w http.ResponseWriter) error
+}
+
+type GetBranchResearch200JSONResponse BranchResearchArchive
+
+func (response GetBranchResearch200JSONResponse) VisitGetBranchResearchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchResearch404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetBranchResearch404JSONResponse) VisitGetBranchResearchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchResearch503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response GetBranchResearch503JSONResponse) VisitGetBranchResearchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PromoteBranchResearchLogsRequestObject struct {
+	Id   BranchId `json:"id"`
+	Body *PromoteBranchResearchLogsJSONRequestBody
+}
+
+type PromoteBranchResearchLogsResponseObject interface {
+	VisitPromoteBranchResearchLogsResponse(w http.ResponseWriter) error
+}
+
+type PromoteBranchResearchLogs200JSONResponse PromoteResearchLogsResult
+
+func (response PromoteBranchResearchLogs200JSONResponse) VisitPromoteBranchResearchLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PromoteBranchResearchLogs400JSONResponse Error
+
+func (response PromoteBranchResearchLogs400JSONResponse) VisitPromoteBranchResearchLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PromoteBranchResearchLogs404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PromoteBranchResearchLogs404JSONResponse) VisitPromoteBranchResearchLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PromoteBranchResearchLogs409JSONResponse Error
+
+func (response PromoteBranchResearchLogs409JSONResponse) VisitPromoteBranchResearchLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PromoteBranchResearchLogs503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response PromoteBranchResearchLogs503JSONResponse) VisitPromoteBranchResearchLogsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -18873,7 +19310,7 @@ type StrictServerInterface interface {
 	// Create a new branch
 	// (POST /branches)
 	CreateBranch(ctx context.Context, request CreateBranchRequestObject) (CreateBranchResponseObject, error)
-	// Delete (archive) a branch
+	// Close (archive) a branch without recording why
 	// (DELETE /branches/{id})
 	DeleteBranch(ctx context.Context, request DeleteBranchRequestObject) (DeleteBranchResponseObject, error)
 	// Get a branch by ID
@@ -18882,6 +19319,9 @@ type StrictServerInterface interface {
 	// Edit a branch's description and research record
 	// (PATCH /branches/{id})
 	UpdateBranch(ctx context.Context, request UpdateBranchRequestObject) (UpdateBranchResponseObject, error)
+	// Close a branch without merging, recording why
+	// (POST /branches/{id}/close)
+	CloseBranch(ctx context.Context, request CloseBranchRequestObject) (CloseBranchResponseObject, error)
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx context.Context, request CompareBranchRequestObject) (CompareBranchResponseObject, error)
@@ -18900,6 +19340,12 @@ type StrictServerInterface interface {
 	// Finish a merge whose replay onto the mainline was interrupted
 	// (POST /branches/{id}/merge/resume)
 	ResumeBranchMerge(ctx context.Context, request ResumeBranchMergeRequestObject) (ResumeBranchMergeResponseObject, error)
+	// Read a branch's research, rebuilt from its events
+	// (GET /branches/{id}/research)
+	GetBranchResearch(ctx context.Context, request GetBranchResearchRequestObject) (GetBranchResearchResponseObject, error)
+	// Copy a closed branch's research logs to the mainline
+	// (POST /branches/{id}/research-logs/promote)
+	PromoteBranchResearchLogs(ctx context.Context, request PromoteBranchResearchLogsRequestObject) (PromoteBranchResearchLogsResponseObject, error)
 	// List brick wall research blocks
 	// (GET /browse/brick-walls)
 	GetBrickWalls(ctx context.Context, request GetBrickWallsRequestObject) (GetBrickWallsResponseObject, error)
@@ -19652,6 +20098,37 @@ func (sh *strictHandler) UpdateBranch(ctx echo.Context, id BranchId) error {
 	return nil
 }
 
+// CloseBranch operation middleware
+func (sh *strictHandler) CloseBranch(ctx echo.Context, id BranchId) error {
+	var request CloseBranchRequestObject
+
+	request.Id = id
+
+	var body CloseBranchJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		return err
+	}
+	request.Body = &body
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CloseBranch(ctx.Request().Context(), request.(CloseBranchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CloseBranch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(CloseBranchResponseObject); ok {
+		return validResponse.VisitCloseBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
 // CompareBranch operation middleware
 func (sh *strictHandler) CompareBranch(ctx echo.Context, id BranchId) error {
 	var request CompareBranchRequestObject
@@ -19823,6 +20300,65 @@ func (sh *strictHandler) ResumeBranchMerge(ctx echo.Context, id BranchId) error 
 		return err
 	} else if validResponse, ok := response.(ResumeBranchMergeResponseObject); ok {
 		return validResponse.VisitResumeBranchMergeResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetBranchResearch operation middleware
+func (sh *strictHandler) GetBranchResearch(ctx echo.Context, id BranchId) error {
+	var request GetBranchResearchRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBranchResearch(ctx.Request().Context(), request.(GetBranchResearchRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBranchResearch")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetBranchResearchResponseObject); ok {
+		return validResponse.VisitGetBranchResearchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// PromoteBranchResearchLogs operation middleware
+func (sh *strictHandler) PromoteBranchResearchLogs(ctx echo.Context, id BranchId) error {
+	var request PromoteBranchResearchLogsRequestObject
+
+	request.Id = id
+
+	var body PromoteBranchResearchLogsJSONRequestBody
+	if err := ctx.Bind(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return err
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PromoteBranchResearchLogs(ctx.Request().Context(), request.(PromoteBranchResearchLogsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PromoteBranchResearchLogs")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PromoteBranchResearchLogsResponseObject); ok {
+		return validResponse.VisitPromoteBranchResearchLogsResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

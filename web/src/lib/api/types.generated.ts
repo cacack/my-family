@@ -1834,18 +1834,20 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete (archive) a branch
-         * @description Discards a branch. The branch record and every event it produced are
-         *     **retained** — the event log is append-only (invariant ES-002). What is
-         *     removed is the branch's read-model overlay: after this call the branch's
-         *     `status` is `archived` and its isolated view no longer exists, so
-         *     `?branch=` reads against it return 404.
+         * Close (archive) a branch without recording why
+         * @description Closes a branch without recording an outcome or a reason. A verdict
+         *     the branch already holds (`disproved`, `inconclusive`, `superseded`,
+         *     `proved`) is kept; a branch still `open` is recorded as `abandoned`.
+         *     Kept for existing clients; prefer `POST /branches/{id}/close`.
          *
-         *     The vocabulary split is deliberate: the lifecycle *event* is
-         *     `BranchDeleted` (the user action is "delete branch") while the resulting
-         *     *status* is `archived` (the history is kept). See `internal/domain/branch.go`.
+         *     The branch record and every event it produced are **retained** — the
+         *     event log is append-only (invariant ES-002). What is removed is the
+         *     branch's read-model overlay: after this call the branch's `status` is
+         *     `archived` and its isolated view no longer exists, so `?branch=` reads
+         *     against it return 404. Its research stays readable through
+         *     `GET /branches/{id}/research`.
          *
-         *     Only an `active` branch can be deleted; a `merged` or already `archived`
+         *     Only an `active` branch can be closed; a `merged` or already `archived`
          *     branch returns 409.
          */
         delete: operations["deleteBranch"];
@@ -1875,6 +1877,105 @@ export interface paths {
          *     merge. An update that changes nothing records no event.
          */
         patch: operations["updateBranch"];
+        trace?: never;
+    };
+    "/branches/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close a branch without merging, recording why
+         * @description Closes an `active` branch (#836) and records the outcome its research
+         *     reached — `disproved`, `inconclusive`, `superseded` or `abandoned` —
+         *     with an optional reason. Both are carried by the branch's
+         *     `BranchDeleted` event and shown on the branch (`outcome`,
+         *     `close_reason`, `closed_at`).
+         *
+         *     The branch becomes `archived`: its events are retained (ES-002) and its
+         *     read-model overlay is purged, so `?branch=` reads against it return
+         *     404. Its research logs (including searches that found nothing),
+         *     evidence analyses and proof summaries remain readable through
+         *     `GET /branches/{id}/research`, which rebuilds them from the events, and
+         *     its research logs can be copied to the mainline with
+         *     `POST /branches/{id}/research-logs/promote`.
+         */
+        post: operations["closeBranch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{id}/research": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a branch's research, rebuilt from its events
+         * @description Returns the research logs, evidence analyses and proof summaries the
+         *     branch recorded, each as the branch left it (#836). They are rebuilt
+         *     from the branch's own events rather than read from its overlay, so the
+         *     call works on a closed or merged branch, whose overlay has been purged.
+         *     Read-only: nothing is written.
+         */
+        get: operations["getBranchResearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{id}/research-logs/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy a closed branch's research logs to the mainline
+         * @description Copies research logs a closed branch recorded to the mainline (#836),
+         *     so its searches — especially the ones that found nothing — stay part of
+         *     the mainline's research record. Each promoted log keeps its id and gets
+         *     a note naming the branch, the outcome it was closed with and the
+         *     reason.
+         *
+         *     A log is skipped (and listed in `skipped` with the reason) when it is a
+         *     mainline entry the branch only edited, when it is already on the
+         *     mainline, or when its subject does not exist on the mainline — a
+         *     promotion never creates a dangling reference. Promoting again is safe:
+         *     a log promoted before is reported as `already_promoted`, including one
+         *     deleted on the mainline since, which is not restored.
+         *
+         *     Only a closed (`archived`) branch's logs are promoted; an active
+         *     branch's reach the mainline by merging.
+         */
+        post: operations["promoteBranchResearchLogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/branches/{id}/compare": {
@@ -4484,6 +4585,17 @@ export interface components {
              */
             merge_pending?: components["schemas"]["MergePendingEntity"][];
             /**
+             * Format: date-time
+             * @description When the branch was closed without merging (#836). Absent unless
+             *     `status` is `archived`.
+             */
+            closed_at?: string;
+            /**
+             * @description The reason recorded when the branch was closed. Absent when none was
+             *     given. The outcome it was closed with is `outcome`.
+             */
+            close_reason?: string;
+            /**
              * @description The research question the branch explores. Absent when none has
              *     been recorded.
              */
@@ -4505,11 +4617,99 @@ export interface components {
          * @description The verdict the research reached. Independent of `status`: status says
          *     whether the branch still takes writes, outcome says what it concluded.
          *     `open` means the question is still being worked; `superseded` marks a
-         *     question overtaken by other research.
+         *     question overtaken by other research; `abandoned` marks research
+         *     stopped without a verdict.
          * @default open
          * @enum {string}
          */
-        BranchOutcome: "open" | "proved" | "disproved" | "inconclusive" | "superseded";
+        BranchOutcome: "open" | "proved" | "disproved" | "inconclusive" | "superseded" | "abandoned";
+        /**
+         * @description The outcomes a branch can be closed with (#836). `open` is no verdict,
+         *     and a `proved` branch is merged rather than closed.
+         * @enum {string}
+         */
+        BranchCloseOutcome: "disproved" | "inconclusive" | "superseded" | "abandoned";
+        /**
+         * @example {
+         *       "outcome": "disproved",
+         *       "reason": "The 1850 census places Mary in Ohio with a different father."
+         *     }
+         */
+        BranchCloseRequest: {
+            outcome: components["schemas"]["BranchCloseOutcome"];
+            /** @description Why the branch is being closed, in the researcher's words */
+            reason?: string;
+        };
+        /**
+         * @description The GPS artifacts a branch recorded, rebuilt from the branch's own
+         *     events (#836). Each artifact is as the branch left it. Entries are in
+         *     the order the branch first touched them.
+         */
+        BranchResearchArchive: {
+            /** Format: uuid */
+            branch_id: string;
+            research_logs: components["schemas"]["ArchivedResearchLog"][];
+            evidence_analyses: components["schemas"]["ArchivedEvidenceAnalysis"][];
+            proof_summaries: components["schemas"]["ArchivedProofSummary"][];
+            /** @description GPS artifacts the branch deleted; they are not listed */
+            deleted_count: number;
+            /**
+             * @description The branch has more events than the reconstruction reads, so the
+             *     archive may be incomplete.
+             */
+            truncated: boolean;
+        };
+        ArchivedResearchLog: {
+            log: components["schemas"]["ResearchLog"];
+            /**
+             * @description Display name of the subject, from the mainline or, for a subject
+             *     that only existed on the branch, as the branch created it.
+             */
+            subject_name?: string;
+            /**
+             * @description The entry was first written on the branch (rather than being a
+             *     mainline entry the branch edited). Only such entries can be
+             *     promoted to the mainline.
+             */
+            created_on_branch: boolean;
+        };
+        ArchivedEvidenceAnalysis: {
+            analysis: components["schemas"]["EvidenceAnalysis"];
+            subject_name?: string;
+            created_on_branch: boolean;
+        };
+        ArchivedProofSummary: {
+            summary: components["schemas"]["ProofSummary"];
+            subject_name?: string;
+            created_on_branch: boolean;
+        };
+        PromoteResearchLogsRequest: {
+            /**
+             * @description The research logs to promote. Omitted or empty promotes every
+             *     eligible log the branch recorded.
+             */
+            log_ids?: string[];
+        };
+        PromoteResearchLogsResult: {
+            /** @description Research logs now on the mainline, under the same ids */
+            promoted: string[];
+            skipped: components["schemas"]["PromoteSkippedLog"][];
+            /** @description The branch's research archive was incomplete (see BranchResearchArchive) */
+            truncated: boolean;
+        };
+        PromoteSkippedLog: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description `not_found`: not a research log the branch left.
+             *     `not_created_on_branch`: a mainline entry the branch only edited.
+             *     `already_promoted`: already on the mainline.
+             *     `subject_not_on_main`: its subject does not exist on the mainline,
+             *     so promoting it would leave a dangling reference.
+             * @enum {string}
+             */
+            reason: "not_found" | "not_created_on_branch" | "already_promoted" | "subject_not_on_main";
+        };
         /** @enum {string} */
         BranchSubjectType: "person" | "family";
         BranchSubjectInput: {
@@ -9417,6 +9617,129 @@ export interface operations {
              *     another request while this edit was being applied; nothing was
              *     recorded — reload the branch and retry).
              */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    closeBranch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchCloseRequest"];
+            };
+        };
+        responses: {
+            /** @description The closed branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Branch"];
+                };
+            };
+            /** @description `validation_error`: the outcome is not a close outcome, or the reason is too long */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `branch_not_active` (already merged or closed) or `branch_changed`
+             *     (another request changed the branch while it was being closed;
+             *     nothing was recorded).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    getBranchResearch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch's research archive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResearchArchive"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    promoteBranchResearchLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PromoteResearchLogsRequest"];
+            };
+        };
+        responses: {
+            /** @description What was promoted and what was skipped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoteResearchLogsResult"];
+                };
+            };
+            /** @description `validation_error`: `log_ids` names more than 500 logs */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `branch_not_closed`: the branch is active or merged */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -594,6 +594,20 @@ func TestStoredEvent_DecodeEvent_AllTypes(t *testing.T) {
 			},
 		},
 		{
+			name:      "BranchDeleted with close record",
+			event:     domain.NewBranchClosed(uuid.New(), domain.BranchOutcomeDisproved, "Other parents named"),
+			eventType: "BranchDeleted",
+			validate: func(t *testing.T, decoded domain.Event) {
+				e, ok := decoded.(domain.BranchDeleted)
+				if !ok {
+					t.Fatalf("Expected BranchDeleted, got %T", decoded)
+				}
+				if e.Outcome != domain.BranchOutcomeDisproved || e.Reason != "Other parents named" {
+					t.Errorf("decoded = %+v", e)
+				}
+			},
+		},
+		{
 			name:      "BranchDeleted",
 			event:     domain.NewBranchDeleted(uuid.New()),
 			eventType: "BranchDeleted",

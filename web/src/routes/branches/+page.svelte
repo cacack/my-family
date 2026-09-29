@@ -1,10 +1,15 @@
 <script lang="ts">
 	import { api, type ApiError, type Branch, type BranchOutcome } from '$lib/api/client';
 	import BranchOutcomeBadge from '$lib/components/branch/BranchOutcomeBadge.svelte';
+	import CloseBranchDialog, {
+		type BranchCloseResult
+	} from '$lib/components/branch/CloseBranchDialog.svelte';
 	import {
 		BRANCH_OUTCOMES,
 		HYPOTHESIS_MAX_LENGTH,
-		OUTCOME_LABELS
+		OUTCOME_LABELS,
+		branchOutcome,
+		promotionSummary
 	} from '$lib/utils/branchResearch';
 	import { activeBranch, switchBranch } from '$lib/stores/activeBranch.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -13,7 +18,6 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Dialog from '$lib/components/ui/dialog';
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import { branchMergeSummary, isIncompleteMerge } from '$lib/utils/mergeState';
 
 	// Mirrors the maxLength on BranchCreate in openapi.yaml.
@@ -35,14 +39,33 @@
 	let newHypothesis = $state('');
 	let newOutcome: BranchOutcome = $state('open');
 
-	// Delete dialog
-	let deleteTarget: Branch | null = $state(null);
-	let deleting = $state(false);
-	let deleteError: string | null = $state(null);
+	// Close dialog (#836)
+	let closeTarget: Branch | null = $state(null);
+	/** What the last close did, shown above the list until the next action. */
+	let closeNotice: { branchId: string; text: string; warning: string | null } | null =
+		$state(null);
 
-	const activeBranches = $derived(branches.filter((b) => b.status === 'active'));
-	const mergedBranches = $derived(branches.filter((b) => b.status === 'merged'));
-	const archivedBranches = $derived(branches.filter((b) => b.status === 'archived'));
+	// Filters: lifecycle status and outcome. "all" shows every branch.
+	type StatusFilter = 'all' | Branch['status'];
+	const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+		{ value: 'all', label: 'All' },
+		{ value: 'active', label: 'Active' },
+		{ value: 'merged', label: 'Merged' },
+		{ value: 'archived', label: 'Closed' }
+	];
+	let statusFilter: StatusFilter = $state('all');
+	let outcomeFilter: BranchOutcome | 'all' = $state('all');
+
+	const visibleBranches = $derived(
+		branches.filter(
+			(b) =>
+				(statusFilter === 'all' || b.status === statusFilter) &&
+				(outcomeFilter === 'all' || branchOutcome(b.outcome) === outcomeFilter)
+		)
+	);
+	const activeBranches = $derived(visibleBranches.filter((b) => b.status === 'active'));
+	const mergedBranches = $derived(visibleBranches.filter((b) => b.status === 'merged'));
+	const closedBranches = $derived(visibleBranches.filter((b) => b.status === 'archived'));
 	// Both halves measure the trimmed name, because the trimmed name is what
 	// `handleCreate` actually sends: trailing whitespace must not cost the user
 	// a significant character.
@@ -115,38 +138,32 @@
 		}
 	}
 
-	function openDelete(branch: Branch) {
-		deleteTarget = branch;
-		deleteError = null;
+	function openClose(branch: Branch) {
+		closeNotice = null;
+		closeTarget = branch;
 	}
 
-	async function handleDelete(event: Event) {
-		// Without this, the AlertDialog closes before the request settles and the
-		// error never gets a chance to render.
-		event.preventDefault();
-		const target = deleteTarget;
-		if (!target || deleting) return;
-
-		deleting = true;
-		deleteError = null;
-		try {
-			await api.deleteBranch(target.id);
-			// Deleting the branch we are standing on would leave every scoped read
-			// pointing at purged overlay rows. This reloads the page.
-			if (activeBranch.id === target.id) {
-				switchBranch(null);
-			}
-			deleteTarget = null;
-			await loadBranches();
-		} catch (e) {
-			const apiError = e as ApiError;
-			deleteError =
-				apiError.status === 409
-					? 'This branch is no longer active - it has already been merged or archived.'
-					: apiError.message || 'Failed to delete branch';
-		} finally {
-			deleting = false;
+	async function handleClosed(result: BranchCloseResult) {
+		const closed = result.branch;
+		closeTarget = null;
+		// Closing the branch we are standing on would leave every scoped read
+		// pointing at purged overlay rows. This reloads the page.
+		if (activeBranch.id === closed.id) {
+			switchBranch(null);
 		}
+		const outcome = OUTCOME_LABELS[branchOutcome(closed.outcome)].toLowerCase();
+		const copied = result.promotion ? ` ${promotionSummary(result.promotion)}` : '';
+		closeNotice = {
+			branchId: closed.id,
+			text: `Closed "${closed.name}" as ${outcome}.${copied}`,
+			warning: result.promotionError
+		};
+		await loadBranches();
+	}
+
+	/** The status as a person reads it: an archived branch was closed. */
+	function statusLabel(status: Branch['status']): string {
+		return status === 'archived' ? 'closed' : status;
 	}
 
 	function statusVariant(status: Branch['status']): 'secondary' | 'outline' | undefined {
@@ -167,7 +184,9 @@
 		<div class="branch-head">
 			<div class="branch-title">
 				<a href="/branches/{branch.id}" class="branch-name">{branch.name}</a>
-				<Badge variant={statusVariant(branch.status)} class="capitalize">{branch.status}</Badge>
+				<Badge variant={statusVariant(branch.status)} class="capitalize">
+					{statusLabel(branch.status)}
+				</Badge>
 				<BranchOutcomeBadge outcome={branch.outcome} />
 				{#if activeBranch.id === branch.id}
 					<Badge class="bg-violet-100 text-violet-800">Current</Badge>
@@ -187,8 +206,13 @@
 							Switch to branch
 						</Button>
 					{/if}
-					<Button variant="destructive" size="sm" onclick={() => openDelete(branch)}>
-						Delete
+					<Button variant="destructive" size="sm" onclick={() => openClose(branch)}>
+						Close
+					</Button>
+				{/if}
+				{#if branch.status === 'archived'}
+					<Button variant="outline" size="sm" href="/branches/{branch.id}/research">
+						Research
 					</Button>
 				{/if}
 				{#if isIncompleteMerge(branch)}
@@ -230,11 +254,24 @@
 					<dd>{formatTimestamp(branch.merged_at)}</dd>
 				</div>
 			{/if}
+			{#if branch.closed_at}
+				<div>
+					<dt>Closed</dt>
+					<dd>{formatTimestamp(branch.closed_at)}</dd>
+				</div>
+			{/if}
 		</dl>
 
 		{#if isIncompleteMerge(branch)}
 			<p class="merge-unfinished" role="note">
 				Its merge did not finish. {branchMergeSummary(branch)}
+			</p>
+		{/if}
+
+		{#if branch.close_reason}
+			<p class="merge-note" data-testid="close-reason">
+				<span class="merge-note-label">Why it was closed</span>
+				{branch.close_reason}
 			</p>
 		{/if}
 
@@ -276,6 +313,50 @@
 			<p>Create one to explore a speculative line without touching the mainline.</p>
 		</div>
 	{:else}
+		{#if closeNotice}
+			<div class="notice" role="status">
+				<p>
+					{closeNotice.text}
+					<a href="/branches/{closeNotice.branchId}/research">View its research</a>
+				</p>
+				{#if closeNotice.warning}
+					<p class="notice-warning">
+						{closeNotice.warning} You can copy them from the branch's research page.
+					</p>
+				{/if}
+			</div>
+		{/if}
+
+		<div class="filters" role="group" aria-label="Filter branches">
+			<div class="status-filter" role="radiogroup" aria-label="Status">
+				{#each STATUS_FILTERS as option (option.value)}
+					<Button
+						variant={statusFilter === option.value ? 'default' : 'outline'}
+						size="sm"
+						role="radio"
+						aria-checked={statusFilter === option.value}
+						onclick={() => (statusFilter = option.value)}
+					>
+						{option.label}
+					</Button>
+				{/each}
+			</div>
+			<div class="outcome-filter">
+				<span aria-hidden="true">Outcome</span>
+				<select class="native-select" bind:value={outcomeFilter} aria-label="Filter by outcome">
+					<option value="all">Any outcome</option>
+					{#each BRANCH_OUTCOMES as option (option)}
+						<option value={option}>{OUTCOME_LABELS[option]}</option>
+					{/each}
+				</select>
+			</div>
+		</div>
+
+		{#if visibleBranches.length === 0}
+			<div class="state empty">
+				<p>No branches match these filters.</p>
+			</div>
+		{/if}
 		{#if activeBranches.length > 0}
 			<section class="branch-group">
 				<h2>Active</h2>
@@ -292,10 +373,10 @@
 				{/each}
 			</section>
 		{/if}
-		{#if archivedBranches.length > 0}
+		{#if closedBranches.length > 0}
 			<section class="branch-group">
-				<h2>Archived</h2>
-				{#each archivedBranches as branch (branch.id)}
+				<h2>Closed</h2>
+				{#each closedBranches as branch (branch.id)}
 					{@render branchCard(branch)}
 				{/each}
 			</section>
@@ -380,34 +461,11 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<AlertDialog.Root
-	open={deleteTarget !== null}
-	onOpenChange={(isOpen) => {
-		if (!isOpen && !deleting) deleteTarget = null;
-	}}
->
-	<AlertDialog.Content>
-		<AlertDialog.Header>
-			<AlertDialog.Title>Delete this branch?</AlertDialog.Title>
-			<AlertDialog.Description>
-				{deleteTarget?.name} will be archived. Its events are retained in the event store, but its
-				overlay rows are purged, so the branch's view of your data is gone and it accepts no
-				further changes. This cannot be undone.
-			</AlertDialog.Description>
-		</AlertDialog.Header>
-
-		{#if deleteError}
-			<div class="dialog-error" role="alert">{deleteError}</div>
-		{/if}
-
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel disabled={deleting}>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action variant="destructive" disabled={deleting} onclick={handleDelete}>
-				{deleting ? 'Deleting...' : 'Delete branch'}
-			</AlertDialog.Action>
-		</AlertDialog.Footer>
-	</AlertDialog.Content>
-</AlertDialog.Root>
+<CloseBranchDialog
+	branch={closeTarget}
+	onclosed={handleClosed}
+	oncancel={() => (closeTarget = null)}
+/>
 
 <style>
 	.merge-unfinished {
@@ -572,6 +630,54 @@
 	.merge-note-label {
 		font-weight: 600;
 		color: #64748b;
+	}
+
+	.filters {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+		margin-bottom: 1.25rem;
+	}
+
+	.status-filter {
+		display: flex;
+		gap: 0.375rem;
+		flex-wrap: wrap;
+	}
+
+	.outcome-filter {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.8125rem;
+		color: #64748b;
+	}
+
+	.notice {
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-radius: 8px;
+		font-size: 0.875rem;
+		color: #166534;
+	}
+
+	.notice p {
+		margin: 0;
+	}
+
+	.notice a {
+		margin-left: 0.25rem;
+		font-weight: 500;
+		text-decoration: underline;
+	}
+
+	.notice-warning {
+		margin-top: 0.375rem !important;
+		color: #92400e;
 	}
 
 	.state {

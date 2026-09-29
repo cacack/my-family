@@ -64,7 +64,15 @@
 	import ConflictValues from '$lib/components/ConflictValues.svelte';
 	import BranchResearchSummary from '$lib/components/branch/BranchResearchSummary.svelte';
 	import BranchResearchEditor from '$lib/components/branch/BranchResearchEditor.svelte';
-	import { branchSubjectCandidates } from '$lib/utils/branchResearch';
+	import CloseBranchDialog, {
+		type BranchCloseResult
+	} from '$lib/components/branch/CloseBranchDialog.svelte';
+	import {
+		OUTCOME_LABELS,
+		branchOutcome,
+		branchSubjectCandidates,
+		promotionSummary
+	} from '$lib/utils/branchResearch';
 	import DiffView from '$lib/components/DiffView.svelte';
 	import FinishMergeDialog from '$lib/components/FinishMergeDialog.svelte';
 	import IncompleteMergeCallout from '$lib/components/IncompleteMergeCallout.svelte';
@@ -138,6 +146,10 @@
 	const blockedIds = $derived(blockedEntityIds(blockers));
 	/** The research-record editor (#835) is open. */
 	let editingResearch = $state(false);
+	/** The close dialog (#836) is open for this branch. */
+	let closeOpen = $state(false);
+	/** What the close did, until the page loads another branch. */
+	let closeNotice: { text: string; warning: string | null } | null = $state(null);
 
 	// `?? ''` so the id is a plain string everywhere below; the `$effect` already
 	// treats an absent id as "nothing to load", and empty is absent.
@@ -233,6 +245,24 @@
 		}
 		refreshActiveBranch(saved);
 		editingResearch = false;
+	}
+
+	/**
+	 * Adopt the branch as the close left it (#836). A closed branch has no
+	 * view of its own any more, so standing on it would leave every scoped
+	 * read pointing at purged rows: return to the mainline (which reloads).
+	 */
+	function handleClosed(result: BranchCloseResult) {
+		closeOpen = false;
+		if (comparison && comparison.branch.id === result.branch.id) {
+			comparison = { ...comparison, branch: result.branch };
+		}
+		const outcome = OUTCOME_LABELS[branchOutcome(result.branch.outcome)].toLowerCase();
+		const copied = result.promotion ? ` ${promotionSummary(result.promotion)}` : '';
+		closeNotice = { text: `Closed as ${outcome}.${copied}`, warning: result.promotionError };
+		if (activeBranch.id === result.branch.id) {
+			switchBranch(null);
+		}
 	}
 
 	/**
@@ -489,6 +519,8 @@
 		checkingBlockers = false;
 		blockerCheckError = null;
 		editingResearch = false;
+		closeOpen = false;
+		closeNotice = null;
 		// `merging` is per-comparison too: it disables this page's resolver,
 		// exclusion checkboxes and merge button, and a merge issued for the branch
 		// we just navigated away from must not disable the new one's. It is cleared
@@ -836,12 +868,37 @@
 				<div class="title-row">
 					<h1>{comparison.branch.name}</h1>
 					<Badge variant={comparison.branch.status === 'active' ? 'default' : 'secondary'} class="capitalize">
-						{comparison.branch.status}
+						{comparison.branch.status === 'archived' ? 'closed' : comparison.branch.status}
 					</Badge>
 					{#if isIncompleteMerge(comparison.branch)}
 						<Badge variant="outline" class="border-orange-500 text-orange-800">Merge unfinished</Badge>
 					{/if}
 				</div>
+				{#if comparison.branch.status === 'archived'}
+					<div class="closed-record" data-testid="closed-record">
+						<p>
+							Closed{comparison.branch.closed_at
+								? ` ${formatTimestamp(comparison.branch.closed_at)}`
+								: ''} without merging.
+							{#if comparison.branch.close_reason}
+								<span class="closed-reason">{comparison.branch.close_reason}</span>
+							{/if}
+						</p>
+						<a href="/branches/{comparison.branch.id}/research" class="research-link">
+							View this branch's research
+						</a>
+					</div>
+				{/if}
+				{#if closeNotice}
+					<div class="close-notice" role="status">
+						<p>{closeNotice.text}</p>
+						{#if closeNotice.warning}
+							<p class="close-warning">
+								{closeNotice.warning} You can copy them from the branch's research page.
+							</p>
+						{/if}
+					</div>
+				{/if}
 				{#if comparison.branch.description}
 					<p class="description">{comparison.branch.description}</p>
 				{/if}
@@ -882,6 +939,14 @@
 				{#if mergeable && activeBranch.id !== comparison.branch.id}
 					<Button variant="outline" onclick={() => switchBranch(comparison?.branch ?? null)}>
 						Switch to branch
+					</Button>
+				{/if}
+				{#if comparison.branch.status !== 'archived'}
+					<Button variant="ghost" href="/branches/{comparison.branch.id}/research">Research</Button>
+				{/if}
+				{#if mergeable}
+					<Button variant="outline" onclick={() => (closeOpen = true)} disabled={merging}>
+						Close branch
 					</Button>
 				{/if}
 				{#if mergeable}
@@ -1108,7 +1173,59 @@
 	{/if}
 </div>
 
+<CloseBranchDialog
+	branch={closeOpen ? (comparison?.branch ?? null) : null}
+	onclosed={handleClosed}
+	oncancel={() => (closeOpen = false)}
+/>
+
 <style>
+	.closed-record {
+		margin: 0.5rem 0 0;
+		padding: 0.625rem 0.75rem;
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+		font-size: 0.875rem;
+		color: #334155;
+	}
+
+	.closed-record p {
+		margin: 0;
+	}
+
+	.closed-reason {
+		display: block;
+		margin-top: 0.25rem;
+		color: #1e293b;
+	}
+
+	.research-link {
+		display: inline-block;
+		margin-top: 0.375rem;
+		font-weight: 500;
+		color: #2563eb;
+	}
+
+	.close-notice {
+		margin: 0.5rem 0 0;
+		padding: 0.625rem 0.75rem;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-radius: 6px;
+		font-size: 0.875rem;
+		color: #166534;
+	}
+
+	.close-notice p {
+		margin: 0;
+	}
+
+	.close-warning {
+		margin-top: 0.25rem !important;
+		color: #92400e;
+	}
+
 	.compare-page {
 		max-width: 1100px;
 		margin: 0 auto;

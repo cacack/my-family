@@ -63,6 +63,12 @@
 		color: #3730a3;
 	}
 
+	.outcome-abandoned {
+		background: #f5f5f4;
+		border-color: #d6d3d1;
+		color: #57534e;
+	}
+
 	.sr-only {
 		position: absolute;
 		width: 1px;

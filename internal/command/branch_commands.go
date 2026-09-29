@@ -81,11 +81,37 @@ func (h *Handler) CreateBranchWithResearch(ctx context.Context, input CreateBran
 	return branch, nil
 }
 
-// DeleteBranch archives a branch and drops its overlay rows. Despite the name
-// the branch record is retained in the terminal "archived" status — the event
-// log is append-only (ES-002). The status flip and the purge are the
-// projection's work; this command only emits the event.
+// DeleteBranch closes a branch without recording why, kept for the
+// DELETE /branches/{id} endpoint and existing callers. Its event carries no
+// outcome and no reason — the shape of a pre-#836 close — so the projection
+// keeps a verdict the branch had already recorded (disproved, inconclusive,
+// superseded, proved) and records "abandoned" only when the branch was still
+// open. See CloseBranch.
 func (h *Handler) DeleteBranch(ctx context.Context, branchID uuid.UUID) error {
+	return h.closeBranch(ctx, branchID, "", "")
+}
+
+// CloseBranch closes (archives) an active branch without merging it and
+// records why (#836): the outcome the research reached — disproved,
+// inconclusive, superseded or abandoned — and an optional reason. The branch
+// record is retained in the terminal "archived" status and every event it
+// produced stays in the log (ES-002), so its research can still be
+// reconstructed (query.BranchService.BranchResearchArchive). The status flip,
+// the close record and the overlay purge are the projection's work; this
+// command only validates and emits the BranchDeleted event.
+func (h *Handler) CloseBranch(ctx context.Context, branchID uuid.UUID, outcome domain.BranchOutcome, reason string) error {
+	if h.branchStore == nil {
+		return ErrBranchStoreRequired
+	}
+	if err := domain.ValidateBranchClose(outcome, reason); err != nil {
+		return err
+	}
+	return h.closeBranch(ctx, branchID, outcome, reason)
+}
+
+// closeBranch emits and projects the close. An empty outcome (DeleteBranch
+// only) leaves the verdict to the projection's MarkClosed.
+func (h *Handler) closeBranch(ctx context.Context, branchID uuid.UUID, outcome domain.BranchOutcome, reason string) error {
 	if h.branchStore == nil {
 		return ErrBranchStoreRequired
 	}
@@ -115,7 +141,7 @@ func (h *Handler) DeleteBranch(ctx context.Context, branchID uuid.UUID) error {
 		expectedVersion = -1
 	}
 
-	event := domain.NewBranchDeleted(branch.ID)
+	event := domain.NewBranchClosed(branch.ID, outcome, reason)
 	if err := h.eventStore.Append(ctx, branch.ID, branchStreamType, []domain.Event{event}, expectedVersion, scope); err != nil {
 		return fmt.Errorf("appending branch deleted event: %w", err)
 	}
