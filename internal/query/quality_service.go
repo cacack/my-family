@@ -14,6 +14,9 @@ import (
 	"github.com/cacack/my-family/internal/repository"
 )
 
+// issueNoFamilyConnections is the quality issue of a person no family links.
+const issueNoFamilyConnections = "No family connections"
+
 // QualityService provides data quality metrics and statistics.
 type QualityService struct {
 	readStore repository.ReadModelStore
@@ -100,24 +103,25 @@ type bulkEvidenceData struct {
 	researchLogs   []repository.ResearchLogReadModel
 }
 
-// loadBulkEvidenceData loads all evidence data once for use in per-person loops.
-func (s *QualityService) loadBulkEvidenceData(ctx context.Context) (*bulkEvidenceData, error) {
-	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx, domain.MainBranchID)
+// loadBulkEvidenceData loads all of branchID's evidence data once for use in
+// per-person loops.
+func (s *QualityService) loadBulkEvidenceData(ctx context.Context, branchID domain.BranchID) (*bulkEvidenceData, error) {
+	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx, branchID)
 	if err != nil {
 		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
 	}
 
-	analyses, err := repository.ListAll(ctx, 100, s.readStore.ListEvidenceAnalyses)
+	analyses, err := repository.ListAllOn(ctx, branchID, 100, s.readStore.ListEvidenceAnalyses)
 	if err != nil {
 		return nil, fmt.Errorf("load evidence analyses: %w", err)
 	}
 
-	summaries, err := repository.ListAll(ctx, 100, s.readStore.ListProofSummaries)
+	summaries, err := repository.ListAllOn(ctx, branchID, 100, s.readStore.ListProofSummaries)
 	if err != nil {
 		return nil, fmt.Errorf("load proof summaries: %w", err)
 	}
 
-	logs, err := repository.ListAll(ctx, 100, s.readStore.ListResearchLogs)
+	logs, err := repository.ListAllOn(ctx, branchID, 100, s.readStore.ListResearchLogs)
 	if err != nil {
 		return nil, fmt.Errorf("load research logs: %w", err)
 	}
@@ -130,14 +134,21 @@ func (s *QualityService) loadBulkEvidenceData(ctx context.Context) (*bulkEvidenc
 	}, nil
 }
 
-// GetDiscoveryFeed returns a prioritized list of research suggestions.
+// GetDiscoveryFeed returns a prioritized list of research suggestions for the
+// mainline.
 func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*DiscoveryFeed, error) {
+	return s.GetDiscoveryFeedOn(ctx, domain.MainBranchID, limit)
+}
+
+// GetDiscoveryFeedOn is GetDiscoveryFeed over branchID's view of the tree
+// (ADR-005).
+func (s *QualityService) GetDiscoveryFeedOn(ctx context.Context, branchID domain.BranchID, limit int) (*DiscoveryFeed, error) {
 	if limit <= 0 {
 		limit = 20
 	}
 
 	// Get all persons using pagination to avoid truncation
-	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
+	persons, err := repository.ListAllOn(ctx, branchID, 1000, s.readStore.ListPersons)
 	if err != nil {
 		return nil, err
 	}
@@ -152,13 +163,13 @@ func (s *QualityService) GetDiscoveryFeed(ctx context.Context, limit int) (*Disc
 	var items []DiscoverySuggestion
 
 	// Build connected persons set in bulk to avoid N+1 orphan queries
-	connectedIDs, err := s.buildConnectedPersonIDs(ctx)
+	connectedIDs, err := s.buildConnectedPersonIDs(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Pre-load all evidence data once to avoid per-person full-table scans
-	bulk, err := s.loadBulkEvidenceData(ctx)
+	bulk, err := s.loadBulkEvidenceData(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -299,10 +310,17 @@ func (s *QualityService) buildQualityGapSuggestion(person repository.PersonReadM
 	}
 }
 
-// GetQualityOverview returns aggregate quality metrics for all persons.
+// GetQualityOverview returns aggregate quality metrics for all persons on the
+// mainline.
 func (s *QualityService) GetQualityOverview(ctx context.Context) (*QualityOverview, error) {
+	return s.GetQualityOverviewOn(ctx, domain.MainBranchID)
+}
+
+// GetQualityOverviewOn is GetQualityOverview over branchID's view of the tree
+// (ADR-005).
+func (s *QualityService) GetQualityOverviewOn(ctx context.Context, branchID domain.BranchID) (*QualityOverview, error) {
 	// Get all persons using pagination to avoid truncation
-	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
+	persons, err := repository.ListAllOn(ctx, branchID, 1000, s.readStore.ListPersons)
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +336,7 @@ func (s *QualityService) GetQualityOverview(ctx context.Context) (*QualityOvervi
 	}
 
 	// Pre-load conflict data once to avoid per-person full-table scans
-	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx, domain.MainBranchID)
+	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx, branchID)
 	if err != nil {
 		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
 	}
@@ -363,9 +381,16 @@ func (s *QualityService) GetQualityOverview(ctx context.Context) (*QualityOvervi
 	}, nil
 }
 
-// GetPersonQuality returns quality metrics for a specific person.
+// GetPersonQuality returns quality metrics for a specific person on the
+// mainline.
 func (s *QualityService) GetPersonQuality(ctx context.Context, id uuid.UUID) (*PersonQuality, error) {
-	person, err := s.readStore.GetPerson(ctx, domain.MainBranchID, id)
+	return s.GetPersonQualityOn(ctx, domain.MainBranchID, id)
+}
+
+// GetPersonQualityOn is GetPersonQuality for the person as branchID sees them
+// (ADR-005).
+func (s *QualityService) GetPersonQualityOn(ctx context.Context, branchID domain.BranchID, id uuid.UUID) (*PersonQuality, error) {
+	person, err := s.readStore.GetPerson(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -373,15 +398,15 @@ func (s *QualityService) GetPersonQuality(ctx context.Context, id uuid.UUID) (*P
 		return nil, ErrNotFound
 	}
 
-	score, issues := s.computePersonScore(ctx, *person)
+	score, issues := s.computePersonScore(ctx, branchID, *person)
 
 	// Check for orphaned status
-	isOrphan, err := s.isOrphaned(ctx, id)
+	isOrphan, err := s.isOrphaned(ctx, branchID, id)
 	if err != nil {
 		return nil, err
 	}
 	if isOrphan {
-		issues = append(issues, "No family connections")
+		issues = append(issues, issueNoFamilyConnections)
 	}
 
 	// Generate suggestions based on issues
@@ -395,17 +420,22 @@ func (s *QualityService) GetPersonQuality(ctx context.Context, id uuid.UUID) (*P
 	}, nil
 }
 
-// GetStatistics returns tree-wide statistics.
+// GetStatistics returns the mainline's tree-wide statistics.
 func (s *QualityService) GetStatistics(ctx context.Context) (*Statistics, error) {
+	return s.GetStatisticsOn(ctx, domain.MainBranchID)
+}
+
+// GetStatisticsOn is GetStatistics over branchID's view of the tree (ADR-005).
+func (s *QualityService) GetStatisticsOn(ctx context.Context, branchID domain.BranchID) (*Statistics, error) {
 	// Get all persons for statistics using pagination to avoid truncation
-	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
+	persons, err := repository.ListAllOn(ctx, branchID, 1000, s.readStore.ListPersons)
 	if err != nil {
 		return nil, err
 	}
 	totalPersons := len(persons)
 
 	// Get all families
-	families, err := repository.ListAll(ctx, 1000, s.readStore.ListFamilies)
+	families, err := repository.ListAllOn(ctx, branchID, 1000, s.readStore.ListFamilies)
 	if err != nil {
 		return nil, err
 	}
@@ -489,8 +519,8 @@ func (s *QualityService) GetStatistics(ctx context.Context) (*Statistics, error)
 // - Death place present: +15 points (if deceased)
 // - Base score is out of 70, normalized to 100
 // - Unresolved evidence conflicts: -5 points each (floor at 0)
-func (s *QualityService) computePersonScore(ctx context.Context, person repository.PersonReadModel) (float64, []string) {
-	conflicts, err := s.readStore.GetConflictsForSubject(ctx, domain.MainBranchID, person.ID)
+func (s *QualityService) computePersonScore(ctx context.Context, branchID domain.BranchID, person repository.PersonReadModel) (float64, []string) {
+	conflicts, err := s.readStore.GetConflictsForSubject(ctx, branchID, person.ID)
 	if err != nil {
 		// For single-person path, return base score without conflict penalty
 		conflicts = nil
@@ -592,37 +622,49 @@ func unresolvedConflictIssuesFromData(personID uuid.UUID, conflicts []repository
 	return issues
 }
 
-// buildConnectedPersonIDs returns a set of person IDs that have at least one family connection
-// (as partner or child). This is a bulk operation that avoids N+1 queries for orphan detection.
-func (s *QualityService) buildConnectedPersonIDs(ctx context.Context) (map[uuid.UUID]bool, error) {
-	families, err := repository.ListAll(ctx, 1000, s.readStore.ListFamilies)
+// buildConnectedPersonIDs returns the set of person IDs that have at least one
+// family connection (as partner or child) in branchID's view. It is two
+// set-based reads — the families and every child link — whatever the tree size,
+// so orphan detection issues no query per family or person.
+func (s *QualityService) buildConnectedPersonIDs(ctx context.Context, branchID domain.BranchID) (map[uuid.UUID]bool, error) {
+	families, err := repository.ListAllOn(ctx, branchID, 1000, s.readStore.ListFamilies)
 	if err != nil {
 		return nil, err
 	}
+	links, err := s.readStore.ListAllFamilyChildren(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	return connectedPersonIDs(families, links), nil
+}
 
+// connectedPersonIDs returns the set of person IDs that are a partner in one of
+// families or a child through one of them, from already-loaded records.
+func connectedPersonIDs(families []repository.FamilyReadModel, links []repository.FamilyChildReadModel) map[uuid.UUID]bool {
 	connected := make(map[uuid.UUID]bool)
+	visible := make(map[uuid.UUID]bool, len(families))
 	for _, f := range families {
+		visible[f.ID] = true
 		if f.Partner1ID != nil {
 			connected[*f.Partner1ID] = true
 		}
 		if f.Partner2ID != nil {
 			connected[*f.Partner2ID] = true
 		}
-		children, childErr := s.readStore.GetFamilyChildren(ctx, domain.MainBranchID, f.ID)
-		if childErr != nil {
-			return nil, childErr
-		}
-		for _, c := range children {
-			connected[c.PersonID] = true
+	}
+	for _, link := range links {
+		// A link counts only through a family the scope still has.
+		if visible[link.FamilyID] {
+			connected[link.PersonID] = true
 		}
 	}
-	return connected, nil
+	return connected
 }
 
 // isOrphaned checks if a person has no family connections.
-func (s *QualityService) isOrphaned(ctx context.Context, personID uuid.UUID) (bool, error) {
+func (s *QualityService) isOrphaned(ctx context.Context, branchID domain.BranchID, personID uuid.UUID) (bool, error) {
 	// Check if person is a partner in any family
-	families, err := s.readStore.GetFamiliesForPerson(ctx, domain.MainBranchID, personID)
+	families, err := s.readStore.GetFamiliesForPerson(ctx, branchID, personID)
 	if err != nil {
 		return false, err
 	}
@@ -631,7 +673,7 @@ func (s *QualityService) isOrphaned(ctx context.Context, personID uuid.UUID) (bo
 	}
 
 	// Check if person is a child in any family
-	childFamily, err := s.readStore.GetChildFamily(ctx, domain.MainBranchID, personID)
+	childFamily, err := s.readStore.GetChildFamily(ctx, branchID, personID)
 	if err != nil {
 		return false, err
 	}
@@ -727,7 +769,7 @@ func (s *QualityService) generateSuggestions(issues []string) []string {
 			suggestions = append(suggestions, "Search death records, obituaries, or cemetery records")
 		case issue == "Missing death place":
 			suggestions = append(suggestions, "Check death certificate or obituary for location")
-		case issue == "No family connections":
+		case issue == issueNoFamilyConnections:
 			suggestions = append(suggestions, "Link to existing family or create new family relationships")
 		case strings.HasPrefix(issue, "Unresolved evidence conflict for "):
 			suggestions = append(suggestions, "Review and resolve the conflicting evidence")
@@ -740,4 +782,40 @@ func (s *QualityService) generateSuggestions(issues []string) []string {
 // intToString converts an int to a string.
 func intToString(n int) string {
 	return strconv.Itoa(n)
+}
+
+// personQualityIssues is one person's quality issues in a scope.
+type personQualityIssues struct {
+	name   string
+	issues []string
+}
+
+// personIssuesOf returns every person's quality issues in branchID's view of
+// the tree (ADR-005), from that scope's already-loaded persons, families and
+// child links: the completeness and open-evidence-conflict issues
+// GetPersonQuality reports, plus issueNoFamilyConnections for an orphan. The
+// only read is the scope's open conflicts, one set-based read.
+func (s *QualityService) personIssuesOf(ctx context.Context, branchID domain.BranchID, records *scopeRecords) (map[uuid.UUID]personQualityIssues, error) {
+	conflicts, err := s.readStore.ListUnresolvedConflicts(ctx, branchID)
+	if err != nil {
+		return nil, fmt.Errorf("load unresolved conflicts: %w", err)
+	}
+	connected := connectedPersonIDs(records.families, records.links)
+
+	conflictsBySubject := make(map[uuid.UUID][]repository.EvidenceConflictReadModel)
+	for _, c := range conflicts {
+		conflictsBySubject[c.SubjectID] = append(conflictsBySubject[c.SubjectID], c)
+	}
+
+	result := make(map[uuid.UUID]personQualityIssues, len(records.persons))
+	for _, person := range records.persons {
+		_, issues := computePersonScoreWithConflicts(person, conflictsBySubject[person.ID])
+		if !connected[person.ID] {
+			issues = append(issues, issueNoFamilyConnections)
+		}
+		if len(issues) > 0 {
+			result[person.ID] = personQualityIssues{name: person.FullName, issues: issues}
+		}
+	}
+	return result, nil
 }

@@ -71,7 +71,8 @@ type Server struct {
 	browseService       *query.BrowseService
 	qualityService      *query.QualityService
 	snapshotService     *query.SnapshotService
-	branchService       *query.BranchService // nil unless WithBranchStore supplied
+	branchService       *query.BranchService       // nil unless WithBranchStore supplied
+	branchHealthService *query.BranchHealthService // nil unless WithBranchStore supplied
 	validationService   *query.ValidationService
 	relationshipService *query.RelationshipService
 	noteService         *query.NoteService
@@ -177,6 +178,7 @@ func NewServer(
 		// The history names branches in their lifecycle entries (#832).
 		historySvc.UseBranchStore(server.branchStore)
 		server.branchService = query.NewBranchService(server.branchStore, eventStore, historySvc)
+		server.branchHealthService = query.NewBranchHealthService(validationSvc, qualitySvc)
 	}
 	server.validationService = validationSvc
 	server.relationshipService = relationshipSvc

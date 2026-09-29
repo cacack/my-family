@@ -77,6 +77,12 @@ export type MergePendingEntity = components['schemas']['MergePendingEntity'];
 export type MergeBlocker = components['schemas']['MergeBlocker'];
 export type BranchMergePrecheckRequest = components['schemas']['BranchMergePrecheckRequest'];
 export type BranchMergePrecheckResult = components['schemas']['BranchMergePrecheckResult'];
+export type BranchEvidenceCoverage = components['schemas']['BranchEvidenceCoverage'];
+export type BranchChangedFact = components['schemas']['BranchChangedFact'];
+export type BranchHealth = components['schemas']['BranchHealth'];
+export type BranchValidationIssue = components['schemas']['BranchValidationIssue'];
+export type BranchQualityIssue = components['schemas']['BranchQualityIssue'];
+export type BranchDuplicatePair = components['schemas']['BranchDuplicatePair'];
 /**
  * The side that wins for one entity - `'branch' | 'main'`. Derived from the
  * generated entry rather than hand-written so it cannot drift from the spec's
@@ -2483,6 +2489,27 @@ class ApiClient {
 			`/branches/${encodeURIComponent(id)}/merge/precheck`,
 			req
 		);
+	}
+
+	/**
+	 * The facts and relationships the branch changed without an evidence
+	 * analysis or proof summary on the branch (#838). A soft warning for the
+	 * merge review, never a gate.
+	 */
+	async getBranchEvidenceCoverage(id: string): Promise<BranchEvidenceCoverage> {
+		return this.request<BranchEvidenceCoverage>(
+			'GET',
+			`/branches/${encodeURIComponent(id)}/evidence-coverage`
+		);
+	}
+
+	/**
+	 * The validation issues, quality issues and duplicate pairs the branch
+	 * introduces over the mainline (#838). Only an active branch answers; a
+	 * merged or archived one is a 404.
+	 */
+	async getBranchHealth(id: string): Promise<BranchHealth> {
+		return this.request<BranchHealth>('GET', `/branches/${encodeURIComponent(id)}/health`);
 	}
 
 	/**

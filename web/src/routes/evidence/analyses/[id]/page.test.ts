@@ -5,6 +5,7 @@ import * as apiModule from '$lib/api/client';
 
 // Configurable page params
 let mockPageParams = { id: 'ea-1' };
+let mockPageUrl: URL | undefined;
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -24,7 +25,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 vi.mock('$app/stores', () => ({
 	page: {
 		subscribe: vi.fn((callback: (value: unknown) => void) => {
-			callback({ params: mockPageParams });
+			callback({ params: mockPageParams, url: mockPageUrl });
 			return () => {};
 		})
 	}
@@ -128,6 +129,64 @@ describe('Analysis Detail Page - New Mode', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockPageParams = { id: 'new' };
+		mockPageUrl = undefined;
+	});
+
+	it('prefills the subject and fact type from the URL (the merge review link)', async () => {
+		mockPageUrl = new URL(
+			'http://localhost/evidence/analyses/new?subjectId=p-9&factType=person_death'
+		);
+		render(Page);
+		await waitFor(() => {
+			expect((screen.getByLabelText('Fact Type') as HTMLSelectElement).value).toBe('person_death');
+			expect((screen.getByLabelText('Subject ID') as HTMLInputElement).value).toBe('p-9');
+		});
+	});
+
+	it('says so, and keeps the default, for a fact type the form does not offer', async () => {
+		mockPageUrl = new URL('http://localhost/evidence/analyses/new?subjectId=p-9&factType=bogus');
+		render(Page);
+		await waitFor(() => {
+			expect((screen.getByLabelText('Fact Type') as HTMLSelectElement).value).toBe('person_birth');
+		});
+		expect(
+			screen.getByText(/The linked fact type "bogus" is not one an analysis can have/)
+		).toBeDefined();
+	});
+
+	it('offers every fact type an analysis can have (the merge review links any of them)', async () => {
+		for (const factType of [
+			'person_cremation',
+			'person_christening',
+			'person_generic_event',
+			'family_marriage_bann',
+			'family_marriage_contract',
+			'family_marriage_license',
+			'family_marriage_settlement'
+		]) {
+			mockPageUrl = new URL(
+				`http://localhost/evidence/analyses/new?subjectId=p-9&factType=${factType}`
+			);
+			const { unmount } = render(Page);
+			await waitFor(() => {
+				expect((screen.getByLabelText('Fact Type') as HTMLSelectElement).value).toBe(factType);
+			});
+			expect(screen.queryByText(/is not one an analysis can have/)).toBeNull();
+			unmount();
+		}
+	});
+
+	it('defaults a family subject with no fact type to its marriage', async () => {
+		mockPageUrl = new URL(
+			'http://localhost/evidence/analyses/new?subjectId=f-9&subjectType=family'
+		);
+		render(Page);
+		await waitFor(() => {
+			expect((screen.getByLabelText('Fact Type') as HTMLSelectElement).value).toBe(
+				'family_marriage'
+			);
+			expect((screen.getByLabelText('Subject ID') as HTMLInputElement).value).toBe('f-9');
+		});
 	});
 
 	it('shows create form when id is "new"', async () => {

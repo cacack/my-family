@@ -1760,3 +1760,38 @@ mapped to `branch` entries in the history catalog (`BranchMergeResumed` stays ex
 the merge it finishes). They live on each branch's own scope, so the global history keeps them from
 every branch (`GlobalHistoryQuery.AnyBranchEventTypes`); SQLite answers that page with an ordered
 walk of `idx_events_julian_position_branch`. See docs/HISTORY-EVENT-TYPES.md.
+
+## Implementation Note — merge review checks (#838, delivered)
+
+Two soft, non-blocking checks join the merge review. Neither gates a merge; both are warnings a
+reviewer reads next to the diff.
+
+**Evidence coverage** (`GET /branches/{id}/evidence-coverage`). The branch's own events are
+classified by the history event-type table into the facts and relationships they change — a
+person's name, gender, birth or death; a life event or attribute (its fact type, on its person or
+family); a family's marriage; a family's partners or children — and each is checked for an evidence
+analysis or proof summary *written or revised on the branch* for the same fact type and subject. An
+artifact inherited from the mainline documents the conclusion the branch is changing, so it does not
+count. A relationship has no fact type, so any analysis or proof summary the branch wrote about the
+family documents it. Deleting a person or family the mainline has is a change too (`kind:
+deletion`) — a branch concluding two people were never married is exactly the kind of claim that
+needs evidence — documented by any analysis or proof summary the branch wrote about that subject, and
+named as the mainline has it; the branch's other edits to that record fold into the deletion. A fact
+created and deleted again on the branch, or a person or family the branch both created and deleted, is
+not listed. The fact type and owner of an updated or deleted life event come
+from its stream folded as the branch sees it (one set-based read per side), so the check never reads
+the read model per change. It is computed from the append-only log, so a terminal branch answers
+too.
+
+**Branch health** (`GET /branches/{id}/health`). `ValidationService` and `QualityService` take a
+branch scope (`…On(ctx, branchID, …)`; the existing mainline methods delegate with
+`MainBranchID`), reading persons, families, sources and the GPS artifacts with paged overlay lists
+and every child link with the new set-based `ReadModelStore.ListAllFamilyChildren` (all three
+backends; orphan detection no longer reads children once per family). The health check runs the
+validation, per-person quality and duplicate checks over the branch's view and the mainline's, keys
+every finding by record ids (a validation issue by code, record, related record and occurrence; a
+quality issue by person and text; a duplicate by the two person ids), and returns the branch's
+findings the mainline lacks, plus a count of the mainline's the branch resolves. Only an active
+branch has a view, so an unknown or terminal branch is `404`, as for a `?branch=` read. The
+`/quality` endpoints and page stay mainline and keep their `MainlineNotice`; a branch's own checks
+are read in its merge review.

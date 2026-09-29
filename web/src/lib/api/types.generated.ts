@@ -2095,6 +2095,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/branches/{id}/evidence-coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the facts a branch changed without documenting them
+         * @description The merge review's evidence-coverage warning (#838). Lists the facts
+         *     and relationships the branch changed - a person's name, gender,
+         *     birth or death; a life event or attribute; a family's marriage; a
+         *     family's partners or children - that have no evidence analysis or
+         *     proof summary written or revised on the branch itself.
+         *
+         *     A fact is documented by an analysis or proof summary of the same fact
+         *     type and subject that the branch created or updated (and did not
+         *     delete); one inherited from the mainline documents the conclusion the
+         *     branch is changing, so it does not count. A relationship has no fact
+         *     type, so any analysis or proof summary the branch wrote about the
+         *     family documents it. Facts the branch created and deleted again, and
+         *     facts about a person or family the branch deleted, are not listed.
+         *
+         *     This is a soft warning, never a merge gate. It is computed from the
+         *     append-only log, so a merged or archived branch still answers.
+         */
+        get: operations["getBranchEvidenceCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{id}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the validation issues, quality issues and duplicates a branch introduces
+         * @description Runs the `/quality` checks - validation, per-person quality and
+         *     duplicate detection - over the branch's view of the tree and over the
+         *     mainline, and returns what the branch INTRODUCES: its findings that the
+         *     mainline does not have (#838). `resolved_count` counts the mainline
+         *     findings the branch no longer has.
+         *
+         *     Every finding carries a `key` that is stable across the two views
+         *     because it is built from record ids: a validation issue's code, record,
+         *     related record and occurrence; a quality issue's person and text; a
+         *     duplicate pair's two person ids.
+         *
+         *     Only an active branch has a view to check: an unknown, merged or
+         *     archived branch is `404`, as for a `?branch=` read.
+         */
+        get: operations["getBranchHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/relationship/{personId1}/{personId2}": {
         parameters: {
             query?: never;
@@ -4778,6 +4851,106 @@ export interface components {
         BranchMergePrecheckResult: {
             /** @description Every merge blocker, in replay order. `[]`, never `null`, when the merge is clear. */
             blockers: components["schemas"]["MergeBlocker"][];
+        };
+        /**
+         * @description The evidence-coverage warning of a branch (#838): how many facts and
+         *     relationships it changed, and which of them have no evidence analysis
+         *     or proof summary on the branch.
+         */
+        BranchEvidenceCoverage: {
+            /** @description How many facts and relationships the branch changed. */
+            changed_fact_count: number;
+            /** @description The changed facts with no evidence on the branch, by subject name. `[]` when every change is documented. */
+            uncovered: components["schemas"]["BranchChangedFact"][];
+            /** @description The branch's own events hit the read cap, so the counts may be incomplete. */
+            has_more: boolean;
+        };
+        /** @description One fact or relationship a branch changed. */
+        BranchChangedFact: {
+            /**
+             * @description `fact` for a person's or family's fact (`fact_type` says which);
+             *     `relationship` for a family's partners or children; `deletion` for
+             *     a person or family the mainline has that the branch deleted.
+             * @enum {string}
+             */
+            kind: "fact" | "relationship" | "deletion";
+            /** @description The fact changed (e.g. `person_birth`); absent for a relationship or a deletion. */
+            fact_type?: string;
+            /**
+             * @description What the fact is about - the subject an analysis of it has.
+             * @enum {string}
+             */
+            subject_type: "person" | "family";
+            /** Format: uuid */
+            subject_id: string;
+            /** @description The subject's display name as the branch sees it (a deleted one as the mainline has it); empty when nothing names it. */
+            subject_name: string;
+            /** @description How many of the branch's changes touched the fact. */
+            change_count: number;
+        };
+        /**
+         * @description What a branch introduces into the tree's checks (#838): its findings
+         *     the mainline does not have. Every list is `[]`, never `null`, when
+         *     empty.
+         */
+        BranchHealth: {
+            /** @description Validation issues the branch introduces, errors first, then warnings, then information. */
+            validation_issues: components["schemas"]["BranchValidationIssue"][];
+            /** @description Per-person quality issues the branch introduces, by person name. */
+            quality_issues: components["schemas"]["BranchQualityIssue"][];
+            /** @description Potential duplicate pairs the branch introduces, most likely first. */
+            duplicates: components["schemas"]["BranchDuplicatePair"][];
+            /** @description How many of `validation_issues` are errors. */
+            error_count: number;
+            /** @description How many of `validation_issues` are warnings. */
+            warning_count: number;
+            /** @description How many of `validation_issues` are information. */
+            info_count: number;
+            /** @description How many of the mainline's findings, of every kind, the branch no longer has. */
+            resolved_count: number;
+        };
+        /** @description A validation issue a branch introduces, with the records it is about by name. */
+        BranchValidationIssue: {
+            /** @description Stable across the branch and the mainline (code, record, related record, occurrence). */
+            key: string;
+            /** @enum {string} */
+            severity: "error" | "warning" | "info";
+            code: string;
+            message: string;
+            /** Format: uuid */
+            record_id?: string;
+            /** @enum {string} */
+            record_type?: "person" | "family" | "source";
+            record_name?: string;
+            /** Format: uuid */
+            related_record_id?: string;
+            /** @enum {string} */
+            related_record_type?: "person" | "family" | "source";
+            related_record_name?: string;
+        };
+        /** @description A person's quality issue a branch introduces. */
+        BranchQualityIssue: {
+            /** @description Stable across the branch and the mainline (person and issue). */
+            key: string;
+            /** Format: uuid */
+            person_id: string;
+            person_name: string;
+            /** @description The issue, as `/quality/persons/{id}` words it. */
+            issue: string;
+        };
+        /** @description A potential duplicate pair a branch introduces. */
+        BranchDuplicatePair: {
+            /** @description Stable across the branch and the mainline (the two person ids, in id order). */
+            key: string;
+            /** Format: uuid */
+            person1_id: string;
+            person1_name: string;
+            /** Format: uuid */
+            person2_id: string;
+            person2_name: string;
+            /** Format: float */
+            confidence: number;
+            match_reasons: string[];
         };
         /**
          * @description One cross-entity reference a merge (or resume) would break (#831): the
@@ -9337,6 +9510,56 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    getBranchEvidenceCoverage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The branch's changed facts that have no evidence on the branch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchEvidenceCoverage"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    getBranchHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the branch introduces into the tree's checks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchHealth"];
+                };
+            };
+            404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
     };

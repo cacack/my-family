@@ -64,21 +64,23 @@ type ValidationIssueResult struct {
 	RelatedRecordID *uuid.UUID `json:"related_record_id,omitempty"`
 }
 
-// GetQualityReport returns a comprehensive validation quality report.
+// GetQualityReport returns a comprehensive validation quality report for the
+// mainline.
 func (s *ValidationService) GetQualityReport(ctx context.Context) (*ValidationReport, error) {
-	// Build gedcom document from read model
-	doc, _, err := s.buildGedcomDocument(ctx)
+	return s.GetQualityReportOn(ctx, domain.MainBranchID)
+}
+
+// GetQualityReportOn returns the validation quality report of branchID's view
+// of the tree (ADR-005): the mainline for domain.MainBranchID, else the
+// branch's copy-on-write overlay.
+func (s *ValidationService) GetQualityReportOn(ctx context.Context, branchID domain.BranchID) (*ValidationReport, error) {
+	view, err := s.buildGedcomDocument(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create validator with strict mode to get all severity levels
-	v := validator.NewWithOptions(&validator.ValidateOptions{
-		Strictness: validator.StrictnessStrict,
-	})
-
-	// Generate quality report
-	qr := v.QualityReport(doc)
+	// Generate quality report with strict mode to get all severity levels
+	qr := strictValidator().QualityReport(view.doc)
 
 	// Count issues by code for top issues
 	issueCounts := make(map[string]int)
@@ -113,17 +115,27 @@ func (s *ValidationService) GetQualityReport(ctx context.Context) (*ValidationRe
 	}, nil
 }
 
-// FindDuplicates returns potential duplicate persons with pagination.
+// strictValidator returns a validator reporting every severity level.
+func strictValidator() *validator.Validator {
+	return validator.NewWithOptions(&validator.ValidateOptions{
+		Strictness: validator.StrictnessStrict,
+	})
+}
+
+// FindDuplicates returns potential duplicate persons on the mainline with
+// pagination.
 func (s *ValidationService) FindDuplicates(ctx context.Context, limit, offset int) ([]DuplicateResult, int, error) {
-	// Build gedcom document from read model
-	doc, xrefMap, err := s.buildGedcomDocument(ctx)
+	return s.FindDuplicatesOn(ctx, domain.MainBranchID, limit, offset)
+}
+
+// FindDuplicatesOn returns potential duplicate persons in branchID's view of
+// the tree, with pagination.
+func (s *ValidationService) FindDuplicatesOn(ctx context.Context, branchID domain.BranchID, limit, offset int) ([]DuplicateResult, int, error) {
+	view, err := s.buildGedcomDocument(ctx, branchID)
 	if err != nil {
 		return nil, 0, err
 	}
-
-	// Create validator and find duplicates
-	v := validator.New()
-	pairs := v.FindPotentialDuplicates(doc)
+	pairs := view.duplicates()
 
 	// Total count before pagination
 	total := len(pairs)
@@ -136,30 +148,7 @@ func (s *ValidationService) FindDuplicates(ctx context.Context, limit, offset in
 	if end > len(pairs) {
 		end = len(pairs)
 	}
-	pairs = pairs[offset:end]
-
-	// Convert to DuplicateResult
-	results := make([]DuplicateResult, 0, len(pairs))
-	for _, pair := range pairs {
-		result := DuplicateResult{
-			Confidence:   pair.Confidence,
-			MatchReasons: pair.MatchReasons,
-		}
-
-		// Map XRef back to UUID
-		if id, ok := xrefMap[pair.Individual1.XRef]; ok {
-			result.Person1ID = id
-			result.Person1Name = getDisplayNameFromIndividual(pair.Individual1)
-		}
-		if id, ok := xrefMap[pair.Individual2.XRef]; ok {
-			result.Person2ID = id
-			result.Person2Name = getDisplayNameFromIndividual(pair.Individual2)
-		}
-
-		results = append(results, result)
-	}
-
-	return results, total, nil
+	return pairs[offset:end], total, nil
 }
 
 // ValidationIssuesPage is the result of a paginated validation-issues query.
@@ -173,24 +162,23 @@ type ValidationIssuesPage struct {
 	InfoCount    int
 }
 
-// GetValidationIssues returns validation issues, optionally filtered by
-// severity and paginated. limit <= 0 means "no limit"; offset < 0 is treated
-// as 0.
+// GetValidationIssues returns the mainline's validation issues, optionally
+// filtered by severity and paginated. limit <= 0 means "no limit"; offset < 0
+// is treated as 0.
 func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFilter string, limit, offset int) (*ValidationIssuesPage, error) {
-	// Build gedcom document from read model
-	doc, xrefMap, err := s.buildGedcomDocument(ctx)
+	return s.GetValidationIssuesOn(ctx, domain.MainBranchID, severityFilter, limit, offset)
+}
+
+// GetValidationIssuesOn is GetValidationIssues over branchID's view of the tree.
+func (s *ValidationService) GetValidationIssuesOn(ctx context.Context, branchID domain.BranchID, severityFilter string, limit, offset int) (*ValidationIssuesPage, error) {
+	view, err := s.buildGedcomDocument(ctx, branchID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create validator with strict mode to get all severity levels
-	v := validator.NewWithOptions(&validator.ValidateOptions{
-		Strictness: validator.StrictnessStrict,
-	})
-
 	// Get all validation issues (unfiltered) so we can compute global counts
 	// even when a severity filter is applied.
-	allIssues := v.ValidateAll(doc)
+	allIssues := strictValidator().ValidateAll(view.doc)
 
 	page := &ValidationIssuesPage{
 		Issues: []ValidationIssueResult{},
@@ -237,119 +225,196 @@ func (s *ValidationService) GetValidationIssues(ctx context.Context, severityFil
 	}
 	pageIssues := issues[offset:end]
 
-	// Convert to ValidationIssueResult
 	results := make([]ValidationIssueResult, 0, len(pageIssues))
 	for _, issue := range pageIssues {
-		result := ValidationIssueResult{
-			Severity: severityConstToString(issue.Severity),
-			Code:     issue.Code,
-			Message:  issue.Message,
-		}
-
-		// Map XRef back to UUID
-		if issue.RecordXRef != "" {
-			if id, ok := xrefMap[issue.RecordXRef]; ok {
-				result.RecordID = &id
-			}
-		}
-		if issue.RelatedXRef != "" {
-			if id, ok := xrefMap[issue.RelatedXRef]; ok {
-				result.RelatedRecordID = &id
-			}
-		}
-
-		results = append(results, result)
+		results = append(results, view.issueResult(issue))
 	}
 
 	page.Issues = results
 	return page, nil
 }
 
-// buildGedcomDocument reconstructs a gedcom.Document from read model data.
-// Returns the document and a map of XRef -> UUID for reverse lookup.
-func (s *ValidationService) buildGedcomDocument(ctx context.Context) (*gedcom.Document, map[string]uuid.UUID, error) {
-	// Load all persons using pagination to avoid truncation
-	persons, err := repository.ListAll(ctx, 1000, s.readStore.ListPersons)
+// gedcomView is one scope's tree rebuilt as a gedcom.Document for the
+// validator, with what it takes to map the validator's answers back: record
+// ids by XRef, and each record's kind and display name.
+type gedcomView struct {
+	doc     *gedcom.Document
+	xrefMap map[string]uuid.UUID
+	labels  map[uuid.UUID]recordLabel
+}
+
+// recordLabel is a validated record's kind ("person", "family", "source") and
+// display name.
+type recordLabel struct {
+	kind string
+	name string
+}
+
+// issueResult maps a validator issue back onto record ids.
+func (v *gedcomView) issueResult(issue validator.Issue) ValidationIssueResult {
+	result := ValidationIssueResult{
+		Severity: severityConstToString(issue.Severity),
+		Code:     issue.Code,
+		Message:  issue.Message,
+	}
+	if id, ok := v.xrefMap[issue.RecordXRef]; ok && issue.RecordXRef != "" {
+		result.RecordID = &id
+	}
+	if id, ok := v.xrefMap[issue.RelatedXRef]; ok && issue.RelatedXRef != "" {
+		result.RelatedRecordID = &id
+	}
+	return result
+}
+
+// duplicates returns every potential duplicate pair in the view, in the
+// validator's order, mapped back onto person ids.
+func (v *gedcomView) duplicates() []DuplicateResult {
+	pairs := validator.New().FindPotentialDuplicates(v.doc)
+	results := make([]DuplicateResult, 0, len(pairs))
+	for _, pair := range pairs {
+		result := DuplicateResult{
+			Confidence:   pair.Confidence,
+			MatchReasons: pair.MatchReasons,
+		}
+
+		// Map XRef back to UUID
+		if id, ok := v.xrefMap[pair.Individual1.XRef]; ok {
+			result.Person1ID = id
+			result.Person1Name = getDisplayNameFromIndividual(pair.Individual1)
+		}
+		if id, ok := v.xrefMap[pair.Individual2.XRef]; ok {
+			result.Person2ID = id
+			result.Person2Name = getDisplayNameFromIndividual(pair.Individual2)
+		}
+
+		results = append(results, result)
+	}
+	return results
+}
+
+// buildGedcomDocument reconstructs a gedcom.Document from branchID's view of
+// the read model (ADR-005). Every read is set-based: one paged list per record
+// type and one read of every child link, so the cost does not grow with a
+// query per family.
+func (s *ValidationService) buildGedcomDocument(ctx context.Context, branchID domain.BranchID) (*gedcomView, error) {
+	records, err := loadScopeRecords(ctx, s.readStore, branchID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+	return s.gedcomViewOf(records), nil
+}
+
+// scopeRecords is every person, family, source and child link one scope sees,
+// read once so several checks over the same scope share the reads.
+type scopeRecords struct {
+	persons  []repository.PersonReadModel
+	families []repository.FamilyReadModel
+	sources  []repository.SourceReadModel
+	links    []repository.FamilyChildReadModel
+}
+
+// loadScopeRecords reads branchID's persons, families, sources and child links:
+// four set-based reads whatever the tree size.
+func loadScopeRecords(ctx context.Context, readStore repository.ReadModelStore, branchID domain.BranchID) (*scopeRecords, error) {
+	// Load all persons using pagination to avoid truncation
+	persons, err := repository.ListAllOn(ctx, branchID, 1000, readStore.ListPersons)
+	if err != nil {
+		return nil, err
 	}
 
 	// Load all families
-	families, err := repository.ListAll(ctx, 1000, s.readStore.ListFamilies)
+	families, err := repository.ListAllOn(ctx, branchID, 1000, readStore.ListFamilies)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Load all sources
-	sources, err := repository.ListAll(ctx, 1000, s.readStore.ListSources)
+	sources, err := repository.ListAllOn(ctx, branchID, 1000, readStore.ListSources)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	// Build XRef mapping
-	xrefMap := make(map[string]uuid.UUID)
+	// Every child link the scope sees.
+	links, err := readStore.ListAllFamilyChildren(ctx, branchID)
+	if err != nil {
+		return nil, err
+	}
+	return &scopeRecords{persons: persons, families: families, sources: sources, links: links}, nil
+}
 
-	// Create document
-	doc := &gedcom.Document{
-		Records: make([]*gedcom.Record, 0, len(persons)+len(families)+len(sources)),
-		XRefMap: make(map[string]*gedcom.Record),
+// gedcomViewOf builds the gedcom view of one scope's already-loaded records.
+func (s *ValidationService) gedcomViewOf(records *scopeRecords) *gedcomView {
+	persons, families, sources := records.persons, records.families, records.sources
+
+	// Child links grouped by family, in birth order. The grouping copies the
+	// links, so the shared slice keeps its order for other checks.
+	childrenByFamily := make(map[uuid.UUID][]repository.FamilyChildReadModel)
+	for _, link := range records.links {
+		childrenByFamily[link.FamilyID] = append(childrenByFamily[link.FamilyID], link)
+	}
+	for _, children := range childrenByFamily {
+		sortChildrenByBirthOrder(children)
+	}
+
+	view := &gedcomView{
+		doc: &gedcom.Document{
+			Records: make([]*gedcom.Record, 0, len(persons)+len(families)+len(sources)),
+			XRefMap: make(map[string]*gedcom.Record),
+		},
+		xrefMap: make(map[string]uuid.UUID),
+		labels:  make(map[uuid.UUID]recordLabel, len(persons)+len(families)+len(sources)),
+	}
+	add := func(id uuid.UUID, recordType gedcom.RecordType, entity any, label recordLabel) {
+		xref := recordXRef(id)
+		record := &gedcom.Record{XRef: xref, Type: recordType, Entity: entity}
+		view.xrefMap[xref] = id
+		view.labels[id] = label
+		view.doc.Records = append(view.doc.Records, record)
+		view.doc.XRefMap[xref] = record
 	}
 
 	// Add persons as individuals
 	for _, person := range persons {
-		xref := personXRef(person.ID)
-		xrefMap[xref] = person.ID
-
-		individual := s.personToIndividual(person)
-		record := &gedcom.Record{
-			XRef:   xref,
-			Type:   gedcom.RecordTypeIndividual,
-			Entity: individual,
-		}
-
-		doc.Records = append(doc.Records, record)
-		doc.XRefMap[xref] = record
+		add(person.ID, gedcom.RecordTypeIndividual, s.personToIndividual(person),
+			recordLabel{kind: entityTypePerson, name: person.FullName})
 	}
 
 	// Add families
-	for _, family := range families {
-		xref := familyXRef(family.ID)
-		xrefMap[xref] = family.ID
-
-		// Load children for this family
-		children, err := s.readStore.GetFamilyChildren(ctx, domain.MainBranchID, family.ID)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		gedFamily := s.familyToGedcomFamily(family, children)
-		record := &gedcom.Record{
-			XRef:   xref,
-			Type:   gedcom.RecordTypeFamily,
-			Entity: gedFamily,
-		}
-
-		doc.Records = append(doc.Records, record)
-		doc.XRefMap[xref] = record
+	for i := range families {
+		family := &families[i]
+		add(family.ID, gedcom.RecordTypeFamily, s.familyToGedcomFamily(*family, childrenByFamily[family.ID]),
+			recordLabel{kind: entityTypeFamily, name: familyReadModelName(family)})
 	}
 
 	// Add sources
 	for _, source := range sources {
-		xref := sourceXRef(source.ID)
-		xrefMap[xref] = source.ID
-
-		gedSource := s.sourceToGedcomSource(source)
-		record := &gedcom.Record{
-			XRef:   xref,
-			Type:   gedcom.RecordTypeSource,
-			Entity: gedSource,
-		}
-
-		doc.Records = append(doc.Records, record)
-		doc.XRefMap[xref] = record
+		add(source.ID, gedcom.RecordTypeSource, s.sourceToGedcomSource(source),
+			recordLabel{kind: entityTypeSource, name: source.Title})
 	}
 
-	return doc, xrefMap, nil
+	return view
+}
+
+// sortChildrenByBirthOrder orders one family's children as the family page
+// lists them: by sequence (unsequenced last), then name, then id, so every
+// backend yields the same document.
+func sortChildrenByBirthOrder(children []repository.FamilyChildReadModel) {
+	sort.SliceStable(children, func(i, j int) bool {
+		a, b := children[i], children[j]
+		if (a.Sequence == nil) != (b.Sequence == nil) {
+			return a.Sequence != nil
+		}
+		if a.Sequence != nil && *a.Sequence != *b.Sequence {
+			return *a.Sequence < *b.Sequence
+		}
+		if a.PersonSurname != b.PersonSurname {
+			return a.PersonSurname < b.PersonSurname
+		}
+		if a.PersonGivenName != b.PersonGivenName {
+			return a.PersonGivenName < b.PersonGivenName
+		}
+		return a.PersonID.String() < b.PersonID.String()
+	})
 }
 
 // personToIndividual converts a PersonReadModel to a gedcom.Individual.
@@ -493,18 +558,17 @@ func (s *ValidationService) sourceToGedcomSource(source repository.SourceReadMod
 	}
 }
 
-// Helper functions for XRef generation
-func personXRef(id uuid.UUID) string {
+// Helper functions for XRef generation. Every record's XRef is its id, so
+// the kinds share one form.
+func recordXRef(id uuid.UUID) string {
 	return "@" + id.String() + "@"
 }
 
-func familyXRef(id uuid.UUID) string {
-	return "@" + id.String() + "@"
-}
+func personXRef(id uuid.UUID) string { return recordXRef(id) }
 
-func sourceXRef(id uuid.UUID) string {
-	return "@" + id.String() + "@"
-}
+func familyXRef(id uuid.UUID) string { return recordXRef(id) }
+
+func sourceXRef(id uuid.UUID) string { return recordXRef(id) }
 
 // getDisplayNameFromIndividual returns a display name for a gedcom.Individual.
 func getDisplayNameFromIndividual(ind *gedcom.Individual) string {

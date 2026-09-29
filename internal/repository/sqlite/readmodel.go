@@ -2636,6 +2636,60 @@ func (s *ReadModelStore) GetFamilyChildren(ctx context.Context, branchID domain.
 	return s.GetFamilyChildrenByFamilyIDs(ctx, branchID, []uuid.UUID{familyID})
 }
 
+// ListAllFamilyChildren returns every child link branchID sees, in one query:
+// the same per-(family, person) overlay as GetFamilyChildren, over every family.
+func (s *ReadModelStore) ListAllFamilyChildren(ctx context.Context, branchID domain.BranchID) ([]repository.FamilyChildReadModel, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT family_id, person_id, person_given_name, person_surname, relationship_type, sequence
+		FROM (
+			SELECT *, ROW_NUMBER() OVER (PARTITION BY family_id, person_id ORDER BY (branch_id = ?) DESC) AS rn
+			FROM family_children WHERE branch_id IN (?, ?)
+		)
+		WHERE rn = 1 AND deleted = 0
+		ORDER BY family_id, person_id
+	`, branchID.String(), branchID.String(), mainBranchID)
+	if err != nil {
+		return nil, fmt.Errorf("query all family children: %w", err)
+	}
+	defer rows.Close()
+	return scanFamilyChildRows(rows)
+}
+
+// scanFamilyChildRows scans family_id, person_id, person_given_name,
+// person_surname, relationship_type, sequence rows.
+func scanFamilyChildRows(rows *sql.Rows) ([]repository.FamilyChildReadModel, error) {
+	var children []repository.FamilyChildReadModel
+	for rows.Next() {
+		var (
+			familyIDStr, personIDStr, relType string
+			personGivenName, personSurname    sql.NullString
+			sequence                          sql.NullInt64
+		)
+		err := rows.Scan(&familyIDStr, &personIDStr, &personGivenName, &personSurname, &relType, &sequence)
+		if err != nil {
+			return nil, fmt.Errorf("scan family child: %w", err)
+		}
+
+		fID, _ := uuid.Parse(familyIDStr)
+		pID, _ := uuid.Parse(personIDStr)
+
+		child := repository.FamilyChildReadModel{
+			FamilyID:         fID,
+			PersonID:         pID,
+			PersonGivenName:  personGivenName.String,
+			PersonSurname:    personSurname.String,
+			RelationshipType: domain.ChildRelationType(relType),
+		}
+		if sequence.Valid {
+			seq := int(sequence.Int64)
+			child.Sequence = &seq
+		}
+		children = append(children, child)
+	}
+
+	return children, rows.Err()
+}
+
 // GetChildrenOfFamily returns person read models for all children in a family,
 // resolving both the children set and each person through the branch overlay.
 func (s *ReadModelStore) GetChildrenOfFamily(ctx context.Context, branchID domain.BranchID, familyID uuid.UUID) ([]repository.PersonReadModel, error) {

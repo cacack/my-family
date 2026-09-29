@@ -103,6 +103,45 @@ func (e BranchStatus) Valid() bool {
 	}
 }
 
+// Defines values for BranchChangedFactKind.
+const (
+	Deletion     BranchChangedFactKind = "deletion"
+	Fact         BranchChangedFactKind = "fact"
+	Relationship BranchChangedFactKind = "relationship"
+)
+
+// Valid indicates whether the value is a known member of the BranchChangedFactKind enum.
+func (e BranchChangedFactKind) Valid() bool {
+	switch e {
+	case Deletion:
+		return true
+	case Fact:
+		return true
+	case Relationship:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BranchChangedFactSubjectType.
+const (
+	BranchChangedFactSubjectTypeFamily BranchChangedFactSubjectType = "family"
+	BranchChangedFactSubjectTypePerson BranchChangedFactSubjectType = "person"
+)
+
+// Valid indicates whether the value is a known member of the BranchChangedFactSubjectType enum.
+func (e BranchChangedFactSubjectType) Valid() bool {
+	switch e {
+	case BranchChangedFactSubjectTypeFamily:
+		return true
+	case BranchChangedFactSubjectTypePerson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BranchMergeConflictErrorCode.
 const (
 	BranchNotActive        BranchMergeConflictErrorCode = "branch_not_active"
@@ -160,6 +199,69 @@ func (e BranchMergeResumeErrorCode) Valid() bool {
 	case ResumeMergeNotClaimed:
 		return true
 	case ResumeNeedsResolution:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BranchValidationIssueRecordType.
+const (
+	BranchValidationIssueRecordTypeFamily BranchValidationIssueRecordType = "family"
+	BranchValidationIssueRecordTypePerson BranchValidationIssueRecordType = "person"
+	BranchValidationIssueRecordTypeSource BranchValidationIssueRecordType = "source"
+)
+
+// Valid indicates whether the value is a known member of the BranchValidationIssueRecordType enum.
+func (e BranchValidationIssueRecordType) Valid() bool {
+	switch e {
+	case BranchValidationIssueRecordTypeFamily:
+		return true
+	case BranchValidationIssueRecordTypePerson:
+		return true
+	case BranchValidationIssueRecordTypeSource:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BranchValidationIssueRelatedRecordType.
+const (
+	BranchValidationIssueRelatedRecordTypeFamily BranchValidationIssueRelatedRecordType = "family"
+	BranchValidationIssueRelatedRecordTypePerson BranchValidationIssueRelatedRecordType = "person"
+	BranchValidationIssueRelatedRecordTypeSource BranchValidationIssueRelatedRecordType = "source"
+)
+
+// Valid indicates whether the value is a known member of the BranchValidationIssueRelatedRecordType enum.
+func (e BranchValidationIssueRelatedRecordType) Valid() bool {
+	switch e {
+	case BranchValidationIssueRelatedRecordTypeFamily:
+		return true
+	case BranchValidationIssueRelatedRecordTypePerson:
+		return true
+	case BranchValidationIssueRelatedRecordTypeSource:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BranchValidationIssueSeverity.
+const (
+	BranchValidationIssueSeverityError   BranchValidationIssueSeverity = "error"
+	BranchValidationIssueSeverityInfo    BranchValidationIssueSeverity = "info"
+	BranchValidationIssueSeverityWarning BranchValidationIssueSeverity = "warning"
+)
+
+// Valid indicates whether the value is a known member of the BranchValidationIssueSeverity enum.
+func (e BranchValidationIssueSeverity) Valid() bool {
+	switch e {
+	case BranchValidationIssueSeverityError:
+		return true
+	case BranchValidationIssueSeverityInfo:
+		return true
+	case BranchValidationIssueSeverityWarning:
 		return true
 	default:
 		return false
@@ -2407,6 +2509,35 @@ type BranchMergeState string
 // are purged.
 type BranchStatus string
 
+// BranchChangedFact One fact or relationship a branch changed.
+type BranchChangedFact struct {
+	// ChangeCount How many of the branch's changes touched the fact.
+	ChangeCount int `json:"change_count"`
+
+	// FactType The fact changed (e.g. `person_birth`); absent for a relationship or a deletion.
+	FactType *string `json:"fact_type,omitempty"`
+
+	// Kind `fact` for a person's or family's fact (`fact_type` says which);
+	// `relationship` for a family's partners or children; `deletion` for
+	// a person or family the mainline has that the branch deleted.
+	Kind      BranchChangedFactKind `json:"kind"`
+	SubjectId openapi_types.UUID    `json:"subject_id"`
+
+	// SubjectName The subject's display name as the branch sees it (a deleted one as the mainline has it); empty when nothing names it.
+	SubjectName string `json:"subject_name"`
+
+	// SubjectType What the fact is about - the subject an analysis of it has.
+	SubjectType BranchChangedFactSubjectType `json:"subject_type"`
+}
+
+// BranchChangedFactKind `fact` for a person's or family's fact (`fact_type` says which);
+// `relationship` for a family's partners or children; `deletion` for
+// a person or family the mainline has that the branch deleted.
+type BranchChangedFactKind string
+
+// BranchChangedFactSubjectType What the fact is about - the subject an analysis of it has.
+type BranchChangedFactSubjectType string
+
 // BranchComparisonResult defines model for BranchComparisonResult.
 type BranchComparisonResult struct {
 	// BasePosition Mainline position the branch forked from - the anchor of this diff
@@ -2458,6 +2589,59 @@ type BranchCreate struct {
 
 	// Name Name of the line of research
 	Name string `json:"name"`
+}
+
+// BranchDuplicatePair A potential duplicate pair a branch introduces.
+type BranchDuplicatePair struct {
+	Confidence float32 `json:"confidence"`
+
+	// Key Stable across the branch and the mainline (the two person ids, in id order).
+	Key          string             `json:"key"`
+	MatchReasons []string           `json:"match_reasons"`
+	Person1Id    openapi_types.UUID `json:"person1_id"`
+	Person1Name  string             `json:"person1_name"`
+	Person2Id    openapi_types.UUID `json:"person2_id"`
+	Person2Name  string             `json:"person2_name"`
+}
+
+// BranchEvidenceCoverage The evidence-coverage warning of a branch (#838): how many facts and
+// relationships it changed, and which of them have no evidence analysis
+// or proof summary on the branch.
+type BranchEvidenceCoverage struct {
+	// ChangedFactCount How many facts and relationships the branch changed.
+	ChangedFactCount int `json:"changed_fact_count"`
+
+	// HasMore The branch's own events hit the read cap, so the counts may be incomplete.
+	HasMore bool `json:"has_more"`
+
+	// Uncovered The changed facts with no evidence on the branch, by subject name. `[]` when every change is documented.
+	Uncovered []BranchChangedFact `json:"uncovered"`
+}
+
+// BranchHealth What a branch introduces into the tree's checks (#838): its findings
+// the mainline does not have. Every list is `[]`, never `null`, when
+// empty.
+type BranchHealth struct {
+	// Duplicates Potential duplicate pairs the branch introduces, most likely first.
+	Duplicates []BranchDuplicatePair `json:"duplicates"`
+
+	// ErrorCount How many of `validation_issues` are errors.
+	ErrorCount int `json:"error_count"`
+
+	// InfoCount How many of `validation_issues` are information.
+	InfoCount int `json:"info_count"`
+
+	// QualityIssues Per-person quality issues the branch introduces, by person name.
+	QualityIssues []BranchQualityIssue `json:"quality_issues"`
+
+	// ResolvedCount How many of the mainline's findings, of every kind, the branch no longer has.
+	ResolvedCount int `json:"resolved_count"`
+
+	// ValidationIssues Validation issues the branch introduces, errors first, then warnings, then information.
+	ValidationIssues []BranchValidationIssue `json:"validation_issues"`
+
+	// WarningCount How many of `validation_issues` are warnings.
+	WarningCount int `json:"warning_count"`
 }
 
 // BranchList defines model for BranchList.
@@ -2624,6 +2808,42 @@ type BranchMergeResumeResult struct {
 	// `[]`, never `null`.
 	SkippedStreamIds []openapi_types.UUID `json:"skipped_stream_ids"`
 }
+
+// BranchQualityIssue A person's quality issue a branch introduces.
+type BranchQualityIssue struct {
+	// Issue The issue, as `/quality/persons/{id}` words it.
+	Issue string `json:"issue"`
+
+	// Key Stable across the branch and the mainline (person and issue).
+	Key        string             `json:"key"`
+	PersonId   openapi_types.UUID `json:"person_id"`
+	PersonName string             `json:"person_name"`
+}
+
+// BranchValidationIssue A validation issue a branch introduces, with the records it is about by name.
+type BranchValidationIssue struct {
+	Code string `json:"code"`
+
+	// Key Stable across the branch and the mainline (code, record, related record, occurrence).
+	Key               string                                  `json:"key"`
+	Message           string                                  `json:"message"`
+	RecordId          *openapi_types.UUID                     `json:"record_id,omitempty"`
+	RecordName        *string                                 `json:"record_name,omitempty"`
+	RecordType        *BranchValidationIssueRecordType        `json:"record_type,omitempty"`
+	RelatedRecordId   *openapi_types.UUID                     `json:"related_record_id,omitempty"`
+	RelatedRecordName *string                                 `json:"related_record_name,omitempty"`
+	RelatedRecordType *BranchValidationIssueRelatedRecordType `json:"related_record_type,omitempty"`
+	Severity          BranchValidationIssueSeverity           `json:"severity"`
+}
+
+// BranchValidationIssueRecordType defines model for BranchValidationIssue.RecordType.
+type BranchValidationIssueRecordType string
+
+// BranchValidationIssueRelatedRecordType defines model for BranchValidationIssue.RelatedRecordType.
+type BranchValidationIssueRelatedRecordType string
+
+// BranchValidationIssueSeverity defines model for BranchValidationIssue.Severity.
+type BranchValidationIssueSeverity string
 
 // BrickWallEntry defines model for BrickWallEntry.
 type BrickWallEntry struct {
@@ -6936,6 +7156,12 @@ type ServerInterface interface {
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx echo.Context, id BranchId) error
+	// List the facts a branch changed without documenting them
+	// (GET /branches/{id}/evidence-coverage)
+	GetBranchEvidenceCoverage(ctx echo.Context, id BranchId) error
+	// List the validation issues, quality issues and duplicates a branch introduces
+	// (GET /branches/{id}/health)
+	GetBranchHealth(ctx echo.Context, id BranchId) error
 	// Merge a branch into the mainline
 	// (POST /branches/{id}/merge)
 	MergeBranch(ctx echo.Context, id BranchId) error
@@ -7632,6 +7858,38 @@ func (w *ServerInterfaceWrapper) CompareBranch(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.CompareBranch(ctx, id)
+	return err
+}
+
+// GetBranchEvidenceCoverage converts echo context to params.
+func (w *ServerInterfaceWrapper) GetBranchEvidenceCoverage(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetBranchEvidenceCoverage(ctx, id)
+	return err
+}
+
+// GetBranchHealth converts echo context to params.
+func (w *ServerInterfaceWrapper) GetBranchHealth(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetBranchHealth(ctx, id)
 	return err
 }
 
@@ -11253,6 +11511,8 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/branches/:id", wrapper.DeleteBranch, options.OperationMiddlewares["deleteBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id", wrapper.GetBranch, options.OperationMiddlewares["getBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
+	router.GET(options.BaseURL+"/branches/:id/evidence-coverage", wrapper.GetBranchEvidenceCoverage, options.OperationMiddlewares["getBranchEvidenceCoverage"]...)
+	router.GET(options.BaseURL+"/branches/:id/health", wrapper.GetBranchHealth, options.OperationMiddlewares["getBranchHealth"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge", wrapper.MergeBranch, options.OperationMiddlewares["mergeBranch"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge/precheck", wrapper.PrecheckBranchMerge, options.OperationMiddlewares["precheckBranchMerge"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge/resume", wrapper.ResumeBranchMerge, options.OperationMiddlewares["resumeBranchMerge"]...)
@@ -11966,6 +12226,110 @@ type CompareBranch503JSONResponse struct {
 }
 
 func (response CompareBranch503JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchEvidenceCoverageRequestObject struct {
+	Id BranchId `json:"id"`
+}
+
+type GetBranchEvidenceCoverageResponseObject interface {
+	VisitGetBranchEvidenceCoverageResponse(w http.ResponseWriter) error
+}
+
+type GetBranchEvidenceCoverage200JSONResponse BranchEvidenceCoverage
+
+func (response GetBranchEvidenceCoverage200JSONResponse) VisitGetBranchEvidenceCoverageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchEvidenceCoverage404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetBranchEvidenceCoverage404JSONResponse) VisitGetBranchEvidenceCoverageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchEvidenceCoverage503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response GetBranchEvidenceCoverage503JSONResponse) VisitGetBranchEvidenceCoverageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchHealthRequestObject struct {
+	Id BranchId `json:"id"`
+}
+
+type GetBranchHealthResponseObject interface {
+	VisitGetBranchHealthResponse(w http.ResponseWriter) error
+}
+
+type GetBranchHealth200JSONResponse BranchHealth
+
+func (response GetBranchHealth200JSONResponse) VisitGetBranchHealthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchHealth404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetBranchHealth404JSONResponse) VisitGetBranchHealthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchHealth503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response GetBranchHealth503JSONResponse) VisitGetBranchHealthResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -18233,6 +18597,12 @@ type StrictServerInterface interface {
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx context.Context, request CompareBranchRequestObject) (CompareBranchResponseObject, error)
+	// List the facts a branch changed without documenting them
+	// (GET /branches/{id}/evidence-coverage)
+	GetBranchEvidenceCoverage(ctx context.Context, request GetBranchEvidenceCoverageRequestObject) (GetBranchEvidenceCoverageResponseObject, error)
+	// List the validation issues, quality issues and duplicates a branch introduces
+	// (GET /branches/{id}/health)
+	GetBranchHealth(ctx context.Context, request GetBranchHealthRequestObject) (GetBranchHealthResponseObject, error)
 	// Merge a branch into the mainline
 	// (POST /branches/{id}/merge)
 	MergeBranch(ctx context.Context, request MergeBranchRequestObject) (MergeBranchResponseObject, error)
@@ -18982,6 +19352,56 @@ func (sh *strictHandler) CompareBranch(ctx echo.Context, id BranchId) error {
 		return err
 	} else if validResponse, ok := response.(CompareBranchResponseObject); ok {
 		return validResponse.VisitCompareBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetBranchEvidenceCoverage operation middleware
+func (sh *strictHandler) GetBranchEvidenceCoverage(ctx echo.Context, id BranchId) error {
+	var request GetBranchEvidenceCoverageRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBranchEvidenceCoverage(ctx.Request().Context(), request.(GetBranchEvidenceCoverageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBranchEvidenceCoverage")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetBranchEvidenceCoverageResponseObject); ok {
+		return validResponse.VisitGetBranchEvidenceCoverageResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetBranchHealth operation middleware
+func (sh *strictHandler) GetBranchHealth(ctx echo.Context, id BranchId) error {
+	var request GetBranchHealthRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBranchHealth(ctx.Request().Context(), request.(GetBranchHealthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBranchHealth")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetBranchHealthResponseObject); ok {
+		return validResponse.VisitGetBranchHealthResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
