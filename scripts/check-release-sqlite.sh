@@ -33,7 +33,14 @@ base="http://127.0.0.1:$port/api/v1"
 db="$work/myfamily.db"
 
 start_server() {
-	SQLITE_PATH="$db" PORT="$port" "$work/myfamily" serve >"$work/serve.log" 2>&1 &
+	if curl -fsS "$base/persons" >/dev/null 2>&1; then
+		echo "::error::something is already listening on port $port; set CHECK_PORT to a free port"
+		exit 1
+	fi
+	# env -u: DEMO_MODE or DATABASE_URL in the caller's environment would select
+	# another backend, and the check would pass without touching SQLite.
+	env -u DEMO_MODE -u DATABASE_URL SQLITE_PATH="$db" PORT="$port" \
+		"$work/myfamily" serve >"$work/serve.log" 2>&1 &
 	server_pid=$!
 	for _ in $(seq 1 50); do
 		if curl -fsS "$base/persons" >/dev/null 2>&1; then

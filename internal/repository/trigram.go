@@ -14,9 +14,9 @@ type trigram [3]rune
 
 // trigrams returns the set of trigrams pg_trgm extracts from s: the string is
 // lower-cased and split into words of word characters (see isTrigramWordRune;
-// every other rune is a separator), each word is padded with two spaces in front and one behind, and
-// every run of three consecutive runes of a padded word is a trigram. Duplicates
-// collapse, so the result is a set.
+// every other rune is a separator), each word is padded with two spaces in
+// front and one behind, and every run of three consecutive runes of a padded
+// word is a trigram. Duplicates collapse, so the result is a set.
 func trigrams(s string) map[trigram]struct{} {
 	set := make(map[trigram]struct{})
 	var word []rune
