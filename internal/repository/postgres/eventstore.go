@@ -310,6 +310,79 @@ func (s *EventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.
 	return scanEvents(rows)
 }
 
+// countMainDriftSQL counts, per requested (branch, base position), main's
+// events after the base and the subset on streams the branch wrote. Each count
+// is a scalar subquery over a LIMITed derived table, so the cap bounds the
+// scan per branch however long main's tail is. Every requested branch is
+// answered by this one statement: the scopes arrive as parallel arrays.
+const countMainDriftSQL = `
+	WITH scopes AS (
+		SELECT branch_id, MIN(base_position) AS base_position
+		FROM unnest($1::uuid[], $2::bigint[]) AS s(branch_id, base_position)
+		GROUP BY branch_id
+	)
+	SELECT s.branch_id,
+		(SELECT COUNT(*) FROM (
+			SELECT 1 FROM events m
+			WHERE m.branch_id = $3 AND m.position > s.base_position
+				AND m.event_type <> ALL($4::text[])
+			LIMIT $5
+		) AS main_tail) AS main_changes,
+		(SELECT COUNT(*) FROM (
+			SELECT 1 FROM events m
+			WHERE m.branch_id = $3 AND m.position > s.base_position
+				AND m.event_type <> ALL($4::text[])
+				AND m.stream_id IN (
+					SELECT b.stream_id FROM events b
+					WHERE b.branch_id = s.branch_id AND b.event_type <> ALL($4::text[])
+				)
+			LIMIT $5
+		) AS touched_tail) AS main_changes_on_branch_streams
+	FROM scopes s
+`
+
+// CountMainDrift reports how far main has moved under each branch, in one
+// statement for the whole set. See repository.EventStore.CountMainDrift.
+func (s *EventStore) CountMainDrift(ctx context.Context, scopes []repository.DriftScope, excludeEventTypes []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	result := make(map[domain.BranchID]repository.DriftCount, len(scopes))
+	if len(scopes) == 0 || limit <= 0 {
+		return result, nil
+	}
+
+	branchIDs := make([]string, len(scopes))
+	bases := make([]int64, len(scopes))
+	for i, scope := range scopes {
+		branchIDs[i] = scope.BranchID.String()
+		bases[i] = scope.BasePosition
+	}
+	excluded := excludeEventTypes
+	if excluded == nil {
+		excluded = []string{}
+	}
+
+	rows, err := s.db.QueryContext(ctx, countMainDriftSQL,
+		pq.Array(branchIDs), pq.Array(bases), domain.MainBranchID.UUID(), pq.Array(excluded), limit)
+	if err != nil {
+		return nil, fmt.Errorf("count main drift: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			branchID uuid.UUID
+			count    repository.DriftCount
+		)
+		if err := rows.Scan(&branchID, &count.MainChanges, &count.MainChangesOnBranchStreams); err != nil {
+			return nil, fmt.Errorf("scan main drift: %w", err)
+		}
+		result[domain.BranchID(branchID)] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate main drift: %w", err)
+	}
+	return result, nil
+}
+
 // GetStreamVersion returns the current version of a stream on a branch.
 func (s *EventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
 	var version int64

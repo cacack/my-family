@@ -46,6 +46,10 @@ func (m *rollbackMockEventStore) ReadStreamsForBranch(ctx context.Context, strea
 	return nil, nil
 }
 
+func (m *rollbackMockEventStore) CountMainDrift(ctx context.Context, scopes []repository.DriftScope, excludeEventTypes []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	return map[domain.BranchID]repository.DriftCount{}, nil
+}
+
 func (m *rollbackMockEventStore) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
 	return &repository.HistoryPage{}, nil
 }

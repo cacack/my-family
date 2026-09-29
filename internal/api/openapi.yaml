@@ -2847,8 +2847,25 @@ paths:
     get:
       operationId: listBranches
       summary: List all branches
-      description: Returns every branch in the registry, newest first, including terminal (merged/archived) ones
+      description: |
+        Returns every branch in the registry, newest first, including terminal
+        (merged/archived) ones.
+
+        With `include_drift=true`, each **active** branch also carries `drift`:
+        how far the mainline has moved underneath it since it forked (see
+        `GET /branches/{id}/drift`). Every branch's counts come from one
+        set-based store query, not one per branch. Terminal branches never
+        carry `drift` — they accept no further changes, so there is nothing
+        left for main to move under.
       tags: [branches]
+      parameters:
+        - name: include_drift
+          in: query
+          required: false
+          description: Attach the "main moved" counts to each active branch
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: List of branches
@@ -3154,6 +3171,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/BranchesUnavailable'
+
+  /branches/{id}/drift:
+    parameters:
+      - $ref: '#/components/parameters/branchId'
+
+    get:
+      operationId: getBranchDrift
+      summary: Count how far the mainline has moved under a branch
+      description: |
+        Branches are **live overlays**, not frozen copies (ADR-005): every
+        entity the branch has not changed shows the mainline's *current*
+        data, so main's edits after the fork show through. This returns a
+        cheap indicator of that movement without running a full compare:
+
+        - `main_change_count`: mainline changes since the fork, on any entity.
+        - `main_change_count_on_branch_entities`: the subset on entities this
+          branch changed — the ones `GET /branches/{id}/compare` lists under
+          main's changes, where the two lines of research can diverge.
+
+        Research-metadata events (branch and snapshot lifecycle) are not
+        genealogy changes and are not counted. Each count is capped; when a
+        cap is hit `has_more` is true and the count is a lower bound.
+      tags: [branches]
+      responses:
+        '200':
+          description: Drift counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BranchDrift'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/BranchesUnavailable'
 
@@ -7710,6 +7761,38 @@ components:
             single-branch reads (get, update, compare) and absent on the list;
             a linked summary that no longer exists is left out, while its id
             stays in `proof_summary_ids`.
+        drift:
+          $ref: '#/components/schemas/BranchDrift'
+
+    BranchDrift:
+      type: object
+      description: |
+        How far the mainline has moved underneath a branch since it forked.
+        Present on a `Branch` only when `GET /branches?include_drift=true`
+        was asked for it and the branch is active.
+      required: [branch_id, base_position, main_change_count, main_change_count_on_branch_entities, has_more]
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        base_position:
+          type: integer
+          format: int64
+          description: Mainline event store position the branch forked from
+        main_change_count:
+          type: integer
+          minimum: 0
+          description: Mainline changes since the fork, on any entity
+        main_change_count_on_branch_entities:
+          type: integer
+          minimum: 0
+          description: |
+            The subset of `main_change_count` on entities this branch itself
+            changed. These are the mainline changes a compare lists; every
+            other mainline change simply shows through the branch.
+        has_more:
+          type: boolean
+          description: A count hit the server's cap and is a lower bound
 
     BranchOutcome:
       type: string

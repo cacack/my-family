@@ -521,3 +521,124 @@ func TestBranchService_ResearchEditsDoNotCountTowardCap(t *testing.T) {
 	assert.True(t, plan.BranchTruncated)
 	assert.Len(t, plan.ReplayEvents, maxComparisonEvents)
 }
+
+// driftCountingStore records how often CountMainDrift is called, so the list
+// path can be held to one store query however many branches it asks about.
+type driftCountingStore struct {
+	repository.EventStore
+	calls int
+	err   error
+}
+
+func (s *driftCountingStore) CountMainDrift(ctx context.Context, scopes []repository.DriftScope, excluded []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.EventStore.CountMainDrift(ctx, scopes, excluded, limit)
+}
+
+func TestBranchService_BranchDrift(t *testing.T) {
+	f := newBranchTestFixture(t)
+	touched := uuid.New()
+	other := uuid.New()
+
+	f.appendMain(t, touched, domain.NewPersonUpdated(touched, map[string]any{"notes": "pre-fork"}))
+	branch := f.forkBranch(t, "Smith hypothesis")
+	f.appendBranch(t, branch, touched, "person", domain.NewPersonUpdated(touched, map[string]any{"notes": "branch"}))
+
+	// Main moves underneath: one edit to the entity the branch touched, one to
+	// an entity it did not, and a research-metadata event that is not a
+	// genealogy change at all.
+	f.appendMain(t, touched, domain.NewPersonUpdated(touched, map[string]any{"notes": "main"}))
+	f.appendMain(t, other, domain.NewPersonUpdated(other, map[string]any{"notes": "main"}))
+	sibling, err := domain.NewBranch("Sibling", "", f.maxPosition(t))
+	require.NoError(t, err)
+	require.NoError(t, f.eventStore.Append(f.ctx, sibling.ID, "Branch",
+		[]domain.Event{domain.NewBranchCreated(sibling)}, anyVersion, repository.MainScope))
+	// A GEDCOM import's summary record is not a change either; its per-entity
+	// events are what compare lists.
+	imported := domain.NewGedcomImported("tree.ged", 10, 0, 0, nil, nil)
+	require.NoError(t, f.eventStore.Append(f.ctx, imported.ImportID, "import",
+		[]domain.Event{imported}, anyVersion, repository.MainScope))
+
+	t.Run("counts main changes and the overlap", func(t *testing.T) {
+		drift, err := f.service.GetBranchDrift(f.ctx, branch.ID)
+		require.NoError(t, err)
+		assert.Equal(t, branch.ID, drift.BranchID)
+		assert.Equal(t, branch.BasePosition, drift.BasePosition)
+		assert.Equal(t, 2, drift.MainChangeCount)
+		assert.Equal(t, 1, drift.MainChangeCountOnBranchEntities)
+		assert.False(t, drift.HasMore)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := f.service.GetBranchDrift(f.ctx, uuid.New())
+		assert.ErrorIs(t, err, repository.ErrBranchNotFound)
+	})
+
+	t.Run("many branches in one store query", func(t *testing.T) {
+		fresh := f.forkBranch(t, "Fresh")
+		store := &driftCountingStore{EventStore: f.eventStore}
+		service := NewBranchService(f.branchStore, store, NewHistoryService(store, f.readStore))
+
+		drifts, err := service.BranchDrifts(f.ctx, []*domain.Branch{branch, fresh})
+		require.NoError(t, err)
+		assert.Equal(t, 1, store.calls)
+		require.Len(t, drifts, 2)
+		assert.Equal(t, 2, drifts[branch.ID].MainChangeCount)
+		assert.Equal(t, 0, drifts[fresh.ID].MainChangeCount)
+		assert.Equal(t, fresh.ID, drifts[fresh.ID].BranchID)
+	})
+
+	t.Run("no branches issues no query", func(t *testing.T) {
+		store := &driftCountingStore{EventStore: f.eventStore}
+		service := NewBranchService(f.branchStore, store, NewHistoryService(store, f.readStore))
+
+		drifts, err := service.BranchDrifts(f.ctx, nil)
+		require.NoError(t, err)
+		assert.Empty(t, drifts)
+		assert.Equal(t, 0, store.calls)
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		store := &driftCountingStore{EventStore: f.eventStore, err: errors.New("boom")}
+		service := NewBranchService(f.branchStore, store, NewHistoryService(store, f.readStore))
+
+		_, err := service.GetBranchDrift(f.ctx, branch.ID)
+		assert.ErrorContains(t, err, "boom")
+	})
+
+	t.Run("cap marks the counts as partial", func(t *testing.T) {
+		store := &cappedDriftStore{}
+		service := NewBranchService(f.branchStore, store, NewHistoryService(store, f.readStore))
+
+		drift, err := service.GetBranchDrift(f.ctx, branch.ID)
+		require.NoError(t, err)
+		assert.Equal(t, maxDriftCount, drift.MainChangeCount)
+		assert.True(t, drift.HasMore)
+	})
+}
+
+// cappedDriftStore answers every drift scope as if main's tail hit the cap.
+type cappedDriftStore struct {
+	repository.EventStore
+}
+
+func (s *cappedDriftStore) CountMainDrift(_ context.Context, scopes []repository.DriftScope, _ []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	counts := make(map[domain.BranchID]repository.DriftCount, len(scopes))
+	for _, scope := range scopes {
+		counts[scope.BranchID] = repository.DriftCount{MainChanges: limit, MainChangesOnBranchStreams: 3}
+	}
+	return counts, nil
+}
+
+func TestDriftExcludedEventTypeList(t *testing.T) {
+	types := driftExcludedEventTypeList()
+	assert.Len(t, types, len(researchMetadataEventTypes)+1)
+	assert.IsNonDecreasing(t, types)
+	assert.Contains(t, types, "GedcomImported")
+	for eventType := range researchMetadataEventTypes {
+		assert.Contains(t, types, eventType)
+	}
+}

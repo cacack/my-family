@@ -482,6 +482,100 @@ func (s *EventStore) readStreamsChunk(ctx context.Context, streamIDs []uuid.UUID
 	return scanEvents(rows)
 }
 
+// countMainDriftSQL counts, per requested (branch, base position), main's
+// events after the base and the subset on streams the branch wrote. The scopes
+// and the excluded event types each arrive as one JSON bind parameter, so the
+// statement text is constant and the whole set is answered at once, with no
+// bind-variable ceiling to chunk around. Each count is a scalar subquery over a
+// LIMITed derived table, so the cap bounds the scan per branch.
+const countMainDriftSQL = `
+	WITH scopes AS (
+		SELECT json_extract(value, '$.b') AS branch_id, MIN(json_extract(value, '$.p')) AS base_position
+		FROM json_each(?1)
+		GROUP BY json_extract(value, '$.b')
+	),
+	excluded AS (
+		SELECT value AS event_type FROM json_each(?2)
+	)
+	SELECT s.branch_id,
+		(SELECT COUNT(*) FROM (
+			SELECT 1 FROM events m
+			WHERE m.branch_id = ?3 AND m.position > s.base_position
+				AND m.event_type NOT IN (SELECT event_type FROM excluded)
+			LIMIT ?4
+		)) AS main_changes,
+		(SELECT COUNT(*) FROM (
+			SELECT 1 FROM events m
+			WHERE m.branch_id = ?3 AND m.position > s.base_position
+				AND m.event_type NOT IN (SELECT event_type FROM excluded)
+				AND m.stream_id IN (
+					SELECT b.stream_id FROM events b
+					WHERE b.branch_id = s.branch_id
+						AND b.event_type NOT IN (SELECT event_type FROM excluded)
+				)
+			LIMIT ?4
+		)) AS main_changes_on_branch_streams
+	FROM scopes s
+`
+
+// driftScopeJSON is one scope as countMainDriftSQL reads it from json_each.
+type driftScopeJSON struct {
+	BranchID     string `json:"b"`
+	BasePosition int64  `json:"p"`
+}
+
+// CountMainDrift reports how far main has moved under each branch, in one
+// statement for the whole set. See repository.EventStore.CountMainDrift.
+func (s *EventStore) CountMainDrift(ctx context.Context, scopes []repository.DriftScope, excludeEventTypes []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	result := make(map[domain.BranchID]repository.DriftCount, len(scopes))
+	if len(scopes) == 0 || limit <= 0 {
+		return result, nil
+	}
+
+	encodedScopes := make([]driftScopeJSON, len(scopes))
+	for i, scope := range scopes {
+		encodedScopes[i] = driftScopeJSON{BranchID: scope.BranchID.String(), BasePosition: scope.BasePosition}
+	}
+	scopesJSON, err := json.Marshal(encodedScopes)
+	if err != nil {
+		return nil, fmt.Errorf("encode drift scopes: %w", err)
+	}
+	excluded := excludeEventTypes
+	if excluded == nil {
+		excluded = []string{}
+	}
+	excludedJSON, err := json.Marshal(excluded)
+	if err != nil {
+		return nil, fmt.Errorf("encode excluded event types: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, countMainDriftSQL,
+		string(scopesJSON), string(excludedJSON), domain.MainBranchID.String(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("count main drift: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			rawBranchID string
+			count       repository.DriftCount
+		)
+		if err := rows.Scan(&rawBranchID, &count.MainChanges, &count.MainChangesOnBranchStreams); err != nil {
+			return nil, fmt.Errorf("scan main drift: %w", err)
+		}
+		branchID, err := uuid.Parse(rawBranchID)
+		if err != nil {
+			return nil, fmt.Errorf("parse drift branch id: %w", err)
+		}
+		result[domain.BranchID(branchID)] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate main drift: %w", err)
+	}
+	return result, nil
+}
+
 // GetStreamVersion returns the current version of a stream on a branch.
 func (s *EventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
 	var version int64

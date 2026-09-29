@@ -11,6 +11,7 @@ import {
 	isBranchScopedRequest,
 	setClientBranch,
 	getClientBranch,
+	onBranchWrite,
 	type BranchMergeConflictError,
 	type BranchMergeResult,
 	type BranchMergeResumeResult,
@@ -346,6 +347,16 @@ describe('branch scope threading', () => {
 		expect(JSON.parse(calls[3][1].body as string)).toEqual({ log_ids: ['log-1'] });
 	});
 
+	it('asks for drift on the list only when told to, and never scopes the drift read', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.listBranches({ includeDrift: true });
+		await api.getBranchDrift('a/b');
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			'/api/v1/branches?include_drift=true',
+			'/api/v1/branches/a%2Fb/drift'
+		]);
+	});
+
 	it('scopes the snapshot endpoints - a snapshot marks a position in the branch view', async () => {
 		setClientBranch(BRANCH_ID);
 		await api.listSnapshots();
@@ -377,6 +388,68 @@ describe('branch scope threading', () => {
 			`/api/v1/snapshots/${NAME_ID}/compare-current`,
 			`/api/v1/snapshots/${NAME_ID}/compare-current?until=42`
 		]);
+	});
+});
+
+describe('onBranchWrite', () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+	let seen: string[];
+	let unsubscribe: () => void;
+
+	beforeEach(() => {
+		fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+		vi.stubGlobal('fetch', fetchMock);
+		seen = [];
+		unsubscribe = onBranchWrite((branchId) => seen.push(branchId));
+	});
+
+	afterEach(() => {
+		unsubscribe();
+		setClientBranch(null);
+		vi.unstubAllGlobals();
+	});
+
+	it('reports a successful branch-scoped write with the branch it went to', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.updatePerson(PERSON_ID, { version: 1 } as never);
+		expect(seen).toEqual([BRANCH_ID]);
+	});
+
+	it('reports the multipart media upload, which bypasses request()', async () => {
+		setClientBranch(BRANCH_ID);
+		await api.uploadPersonMedia(PERSON_ID, new File(['x'], 'x.jpg'), 'x');
+		expect(seen).toEqual([BRANCH_ID]);
+	});
+
+	it('stays silent for reads, mainline writes and unscoped writes', async () => {
+		await api.updatePerson(PERSON_ID, { version: 1 } as never);
+		setClientBranch(BRANCH_ID);
+		await api.getPerson(PERSON_ID);
+		await api.listBranches();
+		await api.createBranch({ name: 'x' } as never);
+		expect(seen).toEqual([]);
+	});
+
+	it('stays silent when the write fails', async () => {
+		fetchMock.mockResolvedValue({
+			ok: false,
+			status: 400,
+			statusText: 'Bad Request',
+			json: async () => ({ code: 'BAD', message: 'bad' })
+		});
+		setClientBranch(BRANCH_ID);
+		await expect(api.updatePerson(PERSON_ID, { version: 1 } as never)).rejects.toBeDefined();
+		await expect(
+			api.uploadPersonMedia(PERSON_ID, new File(['x'], 'x.jpg'), 'x')
+		).rejects.toBeDefined();
+		expect(seen).toEqual([]);
+	});
+
+	it('stops reporting once unsubscribed', async () => {
+		unsubscribe();
+		setClientBranch(BRANCH_ID);
+		await api.updatePerson(PERSON_ID, { version: 1 } as never);
+		expect(seen).toEqual([]);
 	});
 });
 

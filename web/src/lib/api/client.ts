@@ -68,6 +68,7 @@ export type BranchSubject = components['schemas']['BranchSubject'];
 export type BranchSubjectInput = components['schemas']['BranchSubjectInput'];
 export type BranchProofSummaryRef = components['schemas']['BranchProofSummaryRef'];
 export type BranchList = components['schemas']['BranchList'];
+export type BranchDrift = components['schemas']['BranchDrift'];
 export type BranchComparisonResult = components['schemas']['BranchComparisonResult'];
 export type MergeConflict = components['schemas']['MergeConflict'];
 /** A merged branch's record of what its merge decided (#832). */
@@ -327,6 +328,37 @@ function withBranchScope(method: string, path: string): string {
 	}
 	const separator = path.includes('?') ? '&' : '?';
 	return `${path}${separator}branch=${encodeURIComponent(activeBranchId)}`;
+}
+
+type BranchWriteListener = (branchId: string) => void;
+const branchWriteListeners = new Set<BranchWriteListener>();
+
+/**
+ * Subscribe to successful writes that landed on the active branch. The branch
+ * banner uses it to re-read its "main moved" counts (#837): a write to a new
+ * entity on the branch changes which of main's changes Compare will list.
+ * Returns the unsubscribe function.
+ */
+export function onBranchWrite(listener: BranchWriteListener): () => void {
+	branchWriteListeners.add(listener);
+	return () => {
+		branchWriteListeners.delete(listener);
+	};
+}
+
+/**
+ * Tell subscribers a write succeeded on `branchId`, if `method path` was a
+ * branch-scoped write. Reads and mainline requests notify nobody. The id is the
+ * scope the request was sent with, captured before it went out, so a scope
+ * switch mid-flight cannot mislabel it.
+ */
+function notifyBranchWrite(branchId: string | null, method: string, path: string): void {
+	if (branchId === null || method.toUpperCase() === 'GET' || !isBranchScopedRequest(method, path)) {
+		return;
+	}
+	for (const listener of branchWriteListeners) {
+		listener(branchId);
+	}
 }
 
 // Types based on OpenAPI schemas
@@ -1184,6 +1216,7 @@ class ApiClient {
 		body?: unknown,
 		headers?: Record<string, string>
 	): Promise<T> {
+		const scope = activeBranchId;
 		const url = `${API_BASE}${withBranchScope(method, path)}`;
 		const options: RequestInit = {
 			method,
@@ -1207,6 +1240,8 @@ class ApiClient {
 			error.status = response.status;
 			throw error;
 		}
+
+		notifyBranchWrite(scope, method, path);
 
 		if (response.status === 204) {
 			return undefined as T;
@@ -1851,7 +1886,9 @@ class ApiClient {
 
 		// Raw fetch (multipart), so the branch scope is applied here rather than by
 		// request().
-		const response = await fetch(`${API_BASE}${withBranchScope('POST', `/persons/${personId}/media`)}`, {
+		const scope = activeBranchId;
+		const mediaPath = `/persons/${personId}/media`;
+		const response = await fetch(`${API_BASE}${withBranchScope('POST', mediaPath)}`, {
 			method: 'POST',
 			body: formData
 		});
@@ -1865,6 +1902,7 @@ class ApiClient {
 			throw error;
 		}
 
+		notifyBranchWrite(scope, 'POST', mediaPath);
 		return response.json();
 	}
 
@@ -2457,8 +2495,14 @@ class ApiClient {
 	// Research branch endpoints. These manage the branches themselves, so they
 	// are never branch-scoped — `/branches*` is absent from the allowlist above.
 	// All of them answer 503 when the branch registry is not configured.
-	async listBranches(): Promise<BranchList> {
-		return this.request<BranchList>('GET', '/branches');
+	/**
+	 * With `includeDrift`, every active branch carries `drift`: how far the
+	 * mainline has moved under it since the fork, counted server-side for the
+	 * whole list in one query.
+	 */
+	async listBranches(options: { includeDrift?: boolean } = {}): Promise<BranchList> {
+		const query = options.includeDrift ? '?include_drift=true' : '';
+		return this.request<BranchList>('GET', `/branches${query}`);
 	}
 
 	async createBranch(data: BranchCreate): Promise<Branch> {
@@ -2514,6 +2558,14 @@ class ApiClient {
 
 	async deleteBranch(id: string): Promise<void> {
 		return this.request<void>('DELETE', `/branches/${encodeURIComponent(id)}`);
+	}
+
+	/**
+	 * How far the mainline has moved under a branch since it forked - a cheap
+	 * count, not a diff. `compareBranch()` is the full picture.
+	 */
+	async getBranchDrift(id: string): Promise<BranchDrift> {
+		return this.request<BranchDrift>('GET', `/branches/${encodeURIComponent(id)}/drift`);
 	}
 
 	async compareBranch(id: string): Promise<BranchComparisonResult> {

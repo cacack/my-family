@@ -25,7 +25,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	return {
 		...actual,
 		api: {
-			listBranches: () => listBranches(),
+			listBranches: (options?: { includeDrift?: boolean }) => listBranches(options),
 			createBranch: (data: apiModule.BranchCreate) => createBranch(data),
 			closeBranch: (id: string, req: apiModule.BranchCloseRequest) => closeBranch(id, req),
 			promoteBranchResearchLogs: (id: string, ids?: string[]) => promoteBranchResearchLogs(id, ids)
@@ -395,5 +395,83 @@ describe('Branches page', () => {
 		expect(await screen.findByText('Merge unfinished')).toBeDefined();
 		expect(screen.getByText(/could not work out how far it got/)).toBeDefined();
 		expect(screen.getByRole('link', { name: 'Finish merge' }).getAttribute('href')).toBe(`/branches/${unreadable.id}`);
+	});
+
+	describe('live-overlay semantics and drift (#837)', () => {
+		it('asks the list for drift, so one request covers every card', async () => {
+			render(Page);
+
+			await screen.findByText('Maternal Smith line');
+			expect(listBranches).toHaveBeenCalledTimes(1);
+			expect(listBranches).toHaveBeenCalledWith({ includeDrift: true });
+		});
+
+		it('shows the main-moved counts on an active card, linking to compare', async () => {
+			listBranches.mockResolvedValue({
+				items: [
+					{
+						...active,
+						drift: {
+							branch_id: active.id,
+							base_position: 42,
+							main_change_count: 5,
+							main_change_count_on_branch_entities: 1,
+							has_more: false
+						}
+					},
+					merged
+				],
+				total: 2
+			});
+
+			render(Page);
+
+			const indicators = await screen.findAllByTestId('branch-drift');
+			expect(indicators).toHaveLength(1);
+			const text = (indicators[0].textContent ?? '').replace(/\s+/g, ' ');
+			expect(text).toContain(
+				'Mainline changed 5 times since you branched, 1 on entities this branch touched.'
+			);
+			expect(
+				screen.getByRole('link', { name: 'Review mainline changes' }).getAttribute('href')
+			).toBe(`/branches/${active.id}#main-changes`);
+		});
+
+		it('shows no indicator on a terminal branch, even if drift came back', async () => {
+			listBranches.mockResolvedValue({
+				items: [
+					{
+						...merged,
+						drift: {
+							branch_id: merged.id,
+							base_position: 10,
+							main_change_count: 9,
+							main_change_count_on_branch_entities: 9,
+							has_more: false
+						}
+					}
+				],
+				total: 1
+			});
+
+			render(Page);
+
+			await screen.findByText('Jones cemetery sweep');
+			expect(screen.queryByTestId('branch-drift')).toBeNull();
+		});
+
+		it('explains live semantics in the create dialog', async () => {
+			render(Page);
+			await screen.findByText('Maternal Smith line');
+
+			await fireEvent.click(screen.getByRole('button', { name: /new branch/i }));
+
+			const note = await screen.findByTestId('live-overlay-note');
+			const text = (note.textContent ?? '').replace(/\s+/g, ' ');
+			expect(text).toContain('Branches are live, not frozen');
+			expect(text).toContain("records you don't edit on the branch keep showing the mainline's current data");
+			expect(text).toContain('you never need to rebase');
+			expect(text).toContain('Only the records you edit on the branch are held apart');
+		});
 	});
 });

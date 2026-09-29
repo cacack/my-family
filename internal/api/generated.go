@@ -2564,6 +2564,11 @@ type Branch struct {
 	// Description Optional description of what the branch explores
 	Description *string `json:"description,omitempty"`
 
+	// Drift How far the mainline has moved underneath a branch since it forked.
+	// Present on a `Branch` only when `GET /branches?include_drift=true`
+	// was asked for it and the branch is active.
+	Drift *BranchDrift `json:"drift,omitempty"`
+
 	// Hypothesis The research question the branch explores. Absent when none has
 	// been recorded.
 	Hypothesis *string            `json:"hypothesis,omitempty"`
@@ -2776,6 +2781,26 @@ type BranchCreate struct {
 
 	// Subjects Persons and families the hypothesis concerns; must exist on the mainline
 	Subjects *[]BranchSubjectInput `json:"subjects,omitempty"`
+}
+
+// BranchDrift How far the mainline has moved underneath a branch since it forked.
+// Present on a `Branch` only when `GET /branches?include_drift=true`
+// was asked for it and the branch is active.
+type BranchDrift struct {
+	// BasePosition Mainline event store position the branch forked from
+	BasePosition int64              `json:"base_position"`
+	BranchId     openapi_types.UUID `json:"branch_id"`
+
+	// HasMore A count hit the server's cap and is a lower bound
+	HasMore bool `json:"has_more"`
+
+	// MainChangeCount Mainline changes since the fork, on any entity
+	MainChangeCount int `json:"main_change_count"`
+
+	// MainChangeCountOnBranchEntities The subset of `main_change_count` on entities this branch itself
+	// changed. These are the mainline changes a compare lists; every
+	// other mainline change simply shows through the branch.
+	MainChangeCountOnBranchEntities int `json:"main_change_count_on_branch_entities"`
 }
 
 // BranchDuplicatePair A potential duplicate pair a branch introduces.
@@ -5905,6 +5930,12 @@ type UpdateAssociationParams struct {
 	Branch *BranchScope `form:"branch,omitempty" json:"branch,omitempty"`
 }
 
+// ListBranchesParams defines parameters for ListBranches.
+type ListBranchesParams struct {
+	// IncludeDrift Attach the "main moved" counts to each active branch
+	IncludeDrift *bool `form:"include_drift,omitempty" json:"include_drift,omitempty"`
+}
+
 // GetBrickWallsParams defines parameters for GetBrickWalls.
 type GetBrickWallsParams struct {
 	IncludeResolved *bool `form:"include_resolved,omitempty" json:"include_resolved,omitempty"`
@@ -7470,7 +7501,7 @@ type ServerInterface interface {
 	UpdateAssociation(ctx echo.Context, id AssociationId, params UpdateAssociationParams) error
 	// List all branches
 	// (GET /branches)
-	ListBranches(ctx echo.Context) error
+	ListBranches(ctx echo.Context, params ListBranchesParams) error
 	// Create a new branch
 	// (POST /branches)
 	CreateBranch(ctx echo.Context) error
@@ -7489,6 +7520,9 @@ type ServerInterface interface {
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx echo.Context, id BranchId) error
+	// Count how far the mainline has moved under a branch
+	// (GET /branches/{id}/drift)
+	GetBranchDrift(ctx echo.Context, id BranchId) error
 	// List the facts a branch changed without documenting them
 	// (GET /branches/{id}/evidence-coverage)
 	GetBranchEvidenceCoverage(ctx echo.Context, id BranchId) error
@@ -8138,8 +8172,17 @@ func (w *ServerInterfaceWrapper) UpdateAssociation(ctx echo.Context) error {
 func (w *ServerInterfaceWrapper) ListBranches(ctx echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBranchesParams
+	// ------------- Optional query parameter "include_drift" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "include_drift", ctx.QueryParams(), &params.IncludeDrift, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter include_drift: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ListBranches(ctx)
+	err = w.Handler.ListBranches(ctx, params)
 	return err
 }
 
@@ -8229,6 +8272,22 @@ func (w *ServerInterfaceWrapper) CompareBranch(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.CompareBranch(ctx, id)
+	return err
+}
+
+// GetBranchDrift converts echo context to params.
+func (w *ServerInterfaceWrapper) GetBranchDrift(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id BranchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetBranchDrift(ctx, id)
 	return err
 }
 
@@ -11934,6 +11993,7 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.PATCH(options.BaseURL+"/branches/:id", wrapper.UpdateBranch, options.OperationMiddlewares["updateBranch"]...)
 	router.POST(options.BaseURL+"/branches/:id/close", wrapper.CloseBranch, options.OperationMiddlewares["closeBranch"]...)
 	router.GET(options.BaseURL+"/branches/:id/compare", wrapper.CompareBranch, options.OperationMiddlewares["compareBranch"]...)
+	router.GET(options.BaseURL+"/branches/:id/drift", wrapper.GetBranchDrift, options.OperationMiddlewares["getBranchDrift"]...)
 	router.GET(options.BaseURL+"/branches/:id/evidence-coverage", wrapper.GetBranchEvidenceCoverage, options.OperationMiddlewares["getBranchEvidenceCoverage"]...)
 	router.GET(options.BaseURL+"/branches/:id/health", wrapper.GetBranchHealth, options.OperationMiddlewares["getBranchHealth"]...)
 	router.POST(options.BaseURL+"/branches/:id/merge", wrapper.MergeBranch, options.OperationMiddlewares["mergeBranch"]...)
@@ -12410,6 +12470,7 @@ func (response UpdateAssociation409JSONResponse) VisitUpdateAssociationResponse(
 }
 
 type ListBranchesRequestObject struct {
+	Params ListBranchesParams
 }
 
 type ListBranchesResponseObject interface {
@@ -12813,6 +12874,58 @@ type CompareBranch503JSONResponse struct {
 }
 
 func (response CompareBranch503JSONResponse) VisitCompareBranchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchDriftRequestObject struct {
+	Id BranchId `json:"id"`
+}
+
+type GetBranchDriftResponseObject interface {
+	VisitGetBranchDriftResponse(w http.ResponseWriter) error
+}
+
+type GetBranchDrift200JSONResponse BranchDrift
+
+func (response GetBranchDrift200JSONResponse) VisitGetBranchDriftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchDrift404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetBranchDrift404JSONResponse) VisitGetBranchDriftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBranchDrift503JSONResponse struct {
+	BranchesUnavailableJSONResponse
+}
+
+func (response GetBranchDrift503JSONResponse) VisitGetBranchDriftResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -19325,6 +19438,9 @@ type StrictServerInterface interface {
 	// Compare a branch against the mainline
 	// (GET /branches/{id}/compare)
 	CompareBranch(ctx context.Context, request CompareBranchRequestObject) (CompareBranchResponseObject, error)
+	// Count how far the mainline has moved under a branch
+	// (GET /branches/{id}/drift)
+	GetBranchDrift(ctx context.Context, request GetBranchDriftRequestObject) (GetBranchDriftResponseObject, error)
 	// List the facts a branch changed without documenting them
 	// (GET /branches/{id}/evidence-coverage)
 	GetBranchEvidenceCoverage(ctx context.Context, request GetBranchEvidenceCoverageRequestObject) (GetBranchEvidenceCoverageResponseObject, error)
@@ -19966,8 +20082,10 @@ func (sh *strictHandler) UpdateAssociation(ctx echo.Context, id AssociationId, p
 }
 
 // ListBranches operation middleware
-func (sh *strictHandler) ListBranches(ctx echo.Context) error {
+func (sh *strictHandler) ListBranches(ctx echo.Context, params ListBranchesParams) error {
 	var request ListBranchesRequestObject
+
+	request.Params = params
 
 	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
 		return sh.ssi.ListBranches(ctx.Request().Context(), request.(ListBranchesRequestObject))
@@ -20148,6 +20266,31 @@ func (sh *strictHandler) CompareBranch(ctx echo.Context, id BranchId) error {
 		return err
 	} else if validResponse, ok := response.(CompareBranchResponseObject); ok {
 		return validResponse.VisitCompareBranchResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// GetBranchDrift operation middleware
+func (sh *strictHandler) GetBranchDrift(ctx echo.Context, id BranchId) error {
+	var request GetBranchDriftRequestObject
+
+	request.Id = id
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBranchDrift(ctx.Request().Context(), request.(GetBranchDriftRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBranchDrift")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(GetBranchDriftResponseObject); ok {
+		return validResponse.VisitGetBranchDriftResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}

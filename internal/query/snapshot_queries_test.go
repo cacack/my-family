@@ -207,6 +207,10 @@ func (m *mockEventStoreExt) ReadStreamsForBranch(ctx context.Context, streamIDs 
 	return nil, nil
 }
 
+func (m *mockEventStoreExt) CountMainDrift(ctx context.Context, scopes []repository.DriftScope, excludeEventTypes []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	return map[domain.BranchID]repository.DriftCount{}, nil
+}
+
 func (m *mockEventStoreExt) ReadByStream(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID, limit, offset int) (*repository.HistoryPage, error) {
 	if m.readByStreamFunc != nil {
 		return m.readByStreamFunc(ctx, streamID, branchID, limit, offset)

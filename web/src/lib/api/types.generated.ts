@@ -1795,7 +1795,15 @@ export interface paths {
         };
         /**
          * List all branches
-         * @description Returns every branch in the registry, newest first, including terminal (merged/archived) ones
+         * @description Returns every branch in the registry, newest first, including terminal
+         *     (merged/archived) ones.
+         *
+         *     With `include_drift=true`, each **active** branch also carries `drift`:
+         *     how far the mainline has moved underneath it since it forked (see
+         *     `GET /branches/{id}/drift`). Every branch's counts come from one
+         *     set-based store query, not one per branch. Terminal branches never
+         *     carry `drift` — they accept no further changes, so there is nothing
+         *     left for main to move under.
          */
         get: operations["listBranches"];
         put?: never;
@@ -1972,6 +1980,41 @@ export interface paths {
          *     branch's reach the mainline by merging.
          */
         post: operations["promoteBranchResearchLogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/branches/{id}/drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Count how far the mainline has moved under a branch
+         * @description Branches are **live overlays**, not frozen copies (ADR-005): every
+         *     entity the branch has not changed shows the mainline's *current*
+         *     data, so main's edits after the fork show through. This returns a
+         *     cheap indicator of that movement without running a full compare:
+         *
+         *     - `main_change_count`: mainline changes since the fork, on any entity.
+         *     - `main_change_count_on_branch_entities`: the subset on entities this
+         *       branch changed — the ones `GET /branches/{id}/compare` lists under
+         *       main's changes, where the two lines of research can diverge.
+         *
+         *     Research-metadata events (branch and snapshot lifecycle) are not
+         *     genealogy changes and are not counted. Each count is capped; when a
+         *     cap is hit `has_more` is true and the count is a lower bound.
+         */
+        get: operations["getBranchDrift"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4612,6 +4655,31 @@ export interface components {
              *     stays in `proof_summary_ids`.
              */
             proof_summaries?: components["schemas"]["BranchProofSummaryRef"][];
+            drift?: components["schemas"]["BranchDrift"];
+        };
+        /**
+         * @description How far the mainline has moved underneath a branch since it forked.
+         *     Present on a `Branch` only when `GET /branches?include_drift=true`
+         *     was asked for it and the branch is active.
+         */
+        BranchDrift: {
+            /** Format: uuid */
+            branch_id: string;
+            /**
+             * Format: int64
+             * @description Mainline event store position the branch forked from
+             */
+            base_position: number;
+            /** @description Mainline changes since the fork, on any entity */
+            main_change_count: number;
+            /**
+             * @description The subset of `main_change_count` on entities this branch itself
+             *     changed. These are the mainline changes a compare lists; every
+             *     other mainline change simply shows through the branch.
+             */
+            main_change_count_on_branch_entities: number;
+            /** @description A count hit the server's cap and is a lower bound */
+            has_more: boolean;
         };
         /**
          * @description The verdict the research reached. Independent of `status`: status says
@@ -9443,7 +9511,10 @@ export interface operations {
     };
     listBranches: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Attach the "main moved" counts to each active branch */
+                include_drift?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9748,6 +9819,31 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["BranchesUnavailable"];
+        };
+    };
+    getBranchDrift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Branch UUID */
+                id: components["parameters"]["branchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drift counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchDrift"];
+                };
+            };
+            404: components["responses"]["NotFound"];
             503: components["responses"]["BranchesUnavailable"];
         };
     };

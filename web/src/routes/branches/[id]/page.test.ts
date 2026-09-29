@@ -1207,6 +1207,52 @@ describe('Branch comparison page', () => {
 			expect(precheckBranchMerge).not.toHaveBeenCalled();
 		});
 	});
+
+	describe('the "main moved" link target (#837)', () => {
+		const scrollIntoView = vi.fn();
+
+		beforeEach(() => {
+			scrollIntoView.mockClear();
+			Object.defineProperty(Element.prototype, 'scrollIntoView', {
+				value: scrollIntoView,
+				configurable: true,
+				writable: true
+			});
+		});
+
+		afterEach(() => {
+			delete (Element.prototype as Partial<Element>).scrollIntoView;
+			window.history.replaceState(null, '', window.location.pathname);
+		});
+
+		it('gives the mainline side the anchor the indicator links to', async () => {
+			render(Page);
+
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			const side = document.getElementById('main-changes');
+			expect(side).not.toBeNull();
+			expect(side?.getAttribute('data-testid')).toBe('main-changes');
+			expect(side?.textContent).toContain('branches are live, not frozen');
+		});
+
+		it('scrolls to the fragment once the comparison has rendered', async () => {
+			window.history.replaceState(null, '', '#main-changes');
+
+			render(Page);
+
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+			expect(scrollIntoView.mock.contexts[0]).toBe(document.getElementById('main-changes'));
+		});
+
+		it('does not scroll without a fragment', async () => {
+			render(Page);
+
+			await screen.findByRole('heading', { name: 'Maternal Smith line' });
+			await tick();
+			expect(scrollIntoView).not.toHaveBeenCalled();
+		});
+	});
 });
 
 describe('Merged branch record (#832)', () => {

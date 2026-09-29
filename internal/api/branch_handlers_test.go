@@ -736,6 +736,133 @@ func TestCompareBranch_NotFound(t *testing.T) {
 }
 
 // ============================================================================
+// Drift ("main moved underneath")
+// ============================================================================
+
+// TestBranchDrift covers the cheap "main moved" indicator on both of its
+// routes: the per-branch endpoint the banner reads, and include_drift on the
+// list the branch cards read.
+func TestBranchDrift(t *testing.T) {
+	server := setupBranchTestServer()
+	touchedID := createPerson(t, server, "Ada", "Lovelace")
+	otherID := createPerson(t, server, "Charles", "Babbage")
+	branchID := createBranch(t, server, "Byron theory")
+
+	version := func(personID string) int64 {
+		rec := do(t, server, http.MethodGet, "/api/v1/persons/"+personID, "")
+		v, _ := decodeJSON(t, rec)["version"].(float64)
+		return int64(v)
+	}
+	put := func(path, body string) {
+		t.Helper()
+		if rec := do(t, server, http.MethodPut, path, body); rec.Code != http.StatusOK {
+			t.Fatalf("PUT %s: status = %d. Body: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+
+	// The branch touches Ada; main then edits Ada once and Charles once.
+	put(fmt.Sprintf("/api/v1/persons/%s?branch=%s", touchedID, branchID),
+		fmt.Sprintf(`{"surname":"Byron","version":%d}`, version(touchedID)))
+	put("/api/v1/persons/"+touchedID, fmt.Sprintf(`{"given_name":"Augusta","version":%d}`, version(touchedID)))
+	put("/api/v1/persons/"+otherID, fmt.Sprintf(`{"given_name":"Chas","version":%d}`, version(otherID)))
+
+	// A second branch forked now, and an archived one, for the list.
+	freshID := createBranch(t, server, "Fresh")
+	archivedID := createBranch(t, server, "Abandoned")
+	if rec := do(t, server, http.MethodDelete, "/api/v1/branches/"+archivedID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("Delete: status = %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	t.Run("endpoint", func(t *testing.T) {
+		rec := do(t, server, http.MethodGet, "/api/v1/branches/"+branchID+"/drift", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Drift: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+		}
+		resp := decodeJSON(t, rec)
+		if resp["branch_id"] != branchID {
+			t.Errorf("branch_id = %v, want %s", resp["branch_id"], branchID)
+		}
+		// Branch creation is research metadata, not a main change, so the two
+		// later forks do not count.
+		if resp["main_change_count"] != float64(2) {
+			t.Errorf("main_change_count = %v, want 2", resp["main_change_count"])
+		}
+		if resp["main_change_count_on_branch_entities"] != float64(1) {
+			t.Errorf("main_change_count_on_branch_entities = %v, want 1", resp["main_change_count_on_branch_entities"])
+		}
+		if resp["has_more"] != false {
+			t.Errorf("has_more = %v, want false", resp["has_more"])
+		}
+	})
+
+	t.Run("endpoint not found", func(t *testing.T) {
+		rec := do(t, server, http.MethodGet, "/api/v1/branches/"+unknownUUID+"/drift", "")
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("Status = %d, want 404. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("list omits drift unless asked", func(t *testing.T) {
+		rec := do(t, server, http.MethodGet, "/api/v1/branches", "")
+		items, _ := decodeJSON(t, rec)["items"].([]any)
+		for _, raw := range items {
+			if item, _ := raw.(map[string]any); item["drift"] != nil {
+				t.Errorf("branch %v carries drift without include_drift", item["id"])
+			}
+		}
+	})
+
+	t.Run("list with include_drift", func(t *testing.T) {
+		rec := do(t, server, http.MethodGet, "/api/v1/branches?include_drift=true", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("List: status = %d, want 200. Body: %s", rec.Code, rec.Body.String())
+		}
+		items, _ := decodeJSON(t, rec)["items"].([]any)
+		if len(items) != 3 {
+			t.Fatalf("len(items) = %d, want 3", len(items))
+		}
+		drifts := map[any]map[string]any{}
+		for _, raw := range items {
+			item, _ := raw.(map[string]any)
+			drift, _ := item["drift"].(map[string]any)
+			drifts[item["id"]] = drift
+		}
+		if d := drifts[branchID]; d == nil || d["main_change_count"] != float64(2) || d["main_change_count_on_branch_entities"] != float64(1) {
+			t.Errorf("drift for %s = %v, want 2 / 1", branchID, d)
+		}
+		if d := drifts[freshID]; d == nil || d["main_change_count"] != float64(0) {
+			t.Errorf("drift for fresh branch = %v, want 0 changes", d)
+		}
+		if d := drifts[archivedID]; d != nil {
+			t.Errorf("archived branch carries drift %v, want none", d)
+		}
+	})
+}
+
+// driftFailingEventStore fails the drift count and nothing else.
+type driftFailingEventStore struct {
+	repository.EventStore
+}
+
+func (s *driftFailingEventStore) CountMainDrift(context.Context, []repository.DriftScope, []string, int) (map[domain.BranchID]repository.DriftCount, error) {
+	return nil, errors.New("drift unavailable")
+}
+
+func TestBranchDrift_StoreError(t *testing.T) {
+	cfg := &config.Config{Port: 8080, LogFormat: "text"}
+	base := memory.NewEventStore()
+	server := api.NewServer(cfg, &driftFailingEventStore{base}, memory.NewReadModelStore(),
+		memory.NewSnapshotStore(base), nil, api.WithBranchStore(memory.NewBranchStore()))
+	branchID := createBranch(t, server, "Byron theory")
+
+	for _, path := range []string{"/api/v1/branches/" + branchID + "/drift", "/api/v1/branches?include_drift=true"} {
+		if rec := do(t, server, http.MethodGet, path, ""); rec.Code != http.StatusInternalServerError {
+			t.Errorf("GET %s: status = %d, want 500. Body: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// ============================================================================
 // Merge
 // ============================================================================
 
@@ -1190,6 +1317,7 @@ func TestBranches_NoBranchStore(t *testing.T) {
 		{"get", http.MethodGet, "/api/v1/branches/" + unknownUUID, "", http.StatusServiceUnavailable},
 		{"delete", http.MethodDelete, "/api/v1/branches/" + unknownUUID, "", http.StatusServiceUnavailable},
 		{"compare", http.MethodGet, "/api/v1/branches/" + unknownUUID + "/compare", "", http.StatusServiceUnavailable},
+		{"drift", http.MethodGet, "/api/v1/branches/" + unknownUUID + "/drift", "", http.StatusServiceUnavailable},
 		{"merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge", `{}`, http.StatusServiceUnavailable},
 		{"resume merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge/resume", `{}`, http.StatusServiceUnavailable},
 		{"precheck merge", http.MethodPost, "/api/v1/branches/" + unknownUUID + "/merge/precheck", `{}`, http.StatusServiceUnavailable},

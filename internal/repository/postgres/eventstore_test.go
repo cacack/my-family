@@ -1237,3 +1237,127 @@ func TestEventStore_ReadGlobalHistory(t *testing.T) {
 	check("time window", read(repository.GlobalHistoryQuery{FromTime: t0.Add(1500 * time.Millisecond), ToTime: t0.Add(2500 * time.Millisecond), Limit: 10}), 1, false, p2)
 	check("every branch", read(repository.GlobalHistoryQuery{Limit: 10}), 5, false, p1, snap, p2, p1, p3)
 }
+
+// TestEventStore_CountMainDrift covers the "main moved underneath" counts: one
+// set-based call for several branches, main events after each fork point, the
+// subset on streams the branch wrote, excluded event types, and the cap.
+func TestEventStore_CountMainDrift(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+
+	db, cleanup := setupPostgres(t)
+	defer cleanup()
+
+	store, err := pgstore.NewEventStore(db)
+	if err != nil {
+		t.Fatalf("create event store: %v", err)
+	}
+
+	ctx := context.Background()
+
+	touched := uuid.New()
+	untouched := uuid.New()
+	metadata := uuid.New()
+	branchID := domain.BranchID(uuid.New())
+	idleBranchID := domain.BranchID(uuid.New())
+
+	seed := func(streamID uuid.UUID, scope repository.AppendScope, evt domain.Event) {
+		t.Helper()
+		if err := store.Append(ctx, streamID, "Person", []domain.Event{evt}, -1, scope); err != nil {
+			t.Fatalf("Append failed: %v", err)
+		}
+	}
+	update := func(streamID uuid.UUID) domain.Event {
+		return domain.NewPersonUpdated(streamID, map[string]any{"notes": "x"})
+	}
+
+	seed(touched, repository.MainScope, update(touched))     // position 1
+	seed(untouched, repository.MainScope, update(untouched)) // position 2
+	basePosition := int64(2)                                 // the fork point
+	branchScope := repository.AppendScope{BranchID: branchID}
+	seed(touched, branchScope, update(touched))                                  // position 3, branch
+	seed(metadata, branchScope, domain.NewPersonDeleted(metadata, "excluded"))   // position 4, branch, excluded type
+	seed(touched, repository.MainScope, update(touched))                         // position 5
+	seed(untouched, repository.MainScope, update(untouched))                     // position 6
+	seed(metadata, repository.MainScope, domain.NewPersonDeleted(metadata, "x")) // position 7, excluded type
+	seed(touched, repository.MainScope, update(touched))                         // position 8
+
+	excluded := []string{"PersonDeleted"}
+
+	t.Run("empty scope set", func(t *testing.T) {
+		counts, err := store.CountMainDrift(ctx, nil, excluded, 100)
+		if err != nil {
+			t.Fatalf("CountMainDrift failed: %v", err)
+		}
+		if len(counts) != 0 {
+			t.Errorf("len(counts) = %d, want 0", len(counts))
+		}
+	})
+
+	t.Run("non-positive limit", func(t *testing.T) {
+		counts, err := store.CountMainDrift(ctx, []repository.DriftScope{{BranchID: branchID, BasePosition: basePosition}}, excluded, 0)
+		if err != nil {
+			t.Fatalf("CountMainDrift failed: %v", err)
+		}
+		if len(counts) != 0 {
+			t.Errorf("len(counts) = %d, want 0", len(counts))
+		}
+	})
+
+	t.Run("counts every branch in one call", func(t *testing.T) {
+		counts, err := store.CountMainDrift(ctx, []repository.DriftScope{
+			{BranchID: branchID, BasePosition: basePosition},
+			{BranchID: idleBranchID, BasePosition: 5},
+		}, excluded, 100)
+		if err != nil {
+			t.Fatalf("CountMainDrift failed: %v", err)
+		}
+		if len(counts) != 2 {
+			t.Fatalf("len(counts) = %d, want 2", len(counts))
+		}
+		// Main after 2: positions 5, 6, 8 (7 is an excluded type). On the
+		// branch's streams: 5 and 8 (the excluded-type branch write to
+		// `metadata` does not make that stream "touched").
+		if got := counts[branchID]; got.MainChanges != 3 || got.MainChangesOnBranchStreams != 2 {
+			t.Errorf("branch counts = %+v, want {3 2}", got)
+		}
+		// Main after 5: positions 6 and 8; the idle branch wrote nothing.
+		if got := counts[idleBranchID]; got.MainChanges != 2 || got.MainChangesOnBranchStreams != 0 {
+			t.Errorf("idle branch counts = %+v, want {2 0}", got)
+		}
+	})
+
+	t.Run("nothing excluded", func(t *testing.T) {
+		counts, err := store.CountMainDrift(ctx, []repository.DriftScope{{BranchID: branchID, BasePosition: basePosition}}, nil, 100)
+		if err != nil {
+			t.Fatalf("CountMainDrift failed: %v", err)
+		}
+		if got := counts[branchID]; got.MainChanges != 4 || got.MainChangesOnBranchStreams != 3 {
+			t.Errorf("counts = %+v, want {4 3}", got)
+		}
+	})
+
+	t.Run("duplicate scope uses the earliest base", func(t *testing.T) {
+		counts, err := store.CountMainDrift(ctx, []repository.DriftScope{
+			{BranchID: branchID, BasePosition: 6},
+			{BranchID: branchID, BasePosition: basePosition},
+		}, excluded, 100)
+		if err != nil {
+			t.Fatalf("CountMainDrift failed: %v", err)
+		}
+		if got := counts[branchID]; len(counts) != 1 || got.MainChanges != 3 {
+			t.Errorf("counts = %+v, want one entry with MainChanges 3", counts)
+		}
+	})
+
+	t.Run("limit caps each count", func(t *testing.T) {
+		counts, err := store.CountMainDrift(ctx, []repository.DriftScope{{BranchID: branchID, BasePosition: basePosition}}, excluded, 1)
+		if err != nil {
+			t.Fatalf("CountMainDrift failed: %v", err)
+		}
+		if got := counts[branchID]; got.MainChanges != 1 || got.MainChangesOnBranchStreams != 1 {
+			t.Errorf("counts = %+v, want {1 1}", got)
+		}
+	})
+}

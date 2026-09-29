@@ -101,7 +101,7 @@ var errBranchesUnavailable = Error{
 }
 
 // ListBranches implements StrictServerInterface.
-func (ss *StrictServer) ListBranches(ctx context.Context, _ ListBranchesRequestObject) (ListBranchesResponseObject, error) {
+func (ss *StrictServer) ListBranches(ctx context.Context, request ListBranchesRequestObject) (ListBranchesResponseObject, error) {
 	if ss.server.branchService == nil {
 		return ListBranches503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
 	}
@@ -117,10 +117,61 @@ func (ss *StrictServer) ListBranches(ctx context.Context, _ ListBranchesRequestO
 		ss.addMergeState(ctx, &items[i], b)
 	}
 
+	if request.Params.IncludeDrift != nil && *request.Params.IncludeDrift {
+		if err := ss.attachBranchDrift(ctx, branches, items); err != nil {
+			return nil, err
+		}
+	}
+
 	return ListBranches200JSONResponse{
 		Items: items,
 		Total: len(items),
 	}, nil
+}
+
+// attachBranchDrift fills in Drift on every active branch in items (which
+// parallels branches), with one drift query for the whole list. Terminal
+// branches take no further writes, so main moving under them is moot.
+func (ss *StrictServer) attachBranchDrift(ctx context.Context, branches []*domain.Branch, items []Branch) error {
+	active := make([]*domain.Branch, 0, len(branches))
+	for _, b := range branches {
+		if b.Status == domain.BranchStatusActive {
+			active = append(active, b)
+		}
+	}
+
+	drifts, err := ss.server.branchService.BranchDrifts(ctx, active)
+	if err != nil {
+		return err
+	}
+
+	for i, b := range branches {
+		if drift, ok := drifts[b.ID]; ok {
+			converted := convertQueryBranchDriftToGenerated(drift)
+			items[i].Drift = &converted
+		}
+	}
+	return nil
+}
+
+// GetBranchDrift implements StrictServerInterface.
+func (ss *StrictServer) GetBranchDrift(ctx context.Context, request GetBranchDriftRequestObject) (GetBranchDriftResponseObject, error) {
+	if ss.server.branchService == nil {
+		return GetBranchDrift503JSONResponse{BranchesUnavailableJSONResponse(errBranchesUnavailable)}, nil
+	}
+
+	drift, err := ss.server.branchService.GetBranchDrift(ctx, request.Id)
+	if err != nil {
+		if errors.Is(err, repository.ErrBranchNotFound) {
+			return GetBranchDrift404JSONResponse{NotFoundJSONResponse{
+				Code:    "not_found",
+				Message: "Branch not found",
+			}}, nil
+		}
+		return nil, err
+	}
+
+	return GetBranchDrift200JSONResponse(convertQueryBranchDriftToGenerated(*drift)), nil
 }
 
 // CreateBranch implements StrictServerInterface.
@@ -1046,6 +1097,17 @@ func convertDomainBranchToGenerated(b *domain.Branch) Branch {
 	}
 	branch.ProofSummaryIds = append([]openapi_types.UUID{}, b.ProofSummaryIDs...)
 	return branch
+}
+
+// convertQueryBranchDriftToGenerated converts the query layer's drift counts.
+func convertQueryBranchDriftToGenerated(d query.BranchDrift) BranchDrift {
+	return BranchDrift{
+		BranchId:                        d.BranchID,
+		BasePosition:                    d.BasePosition,
+		MainChangeCount:                 d.MainChangeCount,
+		MainChangeCountOnBranchEntities: d.MainChangeCountOnBranchEntities,
+		HasMore:                         d.HasMore,
+	}
 }
 
 // convertQueryChangeEntriesToGenerated converts a slice of query change entries,

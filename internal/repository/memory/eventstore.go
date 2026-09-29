@@ -182,6 +182,59 @@ func (s *EventStore) ReadStreamsForBranch(ctx context.Context, streamIDs []uuid.
 	return result, nil
 }
 
+// CountMainDrift counts main's events after each scope's base position, and
+// those on streams the scope's branch wrote, each capped at limit.
+func (s *EventStore) CountMainDrift(ctx context.Context, scopes []repository.DriftScope, excludeEventTypes []string, limit int) (map[domain.BranchID]repository.DriftCount, error) {
+	result := make(map[domain.BranchID]repository.DriftCount, len(scopes))
+	if len(scopes) == 0 || limit <= 0 {
+		return result, nil
+	}
+
+	excluded := make(map[string]bool, len(excludeEventTypes))
+	for _, t := range excludeEventTypes {
+		excluded[t] = true
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// A branch named twice is answered once, from its earliest base — the same
+	// rule the SQL backends apply with MIN(base_position).
+	bases := make(map[domain.BranchID]int64, len(scopes))
+	for _, scope := range scopes {
+		if base, seen := bases[scope.BranchID]; !seen || scope.BasePosition < base {
+			bases[scope.BranchID] = scope.BasePosition
+		}
+	}
+
+	for branchID, base := range bases {
+		touched := make(map[uuid.UUID]bool)
+		for _, event := range s.events {
+			if event.BranchID == branchID && !excluded[event.EventType] {
+				touched[event.StreamID] = true
+			}
+		}
+
+		var count repository.DriftCount
+		for _, event := range s.events {
+			if event.BranchID != domain.MainBranchID || event.Position <= base || excluded[event.EventType] {
+				continue
+			}
+			if count.MainChanges < limit {
+				count.MainChanges++
+			}
+			if touched[event.StreamID] && count.MainChangesOnBranchStreams < limit {
+				count.MainChangesOnBranchStreams++
+			}
+			if count.MainChanges >= limit && count.MainChangesOnBranchStreams >= limit {
+				break
+			}
+		}
+		result[branchID] = count
+	}
+	return result, nil
+}
+
 // GetStreamVersion returns the current version of a stream on a branch.
 func (s *EventStore) GetStreamVersion(ctx context.Context, streamID uuid.UUID, branchID domain.BranchID) (int64, error) {
 	s.mu.RLock()
