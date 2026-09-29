@@ -46,7 +46,7 @@ type CreateFamilyResult struct {
 func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*CreateFamilyResult, error) {
 	// Validate at least one partner
 	if input.Partner1ID == nil && input.Partner2ID == nil {
-		return nil, errors.New("invalid family input: at least one partner is required")
+		return nil, fmt.Errorf("%w: at least one partner is required", ErrInvalidFamilyInput)
 	}
 
 	// Validate partners exist if specified
@@ -56,7 +56,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 			return nil, fmt.Errorf("getting partner1: %w", err)
 		}
 		if p == nil {
-			return nil, errors.New("invalid family input: partner1 not found")
+			return nil, fmt.Errorf("%w: partner1 not found", ErrInvalidFamilyInput)
 		}
 	}
 	if input.Partner2ID != nil {
@@ -65,7 +65,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 			return nil, fmt.Errorf("getting partner2: %w", err)
 		}
 		if p == nil {
-			return nil, errors.New("invalid family input: partner2 not found")
+			return nil, fmt.Errorf("%w: partner2 not found", ErrInvalidFamilyInput)
 		}
 	}
 
@@ -91,7 +91,7 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 
 	// Validate
 	if err := family.Validate(); err != nil {
-		return nil, errors.New("invalid family input: " + err.Error())
+		return nil, fmt.Errorf("%w: %s", ErrInvalidFamilyInput, err.Error())
 	}
 
 	// Create event using the helper function
@@ -117,9 +117,13 @@ func (h *Handler) CreateFamily(ctx context.Context, input CreateFamilyInput) (*C
 
 // UpdateFamilyInput contains the data for updating a family.
 type UpdateFamilyInput struct {
-	ID               uuid.UUID
-	Partner1ID       *uuid.UUID
-	Partner2ID       *uuid.UUID
+	ID         uuid.UUID
+	Partner1ID *uuid.UUID
+	Partner2ID *uuid.UUID
+	// ClearPartner1 and ClearPartner2 remove a partner from the family. Each is
+	// exclusive with setting the same partner in the same update.
+	ClearPartner1    bool
+	ClearPartner2    bool
 	RelationshipType *string
 	MarriageDate     *string
 	MarriagePlace    *string
@@ -150,12 +154,20 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	// every reader of the stored event decodes (issue #848): IDs and the
 	// relationship type as strings, the marriage date as its raw text (nil
 	// clears it), matching how PersonUpdated carries birth_date.
+	// A cleared partner is written as nil, which the projection, the merge's
+	// reference check and the rollback state all read as "no partner".
 	changes := make(map[string]any)
 	if input.Partner1ID != nil {
 		changes["partner1_id"] = input.Partner1ID.String()
 	}
 	if input.Partner2ID != nil {
 		changes["partner2_id"] = input.Partner2ID.String()
+	}
+	if input.ClearPartner1 && family.Partner1ID != nil {
+		changes["partner1_id"] = nil
+	}
+	if input.ClearPartner2 && family.Partner2ID != nil {
+		changes["partner2_id"] = nil
 	}
 	if input.RelationshipType != nil {
 		changes["relationship_type"] = *input.RelationshipType
@@ -192,9 +204,11 @@ func (h *Handler) UpdateFamily(ctx context.Context, input UpdateFamilyInput) (*U
 	}, nil
 }
 
-// validateFamilyUpdate checks an update against the family it changes: a new
-// partner must exist on the handler's scope, the two partners must differ once
-// the update is applied, a new partner must not be one of the family's
+// validateFamilyUpdate checks an update against the family it changes: a
+// partner cannot be both set and cleared, a new partner must exist on the
+// handler's scope, at least one partner must remain and the two partners must
+// differ once the update is applied (the same rule CreateFamily and
+// domain.Family.Validate enforce), a new partner must not be one of the family's
 // children or their descendant (the same circular-ancestry rule LinkChild
 // enforces from the other side), and the relationship type must be known.
 func (h *Handler) validateFamilyUpdate(ctx context.Context, family *repository.FamilyReadModel, input UpdateFamilyInput) error {
@@ -202,15 +216,8 @@ func (h *Handler) validateFamilyUpdate(ctx context.Context, family *repository.F
 		return fmt.Errorf("%w: invalid relationship_type %q", ErrInvalidFamilyInput, *input.RelationshipType)
 	}
 
-	partner1, partner2 := family.Partner1ID, family.Partner2ID
-	if input.Partner1ID != nil {
-		partner1 = input.Partner1ID
-	}
-	if input.Partner2ID != nil {
-		partner2 = input.Partner2ID
-	}
-	if partner1 != nil && partner2 != nil && *partner1 == *partner2 {
-		return fmt.Errorf("%w: partner1 and partner2 must be different people", ErrInvalidFamilyInput)
+	if err := checkPartnersAfterUpdate(family, input); err != nil {
+		return err
 	}
 
 	for _, change := range []struct {
@@ -231,6 +238,40 @@ func (h *Handler) validateFamilyUpdate(ctx context.Context, family *repository.F
 			return err
 		}
 	}
+	return nil
+}
+
+// checkPartnersAfterUpdate checks the partner slots an update leaves: a
+// partner cannot be both set and cleared in one update, at least one partner
+// must remain, and the two partners must be different people.
+func checkPartnersAfterUpdate(family *repository.FamilyReadModel, input UpdateFamilyInput) error {
+	if input.ClearPartner1 && input.Partner1ID != nil {
+		return fmt.Errorf("%w: partner1_id cannot be set and cleared in one update", ErrInvalidFamilyInput)
+	}
+	if input.ClearPartner2 && input.Partner2ID != nil {
+		return fmt.Errorf("%w: partner2_id cannot be set and cleared in one update", ErrInvalidFamilyInput)
+	}
+
+	partner1, partner2 := family.Partner1ID, family.Partner2ID
+	if input.Partner1ID != nil {
+		partner1 = input.Partner1ID
+	}
+	if input.Partner2ID != nil {
+		partner2 = input.Partner2ID
+	}
+	if input.ClearPartner1 {
+		partner1 = nil
+	}
+	if input.ClearPartner2 {
+		partner2 = nil
+	}
+	if partner1 == nil && partner2 == nil {
+		return fmt.Errorf("%w: a family must keep at least one partner", ErrInvalidFamilyInput)
+	}
+	if partner1 != nil && partner2 != nil && *partner1 == *partner2 {
+		return fmt.Errorf("%w: partner1 and partner2 must be different people", ErrInvalidFamilyInput)
+	}
+
 	return nil
 }
 

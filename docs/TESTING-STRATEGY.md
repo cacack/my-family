@@ -223,6 +223,7 @@ Quick reference for which tests verify which invariants.
 | DI-002 | `domain/person_test.go` - date ordering | Automated |
 | DI-003 | `internal/gedcom/integration_test.go` | Automated |
 | DI-004 | Event sourcing (ES-001, ES-002) | Automated |
+| DI-005 | `internal/command/family_clear_partner_test.go`, `internal/api/family_update_partners_test.go` | Automated |
 | API-001 | `internal/api/handlers_test.go` - error format | Automated |
 | API-002 | `internal/api/handlers_test.go` - pagination | Automated |
 | API-003 | `internal/api/handlers_test.go`, `internal/api/contract_test.go` - status codes | Automated |

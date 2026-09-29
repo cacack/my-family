@@ -1313,6 +1313,12 @@ func (ss *StrictServer) UpdateFamily(ctx context.Context, request UpdateFamilyRe
 		id := *request.Body.Partner2Id
 		input.Partner2ID = &id
 	}
+	if request.Body.ClearPartner1 != nil {
+		input.ClearPartner1 = *request.Body.ClearPartner1
+	}
+	if request.Body.ClearPartner2 != nil {
+		input.ClearPartner2 = *request.Body.ClearPartner2
+	}
 	if request.Body.MarriageDate != nil {
 		input.MarriageDate = request.Body.MarriageDate
 	}

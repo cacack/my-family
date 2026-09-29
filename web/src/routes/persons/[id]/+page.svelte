@@ -529,9 +529,14 @@
 					</div>
 				{/if}
 
-				{#if person.families_as_partner && person.families_as_partner.length > 0}
-					<div class="info-section">
+				<div class="info-section">
+					<div class="section-header">
 						<h2>Families</h2>
+						<Button variant="outline" size="sm" href="/families/add?partner1={person.id}">
+							Add family
+						</Button>
+					</div>
+					{#if person.families_as_partner && person.families_as_partner.length > 0}
 						<ul class="family-list">
 							{#each person.families_as_partner as family}
 								<li>
@@ -545,18 +550,29 @@
 								</li>
 							{/each}
 						</ul>
-					</div>
-				{/if}
+					{:else}
+						<p class="empty-links">Not a partner in any family yet.</p>
+					{/if}
+				</div>
 
-				{#if person.family_as_child}
-					<div class="info-section">
+				<div class="info-section">
+					<div class="section-header">
 						<h2>Parents</h2>
+						{#if !person.family_as_child}
+							<Button variant="outline" size="sm" href="/families/add?child={person.id}">
+								Add parents
+							</Button>
+						{/if}
+					</div>
+					{#if person.family_as_child}
 						<a href="/families/{person.family_as_child.id}" class="parent-link">
 							{person.family_as_child.partner1_name || 'Unknown'}
 							{#if person.family_as_child.partner2_name} &amp; {person.family_as_child.partner2_name}{/if}
 						</a>
-					</div>
-				{/if}
+					{:else}
+						<p class="empty-links">No parents recorded.</p>
+					{/if}
+				</div>
 
 				<div class="info-section media-section">
 					<h2>
@@ -795,6 +811,25 @@
 		color: #475569;
 		font-size: 0.875rem;
 		white-space: pre-wrap;
+	}
+
+	.section-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.info-section .section-header h2 {
+		margin: 0;
+	}
+
+	.empty-links {
+		margin: 0;
+		color: #94a3b8;
+		font-size: 0.875rem;
+		font-style: italic;
 	}
 
 	.family-list {
