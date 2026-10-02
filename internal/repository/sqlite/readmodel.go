@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/cacack/gedcom-go/v2/gedcom"
 	"github.com/google/uuid"
@@ -32,12 +32,6 @@ type ReadModelStore struct {
 	// are refused with repository.ErrBranchesUnsupported rather than failing later
 	// on an opaque constraint violation. See detectBranchCapable and issue #680.
 	branchCapable bool
-	// fts5 reports whether both full-text tables (persons_fts, person_names_fts)
-	// were created, i.e. the linked SQLite has the FTS5 module (mattn/go-sqlite3
-	// only compiles it in under the sqlite_fts5 build tag). SearchPersons uses it
-	// to pick the FTS5 or LIKE name-matching path up front, so an FTS5 error is
-	// never mistaken for "FTS5 unavailable". See tryCreateFTS5 and issue #762.
-	fts5 bool
 }
 
 // mainBranchID is the string form of domain.MainBranchID (the all-zeros UUID),
@@ -686,8 +680,9 @@ func (s *ReadModelStore) createTables() error {
 		return err
 	}
 
-	// Try to create FTS5 table (optional - falls back to LIKE if not available)
-	s.tryCreateFTS5()
+	if err := s.dropLegacyFTS5(); err != nil {
+		return err
+	}
 
 	// Run schema migrations for existing databases
 	s.runMigrations()
@@ -947,114 +942,31 @@ func (s *ReadModelStore) renameLegacyEventsTable() error {
 	return nil
 }
 
-// tryCreateFTS5 attempts to create FTS5 virtual table for full-text search and
-// records the outcome in s.fts5. If FTS5 is not available (mattn/go-sqlite3 built
-// without the sqlite_fts5 tag), search uses LIKE-based queries instead.
-func (s *ReadModelStore) tryCreateFTS5() {
-	// Try to create FTS5 virtual table for persons
-	_, err := s.db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS persons_fts USING fts5(
-			given_name,
-			surname,
-			content='persons',
-			content_rowid='rowid'
-		)
-	`)
-	if err != nil {
-		// FTS5 not available, search will use LIKE fallback
-		return
-	}
+// legacyFTS5Objects are the full-text triggers and tables earlier versions
+// created when their SQLite driver had FTS5 compiled in. Search no longer reads
+// them (ADR-002, #822), but a trigger left in place would keep writing to its
+// index on every person save, so they are dropped. Triggers go first: they
+// reference the tables.
+var legacyFTS5Objects = []string{
+	`DROP TRIGGER IF EXISTS persons_fts_insert`,
+	`DROP TRIGGER IF EXISTS persons_fts_delete`,
+	`DROP TRIGGER IF EXISTS persons_fts_update`,
+	`DROP TRIGGER IF EXISTS person_names_fts_insert`,
+	`DROP TRIGGER IF EXISTS person_names_fts_delete`,
+	`DROP TRIGGER IF EXISTS person_names_fts_update`,
+	`DROP TABLE IF EXISTS persons_fts`,
+	`DROP TABLE IF EXISTS person_names_fts`,
+}
 
-	// Create triggers to keep FTS in sync (errors non-critical with IF NOT EXISTS).
-	// Index by NEW.rowid rather than "WHERE id = NEW.id": under branch scoping the
-	// persons table holds multiple rows per id (one per branch), so an id-based
-	// subquery would (re-)index every branch's row. Each physical row is indexed
-	// under its own rowid; SearchPersons resolves the branch overlay downstream.
-	// Recreate the FTS triggers unconditionally: CREATE TRIGGER IF NOT EXISTS is a
-	// no-op on a database that already has the pre-#669 id-based definitions, which
-	// would keep re-indexing every branch row for an id. Dropping first guarantees
-	// the current rowid-based bodies win on upgraded databases too.
-	_, _ = s.db.Exec(`DROP TRIGGER IF EXISTS persons_fts_insert`)
-	_, _ = s.db.Exec(`DROP TRIGGER IF EXISTS persons_fts_delete`)
-	_, _ = s.db.Exec(`DROP TRIGGER IF EXISTS persons_fts_update`)
-	_, _ = s.db.Exec(`DROP TRIGGER IF EXISTS person_names_fts_insert`)
-	_, _ = s.db.Exec(`DROP TRIGGER IF EXISTS person_names_fts_delete`)
-	_, _ = s.db.Exec(`DROP TRIGGER IF EXISTS person_names_fts_update`)
-	_, _ = s.db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS persons_fts_insert AFTER INSERT ON persons BEGIN
-			INSERT INTO persons_fts(rowid, given_name, surname)
-			VALUES (NEW.rowid, NEW.given_name, NEW.surname);
-		END
-	`)
-
-	_, _ = s.db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS persons_fts_delete AFTER DELETE ON persons BEGIN
-			INSERT INTO persons_fts(persons_fts, rowid, given_name, surname)
-			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname);
-		END
-	`)
-
-	_, _ = s.db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS persons_fts_update AFTER UPDATE ON persons BEGIN
-			INSERT INTO persons_fts(persons_fts, rowid, given_name, surname)
-			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname);
-			INSERT INTO persons_fts(rowid, given_name, surname)
-			VALUES (NEW.rowid, NEW.given_name, NEW.surname);
-		END
-	`)
-
-	// Create FTS5 virtual table for person_names
-	if _, err := s.db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS person_names_fts USING fts5(
-			given_name,
-			surname,
-			nickname,
-			content='person_names',
-			content_rowid='rowid'
-		)
-	`); err != nil {
-		// Without person_names_fts the FTS5 search query cannot run; leave
-		// s.fts5 false so SearchPersons takes the LIKE path.
-		return
-	}
-
-	// CREATE ... IF NOT EXISTS succeeds without loading the module when the
-	// tables already exist (a database written by an FTS5-enabled build and
-	// reopened by one without it), so probe that both tables are actually
-	// queryable before committing SearchPersons to the FTS5 path.
-	for _, probe := range []string{
-		`SELECT rowid FROM persons_fts LIMIT 0`,
-		`SELECT rowid FROM person_names_fts LIMIT 0`,
-	} {
-		if _, err := s.db.Exec(probe); err != nil {
-			return
+// dropLegacyFTS5 removes the FTS5 search index an earlier version may have left
+// in the database. It is a no-op on a database that never had one.
+func (s *ReadModelStore) dropLegacyFTS5() error {
+	for _, stmt := range legacyFTS5Objects {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("drop legacy full-text index (%s): %w", stmt, err)
 		}
 	}
-	s.fts5 = true
-
-	// Create triggers for person_names FTS
-	_, _ = s.db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS person_names_fts_insert AFTER INSERT ON person_names BEGIN
-			INSERT INTO person_names_fts(rowid, given_name, surname, nickname)
-			VALUES (NEW.rowid, NEW.given_name, NEW.surname, COALESCE(NEW.nickname, ''));
-		END
-	`)
-
-	_, _ = s.db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS person_names_fts_delete AFTER DELETE ON person_names BEGIN
-			INSERT INTO person_names_fts(person_names_fts, rowid, given_name, surname, nickname)
-			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname, COALESCE(OLD.nickname, ''));
-		END
-	`)
-
-	_, _ = s.db.Exec(`
-		CREATE TRIGGER IF NOT EXISTS person_names_fts_update AFTER UPDATE ON person_names BEGIN
-			INSERT INTO person_names_fts(person_names_fts, rowid, given_name, surname, nickname)
-			VALUES('delete', OLD.rowid, OLD.given_name, OLD.surname, COALESCE(OLD.nickname, ''));
-			INSERT INTO person_names_fts(rowid, given_name, surname, nickname)
-			VALUES (NEW.rowid, NEW.given_name, NEW.surname, COALESCE(NEW.nickname, ''));
-		END
-	`)
+	return nil
 }
 
 // personOverlaySubquery returns a parenthesized subquery that resolves the
@@ -1187,7 +1099,13 @@ func (s *ReadModelStore) ListPersons(ctx context.Context, opts repository.ListOp
 	return persons, total, rows.Err()
 }
 
-// SearchPersons searches for persons using FTS5, Soundex, date ranges, and place filters.
+// SearchPersons searches for persons by name (substring, fuzzy or Soundex),
+// date ranges, and place filters.
+//
+// Name matching follows the PostgreSQL store so both databases find the same
+// people (DB-005, ADR-002): a plain query is a case-insensitive substring match,
+// and a fuzzy query is pg_trgm trigram similarity, computed in Go here because
+// SQLite has no trigram operator.
 func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.SearchOptions) ([]repository.PersonReadModel, error) {
 	// Normalize limit
 	limit := opts.Limit
@@ -1198,22 +1116,31 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		limit = 100
 	}
 
-	// Trim like the PostgreSQL and memory stores do, so a whitespace-only query is
-	// "no query" (a filters-only search) on both the FTS5 and LIKE paths.
+	// Trim the query and places as the PostgreSQL store does: a whitespace-only
+	// query is "no query" (a filters-only search), a blank place is no filter, and
+	// " London" filters on "London".
 	opts.Query = strings.TrimSpace(opts.Query)
+	opts.BirthPlace = strings.TrimSpace(opts.BirthPlace)
+	opts.DeathPlace = strings.TrimSpace(opts.DeathPlace)
 	hasQuery := opts.Query != ""
 	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
 		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
 	hasPlaceFilter := opts.BirthPlace != "" || opts.DeathPlace != ""
+
+	// Trigram similarity, post-filtered in Go, as PostgreSQL's `%` operator.
+	// Checked before Soundex: PostgreSQL gives fuzzy precedence when both are set.
+	if hasQuery && opts.Fuzzy {
+		return s.searchPersonsFuzzy(ctx, opts, limit)
+	}
 
 	// Soundex: fetch candidates with SQL filters, then post-filter in Go
 	if hasQuery && opts.Soundex {
 		return s.searchPersonsSoundex(ctx, opts, limit)
 	}
 
-	// FTS5 or LIKE name matching combined with date/place SQL filters
+	// Substring name matching combined with date/place SQL filters.
 	if hasQuery {
-		return s.searchPersonsFTS(ctx, opts, limit)
+		return s.searchPersonsLike(ctx, opts, limit)
 	}
 
 	// No text query — filter only by date/place
@@ -1225,191 +1152,53 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return nil, nil
 }
 
-// searchPersonsFTS matches names with FTS5 combined with date/place SQL filters.
-// It takes the LIKE path when the build has no FTS5 module, and when a fuzzy FTS5
-// search finds nothing; an FTS5 query error is returned, not masked (see
-// escapeFTS5Query for why the MATCH expression is always valid).
-func (s *ReadModelStore) searchPersonsFTS(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
-	// Build date/place filter conditions for the WHERE clause on p.*
-	filterSQL, filterArgs := buildDatePlaceFilters(opts)
-
-	if !s.fts5 {
-		return s.searchPersonsLike(ctx, opts, limit)
-	}
-
-	ftsQuery := escapeFTS5Query(opts.Query, opts.Fuzzy)
-	if ftsQuery == "" {
-		// Whitespace-only input has no token to match (FTS5 would reject an empty
-		// MATCH expression as a syntax error), so nothing can match.
-		return nil, nil
-	}
-
-	orderClause := searchOrderClause(opts, "", true)
-	branch := opts.BranchID.String()
-
-	// Resolve the branch overlay FIRST, then match FTS against the branch-visible
-	// rows only. The rp CTE is the overlay-resolved persons (branch row winning
-	// over mainline, tombstones dropped) carrying rowid; rn CTE is the overlay-
-	// resolved person_names. FTS then matches solely those winning rows, so a
-	// mainline value a branch has overridden is not found on the branch. This is a
-	// single set-based query with no per-row branch lookups (no N+1).
-	var sb strings.Builder
-	var args []any
-
-	// Resolve rp (persons) and rn (person_names) for the branch. Main never shadows
-	// itself, so the main-scope fast path (issue #669) skips the ROW_NUMBER window and
-	// filters directly, letting FTS drive off the branch-filtered rows.
-	if opts.BranchID.IsMain() {
-		// NOT MATERIALIZED (SQLite 3.35+): rp/rn are each referenced twice by
-		// matched_persons (the direct FTS match and the rn-join alt-name branch),
-		// which would otherwise let SQLite materialize them and force a full
-		// branch-filtered scan before the FTS5 MATCH runs. Inlining keeps the FTS5
-		// index driving the match against the base tables. Safe on the main fast
-		// path since these are plain branch-filtered selects (no window/overlay);
-		// the non-main overlay below keeps its default materialization.
-		sb.WriteString(`
-		WITH rp AS NOT MATERIALIZED (
-			SELECT rowid AS rid, id, given_name, surname, full_name, gender,
-				   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-				   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-				   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-				   version, updated_at
-			FROM persons WHERE branch_id = ? AND deleted = 0
-		),
-		rn AS NOT MATERIALIZED (
-			SELECT rowid AS rid, person_id, is_primary
-			FROM person_names WHERE branch_id = ? AND deleted = 0
-		),`)
-		args = append(args, branch, branch)
-	} else {
-		sb.WriteString(`
-		WITH rp AS (
-			SELECT rid, id, given_name, surname, full_name, gender,
-				   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-				   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-				   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-				   version, updated_at
-			FROM (
-				SELECT rowid AS rid, *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rn
-				FROM persons WHERE branch_id IN (?, ?)
-			) WHERE rn = 1 AND deleted = 0
-		),
-		rn AS (
-			SELECT rid, person_id, is_primary FROM (
-				SELECT rowid AS rid, person_id, is_primary, deleted,
-					   ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rrn
-				FROM person_names WHERE branch_id IN (?, ?)
-			) WHERE rrn = 1 AND deleted = 0
-		),`)
-		args = append(args, branch, branch, mainBranchID, branch, branch, mainBranchID)
-	}
-
-	sb.WriteString(`
-		matched_persons AS (
-			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-				   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-				   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-				   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
-				   p.version, p.updated_at, 1 AS is_primary, fts.rank AS search_rank
-			FROM rp p
-			JOIN persons_fts fts ON p.rid = fts.rowid
-			WHERE persons_fts MATCH ?`)
-	args = append(args, ftsQuery)
-
-	if filterSQL != "" {
-		sb.WriteString(" AND " + filterSQL)
-		args = append(args, filterArgs...)
-	}
-
-	sb.WriteString(`
-
-			UNION
-
-			SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
-				   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
-				   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
-				   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
-				   p.version, p.updated_at, rn.is_primary, nfts.rank AS search_rank
-			FROM rp p
-			JOIN rn ON p.id = rn.person_id
-			JOIN person_names_fts nfts ON rn.rid = nfts.rowid
-			WHERE person_names_fts MATCH ?`)
-	args = append(args, ftsQuery)
-
-	if filterSQL != "" {
-		sb.WriteString(" AND " + filterSQL)
-		args = append(args, filterArgs...)
-	}
-
-	sb.WriteString(`
-		)
-		SELECT DISTINCT id, given_name, surname, full_name, gender,
-			   birth_date_raw, birth_date_sort, birth_place, birth_place_lat, birth_place_long,
-			   death_date_raw, death_date_sort, death_place, death_place_lat, death_place_long,
-			   notes, research_status, brick_wall_note, brick_wall_since, brick_wall_resolved_at,
-			   version, updated_at
-		FROM matched_persons
-		ORDER BY ` + orderClause + `
-		LIMIT ?`)
-	args = append(args, limit)
-
-	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
+// searchPersonsLike matches the query as a case-insensitive substring of a
+// person's full name or of an alternate name's full name or nickname, with
+// date/place filters: PostgreSQL's ILIKE arm (full_name ILIKE '%' || q || '%'),
+// matched by ilike_contains so case folding and wildcards agree with it. This
+// is the SQLite search strategy (ADR-002): a scan rather than an index, which
+// keeps it identical to PostgreSQL's substring arm without a second search index
+// to maintain. (Given name and surname need no test of their own: full_name is
+// given_name || ' ' || surname, so it contains any substring of either.)
+//
+// Alternate names are matched in an uncorrelated IN subquery, which SQLite runs
+// once, rather than joined per person: a LEFT JOIN against the names overlay
+// scans every name for every person, which is quadratic in tree size.
+func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+	query, args := searchPersonsLikeSQL(opts, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		// escapeFTS5Query always yields a syntactically valid MATCH expression, so
-		// an error here is a real failure; surface it instead of masking it as
-		// LIKE results (issue #762).
-		return nil, fmt.Errorf("search persons (fts5): %w", err)
+		return nil, fmt.Errorf("search persons: %w", err)
 	}
 	defer rows.Close()
 
-	persons, err := scanPersonRows(rows)
-	if err != nil {
-		return nil, err
-	}
-
-	// If no FTS results and fuzzy, try LIKE fallback
-	if len(persons) == 0 && opts.Fuzzy {
-		return s.searchPersonsLike(ctx, opts, limit)
-	}
-
-	return persons, nil
+	return scanPersonRows(rows)
 }
 
-// searchPersonsLike is a fallback search using LIKE, including person_names and date/place filters.
-func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
-	likeQuery := "%" + strings.ToLower(opts.Query) + "%"
+// searchPersonsLikeSQL builds searchPersonsLike's statement and arguments.
+func searchPersonsLikeSQL(opts repository.SearchOptions, limit int) (string, []any) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
-	orderClause := searchOrderClause(opts, "p.", false)
+	orderClause := searchOrderClause(opts, "p.")
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	namesOverlay, namesArgs := personNamesOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
 	var args []any
 	args = append(args, overlayArgs...)
 
-	// Resolve person_names through the same per-name ROW_NUMBER() overlay the FTS
-	// path uses (partition by name id, branch row wins, tombstones excluded) so a
-	// branch-overridden name does not also match its shadowed mainline value.
-	namesOverlay := `(
-			SELECT person_id, full_name, given_name, surname, nickname FROM (
-				SELECT person_id, full_name, given_name, surname, nickname, deleted,
-					   ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rrn
-				FROM person_names WHERE branch_id IN (?, ?)
-			) WHERE rrn = 1 AND deleted = 0
-		)`
-
 	sb.WriteString(`
-		SELECT DISTINCT p.id, p.given_name, p.surname, p.full_name, p.gender,
+		SELECT p.id, p.given_name, p.surname, p.full_name, p.gender,
 			   p.birth_date_raw, p.birth_date_sort, p.birth_place, p.birth_place_lat, p.birth_place_long,
 			   p.death_date_raw, p.death_date_sort, p.death_place, p.death_place_lat, p.death_place_long,
 			   p.notes, p.research_status, p.brick_wall_note, p.brick_wall_since, p.brick_wall_resolved_at,
 			   p.version, p.updated_at
 		FROM ` + overlay + ` p
-		LEFT JOIN ` + namesOverlay + ` pn ON p.id = pn.person_id
-		WHERE (LOWER(p.full_name) LIKE ? OR LOWER(p.given_name) LIKE ? OR LOWER(p.surname) LIKE ?
-		   OR LOWER(pn.full_name) LIKE ? OR LOWER(pn.given_name) LIKE ? OR LOWER(pn.surname) LIKE ?
-		   OR LOWER(pn.nickname) LIKE ?)`)
-	args = append(args, opts.BranchID.String(), opts.BranchID.String(), mainBranchID)
-	args = append(args, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery, likeQuery)
+		WHERE (` + containsFoldFunc + `(p.full_name, ?)
+		   OR p.id IN (SELECT person_id FROM ` + namesOverlay + `
+			   WHERE ` + containsFoldFunc + `(full_name, ?) OR ` + containsFoldFunc + `(nickname, ?)))`)
+	args = append(args, opts.Query)
+	args = append(args, namesArgs...)
+	args = append(args, opts.Query, opts.Query)
 
 	if filterSQL != "" {
 		sb.WriteString(" AND " + filterSQL)
@@ -1418,14 +1207,243 @@ func (s *ReadModelStore) searchPersonsLike(ctx context.Context, opts repository.
 
 	sb.WriteString(" ORDER BY " + orderClause + " LIMIT ?")
 	args = append(args, limit)
+	return sb.String(), args
+}
+
+// personNamesOverlaySubquery resolves person_names for a branch (partition by
+// name id, branch row wins, tombstones excluded) so a branch-overridden name
+// does not also match its shadowed mainline value. Off main the three
+// placeholders bind (branch, branch, main); on main the one placeholder binds
+// main.
+func personNamesOverlaySubquery(branchID domain.BranchID) (string, []any) {
+	if branchID.IsMain() {
+		// Main fast path, as personOverlaySubquery (#669): main never shadows
+		// itself, so person_names holds one row per id and the ROW_NUMBER window
+		// over the whole table is unnecessary.
+		return `(
+			SELECT person_id, full_name, given_name, surname, nickname, is_primary
+			FROM person_names WHERE branch_id = ? AND deleted = 0
+		)`, []any{mainBranchID}
+	}
+	return `(
+			SELECT person_id, full_name, given_name, surname, nickname, is_primary FROM (
+				SELECT person_id, full_name, given_name, surname, nickname, is_primary, deleted,
+					   ROW_NUMBER() OVER (PARTITION BY id ORDER BY (branch_id = ?) DESC) AS rrn
+				FROM person_names WHERE branch_id IN (?, ?)
+			) WHERE rrn = 1 AND deleted = 0
+		)`, []any{branchID.String(), branchID.String(), mainBranchID}
+}
+
+// searchPersonsFuzzy matches names by trigram similarity, the semantics of
+// PostgreSQL's pg_trgm `%` operator that the PostgreSQL store uses for fuzzy
+// search: a person matches when the query is similar enough to their given
+// name, surname or full name, or to the given name, surname, full name or
+// nickname of one of their alternate names. SQLite has no trigram operator, so
+// every person that passes the date/place filters is read and scored in Go;
+// unlike the Soundex path there is no candidate cap, so a match is never missed
+// because it sorted late. The scan reads only the columns that are scored or
+// sorted on; the full rows are fetched for the people that make the limit.
+//
+// Results are ordered by best similarity (highest first, or lowest with
+// order=asc), ties broken by surname, given name and id as on PostgreSQL,
+// unless a name or date sort is requested.
+func (s *ReadModelStore) searchPersonsFuzzy(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
+	filterSQL, filterArgs := buildDatePlaceFilters(opts)
+	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
+	namesOverlay, namesArgs := personNamesOverlaySubquery(opts.BranchID)
+
+	var sb strings.Builder
+	args := append(append([]any{}, overlayArgs...), namesArgs...)
+	sb.WriteString(`
+		SELECT p.id, p.given_name, p.surname, p.full_name, p.birth_date_sort, p.death_date_sort,
+			   pn.given_name, pn.surname, pn.full_name, pn.nickname, pn.is_primary
+		FROM ` + overlay + ` p
+		LEFT JOIN ` + namesOverlay + ` pn ON p.id = pn.person_id`)
+	if filterSQL != "" {
+		sb.WriteString(" WHERE " + filterSQL)
+		args = append(args, filterArgs...)
+	}
 
 	rows, err := s.db.QueryContext(ctx, sb.String(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("search persons: %w", err)
+		return nil, fmt.Errorf("search persons fuzzy: %w", err)
 	}
-	defer rows.Close()
+	matched, err := scoreFuzzyRows(rows, repository.NewTrigramQuery(opts.Query))
+	rows.Close()
+	if err != nil {
+		return nil, fmt.Errorf("search persons fuzzy: %w", err)
+	}
+	ranked := orderFuzzyMatches(matched, opts)
+	if len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+	if len(ranked) == 0 {
+		return nil, nil
+	}
 
-	return scanPersonRows(rows)
+	ids := make([]uuid.UUID, len(ranked))
+	for i, p := range ranked {
+		ids[i] = p.ID
+	}
+	full, err := s.GetPersonsByIDs(ctx, opts.BranchID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("search persons fuzzy: %w", err)
+	}
+	byID := make(map[uuid.UUID]repository.PersonReadModel, len(full))
+	for _, p := range full {
+		byID[p.ID] = p
+	}
+	results := make([]repository.PersonReadModel, 0, len(ranked))
+	for _, id := range ids {
+		if p, ok := byID[id]; ok {
+			results = append(results, p)
+		}
+	}
+	return results, nil
+}
+
+// fuzzyMatch is a person that matched a fuzzy search, with their best score.
+// Only the fields searchPersonsFuzzy scores and sorts on are set.
+type fuzzyMatch struct {
+	person repository.PersonReadModel
+	score  float64
+}
+
+// scoreFuzzyRows reads searchPersonsFuzzy's rows (id, given name, surname, full
+// name, birth and death sort dates, then one alternate name's given name,
+// surname, full name, nickname and primary flag, NULL when the person has none)
+// and returns the people who match, in first-seen order.
+//
+// A person with several alternate names spans several rows; they are merged.
+// The score follows PostgreSQL's dedup (DISTINCT ON (id) ORDER BY is_primary
+// DESC, rank_score DESC), where the direct match on the person's own names
+// counts as primary: the best score among the direct match and the primary
+// alternate names, and only when none of those match, the best score among the
+// non-primary alternate names.
+func scoreFuzzyRows(rows *sql.Rows, query repository.TrigramQuery) ([]fuzzyMatch, error) {
+	best := func(names ...string) (float64, bool) {
+		top, hit := 0.0, false
+		for _, n := range names {
+			if sim := query.Similarity(n); sim >= repository.TrigramThreshold {
+				hit, top = true, max(top, sim)
+			}
+		}
+		return top, hit
+	}
+	parseSortDate := func(v sql.NullString) *time.Time {
+		if !v.Valid {
+			return nil
+		}
+		t, err := time.Parse("2006-01-02", v.String)
+		if err != nil {
+			return nil
+		}
+		return &t
+	}
+
+	// Each person keeps a score per tier: primary (the direct match and primary
+	// alternate names) and other (non-primary alternate names).
+	type entry struct {
+		fuzzyMatch
+		primary, other       float64
+		primaryHit, otherHit bool
+	}
+	byID := make(map[string]*entry)
+	var order []*entry
+	for rows.Next() {
+		var (
+			idStr, given, surname, full          string
+			birthSort, deathSort                 sql.NullString
+			altGiven, altSurname, altFull, altNk sql.NullString
+			altPrimary                           sql.NullBool
+		)
+		if err := rows.Scan(&idStr, &given, &surname, &full, &birthSort, &deathSort,
+			&altGiven, &altSurname, &altFull, &altNk, &altPrimary); err != nil {
+			return nil, err
+		}
+		e, seen := byID[idStr]
+		if !seen {
+			id, err := uuid.Parse(idStr)
+			if err != nil {
+				return nil, fmt.Errorf("parse person id %q: %w", idStr, err)
+			}
+			e = &entry{fuzzyMatch: fuzzyMatch{person: repository.PersonReadModel{
+				ID: id, GivenName: given, Surname: surname, FullName: full,
+				BirthDateSort: parseSortDate(birthSort), DeathDateSort: parseSortDate(deathSort),
+			}}}
+			e.primary, e.primaryHit = best(given, surname, full)
+			byID[idStr] = e
+			order = append(order, e)
+		}
+		if !altGiven.Valid {
+			continue
+		}
+		isPrimary := altPrimary.Valid && altPrimary.Bool
+		if !isPrimary && e.primaryHit {
+			continue // a primary-tier match already decides the score
+		}
+		sim, hit := best(altGiven.String, altSurname.String, altFull.String, altNk.String)
+		switch {
+		case !hit:
+		case isPrimary:
+			e.primaryHit, e.primary = true, max(e.primary, sim)
+		default:
+			e.otherHit, e.other = true, max(e.other, sim)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var matched []fuzzyMatch
+	for _, e := range order {
+		switch {
+		case e.primaryHit:
+			e.score = e.primary
+		case e.otherHit:
+			e.score = e.other
+		default:
+			continue
+		}
+		matched = append(matched, e.fuzzyMatch)
+	}
+	return matched, nil
+}
+
+// orderFuzzyMatches orders fuzzy results: by the requested name or date sort,
+// else by score (best first, or worst first with order=asc) with ties broken by
+// surname, given name and id (always ascending), the order PostgreSQL gives
+// fuzzy results, so both return the same people when more match than the limit.
+func orderFuzzyMatches(matched []fuzzyMatch, opts repository.SearchOptions) []repository.PersonReadModel {
+	switch opts.Sort {
+	case "name", "birth_date", "death_date":
+	default:
+		asc := strings.EqualFold(opts.Order, "asc")
+		sort.SliceStable(matched, func(i, j int) bool {
+			a, b := matched[i], matched[j]
+			switch {
+			case a.score != b.score && asc:
+				return a.score < b.score
+			case a.score != b.score:
+				return a.score > b.score
+			case a.person.Surname != b.person.Surname:
+				return a.person.Surname < b.person.Surname
+			case a.person.GivenName != b.person.GivenName:
+				return a.person.GivenName < b.person.GivenName
+			default:
+				return bytes.Compare(a.person.ID[:], b.person.ID[:]) < 0
+			}
+		})
+	}
+	results := make([]repository.PersonReadModel, 0, len(matched))
+	for _, m := range matched {
+		results = append(results, m.person)
+	}
+	switch opts.Sort {
+	case "name", "birth_date", "death_date":
+		sortPersonResults(results, opts)
+	}
+	return results
 }
 
 // searchPersonsSoundex fetches candidates filtered by date/place, then post-filters using Soundex in Go.
@@ -1582,7 +1600,7 @@ func personMatchesSoundex(p repository.PersonReadModel, queryWords []string, alt
 // searchPersonsFiltersOnly searches using only date/place filters (no text query).
 func (s *ReadModelStore) searchPersonsFiltersOnly(ctx context.Context, opts repository.SearchOptions, limit int) ([]repository.PersonReadModel, error) {
 	filterSQL, filterArgs := buildDatePlaceFilters(opts)
-	orderClause := searchOrderClause(opts, "p.", false)
+	orderClause := searchOrderClause(opts, "p.")
 	overlay, overlayArgs := personOverlaySubquery(opts.BranchID)
 
 	var sb strings.Builder
@@ -1636,12 +1654,14 @@ func buildDatePlaceFilters(opts repository.SearchOptions) (string, []any) {
 		conditions = append(conditions, "p.death_date_sort <= ?")
 		args = append(args, opts.DeathDateTo.Format("2006-01-02"))
 	}
+	// Places match as PostgreSQL's ILIKE '%' || place || '%' (see containsFoldFunc).
+	// SearchPersons has already trimmed them.
 	if opts.BirthPlace != "" {
-		conditions = append(conditions, "p.birth_place LIKE '%' || ? || '%' COLLATE NOCASE")
+		conditions = append(conditions, containsFoldFunc+"(p.birth_place, ?)")
 		args = append(args, opts.BirthPlace)
 	}
 	if opts.DeathPlace != "" {
-		conditions = append(conditions, "p.death_place LIKE '%' || ? || '%' COLLATE NOCASE")
+		conditions = append(conditions, containsFoldFunc+"(p.death_place, ?)")
 		args = append(args, opts.DeathPlace)
 	}
 
@@ -1653,8 +1673,8 @@ func buildDatePlaceFilters(opts repository.SearchOptions) (string, []any) {
 
 // searchOrderClause returns the SQL ORDER BY columns for search results.
 // prefix is the table alias prefix (e.g., "p." for JOINed queries, "" for CTEs).
-// hasFTSRank indicates whether FTS rank columns are available.
-func searchOrderClause(opts repository.SearchOptions, prefix string, hasFTSRank bool) string {
+// Relevance (and the default) orders by name: a substring match has no score.
+func searchOrderClause(opts repository.SearchOptions, prefix string) string {
 	dir := "ASC"
 	if strings.EqualFold(opts.Order, "desc") {
 		dir = "DESC"
@@ -1667,15 +1687,7 @@ func searchOrderClause(opts repository.SearchOptions, prefix string, hasFTSRank 
 		return prefix + "birth_date_sort " + dir
 	case "death_date":
 		return prefix + "death_date_sort " + dir
-	case "relevance":
-		if hasFTSRank {
-			return "is_primary DESC, search_rank"
-		}
-		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir
-	default:
-		if hasFTSRank {
-			return "is_primary DESC, search_rank"
-		}
+	default: // "relevance" or empty
 		return prefix + "surname " + dir + ", " + prefix + "given_name " + dir
 	}
 }
@@ -2943,7 +2955,9 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
+// scanPerson scans the person columns (personSelectCols order) and then, into
+// extra, any columns the query selects after them.
+func scanPerson(row rowScanner, extra ...any) (*repository.PersonReadModel, error) {
 	var (
 		idStr, givenName, surname, fullName             string
 		gender, birthDateRaw, birthDateSort, birthPlace sql.NullString
@@ -2957,11 +2971,12 @@ func scanPerson(row rowScanner) (*repository.PersonReadModel, error) {
 		updatedAt                                       string
 	)
 
-	err := row.Scan(&idStr, &givenName, &surname, &fullName, &gender,
+	dest := []any{&idStr, &givenName, &surname, &fullName, &gender,
 		&birthDateRaw, &birthDateSort, &birthPlace, &birthPlaceLat, &birthPlaceLong,
 		&deathDateRaw, &deathDateSort, &deathPlace, &deathPlaceLat, &deathPlaceLong,
 		&notes, &researchStatus, &brickWallNote, &brickWallSince, &brickWallResolvedAt,
-		&version, &updatedAt)
+		&version, &updatedAt}
+	err := row.Scan(append(dest, extra...)...)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -3102,58 +3117,6 @@ func scanFamily(row rowScanner) (*repository.FamilyReadModel, error) {
 
 func scanFamilyRow(rows *sql.Rows) (*repository.FamilyReadModel, error) {
 	return scanFamily(rows)
-}
-
-// escapeFTS5Query turns free-text user input into an FTS5 MATCH expression
-// that searches for the input literally (issue #762).
-//
-// Control characters (including NUL, at which FTS5 stops reading a string and
-// reports "unterminated string") are treated as whitespace, then the input is
-// split on whitespace and every token is emitted as an FTS5 string
-// ("..."), with any embedded double quote doubled ("" is FTS5's only escape
-// inside a string). Inside a string no character is an operator, so *, +, -, (,
-// ), :, ^, apostrophes and bare words such as AND/OR/NOT/NEAR are all literal
-// text; the tokenizer then splits each string into terms, so O'Brien becomes the
-// phrase "o brien" and Smith-Jones the phrase "smith jones". Tokens are joined by
-// spaces, which FTS5 treats as implicit AND. A token that holds only punctuation
-// is an empty phrase and matches nothing.
-//
-// When prefix is true (fuzzy search) the FTS5 prefix operator is appended to the
-// last token, OUTSIDE its closing quote ("Zac"* rather than "Zac*"), which keeps
-// the historical fuzzy behavior of a trailing * on the query.
-//
-// It returns "" when the input has no tokens; the caller must not pass that to
-// MATCH (an empty expression is a syntax error).
-//
-// LIKE fallback decision: because every token is quoted, the result is always a
-// valid FTS5 expression, so searchPersonsFTS no longer falls back to LIKE when
-// the MATCH query errors — such an error is a real failure and is returned. The
-// LIKE path is used only when the SQLite build has no FTS5 module (decided once
-// at startup by tryCreateFTS5), and as the existing "fuzzy found nothing"
-// fallback.
-func escapeFTS5Query(query string, prefix bool) string {
-	tokens := strings.Fields(strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return ' '
-		}
-		return r
-	}, query))
-	if len(tokens) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for i, tok := range tokens {
-		if i > 0 {
-			sb.WriteByte(' ')
-		}
-		sb.WriteByte('"')
-		sb.WriteString(strings.ReplaceAll(tok, `"`, `""`))
-		sb.WriteByte('"')
-	}
-	if prefix {
-		sb.WriteByte('*')
-	}
-	return sb.String()
 }
 
 // soundex computes the American Soundex code for a string.

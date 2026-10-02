@@ -1444,7 +1444,10 @@ func writeOrderBy(qb *strings.Builder, opts repository.SearchOptions, hasQuery b
 			if orderDir == "" {
 				orderDir = "DESC"
 			}
-			fmt.Fprintf(qb, " ORDER BY rank_score %s", orderDir)
+			// Ties break on name then id, always ascending, so the people that
+			// make the limit are deterministic; the SQLite store breaks fuzzy
+			// score ties the same way (DB-005).
+			fmt.Fprintf(qb, " ORDER BY rank_score %s, p.surname ASC, p.given_name ASC, p.id ASC", orderDir)
 		} else {
 			if orderDir == "" {
 				orderDir = "ASC"

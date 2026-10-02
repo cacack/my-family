@@ -15,9 +15,6 @@ RUN npm run build
 # Build stage: Backend
 FROM golang:1.27.1-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS backend-builder
 
-# Install build dependencies for CGO (required for SQLite)
-RUN apk add --no-cache gcc musl-dev
-
 WORKDIR /app
 
 # Copy go mod files first for better caching
@@ -35,8 +32,9 @@ RUN sed -i '/^replace.*=> \//d' go.mod
 # Copy built frontend into internal/web/dist for embedding
 COPY --from=frontend-builder /app/web/build ./internal/web/dist
 
-# Build with CGO enabled for SQLite support
-ENV CGO_ENABLED=1
+# The SQLite driver is pure Go, so the image builds without cgo, exactly like
+# the release archives (.goreleaser.yaml); see ADR-002.
+ENV CGO_ENABLED=0
 RUN go build -o myfamily -ldflags="-s -w" ./cmd/myfamily
 
 # Runtime stage

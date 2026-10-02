@@ -32,7 +32,7 @@ func snapshotBackends() []snapshotBackend {
 		}},
 		{name: "sqlite", open: func(t *testing.T) (repository.EventStore, repository.ReadModelStore, repository.SnapshotStore) {
 			t.Helper()
-			db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "snapshots.db")+"?_foreign_keys=on&_busy_timeout=5000")
+			db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "snapshots.db")+"?_foreign_keys=on&_busy_timeout=5000")
 			require.NoError(t, err)
 			db.SetMaxOpenConns(1)
 			t.Cleanup(func() { _ = db.Close() })

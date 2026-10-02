@@ -336,10 +336,15 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	hasQuery := strings.TrimSpace(opts.Query) != ""
+	// Trim the query and places like the SQL stores, so "  O'Brien  " is a search
+	// for O'Brien and " London" filters on "London".
+	opts.Query = strings.TrimSpace(opts.Query)
+	opts.BirthPlace = strings.TrimSpace(opts.BirthPlace)
+	opts.DeathPlace = strings.TrimSpace(opts.DeathPlace)
+	hasQuery := opts.Query != ""
 	hasDateFilter := opts.BirthDateFrom != nil || opts.BirthDateTo != nil ||
 		opts.DeathDateFrom != nil || opts.DeathDateTo != nil
-	hasPlaceFilter := strings.TrimSpace(opts.BirthPlace) != "" || strings.TrimSpace(opts.DeathPlace) != ""
+	hasPlaceFilter := opts.BirthPlace != "" || opts.DeathPlace != ""
 	if !hasQuery && !hasDateFilter && !hasPlaceFilter {
 		return nil, nil
 	}
@@ -353,7 +358,7 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 		if !s.matchesSearchFilters(p, opts) {
 			continue
 		}
-		if s.personMatchesQuery(p, queryLower, opts.Soundex) && !foundIDs[p.ID] {
+		if s.personMatchesQuery(p, queryLower, opts) && !foundIDs[p.ID] {
 			results = append(results, *p)
 			foundIDs[p.ID] = true
 		}
@@ -375,14 +380,28 @@ func (s *ReadModelStore) SearchPersons(ctx context.Context, opts repository.Sear
 	return results, nil
 }
 
+// sqlFullName is the full name the SQL stores search: their full_name columns
+// are generated as given_name || ' ' || surname, without the prefix, suffix and
+// surname prefix the projection folds into an alternate name's FullName.
+func sqlFullName(givenName, surname string) string {
+	return givenName + " " + surname
+}
+
 // personMatchesQuery checks if a person matches the text query (or returns true if no query).
-func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, queryLower string, soundex bool) bool {
+// A plain query matches as PostgreSQL's full_name ILIKE '%' || q || '%' and a
+// fuzzy query is trigram similarity, as PostgreSQL's pg_trgm `%` (DB-005).
+func (s *ReadModelStore) personMatchesQuery(p *repository.PersonReadModel, queryLower string, opts repository.SearchOptions) bool {
 	if queryLower == "" {
 		return true
 	}
-	if strings.Contains(strings.ToLower(p.FullName), queryLower) ||
-		strings.Contains(strings.ToLower(p.GivenName), queryLower) ||
-		strings.Contains(strings.ToLower(p.Surname), queryLower) {
+	fullName := sqlFullName(p.GivenName, p.Surname)
+	if opts.Fuzzy {
+		return repository.TrigramMatch(queryLower, p.GivenName) ||
+			repository.TrigramMatch(queryLower, p.Surname) ||
+			repository.TrigramMatch(queryLower, fullName)
+	}
+	soundex := opts.Soundex
+	if repository.ContainsFold(fullName, queryLower) {
 		return true
 	}
 	if soundex {
@@ -405,7 +424,7 @@ func (s *ReadModelStore) searchAlternateNames(branchID domain.BranchID, queryLow
 			continue
 		}
 		for _, name := range names {
-			if altNameMatches(name, queryLower, opts.Soundex) {
+			if altNameMatches(name, queryLower, opts) {
 				if p, ok := resolveRow(s.persons, branchID, personID); ok && p != nil && !foundIDs[personID] && s.matchesSearchFilters(p, opts) {
 					*results = append(*results, *p)
 					foundIDs[personID] = true
@@ -416,8 +435,16 @@ func (s *ReadModelStore) searchAlternateNames(branchID domain.BranchID, queryLow
 	}
 }
 
-// altNameMatches checks if a PersonNameReadModel matches via substring or Soundex.
-func altNameMatches(name repository.PersonNameReadModel, queryLower string, soundex bool) bool {
+// altNameMatches checks if a PersonNameReadModel matches via substring, trigram
+// similarity (fuzzy) or Soundex.
+func altNameMatches(name repository.PersonNameReadModel, queryLower string, opts repository.SearchOptions) bool {
+	if opts.Fuzzy {
+		return repository.TrigramMatch(queryLower, name.GivenName) ||
+			repository.TrigramMatch(queryLower, name.Surname) ||
+			repository.TrigramMatch(queryLower, sqlFullName(name.GivenName, name.Surname)) ||
+			repository.TrigramMatch(queryLower, name.Nickname)
+	}
+	soundex := opts.Soundex
 	if nameMatchesQuery(name, queryLower) {
 		return true
 	}
@@ -447,10 +474,17 @@ func sortSearchResults(results []repository.PersonReadModel, opts repository.Sea
 			if cmp == 0 {
 				cmp = strings.Compare(results[i].GivenName, results[j].GivenName)
 			}
-		case "birth_date":
-			cmp = compareTimePtr(results[i].BirthDateSort, results[j].BirthDateSort)
-		case "death_date":
-			cmp = compareTimePtr(results[i].DeathDateSort, results[j].DeathDateSort)
+		case "birth_date", "death_date":
+			a, b := results[i].BirthDateSort, results[j].BirthDateSort
+			if opts.Sort == "death_date" {
+				a, b = results[i].DeathDateSort, results[j].DeathDateSort
+			}
+			// No date sorts last in both directions, as the SQL stores'
+			// NULLS LAST does.
+			if (a == nil) != (b == nil) {
+				return b == nil
+			}
+			cmp = compareTimePtr(a, b)
 		default:
 			return false
 		}
@@ -475,12 +509,11 @@ func compareTimePtr(a, b *time.Time) int {
 	return a.Compare(*b)
 }
 
-// nameMatchesQuery checks if a PersonNameReadModel matches the query.
+// nameMatchesQuery checks if a PersonNameReadModel matches the query, as
+// PostgreSQL's full_name or nickname ILIKE '%' || q || '%'.
 func nameMatchesQuery(name repository.PersonNameReadModel, queryLower string) bool {
-	return strings.Contains(strings.ToLower(name.FullName), queryLower) ||
-		strings.Contains(strings.ToLower(name.GivenName), queryLower) ||
-		strings.Contains(strings.ToLower(name.Surname), queryLower) ||
-		strings.Contains(strings.ToLower(name.Nickname), queryLower)
+	return repository.ContainsFold(sqlFullName(name.GivenName, name.Surname), queryLower) ||
+		repository.ContainsFold(name.Nickname, queryLower)
 }
 
 // matchesSearchFilters checks if a person matches the date/place filters in SearchOptions.
@@ -497,10 +530,10 @@ func (s *ReadModelStore) matchesSearchFilters(p *repository.PersonReadModel, opt
 	if opts.DeathDateTo != nil && (p.DeathDateSort == nil || p.DeathDateSort.After(*opts.DeathDateTo)) {
 		return false
 	}
-	if opts.BirthPlace != "" && !strings.Contains(strings.ToLower(p.BirthPlace), strings.ToLower(opts.BirthPlace)) {
+	if opts.BirthPlace != "" && !repository.ContainsFold(p.BirthPlace, opts.BirthPlace) {
 		return false
 	}
-	if opts.DeathPlace != "" && !strings.Contains(strings.ToLower(p.DeathPlace), strings.ToLower(opts.DeathPlace)) {
+	if opts.DeathPlace != "" && !repository.ContainsFold(p.DeathPlace, opts.DeathPlace) {
 		return false
 	}
 	return true

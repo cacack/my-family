@@ -14,10 +14,9 @@
 // is constructed, so opening the stores also brings the schema up to date.
 //
 // There is deliberately no silent fallback: if the selected backend cannot be
-// opened (unreachable PostgreSQL, a SQLite file in a missing directory, or a
-// binary built without cgo so the SQLite driver is a stub) Open returns an
-// error and the server refuses to start rather than quietly running in memory
-// and losing every write on restart.
+// opened (unreachable PostgreSQL, or a SQLite file in a missing directory) Open
+// returns an error and the server refuses to start rather than quietly running
+// in memory and losing every write on restart.
 package storage
 
 import (
@@ -45,17 +44,6 @@ const (
 	BackendSQLite   Backend = "sqlite"
 	BackendPostgres Backend = "postgres"
 )
-
-// ErrSQLiteUnavailable is returned when SQLite is selected but this binary was
-// built without cgo, so the SQLite driver cannot open any database.
-var ErrSQLiteUnavailable = errors.New(
-	"SQLite storage is unavailable: this binary was built without cgo (CGO_ENABLED=0) " +
-		"and the SQLite driver requires it. Set DATABASE_URL to use PostgreSQL, " +
-		"rebuild with CGO_ENABLED=1, or use the Docker image")
-
-// sqliteAvailable is cgoEnabled, held in a variable so tests can exercise the
-// cgo-less refusal path from a cgo build.
-var sqliteAvailable = cgoEnabled
 
 // MemoryStores holds the concrete in-memory stores, which demo mode needs for
 // its reset endpoint (the repository interfaces carry no Reset).
@@ -161,9 +149,6 @@ func OpenMemory() *Stores {
 // OpenSQLite opens (creating if needed) the SQLite database at path and
 // constructs all four stores over it.
 func OpenSQLite(path string) (*Stores, error) {
-	if !sqliteAvailable {
-		return nil, ErrSQLiteUnavailable
-	}
 	if strings.TrimSpace(path) == "" {
 		return nil, errors.New("SQLite storage selected but SQLITE_PATH is empty")
 	}

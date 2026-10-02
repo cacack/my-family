@@ -2,16 +2,79 @@ package sqlite
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"time"
+
+	// modernc.org/sqlite is a pure-Go SQLite (no cgo), so every build —
+	// including the CGO_ENABLED=0 release binaries — can open a database
+	// (ADR-002, #822). It registers itself as the "sqlite" driver.
+	sqlitedriver "modernc.org/sqlite"
+
+	"github.com/cacack/my-family/internal/repository"
 )
 
+// DriverName is the database/sql driver name the SQLite stores run on.
+const DriverName = "sqlite"
+
+// containsFoldFunc is the SQL function name of repository.ContainsFold:
+// ilike_contains(value, query) is 1 when value ILIKE '%' || query || '%' on
+// PostgreSQL would be true, else 0 (and 0 for a NULL value). Plain name search
+// and the place filters use it instead of LOWER(...) LIKE, because SQLite's
+// LOWER and LIKE fold only ASCII case and have no escape character by default,
+// so they disagree with PostgreSQL on names such as "MÜLLER" (DB-005).
+const containsFoldFunc = "ilike_contains"
+
+func init() {
+	sqlitedriver.MustRegisterDeterministicScalarFunction(containsFoldFunc, 2, ilikeContains)
+}
+
+// ilikeContains implements containsFoldFunc.
+func ilikeContains(_ *sqlitedriver.FunctionContext, args []driver.Value) (driver.Value, error) {
+	value, ok := sqlText(args[0])
+	if !ok {
+		return int64(0), nil
+	}
+	query, ok := sqlText(args[1])
+	if !ok {
+		return int64(0), nil
+	}
+	if repository.ContainsFold(value, query) {
+		return int64(1), nil
+	}
+	return int64(0), nil
+}
+
+// sqlText reads a TEXT (or BLOB) SQL function argument; NULL and other types
+// report false.
+func sqlText(v driver.Value) (string, bool) {
+	switch v := v.(type) {
+	case string:
+		return v, true
+	case []byte:
+		return string(v), true
+	default:
+		return "", false
+	}
+}
+
+// dsnParams are applied by the driver to every new connection. Pragmas such
+// as foreign_keys and busy_timeout are per-connection, so they belong in the
+// DSN rather than in a one-off Exec on whichever connection the pool hands out.
+// _time_format=sqlite writes any bound time.Time in SQLite's own date format
+// rather than Go's time.String layout.
+const dsnParams = "_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=on&_time_format=sqlite"
+
+// DSN returns the connection string OpenDB uses for the database file at path.
+// The path is a plain file name, not a "file:" URI, so the driver strips the
+// query before opening it and a path is never percent-decoded.
+func DSN(path string) string {
+	return path + "?" + dsnParams
+}
+
 // OpenDB opens a SQLite database connection with recommended settings.
-// The mattn/go-sqlite3 driver should be built with CGO_ENABLED=1.
-// FTS5 is compiled in only when building with the "sqlite_fts5" (or "fts5") tag
-// or when linking a system SQLite that has it; otherwise search uses LIKE.
 func OpenDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_foreign_keys=on")
+	db, err := sql.Open(DriverName, DSN(path))
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
