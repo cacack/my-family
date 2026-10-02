@@ -657,7 +657,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			birthEvent.Date = p.BirthDateRaw
 		}
 		if p.BirthPlace != "" {
-			birthEvent.Place = p.BirthPlace
+			birthEvent.SetPlaceName(p.BirthPlace)
 			// Add coordinates if present
 			if p.BirthPlaceLat != nil && p.BirthPlaceLong != nil && *p.BirthPlaceLat != "" && *p.BirthPlaceLong != "" {
 				birthEvent.PlaceDetail = &gedcom.PlaceDetail{
@@ -681,7 +681,7 @@ func toGedcomIndividual(p repository.PersonReadModel, sourceXrefs map[uuid.UUID]
 			deathEvent.Date = p.DeathDateRaw
 		}
 		if p.DeathPlace != "" {
-			deathEvent.Place = p.DeathPlace
+			deathEvent.SetPlaceName(p.DeathPlace)
 			// Add coordinates if present
 			if p.DeathPlaceLat != nil && p.DeathPlaceLong != nil && *p.DeathPlaceLat != "" && *p.DeathPlaceLong != "" {
 				deathEvent.PlaceDetail = &gedcom.PlaceDetail{
@@ -871,15 +871,14 @@ func toGedcomEvent(event repository.EventReadModel, sourceXrefs map[uuid.UUID]st
 	}
 
 	if event.Place != "" {
-		ge.Place = event.Place
+		// SetPlaceName allocates PlaceDetail, so the name is kept whether or not
+		// coordinates are present.
+		ge.SetPlaceName(event.Place)
 		// Add coordinates if present
 		if event.PlaceLat != nil && event.PlaceLong != nil && *event.PlaceLat != "" && *event.PlaceLong != "" {
-			ge.PlaceDetail = &gedcom.PlaceDetail{
-				Name: event.Place,
-				Coordinates: &gedcom.Coordinates{
-					Latitude:  *event.PlaceLat,
-					Longitude: *event.PlaceLong,
-				},
+			ge.PlaceDetail.Coordinates = &gedcom.Coordinates{
+				Latitude:  *event.PlaceLat,
+				Longitude: *event.PlaceLong,
 			}
 		}
 	}
@@ -942,7 +941,7 @@ func toGedcomAttribute(attr repository.AttributeReadModel) *gedcom.Attribute {
 	}
 
 	if attr.Place != "" {
-		ga.Place = attr.Place
+		ga.SetPlaceName(attr.Place)
 	}
 
 	return ga
@@ -974,7 +973,7 @@ func toGedcomFamily(f repository.FamilyReadModel, personXrefs, sourceXrefs map[u
 			marriageEvent.Date = f.MarriageDateRaw
 		}
 		if f.MarriagePlace != "" {
-			marriageEvent.Place = f.MarriagePlace
+			marriageEvent.SetPlaceName(f.MarriagePlace)
 			// Add coordinates if present
 			if f.MarriagePlaceLat != nil && f.MarriagePlaceLong != nil && *f.MarriagePlaceLat != "" && *f.MarriagePlaceLong != "" {
 				marriageEvent.PlaceDetail = &gedcom.PlaceDetail{
