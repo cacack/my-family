@@ -474,10 +474,17 @@ func sortSearchResults(results []repository.PersonReadModel, opts repository.Sea
 			if cmp == 0 {
 				cmp = strings.Compare(results[i].GivenName, results[j].GivenName)
 			}
-		case "birth_date":
-			cmp = compareTimePtr(results[i].BirthDateSort, results[j].BirthDateSort)
-		case "death_date":
-			cmp = compareTimePtr(results[i].DeathDateSort, results[j].DeathDateSort)
+		case "birth_date", "death_date":
+			a, b := results[i].BirthDateSort, results[j].BirthDateSort
+			if opts.Sort == "death_date" {
+				a, b = results[i].DeathDateSort, results[j].DeathDateSort
+			}
+			// No date sorts last in both directions, as the SQL stores'
+			// NULLS LAST does.
+			if (a == nil) != (b == nil) {
+				return b == nil
+			}
+			cmp = compareTimePtr(a, b)
 		default:
 			return false
 		}
