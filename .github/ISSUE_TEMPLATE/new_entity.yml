@@ -43,6 +43,15 @@ body:
         - address: string (optional)
         - ...
 
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Observable conditions a second reader can check, as a task list. Each one is answered in a comment before the issue closes.
+      value: "- [ ] "
+    validations:
+      required: true
+
   - type: markdown
     attributes:
       value: |

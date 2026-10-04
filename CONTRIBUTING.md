@@ -128,6 +128,12 @@ gh pr create
 
 **PR titles** use descriptive format (NOT conventional commits) to avoid duplicate changelog entries. See [CONVENTIONS.md](./docs/CONVENTIONS.md#commit-messages) for details.
 
+### 5. Answer the Acceptance Criteria
+
+Issues state acceptance criteria as a `- [ ]` task list under `## Acceptance Criteria` (the issue
+forms render this as `### Acceptance Criteria`). Before the issue closes, post a comment answering
+each criterion by position: met (link the PR or test), deferred to #N, or not met.
+
 ## Architecture Decision Records
 
 For project-wide architectural decisions, use the template in [docs/adr/TEMPLATE.md](./docs/adr/TEMPLATE.md).
