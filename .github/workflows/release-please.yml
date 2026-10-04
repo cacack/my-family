@@ -66,6 +66,7 @@ jobs:
             registry.npmjs.org:443
             nodejs.org:443
             uploads.github.com:443
+            goreleaser.com:443
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
