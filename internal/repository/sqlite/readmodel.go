@@ -771,7 +771,7 @@ func (s *ReadModelStore) runMigrations() {
 	// event store; the branch_id/deleted columns below keep mainline reads working in
 	// the meantime. NOTE: there is no automated read-model rebuild command in the repo
 	// yet — recreation is currently manual (delete the read-model DB and let it
-	// re-project on startup). TODO(#669 follow-up): add a rebuild command and link it
+	// re-project on startup). TODO(#680): add a rebuild command and link it
 	// here once it exists.
 	s.migrateBranchColumns()
 
