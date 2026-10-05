@@ -91,3 +91,8 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      # Odd Node majors are short-lived non-LTS releases, and web/package.json's
+      # engines field excludes them. Track even (LTS) majors only.
+      - dependency-name: "node"
+        versions: ["25.x", "27.x", "29.x"]
