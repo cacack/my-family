@@ -301,7 +301,9 @@ Frontend coverage is measurable via `npm run test:coverage` but is **not** gated
 
 `.github/workflows/ci.yml` runs three test jobs. There is no `integration` build tag and no
 `DATABASE_URL` in tests — PostgreSQL coverage comes from testcontainers, which each Postgres test
-starts for itself and skips when Docker is unavailable.
+starts for itself and skips when Docker is unavailable. `internal/query` shares one container across
+its tests and, when `CI` is set, fails instead of skipping, so its PostgreSQL leg cannot silently
+drop out of CI (#879). `MYFAMILY_TEST_POSTGRES_URL` points any of these at an existing server instead.
 
 ```bash
 # backend job
