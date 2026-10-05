@@ -8,15 +8,21 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 	moderncsqlite "modernc.org/sqlite"
 
 	"github.com/cacack/my-family/internal/domain"
@@ -163,16 +169,64 @@ func openCountedPostgres(t *testing.T) (repository.ReadModelStore, *statementCou
 	return store, counter
 }
 
-// createTestPostgresDatabase creates a throwaway database on the server named by
-// MYFAMILY_TEST_POSTGRES_URL (skipping the test when it is unset), drops it when
-// the test ends, and returns its DSN. Register the cleanup of any connection
-// opened on it after calling this, so it closes before the drop.
+// localPostgresEnv names an optional PostgreSQL server URL. When it is unset the
+// tests share one testcontainer, started on first use.
+const localPostgresEnv = "MYFAMILY_TEST_POSTGRES_URL"
+
+var (
+	sharedPostgresOnce sync.Once
+	sharedPostgresURL  string
+	sharedPostgresErr  error
+)
+
+// postgresServerURL returns the URL of a PostgreSQL server for this package's
+// tests: MYFAMILY_TEST_POSTGRES_URL if set, else one testcontainer shared by
+// every test (the testcontainers reaper removes it when the process exits).
+// Without either it skips the test — except under CI, where a silent skip
+// would hide that the PostgreSQL leg never ran (#879), so it fails instead.
+func postgresServerURL(t *testing.T) string {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping PostgreSQL test in short mode")
+	}
+	if serverURL := os.Getenv(localPostgresEnv); serverURL != "" {
+		return serverURL
+	}
+	if exec.Command("docker", "info").Run() != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("PostgreSQL tests must run in CI: Docker is not available and " + localPostgresEnv + " is unset")
+		}
+		t.Skip("Docker is not available and " + localPostgresEnv + " is unset, skipping PostgreSQL test")
+	}
+	sharedPostgresOnce.Do(func() {
+		// Not t.Context(): the container outlives this test.
+		ctx := context.Background()
+		container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
+			tcpostgres.WithDatabase("testdb"),
+			tcpostgres.WithUsername("test"),
+			tcpostgres.WithPassword("test"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(60*time.Second)),
+		)
+		if err != nil {
+			sharedPostgresErr = fmt.Errorf("start postgres container: %w", err)
+			return
+		}
+		sharedPostgresURL, sharedPostgresErr = container.ConnectionString(ctx, "sslmode=disable")
+	})
+	require.NoError(t, sharedPostgresErr)
+	return sharedPostgresURL
+}
+
+// createTestPostgresDatabase creates a throwaway database on the server from
+// postgresServerURL, drops it when the test ends, and returns its DSN. Register
+// the cleanup of any connection opened on it after calling this, so it closes
+// before the drop.
 func createTestPostgresDatabase(t *testing.T) string {
 	t.Helper()
-	serverURL := os.Getenv("MYFAMILY_TEST_POSTGRES_URL")
-	if serverURL == "" {
-		t.Skip("MYFAMILY_TEST_POSTGRES_URL not set, skipping PostgreSQL test")
-	}
+	serverURL := postgresServerURL(t)
 	admin, err := sql.Open("postgres", serverURL)
 	require.NoError(t, err)
 	name := "t_" + strings.ReplaceAll(uuid.NewString(), "-", "")
