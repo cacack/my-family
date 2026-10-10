@@ -77,7 +77,11 @@ func TestOneFieldEdit_ListsOneChange(t *testing.T) {
 		t.Fatalf("conflicts = %v, want one", conflicts)
 	}
 	conflict, _ := conflicts[0].(map[string]any)
-	if values, _ := conflict["field_values"].([]any); len(values) != 1 {
+	values, _ := conflict["field_values"].([]any)
+	if len(values) != 1 {
+		t.Fatalf("conflict field_values = %v, want only birth_place", conflict["field_values"])
+	}
+	if value, _ := values[0].(map[string]any); value["field"] != "birth_place" {
 		t.Errorf("conflict field_values = %v, want only birth_place", conflict["field_values"])
 	}
 }
