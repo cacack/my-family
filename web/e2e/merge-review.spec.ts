@@ -154,7 +154,7 @@ test('review resolves the conflict, merges the branch, and the mainline takes th
 	// --- ...and the change says where it came from (#832) --------------------
 	// The person's own history is short enough to read whole; the global log
 	// is oldest-first and shared with every other spec.
-	await page.getByRole('button', { name: /History/ }).click();
+	await page.getByRole('main').getByRole('button', { name: /History/ }).click();
 	const viaMerge = page.getByRole('link', { name: `via merge of ${branchName}: ${mergeNote}` });
 	await expect(viaMerge).toBeVisible();
 	await expect(viaMerge).toHaveAttribute('href', `/branches/${branchId}`);
