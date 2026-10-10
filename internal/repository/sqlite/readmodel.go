@@ -4688,7 +4688,10 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 	withClause, src, cteArgs, legArgs := personOverlayCTE(branchID)
 
 	if parent == "" {
-		// Top-level: get unique countries/top-level places (rightmost part after last comma)
+		// Top-level: get unique countries/top-level places (rightmost part after last comma).
+		// SQLite has no reverse split: RTRIM(place, <every non-comma char>) strips back to
+		// the last comma, so the SUBSTR after that prefix is the last part (or the whole
+		// place when it has no comma). The child level uses the same idiom.
 		// Args in statement order: the CTE's binds (off main), then each leg's own
 		// overlay binds (main only, where the subquery is still inlined per leg).
 		args := append(append([]any{}, cteArgs...), legArgs...)
@@ -4703,11 +4706,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 			parsed AS (
 				SELECT
 					place,
-					CASE
-						WHEN INSTR(place, ',') > 0
-						THEN TRIM(SUBSTR(place, LENGTH(place) - LENGTH(REPLACE(SUBSTR(place, INSTR(place, ',')), ',', '')) + 1))
-						ELSE TRIM(place)
-					END as top_level
+					TRIM(SUBSTR(place, LENGTH(RTRIM(place, REPLACE(place, ',', ''))) + 1)) as top_level
 				FROM all_places
 			)
 			SELECT
@@ -4725,39 +4724,40 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 			ORDER BY top_level ASC
 		`, args...)
 	} else {
-		// Child level: get places that end with parent. Args in statement order: the
-		// CTE's binds (off main), then per leg its own overlay binds (main only) plus
-		// that leg's parent bind, then the four remaining parent binds.
+		// Child level: places whose last parts are parent's parts. parent is a
+		// full_name built with ", " while GEDCOM places may omit the space, so both
+		// sides compare with ", " collapsed to ",". Args in statement order: the
+		// CTE's binds (off main), each leg's own overlay binds (main only), then
+		// the two parent binds.
 		args := append(append([]any{}, cteArgs...), legArgs...)
-		args = append(args, parent)
 		args = append(args, legArgs...)
-		args = append(args, parent, parent, parent, parent, parent)
+		args = append(args, parent, parent)
 		// #nosec G202 -- withClause/src are built from the constant literals returned by personOverlayCTE; every value is a bound ? placeholder
 		rows, err = s.db.QueryContext(ctx, `
 			`+withClause+`all_places AS (
-				SELECT DISTINCT birth_place as place FROM `+src+` WHERE birth_place LIKE '%' || ? AND birth_place != ''
+				SELECT DISTINCT birth_place as place FROM `+src+` WHERE birth_place != '' AND birth_place IS NOT NULL
 				UNION
-				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place LIKE '%' || ? AND death_place != ''
+				SELECT DISTINCT death_place as place FROM `+src+` WHERE death_place != '' AND death_place IS NOT NULL
+			),
+			normalized AS (
+				SELECT
+					place,
+					REPLACE(place, ', ', ',') as norm,
+					REPLACE(?, ', ', ',') as norm_parent
+				FROM all_places
 			),
 			parsed AS (
 				SELECT
 					place,
-					CASE
-						WHEN place = ? THEN ''
-						ELSE TRIM(REPLACE(place, ', ' || ?, ''))
-					END as remainder
-				FROM all_places
+					TRIM(SUBSTR(norm, 1, LENGTH(norm) - LENGTH(norm_parent) - 1)) as remainder
+				FROM normalized
+				WHERE SUBSTR(norm, -LENGTH(norm_parent) - 1) = ',' || norm_parent
 			),
 			next_level AS (
 				SELECT
 					place,
 					remainder,
-					CASE
-						WHEN remainder = '' THEN ''
-						WHEN INSTR(remainder, ',') > 0
-						THEN TRIM(SUBSTR(remainder, LENGTH(remainder) - LENGTH(REPLACE(SUBSTR(remainder, INSTR(remainder, ',')), ',', '')) + 1))
-						ELSE TRIM(remainder)
-					END as level_name
+					TRIM(SUBSTR(remainder, LENGTH(RTRIM(remainder, REPLACE(remainder, ',', ''))) + 1)) as level_name
 				FROM parsed
 			)
 			SELECT
@@ -4770,7 +4770,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 					ELSE 0
 				END as has_children
 			FROM next_level
-			WHERE level_name != '' AND level_name != ?
+			WHERE level_name != ''
 			GROUP BY level_name
 			ORDER BY level_name ASC
 		`, args...)

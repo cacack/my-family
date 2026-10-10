@@ -4368,6 +4368,7 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 	// Both levels read persons twice (birth + death). Off main the overlay is hoisted
 	// into a `resolved` CTE so both UNION legs share one resolution pass; main keeps the
 	// inline indexed filter. Either way the UNION is branch-scoped end to end (ADR-005).
+	// Names sort with the "C" collation so the order is bytewise, as it is on SQLite.
 	withClause, src, args, n := resolvedPersonsCTE("birth_place, death_place", branchID)
 
 	if parent == "" {
@@ -4402,33 +4403,39 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 			FROM parsed
 			WHERE top_level != ''
 			GROUP BY top_level
-			ORDER BY top_level ASC
+			ORDER BY top_level COLLATE "C" ASC
 		`, withClause, src), args...)
 	} else {
-		// Child level: get places that end with parent
+		// Child level: places whose last parts are parent's parts. parent is a
+		// full_name built with ", " while GEDCOM places may omit the space, so both
+		// sides compare with ", " collapsed to ",".
 		// #nosec G201 -- withClause/src/n are internal SQL fragments; parent stays a bound parameter
 		// nosemgrep: go.lang.security.audit.database.string-formatted-query.string-formatted-query
 		rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
 			%[1]sall_places AS (
-				SELECT DISTINCT birth_place as place FROM %[2]s p WHERE birth_place LIKE '%%' || $%[3]d AND birth_place != ''
+				SELECT DISTINCT birth_place as place FROM %[2]s p WHERE birth_place != '' AND birth_place IS NOT NULL
 				UNION
-				SELECT DISTINCT death_place as place FROM %[2]s p WHERE death_place LIKE '%%' || $%[3]d AND death_place != ''
+				SELECT DISTINCT death_place as place FROM %[2]s p WHERE death_place != '' AND death_place IS NOT NULL
+			),
+			normalized AS (
+				SELECT
+					place,
+					REPLACE(place, ', ', ',') as norm,
+					REPLACE($%[3]d, ', ', ',') as norm_parent
+				FROM all_places
 			),
 			parsed AS (
 				SELECT
 					place,
-					CASE
-						WHEN place = $%[3]d THEN ''
-						ELSE TRIM(REPLACE(place, ', ' || $%[3]d, ''))
-					END as remainder
-				FROM all_places
+					TRIM(LEFT(norm, LENGTH(norm) - LENGTH(norm_parent) - 1)) as remainder
+				FROM normalized
+				WHERE RIGHT(norm, LENGTH(norm_parent) + 1) = ',' || norm_parent
 			),
 			next_level AS (
 				SELECT
 					place,
 					remainder,
 					CASE
-						WHEN remainder = '' THEN ''
 						WHEN POSITION(',' IN remainder) > 0
 						THEN TRIM(SPLIT_PART(remainder, ',', ARRAY_LENGTH(STRING_TO_ARRAY(remainder, ','), 1)))
 						ELSE TRIM(remainder)
@@ -4445,9 +4452,9 @@ func (s *ReadModelStore) GetPlaceHierarchy(ctx context.Context, branchID domain.
 					ELSE false
 				END as has_children
 			FROM next_level
-			WHERE level_name != '' AND level_name != $%[3]d
+			WHERE level_name != ''
 			GROUP BY level_name
-			ORDER BY level_name ASC
+			ORDER BY level_name COLLATE "C" ASC
 		`, withClause, src, n), append(args, parent)...)
 	}
 	if err != nil {
