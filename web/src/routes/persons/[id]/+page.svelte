@@ -543,7 +543,7 @@
 								</div>
 							</div>
 						{:else}
-							<Button variant="ghost" onclick={() => showBrickWallForm = true}>
+							<Button variant="outline" onclick={() => showBrickWallForm = true}>
 								Mark as Brick Wall
 							</Button>
 						{/if}
@@ -1023,7 +1023,7 @@
 
 	/* Brick Wall styles */
 	.brick-wall-section {
-		margin-top: 1.5rem;
+		margin: 1.5rem 0;
 		padding-top: 1.5rem;
 		border-top: 1px solid #e2e8f0;
 	}
