@@ -185,6 +185,14 @@ web/src/
 - Add a new page to the group that matches its user intent (Browse, Research, History) rather than as a new top-level link; the header must stay one row at 1024px (`web/e2e/layout.spec.ts`).
 - Use `match` for nested routes that live outside a link's own path; highlighting follows the group, not the URL prefix.
 
+### UI Building Blocks
+
+- **Page header**: a page with its own heading uses `PageHeader` (`title`, optional `description`, `backHref` + `backLabel`, an `actions` snippet, and `children` for rich notes). Don't hand-build an h1 + actions row. Entity detail pages (a back link plus Edit/Delete) and chart toolbars (pedigree, descendancy, Ahnentafel) still have their own bars.
+- **Form row**: fields that sit side by side go in `FormRow`; pass `minColumnWidth` (default `14rem`) for rows of short fields. It spaces itself `1rem` below, so don't also put it in a flex/grid `gap` container. Don't redefine `.form-row` in a component.
+- **Detail section**: a read-only block on a detail page is a `.info-section` with an `h2` label (small, uppercase, muted) over a `dl` of `dt`/`dd` pairs; empty values show `—`.
+- **Buttons**: use shadcn `Button` for every control that looks like a button. `default` is the page's main action, `outline` a secondary action, `destructive` deletes, `warning` brick-wall changes. Use `ghost` only where its surroundings mark it as a control (a toolbar or menu), never on its own between sections.
+- **Responsive**: toolbars and action rows `flex-wrap: wrap`; grids use `repeat(auto-fit, minmax(min(<width>, 100%), 1fr))`, not fixed `repeat(N, 1fr)`; long user text (names, titles, notes) gets `overflow-wrap: anywhere`. `web/e2e/layout.spec.ts` fails any page that scrolls sideways at 375–1440px.
+
 ## Testing
 
 ### Go Tests
