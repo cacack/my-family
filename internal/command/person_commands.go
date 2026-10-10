@@ -126,7 +126,8 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		return nil, repository.ErrConcurrencyConflict
 	}
 
-	// Build changes map
+	// Build changes map. A field equal to its current value is not a change
+	// (the edit form sends every field), so only differing fields are recorded.
 	changes := make(map[string]any)
 
 	// Apply and validate changes
@@ -150,39 +151,39 @@ func (h *Handler) UpdatePerson(ctx context.Context, input UpdatePersonInput) (*U
 		testPerson.DeathDate = &dd
 	}
 
-	if input.GivenName != nil {
+	if input.GivenName != nil && *input.GivenName != current.GivenName {
 		testPerson.GivenName = *input.GivenName
 		changes["given_name"] = *input.GivenName
 	}
-	if input.Surname != nil {
+	if input.Surname != nil && *input.Surname != current.Surname {
 		testPerson.Surname = *input.Surname
 		changes["surname"] = *input.Surname
 	}
-	if input.Gender != nil {
+	if input.Gender != nil && domain.Gender(*input.Gender) != current.Gender {
 		testPerson.Gender = domain.Gender(*input.Gender)
 		changes["gender"] = *input.Gender
 	}
-	if input.BirthDate != nil {
+	if input.BirthDate != nil && *input.BirthDate != current.BirthDateRaw {
 		testPerson.SetBirthDate(*input.BirthDate)
 		changes["birth_date"] = *input.BirthDate
 	}
-	if input.BirthPlace != nil {
+	if input.BirthPlace != nil && *input.BirthPlace != current.BirthPlace {
 		testPerson.BirthPlace = *input.BirthPlace
 		changes["birth_place"] = *input.BirthPlace
 	}
-	if input.DeathDate != nil {
+	if input.DeathDate != nil && *input.DeathDate != current.DeathDateRaw {
 		testPerson.SetDeathDate(*input.DeathDate)
 		changes["death_date"] = *input.DeathDate
 	}
-	if input.DeathPlace != nil {
+	if input.DeathPlace != nil && *input.DeathPlace != current.DeathPlace {
 		testPerson.DeathPlace = *input.DeathPlace
 		changes["death_place"] = *input.DeathPlace
 	}
-	if input.Notes != nil {
+	if input.Notes != nil && *input.Notes != current.Notes {
 		testPerson.Notes = *input.Notes
 		changes["notes"] = *input.Notes
 	}
-	if input.ResearchStatus != nil {
+	if input.ResearchStatus != nil && domain.ParseResearchStatus(*input.ResearchStatus) != current.ResearchStatus {
 		testPerson.ResearchStatus = domain.ParseResearchStatus(*input.ResearchStatus)
 		changes["research_status"] = *input.ResearchStatus
 	}

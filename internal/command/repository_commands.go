@@ -98,12 +98,20 @@ func (h *Handler) UpdateRepository(ctx context.Context, input UpdateRepositoryIn
 
 	// Build changes map. Keys must match the projection's RepositoryUpdated
 	// handler exactly: name, address (*domain.Address), notes, gedcom_xref.
+	// A field equal to its current value is not a change, so only differing
+	// fields are recorded.
 	changes := make(map[string]any)
 
 	if input.Name != nil && *input.Name != current.Name {
 		changes["name"] = *input.Name
 	}
-	if input.Address != nil {
+	// A repository with no address compares as an empty one, so a form that
+	// sends a blank address for it records no change.
+	var currentAddress domain.Address
+	if current.Address != nil {
+		currentAddress = *current.Address
+	}
+	if input.Address != nil && *input.Address != currentAddress {
 		changes["address"] = input.Address
 	}
 	if input.Notes != nil && *input.Notes != current.Notes {

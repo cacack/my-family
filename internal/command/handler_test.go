@@ -1332,27 +1332,29 @@ func TestRollbackPerson_NoChangesRequiredFromState(t *testing.T) {
 		t.Fatalf("CreatePerson failed: %v", err)
 	}
 
-	// Update person with the same values (effectively no change)
-	sameName := "John"
-	_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
-		ID:        createResult.ID,
-		GivenName: &sameName,
-		Version:   createResult.Version,
-	})
-	if err != nil {
-		t.Fatalf("UpdatePerson failed: %v", err)
+	// Change the name and change it back (an update to the same value records
+	// nothing, so a round trip is what leaves later versions equal to version 1)
+	for i, name := range []string{"Jim", "John"} {
+		_, err = handler.UpdatePerson(ctx, command.UpdatePersonInput{
+			ID:        createResult.ID,
+			GivenName: &name,
+			Version:   createResult.Version + int64(i),
+		})
+		if err != nil {
+			t.Fatalf("UpdatePerson(%s) failed: %v", name, err)
+		}
 	}
 
-	// Now we have version 2 but values are same as version 1
+	// Now we have version 3 but values are same as version 1
 	// Rollback should succeed with empty changes
 	result, err := handler.RollbackPerson(ctx, createResult.ID, 1)
 	if err != nil {
 		t.Fatalf("RollbackPerson failed: %v", err)
 	}
 
-	// Should return result indicating no changes needed (version stays at 2)
-	if result.NewVersion != 2 {
-		t.Errorf("Expected NewVersion=2 (no change), got %d", result.NewVersion)
+	// Should return result indicating no changes needed (version stays at 3)
+	if result.NewVersion != 3 {
+		t.Errorf("Expected NewVersion=3 (no change), got %d", result.NewVersion)
 	}
 }
 
