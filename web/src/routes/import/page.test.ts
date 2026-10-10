@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import ImportPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
 
@@ -69,5 +69,45 @@ describe('Import & Export page', () => {
 		branchState.id = 'b-1';
 		render(ImportPage);
 		expect(screen.getByText(/Exports always cover the mainline/)).toBeTruthy();
+	});
+
+	function pick(container: HTMLElement, name: string) {
+		const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+		return fireEvent.change(input, { target: { files: [new File(['x'], name)] } });
+	}
+
+	it('refuses a file that is not GEDCOM', async () => {
+		const { container } = render(ImportPage);
+		await pick(container, 'photo.jpg');
+		expect(screen.getByRole('alert').textContent).toContain('Please select a GEDCOM file');
+		expect(screen.queryByRole('button', { name: /Import File/ })).toBeNull();
+	});
+
+	it('explains a parse failure instead of showing the parser error', async () => {
+		vi.mocked(apiModule.api.importGedcomStream).mockRejectedValue({
+			message: 'failed to parse GEDCOM file: failed to parse GEDCOM: no valid GEDCOM lines could be parsed'
+		});
+		const { container } = render(ImportPage);
+		await pick(container, 'tree.gedcom');
+		await fireEvent.click(screen.getByRole('button', { name: /Import File/ }));
+
+		const alert = await screen.findByRole('alert');
+		expect(alert.textContent).toContain('"tree.gedcom" could not be read as a GEDCOM file');
+		expect(alert.textContent).not.toContain('no valid GEDCOM lines');
+	});
+
+	it('re-reads the export estimate after a successful import', async () => {
+		vi.mocked(apiModule.api.importGedcomStream).mockResolvedValue({
+			success: true,
+			persons_imported: 1,
+			families_imported: 0
+		} as unknown as Awaited<ReturnType<typeof apiModule.api.importGedcomStream>>);
+		const { container } = render(ImportPage);
+		await waitFor(() => expect(apiModule.api.getExportEstimate).toHaveBeenCalledTimes(1));
+
+		await pick(container, 'tree.ged');
+		await fireEvent.click(screen.getByRole('button', { name: /Import File/ }));
+
+		await waitFor(() => expect(apiModule.api.getExportEstimate).toHaveBeenCalledTimes(2));
 	});
 });

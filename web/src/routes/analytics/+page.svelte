@@ -165,11 +165,12 @@
 			}
 		}
 
+		// Bar colours match UncertaintyBadge's dots (Tailwind green/yellow/orange-500, gray-400).
 		researchStatusCounts = [
 			{ status: 'certain', label: 'Certain', count: certainCount, color: '#22c55e' },
-			{ status: 'probable', label: 'Probable', count: probableCount, color: '#3b82f6' },
+			{ status: 'probable', label: 'Probable', count: probableCount, color: '#eab308' },
 			{ status: 'possible', label: 'Possible', count: possibleCount, color: '#f97316' },
-			{ status: 'unknown', label: 'Unknown', count: unknownCount, color: '#ef4444' },
+			{ status: 'unknown', label: 'Unknown', count: unknownCount, color: '#9ca3af' },
 			{ status: 'unset', label: 'Not assessed', count: unsetCount, color: '#94a3b8' }
 		];
 	}
@@ -258,7 +259,7 @@
 					<div class="status-bar-row">
 						<div class="status-label">
 							{#if item.status !== 'unset'}
-								<UncertaintyBadge status={item.status} size="small" />
+								<UncertaintyBadge status={item.status} size="small" showLabel={true} />
 							{:else}
 								<span class="unset-label">Not assessed</span>
 							{/if}
@@ -315,6 +316,12 @@
 							{/each}
 						</tbody>
 					</table>
+				</div>
+			</section>
+		{:else if totalPersons === 0}
+			<section class="section">
+				<div class="empty-state">
+					<p>No people yet. <a href="/import">Import a GEDCOM file</a> or add people to see data quality.</p>
 				</div>
 			</section>
 		{:else}

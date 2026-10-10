@@ -268,7 +268,7 @@
 
 		try {
 			await api.deletePerson(person.id);
-			goto('/persons');
+			goto('/persons', { state: { notice: `${formatPersonName(person)} was deleted.` } });
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to delete';
 		}

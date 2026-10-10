@@ -334,9 +334,7 @@
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: #1e293b;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		overflow-wrap: anywhere;
 	}
 
 	.person-lifespan {

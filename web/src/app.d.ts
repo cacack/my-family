@@ -5,7 +5,10 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			/** A one-off confirmation shown by the page navigated to, e.g. after a delete. */
+			notice?: string;
+		}
 		// interface Platform {}
 	}
 }

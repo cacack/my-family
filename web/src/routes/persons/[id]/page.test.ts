@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import type * as apiModule from '$lib/api/client';
 import type { PersonDetail } from '$lib/api/client';
+import { goto } from '$app/navigation';
 
 const PERSON_ID = '11111111-1111-1111-1111-111111111111';
 const BRANCH_ID = '44444444-4444-4444-4444-444444444444';
@@ -307,5 +308,23 @@ describe('Person detail edit form', () => {
 		const body = await save();
 
 		expect(body.gender).toBeUndefined();
+	});
+});
+
+describe('Person detail delete', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		branchState.id = null;
+		getPerson.mockResolvedValue(person());
+	});
+
+	it('confirms a delete on the people list it returns to', async () => {
+		vi.spyOn(window, 'confirm').mockReturnValue(true);
+		render(Page);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+		await waitFor(() =>
+			expect(goto).toHaveBeenCalledWith('/persons', { state: { notice: 'Ada Lovelace was deleted.' } })
+		);
 	});
 });

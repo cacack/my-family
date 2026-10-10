@@ -79,7 +79,7 @@
 		</div>
 	</div>
 
-	<button class="skip-link" onclick={onSkip}>Skip setup and go to dashboard</button>
+	<button class="skip-setup" onclick={onSkip}>Skip setup and go to dashboard</button>
 </div>
 
 <style>
@@ -217,7 +217,7 @@
 		color: #64748b;
 	}
 
-	.skip-link {
+	.skip-setup {
 		background: none;
 		border: none;
 		padding: 0.5rem;
@@ -228,7 +228,7 @@
 		font-family: inherit;
 	}
 
-	.skip-link:hover {
+	.skip-setup:hover {
 		color: #64748b;
 	}
 
@@ -276,11 +276,11 @@
 		color: var(--color-text-muted);
 	}
 
-	:global(body.high-contrast) .skip-link {
+	:global(body.high-contrast) .skip-setup {
 		color: var(--color-text-muted);
 	}
 
-	:global(body.high-contrast) .skip-link:hover {
+	:global(body.high-contrast) .skip-setup:hover {
 		color: var(--color-text);
 	}
 </style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type Person, type ResearchStatus } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PersonCard from '$lib/components/PersonCard.svelte';
@@ -86,6 +87,10 @@
 			<Button variant="secondary" href="/persons/quick">Quick Capture</Button>
 		</div>
 	</header>
+
+	{#if $page.state.notice}
+		<p class="notice" role="status">{$page.state.notice}</p>
+	{/if}
 
 	<div class="toolbar">
 		<button
@@ -226,6 +231,16 @@
 		width: 1rem;
 		height: 1rem;
 		color: #64748b;
+	}
+
+	.notice {
+		margin: 0 0 1rem;
+		padding: 0.75rem 1rem;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-radius: 6px;
+		color: #166534;
+		font-size: 0.875rem;
 	}
 
 	.loading,
