@@ -1910,7 +1910,7 @@ func (e ListSubmittersParamsOrder) Valid() bool {
 type AddChild struct {
 	PersonId openapi_types.UUID `json:"person_id"`
 
-	// RelationshipType Relationship between a child and its family
+	// RelationshipType Relationship between the child and the family; biological when omitted.
 	RelationshipType *ChildRelationType `json:"relationship_type,omitempty"`
 	Sequence         *int               `json:"sequence,omitempty"`
 }

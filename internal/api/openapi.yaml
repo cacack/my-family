@@ -5754,7 +5754,10 @@ components:
           type: string
           format: uuid
         relationship_type:
-          $ref: '#/components/schemas/ChildRelationType'
+          allOf:
+            - $ref: '#/components/schemas/ChildRelationType'
+          default: biological
+          description: Relationship between the child and the family; biological when omitted.
         sequence:
           type: integer
 

@@ -3372,6 +3372,10 @@ export interface components {
         AddChild: {
             /** Format: uuid */
             person_id: string;
+            /**
+             * @description Relationship between the child and the family; biological when omitted.
+             * @default biological
+             */
             relationship_type?: components["schemas"]["ChildRelationType"];
             sequence?: number;
         };
