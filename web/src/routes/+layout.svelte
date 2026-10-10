@@ -226,7 +226,8 @@
 	}
 
 	/* Between the width where the grouped nav appears and the width where the
-	   wordmark fits beside it, the mark alone keeps the header on one row. */
+	   wordmark fits beside it, the mark alone keeps the header on one row.
+	   Keep 1024px in sync with MainNav.svelte's wide-nav breakpoint. */
 	@media (min-width: 1024px) and (max-width: 1279px) {
 		.logo-text {
 			position: absolute;
@@ -265,7 +266,8 @@
 	}
 
 	/* From 1024px the header is one row: the search box gives up width rather
-	   than pushing the controls onto a second line. */
+	   than pushing the controls onto a second line. 1024px must match
+	   MainNav.svelte's wide-nav breakpoint. */
 	@media (min-width: 1024px) {
 		.app-header {
 			flex-wrap: nowrap;

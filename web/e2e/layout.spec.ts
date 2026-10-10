@@ -94,6 +94,7 @@ for (const width of WIDTHS) {
 
 // The grouped nav exists so the header fits on one row from 1024px up; a new
 // top-level link that breaks that should fail here, not in a screenshot review.
+// 1024 and 1279/1280 mirror the breakpoints in MainNav.svelte and +layout.svelte.
 for (const width of [1024, 1280, 1440]) {
 	test(`header is a single row at ${width}px`, async ({ page }) => {
 		await page.setViewportSize({ width, height: 900 });
