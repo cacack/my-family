@@ -3,9 +3,19 @@
 	import * as d3 from 'd3';
 	import * as topojson from 'topojson-client';
 	import type { Topology, GeometryCollection as TopoGeometryCollection } from 'topojson-specification';
+	import { motionDuration, observeChartResize } from '$lib/utils/chart';
+
+	const WORLD_ATLAS_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
 	let container: HTMLDivElement;
 	let tooltipEl: HTMLDivElement;
+	let svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
+	let zoom: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
+	// Fetched once and reused when the map is redrawn on resize
+	let worldAtlas: Promise<Topology> | null = null;
+	// Touch screens get a pinch hint instead of a scroll-wheel one
+	const coarsePointer =
+		typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 	let locations: MapLocation[] = $state([]);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -31,17 +41,52 @@
 	$effect(() => {
 		if (!loading && container && locations.length > 0) {
 			renderMap();
+			// The height follows the width, so only width changes need a redraw
+			return observeChartResize(container, renderMap);
 		}
 	});
+
+	function loadWorldAtlas(): Promise<Topology> {
+		worldAtlas ??= fetch(WORLD_ATLAS_URL).then((res) => {
+			if (!res.ok) throw new Error(`Failed to load map data: ${res.status}`);
+			return res.json();
+		});
+		return worldAtlas;
+	}
+
+	function hideTooltip() {
+		if (tooltipEl) tooltipEl.style.display = 'none';
+	}
+
+	// Place the tooltip beside the pointer, flipping it to stay inside the map
+	function positionTooltip(event: MouseEvent) {
+		if (!tooltipEl) return;
+		const [x, y] = d3.pointer(event, container);
+		// Measure at the left edge so the width isn't squeezed by the previous position
+		tooltipEl.style.left = '0px';
+		const { clientWidth: mapWidth, clientHeight: mapHeight } = container;
+		const { offsetWidth: tipWidth, offsetHeight: tipHeight } = tooltipEl;
+		const left = x + 12 + tipWidth > mapWidth ? x - 12 - tipWidth : x + 12;
+		const top = y - 10 + tipHeight > mapHeight ? mapHeight - tipHeight : y - 10;
+		tooltipEl.style.left = `${Math.max(0, left)}px`;
+		tooltipEl.style.top = `${Math.max(0, top)}px`;
+	}
+
+	export function resetView() {
+		if (svg && zoom) {
+			svg.transition().duration(motionDuration(300)).call(zoom.transform, d3.zoomIdentity);
+		}
+	}
 
 	function renderMap() {
 		// Clear previous
 		d3.select(container).select('svg').remove();
+		hideTooltip();
 
 		const width = container.clientWidth;
 		const height = Math.min(width * 0.55, 600);
 
-		const svg = d3
+		svg = d3
 			.select(container)
 			.append('svg')
 			.attr('width', width)
@@ -57,22 +102,34 @@
 
 		const path = d3.geoPath().projection(projection);
 
-		// Zoom behavior
-		const zoom = d3
+		const radiusScale = d3
+			.scaleSqrt()
+			.domain([1, d3.max(locations, (d) => d.count) || 1])
+			.range([4, 18]);
+
+		// Zoom behavior; markers and borders are counter-scaled to keep a constant on-screen size
+		zoom = d3
 			.zoom<SVGSVGElement, unknown>()
 			.scaleExtent([1, 12])
+			.on('start', hideTooltip)
 			.on('zoom', (event) => {
+				const k = event.transform.k;
 				g.attr('transform', event.transform);
+				g.selectAll<SVGCircleElement, MapLocation>('.location')
+					.attr('r', (d) => radiusScale(d.count) / k)
+					.attr('stroke-width', 1 / k);
+				g.selectAll('.country').attr('stroke-width', 0.5 / k);
 			});
 
 		svg.call(zoom);
 
+		// A tap or click away from a marker dismisses the tooltip (touch has no mouseleave)
+		svg.on('click.tooltip', (event: MouseEvent) => {
+			if (!(event.target as Element).classList.contains('location')) hideTooltip();
+		});
+
 		// Load world data
-		fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
-			.then((res) => {
-				if (!res.ok) throw new Error(`Failed to load map data: ${res.status}`);
-				return res.json();
-			})
+		loadWorldAtlas()
 			.then((world: Topology) => {
 				const countries = topojson.feature(
 					world,
@@ -92,11 +149,6 @@
 					.attr('stroke-width', 0.5);
 
 				// Draw location circles
-				const radiusScale = d3
-					.scaleSqrt()
-					.domain([1, d3.max(locations, (d) => d.count) || 1])
-					.range([4, 18]);
-
 				g.selectAll('.location')
 					.data(locations)
 					.enter()
@@ -119,8 +171,6 @@
 					.on('mouseenter', (event: MouseEvent, d: MapLocation) => {
 						if (!tooltipEl) return;
 						tooltipEl.style.display = 'block';
-						tooltipEl.style.left = `${event.offsetX + 12}px`;
-						tooltipEl.style.top = `${event.offsetY - 10}px`;
 						tooltipEl.replaceChildren();
 						const title = document.createElement('strong');
 						title.textContent = d.place;
@@ -128,15 +178,10 @@
 							`${d.count} ${d.count === 1 ? 'person' : 'persons'} (${d.event_type})`
 						);
 						tooltipEl.append(title, document.createElement('br'), meta);
+						positionTooltip(event);
 					})
-					.on('mousemove', (event: MouseEvent) => {
-						if (!tooltipEl) return;
-						tooltipEl.style.left = `${event.offsetX + 12}px`;
-						tooltipEl.style.top = `${event.offsetY - 10}px`;
-					})
-					.on('mouseleave', () => {
-						if (tooltipEl) tooltipEl.style.display = 'none';
-					})
+					.on('mousemove', positionTooltip)
+					.on('mouseleave', hideTooltip)
 					.on('click', (_event: MouseEvent, d: MapLocation) => {
 						selectedLocation = selectedLocation?.place === d.place && selectedLocation?.event_type === d.event_type ? null : d;
 					});
@@ -169,7 +214,10 @@
 			<span class="legend-item">
 				<span class="dot death"></span> Death
 			</span>
-			<span class="legend-hint">Scroll to zoom, drag to pan</span>
+			<span class="legend-hint">
+				{coarsePointer ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}
+			</span>
+			<button type="button" class="reset-btn" onclick={resetView}>Reset view</button>
 		</div>
 
 		{#if selectedLocation}
@@ -220,7 +268,7 @@
 		font-size: 0.8125rem;
 		pointer-events: none;
 		z-index: 10;
-		white-space: nowrap;
+		max-width: calc(100% - 1rem);
 	}
 
 	.legend {
@@ -257,6 +305,21 @@
 		margin-left: auto;
 		font-style: italic;
 		font-size: 0.75rem;
+	}
+
+	.reset-btn {
+		padding: 0.25rem 0.625rem;
+		border: 1px solid #cbd5e1;
+		border-radius: 6px;
+		background: white;
+		color: #475569;
+		font-size: 0.75rem;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+
+	.reset-btn:hover {
+		background: #f1f5f9;
 	}
 
 	.detail-panel {
