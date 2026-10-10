@@ -131,7 +131,12 @@
 				selectedPersonId = pedigree.root.id;
 			}
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load pedigree';
+			const apiError = e as { message?: string; status?: number };
+			// A malformed id (400) and an unknown one (404) both mean there is no such person
+			error =
+				apiError.status === 400 || apiError.status === 404
+					? 'Person not found'
+					: apiError.message || 'Failed to load pedigree';
 			pedigree = null;
 			selectedPersonId = null;
 		} finally {
@@ -219,25 +224,40 @@
 		</div>
 	</header>
 
-	<main class="chart-container">
+	<div class="chart-container">
 		{#if loading}
 			<div class="loading">Loading pedigree...</div>
 		{:else if error}
 			<div class="error">{error}</div>
 		{:else if pedigree}
-			<PedigreeChart bind:this={chart} data={pedigree.root} {layout} {selectedPersonId} onPersonClick={handlePersonClick} />
+			<div class="chart-area">
+				<PedigreeChart bind:this={chart} data={pedigree.root} {layout} {selectedPersonId} onPersonClick={handlePersonClick} />
+			</div>
 			<p class="hint">Click on any person to view their pedigree. Scroll to zoom, drag to pan. Use arrow keys to navigate, +/- to zoom, R to reset.</p>
 		{:else}
 			<div class="empty">No pedigree data available.</div>
 		{/if}
-	</main>
+	</div>
 </div>
 
 <style>
+	/* Size the chart page to the viewport left under the app header */
+	:global(.app-layout:has(.pedigree-page)) {
+		height: 100dvh;
+		min-height: 0;
+	}
+
+	:global(.app-main:has(.pedigree-page)) {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+
 	.pedigree-page {
 		display: flex;
 		flex-direction: column;
-		height: 100vh;
+		flex: 1;
+		min-height: 0;
 		background: #f8fafc;
 	}
 
@@ -352,9 +372,17 @@
 	}
 
 	.chart-container {
+		display: flex;
+		flex-direction: column;
 		flex: 1;
+		min-height: 0;
 		padding: 1rem;
 		overflow: hidden;
+	}
+
+	.chart-area {
+		flex: 1;
+		min-height: 0;
 	}
 
 	.loading,

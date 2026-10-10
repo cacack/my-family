@@ -295,9 +295,23 @@ describe('DescendancyChart', () => {
 		const { container } = render(DescendancyChart, { props: { data: longNamePerson } });
 		const texts = container.querySelectorAll('.node text');
 		const textContents = Array.from(texts).map((t) => t.textContent);
-		// Should be truncated with ...
-		const truncatedTexts = textContents.filter((t) => t?.includes('...'));
+		// Should be truncated with an ellipsis
+		const truncatedTexts = textContents.filter((t) => t?.endsWith('…'));
 		expect(truncatedTexts.length).toBeGreaterThan(0);
+	});
+
+	it('truncates at a word boundary and shows the full name as a tooltip', () => {
+		const person: DescendancyNode = {
+			id: '1',
+			given_name: 'Beatrice Mary Victoria',
+			surname: 'Saxe-Coburg'
+		};
+		const { container } = render(DescendancyChart, { props: { data: person } });
+		const texts = Array.from(container.querySelectorAll('.node text')).map((t) => t.textContent);
+		expect(texts).toContain('Beatrice Mary…');
+		expect(container.querySelector('.node title')?.textContent).toBe(
+			'Beatrice Mary Victoria Saxe-Coburg'
+		);
 	});
 
 	it('handles missing dates gracefully', () => {
