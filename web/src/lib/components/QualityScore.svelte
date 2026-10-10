@@ -44,6 +44,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
+		/* Lets the fixed-width bar shrink inside a narrow card. */
+		max-width: 100%;
 	}
 
 	.quality-score.small {
@@ -70,6 +72,7 @@
 		font-weight: 600;
 		color: #1e293b;
 		min-width: 3em;
+		flex-shrink: 0;
 	}
 
 	.small .score-text {

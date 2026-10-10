@@ -672,8 +672,10 @@
 
 	.page-header {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 1.5rem;
 	}
 
@@ -689,6 +691,7 @@
 
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 
@@ -775,7 +778,7 @@
 
 	.info-grid {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
 		gap: 1.5rem;
 		margin-bottom: 1.5rem;
 	}
@@ -792,7 +795,7 @@
 	.info-section dl {
 		margin: 0;
 		display: grid;
-		grid-template-columns: auto 1fr;
+		grid-template-columns: auto minmax(0, 1fr);
 		gap: 0.25rem 1rem;
 	}
 
@@ -803,6 +806,8 @@
 
 	.info-section dd {
 		margin: 0;
+		/* GEDCOM places are often comma-joined with no spaces to break on. */
+		overflow-wrap: anywhere;
 		color: #1e293b;
 		font-size: 0.875rem;
 	}
@@ -922,7 +927,7 @@
 
 	.form-row {
 		display: grid;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
 		gap: 1rem;
 		margin-bottom: 1rem;
 	}
