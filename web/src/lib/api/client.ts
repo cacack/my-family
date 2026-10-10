@@ -593,16 +593,7 @@ export interface Pedigree {
 }
 
 // Descendancy chart types
-export interface SpouseInfo {
-	id: string;
-	given_name?: string;
-	surname?: string;
-	birth_date?: GenDate;
-	death_date?: GenDate;
-	gender?: string;
-	marriage_date?: GenDate;
-	marriage_place?: string;
-}
+export type SpouseInfo = components['schemas']['SpouseInfo'];
 
 export interface DescendancyNode {
 	id: string;

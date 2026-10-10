@@ -1,7 +1,8 @@
 <script lang="ts">
 	import * as d3 from 'd3';
 	import { onMount } from 'svelte';
-	import type { DescendancyNode, SpouseInfo } from '$lib/api/client';
+	import { formatGenDate, type DescendancyNode } from '$lib/api/client';
+	import { wrapLabel } from '$lib/utils/chart';
 
 	export type LayoutMode = 'compact' | 'standard' | 'wide';
 
@@ -321,7 +322,7 @@
 				.attr('stroke-width', 2)
 				.attr('stroke-dasharray', '4,2');
 
-			// Spouse card background
+			// Spouse card background (neutral: the API gives no gender for spouses)
 			spouseGroup
 				.append('rect')
 				.attr('class', 'spouse-card')
@@ -330,17 +331,8 @@
 				.attr('width', spouseCardWidth)
 				.attr('height', spouseCardHeight)
 				.attr('rx', 6)
-				.attr('fill', () => {
-					if (spouse.gender === 'male') return '#dbeafe';
-					if (spouse.gender === 'female') return '#fce7f3';
-					return '#f1f5f9';
-				})
-				.attr('stroke', () => {
-					if (spouse.id === selectedPersonId) return '#f59e0b';
-					if (spouse.gender === 'male') return '#3b82f6';
-					if (spouse.gender === 'female') return '#ec4899';
-					return '#64748b';
-				})
+				.attr('fill', '#f1f5f9')
+				.attr('stroke', spouse.id === selectedPersonId ? '#f59e0b' : '#64748b')
 				.attr('stroke-width', spouse.id === selectedPersonId ? 3 : 1.5)
 				.attr('opacity', 0.95);
 
@@ -360,7 +352,11 @@
 					.attr('stroke-dasharray', '4,2');
 			}
 
-			// Spouse given name
+			// Full name on hover, since the lines below may be truncated
+			spouseGroup.append('title').text(spouse.name || 'Unknown');
+
+			// Spouse name, wrapped over two lines
+			const [nameLine1, nameLine2] = wrapLabel(spouse.name || '?', 18);
 			spouseGroup
 				.append('text')
 				.attr('y', -10)
@@ -368,39 +364,27 @@
 				.attr('font-size', '11px')
 				.attr('font-weight', '600')
 				.attr('fill', '#1e293b')
-				.text(() => {
-					const given = spouse.given_name || '?';
-					return given.length > 14 ? given.substring(0, 12) + '...' : given;
-				});
+				.text(nameLine1);
 
-			// Spouse surname
 			spouseGroup
 				.append('text')
 				.attr('y', 3)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '11px')
-				.attr('font-weight', '500')
-				.attr('fill', '#475569')
-				.text(() => {
-					const surname = spouse.surname || '?';
-					return surname.length > 14 ? surname.substring(0, 12) + '...' : surname;
-				});
+				.attr('font-weight', '600')
+				.attr('fill', '#1e293b')
+				.text(nameLine2);
 
-			// Spouse dates
+			// Marriage date
 			spouseGroup
 				.append('text')
 				.attr('y', 16)
 				.attr('text-anchor', 'middle')
 				.attr('font-size', '9px')
 				.attr('fill', '#64748b')
-				.text(() => {
-					const birth = spouse.birth_date?.year;
-					const death = spouse.death_date?.year;
-					if (!birth && !death) return '';
-					if (birth && !death) return `b. ${birth}`;
-					if (!birth && death) return `d. ${death}`;
-					return `${birth} - ${death}`;
-				});
+				.text(spouse.marriage_date
+						? `m. ${spouse.marriage_date.year ?? formatGenDate(spouse.marriage_date)}`
+						: '');
 		});
 	}
 

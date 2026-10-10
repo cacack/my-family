@@ -40,6 +40,21 @@ class MockResizeObserver {
 }
 globalThis.ResizeObserver = MockResizeObserver;
 
+// Mock matchMedia (jsdom lacks it); the accessibility store reads it on load
+if (typeof window !== 'undefined' && !window.matchMedia) {
+	window.matchMedia = (query: string) =>
+		({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			dispatchEvent: vi.fn()
+		}) as MediaQueryList;
+}
+
 // Mock SVG getBBox for D3 tests
 if (typeof SVGElement !== 'undefined') {
 	(SVGElement.prototype as SVGElement & { getBBox: () => DOMRect }).getBBox = vi.fn().mockReturnValue({

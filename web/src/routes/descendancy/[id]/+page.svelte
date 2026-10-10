@@ -109,9 +109,7 @@
 		if (node.spouses) {
 			for (const spouse of node.spouses) {
 				if (spouse.id === personId) {
-					const given = spouse.given_name || '';
-					const surname = spouse.surname || '';
-					return `${given} ${surname}`.trim() || null;
+					return spouse.name || null;
 				}
 			}
 		}
