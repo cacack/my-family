@@ -4,7 +4,7 @@
  * Run `npm run generate:types` after OpenAPI changes
  */
 
-import type { components } from './types.generated';
+import type { components, operations } from './types.generated';
 
 // Re-export Ahnentafel types from generated file (single source of truth)
 export type AhnentafelResponse = components['schemas']['AhnentafelResponse'];
@@ -104,11 +104,7 @@ export type BranchDuplicatePair = components['schemas']['BranchDuplicatePair'];
  * enum, and so a review UI can type its selection state without restating it.
  */
 export type MergeResolution = MergeResolutionEntry['resolution'];
-/**
- * The generated `ChangeEntry`, as carried by `BranchComparisonResult`. It needs
- * its own name because the hand-written `ChangeEntry` interface further down
- * predates the generated schema and declares `entity_name` as required.
- */
+/** The `ChangeEntry` carried by `BranchComparisonResult`. */
 export type BranchChangeEntry = components['schemas']['ChangeEntry'];
 
 // Re-export Research Snapshot types from generated file (single source of truth)
@@ -368,307 +364,82 @@ function notifyBranchWrite(branchId: string | null, method: string, path: string
 	}
 }
 
-// Types based on OpenAPI schemas
-export type ResearchStatus = 'certain' | 'probable' | 'possible' | 'unknown';
+// Types generated from the OpenAPI schemas (single source of truth). Several
+// keep the names the client used before it adopted the generated types.
+type Schemas = components['schemas'];
 
-export interface GenDate {
-	raw?: string;
-	qualifier?: 'exact' | 'abt' | 'cal' | 'est' | 'bef' | 'aft' | 'bet' | 'from' | 'int';
-	/**
-	 * Calendar system as a GEDCOM escape token (DGREGORIAN, DJULIAN, DHEBREW,
-	 * "DFRENCH R"). Absent or DGREGORIAN means the Gregorian calendar.
-	 */
-	calendar?: string;
-	year?: number;
-	month?: number;
-	day?: number;
-	year2?: number;
-	month2?: number;
-	day2?: number;
-	/** Original ambiguous phrase for interpreted (INT) dates, e.g. "about eighteen fifty" */
-	interpreted_from?: string;
-}
+// Enumerations, mirrored from internal/domain/enums.go by the spec.
+export type Gender = Schemas['Gender'];
+export type RelationType = Schemas['RelationType'];
+export type ChildRelationType = Schemas['ChildRelationType'];
+export type SourceType = Schemas['SourceType'];
+export type SourceQuality = Schemas['SourceQuality'];
+export type InformantType = Schemas['InformantType'];
+export type EvidenceType = Schemas['EvidenceType'];
+export type MediaType = Schemas['MediaType'];
+export type NameType = Schemas['NameType'];
+export type ResearchStatus = Schemas['ResearchStatus'];
+export type ConflictStatus = Schemas['ConflictStatus'];
+export type ResearchOutcome = Schemas['ResearchOutcome'];
+export type FactType = Schemas['FactType'];
 
-export interface Person {
-	id: string;
-	given_name: string;
-	surname: string;
-	gender?: 'male' | 'female' | 'unknown';
-	birth_date?: GenDate;
-	birth_place?: string;
-	death_date?: GenDate;
-	death_place?: string;
-	notes?: string;
-	research_status?: ResearchStatus;
-	brick_wall_note?: string | null;
-	brick_wall_since?: string | null;
-	brick_wall_resolved_at?: string | null;
-	version: number;
-}
+export type GenDate = Schemas['GenDate'];
 
-export interface PersonCreate {
-	given_name: string;
-	surname?: string;
-	gender?: 'male' | 'female' | 'unknown';
-	birth_date?: string;
-	birth_place?: string;
-	death_date?: string;
-	death_place?: string;
-	notes?: string;
-	research_status?: ResearchStatus;
-}
+// Persons and families
+export type Person = Schemas['Person'];
+export type PersonCreate = Schemas['PersonCreate'];
+export type PersonUpdate = Schemas['PersonUpdate'];
+export type PersonSummary = Schemas['PersonSummary'];
+export type PersonDetail = Schemas['PersonDetail'];
+export type PersonList = Schemas['PersonList'];
+export type FamilySummary = Schemas['FamilySummary'];
+/** A GEDCOM 7.0 external identifier (EXID) with a server-resolved label and, for recognized systems, a URL. */
+export type ExternalLink = Schemas['ExternalLink'];
+export type Family = Schemas['Family'];
+export type FamilyCreate = Schemas['FamilyCreate'];
+export type FamilyUpdate = Schemas['FamilyUpdate'];
+export type FamilyChild = Schemas['FamilyChild'];
+export type FamilyDetail = Schemas['FamilyDetail'];
+export type FamilyList = Schemas['FamilyList'];
+export type AddChild = Schemas['AddChild'];
 
-export interface PersonUpdate {
-	given_name?: string;
-	surname?: string;
-	gender?: 'male' | 'female' | 'unknown';
-	birth_date?: string;
-	birth_place?: string;
-	death_date?: string;
-	death_place?: string;
-	notes?: string;
-	research_status?: ResearchStatus;
-	version: number;
-}
+// Family group sheet
+export type GroupSheetCitation = Schemas['GroupSheetCitation'];
+export type GroupSheetEvent = Schemas['GroupSheetEvent'];
+export type GroupSheetPerson = Schemas['GroupSheetPerson'];
+export type GroupSheetChild = Schemas['GroupSheetChild'];
+export type FamilyGroupSheet = Schemas['FamilyGroupSheet'];
 
-export interface PersonSummary {
-	id: string;
-	given_name: string;
-	surname: string;
-	gender?: 'male' | 'female' | 'unknown';
-	birth_date?: GenDate;
-	death_date?: GenDate;
-}
+// Charts
+export type PedigreeNode = Schemas['PedigreeNode'];
+export type Pedigree = Schemas['Pedigree'];
+export type SpouseInfo = Schemas['SpouseInfo'];
+export type DescendancyNode = Schemas['DescendancyNode'];
+export type Descendancy = Schemas['Descendancy'];
 
-export interface FamilySummary {
-	id: string;
-	partner1_name?: string;
-	partner2_name?: string;
-	relationship_type?: string;
-}
+// Search
+export type SearchResult = Schemas['SearchResult'];
+export type SearchResults = Schemas['SearchResults'];
 
-// A GEDCOM 7.0 external identifier (EXID) with a server-resolved display label
-// and, for recognized systems, a browsable URL.
-export interface ExternalLink {
-	value: string;
-	type: string;
-	label: string;
-	url?: string;
-}
+// GEDCOM import and export
+export type ImportWarning = Schemas['ImportWarning'];
+export type ImportError = Schemas['ImportError'];
+export type ImportResult = Schemas['ImportResult'];
+export type ExportEstimate = Schemas['ExportEstimate'];
+export type ExportPreview = Schemas['ExportPreview'];
+export type DataLossItem = Schemas['DataLossItem'];
+/** GEDCOM versions the export/preview endpoints accept. */
+export type GedcomVersion = NonNullable<
+	NonNullable<operations['exportGedcom']['parameters']['query']>['version']
+>;
 
-export interface PersonDetail extends Person {
-	families_as_partner?: FamilySummary[];
-	family_as_child?: FamilySummary;
-	external_ids?: ExternalLink[];
-}
-
-export interface PersonList {
-	items: Person[];
-	total: number;
-	limit?: number;
-	offset?: number;
-}
-
-export interface Family {
-	id: string;
-	partner1_id?: string;
-	partner2_id?: string;
-	partner1_name?: string;
-	partner2_name?: string;
-	relationship_type?: 'marriage' | 'partnership' | 'unknown';
-	marriage_date?: GenDate;
-	marriage_place?: string;
-	child_count?: number;
-	version: number;
-}
-
-export interface FamilyCreate {
-	partner1_id?: string;
-	partner2_id?: string;
-	relationship_type?: 'marriage' | 'partnership' | 'unknown';
-	marriage_date?: string;
-	marriage_place?: string;
-}
-
-export interface FamilyUpdate {
-	partner1_id?: string;
-	partner2_id?: string;
-	/** Remove partner 1. Cannot be combined with `partner1_id`. */
-	clear_partner1?: boolean;
-	/** Remove partner 2. Cannot be combined with `partner2_id`. */
-	clear_partner2?: boolean;
-	relationship_type?: 'marriage' | 'partnership' | 'unknown';
-	marriage_date?: string;
-	marriage_place?: string;
-	version: number;
-}
-
-export interface FamilyChild {
-	person_id: string;
-	relationship_type: 'biological' | 'adopted' | 'foster';
-	person?: PersonSummary;
-	sequence?: number;
-}
-
-export interface FamilyDetail extends Family {
-	partner1?: PersonSummary;
-	partner2?: PersonSummary;
-	children?: FamilyChild[];
-	external_ids?: ExternalLink[];
-}
-
-export interface FamilyList {
-	items: FamilyDetail[];
-	total: number;
-	limit?: number;
-	offset?: number;
-}
-
-export interface AddChild {
-	person_id: string;
-	relationship_type?: 'biological' | 'adopted' | 'foster';
-	sequence?: number;
-}
-
-// Group Sheet types for family group sheet view
-export interface GroupSheetCitation {
-	id: string;
-	source_id: string;
-	source_title: string;
-	page?: string;
-	detail?: string;
-}
-
-export interface GroupSheetEvent {
-	date?: string;
-	place?: string;
-	is_negated?: boolean;
-	citations?: GroupSheetCitation[];
-}
-
-export interface GroupSheetPerson {
-	id: string;
-	given_name: string;
-	surname: string;
-	gender?: 'male' | 'female' | 'unknown';
-	birth?: GroupSheetEvent;
-	death?: GroupSheetEvent;
-	father_name?: string;
-	father_id?: string;
-	mother_name?: string;
-	mother_id?: string;
-}
-
-export interface GroupSheetChild {
-	id: string;
-	given_name: string;
-	surname: string;
-	gender?: 'male' | 'female' | 'unknown';
-	relationship_type?: 'biological' | 'adopted' | 'foster';
-	sequence?: number;
-	birth?: GroupSheetEvent;
-	death?: GroupSheetEvent;
-	spouse_name?: string;
-	spouse_id?: string;
-}
-
-export interface FamilyGroupSheet {
-	id: string;
-	husband?: GroupSheetPerson;
-	wife?: GroupSheetPerson;
-	marriage?: GroupSheetEvent;
-	children?: GroupSheetChild[];
-}
-
-export interface PedigreeNode {
-	id: string;
-	given_name?: string;
-	surname?: string;
-	birth_date?: GenDate;
-	death_date?: GenDate;
-	gender?: string;
-	father?: PedigreeNode;
-	mother?: PedigreeNode;
-}
-
-export interface Pedigree {
-	root: PedigreeNode;
-	generations?: number;
-}
-
-// Descendancy chart types
-export type SpouseInfo = components['schemas']['SpouseInfo'];
-
-export interface DescendancyNode {
-	id: string;
-	given_name?: string;
-	surname?: string;
-	birth_date?: GenDate;
-	death_date?: GenDate;
-	gender?: string;
-	spouses?: SpouseInfo[];
-	children?: DescendancyNode[];
-}
-
-export interface Descendancy {
-	root: DescendancyNode;
-	generations: number;
-	total_descendants: number;
-	max_generation: number;
-}
-
-// AhnentafelEntry and AhnentafelResponse are imported from types.generated.ts above
-
-export interface SearchResult extends PersonSummary {
-	score?: number;
-}
-
-export interface SearchResults {
-	items: SearchResult[];
-	total: number;
-	query?: string;
-}
-
-export interface ImportWarning {
-	line: number;
-	record?: string;
-	message: string;
-}
-
-export interface ImportError {
-	line: number;
-	record?: string;
-	message: string;
-}
-
-export interface ImportResult {
-	success: boolean;
-	persons_imported: number;
-	families_imported: number;
-	warnings?: ImportWarning[];
-	errors?: ImportError[];
-}
-
+// Client-side progress reports for streamed imports and exports (not API schemas).
 export interface ImportProgress {
 	bytes_read: number;
 	total_bytes: number; // -1 when unknown
 	percent: number; // 0-100, or -1 when total is unknown
 }
 
-// Export estimation types
-export interface ExportEstimate {
-	person_count: number;
-	family_count: number;
-	source_count: number;
-	citation_count: number;
-	event_count: number;
-	note_count: number;
-	total_records: number;
-	estimated_bytes: number;
-	is_large_export: boolean;
-}
-
-// Export progress tracking (for streaming exports)
 export interface ExportProgress {
 	phase: string;
 	current: number;
@@ -676,513 +447,75 @@ export interface ExportProgress {
 	percentage: number;
 }
 
-// GEDCOM export conversion preview (data-loss report) - generated types
-export type ExportPreview = components['schemas']['ExportPreview'];
-export type DataLossItem = components['schemas']['DataLossItem'];
+/** The API's error body, plus the HTTP status the client saw it with. */
+export type ApiError = Schemas['Error'] & { status?: number };
 
-// GEDCOM versions the export/preview endpoints accept (matches the OpenAPI enum).
-export type GedcomVersion = '5.5' | '5.5.1' | '7.0';
+// GPS evidence: analyses, conflicts, research logs and proof summaries
+export type EvidenceAnalysisResponse = Schemas['EvidenceAnalysis'];
+export type EvidenceAnalysisCreateRequest = Schemas['EvidenceAnalysisCreate'];
+export type EvidenceAnalysisUpdateRequest = Schemas['EvidenceAnalysisUpdate'];
+export type EvidenceAnalysisListResponse = Schemas['EvidenceAnalysisList'];
+export type EvidenceConflictResponse = Schemas['EvidenceConflict'];
+export type EvidenceConflictResolveRequest = Schemas['EvidenceConflictResolve'];
+export type EvidenceConflictListResponse = Schemas['EvidenceConflictList'];
+export type ResearchLogResponse = Schemas['ResearchLog'];
+export type ResearchLogCreateRequest = Schemas['ResearchLogCreate'];
+export type ResearchLogUpdateRequest = Schemas['ResearchLogUpdate'];
+export type ResearchLogListResponse = Schemas['ResearchLogList'];
+export type ProofSummaryResponse = Schemas['ProofSummary'];
+export type ProofSummaryCreateRequest = Schemas['ProofSummaryCreate'];
+export type ProofSummaryUpdateRequest = Schemas['ProofSummaryUpdate'];
+export type ProofSummaryListResponse = Schemas['ProofSummaryList'];
 
-export interface ApiError {
-	code: string;
-	message: string;
-	details?: Record<string, unknown>;
-	status?: number;
-}
+// Sources and citations
+export type Source = Schemas['Source'];
+export type SourceDetail = Schemas['SourceDetail'];
+export type SourceListResponse = Schemas['SourceList'];
+export type CreateSourceRequest = Schemas['SourceCreate'];
+export type UpdateSourceRequest = Schemas['SourceUpdate'];
+export type SourceSearchResponse = Schemas['SourceSearchResults'];
+export type Citation = Schemas['Citation'];
+export type CitationListResponse = Schemas['CitationList'];
+export type CreateCitationRequest = Schemas['CitationCreate'];
+export type UpdateCitationRequest = Schemas['CitationUpdate'];
 
-// Evidence Analysis types
-export interface EvidenceAnalysisResponse {
-	id: string;
-	fact_type: string;
-	subject_id: string;
-	citation_ids?: string[];
-	conclusion: string;
-	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
-	notes?: string;
-	conflict_id?: string;
-	version: number;
-	created_at?: string;
-	updated_at?: string;
-}
+// Person names
+export type PersonName = Schemas['PersonName'];
+export type PersonNameCreate = Schemas['PersonNameCreate'];
+export type PersonNameUpdate = Schemas['PersonNameUpdate'];
+export type PersonNameList = Schemas['PersonNameList'];
 
-export interface EvidenceAnalysisCreateRequest {
-	fact_type: string;
-	subject_id: string;
-	citation_ids?: string[];
-	conclusion: string;
-	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
-	notes?: string;
-}
+// Media
+export type Media = Schemas['Media'];
+export type MediaListResponse = Schemas['MediaList'];
+export type MediaUpdate = Schemas['MediaUpdate'];
 
-export interface EvidenceAnalysisUpdateRequest {
-	fact_type?: string;
-	subject_id?: string;
-	citation_ids?: string[];
-	conclusion?: string;
-	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
-	notes?: string;
-	version: number;
-}
+// Relationship calculator
+export type RelationshipPathNode = Schemas['RelationshipPathNode'];
+export type RelationshipPath = Schemas['RelationshipPath'];
+export type RelationshipResult = Schemas['RelationshipResult'];
 
-export interface EvidenceAnalysisListResponse {
-	analyses: EvidenceAnalysisResponse[];
-	total: number;
-	limit?: number;
-	offset?: number;
-}
+// Browse indexes, map and brick walls
+export type SurnameIndexResponse = Schemas['SurnameIndexResponse'];
+export type SurnameEntry = Schemas['SurnameEntry'];
+export type LetterCount = Schemas['LetterCount'];
+export type PlaceIndexResponse = Schemas['PlaceIndexResponse'];
+export type PlaceEntry = Schemas['PlaceEntry'];
+export type CemeteryIndexResponse = Schemas['CemeteryIndexResponse'];
+export type CemeteryEntry = Schemas['CemeteryEntry'];
+export type MapLocationsResponse = Schemas['MapLocationsResponse'];
+export type MapLocation = Schemas['MapLocation'];
+export type BrickWallEntry = Schemas['BrickWallEntry'];
+export type BrickWallsResponse = Schemas['BrickWallsResponse'];
 
-// Evidence Conflict types
-export interface EvidenceConflictResponse {
-	id: string;
-	fact_type: string;
-	subject_id: string;
-	analysis_ids: string[];
-	description: string;
-	resolution?: string;
-	status: 'open' | 'resolved';
-	version: number;
-	created_at?: string;
-	updated_at?: string;
-}
+// Discovery feed
+export type DiscoverySuggestion = Schemas['DiscoverySuggestion'];
+export type DiscoveryFeedResponse = Schemas['DiscoveryFeedResponse'];
 
-export interface EvidenceConflictResolveRequest {
-	resolution: string;
-	version: number;
-}
-
-export interface EvidenceConflictListResponse {
-	conflicts: EvidenceConflictResponse[];
-	total: number;
-	limit?: number;
-	offset?: number;
-}
-
-// Research Log types
-export interface ResearchLogResponse {
-	id: string;
-	subject_id: string;
-	subject_type: string;
-	repository: string;
-	search_description: string;
-	outcome: 'found' | 'not_found' | 'inconclusive';
-	notes?: string;
-	search_date: string;
-	version: number;
-	created_at?: string;
-	updated_at?: string;
-}
-
-export interface ResearchLogCreateRequest {
-	subject_id: string;
-	subject_type: string;
-	repository: string;
-	search_description: string;
-	outcome: 'found' | 'not_found' | 'inconclusive';
-	notes?: string;
-	search_date: string;
-}
-
-export interface ResearchLogUpdateRequest {
-	subject_id?: string;
-	subject_type?: string;
-	repository?: string;
-	search_description?: string;
-	outcome?: 'found' | 'not_found' | 'inconclusive';
-	notes?: string;
-	search_date?: string;
-	version: number;
-}
-
-export interface ResearchLogListResponse {
-	logs: ResearchLogResponse[];
-	total: number;
-	limit?: number;
-	offset?: number;
-}
-
-// Proof Summary types
-export interface ProofSummaryResponse {
-	id: string;
-	fact_type: string;
-	subject_id: string;
-	conclusion: string;
-	argument: string;
-	analysis_ids?: string[];
-	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
-	version: number;
-	created_at?: string;
-	updated_at?: string;
-}
-
-export interface ProofSummaryCreateRequest {
-	fact_type: string;
-	subject_id: string;
-	conclusion: string;
-	argument: string;
-	analysis_ids?: string[];
-	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
-}
-
-export interface ProofSummaryUpdateRequest {
-	fact_type?: string;
-	subject_id?: string;
-	conclusion?: string;
-	argument?: string;
-	analysis_ids?: string[];
-	research_status?: 'certain' | 'probable' | 'possible' | 'unknown';
-	version: number;
-}
-
-export interface ProofSummaryListResponse {
-	summaries: ProofSummaryResponse[];
-	total: number;
-	limit?: number;
-	offset?: number;
-}
-
-// Source types
-export interface Source {
-	id: string;
-	source_type: string;
-	title: string;
-	author?: string;
-	publisher?: string;
-	publish_date?: string;
-	url?: string;
-	repository_name?: string;
-	collection_name?: string;
-	call_number?: string;
-	notes?: string;
-	citation_count: number;
-	version: number;
-}
-
-export interface SourceDetail extends Source {
-	citations?: Citation[];
-	external_ids?: ExternalLink[];
-}
-
-export interface SourceListResponse {
-	sources: Source[];
-	total: number;
-	limit: number;
-	offset: number;
-}
-
-export interface CreateSourceRequest {
-	source_type: string;
-	title: string;
-	author?: string;
-	publisher?: string;
-	publish_date?: string;
-	url?: string;
-	repository_name?: string;
-	collection_name?: string;
-	call_number?: string;
-	notes?: string;
-}
-
-export interface UpdateSourceRequest {
-	source_type?: string;
-	title?: string;
-	author?: string;
-	publisher?: string;
-	publish_date?: string;
-	url?: string;
-	repository_name?: string;
-	collection_name?: string;
-	call_number?: string;
-	notes?: string;
-	version: number;
-}
-
-export interface SourceSearchResponse {
-	sources: Source[];
-	total: number;
-	query: string;
-}
-
-// Citation types
-export interface Citation {
-	id: string;
-	source_id: string;
-	source_title: string;
-	fact_type: string;
-	fact_owner_id: string;
-	page?: string;
-	volume?: string;
-	source_quality?: string;
-	informant_type?: string;
-	evidence_type?: string;
-	quoted_text?: string;
-	analysis?: string;
-	template_id?: string;
-	fields?: Record<string, string>;
-	version: number;
-}
-
-export interface CitationListResponse {
-	citations: Citation[];
-	total: number;
-}
-
-export interface CreateCitationRequest {
-	source_id: string;
-	fact_type: string;
-	fact_owner_id: string;
-	page?: string;
-	volume?: string;
-	source_quality?: string;
-	informant_type?: string;
-	evidence_type?: string;
-	quoted_text?: string;
-	analysis?: string;
-	template_id?: string;
-	fields?: Record<string, string>;
-}
-
-export interface UpdateCitationRequest {
-	page?: string;
-	volume?: string;
-	source_quality?: string;
-	informant_type?: string;
-	evidence_type?: string;
-	quoted_text?: string;
-	analysis?: string;
-	template_id?: string;
-	fields?: Record<string, string>;
-	version: number;
-}
-
-// PersonName types
-export type NameType = 'birth' | 'married' | 'aka' | 'immigrant' | 'religious' | 'professional';
-
-export interface PersonName {
-	id: string;
-	person_id: string;
-	given_name: string;
-	surname: string;
-	readonly full_name?: string;
-	name_prefix?: string;
-	name_suffix?: string;
-	surname_prefix?: string;
-	nickname?: string;
-	name_type: NameType;
-	is_primary: boolean;
-}
-
-export interface PersonNameCreate {
-	given_name: string;
-	surname: string;
-	name_prefix?: string;
-	name_suffix?: string;
-	surname_prefix?: string;
-	nickname?: string;
-	name_type: NameType;
-	is_primary: boolean;
-}
-
-export interface PersonNameUpdate {
-	given_name?: string;
-	surname?: string;
-	name_prefix?: string;
-	name_suffix?: string;
-	surname_prefix?: string;
-	nickname?: string;
-	name_type?: NameType;
-	is_primary?: boolean;
-}
-
-export interface PersonNameList {
-	items: PersonName[];
-	total: number;
-}
-
-// Media types
-export interface Media {
-	id: string;
-	entity_type: string;
-	entity_id: string;
-	title: string;
-	description?: string;
-	mime_type: string;
-	media_type?: string;
-	filename: string;
-	file_size: number;
-	has_thumbnail: boolean;
-	crop_left?: number;
-	crop_top?: number;
-	crop_width?: number;
-	crop_height?: number;
-	version: number;
-	created_at: string;
-	updated_at: string;
-}
-
-export interface MediaListResponse {
-	items: Media[];
-	total: number;
-}
-
-// Relationship types
-export interface RelationshipPathNode {
-	id: string;
-	name: string;
-}
-
-export interface RelationshipPath {
-	name?: string;
-	pathFromA?: RelationshipPathNode[];
-	pathFromB?: RelationshipPathNode[];
-	commonAncestorId?: string;
-	generationDistanceA?: number;
-	generationDistanceB?: number;
-}
-
-export interface RelationshipResult {
-	personA?: Person;
-	personB?: Person;
-	paths?: RelationshipPath[];
-	isRelated?: boolean;
-	summary?: string;
-}
-
-// Browse types
-export interface SurnameIndexResponse {
-	items: SurnameEntry[];
-	total: number;
-	letter_counts?: LetterCount[];
-}
-
-export interface SurnameEntry {
-	surname: string;
-	count: number;
-}
-
-export interface LetterCount {
-	letter: string;
-	count: number;
-}
-
-export interface PlaceIndexResponse {
-	items: PlaceEntry[];
-	total: number;
-	breadcrumb?: string[];
-}
-
-export interface PlaceEntry {
-	name: string;
-	full_name: string;
-	count: number;
-	has_children: boolean;
-}
-
-export interface CemeteryIndexResponse {
-	items: CemeteryEntry[];
-	total: number;
-}
-
-export interface CemeteryEntry {
-	place: string;
-	count: number;
-}
-
-export interface MapLocationsResponse {
-	items: MapLocation[];
-	total: number;
-}
-
-export interface MapLocation {
-	place: string;
-	latitude: number;
-	longitude: number;
-	event_type: 'birth' | 'death';
-	count: number;
-	person_ids: string[];
-}
-
-export interface BrickWallEntry {
-	person_id: string;
-	person_name: string;
-	note: string;
-	since: string;
-	resolved_at?: string;
-}
-
-export interface BrickWallsResponse {
-	items: BrickWallEntry[];
-	active_count: number;
-	resolved_count: number;
-}
-
-// Discovery feed types
-export interface DiscoverySuggestion {
-	type: 'missing_data' | 'orphan' | 'unassessed' | 'quality_gap' | 'brick_wall_resolved';
-	title: string;
-	description: string;
-	person_id?: string;
-	person_name?: string;
-	action_url: string;
-	priority: number;
-}
-
-export interface DiscoveryFeedResponse {
-	items: DiscoverySuggestion[];
-	total: number;
-}
-
-export interface MediaUpdate {
-	title?: string;
-	description?: string;
-	media_type?: string;
-	crop_left?: number;
-	crop_top?: number;
-	crop_width?: number;
-	crop_height?: number;
-	version: number;
-}
-
-// History types
-export interface FieldChange {
-	old_value?: unknown;
-	new_value?: unknown;
-}
-
-export interface ChangeEntry {
-	id: string;
-	timestamp: string;
-	/** The `ChangeEntry.entity_type` vocabulary (see `$lib/utils/changeEntries`). */
-	entity_type: components['schemas']['ChangeEntry']['entity_type'];
-	entity_id: string;
-	entity_name: string;
-	action: 'created' | 'updated' | 'deleted' | 'merged';
-	changes?: Record<string, FieldChange>;
-	user_id?: string;
-	/**
-	 * For a record without a page of its own (a life event, citation, media
-	 * item, ...), the entity whose page presents it.
-	 */
-	parent_entity_type?: 'person' | 'family' | 'source';
-	parent_entity_id?: string;
-	/**
-	 * Set only on branch-scoped person/family history: `branch` for the branch's
-	 * own events, `main` for the mainline events its view inherits.
-	 */
-	origin?: 'main' | 'branch';
-	/**
-	 * Set on a mainline change a merge replayed from a research branch: the
-	 * branch, the merge note, and when the change was originally made.
-	 */
-	merged_from?: MergeOrigin;
-}
-
-export interface ChangeHistoryResponse {
-	items: ChangeEntry[];
-	total: number;
-	limit: number;
-	offset: number;
-	has_more: boolean;
-}
+// History
+export type FieldChange = Schemas['FieldChange'];
+export type ChangeEntry = Schemas['ChangeEntry'];
+export type ChangeHistoryResponse = Schemas['ChangeHistoryResponse'];
 
 /**
  * The genealogy API.
@@ -1811,7 +1144,7 @@ class ApiClient {
 	}
 
 	// Citation template endpoints
-	async listCitationTemplates(sourceType?: string): Promise<CitationTemplateList> {
+	async listCitationTemplates(sourceType?: SourceType): Promise<CitationTemplateList> {
 		const params = sourceType ? `?source_type=${encodeURIComponent(sourceType)}` : '';
 		return this.request<CitationTemplateList>('GET', `/citation-templates${params}`);
 	}
@@ -1874,7 +1207,7 @@ class ApiClient {
 		file: File,
 		title: string,
 		description?: string,
-		mediaType?: string
+		mediaType?: MediaType
 	): Promise<Media> {
 		const formData = new FormData();
 		formData.append('file', file);
@@ -2223,7 +1556,7 @@ class ApiClient {
 	}
 
 	async getAnalysesByFact(
-		factType: string,
+		factType: FactType,
 		subjectId: string
 	): Promise<EvidenceAnalysisResponse[]> {
 		const params = new URLSearchParams({ factType, subjectId });
@@ -2237,7 +1570,7 @@ class ApiClient {
 	async listEvidenceConflicts(params?: {
 		limit?: number;
 		offset?: number;
-		status?: 'open' | 'resolved';
+		status?: ConflictStatus;
 	}): Promise<EvidenceConflictListResponse> {
 		const searchParams = new URLSearchParams();
 		if (params?.limit) searchParams.set('limit', params.limit.toString());
@@ -2366,7 +1699,7 @@ class ApiClient {
 	}
 
 	async getProofSummaryByFact(
-		factType: string,
+		factType: FactType,
 		subjectId: string
 	): Promise<ProofSummaryResponse[]> {
 		const params = new URLSearchParams({ factType, subjectId });

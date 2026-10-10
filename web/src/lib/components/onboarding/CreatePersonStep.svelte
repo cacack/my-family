@@ -2,6 +2,7 @@
 	import { api, type PersonCreate } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
+	import { GENDER_OPTIONS } from '$lib/utils/enumOptions';
 
 	interface Props {
 		onComplete: (data: { personId: string; personName: string }) => void;
@@ -79,9 +80,9 @@
 			<label>
 				Gender
 				<select bind:value={formData.gender}>
-					<option value="unknown">Unknown</option>
-					<option value="male">Male</option>
-					<option value="female">Female</option>
+					{#each GENDER_OPTIONS as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
 				</select>
 			</label>
 		</FormRow>

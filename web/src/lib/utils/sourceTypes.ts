@@ -1,3 +1,5 @@
+import type { SourceType } from '$lib/api/client';
+
 /**
  * Every source type the API accepts (domain.SourceType), in the order the
  * source forms offer them. The API rejects any other value.
@@ -14,7 +16,7 @@ export const SOURCE_TYPES = [
 	{ value: 'interview', label: 'Interview' },
 	{ value: 'correspondence', label: 'Correspondence' },
 	{ value: 'other', label: 'Other' }
-] as const;
+] as const satisfies readonly { value: SourceType; label: string }[];
 
 /** The source type a new source starts with. */
-export const DEFAULT_SOURCE_TYPE = 'other';
+export const DEFAULT_SOURCE_TYPE: SourceType = 'other';

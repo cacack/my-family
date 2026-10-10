@@ -112,7 +112,7 @@
 							</button>
 						{:else}
 							<a
-								href="/browse/places/{encodeURIComponent(place.full_name)}"
+								href="/browse/places/{encodeURIComponent(place.full_name || place.name)}"
 								class="place-item"
 							>
 								<div class="place-info">

@@ -5,7 +5,8 @@
 	import {
 		api,
 		type ResearchLogResponse,
-		type ResearchLogCreateRequest
+		type ResearchLogCreateRequest,
+		type ResearchOutcome
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -15,7 +16,7 @@
 	import { toRFC3339, outcomeBadgeProps } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 
-	const outcomes = ['found', 'not_found', 'inconclusive'] as const;
+	const outcomes: readonly ResearchOutcome[] = ['found', 'not_found', 'inconclusive'];
 
 	let log: ResearchLogResponse | null = $state(null);
 	let loading = $state(true);
@@ -30,7 +31,7 @@
 		subject_type: 'person',
 		repository: '',
 		search_description: '',
-		outcome: 'inconclusive' as 'found' | 'not_found' | 'inconclusive',
+		outcome: 'inconclusive' as ResearchOutcome,
 		notes: '',
 		search_date: new Date().toISOString().split('T')[0]
 	});

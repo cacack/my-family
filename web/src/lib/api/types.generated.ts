@@ -3334,12 +3334,12 @@ export interface components {
              * @description Remove partner 1 from the family. Cannot be combined with partner1_id.
              * @default false
              */
-            clear_partner1: boolean;
+            clear_partner1?: boolean;
             /**
              * @description Remove partner 2 from the family. Cannot be combined with partner2_id.
              * @default false
              */
-            clear_partner2: boolean;
+            clear_partner2?: boolean;
             relationship_type?: components["schemas"]["RelationType"];
             marriage_date?: string;
             marriage_place?: string;
@@ -3420,7 +3420,7 @@ export interface components {
              * @description Whether this is a negative assertion (event did NOT occur)
              * @default false
              */
-            is_negated: boolean;
+            is_negated?: boolean;
             citations?: components["schemas"]["GroupSheetCitation"][];
         };
         /** @description Child entry in family group sheet */
@@ -4034,7 +4034,7 @@ export interface components {
             nickname?: string;
             name_type: components["schemas"]["NameType"];
             /** @default false */
-            is_primary: boolean;
+            is_primary?: boolean;
         };
         PersonNameUpdate: {
             given_name?: string;
@@ -5967,7 +5967,7 @@ export interface components {
              * @description Whether this is a negative assertion (event did NOT occur)
              * @default false
              */
-            is_negated: boolean;
+            is_negated?: boolean;
             /** Format: int64 */
             version?: number;
             /** Format: date-time */

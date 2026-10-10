@@ -170,8 +170,10 @@
 						<dd class="capitalize">{currentMedia.media_type}</dd>
 					{/if}
 
-					<dt>Uploaded</dt>
-					<dd>{formatDate(currentMedia.created_at)}</dd>
+					{#if currentMedia.created_at}
+						<dt>Uploaded</dt>
+						<dd>{formatDate(currentMedia.created_at)}</dd>
+					{/if}
 				</dl>
 
 				{#if allMedia.length > 1}

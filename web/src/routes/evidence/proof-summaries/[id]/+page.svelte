@@ -6,7 +6,9 @@
 		api,
 		type ProofSummaryResponse,
 		type ProofSummaryCreateRequest,
-		type EvidenceAnalysisResponse
+		type EvidenceAnalysisResponse,
+		type FactType,
+		type ResearchStatus
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -14,19 +16,12 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import { formatFactType, subjectRoute } from '$lib/utils/evidence';
+	import { FACT_TYPES, formatFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 
-	const factTypes = [
-		'person_birth', 'person_death', 'person_name', 'person_gender',
-		'family_marriage', 'family_divorce', 'person_burial', 'person_baptism',
-		'person_census', 'person_immigration', 'person_emigration', 'person_naturalization',
-		'person_military', 'person_graduation', 'person_retirement', 'person_occupation',
-		'person_residence', 'person_education', 'person_religion', 'person_title',
-		'person_description', 'person_note', 'family_annulment', 'family_engagement'
-	];
+	const factTypes = FACT_TYPES;
 
-	const researchStatuses = ['certain', 'probable', 'possible', 'unknown'] as const;
+	const researchStatuses: readonly ResearchStatus[] = ['certain', 'probable', 'possible', 'unknown'];
 
 	let summary: ProofSummaryResponse | null = $state(null);
 	let linkedAnalyses: EvidenceAnalysisResponse[] = $state([]);
@@ -38,11 +33,11 @@
 	let isNew = $state(false);
 
 	let formData = $state({
-		fact_type: 'person_birth',
+		fact_type: 'person_birth' as FactType,
 		subject_id: '',
 		conclusion: '',
 		argument: '',
-		research_status: 'unknown' as 'certain' | 'probable' | 'possible' | 'unknown',
+		research_status: 'unknown' as ResearchStatus,
 		analysis_ids: [] as string[]
 	});
 

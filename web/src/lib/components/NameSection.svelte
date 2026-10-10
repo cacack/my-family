@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
 	import ConflictError from './ConflictError.svelte';
+	import { NAME_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 
 	interface Props {
 		personId: string;
@@ -297,12 +298,9 @@
 				<label>
 					Name Type <span class="required">*</span>
 					<select bind:value={formData.name_type} required>
-						<option value="birth">Birth</option>
-						<option value="married">Married</option>
-						<option value="aka">AKA</option>
-						<option value="immigrant">Immigrant</option>
-						<option value="religious">Religious</option>
-						<option value="professional">Professional</option>
+						{#each NAME_TYPE_OPTIONS as option (option.value)}
+							<option value={option.value}>{option.label}</option>
+						{/each}
 					</select>
 				</label>
 			</FormRow>
@@ -374,12 +372,9 @@
 								<label>
 									Name Type <span class="required">*</span>
 									<select bind:value={formData.name_type} required>
-										<option value="birth">Birth</option>
-										<option value="married">Married</option>
-										<option value="aka">AKA</option>
-										<option value="immigrant">Immigrant</option>
-										<option value="religious">Religious</option>
-										<option value="professional">Professional</option>
+										{#each NAME_TYPE_OPTIONS as option (option.value)}
+											<option value={option.value}>{option.label}</option>
+										{/each}
 									</select>
 								</label>
 							</FormRow>

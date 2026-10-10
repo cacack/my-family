@@ -100,20 +100,20 @@
 		return allPlaces
 			.filter(
 				(p) =>
-					p.full_name.toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower)
+					(p.full_name || p.name).toLowerCase().includes(lower) || p.name.toLowerCase().includes(lower)
 			)
 			.slice(0, 10);
 	}
 
 	function selectBirthPlace(place: PlaceEntry) {
-		birthPlace = place.full_name;
+		birthPlace = place.full_name || place.name;
 		showBirthPlaceDropdown = false;
 		birthPlaceHighlight = -1;
 		birthPlaceSuggestions = [];
 	}
 
 	function selectDeathPlace(place: PlaceEntry) {
-		deathPlace = place.full_name;
+		deathPlace = place.full_name || place.name;
 		showDeathPlaceDropdown = false;
 		deathPlaceHighlight = -1;
 		deathPlaceSuggestions = [];

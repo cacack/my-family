@@ -31,7 +31,7 @@
 			result = result.filter((t) => t.category === activeCategory);
 		}
 		if (sourceTypeFilter) {
-			result = result.filter((t) => t.source_types.includes(sourceTypeFilter));
+			result = result.filter((t) => t.source_types.some((st) => st === sourceTypeFilter));
 		}
 		return result;
 	});

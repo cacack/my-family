@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { api, isConflictError, type Media } from '$lib/api/client';
+	import { api, isConflictError, type Media, type MediaType } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import ConflictError from './ConflictError.svelte';
+	import { UPLOAD_MEDIA_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 
 	interface Props {
 		personId: string;
@@ -13,7 +14,7 @@
 	let file: File | null = $state(null);
 	let title = $state('');
 	let description = $state('');
-	let mediaType = $state('photo');
+	let mediaType: MediaType = $state('photo');
 	let dragOver = $state(false);
 	let uploading = $state(false);
 	let error: string | null = $state(null);
@@ -230,9 +231,9 @@
 			<label class="form-field">
 				<span class="field-label">Type</span>
 				<select bind:value={mediaType}>
-					<option value="photo">Photo</option>
-					<option value="document">Document</option>
-					<option value="certificate">Certificate</option>
+					{#each UPLOAD_MEDIA_TYPE_OPTIONS as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
 				</select>
 			</label>
 

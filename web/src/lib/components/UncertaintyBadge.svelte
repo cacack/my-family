@@ -1,8 +1,9 @@
 <script lang="ts">
+	import type { ResearchStatus } from '$lib/api/client';
 	import { Badge } from '$lib/components/ui/badge';
 
 	interface Props {
-		status: 'certain' | 'probable' | 'possible' | 'unknown';
+		status: ResearchStatus;
 		size?: 'small' | 'medium' | 'large';
 		showLabel?: boolean;
 	}

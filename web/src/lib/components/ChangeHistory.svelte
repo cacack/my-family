@@ -106,7 +106,7 @@
 
 		loadingMore = true;
 		try {
-			const nextOffset = history.offset + history.limit;
+			const nextOffset = (history.offset ?? 0) + (history.limit ?? history.items.length);
 			let moreHistory: ChangeHistoryResponse;
 
 			if (entityType && entityId) {

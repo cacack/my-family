@@ -9,7 +9,8 @@
 		type PersonSummary,
 		type RollbackResponse,
 		formatGenDate,
-		formatPersonName
+		formatPersonName,
+		type RelationType
 	} from '$lib/api/client';
 	import AddChildDialog from '$lib/components/AddChildDialog.svelte';
 	import PartnerPickers, { partnerChanges } from '$lib/components/PartnerPickers.svelte';
@@ -25,6 +26,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
+	import { RELATION_TYPE_OPTIONS } from '$lib/utils/enumOptions';
 
 	let family: FamilyDetail | null = $state(null);
 	let loading = $state(true);
@@ -84,7 +86,7 @@
 
 	// Form state
 	let formData = $state({
-		relationship_type: 'unknown' as 'marriage' | 'partnership' | 'unknown',
+		relationship_type: 'unknown' as RelationType,
 		marriage_date: '',
 		marriage_place: ''
 	});
@@ -165,21 +167,20 @@
 		rollbackSuccess = { show: false, message: '' };
 	}
 
-	/** A partner as the picker shows it; a partner with no summary still has a name. */
+	/** A partner as the picker shows it; a partner without a summary keeps its id. */
 	function partnerSummary(
 		id: string | undefined,
-		summary: PersonSummary | undefined,
-		name: string | undefined
+		summary: PersonSummary | undefined
 	): PersonSummary | null {
 		if (!id) return null;
 		if (summary) return summary;
-		return { id, given_name: name ?? '', surname: '' };
+		return { id, given_name: '', surname: '' };
 	}
 
 	function resetForm() {
 		if (family) {
-			partner1 = partnerSummary(family.partner1_id, family.partner1, family.partner1_name);
-			partner2 = partnerSummary(family.partner2_id, family.partner2, family.partner2_name);
+			partner1 = partnerSummary(family.partner1_id, family.partner1);
+			partner2 = partnerSummary(family.partner2_id, family.partner2);
 			formData = {
 				relationship_type: family.relationship_type || 'unknown',
 				marriage_date: family.marriage_date?.raw || '',
@@ -301,8 +302,8 @@
 
 	function getPartnerDisplay(): string {
 		if (!family) return '';
-		const p1 = family.partner1 ? formatPersonName(family.partner1) : family.partner1_name || 'Unknown';
-		const p2 = family.partner2 ? formatPersonName(family.partner2) : family.partner2_name;
+		const p1 = family.partner1 ? formatPersonName(family.partner1) : 'Unknown';
+		const p2 = family.partner2 ? formatPersonName(family.partner2) : undefined;
 		return p2 ? `${p1} & ${p2}` : p1;
 	}
 
@@ -374,9 +375,9 @@
 					<label>
 						Relationship Type
 						<select bind:value={formData.relationship_type}>
-							<option value="unknown">Unknown</option>
-							<option value="marriage">Marriage</option>
-							<option value="partnership">Partnership</option>
+							{#each RELATION_TYPE_OPTIONS as option (option.value)}
+								<option value={option.value}>{option.label}</option>
+							{/each}
 						</select>
 					</label>
 				</FormRow>
@@ -415,20 +416,12 @@
 							<a href="/persons/{family.partner1.id}" class="partner-card">
 								<div class="partner-name">{formatPersonName(family.partner1)}</div>
 							</a>
-						{:else if family.partner1_name}
-							<div class="partner-card">
-								<div class="partner-name">{family.partner1_name}</div>
-							</div>
 						{/if}
 
 						{#if family.partner2}
 							<a href="/persons/{family.partner2.id}" class="partner-card">
 								<div class="partner-name">{formatPersonName(family.partner2)}</div>
 							</a>
-						{:else if family.partner2_name}
-							<div class="partner-card">
-								<div class="partner-name">{family.partner2_name}</div>
-							</div>
 						{/if}
 					</div>
 				</div>

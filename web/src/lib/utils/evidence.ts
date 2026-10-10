@@ -2,8 +2,10 @@
  * Shared utility functions for evidence analysis UI.
  */
 
+import type { FactType } from '$lib/api/client';
+
 /** Every fact type the API accepts (domain.FactType); it rejects any other value. */
-export const FACT_TYPES = [
+export const FACT_TYPES: readonly FactType[] = [
 	'person_birth', 'person_death', 'person_name', 'person_gender',
 	'person_burial', 'person_cremation', 'person_baptism', 'person_christening',
 	'person_emigration', 'person_immigration', 'person_naturalization', 'person_census',
@@ -13,6 +15,11 @@ export const FACT_TYPES = [
 	'family_marriage_license', 'family_marriage_settlement', 'family_annulment',
 	'family_engagement'
 ];
+
+/** Narrow an arbitrary string (a URL parameter, say) to a fact type the API accepts. */
+export function isFactType(value: string): value is FactType {
+	return (FACT_TYPES as readonly string[]).includes(value);
+}
 
 /** The fact types of a person (person_*). */
 export const PERSON_FACT_TYPES = FACT_TYPES.filter((t) => t.startsWith('person_'));

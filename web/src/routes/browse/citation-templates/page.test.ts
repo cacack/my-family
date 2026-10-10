@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import Page from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+import type { CitationTemplateList } from '$lib/api/client';
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -14,7 +15,7 @@ vi.mock('$lib/api/client', async (importOriginal) => {
 	};
 });
 
-const mockTemplates = {
+const mockTemplates: CitationTemplateList = {
 	templates: [
 		{
 			id: 'census.us.federal',

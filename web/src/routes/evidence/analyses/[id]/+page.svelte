@@ -5,7 +5,9 @@
 	import {
 		api,
 		type EvidenceAnalysisResponse,
-		type EvidenceAnalysisCreateRequest
+		type EvidenceAnalysisCreateRequest,
+		type FactType,
+		type ResearchStatus
 	} from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -13,14 +15,14 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
-	import { FACT_TYPES, formatFactType, subjectRoute } from '$lib/utils/evidence';
+	import { FACT_TYPES, formatFactType, isFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
 
 	// Every fact type the API accepts, so a fact the merge review links here
 	// (#838) is always offered.
 	const factTypes = FACT_TYPES;
 
-	const researchStatuses = ['certain', 'probable', 'possible', 'unknown'] as const;
+	const researchStatuses: readonly ResearchStatus[] = ['certain', 'probable', 'possible', 'unknown'];
 
 	let analysis: EvidenceAnalysisResponse | null = $state(null);
 	let loading = $state(true);
@@ -35,8 +37,8 @@
 	 * analysis", #838) when the form offers it; otherwise a default that fits
 	 * the subject - a family's marriage, a person's birth.
 	 */
-	function initialFactType(factType: string, subjectType: string): string {
-		if (factTypes.includes(factType)) return factType;
+	function initialFactType(factType: string, subjectType: string): FactType {
+		if (isFactType(factType)) return factType;
 		return subjectType === 'family' ? 'family_marriage' : 'person_birth';
 	}
 
@@ -45,7 +47,7 @@
 			fact_type: initialFactType(factType, subjectType),
 			subject_id: subjectId,
 			conclusion: '',
-			research_status: 'unknown' as 'certain' | 'probable' | 'possible' | 'unknown',
+			research_status: 'unknown' as ResearchStatus,
 			notes: '',
 			citation_ids: [] as string[]
 		};
@@ -75,7 +77,7 @@
 			error = null;
 			newCitationId = '';
 			formData = emptyFormData(urlSubjectId ?? '', urlFactType ?? '', urlSubjectType ?? '');
-			if (urlFactType && !factTypes.includes(urlFactType)) unknownFactType = urlFactType;
+			if (urlFactType && !isFactType(urlFactType)) unknownFactType = urlFactType;
 			isNew = true;
 			editing = true;
 			loading = false;
