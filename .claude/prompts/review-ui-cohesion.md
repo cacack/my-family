@@ -36,6 +36,14 @@ Script it with Playwright (`browser_run_code_unsafe` or a scratch script) and re
 - Back/forward, deep-link reload, active-nav highlighting on nested routes
 - Visualisations (pedigree, descendancy, map): pan/zoom, fit to container, resize
 
+## Deeper tracks (run in parallel, each with its own server port + DB; observe-only, then triage)
+
+1. **Visualizations & map**: fit on first load (root visible, readable), zoom/pan/reset, touch emulation (`hasTouch`, `isMobile`), resize after load, collapse/expand, node click → re-root + back/forward, large trees (Victoria Hanover descendancy), map offline (block CDN), tooltips at edges.
+2. **Accessibility & modes**: axe-core (`@axe-core/playwright`, wcag2a/2aa/21aa) on every route; keyboard (skip link, focus visible, dialogs restore focus, shortcuts don't fire in inputs); Accessibility panel modes (high contrast, Large/Larger font: verify text *actually* scales) swept for overflow; 640px as a 200%-zoom proxy; titles, one h1, landmarks, live regions.
+3. **States, flows & errors**: empty DB on every route; malformed/unknown ids and `/nope`; `page.route` 500s and aborts (does failure look like "no data"?); CRUD end-to-end **verified via the API** (did it actually save? can a field be cleared?); two-tab conflict; branch banner; URL/state sync on back/reload; link crawl; search totals; import/export.
+
+Contract bugs (form option values the backend rejects, hand-written client types drifting from `types.generated.ts`) only show up when you check the API after a UI action. Always do that.
+
 ## Cohesion
 
 Compare across pages: page header/title pattern, container width and padding, empty/loading/error states, button styles (shadcn `Button` vs ad-hoc), table vs card lists, hard-coded colors vs theme tokens.
