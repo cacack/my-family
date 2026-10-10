@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import SearchPage from './+page.svelte';
 import * as apiModule from '$lib/api/client';
+import { back, currentPath, historyLength, resetRouter } from '$lib/test/fakeRouter';
 
 // Mock the API module
 vi.mock('$lib/api/client', async (importOriginal) => {
@@ -56,10 +57,14 @@ const mockPlaces: apiModule.PlaceIndexResponse = {
 	total: 3
 };
 
+vi.mock('$app/stores', async () => (await import('$lib/test/fakeRouter')).appStores);
+vi.mock('$app/navigation', async () => (await import('$lib/test/fakeRouter')).appNavigation);
+
 describe('Advanced Search Page', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 		vi.clearAllMocks();
+		resetRouter('/search');
 		// Default: places load returns empty so autocomplete doesn't interfere
 		vi.mocked(apiModule.api.getPlaceHierarchy).mockResolvedValue({ items: [], total: 0 });
 		vi.mocked(apiModule.api.searchPersons).mockResolvedValue(mockSearchResults);
@@ -840,6 +845,142 @@ describe('Advanced Search Page', () => {
 				expect(errorEl).not.toBeNull();
 				expect(errorEl?.textContent).toBe('Server error');
 			});
+		});
+	});
+
+	// ─── URL state (#901) ───
+
+	describe('URL state', () => {
+		const nameInput = () =>
+			screen.getByPlaceholderText('Name (e.g., Smith, John Smith)') as HTMLInputElement;
+
+		async function search(name: string) {
+			await fireEvent.input(nameInput(), { target: { value: name } });
+			await fireEvent.click(screen.getByText('Search').closest('button')!);
+			await vi.advanceTimersByTimeAsync(0);
+		}
+
+		it('runs the search a URL describes and fills the form from it', async () => {
+			resetRouter(
+				'/search?q=Smith&soundex=1&birth_from=1850&death_place=Ohio&sort=name&order=asc&limit=40'
+			);
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(apiModule.api.searchPersons).toHaveBeenCalledWith({
+				q: 'Smith',
+				soundex: true,
+				birth_date_from: '1850-01-01',
+				death_place: 'Ohio',
+				sort: 'name',
+				order: 'asc',
+				limit: 40
+			});
+			expect(nameInput().value).toBe('Smith');
+			expect(screen.getByRole('button', { name: 'Phonetic' }).getAttribute('aria-pressed')).toBe('true');
+			await waitFor(() => expect(screen.getByText('Showing 3 of 3 results')).toBeDefined());
+		});
+
+		it('does not search when the URL has no criteria', async () => {
+			resetRouter('/search?sort=name');
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(apiModule.api.searchPersons).not.toHaveBeenCalled();
+		});
+
+		it('pushes each submitted search, so Back returns to the previous one', async () => {
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+
+			await search('Smith');
+			expect(currentPath()).toBe('/search?q=Smith');
+			await search('Jones');
+			expect(currentPath()).toBe('/search?q=Jones');
+			expect(historyLength()).toBe(3);
+
+			vi.mocked(apiModule.api.searchPersons).mockClear();
+			back();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(nameInput().value).toBe('Smith');
+			expect(apiModule.api.searchPersons).toHaveBeenCalledWith(
+				expect.objectContaining({ q: 'Smith' })
+			);
+
+			back();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(nameInput().value).toBe('');
+			expect(screen.queryByText(/Showing \d+ of/)).toBeNull();
+		});
+
+		it('replaces on sort, order and load more', async () => {
+			const { container } = render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			await search('Smith');
+
+			const sortSelect = container.querySelector('.sort-controls select') as HTMLSelectElement;
+			await fireEvent.change(sortSelect, { target: { value: 'birth_date' } });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date');
+
+			await fireEvent.click(container.querySelector('.order-btn') as HTMLButtonElement);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date&order=asc');
+
+			vi.mocked(apiModule.api.searchPersons).mockResolvedValue({ ...mockSearchResults, total: 50 });
+			await fireEvent.click(container.querySelector('.order-btn') as HTMLButtonElement);
+			await vi.advanceTimersByTimeAsync(0);
+			await fireEvent.click(screen.getByText('Load more'));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(currentPath()).toBe('/search?q=Smith&sort=birth_date&limit=40');
+
+			expect(historyLength()).toBe(2);
+		});
+
+		it('re-runs an unchanged search when submitted again', async () => {
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			await search('Smith');
+			vi.mocked(apiModule.api.searchPersons).mockClear();
+
+			await fireEvent.click(screen.getByText('Search').closest('button')!);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(apiModule.api.searchPersons).toHaveBeenCalledTimes(1);
+			expect(historyLength()).toBe(2);
+		});
+
+		it('caps a hand-edited limit at the API maximum', async () => {
+			resetRouter('/search?q=Smith&limit=100000');
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(apiModule.api.searchPersons).toHaveBeenCalledWith(expect.objectContaining({ limit: 100 }));
+		});
+
+		it('ignores a search that resolves after Back to a newer URL', async () => {
+			let resolveSlow: (r: apiModule.SearchResults) => void = () => {};
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			await search('Smith');
+			vi.mocked(apiModule.api.searchPersons).mockReturnValueOnce(
+				new Promise((r) => (resolveSlow = r))
+			);
+			await search('Jones');
+
+			back();
+			await vi.advanceTimersByTimeAsync(0);
+			await waitFor(() => expect(screen.getByText('Showing 3 of 3 results')).toBeDefined());
+			resolveSlow({ items: [mockSearchResults.items[0]], total: 1 });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(nameInput().value).toBe('Smith');
+			expect(screen.getByText('Showing 3 of 3 results')).toBeDefined();
+		});
+
+		it('Clear All returns to a clean URL', async () => {
+			render(SearchPage);
+			await vi.advanceTimersByTimeAsync(0);
+			await search('Smith');
+			await fireEvent.click(screen.getByText('Clear All'));
+			await vi.advanceTimersByTimeAsync(0);
+			expect(currentPath()).toBe('/search');
 		});
 	});
 });

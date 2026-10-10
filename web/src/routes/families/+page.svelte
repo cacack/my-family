@@ -1,17 +1,24 @@
 <script lang="ts">
+	import { page } from '$app/stores';
 	import { api, type FamilyDetail } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
+	import { readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let families: FamilyDetail[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
 	let loadError: string | null = $state(null);
-	let currentPage = $state(1);
 	const pageSize = 20;
+	// The page lives in the URL (see urlState.ts), so Back and reload restore it.
+	const currentPage = $derived(readPositiveInt($page.url.searchParams, 'page', 1));
+
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
 
 	async function loadFamilies() {
+		const seq = ++loadSeq;
 		loading = true;
 		loadError = null;
 		try {
@@ -19,28 +26,28 @@
 				limit: pageSize,
 				offset: (currentPage - 1) * pageSize
 			});
+			if (seq !== loadSeq) return;
 			families = result.items;
 			total = result.total;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load families:', e);
 			loadError = 'Failed to load families. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
+	}
+
+	function goToPage(n: number) {
+		setQuery($page.url, { page: n }, { push: true, defaults: { page: 1 } });
 	}
 
 	function prevPage() {
-		if (currentPage > 1) {
-			currentPage--;
-			loadFamilies();
-		}
+		if (currentPage > 1) goToPage(currentPage - 1);
 	}
 
 	function nextPage() {
-		if (currentPage * pageSize < total) {
-			currentPage++;
-			loadFamilies();
-		}
+		if (currentPage * pageSize < total) goToPage(currentPage + 1);
 	}
 
 	$effect(() => {

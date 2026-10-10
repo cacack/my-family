@@ -1,22 +1,35 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { api, type Person, type ResearchStatus } from '$lib/api/client';
+	import { api, type Person } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import PersonCard from '$lib/components/PersonCard.svelte';
 	import { RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
+	import { readEnum, readPositiveInt, setQuery } from '$lib/utils/urlState';
 
 	let persons: Person[] = $state([]);
 	let total = $state(0);
 	let loading = $state(true);
 	let loadError: string | null = $state(null);
-	let currentPage = $state(1);
-	let sort = $state<'surname' | 'given_name' | 'birth_date' | 'updated_at'>('surname');
-	let order = $state<'asc' | 'desc'>('asc');
-	let researchStatusFilter = $state<ResearchStatus | 'unset' | ''>('');
 	const pageSize = 20;
 
+	// Sort, filter and page live in the URL (see urlState.ts), so Back, reload
+	// and a copied link restore the list.
+	const SORTS = ['surname', 'given_name', 'birth_date', 'updated_at'] as const;
+	const STATUSES = ['', 'unset', ...RESEARCH_STATUS_OPTIONS.map((o) => o.value)] as const;
+	const DEFAULTS = { sort: 'surname', order: 'asc', status: '', page: 1 } as const;
+
+	const params = $derived($page.url.searchParams);
+	const sort = $derived(readEnum(params, 'sort', SORTS, DEFAULTS.sort));
+	const order = $derived(readEnum(params, 'order', ['asc', 'desc'] as const, DEFAULTS.order));
+	const researchStatusFilter = $derived(readEnum(params, 'status', STATUSES, DEFAULTS.status));
+	const currentPage = $derived(readPositiveInt(params, 'page', DEFAULTS.page));
+
+	// Back/Forward can start loads faster than they finish: only the latest one may land.
+	let loadSeq = 0;
+
 	async function loadPersons() {
+		const seq = ++loadSeq;
 		loading = true;
 		loadError = null;
 		try {
@@ -27,47 +40,45 @@
 				order,
 				research_status: researchStatusFilter || undefined
 			});
+			if (seq !== loadSeq) return;
 			persons = result.items;
 			total = result.total;
 		} catch (e) {
+			if (seq !== loadSeq) return;
 			console.error('Failed to load persons:', e);
 			loadError = 'Failed to load people. Please try again.';
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
+	}
+
+	// Sort and filter refine the view (replace); a filter change starts at page 1.
+	function refine(updates: Record<string, string>) {
+		setQuery($page.url, { ...updates, page: 1 }, { defaults: DEFAULTS });
+	}
+
+	function goToPage(n: number) {
+		setQuery($page.url, { page: n }, { push: true, defaults: DEFAULTS });
 	}
 
 	function handleSortChange(e: Event) {
-		const select = e.target as HTMLSelectElement;
-		sort = select.value as typeof sort;
-		currentPage = 1;
-		loadPersons();
+		refine({ sort: (e.target as HTMLSelectElement).value });
 	}
 
 	function handleOrderChange() {
-		order = order === 'asc' ? 'desc' : 'asc';
-		loadPersons();
+		setQuery($page.url, { order: order === 'asc' ? 'desc' : 'asc' }, { defaults: DEFAULTS });
 	}
 
 	function handleStatusFilterChange(e: Event) {
-		const select = e.target as HTMLSelectElement;
-		researchStatusFilter = select.value as typeof researchStatusFilter;
-		currentPage = 1;
-		loadPersons();
+		refine({ status: (e.target as HTMLSelectElement).value });
 	}
 
 	function prevPage() {
-		if (currentPage > 1) {
-			currentPage--;
-			loadPersons();
-		}
+		if (currentPage > 1) goToPage(currentPage - 1);
 	}
 
 	function nextPage() {
-		if (currentPage * pageSize < total) {
-			currentPage++;
-			loadPersons();
-		}
+		if (currentPage * pageSize < total) goToPage(currentPage + 1);
 	}
 
 	$effect(() => {
@@ -97,11 +108,7 @@
 		<button
 			class="chip"
 			class:chip-active={researchStatusFilter === 'possible'}
-			onclick={() => {
-				researchStatusFilter = researchStatusFilter === 'possible' ? '' : 'possible';
-				currentPage = 1;
-				loadPersons();
-			}}
+			onclick={() => refine({ status: researchStatusFilter === 'possible' ? '' : 'possible' })}
 		>
 			Quick Captures
 		</button>

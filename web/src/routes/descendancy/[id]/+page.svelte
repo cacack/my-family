@@ -3,13 +3,18 @@
 	import { goto } from '$app/navigation';
 	import { api, type Descendancy, type DescendancyNode } from '$lib/api/client';
 	import DescendancyChart, { type LayoutMode } from '$lib/components/DescendancyChart.svelte';
+	import { CHART_DEFAULTS, readChartOptions, setQuery } from '$lib/utils/urlState';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
 
 	let descendancy: Descendancy | null = $state(null);
 	let error: string | null = $state(null);
 	let loading = $state(true);
-	let generations = $state(4);
-	let layout: LayoutMode = $state('compact');
+	// Generations and layout live in the URL (see urlState.ts), so reload, Back
+	// and a copied link keep them; both refine the view, so they replace.
+	const personId = $derived($page.params.id);
+	const chartOptions = $derived(readChartOptions($page.url.searchParams));
+	const generations = $derived(chartOptions.generations);
+	const layout: LayoutMode = $derived(chartOptions.layout);
 	let chart: DescendancyChart;
 	let selectedPersonId: string | null = $state(null);
 	let announceMessage: string = $state('');
@@ -159,21 +164,20 @@
 		}
 	}
 
-	function handlePersonClick(personId: string) {
-		goto(`/descendancy/${personId}`);
+	// Re-rooting the chart keeps the current options.
+	function handlePersonClick(id: string) {
+		goto(`/descendancy/${id}${$page.url.search}`);
+	}
+
+	function setChartOption(updates: { gens?: number; layout?: LayoutMode }) {
+		setQuery($page.url, updates, { defaults: CHART_DEFAULTS });
 	}
 
 	function handleGenerationsChange(e: Event) {
-		const select = e.target as HTMLSelectElement;
-		generations = parseInt(select.value, 10);
-		const personId = $page.params.id;
-		if (personId) {
-			loadDescendancy(personId, generations);
-		}
+		setChartOption({ gens: parseInt((e.target as HTMLSelectElement).value, 10) });
 	}
 
 	$effect(() => {
-		const personId = $page.params.id;
 		if (personId) {
 			loadDescendancy(personId, generations);
 		}
@@ -215,21 +219,21 @@
 			<div class="layout-toggle">
 				<button
 					class:active={layout === 'compact'}
-					onclick={() => (layout = 'compact')}
+					onclick={() => setChartOption({ layout: 'compact' })}
 					title="Compact layout"
 				>
 					Compact
 				</button>
 				<button
 					class:active={layout === 'standard'}
-					onclick={() => (layout = 'standard')}
+					onclick={() => setChartOption({ layout: 'standard' })}
 					title="Standard layout"
 				>
 					Standard
 				</button>
 				<button
 					class:active={layout === 'wide'}
-					onclick={() => (layout = 'wide')}
+					onclick={() => setChartOption({ layout: 'wide' })}
 					title="Wide layout"
 				>
 					Wide
