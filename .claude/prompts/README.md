@@ -10,6 +10,7 @@ Quality enhancement prompts for Claude Code during feature implementation.
 | [implement-with-gps.md](./implement-with-gps.md) | Implement GPS-compliant source/citation/evidence support |
 | [implement-git-workflow.md](./implement-git-workflow.md) | Add versioning, audit trail, branching capabilities |
 | [review-accessibility.md](./review-accessibility.md) | Check components for a11y compliance |
+| [review-ui-cohesion.md](./review-ui-cohesion.md) | Drive the running app with Playwright; find layout/nav/consistency defects, fix or card |
 | [write-tests.md](./write-tests.md) | Generate tests following project patterns |
 | [bring-to-life.md](./bring-to-life.md) | Enhance engagement and storytelling features |
 
@@ -37,6 +38,7 @@ Use with `/create-prompt` during feature implementation:
 - **implement-with-gps**: For features involving sources, citations, evidence analysis
 - **implement-git-workflow**: For features needing versioning, history, rollback
 - **review-accessibility**: After UI implementation, before PR
+- **review-ui-cohesion**: After a frontend milestone, or when layouts/navigation feel off
 - **write-tests**: After implementation, to ensure coverage
 - **bring-to-life**: For features with narrative, timeline, or engagement aspects
 
