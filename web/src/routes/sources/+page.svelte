@@ -170,6 +170,7 @@
 					value={searchQuery}
 					oninput={handleSearchInput}
 					placeholder="Search sources..."
+					aria-label="Search sources"
 					class="search-input"
 				/>
 			</div>
@@ -181,7 +182,12 @@
 					<option value="citation_count">Citations</option>
 				</select>
 			</label>
-			<button class="order-btn" onclick={handleOrderChange} title="Toggle sort order">
+			<button
+				class="order-btn"
+				onclick={handleOrderChange}
+				title="Toggle sort order"
+				aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
+			>
 				{#if order === 'asc'}
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M12 5v14M5 12l7-7 7 7" />
@@ -202,7 +208,7 @@
 				<h2>Add New Source</h2>
 
 				{#if error}
-					<div class="form-error">{error}</div>
+					<div class="form-error" role="alert">{error}</div>
 				{/if}
 
 				<div class="form-row">

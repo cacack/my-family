@@ -301,6 +301,22 @@ describe('Person detail edit form', () => {
 		expect(body.gender).toBe('unknown');
 	});
 
+	it('moves focus into the form on Edit and back to Edit on Cancel', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Given Name')));
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+	});
+
+	it('returns focus to Edit after a save', async () => {
+		getPerson.mockResolvedValue(person());
+		await openEdit();
+		await save();
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+	});
+
 	it('sends no gender when it is untouched', async () => {
 		getPerson.mockResolvedValue(person());
 		await openEdit();

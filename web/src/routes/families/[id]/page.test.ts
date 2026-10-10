@@ -327,6 +327,16 @@ describe('Family Detail Page: partners and children (#826)', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
 	}
 
+	it('moves focus into the form on Edit and back to Edit on Cancel', async () => {
+		await openEdit();
+		await waitFor(() =>
+			expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' }))
+		);
+
+		await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Edit' })));
+	});
+
 	it('shows the current partners in the edit form', async () => {
 		await openEdit();
 		expect(screen.getByRole('button', { name: 'Clear Partner 1: John Smith' })).toBeDefined();

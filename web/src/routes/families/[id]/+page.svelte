@@ -187,15 +187,32 @@
 		}
 	}
 
+	// The Edit button and the form replace each other, so focus is moved
+	// explicitly or it falls to the page body.
+	let editButton: HTMLElement | null = $state(null);
+	let editForm: HTMLFormElement | null = $state(null);
+
+	async function focusFirstField() {
+		await tick();
+		editForm?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
+	}
+
+	async function focusEditButton() {
+		await tick();
+		editButton?.focus();
+	}
+
 	function startEdit() {
 		resetForm();
 		saveError = null;
 		editing = true;
+		focusFirstField();
 	}
 
 	function cancelEdit() {
 		resetForm();
 		editing = false;
+		focusEditButton();
 	}
 
 	async function saveFamily() {
@@ -218,6 +235,7 @@
 			});
 			await refreshFamily(family.id);
 			editing = false;
+			focusEditButton();
 			announce('Family saved');
 		} catch (e) {
 			saveError = (e as { message?: string }).message || 'Failed to save';
@@ -330,7 +348,7 @@
 		{#if family && !editing}
 			<div class="actions">
 				<Button variant="outline" href="/families/{family.id}/group-sheet">Group Sheet</Button>
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
+				<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
 				<Button variant="destructive" onclick={deleteFamily}>Delete</Button>
 			</div>
 		{/if}
@@ -342,7 +360,7 @@
 		<div class="error">{error}</div>
 	{:else if family}
 		{#if editing}
-			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); saveFamily(); }}>
+			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); saveFamily(); }}>
 				<h2 class="edit-title">{getPartnerDisplay()}</h2>
 
 				<PartnerPickers bind:partner1 bind:partner2 excludeIds={childIds} disabled={saving} />

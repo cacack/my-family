@@ -125,7 +125,12 @@
 					<option value="updated_at">Last Updated</option>
 				</select>
 			</label>
-			<button class="order-btn" onclick={handleOrderChange} title="Toggle sort order">
+			<button
+				class="order-btn"
+				onclick={handleOrderChange}
+				title="Toggle sort order"
+				aria-label="Sort order: {order === 'asc' ? 'ascending' : 'descending'}"
+			>
 				{#if order === 'asc'}
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M12 5v14M5 12l7-7 7 7" />

@@ -48,6 +48,13 @@ describe('Sources page', () => {
 		expect(API_SOURCE_TYPES).toContain(body.source_type);
 	});
 
+	it('names the search box and says the current sort direction', async () => {
+		render(SourcesPage);
+		expect(screen.getByRole('textbox', { name: 'Search sources' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: 'Sort order: ascending' }));
+		expect(screen.getByRole('button', { name: 'Sort order: descending' })).toBeTruthy();
+	});
+
 	it('shows a load failure as an error with Retry, not as an empty list', async () => {
 		vi.mocked(apiModule.api.listSources).mockRejectedValueOnce(new Error('boom'));
 		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { api, type PersonDetail, type ChangeHistoryResponse, type Media, type ResearchStatus, type RollbackResponse, formatGenDate, formatPersonName } from '$lib/api/client';
@@ -221,14 +222,31 @@
 		}
 	}
 
+	// The Edit button and the form replace each other, so focus is moved
+	// explicitly or it falls to the page body.
+	let editButton: HTMLElement | null = $state(null);
+	let editForm: HTMLFormElement | null = $state(null);
+
+	async function focusFirstField() {
+		await tick();
+		editForm?.querySelector<HTMLElement>('input, select, textarea, button')?.focus();
+	}
+
+	async function focusEditButton() {
+		await tick();
+		editButton?.focus();
+	}
+
 	function startEdit() {
 		resetForm();
 		editing = true;
+		focusFirstField();
 	}
 
 	function cancelEdit() {
 		resetForm();
 		editing = false;
+		focusEditButton();
 	}
 
 	async function savePerson() {
@@ -255,6 +273,7 @@
 			});
 			await loadPerson(person.id);
 			editing = false;
+			focusEditButton();
 		} catch (e) {
 			error = (e as { message?: string }).message || 'Failed to save';
 		} finally {
@@ -314,7 +333,7 @@
 			<div class="actions">
 				<Button variant="outline" href="/pedigree/{person.id}">Pedigree</Button>
 				<Button variant="outline" href="/ahnentafel/{person.id}">Ahnentafel</Button>
-				<Button variant="outline" onclick={startEdit}>Edit</Button>
+				<Button variant="outline" onclick={startEdit} bind:ref={editButton}>Edit</Button>
 				<Button variant="destructive" onclick={deletePerson}>Delete</Button>
 			</div>
 		{/if}
@@ -326,7 +345,7 @@
 		<div class="error">{error}</div>
 	{:else if person}
 		{#if editing}
-			<form class="edit-form" onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
+			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
 				<div class="form-row">
 					<label>
 						Given Name
