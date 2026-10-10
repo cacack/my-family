@@ -91,3 +91,33 @@ for (const width of WIDTHS) {
 		});
 	});
 }
+
+// The grouped nav exists so the header fits on one row from 1024px up; a new
+// top-level link that breaks that should fail here, not in a screenshot review.
+for (const width of [1024, 1280, 1440]) {
+	test(`header is a single row at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 900 });
+		await page.goto('/');
+		await page.waitForLoadState('networkidle');
+
+		const rows = await page.evaluate(() =>
+			[...document.querySelectorAll('.app-header > *')].map((el) => {
+				const r = el.getBoundingClientRect();
+				return { top: r.top, bottom: r.bottom };
+			})
+		);
+		const lowestTop = Math.max(...rows.map((r) => r.top));
+		const highestBottom = Math.min(...rows.map((r) => r.bottom));
+		expect(lowestTop, 'header items wrapped onto a second row').toBeLessThan(highestBottom);
+	});
+}
+
+test('every nav destination is two taps away on a phone', async ({ page }) => {
+	await page.setViewportSize({ width: 375, height: 900 });
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	await page.getByRole('button', { name: 'Menu' }).click();
+	await page.getByRole('menuitem', { name: 'Citation Templates' }).click();
+	await expect(page).toHaveURL(/\/browse\/citation-templates$/);
+});
