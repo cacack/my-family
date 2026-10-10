@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type Descendancy, type DescendancyNode } from '$lib/api/client';
+	import { api, recordLoadError, type Descendancy, type DescendancyNode } from '$lib/api/client';
 	import DescendancyChart, { type LayoutMode } from '$lib/components/DescendancyChart.svelte';
 	import { createShortcutHandler } from '$lib/keyboard/useShortcuts.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let descendancy: Descendancy | null = $state(null);
 	let error: string | null = $state(null);
@@ -146,12 +147,7 @@
 				selectedPersonId = descendancy.root.id;
 			}
 		} catch (e) {
-			const apiError = e as { message?: string; status?: number };
-			// A malformed id (400) and an unknown one (404) both mean there is no such person
-			error =
-				apiError.status === 400 || apiError.status === 404
-					? 'Person not found'
-					: apiError.message || 'Failed to load descendancy';
+			error = recordLoadError(e, 'person');
 			descendancy = null;
 			selectedPersonId = null;
 		} finally {
@@ -247,7 +243,7 @@
 		{#if loading}
 			<div class="loading">Loading descendancy...</div>
 		{:else if error}
-			<div class="error">{error}</div>
+			<ErrorState message={error} onRetry={() => loadDescendancy($page.params.id ?? '', generations)} />
 		{:else if descendancy}
 			<div class="chart-area">
 				<DescendancyChart
@@ -422,7 +418,6 @@
 	}
 
 	.loading,
-	.error,
 	.empty {
 		display: flex;
 		align-items: center;
@@ -430,10 +425,6 @@
 		height: 100%;
 		color: #64748b;
 		font-size: 1rem;
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	.chart-info {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api, type PlaceEntry } from '$lib/api/client';
+	import ErrorState from './ErrorState.svelte';
 
 	let places: PlaceEntry[] = $state([]);
 	let breadcrumb: string[] = $state([]);
@@ -55,10 +56,7 @@
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading places...</div>
 	{:else if error}
-		<div class="error" role="alert">
-			<p>{error}</p>
-			<button onclick={() => loadPlaces(failedParent)}>Retry</button>
-		</div>
+		<ErrorState message={error} onRetry={() => loadPlaces(failedParent)} />
 	{:else}
 		<!-- Breadcrumb Navigation -->
 		<nav class="breadcrumb" aria-label="Place hierarchy">
@@ -146,26 +144,6 @@
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
-	}
-
-	.error {
-		text-align: center;
-		padding: 2rem;
-		color: #dc2626;
-	}
-
-	.error button {
-		margin-top: 1rem;
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-	}
-
-	.error button:hover {
-		background: #f1f5f9;
 	}
 
 	.breadcrumb {

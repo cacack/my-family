@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import FamilyCard from '$lib/components/FamilyCard.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let families: FamilyDetail[] = $state([]);
 	let total = $state(0);
@@ -60,10 +61,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if loadError}
-		<div class="load-error" role="alert">
-			<p>{loadError}</p>
-			<Button variant="outline" onclick={loadFamilies}>Retry</Button>
-		</div>
+		<ErrorState message={loadError} onRetry={loadFamilies} />
 	{:else if families.length === 0}
 		<div class="empty">
 			<p>No families found.</p>
@@ -101,16 +99,6 @@
 	}
 
 	.empty p {
-		margin: 0 0 1rem;
-	}
-
-	.load-error {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.load-error p {
 		margin: 0 0 1rem;
 	}
 

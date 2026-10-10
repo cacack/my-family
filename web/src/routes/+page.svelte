@@ -6,9 +6,9 @@
 	import { onboardingState } from '$lib/stores/onboardingSettings.svelte';
 	import OnboardingWizard from '$lib/components/onboarding/OnboardingWizard.svelte';
 	import { Card, CardHeader, CardContent } from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	/**
 	 * The onboarding wizard is for an empty *database*. On a research branch the
@@ -85,10 +85,7 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if loadError}
-		<div class="load-error" role="alert">
-			<p>{loadError}</p>
-			<Button variant="outline" onclick={loadDashboard}>Retry</Button>
-		</div>
+		<ErrorState message={loadError} onRetry={loadDashboard} />
 	{:else}
 		<MainlineNotice
 			message="On a research branch, the people and family counts and the recent people and families follow your branch, but research suggestions still come from the mainline."
@@ -226,16 +223,6 @@
 		text-align: center;
 		padding: 3rem;
 		color: #64748b;
-	}
-
-	.load-error {
-		text-align: center;
-		padding: 3rem;
-		color: #dc2626;
-	}
-
-	.load-error p {
-		margin: 0 0 1rem;
 	}
 
 	.stats {

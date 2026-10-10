@@ -2,10 +2,12 @@
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { api, type RepositoryDetail, type Address } from '$lib/api/client';
+	import { api, recordLoadError, type RepositoryDetail, type Address } from '$lib/api/client';
 	import ExternalLinks from '$lib/components/ExternalLinks.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import FormRow from '$lib/components/FormRow.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
+	import ActionError from '$lib/components/ActionError.svelte';
 
 	let repository: RepositoryDetail | null = $state(null);
 	let loading = $state(true);
@@ -38,7 +40,7 @@
 			repository = await api.getRepository(id);
 			resetForm();
 		} catch (e) {
-			error = (e as { message?: string }).message || 'Failed to load repository';
+			error = recordLoadError(e, 'repository');
 			repository = null;
 		} finally {
 			loading = false;
@@ -183,8 +185,12 @@
 	{#if loading}
 		<div class="loading">Loading...</div>
 	{:else if error && !repository}
-		<div class="error">{error}</div>
+		<ErrorState message={error} onRetry={() => loadRepository($page.params.id ?? '')} />
 	{:else if repository}
+		<!-- In the form, the error shows in it; out of it, a failed delete shows here. -->
+		{#if error && !editing}
+			<ActionError message={error} />
+		{/if}
 		{#if editing}
 			<form class="entity-form" onsubmit={(e) => { e.preventDefault(); saveRepository(); }}>
 				{#if error}
@@ -343,15 +349,10 @@
 		gap: 0.5rem;
 	}
 
-	.loading,
-	.error {
+	.loading {
 		text-align: center;
 		padding: 3rem;
 		color: #64748b;
-	}
-
-	.error {
-		color: #dc2626;
 	}
 
 	.repository-detail {

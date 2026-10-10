@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		api,
+		recordLoadError,
 		type ProofSummaryResponse,
 		type ProofSummaryCreateRequest,
 		type EvidenceAnalysisResponse,
@@ -18,6 +19,7 @@
 	import UncertaintyBadge from '$lib/components/UncertaintyBadge.svelte';
 	import { FACT_TYPES, formatFactType, subjectRoute } from '$lib/utils/evidence';
 	import { nativeSelectClass } from '$lib/utils/forms';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	const factTypes = FACT_TYPES;
 
@@ -88,7 +90,7 @@
 			}
 		} catch (e) {
 			if (seq !== loadSeq) return;
-			error = (e as { message?: string }).message || 'Failed to load proof summary';
+			error = recordLoadError(e, 'proof summary');
 			summary = null;
 		} finally {
 			if (seq === loadSeq) loading = false;
@@ -247,10 +249,7 @@
 	{#if loading}
 		<div class="p-12 text-center text-slate-500">Loading...</div>
 	{:else if error && !summary && !isNew}
-		<div class="p-12 text-center text-red-600">
-			<p class="m-0 mb-4">{error}</p>
-			<Button variant="outline" onclick={() => loadSummary($page.params.id!)}>Retry</Button>
-		</div>
+		<ErrorState message={error} onRetry={() => loadSummary($page.params.id!)} />
 	{:else if editing}
 		<form
 			class="rounded-xl border border-slate-200 bg-white p-6"

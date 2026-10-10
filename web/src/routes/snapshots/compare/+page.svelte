@@ -38,6 +38,7 @@
 		ENTITY_TYPE_LABELS as ENTITY_LABELS,
 		changeEntryLink
 	} from '$lib/utils/changeEntries';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	type EntityType = BranchChangeEntry['entity_type'];
 	type EntityFilter = EntityType | 'all';
@@ -293,7 +294,7 @@
 			</p>
 		</div>
 	{:else if error}
-		<div class="state error" role="alert">{error}</div>
+		<ErrorState message={error} onRetry={() => loadComparison(fromId, toId, until ?? null)} />
 	{:else if comparison && older}
 		<div class="endpoints">
 			{@render snapshotCard('From (older)', older)}
@@ -583,10 +584,6 @@
 		padding: 2rem;
 		text-align: center;
 		color: #64748b;
-	}
-
-	.state.error {
-		color: #dc2626;
 	}
 
 	.state.empty {

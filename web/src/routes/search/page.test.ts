@@ -824,7 +824,7 @@ describe('Advanced Search Page', () => {
 			});
 		});
 
-		it('error message has role="alert"', async () => {
+		it('error message has role="alert" and a Retry', async () => {
 			vi.mocked(apiModule.api.searchPersons).mockRejectedValue({ message: 'Server error' });
 
 			const { container } = render(SearchPage);
@@ -838,8 +838,9 @@ describe('Advanced Search Page', () => {
 			await waitFor(() => {
 				const errorEl = container.querySelector('[role="alert"]');
 				expect(errorEl).not.toBeNull();
-				expect(errorEl?.textContent).toBe('Server error');
+				expect(errorEl?.querySelector('p')?.textContent).toBe('Server error');
 			});
+			expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined();
 		});
 	});
 });

@@ -97,6 +97,7 @@
 	} from '$lib/utils/changeEntries';
 	import { blockedEntityIds, blockerFix } from '$lib/utils/mergeBlockers';
 	import { isIncompleteMerge, isUnreadableMerge, pendingEntities } from '$lib/utils/mergeState';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let comparison: BranchComparisonResult | null = $state(null);
 	let loading = $state(true);
@@ -537,7 +538,8 @@
 		} catch (e) {
 			if (request !== comparisonRequest) return;
 			const apiError = e as ApiError;
-			if (apiError.status === 404) {
+			// A 400 is a malformed id in the URL, which no branch can have.
+			if (apiError.status === 404 || apiError.status === 400) {
 				notFound = true;
 			} else {
 				error = apiError.message || 'Failed to load branch comparison';
@@ -878,7 +880,7 @@
 			<p>It may have been deleted, or the branch registry is not configured on this server.</p>
 		</div>
 	{:else if error}
-		<div class="state error" role="alert">{error}</div>
+		<ErrorState message={error} onRetry={() => loadComparison(branchId)} />
 	{:else if comparison}
 		<header class="page-header">
 			<div>
@@ -1673,10 +1675,6 @@
 		padding: 2rem;
 		text-align: center;
 		color: #64748b;
-	}
-
-	.state.error {
-		color: #dc2626;
 	}
 
 	.state.empty {

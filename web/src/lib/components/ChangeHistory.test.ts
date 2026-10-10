@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import ChangeHistory from "./ChangeHistory.svelte";
 import * as apiModule from "$lib/api/client";
 
@@ -293,5 +293,34 @@ describe("ChangeHistory merge provenance and branch lifecycle (#832)", () => {
       screen.getByRole("link", { name: "Dead end" }).getAttribute("href"),
     ).toBe("/branches/77777777-7777-7777-7777-777777777777");
     expect(screen.getByRole("button", { name: /Show changes/ })).toBeDefined();
+  });
+});
+
+describe("ChangeHistory failed loads (#899)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("offers Retry when the history fails to load", async () => {
+    vi.mocked(apiModule.api.getGlobalHistory)
+      .mockRejectedValueOnce({ message: "Database unavailable" })
+      .mockResolvedValueOnce({ items: [entry({})], total: 1, limit: 20, offset: 0, has_more: false });
+    render(ChangeHistory);
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Database unavailable");
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+  });
+
+  it("keeps the entries shown when Load more fails", async () => {
+    vi.mocked(apiModule.api.getGlobalHistory)
+      .mockResolvedValueOnce({ items: [entry({})], total: 2, limit: 1, offset: 0, has_more: true })
+      .mockRejectedValueOnce({ message: "Timed out" });
+    render(ChangeHistory);
+
+    await fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Timed out");
+    expect(screen.getByText("Ada Lovelace")).toBeTruthy();
   });
 });

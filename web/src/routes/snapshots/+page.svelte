@@ -28,6 +28,7 @@
 		snapshotCompareHref,
 		snapshotCompareToNowHref
 	} from '$lib/utils/snapshots';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	// Mirrors the maxLength on SnapshotCreate in openapi.yaml.
 	const NAME_MAX_LENGTH = 100;
@@ -249,7 +250,7 @@
 	{#if loading}
 		<div class="state" role="status" aria-live="polite">Loading snapshots...</div>
 	{:else if error}
-		<div class="state error" role="alert">{error}</div>
+		<ErrorState message={error} onRetry={loadSnapshots} />
 	{:else if snapshots.length === 0}
 		<div class="state empty">
 			<h2>No snapshots yet</h2>
@@ -595,10 +596,6 @@
 		padding: 2rem;
 		text-align: center;
 		color: #64748b;
-	}
-
-	.state.error {
-		color: #dc2626;
 	}
 
 	.state.empty {

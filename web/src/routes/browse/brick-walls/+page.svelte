@@ -4,6 +4,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Card, CardHeader, CardContent, CardFooter } from '$lib/components/ui/card';
 	import MainlineNotice from '$lib/components/MainlineNotice.svelte';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	let entries: BrickWallEntry[] = $state([]);
 	let activeCount = $state(0);
@@ -72,10 +73,7 @@
 	{#if loading}
 		<div class="loading" role="status" aria-live="polite">Loading brick walls...</div>
 	{:else if error}
-		<div class="error" role="alert">
-			<p>{error}</p>
-			<button onclick={loadBrickWalls}>Retry</button>
-		</div>
+		<ErrorState message={error} onRetry={loadBrickWalls} />
 	{:else if activeCount === 0 && resolvedCount === 0}
 		<div class="empty">No brick walls yet. Mark a person as a brick wall from their profile.</div>
 	{:else}
@@ -160,26 +158,6 @@
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
-	}
-
-	.error {
-		text-align: center;
-		padding: 2rem;
-		color: #dc2626;
-	}
-
-	.error button {
-		margin-top: 1rem;
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-	}
-
-	.error button:hover {
-		background: #f1f5f9;
 	}
 
 	.summary-stats {

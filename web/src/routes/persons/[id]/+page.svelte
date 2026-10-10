@@ -22,6 +22,7 @@
 	import { activeBranch } from '$lib/stores/activeBranch.svelte';
 	import { ROLLBACK_MAINLINE_ONLY } from '$lib/utils/rollbackScope';
 	import { GENDER_OPTIONS, RESEARCH_STATUS_OPTIONS } from '$lib/utils/enumOptions';
+	import ActionError from '$lib/components/ActionError.svelte';
 
 	let person: PersonDetail | null = $state(null);
 	let loading = $state(true);
@@ -432,7 +433,7 @@
 		<ErrorState message={loadError} onRetry={() => loadPerson($page.params.id ?? '')} />
 	{:else if person}
 		{#if actionError}
-			<div class="action-error" role="alert">{actionError}</div>
+			<ActionError message={actionError} />
 		{/if}
 		{#if editing}
 			<form class="edit-form" bind:this={editForm} onsubmit={(e) => { e.preventDefault(); savePerson(); }}>
@@ -445,7 +446,7 @@
 						busy={saving}
 					/>
 				{:else if saveError}
-					<div class="action-error" role="alert">{saveError}</div>
+					<ActionError message={saveError} />
 				{/if}
 				<FormRow>
 					<label>
@@ -826,16 +827,6 @@
 		color: #64748b;
 	}
 
-	.action-error {
-		padding: 0.75rem 1rem;
-		margin-bottom: 1rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 8px;
-		color: #dc2626;
-		font-size: 0.875rem;
-		overflow-wrap: anywhere;
-	}
 
 	.person-detail {
 		background: white;

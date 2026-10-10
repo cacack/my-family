@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, type SurnameEntry, type LetterCount } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
+	import ErrorState from './ErrorState.svelte';
 
 	let letterCounts: LetterCount[] = $state([]);
 	let surnames: SurnameEntry[] = $state([]);
@@ -74,10 +75,7 @@
 	{#if loading}
 		<div class="loading">Loading surnames...</div>
 	{:else if error && letterCounts.length === 0}
-		<div class="error" role="alert">
-			<p>{error}</p>
-			<button onclick={retry}>Retry</button>
-		</div>
+		<ErrorState message={error} onRetry={retry} />
 	{:else}
 		<!-- A-Z Letter Navigation -->
 		<div class="letter-nav">
@@ -104,10 +102,7 @@
 			{#if loadingSurnames}
 				<div class="loading">Loading...</div>
 			{:else if error}
-				<div class="error" role="alert">
-					<p>{error}</p>
-					<button onclick={retry}>Retry</button>
-				</div>
+				<ErrorState message={error} onRetry={retry} />
 			{:else if surnames.length === 0}
 				<div class="empty">No surnames found</div>
 			{:else}
@@ -134,26 +129,6 @@
 		text-align: center;
 		padding: 2rem;
 		color: #64748b;
-	}
-
-	.error {
-		text-align: center;
-		padding: 2rem;
-		color: #dc2626;
-	}
-
-	.error button {
-		margin-top: 1rem;
-		padding: 0.5rem 1rem;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		background: white;
-		font-size: 0.875rem;
-		cursor: pointer;
-	}
-
-	.error button:hover {
-		background: #f1f5f9;
 	}
 
 	.letter-nav {

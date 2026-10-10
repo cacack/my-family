@@ -10,6 +10,7 @@
 		formatGenDate,
 		formatLifespan
 	} from '$lib/api/client';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	// Form state
 	let query = $state('');
@@ -558,7 +559,7 @@
 				</div>
 
 				{#if error}
-					<div class="error-message" role="alert">{error}</div>
+					<ErrorState message={error} onRetry={performSearch} />
 				{:else if !loading && results.length === 0}
 					<div class="empty-state">
 						No results found. Try adjusting your search criteria.
